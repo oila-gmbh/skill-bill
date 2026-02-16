@@ -361,9 +361,12 @@ Update `.feature-specs/<feature-name>/spec.md` status to: **Complete**
 
 ## Step 9: Write Module History
 
-After successful completion, update `agent/history.md` in each affected module.
+After successful completion, update `agent/history.md` in the **primary module only** — the main module where the feature lives (e.g., `feature/dailyreports/` for a daily reports feature).
 
-**Location:** `<module-path>/agent/history.md` (in every module that was touched)
+Ask the user if the primary module is not obvious:
+> **Which module is the primary home for this feature?**
+
+**Location:** `<primary-module-path>/agent/history.md`
 
 Create the file and `agent/` directory if they don't exist.
 
