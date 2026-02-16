@@ -10,9 +10,10 @@ End-to-end feature implementation orchestrator. Takes a design doc and delivers 
 ## Workflow Overview
 
 ```
-Design Doc → Save Spec → Read History → Feature Flag? → Plan → Implement → Code Review → Completeness Audit → Write History
-                                                                              ↑              ↓
-                                                                              └── Fix ←── Gaps found?
+Design Doc → Save Spec → Read History → Feature Flag? → Plan → Implement →
+  → Compact + Re-read Spec → Code Review → Compact + Re-read Spec → Completeness Audit → Write History
+                                              ↑                                              ↓
+                                              └──────────── Fix ←──────────────── Gaps found?
 ```
 
 ## Step 1: Collect Design Doc
@@ -276,6 +277,8 @@ Plan deviations: <any changes from original plan, or "None">
 
 Discard the detailed implementation log — the code is on disk. This summary is sufficient context for review and audit.
 
+**Re-read spec:** After compacting, re-read `.feature-specs/<feature-name>/spec.md` — specifically the acceptance criteria list. Compaction loses detail; this refreshes your memory of what was promised. Mentally check: does the criteria coverage above actually account for every numbered criterion? If any are missing from the mapping, note them now — they were likely dropped during implementation.
+
 ## Step 7: Code Review
 
 When all tasks are completed, automatically:
@@ -304,6 +307,8 @@ gcheck:           ✅ Passed
 ```
 
 Carry forward: the acceptance criteria list + criteria-to-file mapping from Step 6b. Discard the full review findings — fixes are on disk.
+
+**Re-read spec:** After compacting, re-read `.feature-specs/<feature-name>/spec.md` — specifically the acceptance criteria list. Verify the criteria-to-file mapping is still complete after review fixes. If review fixes changed file paths or removed implementations, update the mapping.
 
 ## Step 8: Completeness Audit
 
