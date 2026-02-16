@@ -10,9 +10,9 @@ End-to-end feature implementation orchestrator. Takes a design doc and delivers 
 ## Workflow Overview
 
 ```
-Design Doc → Save Spec → Feature Flag? → Plan → Implement → Code Review → Completeness Audit
-                                                                ↑              ↓
-                                                                └── Fix ←── Gaps found?
+Design Doc → Save Spec → Read History → Feature Flag? → Plan → Implement → Code Review → Completeness Audit → Write History
+                                                                              ↑              ↓
+                                                                              └── Fix ←── Gaps found?
 ```
 
 ## Step 1: Collect Design Doc
@@ -121,6 +121,43 @@ Ask user:
 > **Are these acceptance criteria complete? Add, remove, or modify any before I plan.**
 
 This confirmed list is the **contract** for the completeness audit in Step 8.
+
+## Step 2b: Read Module History
+
+Before planning, check for historical context in the affected module(s).
+
+Look for `agent/history.md` in each module that will be touched by this feature:
+```
+feature/<module-name>/agent/history.md
+```
+
+If found, read it. This file contains summaries of the last 5 feature implementations in this module — what changed, what patterns were introduced, what to watch out for.
+
+**How to use history:**
+- If a previous feature added a component you can reuse, reference it in the plan
+- If a previous feature changed a shared entity (e.g., DailyReport), account for new fields
+- If a previous feature introduced a new pattern (e.g., updated sync approach), follow the new pattern, not the old one
+- If a previous feature left known limitations or TODOs, be aware of them
+
+If no `history.md` exists, skip — this is the first tracked feature in this module.
+
+**Example:** When implementing "special occurrence photos" in the dailyreports module, history might show:
+```
+## [2026-02-10] visits-name-qualification
+Modules: feature/dailyreports
+- Added NameSelectionScreen with search + grouped contacts (reusable)
+- Updated DailyReport entity with new visits fields
+- Used DI switch pattern with feature flag `feature-visits-details`
+
+## [2026-02-14] companies-workforce-details  
+Modules: feature/dailyreports
+- Added per-worker time tracking to CompanyAttendance entity
+- Created shared QualificationSelector composable (reusable)
+- Photo gallery component added for company attendance images — follow same pattern
+- Sync pattern updated: now uses batched presigned URLs for multiple uploads
+```
+
+→ Agent now knows: reuse NameSelectionScreen, follow batched presigned URL pattern (not single), photo gallery component already exists.
 
 ## Step 3: Feature Flag Decision
 
@@ -319,6 +356,66 @@ If user says yes:
 ```
 
 Update `.feature-specs/<feature-name>/spec.md` status to: **Complete**
+
+## Step 9: Write Module History
+
+After successful completion, update `agent/history.md` in each affected module.
+
+**Location:** `feature/<module-name>/agent/history.md`
+
+Create the file and `agent/` directory if they don't exist.
+
+**Entry format:**
+```markdown
+## [<date>] <feature-name>
+Modules: <list of affected modules>
+- <what changed — entities, repositories, UI components> (1-2 lines each)
+- <new patterns introduced or existing patterns followed>
+- <reusable components created> (mark with "reusable")
+- <breaking changes or migrations>
+- <known limitations or deferred items>
+Feature flag: <name and pattern, or N/A>
+Acceptance criteria: <count> implemented, <count> deferred
+```
+
+**Rules:**
+- Each entry is **max 15 lines** — concise, not a changelog
+- Keep only the **last 5 entries** per file — when adding a 6th, remove the oldest
+- Focus on information useful for the **next** feature implementation in this module
+- Do NOT include code snippets — just describe what exists and where
+- New entries are prepended (newest first)
+
+**Example history.md after 3 features:**
+```markdown
+# Module History: feature/dailyreports
+
+## [2026-02-16] special-occurrence-photos
+Modules: feature/dailyreports
+- Added SpecialOccurrenceImage Room entity + DAO following generalImage pattern
+- Created SpecialOccurrenceImageRepository (offline-first sync)
+- Integrated photo gallery into SpecialOccurrence detail screen (reusable: PhotoGallery composable)
+- Description field now optional when photos attached
+- "Copy Previous Day" explicitly skips photo copying
+Feature flag: feature-special-occurrence-photos (DI switch)
+Acceptance criteria: 15/15 implemented
+
+## [2026-02-14] companies-workforce-details
+Modules: feature/dailyreports
+- Added per-worker time tracking to CompanyAttendance entity
+- Created shared QualificationSelector composable (reusable)
+- Photo gallery component added for company attendance images
+- Sync: batched presigned URLs for multiple uploads (new pattern)
+Feature flag: feature-companies-workforce (Legacy pattern)
+Acceptance criteria: 12/12 implemented
+
+## [2026-02-10] visits-name-qualification
+Modules: feature/dailyreports
+- Added NameSelectionScreen with search + grouped contacts (reusable)
+- Updated DailyReport entity with new visits fields
+- Used DI switch pattern with feature flag `feature-visits-details`
+Feature flag: feature-visits-details (DI switch)
+Acceptance criteria: 10/10 implemented
+```
 
 ## Error Recovery
 
