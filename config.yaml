@@ -1,0 +1,18 @@
+# Android Review Plugin - Agent Configuration
+#
+# primary: The agent whose skills directory holds the actual files.
+#           All other agents get symlinks pointing to the primary.
+#
+# agents:   Map of agent name → skills directory path.
+#           Only agents whose directory exists on this machine are set up.
+#           Use ~ for home directory (expanded at runtime).
+
+primary: copilot
+
+agents:
+  copilot:
+    skills_dir: ~/.copilot/skills
+  claude:
+    skills_dir: ~/.claude/commands
+  glm:
+    skills_dir: ~/.glm/commands
