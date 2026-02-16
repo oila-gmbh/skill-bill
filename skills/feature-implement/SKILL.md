@@ -181,17 +181,31 @@ If no:
 
 Before planning, explore the existing codebase to understand conventions:
 
-1. **Find similar features** — if the spec references existing patterns (e.g., "follow the same pattern as `generalImage`"), locate and study those implementations
-2. **Identify project conventions** — DI framework, navigation pattern, repository structure, naming conventions, module layout
-3. **Note reusable components** — existing base classes, shared utilities, common patterns that new code should follow
+1. **Read AGENTS.md** — look for `AGENTS.md` (or `AGENT.md`, `CLAUDE.md`) at the project root. This file defines project-wide standards: architecture, DI, naming conventions, testing patterns, code style, file organization, common gotchas, and platform considerations. **Everything in AGENTS.md is mandatory** — treat it as law during implementation. Summarize the key rules you'll need:
+   ```
+   📜 AGENTS.md STANDARDS:
+   - DI: kotlin-inject with kotlin-inject-anvil (not Hilt)
+   - Naming: Zero* prefix for implementations (not *Impl)
+   - Strings: Compose Multiplatform resources, never hardcoded
+   - Testing: Kotest FunSpec + MockK (no relaxed) + Turbine
+   - Files: max 300-400 lines, split if larger
+   - Uuid: keep Uuid type throughout, String only at HTTP level
+   ```
+
+2. **Find similar features** — if the spec references existing patterns (e.g., "follow the same pattern as `generalImage`"), locate and study those implementations
+
+3. **Identify build dependencies** — scan `build.gradle.kts` files for affected modules. Note existing dependencies and convention plugins applied. If the feature needs new libraries, add them to prerequisites in the plan.
+
+4. **Note reusable components** — existing base classes, shared utilities, common patterns that new code should follow
 
 Summarize findings briefly:
 ```
 📂 CODEBASE PATTERNS:
-- DI: Hilt with @Provides in *Module classes
-- Navigation: Compose Navigation with NavHost
-- Images: generalImage pattern — presigned URL → S3 upload → sync metadata
-- Repository: offline-first with Room + GraphQL sync
+- DI: kotlin-inject with kotlin-inject-anvil, Scope hierarchy: AppScope → UserScope → ScreenScope
+- Navigation: Navigation Compose for Multiplatform with serializable routes
+- Convention plugins: zero.feature, zero.kmp.library, zero.kotlin.inject
+- Existing dependencies relevant to this feature: <list>
+- Reusable components: <list>
 ```
 
 These patterns **must** be followed in the implementation plan.
@@ -226,11 +240,13 @@ Using the design doc, acceptance criteria, and feature-guard strategy (if applic
 1. [ ] Task description
    Files: list of files to create/modify
    Criteria: #1, #3 (references to acceptance criteria)
+   Tests: what test coverage this task needs (e.g., "ViewModel test for state transitions", "Repository test for sync", or "None — UI only")
    Flag: how this task respects feature-guard (or N/A)
 
 2. [ ] Task description
    Files: ...
    Criteria: #5, #7
+   Tests: ...
    Flag: ...
 ```
 
@@ -251,6 +267,9 @@ Implement each task in order:
 - Mark tasks as completed in the plan
 - Follow feature-guard patterns if applicable
 - Write clean, production-grade code
+- **Follow AGENTS.md standards** — especially: string externalization (use Compose Multiplatform resources, never hardcode), naming conventions, file size limits, Uuid type preservation, and error handling patterns. If unsure about a convention, re-read AGENTS.md.
+- **Write tests as specified** in each task's `Tests:` field. Follow the testing patterns from AGENTS.md (Kotest FunSpec, MockK, Turbine for Flows). Tests are not optional — if the plan says a task has tests, write them.
+- **Update build files** when adding new dependencies or modules. Apply the correct convention plugins (e.g., `zero.feature` for feature modules, `zero.kmp.library` for library modules).
 - If a task reveals the plan is wrong (e.g., assumption was invalid, dependency doesn't work as expected), **stop and re-plan from that point** — do not force through a broken plan
 - Do NOT skip tasks or combine them without user consent
 - If plan has phases, pause between phases for a brief checkpoint
@@ -316,7 +335,12 @@ After code review passes, perform a **spec completeness audit**:
 
 1. Read the saved spec and **confirmed acceptance criteria** from `.feature-specs/<feature-name>/spec.md`
 2. For each numbered acceptance criterion, verify it is implemented by checking the actual code
-3. Produce a completeness report:
+3. **Platform coverage check** — if the project targets multiple platforms (e.g., Android, iOS, Desktop), verify each criterion is implemented on **every applicable platform**. Check:
+   - Platform-specific manifest/config files (AndroidManifest.xml, Info.plist, entitlements, .desktop files)
+   - Platform-specific source sets (androidMain, iosMain, jvmMain)
+   - `expect`/`actual` declarations are complete
+   - Platform-specific behavior described in the spec is not skipped for any target
+4. Produce a completeness report:
 
 ```
 📋 COMPLETENESS AUDIT: <feature-name>
