@@ -128,8 +128,10 @@ Before planning, check for historical context in the affected module(s).
 
 Look for `agent/history.md` in each module that will be touched by this feature:
 ```
-feature/<module-name>/agent/history.md
+<module-path>/agent/history.md
 ```
+
+This applies to **any module** — feature, data, domain, core, shared. Any module the implementation plan will touch should be checked for history.
 
 If found, read it. This file contains summaries of the last 5 feature implementations in this module — what changed, what patterns were introduced, what to watch out for.
 
@@ -361,7 +363,7 @@ Update `.feature-specs/<feature-name>/spec.md` status to: **Complete**
 
 After successful completion, update `agent/history.md` in each affected module.
 
-**Location:** `feature/<module-name>/agent/history.md`
+**Location:** `<module-path>/agent/history.md` (in every module that was touched)
 
 Create the file and `agent/` directory if they don't exist.
 
