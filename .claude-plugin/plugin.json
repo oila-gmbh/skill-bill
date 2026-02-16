@@ -1,0 +1,9 @@
+{
+  "name": "android-review",
+  "version": "1.0.0",
+  "description": "Android code review suite with Clean Architecture, MVVM, Jetpack Compose, and Kotlin Coroutines best practices. Includes 6 specialist subagents, compose checker, gcheck, and more.",
+  "author": {
+    "name": "sermilion"
+  },
+  "keywords": ["android", "code-review", "kotlin", "compose", "clean-architecture"]
+}
