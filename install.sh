@@ -2,10 +2,8 @@
 set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG="$PLUGIN_DIR/config.yaml"
 SKILLS_DIR="$PLUGIN_DIR/skills"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -17,50 +15,51 @@ ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 err()   { printf "${RED}✗${NC} %s\n" "$1"; }
 
-expand_path() { echo "${1/#\~/$HOME}"; }
-
-# Parse config.yaml into parallel arrays (Bash 3.x compatible)
-AGENT_NAMES=()
-AGENT_PATHS=()
-PRIMARY=""
-
-while IFS= read -r line || [[ -n "$line" ]]; do
-  [[ "$line" =~ ^[[:space:]]*# ]] && continue
-  [[ -z "${line// }" ]] && continue
-
-  if [[ "$line" =~ ^primary:[[:space:]]*(.*) ]]; then
-    PRIMARY="${BASH_REMATCH[1]}"
-  elif [[ "$line" =~ ^[[:space:]]+([a-zA-Z0-9_-]+):[[:space:]]*$ ]]; then
-    current_agent="${BASH_REMATCH[1]}"
-  elif [[ "$line" =~ skills_dir:[[:space:]]*(.*) ]]; then
-    AGENT_NAMES+=("$current_agent")
-    AGENT_PATHS+=("$(expand_path "${BASH_REMATCH[1]}")")
-  fi
-done < "$CONFIG"
-
 get_agent_path() {
-  local name="$1"
-  for i in "${!AGENT_NAMES[@]}"; do
-    if [[ "${AGENT_NAMES[$i]}" == "$name" ]]; then
-      echo "${AGENT_PATHS[$i]}"
-      return
-    fi
-  done
+  case "$1" in
+    copilot) echo "$HOME/.copilot/skills" ;;
+    claude)  echo "$HOME/.claude/commands" ;;
+    glm)     echo "$HOME/.glm/commands" ;;
+    *)       return 1 ;;
+  esac
 }
 
-if [[ -z "$PRIMARY" ]]; then
-  err "No primary agent defined in config.yaml"
+echo ""
+printf "${CYAN}━━━ Mobile Development Plugin Installer ━━━${NC}\n"
+echo ""
+info "Supported agents: copilot, claude, glm"
+echo ""
+printf "${CYAN}▸${NC} Enter agents (comma-separated, primary first): "
+read -r input
+
+if [[ -z "$input" ]]; then
+  err "No agents provided"
   exit 1
 fi
 
-echo ""
-printf "${CYAN}━━━ Android Review Plugin Installer ━━━${NC}\n"
+IFS=',' read -ra RAW_AGENTS <<< "$input"
+
+AGENT_NAMES=()
+AGENT_PATHS=()
+for raw in "${RAW_AGENTS[@]}"; do
+  agent="$(echo "$raw" | tr -d '[:space:]')"
+  path="$(get_agent_path "$agent" 2>/dev/null || true)"
+  if [[ -z "$path" ]]; then
+    err "Unknown agent: $agent"
+    exit 1
+  fi
+  AGENT_NAMES+=("$agent")
+  AGENT_PATHS+=("$path")
+done
+
+PRIMARY="${AGENT_NAMES[0]}"
+PRIMARY_DIR="${AGENT_PATHS[0]}"
+
 echo ""
 info "Plugin:  $PLUGIN_DIR"
-info "Primary: $PRIMARY"
+info "Primary: $PRIMARY ($PRIMARY_DIR)"
 echo ""
 
-# Enumerate skills
 SKILL_NAMES=()
 for skill_path in "$SKILLS_DIR"/*/; do
   [[ -d "$skill_path" ]] || continue
@@ -69,13 +68,6 @@ done
 
 info "Skills found: ${#SKILL_NAMES[@]}"
 echo ""
-
-# Step 1: Install skills to primary agent
-PRIMARY_DIR="$(get_agent_path "$PRIMARY")"
-if [[ -z "$PRIMARY_DIR" ]]; then
-  err "Primary agent '$PRIMARY' not found in config"
-  exit 1
-fi
 
 mkdir -p "$PRIMARY_DIR"
 info "Installing to primary ($PRIMARY): $PRIMARY_DIR"
@@ -93,11 +85,10 @@ for skill in "${SKILL_NAMES[@]}"; do
 done
 echo ""
 
-# Step 2: Symlink other agents → primary agent
 for i in "${!AGENT_NAMES[@]}"; do
+  [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
-  [[ "$agent" == "$PRIMARY" ]] && continue
 
   parent_dir="$(dirname "$agent_dir")"
   if [[ ! -d "$parent_dir" ]]; then
@@ -122,15 +113,14 @@ for i in "${!AGENT_NAMES[@]}"; do
   echo ""
 done
 
-# Summary
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Primary agent:   $PRIMARY → $PRIMARY_DIR"
 for i in "${!AGENT_NAMES[@]}"; do
+  [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
-  [[ "$agent" == "$PRIMARY" ]] && continue
   parent_dir="$(dirname "$agent_dir")"
   if [[ -d "$parent_dir" ]]; then
     info "Linked agent:    $agent → $agent_dir (via $PRIMARY)"

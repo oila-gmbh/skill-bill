@@ -1,4 +1,4 @@
-# Android Review Plugin - Agent Configuration
+# Mobile Development Plugin - Agent Configuration
 #
 # primary: The agent whose skills directory holds the actual files.
 #           All other agents get symlinks pointing to the primary.
