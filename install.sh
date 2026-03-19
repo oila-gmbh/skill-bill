@@ -25,7 +25,7 @@ get_agent_path() {
 }
 
 echo ""
-printf "${CYAN}━━━ Mobile Development Plugin Installer ━━━${NC}\n"
+printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
 info "Supported agents: copilot, claude, glm"
 echo ""
@@ -69,8 +69,26 @@ done
 info "Skills found: ${#SKILL_NAMES[@]}"
 echo ""
 
+remove_legacy_skill_links() {
+  local target_dir="$1"
+
+  for skill in "${SKILL_NAMES[@]}"; do
+    case "$skill" in
+      bill-*)
+        legacy_skill="mdp-${skill#bill-}"
+        legacy_target="$target_dir/$legacy_skill"
+        if [[ -e "$legacy_target" || -L "$legacy_target" ]]; then
+          rm -rf "$legacy_target"
+          ok "  removed legacy $legacy_skill"
+        fi
+        ;;
+    esac
+  done
+}
+
 mkdir -p "$PRIMARY_DIR"
 info "Installing to primary ($PRIMARY): $PRIMARY_DIR"
+remove_legacy_skill_links "$PRIMARY_DIR"
 
 for skill in "${SKILL_NAMES[@]}"; do
   target="$PRIMARY_DIR/$skill"
@@ -98,6 +116,7 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   mkdir -p "$agent_dir"
   info "Symlinking $agent: $agent_dir → $PRIMARY_DIR"
+  remove_legacy_skill_links "$agent_dir"
 
   for skill in "${SKILL_NAMES[@]}"; do
     target="$agent_dir/$skill"
