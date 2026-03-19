@@ -1,6 +1,6 @@
 ---
 name: mdp-code-review-platform-correctness
-description: Review lifecycle, coroutine, threading, and logic correctness risks in Android/Kotlin code.
+description: Review lifecycle, coroutine, threading, and logic correctness risks in Android, KMP, backend/server, and general Kotlin code.
 ---
 
 # Platform & Correctness Review Specialist
@@ -8,14 +8,18 @@ description: Review lifecycle, coroutine, threading, and logic correctness risks
 Review only correctness and runtime-safety issues.
 
 ## Focus
-- Lifecycle correctness and leak-prone ownership
-- Coroutine scoping, cancellation, and dispatcher correctness
+- Coroutine scoping, cancellation, and dispatcher/thread correctness
 - Race conditions, ordering bugs, and stale-state updates
 - Nullability/edge-case failures and crash paths
 - State-machine and contract handling correctness
+- Resource ownership and lifecycle safety where relevant
 
 ## Ignore
 - Style or readability feedback without correctness impact
+
+## Applicability
+
+Apply shared Kotlin correctness rules to all code. Apply Android/KMP-only rules only when Android/KMP signals are present. Apply backend/server-only rules only when backend/server signals are present.
 
 ## Project Overrides
 
@@ -23,39 +27,55 @@ If an `AGENTS.md` file exists in the project root, read it and apply its rules a
 
 ## Project-Specific Rules
 
-### Dispatchers
-- Never use `Dispatchers.IO`, `Dispatchers.Main`, etc. directly
-- Always use `DispatcherProvider` interface for all async operations
+### Shared Kotlin Correctness
+- Never use `GlobalScope`
+- Long-lived coroutine scopes must have an explicit owner and cancellation strategy
+- Shared mutable state must be synchronized, serialized, or replaced with immutable/message-driven flow
+- Cancellation and timeout behavior must be explicit around long-running or external operations
+- Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
+- Validate ordering guarantees where multiple async sources can race or overwrite each other
+
+### Android/KMP-Specific Rules
+
+#### Dispatchers
+- Never use `Dispatchers.IO`, `Dispatchers.Main`, etc. directly when the project standard is `DispatcherProvider`
 - Check that injected `DispatcherProvider` is used consistently
 
-### Coroutine Scoping
+#### Coroutine Scoping
 - ViewModels use `viewModelScope`
-- Fire-and-forget operations that must survive ViewModel clearing use `@ApplicationScope`
-- Never use `GlobalScope`
-- `LaunchedEffect` keys must be stable — avoid using full data objects as keys when a derived boolean or ID suffices (causes unnecessary restarts)
+- Fire-and-forget operations that must survive ViewModel clearing use `@ApplicationScope` or the project equivalent
+- `LaunchedEffect` keys must be stable — avoid using full data objects as keys when a derived boolean or ID suffices
 
-### Flow & State
+#### Flow & State
 - Use `collectAsStateWithLifecycle()` in Compose, never `collectAsState()`
-- `StateFlow` for UI state, `SharedFlow` for one-time events
+- `StateFlow` for UI state, `SharedFlow` for one-time events unless the project intentionally standardizes on another pattern
 - Side effects emitted via `SharedFlow` must not be lost — verify collector is active
 - Check for race conditions between auto-dismiss timers and user interactions
 
-### Flow Composition
+#### Flow Composition
 - When combining multiple flows, define source priority explicitly (primary vs enrichment streams)
 - Keep transformations pure and deterministic — no hidden fallback behavior
-- Emit a complete sealed UI state (`Loading`, `Content`, `Error`, `Empty`)
-- Add `.catch { emit(UiState.Error(...)) }` before terminal `.stateIn()` for transformation-level failures
+- Emit a complete sealed UI state (`Loading`, `Content`, `Error`, `Empty`) where the screen contract expects it
+- Add `.catch { ... }` before terminal `.stateIn()` for transformation-level failures when the contract requires resilient UI state
 - Verify: primary present + enrichment missing, primary missing, one stream fails
 
-### Lifecycle
+#### Lifecycle
 - No Activity/Fragment references held in ViewModels or repositories
 - `DisposableEffect` for cleanup of listeners/callbacks
 - `rememberSaveable` for state surviving configuration changes
 
-### Error Handling
-- Repositories handle all exceptions internally — callers should not need try-catch
-- Network/database failures return fallback values (null, false, empty list)
-- Log with context (include relevant IDs) using Timber
+#### Error Handling
+- Repositories should absorb infra exceptions per project contract so callers do not need defensive try/catch everywhere
+- Log with context (include relevant IDs) using the project logger
+
+### Backend/Server-Specific Rules
+- Do not block event-loop/request threads with JDBC, file I/O, crypto, or HTTP calls unless explicitly shifted to a dedicated dispatcher/executor
+- Request handlers should not launch untracked coroutines that outlive the request unless work is delegated to a managed background component
+- Message consumers, schedulers, and jobs must be safe under retry/replay; acknowledge or commit only after durable success
+- Do not hold database transactions open across remote network calls or long waits
+- Concurrent writes need atomic statements, locking, version checks, or another explicit consistency mechanism
+- Application/service scopes created at startup must be cancelled cleanly on shutdown
+- Verify timeout/cancellation propagation on outbound calls so abandoned requests do not continue wasting resources
 
 ## Output Rules
 - Report at most 7 findings.

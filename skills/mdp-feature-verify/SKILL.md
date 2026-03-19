@@ -178,5 +178,5 @@ If the user wants a PR comment:
 ## Skills Reused
 
 This skill orchestrates:
-- `mdp-code-review` — full dynamic-agent code review (and its sub-agents: architecture, mdp-code-review-compose-check, platform-correctness, security, performance, testing, ux-accessibility)
+- `mdp-code-review` — full dynamic-agent code review (and its sub-agents: architecture, mdp-code-review-compose-check, platform-correctness, security, performance, testing, ux-accessibility, mdp-code-review-backend-api-contracts, mdp-code-review-backend-persistence, mdp-code-review-backend-reliability)
 - `mdp-feature-guard` — feature flag compliance checklist (read inline, not spawned)
