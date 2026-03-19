@@ -1,11 +1,13 @@
 ---
 name: mdp-code-review
-description: Conduct a thorough Android PR code review following Clean Architecture, MVVM, Jetpack Compose, and Kotlin Coroutines best practices. Use when reviewing pull requests, specific files, git commits, or working changes in Android/Kotlin projects. Produces a structured review with risk register, architecture analysis, scoring, and prioritized action items.
+description: Conduct a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff. Produces a structured review with risk register and prioritized action items.
 ---
 
-# Android PR Review
+# Adaptive Kotlin PR Review
 
-You are an experienced Android architect conducting a code review.
+You are an experienced Kotlin architect conducting a code review.
+
+Your first job is to classify the project safely so Android/KMP reviews stay as deep as before. This skill must expand coverage without weakening the existing Android/KMP review path.
 
 ## Project Overrides
 
@@ -21,15 +23,68 @@ Determine the review scope:
 
 ---
 
+## Project Classification
+
+Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source set layout, module names, imports).
+
+Classify the review as one of:
+- `Android`
+- `KMP`
+- `Backend/Server`
+- `Generic Kotlin`
+- `Mixed`
+
+### Android/KMP Signals
+
+- `com.android.application`, `com.android.library`, `androidx`, `androidMain`, `iosMain`, `commonMain`
+- `kotlin("multiplatform")`, `org.jetbrains.kotlin.multiplatform`, `expect` / `actual`
+- `AndroidManifest.xml`, `res/`, `R.string`, Activities, Fragments, `ViewModel`
+- `@Composable`, `remember`, `LaunchedEffect`, `collectAsStateWithLifecycle()`
+
+### Backend/Server Signals
+
+- `io.ktor.server`, `routing {}`, `Application.module`
+- `spring-boot`, `@RestController`, `@Controller`, `@Service`, `@Repository`, `@Transactional`
+- Micronaut, Quarkus, http4k, Javalin, gRPC server code
+- `application.yml`, `application.yaml`, `application.conf`
+- SQL/ORM/data-access layers: Exposed, jOOQ, Hibernate/JPA, JDBC, R2DBC, Flyway, Liquibase
+- Queues, schedulers, consumers, caches, metrics, tracing, server auth middleware
+
+### Decision Rules
+
+- If Android/KMP signals are strong, use the Android/KMP route. Do **not** replace that route with backend specialists.
+- If backend/server signals clearly dominate and there are no meaningful Android/KMP signals in scope, use the backend/server route.
+- If neither route is clear, use the generic Kotlin route.
+- If both appear in one PR, classify it as `Mixed`, choose specialists based on the changed areas, and do not drop Android/KMP specialists for Android/KMP files.
+- When uncertain, prefer the safer route that preserves Android/KMP review depth.
+
+---
+
 ## Dynamic Agent Selection
 
 ### Step 1: Always spawn `mdp-code-review-architecture`
 
 Architecture review is relevant for every non-trivial change.
 
-### Step 2: Analyze the diff and select additional agents
+### Step 2: Choose route baseline
 
-Read the changed files and match against these triggers:
+- `Android` / `KMP`: preserve the existing mobile review behavior
+- `Backend/Server`: baseline is `architecture` + `mdp-code-review-platform-correctness`
+- `Generic Kotlin`: baseline is `architecture` + `mdp-code-review-platform-correctness`
+- `Mixed`: baseline is `architecture` + `mdp-code-review-platform-correctness`, then add route-specific specialists for the touched areas
+
+### Step 3: Analyze the diff and select additional agents
+
+For `Mixed` classification, inspect each changed file or tightly related change cluster separately:
+- If a file/change has Android/KMP signals, apply the Android/KMP Route triggers
+- If a file/change has backend/server signals, apply the Backend/Server Route triggers
+- If a file/change is only generic Kotlin infrastructure, apply the Generic Kotlin Route triggers
+- A single PR may spawn specialists from multiple routes, but keep the total at 6 or fewer
+- Preserve Android/KMP specialists for any Android/KMP files even when backend files are changed in the same PR
+
+#### Android/KMP Route
+
+Keep the current mobile triggers intact:
 
 | Signal in the diff | Agent to spawn |
 |---------------------|----------------|
@@ -40,15 +95,38 @@ Read the changed files and match against these triggers:
 | Test files modified (`*Test.kt`), new test classes, mock setup changes | `mdp-code-review-testing` |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `mdp-code-review-ux-accessibility` |
 
-### Step 3: Apply minimum
+#### Backend/Server Route
+
+| Signal in the diff | Agent to spawn |
+|---------------------|----------------|
+| Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `mdp-code-review-backend-api-contracts` |
+| Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `mdp-code-review-backend-persistence` |
+| Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `mdp-code-review-backend-reliability` |
+| `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `mdp-code-review-platform-correctness` |
+| Auth, tokens, keys, passwords, request signing, sensitive data, security middleware | `mdp-code-review-security` |
+| Heavy request-path work, blocking I/O, N+1 queries, redundant downstream calls, unbounded buffering | `mdp-code-review-performance` |
+| Test files modified (`*Test.kt`), contract/integration tests, mock setup changes | `mdp-code-review-testing` |
+
+#### Generic Kotlin Route
+
+| Signal in the diff | Agent to spawn |
+|---------------------|----------------|
+| `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes | `mdp-code-review-platform-correctness` |
+| Auth, tokens, keys, passwords, encryption, sensitive data | `mdp-code-review-security` |
+| Heavy computation, retry/backoff loops, bulk data processing, redundant I/O | `mdp-code-review-performance` |
+| Test files modified (`*Test.kt`), new test classes, mock setup changes | `mdp-code-review-testing` |
+
+### Step 4: Apply minimum
 
 - Minimum 2 agents (architecture + at least one other)
-- If no additional triggers match, spawn `mdp-code-review-platform-correctness` as default second agent
+- If no additional triggers match, spawn `mdp-code-review-platform-correctness` as the default second agent
 - Maximum 6 agents
+- On Android/KMP reviews, prefer the established mobile specialists before backend specialists
 
-### Step 4: Launch in parallel
+### Step 5: Launch in parallel
 
 Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
+- The detected project type
 - The list of changed files
 - Instructions to read its own skill file for the review rubric
 - The shared contract below
@@ -91,10 +169,12 @@ Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
 
 ## Review Output Format
 
-### 1. Agent Selection Summary
+### 1. Classification & Agent Summary
 ```
-Agents spawned: architecture, mdp-code-review-compose-check, platform-correctness
-Reason: Compose files modified, coroutine scoping in delegate
+Detected project type: Android | KMP | Backend/Server | Generic Kotlin | Mixed
+Signals: @Composable, AndroidManifest.xml, ViewModel
+Agents spawned: mdp-code-review-architecture, mdp-code-review-platform-correctness, mdp-code-review-compose-check
+Reason: Android/KMP signals were high-confidence, so the preserved mobile path was used
 ```
 
 ### 2. Risk Register
@@ -130,7 +210,7 @@ Effort: S (<1h) | M (1-4h) | L (>4h)
 
 After review, ask: **"Which item would you like me to fix?"**
 
-After all P0 and P1 items are resolved, run `mdp-gcheck` as final verification.
+After all P0 and P1 items are resolved, run `mdp-gcheck` as final verification when the project uses Gradle.
 
 ---
 
@@ -141,5 +221,5 @@ After all P0 and P1 items are resolved, run `mdp-gcheck` as final verification.
 - Project-aware: each agent has project-specific rules in its skill file
 - Actionable: every issue must have a concrete fix
 - Proportional: don't nitpick style if architecture is broken
-- No overoptimization: do not report negligible performance findings that have no measurable user-facing impact. Only flag performance issues that cause jank, ANR, memory pressure, or battery drain.
+- No overoptimization: do not report negligible performance findings with no measurable user-facing or production-facing impact
 - Honest: if unsure, say what context is missing

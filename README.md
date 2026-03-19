@@ -1,10 +1,10 @@
 # Mobile Development Plugin
 
-A portable AI skill suite for Android/Kotlin projects — code review, feature implementation, and developer tooling. Install once, use from any AI coding agent.
+A portable AI skill suite for Android, KMP, and Kotlin backend projects — code review, feature implementation, and developer tooling. Install once, use from any AI coding agent.
 
 ## What Is This?
 
-This plugin is a collection of 16 AI skills (slash commands) that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
+This plugin is a collection of 19 AI skills (slash commands) that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
 
 **The key idea**: edit a skill once in this repo, and every agent sees the update instantly. No copy-pasting, no drift between agents.
 
@@ -53,7 +53,7 @@ plugin/skills/mdp-code-review/           <-- source of truth (this repo)
 ~/.glm/commands/mdp-code-review/         <-- secondary agent
 ```
 
-That's it. All 16 skills are now available as slash commands in every agent you selected.
+That's it. All 19 skills are now available as slash commands in every agent you selected.
 
 **Re-running the installer is safe.** It only touches `mdp-*` skills that belong to this plugin — any custom skills you created independently in your agent's directory are left untouched. Plugin skills are refreshed with updated symlinks.
 
@@ -77,20 +77,23 @@ No config files to edit — the installer handles everything interactively.
 
 ## Skills Included
 
-### Code Review (8 skills)
+### Code Review (11 skills)
 
-Run `/mdp-code-review` to start a review. The orchestrator analyzes the diff and spawns 2-6 specialist agents in parallel, then merges and deduplicates findings.
+Run `/mdp-code-review` to start a review. The orchestrator classifies the project type conservatively, preserves the full Android/KMP review path when mobile signals are strong, and spawns 2-6 specialist agents in parallel before merging and deduplicating findings.
 
 | Skill | Description |
 |-------|-------------|
-| `/mdp-code-review` | Orchestrator: spawns 2-6 specialist reviews, merges results |
-| `/mdp-code-review-architecture` | Architecture, boundaries, DI, source-of-truth |
+| `/mdp-code-review` | Orchestrator: classifies project type, spawns 2-6 specialist reviews, merges results |
+| `/mdp-code-review-architecture` | Architecture, boundaries, DI, source-of-truth across Android/KMP/backend |
 | `/mdp-code-review-compose-check` | Jetpack Compose best practices and optimization |
-| `/mdp-code-review-platform-correctness` | Lifecycle, coroutines, threading, Flow composition |
-| `/mdp-code-review-performance` | Recomposition, main-thread work, resource usage |
-| `/mdp-code-review-security` | Secrets, auth, PII, transport/storage |
+| `/mdp-code-review-platform-correctness` | Lifecycle, coroutines, threading, Flow composition, server correctness |
+| `/mdp-code-review-performance` | Recomposition, hot-path work, blocking I/O, resource usage |
+| `/mdp-code-review-security` | Secrets, auth, PII, transport/storage across mobile and backend |
 | `/mdp-code-review-testing` | Coverage gaps, flaky tests, regression risk |
 | `/mdp-code-review-ux-accessibility` | UX states, a11y, validation |
+| `/mdp-code-review-backend-api-contracts` | Backend API contracts, validation, serialization, compatibility |
+| `/mdp-code-review-backend-persistence` | Backend persistence, transactions, migrations, data consistency |
+| `/mdp-code-review-backend-reliability` | Backend timeouts, retries, jobs, caching, observability |
 
 ### Feature Lifecycle (4 skills)
 
