@@ -85,7 +85,7 @@ No config files to edit — the installer handles everything interactively.
 
 ### Code Review (11 skills)
 
-Run `/bill-code-review` to start a review. The orchestrator classifies the project type conservatively, preserves the full Android/KMP review path when mobile signals are strong, and spawns 2-6 specialist agents in parallel before merging and deduplicating findings.
+Run `/bill-code-review` to start a review. The orchestrator classifies the project type conservatively, preserves the full Android/KMP review path when mobile signals are strong, and spawns 2-6 specialist agents in parallel before merging and deduplicating findings, including a real-test-value pass when tests change.
 
 | Skill | Description |
 |-------|-------------|
@@ -95,7 +95,7 @@ Run `/bill-code-review` to start a review. The orchestrator classifies the proje
 | `/bill-code-review-platform-correctness` | Lifecycle, coroutines, threading, Flow composition, server correctness |
 | `/bill-code-review-performance` | Recomposition, hot-path work, blocking I/O, resource usage |
 | `/bill-code-review-security` | Secrets, auth, PII, transport/storage across mobile and backend |
-| `/bill-code-review-testing` | Coverage gaps, flaky tests, regression risk |
+| `/bill-code-review-testing` | Coverage gaps, flaky tests, tautological tests, and regression risk |
 | `/bill-code-review-ux-accessibility` | UX states, a11y, validation |
 | `/bill-code-review-backend-api-contracts` | Backend API contracts, validation, serialization, compatibility |
 | `/bill-code-review-backend-persistence` | Backend persistence, transactions, migrations, data consistency |
@@ -116,7 +116,7 @@ Run `/bill-code-review` to start a review. The orchestrator classifies the proje
 |-------|-------------|
 | `/bill-gcheck` | Run `./gradlew check` and fix all issues (no suppressions) |
 | `/bill-module-history` | Update module-level agent/history.md with feature history |
-| `/bill-unit-test-value-check` | Review unit tests for real business value instead of tautological coverage padding |
+| `/bill-unit-test-value-check` | Standalone audit for unit tests with real business value instead of tautological coverage padding |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |
 | `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
 

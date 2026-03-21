@@ -1,6 +1,6 @@
 ---
 name: bill-code-review
-description: Conduct a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff. Produces a structured review with risk register and prioritized action items.
+description: Conduct a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
 ---
 
 # Adaptive Kotlin PR Review
@@ -92,7 +92,7 @@ Keep the current mobile triggers intact:
 | `launch`, `Flow`, `StateFlow`, `viewModelScope`, `LifecycleOwner`, `DispatcherProvider`, `suspend fun` | `bill-code-review-platform-correctness` |
 | Auth, tokens, keys, passwords, encryption, HTTP clients, interceptors, sensitive data | `bill-code-review-security` |
 | `LazyColumn`/`LazyRow`, animations, heavy computation, image loading, retry/polling, bulk DB ops | `bill-code-review-performance` |
-| Test files modified (`*Test.kt`), new test classes, mock setup changes | `bill-code-review-testing` |
+| Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-code-review-testing` |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-code-review-ux-accessibility` |
 
 #### Backend/Server Route
@@ -105,7 +105,7 @@ Keep the current mobile triggers intact:
 | `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `bill-code-review-platform-correctness` |
 | Auth, tokens, keys, passwords, request signing, sensitive data, security middleware | `bill-code-review-security` |
 | Heavy request-path work, blocking I/O, N+1 queries, redundant downstream calls, unbounded buffering | `bill-code-review-performance` |
-| Test files modified (`*Test.kt`), contract/integration tests, mock setup changes | `bill-code-review-testing` |
+| Test files modified (`*Test.kt`), contract/integration tests, mock setup changes, coverage-padding or tautological tests | `bill-code-review-testing` |
 
 #### Generic Kotlin Route
 
@@ -114,7 +114,7 @@ Keep the current mobile triggers intact:
 | `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes | `bill-code-review-platform-correctness` |
 | Auth, tokens, keys, passwords, encryption, sensitive data | `bill-code-review-security` |
 | Heavy computation, retry/backoff loops, bulk data processing, redundant I/O | `bill-code-review-performance` |
-| Test files modified (`*Test.kt`), new test classes, mock setup changes | `bill-code-review-testing` |
+| Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-code-review-testing` |
 
 ### Step 4: Apply minimum
 
