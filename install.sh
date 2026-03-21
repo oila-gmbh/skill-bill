@@ -20,14 +20,28 @@ get_agent_path() {
     copilot) echo "$HOME/.copilot/skills" ;;
     claude)  echo "$HOME/.claude/commands" ;;
     glm)     echo "$HOME/.glm/commands" ;;
+    codex)   echo "$HOME/.agents/skills" ;;
     *)       return 1 ;;
+  esac
+}
+
+is_agent_available() {
+  case "$1" in
+    codex)
+      [[ -d "$HOME/.codex" || -d "$HOME/.agents" ]]
+      ;;
+    *)
+      local agent_dir
+      agent_dir="$(get_agent_path "$1")"
+      [[ -d "$(dirname "$agent_dir")" ]]
+      ;;
   esac
 }
 
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
-info "Supported agents: copilot, claude, glm"
+info "Supported agents: copilot, claude, glm, codex"
 echo ""
 printf "${CYAN}▸${NC} Enter agents (comma-separated, primary first): "
 read -r input
@@ -108,9 +122,8 @@ for i in "${!AGENT_NAMES[@]}"; do
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
 
-  parent_dir="$(dirname "$agent_dir")"
-  if [[ ! -d "$parent_dir" ]]; then
-    warn "Skipping $agent (not installed: $parent_dir does not exist)"
+  if ! is_agent_available "$agent"; then
+    warn "Skipping $agent (not installed)"
     continue
   fi
 
@@ -140,8 +153,7 @@ for i in "${!AGENT_NAMES[@]}"; do
   [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
-  parent_dir="$(dirname "$agent_dir")"
-  if [[ -d "$parent_dir" ]]; then
+  if is_agent_available "$agent"; then
     info "Linked agent:    $agent → $agent_dir (via $PRIMARY)"
   fi
 done

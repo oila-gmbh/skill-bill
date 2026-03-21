@@ -1,6 +1,6 @@
 ---
 name: bill-new-skill-all-agents
-description: Create a new skill and sync it to all detected local AI agents (Claude, Copilot, GLM). Use this when asked to create a new skill for all agents on the user's computer.
+description: Create a new skill and sync it to all detected local AI agents (Claude, Copilot, GLM, Codex). Use this when asked to create a new skill for all agents on the user's computer.
 ---
 
 When asked to create a new skill, follow this workflow:
@@ -15,6 +15,7 @@ When asked to create a new skill, follow this workflow:
    - copilot: `$HOME/.copilot/skills`
    - claude: `$HOME/.claude/commands`
    - glm: `$HOME/.glm/commands`
+   - codex: `$HOME/.agents/skills`
 
 3. Normalize the skill name to a slug:
    - lowercase
