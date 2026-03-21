@@ -1,12 +1,12 @@
-# Skill Bill
+# sKill Bill
 
-A portable AI skill suite for Android, KMP, Kotlin backend/server projects, and shared Kotlin code — code review, feature implementation, and developer tooling. Install once, use from any AI coding agent.
+sKill Bill is a portable AI skill suite for Android, KMP, Kotlin backend/server projects, and shared Kotlin code — code review, feature implementation, and developer tooling. Install once, use from any AI coding agent.
 
 ## What Is This?
 
 This plugin is a collection of 20 AI skills that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
 
-Skill Bill started as a mobile-focused plugin, but it now supports Android, KMP, Kotlin backend/server work, and shared Kotlin code under one skill suite.
+sKill Bill started as a mobile-focused plugin, but it now supports Android, KMP, Kotlin backend/server work, and shared Kotlin code under one skill suite.
 
 **The key idea**: edit a skill once in this repo, and every agent sees the update instantly. No copy-pasting, no drift between agents.
 
