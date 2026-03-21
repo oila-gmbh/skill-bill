@@ -4,7 +4,7 @@ A portable AI skill suite for Android, KMP, Kotlin backend/server projects, and 
 
 ## What Is This?
 
-This plugin is a collection of 19 AI skills (slash commands) that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
+This plugin is a collection of 20 AI skills that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
 
 Skill Bill started as a mobile-focused plugin, but it now supports Android, KMP, Kotlin backend/server work, and shared Kotlin code under one skill suite.
 
@@ -19,8 +19,11 @@ All skills are prefixed with `bill-` to avoid name clashes with your own custom 
 | **GitHub Copilot** | `~/.copilot/skills/` | Supported |
 | **Claude Code** | `~/.claude/commands/` | Supported |
 | **GLM** | `~/.glm/commands/` | Supported |
+| **OpenAI Codex** | `~/.agents/skills/` | Supported |
 
 The installer auto-skips agents that aren't installed on your machine.
+
+For Codex specifically, `~/.agents/skills/` is the user skill location. `~/.codex/` is Codex's config/state area, not the shared skill directory.
 
 ## Installation
 
@@ -41,7 +44,7 @@ chmod +x install.sh
 The installer will ask you to enter your agents as a **comma-separated list, primary agent first**:
 
 ```
-Enter agents (comma-separated, primary first): copilot, claude, glm
+Enter agents (comma-separated, primary first): copilot, claude, glm, codex
 ```
 
 The **primary agent** holds the direct symlinks to the plugin. All other agents chain through the primary. This means:
@@ -53,9 +56,10 @@ plugin/skills/bill-code-review/           <-- source of truth (this repo)
         | symlink
 ~/.claude/commands/bill-code-review/      <-- secondary agent
 ~/.glm/commands/bill-code-review/         <-- secondary agent
+~/.agents/skills/bill-code-review/        <-- secondary agent (Codex)
 ```
 
-That's it. All 19 skills are now available as slash commands in every agent you selected.
+That's it. All 20 skills are now available in every agent you selected.
 
 **Re-running the installer is safe.** It only touches `bill-*` skills that belong to this plugin — any custom skills you created independently in your agent's directory are left untouched. Plugin skills are refreshed with updated symlinks.
 
@@ -106,12 +110,13 @@ Run `/bill-code-review` to start a review. The orchestrator classifies the proje
 | `/bill-feature-guard` | Wrap changes in feature flags for safe rollout |
 | `/bill-feature-guard-cleanup` | Remove feature flags after full rollout |
 
-### Utilities (4 skills)
+### Utilities (5 skills)
 
 | Skill | Description |
 |-------|-------------|
 | `/bill-gcheck` | Run `./gradlew check` and fix all issues (no suppressions) |
 | `/bill-module-history` | Update module-level agent/history.md with feature history |
+| `/bill-unit-test-value-check` | Review unit tests for real business value instead of tautological coverage padding |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |
 | `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
 
@@ -134,4 +139,4 @@ Run `/bill-new-skill-all-agents` from any agent. It will ask for a name, descrip
 1. Create `skills/bill-my-skill/SKILL.md` in this repo
 2. Run `./install.sh` to sync to all agents
 
-Either way, the new skill becomes available as a slash command in every connected agent.
+Either way, the new skill becomes available in every connected agent.
