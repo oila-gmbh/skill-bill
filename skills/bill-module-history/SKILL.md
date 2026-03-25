@@ -17,6 +17,11 @@ Update `agent/history.md` in the **primary module** for the implemented feature.
 - Acceptance criteria coverage (`implemented/total`)
 - Change summary (what changed, patterns used, reusable components, breaking changes/limits)
 
+## Input Recovery
+
+- If the caller omits part of the context, derive only the missing pieces from the current diff and `.feature-specs/<feature-name>/spec.md` when available
+- Do not skip writing solely because the caller forgot to pass a change summary
+
 ## Write/Skip Rules
 
 - **Always write** for `MEDIUM` and `LARGE` features.
