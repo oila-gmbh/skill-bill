@@ -34,6 +34,7 @@ If an `AGENTS.md` file exists in the project root, read it and apply its rules a
 - Cancellation and timeout behavior must be explicit around long-running or external operations
 - Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
 - Validate ordering guarantees where multiple async sources can race or overwrite each other
+- Do not introduce deprecated APIs, components, or patterns when a supported alternative exists; if usage is unavoidable, it must be narrowly scoped and explicitly justified
 
 ### Android/KMP-Specific Rules
 

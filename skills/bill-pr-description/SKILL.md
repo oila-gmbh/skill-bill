@@ -9,10 +9,11 @@ Generate a PR title, description, and QA/test steps ready to paste. Present the 
 
 ## How It Works
 
-1. **Gather context** — read the git diff (`git diff main...HEAD`), commit log, and branch name
-2. **Read project guidelines** — check `CLAUDE.md` / `AGENTS.md` at the project root for any PR conventions
-3. **Generate** the title and description using the template below
-4. **Present** the result to the user for review and adjustment
+1. **Determine the comparison base** — use the branch this feature branch was created from when known, otherwise compute the best available merge-base from git context. Never assume `main`.
+2. **Gather context** — read the git diff from that merge-base to `HEAD`, along with the commit log and branch name
+3. **Read project guidelines** — check `CLAUDE.md` / `AGENTS.md` at the project root for any PR conventions
+4. **Generate** the title and description using the template below
+5. **Present** the result to the user for review and adjustment
 
 ## PR Title
 
@@ -50,3 +51,4 @@ Use this exact template, filling in the sections:
 - If the feature is behind a flag, mention how to enable it for testing
 - Keep it concise — reviewers appreciate brevity
 - If invoked from `bill-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
+- If the caller provides an explicit comparison base or merge-base, use it instead of inferring one

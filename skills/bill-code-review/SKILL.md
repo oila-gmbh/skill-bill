@@ -137,6 +137,7 @@ Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
 
 - Scope: review only the changes in the current PR/unit of work — do not flag pre-existing issues in unchanged code
 - Review only meaningful issues (bug, logic flaw, security risk, regression risk, architectural breakage)
+- Flag newly introduced deprecated components, APIs, or patterns when a supported alternative exists, or when deprecated usage is broad in scope and not explicitly justified
 - Ignore style, formatting, naming bikeshedding, and pure refactor preferences
 - Evidence is mandatory: include `file:line` + short description
 - Severity: `Blocker | Major | Minor`
@@ -208,9 +209,11 @@ Effort: S (<1h) | M (1-4h) | L (>4h)
 
 ## Implementation Mode
 
-After review, ask: **"Which item would you like me to fix?"**
+If invoked standalone, ask: **"Which item would you like me to fix?"**
 
-After all P0 and P1 items are resolved, run `bill-gcheck` as final verification when the project uses Gradle.
+If invoked from `bill-feature-implement` or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+
+After all P0 and P1 items are resolved, run `bill-gcheck` as final verification when the project uses Gradle and this review is being run standalone.
 
 ---
 

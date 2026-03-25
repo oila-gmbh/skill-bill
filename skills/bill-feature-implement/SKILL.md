@@ -13,15 +13,15 @@ End-to-end feature implementation orchestrator. Takes a design doc and delivers 
 Design Doc + Issue Key → Assess + Extract Criteria → [Size gate] → Create Branch →
 
   SMALL (≤5 tasks, ≤3 modules):
-    Save Spec → [Read History] → Plan → Implement → Targeted Review → Completeness Audit → bill-gcheck → [Write History if impactful] → PR Description
+    Save Spec → [Read History] → Plan → Implement → bill-code-review (narrow scope, dynamic 2-6 agents) → Completeness Audit → bill-gcheck → [Write History if impactful] → PR Description
 
   MEDIUM (6-15 tasks, ≤6 modules):
     Save Spec → Read History → Plan → Implement →
-    Compact → Code Review (3 agents) → Completeness Audit → bill-gcheck → Write History → PR Description
+    Compact → bill-code-review (dynamic 2-6 agents) → Completeness Audit → bill-gcheck → Write History → PR Description
 
   LARGE (>15 tasks or >6 modules):
     Save Spec → Read History → Feature Flag? → Plan (phased) → Implement →
-    Compact → Code Review (6 agents) → Compact → Completeness Audit → bill-gcheck → Write History → PR Description
+    Compact → bill-code-review (dynamic 2-6 agents) → Compact → Completeness Audit → bill-gcheck → Write History → PR Description
 ```
 
 ## Step 1: Collect Design Doc + Assess Size
@@ -96,7 +96,7 @@ After the user confirms the assessment, create and switch to a new feature branc
 ## Step 2: Pre-Planning
 
 **All sizes:** Always **Save Spec** (the acceptance criteria serve as the contract for the completeness audit) and **Read Module History** if history files exist in affected modules.
-**MEDIUM and LARGE only:** Also perform Feature Flag Setup and Discover Codebase Patterns.
+**MEDIUM and LARGE only:** Also discover codebase patterns. Perform Feature Flag Setup when the feature is LARGE or when the user confirmed a flag is needed.
 
 ### Save Spec
 
@@ -184,14 +184,15 @@ Wait for user confirmation.
 
 ## Step 4: Execute Plan
 
-Implement each task in order:
-- After each task, print progress: `✅ [3/10] Created PaymentRepository with Room integration`
-- Follow project standards from CLAUDE.md / AGENTS.md
-- Write clean, production-grade code
-- **Write tests as specified** in each task's `Tests:` field
-- If a task reveals the plan is wrong, **stop and re-plan from that point**
-- Do NOT skip or combine tasks without user consent
-- If plan has phases, pause between phases for a brief checkpoint
+ Implement each task in order:
+ - After each task, print progress: `✅ [3/10] Created PaymentRepository with Room integration`
+ - Follow project standards from CLAUDE.md / AGENTS.md
+ - Write clean, production-grade code
+ - Never introduce deprecated components, APIs, or patterns when a supported alternative exists. If absolutely no viable alternative exists, call that out explicitly, explain why, and keep the deprecated usage as narrow as possible.
+ - **Write tests as specified** in each task's `Tests:` field
+ - If a task reveals the plan is wrong, **stop and re-plan from that point**
+ - Do NOT skip or combine tasks without user consent
+ - If plan has phases, pause between phases for a brief checkpoint
 - **When removing UI components or code:** immediately clean up orphaned resources (string keys, drawables, imports, unused mappers) in the same task — don't leave dead code for review to catch
 - **Test gate:** Before moving to review/compaction, verify that unit tests were written. If the test task was somehow skipped or omitted from the plan, stop and write tests now. Never proceed to code review without tests.
 
@@ -218,27 +219,25 @@ Then re-read `.feature-specs/<feature-name>/spec.md` to refresh acceptance crite
 
 ## Step 5: Code Review
 
-### Agent Selection
+Run the `bill-code-review` skill and apply it inline. Treat that skill as the source of truth for:
+- Project classification
+- Dynamic specialist selection
+- Android/KMP vs backend/server routing
+- Parallel review execution
+- Finding deduplication and prioritization
 
-**Always spawn:** `bill-code-review-architecture` — boundaries, DI, source-of-truth, state management. Architecture review is relevant for every non-trivial change.
+Pass the following context from this run:
+- Review scope: current unit of work for SMALL features, current branch diff for MEDIUM/LARGE features
+- Confirmed acceptance criteria and spec path
+- Feature size
+- Feature flag name/pattern (or `N/A`)
+- The rule that newly introduced deprecated components, APIs, or patterns are not allowed when a supported alternative exists; any unavoidable usage must be explicitly justified and kept narrowly scoped
 
-**Analyze the actual diff** and spawn additional specialists based on what changed:
-
-| Trigger | Agent |
-|---------|-------|
-| Compose files modified or created (`@Composable`, UI state classes) | `bill-code-review-compose-check` |
-| Coroutines, Flows, lifecycle-aware code, threading (`launch`, `Flow`, `LifecycleOwner`, `Dispatchers`) | `bill-code-review-platform-correctness` |
-| Auth, tokens, keys, passwords, encryption, HTTP clients, or sensitive data handling | `bill-code-review-security` |
-| Lists, lazy layouts, animations, heavy computation, image loading, or retry/polling logic | `bill-code-review-performance` |
-| New/modified tests, or test files touched | `bill-code-review-testing` |
-| User-facing UI changes, accessibility attributes, navigation, error states, localization | `bill-code-review-ux-accessibility` |
-
-**Rules:**
-- Spawn all selected agents **in parallel**
-- Minimum 2 agents (architecture + at least one other), maximum 6
-- If no additional triggers match, spawn `bill-code-review-platform-correctness` as the second agent (coroutine/lifecycle issues are common enough to justify a default)
-- If **blockers or major issues** found: auto-fix, re-run only the affected agents
-- If only minor issues: report them and continue
+### Review loop rules
+- Do not duplicate specialist trigger tables in this skill
+- If Blocker or Major issues are found, auto-fix them and re-run `bill-code-review` (or only the affected specialists if that skill supports it)
+- If only Minor issues remain, report them and continue
+- When `bill-code-review` is invoked from this skill, do not stop to ask the user which finding to fix first
 - Max **3 review iterations** — after that, report remaining issues and hand back to user
 
 ## Step 6: Completeness Audit
@@ -297,12 +296,18 @@ Pass the required inputs from this run:
 - Primary module + affected modules
 - Feature flag name/pattern (or N/A)
 - Acceptance criteria coverage summary
+- Change summary (what changed, reusable components/patterns, breaking changes or limitations)
 
 The `bill-module-history` skill owns the write/skip rules, entry format, and retention limits.
 
 ## Step 8: Generate PR Description (All sizes)
 
 Run the `bill-pr-description` skill to generate a PR title, description, and QA steps.
+
+Pass along:
+- Feature name / spec path if available
+- The actual comparison base used for this feature branch (or enough git context for the skill to compute the merge-base correctly)
+- Manual verification notes from this run
 
 ## Error Recovery
 
@@ -314,7 +319,7 @@ Run the `bill-pr-description` skill to generate a PR title, description, and QA 
 
 This skill orchestrates (by reading their instructions and applying inline):
 - `bill-feature-guard` — if feature flag is needed (LARGE, or when confirmed)
-- `bill-code-review` — automatic after implementation (LARGE uses full 6-agent pass)
+- `bill-code-review` — automatic after implementation; it classifies the diff and selects 2-6 specialists dynamically
 - `bill-gcheck` — always, as final gate after completeness audit
 - `bill-module-history` — writes/maintains `agent/history.md` for impactful or larger features
 
@@ -329,7 +334,7 @@ This skill orchestrates (by reading their instructions and applying inline):
 | Save spec to disk | Yes | Yes | Yes |
 | Read module history | If exists | Yes | Yes |
 | Feature flag ceremony | No | If needed | Full |
-| Codebase discovery section | Inline | Inline | Separate |
+| Codebase discovery section | Inline | Inline | Inline |
 | Compaction steps | No | Post-impl | Post-impl + post-review |
 | Review agents | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) |
 | bill-gcheck | Yes | Yes | Yes |

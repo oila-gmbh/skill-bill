@@ -333,6 +333,7 @@ Choose the right composable for the job:
 - Use `Scaffold` for screens with top bar, bottom bar, FAB, or snackbar.
 - Use `SnackbarHostState` with `Scaffold` for snackbars — never use `Toast` from a composable.
 - Use `Surface` as a base container when you need elevation, shape, and color from the theme.
+- Never introduce deprecated Compose or Material components when a supported replacement exists. If a dependency or platform constraint leaves no viable alternative, keep the deprecated usage isolated and call it out explicitly in the review.
 
 ---
 
