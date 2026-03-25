@@ -105,7 +105,7 @@ Run `/bill-code-review` to start a review. The orchestrator classifies the proje
 
 | Skill | Description |
 |-------|-------------|
-| `/bill-feature-implement` | End-to-end: design spec, plan, implement, review, PR |
+| `/bill-feature-implement` | End-to-end: design spec, plan, implement, review, auto-select validation, PR |
 | `/bill-feature-verify` | Verify a PR against a task spec (reverse of implement) |
 | `/bill-feature-guard` | Wrap changes in feature flags for safe rollout |
 | `/bill-feature-guard-cleanup` | Remove feature flags after full rollout |
@@ -125,6 +125,19 @@ Run `/bill-code-review` to start a review. The orchestrator classifies the proje
 Every review and check skill looks for an **`AGENTS.md`** file in the project root. If found, its rules are applied on top of the built-in defaults. Project rules take precedence when they conflict.
 
 Use this to define project-specific conventions (naming, test framework, architecture rules, etc.) without modifying the plugin itself. Each project can have its own `AGENTS.md`.
+
+## Automatic Validation
+
+`/bill-feature-implement` is the center of gravity for this repo. It now **auto-selects the final validation gate** based on the repository it is changing so the user does not need to decide which checker to run:
+
+- Gradle/Kotlin repos → `bill-gcheck`
+- Agent-config / skill repos → inline agent-config validation (`agnix` + repo-native drift checks)
+- Mixed repos → both
+
+For this repository, CI enforces the same path with:
+
+- `npx --yes agnix --strict .`
+- `python3 scripts/validate_agent_configs.py`
 
 ## Adding New Skills
 

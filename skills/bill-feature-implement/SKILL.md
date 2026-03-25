@@ -13,15 +13,15 @@ End-to-end feature implementation orchestrator. Takes a design doc and delivers 
 Design Doc + Issue Key → Assess + Extract Criteria → [Size gate] → Create Branch →
 
   SMALL (≤5 tasks, ≤3 modules):
-    Save Spec → [Read History] → Plan → Implement → bill-code-review (narrow scope, dynamic 2-6 agents) → Completeness Audit → bill-gcheck → [Write History if impactful] → PR Description
+    Save Spec → [Read History] → Plan → Implement → bill-code-review (narrow scope, dynamic 2-6 agents) → Completeness Audit → Final Validation Gate (auto-selected) → [Write History if impactful] → PR Description
 
   MEDIUM (6-15 tasks, ≤6 modules):
     Save Spec → Read History → Plan → Implement →
-    Compact → bill-code-review (dynamic 2-6 agents) → Completeness Audit → bill-gcheck → Write History → PR Description
+    Compact → bill-code-review (dynamic 2-6 agents) → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
 
   LARGE (>15 tasks or >6 modules):
     Save Spec → Read History → Feature Flag? → Plan (phased) → Implement →
-    Compact → bill-code-review (dynamic 2-6 agents) → Compact → Completeness Audit → bill-gcheck → Write History → PR Description
+    Compact → bill-code-review (dynamic 2-6 agents) → Compact → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
 ```
 
 ## Step 1: Collect Design Doc + Assess Size
@@ -95,7 +95,7 @@ After the user confirms the assessment, create and switch to a new feature branc
 
 ## Step 2: Pre-Planning
 
-**All sizes:** Always **Save Spec** (the acceptance criteria serve as the contract for the completeness audit) and **Read Module History** if history files exist in affected modules.
+**All sizes:** Always **Save Spec** (the acceptance criteria serve as the contract for the completeness audit), **Read Module History** if history files exist in affected modules, and determine the **final validation strategy** automatically.
 **MEDIUM and LARGE only:** Also discover codebase patterns. Perform Feature Flag Setup when the feature is LARGE or when the user confirmed a flag is needed.
 
 ### Save Spec
@@ -144,6 +144,11 @@ Explore the codebase concurrently with planning:
 2. Find similar features referenced in the spec
 3. Identify build dependencies for affected modules
 4. Note reusable components
+5. Identify validation surfaces so the final gate is chosen automatically:
+   - Gradle/Kotlin project or modules → `bill-gcheck`
+   - Agent-config / skill repository (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, installer/config files, repo-native validation scripts) → inline agent-config validation
+   - Mixed repository → run both
+6. If a repo-native validation script already exists, reuse it instead of inventing a new ad hoc checklist
 
 Do NOT present a separate "codebase patterns" section to the user — fold these findings directly into the implementation plan.
 
@@ -168,6 +173,11 @@ Do NOT present a separate "codebase patterns" section to the user — fold these
 - Flag: <name> (or N/A)
 - Pattern: <pattern> (or N/A)
 
+### Final Validation
+- Strategy: `bill-gcheck` | inline agent-config validation | both
+- Reason: <why this gate applies to the affected repo/modules>
+- Commands/scripts: <existing commands or repo-native scripts to run>
+
 ### Tasks
 1. [ ] Task description
    Files: list of files to create/modify
@@ -188,12 +198,13 @@ Wait for user confirmation.
  - After each task, print progress: `✅ [3/10] Created PaymentRepository with Room integration`
  - Follow project standards from CLAUDE.md / AGENTS.md
  - Write clean, production-grade code
- - Never introduce deprecated components, APIs, or patterns when a supported alternative exists. If absolutely no viable alternative exists, call that out explicitly, explain why, and keep the deprecated usage as narrow as possible.
- - **Write tests as specified** in each task's `Tests:` field
- - If a task reveals the plan is wrong, **stop and re-plan from that point**
- - Do NOT skip or combine tasks without user consent
- - If plan has phases, pause between phases for a brief checkpoint
+  - Never introduce deprecated components, APIs, or patterns when a supported alternative exists. If absolutely no viable alternative exists, call that out explicitly, explain why, and keep the deprecated usage as narrow as possible.
+  - **Write tests as specified** in each task's `Tests:` field
+  - If a task reveals the plan is wrong, **stop and re-plan from that point**
+  - Do NOT skip or combine tasks without user consent
+  - If plan has phases, pause between phases for a brief checkpoint
 - **When removing UI components or code:** immediately clean up orphaned resources (string keys, drawables, imports, unused mappers) in the same task — don't leave dead code for review to catch
+- **When changing agent-config or skill repositories:** update adjacent catalogs and wiring in the same task (README skill tables/counts, installer/config references, validation scripts/workflows) so the repo stays self-consistent
 - **Test gate:** Before moving to review/compaction, verify that unit tests were written. If the test task was somehow skipped or omitted from the plan, stop and write tests now. Never proceed to code review without tests.
 
 ### Post-Implementation Compact (MEDIUM and LARGE only)
@@ -282,9 +293,29 @@ If yes: plan missing items → implement → review → re-audit. Max **2 audit 
 
 Update spec status to **Complete** (MEDIUM/LARGE only).
 
-## Step 6b: bill-gcheck (All sizes)
+## Step 6b: Final Validation Gate (All sizes)
 
-**Always run `bill-gcheck` as the final gate** after completeness audit passes. This ensures formatting, lint, and tests pass regardless of feature size. Follow the `bill-gcheck` skill instructions: run `./gradlew check` and fix all issues at root cause without suppressions.
+After completeness audit passes, **infer the final validation gate automatically** from the repo shape and changed files. Do not ask the user to choose.
+
+### Validation strategy
+
+- **Gradle/Kotlin repos or modules touched:** run `bill-gcheck`
+- **Agent-config / skill repos touched:** run inline agent-config validation
+- **Both:** run both gates
+- **Neither:** run the closest existing repo-native validation command or test command already present in the project
+
+### Inline agent-config validation
+
+When the repo contains agent-config surfaces such as `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, agent installer/config files, or repo-native validation scripts:
+
+1. Run `agnix` when available
+   - Prefer installed `agnix`
+   - Otherwise use `npx agnix .` if Node/npm is available
+2. Run any repo-native validation scripts and workflows already provided by the repo
+3. Fix issues at root cause in the changed files
+4. If the change created repo-wide metadata drift directly tied to the work (README tables/counts, skill references, manifest metadata, workflow wiring), fix that drift in the same pass
+
+Do **not** create a separate utility skill just for this validation path unless the repository itself is explicitly centered on validation as a product concept. `bill-feature-implement` owns this behavior.
 
 ## Step 7: Write Module History
 
@@ -320,7 +351,7 @@ Pass along:
 This skill orchestrates (by reading their instructions and applying inline):
 - `bill-feature-guard` — if feature flag is needed (LARGE, or when confirmed)
 - `bill-code-review` — automatic after implementation; it classifies the diff and selects 2-6 specialists dynamically
-- `bill-gcheck` — always, as final gate after completeness audit
+- `bill-gcheck` — when the affected repo/modules use the Gradle/Kotlin validation path
 - `bill-module-history` — writes/maintains `agent/history.md` for impactful or larger features
 
 ## Size Reference
@@ -337,6 +368,6 @@ This skill orchestrates (by reading their instructions and applying inline):
 | Codebase discovery section | Inline | Inline | Inline |
 | Compaction steps | No | Post-impl | Post-impl + post-review |
 | Review agents | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) |
-| bill-gcheck | Yes | Yes | Yes |
+| Final validation gate | Auto-detected | Auto-detected | Auto-detected |
 | Write module history | If impactful | Yes | Yes |
 | PR description | Yes | Yes | Yes |
