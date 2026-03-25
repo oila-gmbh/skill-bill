@@ -1,9 +1,9 @@
 {
-  "name": "mobile-development",
+  "name": "skill-bill",
   "version": "1.0.0",
-  "description": "Code review, feature lifecycle, and developer tooling skills for Android/Kotlin projects. Includes 8 specialist review agents, feature implementation, feature flags, gcheck, and more.",
+  "description": "Portable AI skill suite centered on feature implementation for Android, KMP, Kotlin backend, and agent-config repositories. Includes adaptive code review, automatic validation gates, feature flags, and developer tooling.",
   "author": {
     "name": "sermilion"
   },
-  "keywords": ["android", "code-review", "kotlin", "compose", "clean-architecture"]
+  "keywords": ["feature-implementation", "android", "kotlin", "code-review", "agents"]
 }
