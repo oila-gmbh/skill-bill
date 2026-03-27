@@ -18,18 +18,20 @@ When asked to create a new skill, follow this workflow:
    - One-line description
    - Full skill instructions/body
    - Which agents to install to (comma-separated, primary first)
-   - Whether the skill is shared across stacks or specific to a stack/framework
+   - Whether the skill is base across stacks or specific to a stack/framework
 
 1a. Validate the proposed name against the repo naming strategy:
-   - Keep `bill` as the namespace prefix
-   - Shared skills should use `bill-<capability>`
-   - Stack-specific skills should use `bill-<stack>-<capability>`
-   - Add a deeper qualifier only when needed, such as `bill-<stack>-<area>-<capability>`
-   - Do not rename an existing shared skill just to add taxonomy consistency; create a new stack-specific variant only when behavior actually differs
-   - If renaming an existing stack-bound skill, update `install.sh` legacy-name migration rules and README references in the same change
+    - Keep `bill` as the namespace prefix
+    - Base skills should use `bill-<capability>`
+    - Stack-specific skills should use `bill-<stack>-<capability>`
+    - Code-review subskills are the only approved deeper specialization shape: `bill-<stack>-code-review-<area>`
+    - Approved code-review areas are: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`
+    - Platform-specific skills must reuse an existing base capability name instead of inventing a new platform-only capability
+    - Do not rename an existing base skill just to add taxonomy consistency; create a new stack-specific variant only when behavior actually differs
+    - If renaming an existing stack-bound skill, update `install.sh` legacy-name migration rules and README references in the same change
 
 1b. Derive the source package from the validated name:
-   - `shared` for neutral skills like `bill-pr-description` or `bill-feature-guard`
+   - `base` for neutral skills like `bill-pr-description` or `bill-feature-guard`
    - `kotlin` for Kotlin-prefixed skills
    - `kmp` for KMP-prefixed skills
    - `php` for PHP-prefixed skills

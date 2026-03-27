@@ -17,6 +17,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Run validator e2e tests
+        run: python3 -m unittest discover -s tests
+
       - name: Run agnix
         run: npx --yes agnix --strict .
 

@@ -1,6 +1,6 @@
 ---
 name: bill-kotlin-code-review-performance
-description: Use when reviewing performance risks in Android, KMP, backend/server, and general Kotlin code, including UI jank, hot-path work, blocking I/O, and resource waste.
+description: Use when reviewing performance risks in Kotlin code, including hot-path work, blocking I/O, latency regressions, and resource waste.
 ---
 
 # Performance Review Specialist
@@ -27,7 +27,7 @@ Review only high-impact performance issues.
 
 ## Applicability
 
-Apply shared Kotlin performance rules everywhere. Apply Android/KMP-only rules only when Android/KMP signals are present. Apply backend/server-only rules only when backend/server signals are present.
+Use this specialist for shared Kotlin performance risks across libraries, app layers, and backend services. Favor findings that would matter regardless of platform; leave UI-framework-specific or backend-transport-specific concerns to route-specific specialists.
 
 ## Project Overrides
 
@@ -42,36 +42,14 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 ### Shared Kotlin Performance
 - Avoid repeated expensive work in hot paths when inputs are unchanged
 - Watch for N+1 query/call patterns and redundant round-trips
+- Keep blocking I/O and heavy CPU work off latency-sensitive threads or tight loops
+- Reuse expensive clients, serializers, parsers, and caches where construction cost is significant
+- Avoid per-item downstream calls inside large loops when batching or prefetching is feasible
+- Bound pagination, batch sizes, queue drains, and in-memory buffering
 - Use bounded retries with backoff and jitter for transient failures
 - Large batch processing must avoid unbounded memory growth
-
-### Android/KMP-Specific Rules
-
-#### Compose Recomposition
-- `LaunchedEffect` keys must be stable — using full data objects causes unnecessary restarts; derive a stable boolean or ID instead
-- `List<T>` where `T` is stable is inferred stable — do not flag as instability
-- Verify `remember` keys match actual dependencies
-
-#### Database
-- Use atomic SQL updates over load-modify-save patterns
-- Use bulk operations (`insertMany`/`updateMany`) instead of N individual calls in loops
-- Transactions only for multi-table operations, not simple reads
-- Watch for N+1 query patterns
-
-#### Dispatchers
-- Never use `Dispatchers.*` directly when the project standard is `DispatcherProvider`
-- Heavy computation must not run on Main dispatcher
-
-#### Image Loading
-- If the project uses Coil/Compose image loading, verify proper caching and sizing
-
-### Backend/Server-Specific Rules
-- Do not perform blocking work on event-loop or request-processing threads without explicit offloading
-- Watch for per-item downstream calls inside request handlers, consumers, or schedulers
-- Reuse expensive clients/serializers/parsers where construction cost is significant instead of rebuilding them per request
-- Bound pagination, batch sizes, queue drains, and in-memory buffering
+- Watch for duplicate serialization, repeated auth lookups, or repeated config parsing inside hot paths
 - Flag cache stampede or thundering-herd patterns only when they can realistically spike load or latency
-- Watch for duplicate serialization, duplicate auth lookups, or repeated config parsing inside hot paths
 
 ## Output Rules
 - Report at most 7 findings.

@@ -1,13 +1,13 @@
 ---
 name: bill-kotlin-code-review
-description: Use when conducting a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Kotlin PR code review across shared or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP and backend/server reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing. Produces a structured review with risk register and prioritized action items.
 ---
 
 # Adaptive Kotlin PR Review
 
 You are an experienced Kotlin architect conducting a code review.
 
-Your first job is to classify the project safely so Android/KMP reviews stay as deep as before. This skill must expand coverage without weakening the existing Android/KMP review path.
+This skill owns the baseline Kotlin review layer. It covers shared Kotlin concerns for libraries, CLIs, shared utilities, and the common Kotlin layer that platform-specific review overrides build on top of.
 
 ## Project Overrides
 
@@ -27,25 +27,18 @@ Determine the review scope:
 
 ---
 
-## Project Classification
+## Kotlin-Family Classification
 
-Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source set layout, module names, imports).
+Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source layout, module names, imports).
+
+Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for broad stack signals. This skill owns only the Kotlin-family baseline after a caller decides Kotlin is in scope.
 
 Classify the review as one of:
-- `Android`
-- `KMP`
-- `Backend/Server`
-- `Generic Kotlin`
-- `Mixed`
+- `kotlin`
+- `kmp-baseline`
+- `backend-kotlin-baseline`
 
-### Android/KMP Signals
-
-- `com.android.application`, `com.android.library`, `androidx`, `androidMain`, `iosMain`, `commonMain`
-- `kotlin("multiplatform")`, `org.jetbrains.kotlin.multiplatform`, `expect` / `actual`
-- `AndroidManifest.xml`, `res/`, `R.string`, Activities, Fragments, `ViewModel`
-- `@Composable`, `remember`, `LaunchedEffect`, `collectAsStateWithLifecycle()`
-
-### Backend/Server Signals
+### Additional Backend/Server Signals
 
 - `io.ktor.server`, `routing {}`, `Application.module`
 - `spring-boot`, `@RestController`, `@Controller`, `@Service`, `@Repository`, `@Transactional`
@@ -56,11 +49,11 @@ Classify the review as one of:
 
 ### Decision Rules
 
-- If Android/KMP signals are strong, use the Android/KMP route. Do **not** replace that route with backend specialists.
-- If backend/server signals clearly dominate and there are no meaningful Android/KMP signals in scope, use the backend/server route.
-- If neither route is clear, use the generic Kotlin route.
-- If both appear in one PR, classify it as `Mixed`, choose specialists based on the changed areas, and do not drop Android/KMP specialists for Android/KMP files.
-- When uncertain, prefer the safer route that preserves Android/KMP review depth.
+- If this skill is invoked from `bill-kmp-code-review`, accept Android/KMP scope and classify it as `kmp-baseline`. In that mode, review only shared Kotlin concerns and let `bill-kmp-code-review` add mobile-specific specialists.
+- If this skill is invoked from `bill-backend-kotlin-code-review`, accept backend/server scope and classify it as `backend-kotlin-baseline`. In that mode, review only shared Kotlin concerns and let `bill-backend-kotlin-code-review` add backend-specific specialists.
+- If strong Android/KMP markers are present and this skill is invoked standalone, clearly say that `bill-kmp-code-review` is required for full Android/KMP coverage. Continue only if the caller explicitly wants the baseline Kotlin layer.
+- If backend/server signals clearly dominate and this skill is invoked standalone, delegate to `bill-backend-kotlin-code-review` and stop instead of pretending this baseline layer is the full backend review.
+- Otherwise use the `kotlin` route.
 
 ---
 
@@ -72,68 +65,33 @@ Architecture review is relevant for every non-trivial change.
 
 ### Step 2: Choose route baseline
 
-- `Android` / `KMP`: preserve the existing mobile review behavior
-- `Backend/Server`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
-- `Generic Kotlin`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
-- `Mixed`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`, then add route-specific specialists for the touched areas
+- `kotlin`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
+- `kmp-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
+- `backend-kotlin-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
 
 ### Step 3: Analyze the diff and select additional agents
 
-For `Mixed` classification, inspect each changed file or tightly related change cluster separately:
-- If a file/change has Android/KMP signals, apply the Android/KMP Route triggers
-- If a file/change has backend/server signals, apply the Backend/Server Route triggers
-- If a file/change is only generic Kotlin infrastructure, apply the Generic Kotlin Route triggers
-- A single PR may spawn specialists from multiple routes, but keep the total at 6 or fewer
-- Preserve Android/KMP specialists for any Android/KMP files even when backend files are changed in the same PR
-
-#### Android/KMP Route
-
-Keep the current mobile triggers intact:
-
 | Signal in the diff | Agent to spawn |
 |---------------------|----------------|
-| `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect` | `bill-kmp-code-review-compose-check` |
-| `launch`, `Flow`, `StateFlow`, `viewModelScope`, `LifecycleOwner`, `DispatcherProvider`, `suspend fun` | `bill-kotlin-code-review-platform-correctness` |
+| `launch`, `Flow`, `StateFlow`, `viewModelScope`, `LifecycleOwner`, `DispatcherProvider`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `bill-kotlin-code-review-platform-correctness` |
 | Auth, tokens, keys, passwords, encryption, HTTP clients, interceptors, sensitive data | `bill-kotlin-code-review-security` |
-| `LazyColumn`/`LazyRow`, animations, heavy computation, image loading, retry/polling, bulk DB ops | `bill-kotlin-code-review-performance` |
-| Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-kotlin-code-review-testing` |
-| User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
-
-#### Backend/Server Route
-
-| Signal in the diff | Agent to spawn |
-|---------------------|----------------|
-| Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `bill-kotlin-code-review-backend-api-contracts` |
-| Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-kotlin-code-review-backend-persistence` |
-| Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-kotlin-code-review-backend-reliability` |
-| `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `bill-kotlin-code-review-platform-correctness` |
-| Auth, tokens, keys, passwords, request signing, sensitive data, security middleware | `bill-kotlin-code-review-security` |
-| Heavy request-path work, blocking I/O, N+1 queries, redundant downstream calls, unbounded buffering | `bill-kotlin-code-review-performance` |
-| Test files modified (`*Test.kt`), contract/integration tests, mock setup changes, coverage-padding or tautological tests | `bill-kotlin-code-review-testing` |
-
-#### Generic Kotlin Route
-
-| Signal in the diff | Agent to spawn |
-|---------------------|----------------|
-| `launch`, `Flow`, `StateFlow`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes | `bill-kotlin-code-review-platform-correctness` |
-| Auth, tokens, keys, passwords, encryption, sensitive data | `bill-kotlin-code-review-security` |
-| Heavy computation, retry/backoff loops, bulk data processing, redundant I/O | `bill-kotlin-code-review-performance` |
+| Heavy computation, blocking I/O, retry/polling loops, bulk data processing, redundant I/O | `bill-kotlin-code-review-performance` |
 | Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-kotlin-code-review-testing` |
 
 ### Step 4: Apply minimum
 
 - Minimum 2 agents (architecture + at least one other)
 - If no additional triggers match, spawn `bill-kotlin-code-review-platform-correctness` as the default second agent
-- Maximum 6 agents
-- On Android/KMP reviews, prefer the established mobile specialists before backend specialists
+- Maximum 5 agents
+- Do not spawn KMP-only specialists or backend-only specialists from this skill; leave those to the platform-specific override that owns them
 
 ### Step 5: Launch in parallel
 
 Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
-- The detected project type
-- The list of changed files
-- Instructions to read its own skill file for the review rubric
-- The shared contract below
+- the detected project type
+- the list of changed files
+- instructions to read its own skill file for the review rubric
+- the shared contract below
 
 ---
 
@@ -151,7 +109,7 @@ Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
 
 ### Required Finding Schema
 
-```
+```text
 [SEVERITY] Area: Issue title
   Location: file:line
   Impact: Why it matters (1 sentence)
@@ -175,17 +133,17 @@ Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
 ## Review Output Format
 
 ### 1. Classification & Agent Summary
-```
-Detected project type: Android | KMP | Backend/Server | Generic Kotlin | Mixed
-Signals: @Composable, AndroidManifest.xml, ViewModel
-Agents spawned: bill-kotlin-code-review-architecture, bill-kotlin-code-review-platform-correctness, bill-kmp-code-review-compose-check
-Reason: Android/KMP signals were high-confidence, so the preserved mobile path was used
+```text
+Detected stack: kotlin | kmp-baseline | backend-kotlin-baseline
+Signals: <markers>
+Agents spawned: bill-kotlin-code-review-architecture, bill-kotlin-code-review-platform-correctness
+Reason: <why this Kotlin baseline route was selected>
 ```
 
 ### 2. Risk Register
 
 Format each issue as:
-```
+```text
 [IMPACT_LEVEL] Area: Issue title
   Location: file:line
   Impact: Description
@@ -196,7 +154,7 @@ Impact levels: BLOCKER | MAJOR | MINOR
 
 ### 3. Action Items (Max 10, prioritized)
 
-```
+```text
 1. [P0 BLOCKER] Fix issue (Effort: S, Impact: High)
 2. [P1 MAJOR] Fix issue (Effort: M, Impact: Medium)
 3. [P2 MINOR] Fix issue (Effort: S, Impact: Low)
@@ -215,9 +173,9 @@ Effort: S (<1h) | M (1-4h) | L (>4h)
 
 If invoked standalone, ask: **"Which item would you like me to fix?"**
 
-If invoked from `bill-kotlin-feature-implement` or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+If invoked from `bill-feature-implement`, `bill-feature-verify`, `bill-kmp-code-review`, `bill-backend-kotlin-code-review`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 
-After all P0 and P1 items are resolved, run `bill-kotlin-quality-check` as final verification when the project uses Gradle and this review is being run standalone.
+After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: bill-kotlin-code-review-security
-description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Android, KMP, backend/server, and general Kotlin code.
+description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Kotlin code.
 ---
 
 # Security Review Specialist
@@ -19,7 +19,7 @@ Review only exploitable or compliance-relevant issues.
 
 ## Applicability
 
-Apply shared security rules to all code. Apply Android/KMP-only rules only when Android/KMP signals are present. Apply backend/server-only rules only when backend/server signals are present.
+Use this specialist for shared security risks across Kotlin libraries, app layers, and backend services. Favor issues that stay security-relevant regardless of platform; leave transport- or UI-specific nuances to route-specific specialists.
 
 ## Project Overrides
 
@@ -35,28 +35,12 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 - No secrets, tokens, passwords, or private keys in code, logs, tests, or repo config
 - Sensitive identifiers and personal data must not be logged or exposed without explicit need and protection
 - New code paths must preserve auth/authz guarantees and avoid bypassable feature-flag checks
-
-### Android/KMP-Specific Rules
-
-#### HTTP & Auth
-- Verify request signing/authentication interceptors are used correctly
-- Verify no credentials in `local.properties` or code — use external config or secrets management
-
-#### Logging
-- No PII or tokens in log output
-- Do not add debug logs unless actively debugging
-- Use structured logging with consistent tags
-
-#### Storage
-- Verify no sensitive data stored unencrypted
-- Never rename DataStore files without migration (data loss risk)
-
-### Backend/Server-Specific Rules
-- Enforce authn/authz at entry points; do not trust client-supplied role, tenant, or actor IDs without server-side verification
-- Secrets/config must come from env vars, vaults, or secret-management systems — not committed config files
-- Do not expose stack traces, internal exception messages, or sensitive failure details in API responses
-- Verify webhook signatures, internal-service auth, or mTLS assumptions when new external entry points are introduced
-- Avoid logging raw auth headers, session cookies, full request bodies, or other high-risk payloads by default
+- Enforce authn/authz at trusted boundaries; do not trust caller-supplied role, tenant, or actor identifiers without verification
+- Secrets/config must come from env vars, vaults, or secure local config excluded from version control
+- Do not expose stack traces, internal exception messages, or other sensitive failure details to untrusted callers
+- Avoid logging raw auth headers, session cookies, full request bodies, or other high-risk payloads without explicit redaction
+- Verify authenticity and integrity checks for new external entry points, signed callbacks, or inter-service trust boundaries
+- Verify that sensitive stored data receives the protection level the contract or platform requires
 
 ## Output Rules
 - Report at most 7 findings.

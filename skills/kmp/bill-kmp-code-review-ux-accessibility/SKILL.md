@@ -1,6 +1,6 @@
 ---
 name: bill-kmp-code-review-ux-accessibility
-description: Use when reviewing UX correctness and accessibility risks, delegating Compose-heavy checks to bill-kmp-code-review-compose-check.
+description: Use when reviewing UX correctness and accessibility risks, delegating UI-framework-heavy checks to bill-kmp-code-review-ui.
 ---
 
 # UX & Accessibility Review Specialist
@@ -14,8 +14,8 @@ Review only user-impacting UX/accessibility issues.
 - Read-only/editable behavior mismatches
 - User-facing inconsistency with product intent
 
-## Compose Delegation
-- If Compose UI files are in scope, run `bill-kmp-code-review-compose-check` and merge relevant findings.
+## UI Delegation
+- If KMP UI files are in scope, run `bill-kmp-code-review-ui` and merge relevant findings.
 
 ## Ignore
 - Pure visual preference debates without usability impact
