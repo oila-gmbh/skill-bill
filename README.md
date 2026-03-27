@@ -138,9 +138,38 @@ Run `/bill-kotlin-code-review` to start a review. The orchestrator classifies th
 
 ## Project Customization
 
-Every review and check skill looks for an **`AGENTS.md`** file in the project root. If found, its rules are applied on top of the built-in defaults. Project rules take precedence when they conflict.
+Use **`AGENTS.md`** in the project root for repo-wide conventions that should influence multiple skills.
 
-Use this to define project-specific conventions (naming, test framework, architecture rules, etc.) without modifying the plugin itself. Each project can have its own `AGENTS.md`.
+Use **`.agents/skill-overrides.md`** for per-skill customization without modifying this plugin. Each skill looks for a matching `## bill-...` section and treats that section as the highest-priority instruction for that skill only.
+
+The file is intentionally strict so CI can validate it:
+
+- first line must be `# Skill Overrides`
+- each override section must be `## <existing-skill-name>`
+- each section body must be a bullet list
+- freeform text outside sections is invalid
+
+Precedence is:
+
+1. Matching section in `.agents/skill-overrides.md`
+2. `AGENTS.md`
+3. Built-in skill defaults
+
+Example `.agents/skill-overrides.md`:
+
+```md
+# Skill Overrides
+
+## bill-kotlin-quality-check
+- Treat warnings as blocking work.
+- Skip formatting-only rewrites unless the user explicitly asks for them.
+
+## bill-pr-description
+- Always include ticket links when the branch name contains one.
+- Keep QA steps concise unless the user asks for a full matrix.
+```
+
+Use `AGENTS.md` for project-wide conventions (naming, test framework, architecture rules, etc.) and `.agents/skill-overrides.md` for targeted skill behavior changes.
 
 ## Automatic Validation
 

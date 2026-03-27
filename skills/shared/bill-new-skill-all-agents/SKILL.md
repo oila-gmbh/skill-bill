@@ -3,6 +3,14 @@ name: bill-new-skill-all-agents
 description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex).
 ---
 
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-new-skill-all-agents` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
+
 When asked to create a new skill, follow this workflow:
 
 1. Collect inputs:
@@ -22,7 +30,7 @@ When asked to create a new skill, follow this workflow:
 
 1b. Derive the source package from the validated name:
    - `shared` for neutral skills like `bill-pr-description` or `bill-feature-guard`
-   - `kotlin` for Kotlin-prefixed skills and Gradle-specific skills
+   - `kotlin` for Kotlin-prefixed skills
    - `kmp` for KMP-prefixed skills
    - `php` for PHP-prefixed skills
    - If the package is unclear, ask once before creating files
@@ -48,10 +56,11 @@ When asked to create a new skill, follow this workflow:
    b. Each secondary: `ln -s {primary_path}/{slug} {secondary_path}/{slug}`
 
 6. Rules:
-   - Never duplicate file content across agents — always use symlinks
-   - If a target symlink already exists, remove it first and recreate
-   - If an agent root directory does not exist, skip that agent
-   - The skill file must be named `SKILL.md` inside a directory named after the slug
+    - Never duplicate file content across agents — always use symlinks
+    - If a target symlink already exists, remove it first and recreate
+    - If an agent root directory does not exist, skip that agent
+    - The skill file must be named `SKILL.md` inside a directory named after the slug
+    - New skill files must include a `## Project Overrides` section near the top that tells the skill to read `.agents/skill-overrides.md` for a matching `## {slug}` section, with precedence `skill override > AGENTS.md > built-in defaults`
 
 7. Return a short summary:
    - skill slug

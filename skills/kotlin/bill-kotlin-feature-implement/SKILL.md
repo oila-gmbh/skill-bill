@@ -5,7 +5,13 @@ description: Use when doing end-to-end feature implementation from design doc to
 
 # Feature Implement v2
 
-End-to-end feature implementation orchestrator. Takes a design doc and delivers reviewed, verified code. **Adapts workflow intensity to feature size.**
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-feature-implement` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. When you read another skill inline, also apply that skill's matching section from `.agents/skill-overrides.md` when present.
 
 ## Workflow Overview
 
@@ -135,7 +141,7 @@ If no history exists, skip.
 
 ### Feature Flag Setup (LARGE only, or when user confirmed flag needed)
 
-- Read the `bill-feature-guard` skill instructions and apply them inline
+- Read the `bill-feature-guard` skill instructions and its matching `.agents/skill-overrides.md` section, then apply them inline
 - Determine the pattern (Legacy / DI Switch / Simple Conditional)
 - Record the chosen pattern, flag name, and switch point
 - Do not auto-apply a fixed prefix (including `me-android-`) when proposing new flag names; only use a prefix if the user explicitly asks for it
@@ -143,13 +149,13 @@ If no history exists, skip.
 ### Discover Codebase Patterns
 
 Explore the codebase concurrently with planning:
-1. Read `CLAUDE.md` / `AGENTS.md` at project root — treat all standards as mandatory
+1. Read `CLAUDE.md`, `AGENTS.md`, and the matching `bill-kotlin-feature-implement` section in `.agents/skill-overrides.md` when present — treat all standards as mandatory
 2. Find similar features referenced in the spec
 3. Identify build dependencies for affected modules
 4. Note reusable components
 5. Identify validation surfaces so the final gate is chosen automatically:
    - Gradle/Kotlin project or modules → `bill-kotlin-quality-check`
-   - Agent-config / skill repository (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, installer/config files, repo-native validation scripts) → inline agent-config validation
+   - Agent-config / skill repository (`SKILL.md`, `AGENTS.md`, `.agents/skill-overrides.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, installer/config files, repo-native validation scripts) → inline agent-config validation
    - Mixed repository → run both
 6. If a repo-native validation script already exists, reuse it instead of inventing a new ad hoc checklist
 
@@ -199,7 +205,7 @@ Wait for user confirmation.
 
  Implement each task in order:
  - After each task, print progress: `✅ [3/10] Created PaymentRepository with Room integration`
- - Follow project standards from CLAUDE.md / AGENTS.md
+ - Follow project standards from `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` sections used by this workflow
  - Write clean, production-grade code
   - Never introduce deprecated components, APIs, or patterns when a supported alternative exists. If absolutely no viable alternative exists, call that out explicitly, explain why, and keep the deprecated usage as narrow as possible.
   - **Write tests as specified** in each task's `Tests:` field
@@ -233,7 +239,7 @@ Then re-read `.feature-specs/<feature-name>/spec.md` to refresh acceptance crite
 
 ## Step 5: Code Review
 
-Run the `bill-kotlin-code-review` skill and apply it inline. Treat that skill as the source of truth for:
+Run the `bill-kotlin-code-review` skill and its matching `.agents/skill-overrides.md` section, then apply them inline. Treat that skill as the source of truth for:
 - Project classification
 - Dynamic specialist selection
 - Android/KMP vs backend/server routing
@@ -309,7 +315,7 @@ After completeness audit passes, **infer the final validation gate automatically
 
 ### Inline agent-config validation
 
-When the repo contains agent-config surfaces such as `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, agent installer/config files, or repo-native validation scripts:
+When the repo contains agent-config surfaces such as `SKILL.md`, `AGENTS.md`, `.agents/skill-overrides.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, agent installer/config files, or repo-native validation scripts:
 
 1. Run `agnix` when available
    - Prefer installed `agnix`
@@ -322,7 +328,7 @@ Do **not** create a separate utility skill just for this validation path unless 
 
 ## Step 7: Write Module History
 
-Run the `bill-module-history` skill and apply it inline.
+Run the `bill-module-history` skill and its matching `.agents/skill-overrides.md` section, then apply them inline.
 
 Pass the required inputs from this run:
 - Feature name
@@ -336,7 +342,7 @@ The `bill-module-history` skill owns the write/skip rules, entry format, and his
 
 ## Step 8: Generate PR Description (All sizes)
 
-Run the `bill-pr-description` skill to generate a PR title, description, and QA steps.
+Run the `bill-pr-description` skill and its matching `.agents/skill-overrides.md` section to generate a PR title, description, and QA steps.
 
 Pass along:
 - Feature name / spec path if available

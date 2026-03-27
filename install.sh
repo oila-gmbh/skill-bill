@@ -103,7 +103,6 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-feature-implement:bill-kotlin-feature-implement'
   'bill-feature-verify:bill-kotlin-feature-verify'
   'bill-gcheck:bill-kotlin-quality-check'
-  'bill-gradle-gcheck:bill-kotlin-quality-check'
 )
 
 declare -a SKILL_NAMES=()
