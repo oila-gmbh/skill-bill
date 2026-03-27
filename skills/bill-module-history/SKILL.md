@@ -1,6 +1,6 @@
 ---
 name: bill-module-history
-description: Update module-level agent/history.md with reusable, high-signal feature history entries and history hygiene rules.
+description: Use when updating module-level agent/history.md with reusable, high-signal feature history entries and history hygiene rules.
 ---
 
 # Module History

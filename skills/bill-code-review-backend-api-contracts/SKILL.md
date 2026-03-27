@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-backend-api-contracts
-description: Review Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility.
+description: Use when reviewing Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility.
 ---
 
 # Backend API & Contract Review Specialist

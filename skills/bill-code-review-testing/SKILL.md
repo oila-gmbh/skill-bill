@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-testing
-description: Review test coverage quality, real test value, regression protection, and test reliability risks in Android, KMP, backend/server, and general Kotlin code.
+description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Android, KMP, backend/server, and general Kotlin code.
 ---
 
 # Testing Review Specialist

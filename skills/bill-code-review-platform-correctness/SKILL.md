@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-platform-correctness
-description: Review lifecycle, coroutine, threading, and logic correctness risks in Android, KMP, backend/server, and general Kotlin code.
+description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Android, KMP, backend/server, and general Kotlin code.
 ---
 
 # Platform & Correctness Review Specialist

@@ -1,6 +1,6 @@
 ---
 name: bill-new-skill-all-agents
-description: Create a new skill and sync it to all detected local AI agents (Claude, Copilot, GLM, Codex). Use this when asked to create a new skill for all agents on the user's computer.
+description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex).
 ---
 
 When asked to create a new skill, follow this workflow:

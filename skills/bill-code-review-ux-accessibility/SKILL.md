@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-ux-accessibility
-description: Review UX correctness and accessibility risks, delegating Compose-heavy checks to bill-code-review-compose-check.
+description: Use when reviewing UX correctness and accessibility risks, delegating Compose-heavy checks to bill-code-review-compose-check.
 ---
 
 # UX & Accessibility Review Specialist

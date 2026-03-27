@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-security
-description: Review secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Android, KMP, backend/server, and general Kotlin code.
+description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Android, KMP, backend/server, and general Kotlin code.
 ---
 
 # Security Review Specialist

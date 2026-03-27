@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-architecture
-description: Review architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin Android, KMP, and backend/server changes.
+description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin Android, KMP, and backend/server changes.
 ---
 
 # Architecture Review Specialist
