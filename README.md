@@ -1,12 +1,12 @@
 # sKill Bill
 
-sKill Bill is a portable AI skill suite for Android, KMP, Kotlin backend/server projects, and shared Kotlin code — code review, feature implementation, and developer tooling. Install once, use from any AI coding agent.
+sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. Today it is strongest for Android, KMP, Kotlin backend/server, and agent-config repositories, with naming conventions designed to expand cleanly to other stacks over time. Install once, use from any AI coding agent.
 
 ## What Is This?
 
 This plugin is a collection of 20 AI skills that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
 
-sKill Bill started as a mobile-focused plugin, but it now supports Android, KMP, Kotlin backend/server work, and shared Kotlin code under one skill suite.
+sKill Bill started as a mobile-focused plugin, and it now covers Android, KMP, Kotlin backend/server work, shared Kotlin code, and agent-config repositories under one skill suite while leaving room for future stack-specific variants.
 
 **The key idea**: edit a skill once in this repo, and every agent sees the update instantly. No copy-pasting, no drift between agents.
 
@@ -139,17 +139,51 @@ For this repository, CI enforces the same path with:
 - `npx --yes agnix --strict .`
 - `python3 scripts/validate_agent_configs.py`
 
+## Skill Naming Strategy
+
+Keep `bill` as the stable namespace prefix. Encode stack or platform in the rest of the skill name only when the skill is stack-specific.
+
+Use these patterns:
+
+- Shared, cross-stack skills: `bill-<capability>`
+- Stack-specific skills: `bill-<stack>-<capability>`
+- Deeply specialized skills: `bill-<stack>-<area>-<capability>`
+
+Examples:
+
+- Shared: `bill-pr-description`, `bill-module-history`, `bill-feature-verify`
+- Kotlin/Android: `bill-kotlin-code-review`, `bill-android-compose-check`, `bill-kmp-feature-implement`
+- PHP: `bill-php-code-review`, `bill-php-feature-implement`, `bill-php-laravel-code-review`
+
+Guidelines:
+
+- Keep existing shared utility names unless the skill is truly stack-bound
+- Only add a stack label when behavior, heuristics, or tooling are meaningfully different
+- Prefer readable slash commands over perfect taxonomy purity
+- Avoid renaming existing skills preemptively; add new stack-specific variants as the catalog grows
+
+## Naming Migration Plan
+
+Use an additive migration instead of a flag day rename:
+
+1. Keep existing neutral names such as `/bill-feature-implement` and `/bill-pr-description`
+2. Introduce new stack-specific skills with explicit names when adding non-Kotlin variants, such as `/bill-php-feature-implement`
+3. Split existing Kotlin-first skills only when there is a real second implementation to justify it
+4. When a legacy generic name becomes ambiguous, keep it as the orchestrator or compatibility alias and point users to the stack-specific variants in its description and README
+
+This keeps current workflows stable while making room for PHP and future stacks.
+
 ## Adding New Skills
 
 You have two options:
 
 **Option A**: Use the built-in skill
 
-Run `/bill-new-skill-all-agents` from any agent. It will ask for a name, description, and instructions, then create the skill file in this repo and set up symlinks to all your agents automatically.
+Run `/bill-new-skill-all-agents` from any agent. It will ask for a name, description, and instructions, then create the skill file in this repo and set up symlinks to all your agents automatically. Use the naming strategy above when choosing the skill name.
 
 **Option B**: Manual
 
-1. Create `skills/bill-my-skill/SKILL.md` in this repo
+1. Create `skills/bill-<capability-or-stack-skill>/SKILL.md` in this repo
 2. Run `./install.sh` to sync to all agents
 
 Either way, the new skill becomes available in every connected agent.

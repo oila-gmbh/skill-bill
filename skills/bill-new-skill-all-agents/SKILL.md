@@ -10,6 +10,14 @@ When asked to create a new skill, follow this workflow:
    - One-line description
    - Full skill instructions/body
    - Which agents to install to (comma-separated, primary first)
+   - Whether the skill is shared across stacks or specific to a stack/framework
+
+1a. Validate the proposed name against the repo naming strategy:
+   - Keep `bill` as the namespace prefix
+   - Shared skills should use `bill-<capability>`
+   - Stack-specific skills should use `bill-<stack>-<capability>`
+   - Add a deeper qualifier only when needed, such as `bill-<stack>-<area>-<capability>`
+   - Do not rename an existing shared skill just to add taxonomy consistency; create a new stack-specific variant only when behavior actually differs
 
 2. Known agents and their paths:
    - copilot: `$HOME/.copilot/skills`
@@ -21,6 +29,7 @@ When asked to create a new skill, follow this workflow:
    - lowercase
    - spaces/underscores -> `-`
    - keep only `a-z`, `0-9`, `-`
+   - preserve the validated `bill-...` prefix structure
 
 4. Create canonical skill file:
    - `$HOME/Development/skill-bill/skills/{slug}/SKILL.md`
