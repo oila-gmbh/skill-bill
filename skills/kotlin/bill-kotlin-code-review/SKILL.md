@@ -213,7 +213,7 @@ If invoked standalone, ask: **"Which item would you like me to fix?"**
 
 If invoked from `bill-kotlin-feature-implement` or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 
-After all P0 and P1 items are resolved, run `bill-gradle-gcheck` as final verification when the project uses Gradle and this review is being run standalone.
+After all P0 and P1 items are resolved, run `bill-kotlin-quality-check` as final verification when the project uses Gradle and this review is being run standalone.
 
 ---
 

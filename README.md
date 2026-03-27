@@ -66,7 +66,7 @@ That's it. All 20 skills are now available in every agent you selected.
 Installer modes:
 
 - `--mode safe` — replace symlinks, migrate legacy plugin installs, skip non-symlink conflicts
-- `--mode overwrite` — replace any existing target path, including local copies
+- `--mode override` — replace any existing target path, including local copies, and prune stale installed `bill-*` skills that are no longer in this repo
 - `--mode interactive` — prompt before replacing non-symlink conflicts
 
 ### Source Layout
@@ -130,7 +130,7 @@ Run `/bill-kotlin-code-review` to start a review. The orchestrator classifies th
 
 | Skill | Description |
 |-------|-------------|
-| `/bill-gradle-gcheck` | Run `./gradlew check` and fix all issues (no suppressions) |
+| `/bill-kotlin-quality-check` | Run `./gradlew check` and fix all issues (no suppressions) |
 | `/bill-module-history` | Update module-level agent/history.md with feature history |
 | `/bill-unit-test-value-check` | Standalone audit for unit tests with real business value instead of tautological coverage padding |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |
@@ -146,7 +146,7 @@ Use this to define project-specific conventions (naming, test framework, archite
 
 `/bill-kotlin-feature-implement` is the center of gravity for this repo. It now **auto-selects the final validation gate** based on the repository it is changing so the user does not need to decide which checker to run:
 
-- Gradle/Kotlin repos → `bill-gradle-gcheck`
+- Gradle/Kotlin repos → `bill-kotlin-quality-check`
 - Agent-config / skill repos → inline agent-config validation (`agnix` + repo-native drift checks)
 - Mixed repos → both
 
@@ -168,7 +168,7 @@ Use these patterns:
 Examples:
 
 - Shared: `bill-pr-description`, `bill-module-history`, `bill-feature-guard`
-- Kotlin/Gradle: `bill-kotlin-code-review`, `bill-kotlin-feature-implement`, `bill-gradle-gcheck`
+- Kotlin/Gradle: `bill-kotlin-code-review`, `bill-kotlin-feature-implement`, `bill-kotlin-quality-check`
 - KMP/UI specialists: `bill-kmp-code-review-compose-check`, `bill-kmp-code-review-ux-accessibility`
 - PHP: `bill-php-code-review`, `bill-php-feature-implement`, `bill-php-laravel-code-review`
 
@@ -184,9 +184,9 @@ Guidelines:
 Use migration-aware renames instead of one-off manual cleanup:
 
 1. Keep shared skills neutral (`/bill-feature-guard`, `/bill-pr-description`, `/bill-module-history`)
-2. Use explicit stack/tool prefixes for stack-bound skills (`/bill-kotlin-feature-implement`, `/bill-kotlin-code-review`, `/bill-gradle-gcheck`)
+2. Use explicit stack/tool prefixes for stack-bound skills (`/bill-kotlin-feature-implement`, `/bill-kotlin-code-review`, `/bill-kotlin-quality-check`)
 3. When a canonical name changes, add the old name to the installer migration map so legacy plugin-managed installs are removed automatically on rerun
-4. Let `./install.sh --mode safe` skip non-symlink conflicts so local copied variants are preserved unless the user explicitly chooses overwrite
+4. Let `./install.sh --mode safe` skip non-symlink conflicts so local copied variants are preserved unless the user explicitly chooses `override`
 
 This keeps migrations predictable while making room for PHP and future stacks.
 
