@@ -1,7 +1,7 @@
 {
   "name": "skill-bill",
   "version": "1.0.0",
-  "description": "Portable AI skill suite centered on feature implementation for Android, KMP, Kotlin backend, and agent-config repositories. Includes adaptive code review, automatic validation gates, feature flags, and developer tooling.",
+  "description": "Portable AI skill suite centered on feature implementation and code review, currently strongest for Android, KMP, Kotlin backend, and agent-config repositories, with room to expand to additional stacks.",
   "author": {
     "name": "sermilion"
   },
