@@ -148,7 +148,7 @@ Explore the codebase concurrently with planning:
 3. Identify build dependencies for affected modules
 4. Note reusable components
 5. Identify validation surfaces so the final gate is chosen automatically:
-   - Gradle/Kotlin project or modules → `bill-gradle-gcheck`
+   - Gradle/Kotlin project or modules → `bill-kotlin-quality-check`
    - Agent-config / skill repository (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, installer/config files, repo-native validation scripts) → inline agent-config validation
    - Mixed repository → run both
 6. If a repo-native validation script already exists, reuse it instead of inventing a new ad hoc checklist
@@ -177,7 +177,7 @@ Do NOT present a separate "codebase patterns" section to the user — fold these
 - Pattern: <pattern> (or N/A)
 
 ### Final Validation
-- Strategy: `bill-gradle-gcheck` | inline agent-config validation | both
+- Strategy: `bill-kotlin-quality-check` | inline agent-config validation | both
 - Reason: <why this gate applies to the affected repo/modules>
 - Commands/scripts: <existing commands or repo-native scripts to run>
 
@@ -302,7 +302,7 @@ After completeness audit passes, **infer the final validation gate automatically
 
 ### Validation strategy
 
-- **Gradle/Kotlin repos or modules touched:** run `bill-gradle-gcheck`
+- **Gradle/Kotlin repos or modules touched:** run `bill-kotlin-quality-check`
 - **Agent-config / skill repos touched:** run inline agent-config validation
 - **Both:** run both gates
 - **Neither:** run the closest existing repo-native validation command or test command already present in the project
@@ -354,7 +354,7 @@ Pass along:
 This skill orchestrates (by reading their instructions and applying inline):
 - `bill-feature-guard` — if feature flag is needed (LARGE, or when confirmed)
 - `bill-kotlin-code-review` — automatic after implementation; it classifies the diff and selects 2-6 specialists dynamically
-- `bill-gradle-gcheck` — when the affected repo/modules use the Gradle/Kotlin validation path
+- `bill-kotlin-quality-check` — when the affected repo/modules use the Gradle/Kotlin validation path
 - `bill-module-history` — writes/maintains `agent/history.md` for impactful or larger features
 
 ## Size Reference

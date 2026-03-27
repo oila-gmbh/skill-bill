@@ -41,7 +41,7 @@ Before deleting anything:
 
 ### Step 4: Verify
 
-Run `bill-gradle-gcheck` to ensure nothing is broken.
+Run `bill-kotlin-quality-check` to ensure nothing is broken.
 
 ## Patterns
 
@@ -95,7 +95,7 @@ navigateTo(CheckoutScreen)
 - [ ] All Legacy files deleted
 - [ ] All Legacy tests deleted
 - [ ] Flag definition removed from registry
-- [ ] `bill-gradle-gcheck` passes
+- [ ] `bill-kotlin-quality-check` passes
 - [ ] No orphaned imports or dependencies
 
 ## When to Ask User

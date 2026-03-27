@@ -1,9 +1,9 @@
 ---
-name: bill-gradle-gcheck
+name: bill-kotlin-quality-check
 description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Android/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them.
 ---
 
-# Gradle Check and Fix
+# Kotlin Quality Check
 
 Execute `./gradlew check` and systematically fix issues **only in files changed in the current unit of work**. Ignore pre-existing issues in untouched files.
 
