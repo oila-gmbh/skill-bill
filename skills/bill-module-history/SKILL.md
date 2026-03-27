@@ -1,6 +1,6 @@
 ---
 name: bill-module-history
-description: Update module-level agent/history.md with reusable, high-signal feature history entries and retention rules.
+description: Update module-level agent/history.md with reusable, high-signal feature history entries and history hygiene rules.
 ---
 
 # Module History
@@ -50,7 +50,8 @@ Acceptance criteria: <count>/<count> implemented
 - File path: `<primary-module>/agent/history.md`
 - Newest entry first
 - Max **15 lines** per entry
-- Keep only the **last 5 entries** (remove oldest when adding 6th)
+- No fixed entry cap
+- Keep older entries when they still provide reusable context; prune or merge only entries that are obsolete, redundant, or too noisy to help future feature work
 - No code snippets; focus on reusable context for future feature work
 
 ## Output

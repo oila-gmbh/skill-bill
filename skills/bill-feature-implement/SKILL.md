@@ -124,6 +124,9 @@ Sources: <list of original sources>
 ### Read Module History
 
 Look for `agent/history.md` in each module the feature will touch. If found, use it to:
+- Read newest entries first
+- Keep scanning while entries are still relevant to the current feature, module, entities, or patterns
+- Stop once older entries are clearly no longer relevant or you already have enough signal; do not read the whole file by default
 - Reuse components from previous features
 - Follow the latest patterns (not outdated ones)
 - Account for recent entity changes
@@ -329,7 +332,7 @@ Pass the required inputs from this run:
 - Acceptance criteria coverage summary
 - Change summary (what changed, reusable components/patterns, breaking changes or limitations)
 
-The `bill-module-history` skill owns the write/skip rules, entry format, and retention limits.
+The `bill-module-history` skill owns the write/skip rules, entry format, and history-file hygiene rules.
 
 ## Step 8: Generate PR Description (All sizes)
 
