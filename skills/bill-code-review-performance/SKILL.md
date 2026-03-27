@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-performance
-description: Review performance risks in Android, KMP, backend/server, and general Kotlin code, including UI jank, hot-path work, blocking I/O, and resource waste.
+description: Use when reviewing performance risks in Android, KMP, backend/server, and general Kotlin code, including UI jank, hot-path work, blocking I/O, and resource waste.
 ---
 
 # Performance Review Specialist

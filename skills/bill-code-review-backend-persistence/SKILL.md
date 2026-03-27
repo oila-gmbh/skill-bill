@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-backend-persistence
-description: Review Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior.
+description: Use when reviewing Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior.
 ---
 
 # Backend Persistence Review Specialist
