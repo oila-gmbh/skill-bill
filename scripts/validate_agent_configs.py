@@ -19,6 +19,29 @@ SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
 SKILL_OVERRIDE_TITLE = "# Skill Overrides"
 SKILL_OVERRIDE_SECTION_PATTERN = re.compile(r"^## (bill-[a-z0-9-]+)$")
+ALLOWED_PACKAGES = ("base", "kotlin", "kmp", "backend-kotlin", "php")
+APPROVED_CODE_REVIEW_AREAS = {
+  "api-contracts",
+  "architecture",
+  "performance",
+  "persistence",
+  "platform-correctness",
+  "reliability",
+  "security",
+  "testing",
+  "ui",
+  "ux-accessibility",
+}
+ORCHESTRATION_PLAYBOOKS: dict[str, str] = {
+  "stack-routing": "orchestration/stack-routing/PLAYBOOK.md",
+}
+REQUIRED_PLAYBOOK_REFERENCES: dict[str, tuple[str, ...]] = {
+  "bill-code-review": ("stack-routing",),
+  "bill-quality-check": ("stack-routing",),
+  "bill-kotlin-code-review": ("stack-routing",),
+  "bill-backend-kotlin-code-review": ("stack-routing",),
+  "bill-kmp-code-review": ("stack-routing",),
+}
 
 
 def main() -> int:
@@ -32,6 +55,7 @@ def main() -> int:
     validate_skill_file(skill_name, skill_file, issues)
 
   validate_readme(root / "README.md", skill_names, issues)
+  validate_orchestration_playbooks(root, issues)
   validate_skill_references(root, skill_names, issues)
   validate_skill_override_markdown(
     root / SKILL_OVERRIDE_EXAMPLE_FILE,
@@ -118,6 +142,37 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
   if SKILL_OVERRIDE_FILE not in text:
     issues.append(f"{skill_file}: missing reference to '{SKILL_OVERRIDE_FILE}'")
 
+  validate_required_playbook_references(skill_name, text, skill_file, issues)
+
+
+def validate_required_playbook_references(
+  skill_name: str,
+  text: str,
+  skill_file: Path,
+  issues: list[str],
+) -> None:
+  required_references = REQUIRED_PLAYBOOK_REFERENCES.get(skill_name, ())
+  for required_reference in required_references:
+    playbook_path = ORCHESTRATION_PLAYBOOKS[required_reference]
+    if required_reference not in text and playbook_path not in text:
+      issues.append(
+        f"{skill_file}: must reference '{playbook_path}' as the shared routing playbook"
+      )
+
+
+def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
+  for playbook_name, relative_path in ORCHESTRATION_PLAYBOOKS.items():
+    playbook_path = root / relative_path
+    if not playbook_path.is_file():
+      issues.append(f"{relative_path} is missing")
+      continue
+
+    text = playbook_path.read_text(encoding="utf-8")
+    if not FRONTMATTER_PATTERN.match(text):
+      issues.append(f"{relative_path}: missing YAML frontmatter block")
+    if SKILL_OVERRIDE_FILE in text:
+      issues.append(f"{relative_path}: orchestration playbooks must not reference '{SKILL_OVERRIDE_FILE}'")
+
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:
   skills_dir = skill_file.parents[2]
@@ -141,14 +196,20 @@ def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]
 
   if not SKILL_NAME_PATTERN.match(skill_name):
     issues.append(
-      f"{skill_file}: skill name '{skill_name}' must match bill-<capability> or bill-<stack>-<capability>"
+      f"{skill_file}: skill name '{skill_name}' must match an approved bill-* naming pattern"
     )
 
+  if package_name not in ALLOWED_PACKAGES:
+    issues.append(
+      f"{skill_file}: package '{package_name}' is not allowed; use one of {', '.join(ALLOWED_PACKAGES)}"
+    )
+    return
+
   expected_prefixes = expected_prefixes_for_package(package_name)
-  if package_name == "shared":
-    if any(skill_name.startswith(prefix) for prefix in ("bill-kotlin-", "bill-kmp-", "bill-php-", "bill-gradle-")):
+  if package_name == "base":
+    if any(skill_name.startswith(prefix) for prefix in ("bill-kotlin-", "bill-kmp-", "bill-backend-kotlin-", "bill-php-", "bill-gradle-")):
       issues.append(
-        f"{skill_file}: shared skills must use neutral names; move '{skill_name}' to the matching package"
+        f"{skill_file}: base skills must use neutral names; move '{skill_name}' to the matching package"
       )
     return
 
@@ -157,17 +218,62 @@ def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]
       f"{skill_file}: skill '{skill_name}' must live under skills/{package_name}/ and start with "
       + " or ".join(f"'{prefix}'" for prefix in expected_prefixes)
     )
+    return
+
+  validate_platform_skill_name(
+    package_name,
+    skill_name,
+    skill_file,
+    base_capabilities_for_skills_dir(skills_dir),
+    issues,
+  )
+
+
+def validate_platform_skill_name(
+  package_name: str,
+  skill_name: str,
+  skill_file: Path,
+  base_capabilities: set[str],
+  issues: list[str],
+) -> None:
+  prefix = expected_prefixes_for_package(package_name)[0]
+  capability = skill_name.removeprefix(prefix)
+
+  if capability in base_capabilities:
+    return
+
+  if capability.startswith("code-review-"):
+    area = capability.removeprefix("code-review-")
+    if area in APPROVED_CODE_REVIEW_AREAS:
+      return
+    issues.append(
+      f"{skill_file}: code-review specialization '{area}' is not approved; "
+      f"use one of {', '.join(sorted(APPROVED_CODE_REVIEW_AREAS))}"
+    )
+    return
+
+  issues.append(
+    f"{skill_file}: platform skill '{skill_name}' must either override an approved base skill "
+    "using bill-<platform>-<base-capability> or use an approved code-review specialization "
+    "using bill-<platform>-code-review-<area>"
+  )
+
+
+def base_capabilities_for_skills_dir(skills_dir: Path) -> set[str]:
+  base_dir = skills_dir / "base"
+  if not base_dir.is_dir():
+    return set()
+
+  capabilities: set[str] = set()
+  for skill_dir in base_dir.iterdir():
+    if skill_dir.is_dir() and skill_dir.name.startswith("bill-"):
+      capabilities.add(skill_dir.name.removeprefix("bill-"))
+  return capabilities
 
 
 def expected_prefixes_for_package(package_name: str) -> tuple[str, ...]:
-  if package_name == "shared":
+  if package_name == "base":
     return ()
-  if package_name == "kotlin":
-    return ("bill-kotlin-",)
-  if package_name == "kmp":
-    return ("bill-kmp-",)
-  if package_name == "php":
-    return ("bill-php-",)
   return (f"bill-{package_name}-",)
 
 

@@ -1,235 +1,230 @@
 # sKill Bill
 
-sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. Today it is strongest for Android, KMP, Kotlin backend/server, and agent-config repositories, with naming conventions designed to expand cleanly to other stacks over time. Install once, use from any AI coding agent.
+sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, and agent-config repositories.
 
-## What Is This?
+This repo is a collection of 24 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
 
-This plugin is a collection of 20 AI skills that help with code review, feature development, and project maintenance. Instead of maintaining separate prompts for each AI agent, all skills live in one place and are distributed via symlinks to every agent you use.
+## Why this exists
 
-sKill Bill started as a mobile-focused plugin, and it now covers Android, KMP, Kotlin backend/server work, shared Kotlin code, and agent-config repositories under one skill suite while leaving room for future stack-specific variants.
+Most prompt or skill repos degrade over time:
 
-**The key idea**: edit a skill once in this repo, and every agent sees the update instantly. No copy-pasting, no drift between agents.
+- names drift
+- overlapping skills appear
+- stack-specific behavior leaks into generic prompts
+- different agents get different copies
 
-All skills are prefixed with `bill-` to avoid name clashes with your own custom skills.
+sKill Bill treats skills more like software:
 
-## Supported Agents
+- stable base capabilities
+- platform-specific overrides
+- shared routing logic
+- CI-enforced naming and structure
+- one repo synced to every supported agent
 
-| Agent | Skills directory | Status |
-|-------|-----------------|--------|
-| **GitHub Copilot** | `~/.copilot/skills/` | Supported |
-| **Claude Code** | `~/.claude/commands/` | Supported |
-| **GLM** | `~/.glm/commands/` | Supported |
-| **OpenAI Codex** | `~/.codex/skills/` or `~/.agents/skills/` | Supported |
+## Core model
 
-The installer auto-skips agents that aren't installed on your machine.
+The repo is organized around a strict three-layer model:
 
-For Codex, newer setups may use `~/.codex/skills/` while older setups may still use `~/.agents/skills/`. The installer prefers `~/.codex/skills/` when it exists and falls back to `~/.agents/skills/` otherwise.
+- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
+- `skills/<platform>/` — platform-specific overrides and approved subskills
+- `orchestration/` — internal playbooks used for shared routing and decision logic
+
+Think of it as markdown with inheritance:
+
+- base skills define the stable contracts
+- platform skills specialize them
+- orchestration decides which specialization to use
+
+Current platform packages:
+
+- `kotlin`
+- `backend-kotlin`
+- `kmp`
+- `php` reserved for future expansion
+
+## Naming and enforcement
+
+Naming is intentionally strict:
+
+- base skills may use any neutral `bill-<capability>` name
+- platform overrides must use `bill-<platform>-<base-capability>`
+- deeper specialization is only allowed for code review:
+  - `bill-<platform>-code-review-<area>`
+
+Approved `code-review` areas:
+
+- `architecture`
+- `performance`
+- `platform-correctness`
+- `security`
+- `testing`
+- `api-contracts`
+- `persistence`
+- `reliability`
+- `ui`
+- `ux-accessibility`
+
+That means new stacks can extend the system, but they cannot invent random new naming shapes without intentionally updating the validator and docs.
+
+## Routing model
+
+Base entry points stay stable for users:
+
+- `/bill-code-review`
+- `/bill-quality-check`
+- `/bill-feature-implement`
+
+They route internally to platform-specific skills:
+
+- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review`
+- `bill-quality-check` -> current stack-specific quality checker
+
+Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` until dedicated overrides exist.
+
+## Supported agents
+
+| Agent | Install path |
+|-------|--------------|
+| GitHub Copilot | `~/.copilot/skills/` |
+| Claude Code | `~/.claude/commands/` |
+| GLM | `~/.glm/commands/` |
+| OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
+
+The installer links all selected agents to the same repo so updates stay in sync.
 
 ## Installation
-
-### 1. Clone the repo
 
 ```bash
 git clone <this-repo> ~/Development/skill-bill
 cd ~/Development/skill-bill
-```
-
-### 2. Run the installer
-
-```bash
 chmod +x install.sh
 ./install.sh --mode safe
 ```
 
-The installer will ask you to enter your agents as a **comma-separated list, primary agent first**:
+The installer asks for a comma-separated agent list, primary first:
 
-```
-Enter agents (comma-separated, primary first): copilot, claude, glm, codex
-```
-
-The **primary agent** holds the direct symlinks to the plugin. All other agents chain through the primary. This means:
-
-```
-plugin/skills/kotlin/bill-kotlin-code-review/    <-- source of truth (this repo)
-        | symlink
-~/.copilot/skills/bill-kotlin-code-review/       <-- primary agent
-        | symlink
-~/.claude/commands/bill-kotlin-code-review/      <-- secondary agent
-~/.glm/commands/bill-kotlin-code-review/         <-- secondary agent
-~/.codex/skills/bill-kotlin-code-review/         <-- secondary agent (Codex)
+```text
+copilot, claude, glm, codex
 ```
 
-That's it. All 20 skills are now available in every agent you selected.
+Modes:
 
-**Re-running the installer is safe by default.** `--mode safe` migrates plugin-managed legacy symlinks, refreshes current symlinks, and skips non-symlink conflicts so local copied/customized skill directories are not overwritten.
+- `safe` — replace symlinks, migrate plugin-managed legacy installs, skip non-symlink conflicts
+- `override` — replace any existing target path and prune stale `bill-*` installs
+- `interactive` — prompt before replacing non-symlink conflicts
 
-Installer modes:
-
-- `--mode safe` — replace symlinks, migrate legacy plugin installs, skip non-symlink conflicts
-- `--mode override` — replace any existing target path, including local copies, and prune stale installed `bill-*` skills that are no longer in this repo
-- `--mode interactive` — prompt before replacing non-symlink conflicts
-
-### Source Layout
-
-The repository groups source skills by package:
-
-- `skills/shared/` — cross-stack workflows and utilities
-- `skills/kotlin/` — Kotlin-focused skills
-- `skills/kmp/` — KMP/UI-specific skills
-
-Installed agent commands stay flat, so users still run `/bill-kotlin-code-review` rather than a package-qualified command.
-
-### Alternative: Claude Code Plugin
-
-If you only use Claude Code, you can install this as a plugin instead:
+If you only use Claude Code, you can also install this repo as a Claude plugin:
 
 ```bash
 claude plugin install ~/Development/skill-bill
 ```
 
-### Transferring to Another Machine
-
-```bash
-git clone <this-repo> ~/Development/skill-bill
-cd ~/Development/skill-bill
-./install.sh --mode safe
-```
-
-No config files to edit — the installer handles everything interactively.
-
 ## Skills Included
 
-### Code Review (11 skills)
+### Code Review (14 skills)
 
-Run `/bill-kotlin-code-review` to start a review. The orchestrator classifies the project type conservatively, preserves the full Android/KMP review path when mobile signals are strong, and spawns 2-6 specialist agents in parallel before merging and deduplicating findings, including a real-test-value pass when tests change.
-
-| Skill | Description |
-|-------|-------------|
-| `/bill-kotlin-code-review` | Orchestrator: classifies project type, spawns 2-6 specialist reviews, merges results |
-| `/bill-kotlin-code-review-architecture` | Architecture, boundaries, DI, source-of-truth across Android/KMP/backend |
-| `/bill-kmp-code-review-compose-check` | Jetpack Compose best practices and optimization |
-| `/bill-kotlin-code-review-platform-correctness` | Lifecycle, coroutines, threading, Flow composition, server correctness |
-| `/bill-kotlin-code-review-performance` | Recomposition, hot-path work, blocking I/O, resource usage |
-| `/bill-kotlin-code-review-security` | Secrets, auth, PII, transport/storage across mobile and backend |
-| `/bill-kotlin-code-review-testing` | Coverage gaps, flaky tests, tautological tests, and regression risk |
-| `/bill-kmp-code-review-ux-accessibility` | UX states, a11y, validation |
-| `/bill-kotlin-code-review-backend-api-contracts` | Backend API contracts, validation, serialization, compatibility |
-| `/bill-kotlin-code-review-backend-persistence` | Backend persistence, transactions, migrations, data consistency |
-| `/bill-kotlin-code-review-backend-reliability` | Backend timeouts, retries, jobs, caching, observability |
+| Skill | Purpose |
+|-------|---------|
+| `/bill-code-review` | Shared review router |
+| `/bill-kotlin-code-review` | Kotlin baseline review orchestrator |
+| `/bill-backend-kotlin-code-review` | Backend Kotlin review override |
+| `/bill-kmp-code-review` | Android/KMP review override |
+| `/bill-kotlin-code-review-architecture` | Kotlin architecture and boundaries review |
+| `/bill-kotlin-code-review-platform-correctness` | Kotlin lifecycle, coroutine, threading, and logic review |
+| `/bill-kotlin-code-review-performance` | Kotlin performance review |
+| `/bill-kotlin-code-review-security` | Kotlin security review |
+| `/bill-kotlin-code-review-testing` | Kotlin test quality review |
+| `/bill-kmp-code-review-ui` | KMP UI review |
+| `/bill-kmp-code-review-ux-accessibility` | KMP UX and accessibility review |
+| `/bill-backend-kotlin-code-review-api-contracts` | Backend API contract review |
+| `/bill-backend-kotlin-code-review-persistence` | Backend persistence and migration review |
+| `/bill-backend-kotlin-code-review-reliability` | Backend reliability and observability review |
 
 ### Feature Lifecycle (4 skills)
 
-| Skill | Description |
-|-------|-------------|
-| `/bill-kotlin-feature-implement` | End-to-end: design spec, plan, implement, review, auto-select validation, PR |
-| `/bill-kotlin-feature-verify` | Verify a PR against a task spec (reverse of implement) |
-| `/bill-feature-guard` | Wrap changes in feature flags for safe rollout |
-| `/bill-feature-guard-cleanup` | Remove feature flags after full rollout |
+| Skill | Purpose |
+|-------|---------|
+| `/bill-feature-implement` | Spec-to-verified implementation workflow |
+| `/bill-feature-verify` | Verify a PR against a task spec |
+| `/bill-feature-guard` | Add feature-flag rollout safety |
+| `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
-### Utilities (5 skills)
+### Utilities (6 skills)
 
-| Skill | Description |
-|-------|-------------|
-| `/bill-kotlin-quality-check` | Run `./gradlew check` and fix all issues (no suppressions) |
-| `/bill-module-history` | Update module-level agent/history.md with feature history |
-| `/bill-unit-test-value-check` | Standalone audit for unit tests with real business value instead of tautological coverage padding |
+| Skill | Purpose |
+|-------|---------|
+| `/bill-quality-check` | Shared quality-check router |
+| `/bill-kotlin-quality-check` | Gradle/Kotlin quality-check implementation |
+| `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
+| `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |
 | `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
 
-## Project Customization
+## Project customization
 
-Use **`AGENTS.md`** in the project root for repo-wide conventions that should influence multiple skills.
+Use `AGENTS.md` for repo-wide guidance.
 
-Use **`.agents/skill-overrides.md`** for per-skill customization without modifying this plugin. Each skill looks for a matching `## bill-...` section and treats that section as the highest-priority instruction for that skill only.
-
-The file is intentionally strict so CI can validate it:
+Use `.agents/skill-overrides.md` for per-skill customization without editing this plugin. The file is intentionally strict:
 
 - first line must be `# Skill Overrides`
-- each override section must be `## <existing-skill-name>`
+- each section must be `## <existing-skill-name>`
 - each section body must be a bullet list
 - freeform text outside sections is invalid
 
-Precedence is:
+Precedence:
 
-1. Matching section in `.agents/skill-overrides.md`
+1. matching `.agents/skill-overrides.md` section
 2. `AGENTS.md`
-3. Built-in skill defaults
+3. built-in skill defaults
 
-Example `.agents/skill-overrides.md`:
+Example:
 
 ```md
 # Skill Overrides
 
 ## bill-kotlin-quality-check
 - Treat warnings as blocking work.
-- Skip formatting-only rewrites unless the user explicitly asks for them.
 
 ## bill-pr-description
-- Always include ticket links when the branch name contains one.
-- Keep QA steps concise unless the user asks for a full matrix.
+- Keep QA steps concise.
 ```
 
-Use `AGENTS.md` for project-wide conventions (naming, test framework, architecture rules, etc.) and `.agents/skill-overrides.md` for targeted skill behavior changes.
+## Validation
 
-## Automatic Validation
+This repo validates both content quality and taxonomy rules.
 
-`/bill-kotlin-feature-implement` is the center of gravity for this repo. It now **auto-selects the final validation gate** based on the repository it is changing so the user does not need to decide which checker to run:
+Local checks:
 
-- Gradle/Kotlin repos → `bill-kotlin-quality-check`
-- Agent-config / skill repos → inline agent-config validation (`agnix` + repo-native drift checks)
-- Mixed repos → both
+```bash
+python3 -m unittest discover -s tests
+npx --yes agnix --strict .
+python3 scripts/validate_agent_configs.py
+```
 
-For this repository, CI enforces the same path with:
+CI runs the same checks.
 
-- `npx --yes agnix --strict .`
-- `python3 scripts/validate_agent_configs.py` (catalog drift, cross-skill references, and `skills/<package>/<skill>/SKILL.md` naming/location rules)
+The validator enforces:
 
-## Skill Naming Strategy
+- package location rules
+- naming rules
+- README catalog drift
+- cross-skill references
+- required routing playbook references
+- plugin metadata
 
-Keep `bill` as the stable namespace prefix. Encode stack or platform in the rest of the skill name only when the skill is stack-specific.
+## Adding skills
 
-Use these patterns:
+Preferred path:
 
-- Shared, cross-stack skills: `bill-<capability>`
-- Stack-specific skills: `bill-<stack>-<capability>`
-- Deeply specialized skills: `bill-<stack>-<area>-<capability>`
+- run `/bill-new-skill-all-agents`
 
-Examples:
+Manual path:
 
-- Shared: `bill-pr-description`, `bill-module-history`, `bill-feature-guard`
-- Kotlin/Gradle: `bill-kotlin-code-review`, `bill-kotlin-feature-implement`, `bill-kotlin-quality-check`
-- KMP/UI specialists: `bill-kmp-code-review-compose-check`, `bill-kmp-code-review-ux-accessibility`
-- PHP: `bill-php-code-review`, `bill-php-feature-implement`, `bill-php-laravel-code-review`
+1. create `skills/<package>/<skill-name>/SKILL.md`
+2. follow the naming rules above
+3. run `./install.sh --mode safe`
+4. update docs and validation if you intentionally add a new package or naming shape
 
-Guidelines:
+## License
 
-- Keep shared utility names neutral unless the skill is truly stack-bound
-- Only add a stack label when behavior, heuristics, or tooling are meaningfully different
-- Prefer readable slash commands over perfect taxonomy purity
-- When renaming an existing stack-bound skill, update installer migration rules and docs in the same change
-
-## Naming Migration Plan
-
-Use migration-aware renames instead of one-off manual cleanup:
-
-1. Keep shared skills neutral (`/bill-feature-guard`, `/bill-pr-description`, `/bill-module-history`)
-2. Use explicit stack/tool prefixes for stack-bound skills (`/bill-kotlin-feature-implement`, `/bill-kotlin-code-review`, `/bill-kotlin-quality-check`)
-3. When a canonical name changes, add the old name to the installer migration map so legacy plugin-managed installs are removed automatically on rerun
-4. Let `./install.sh --mode safe` skip non-symlink conflicts so local copied variants are preserved unless the user explicitly chooses `override`
-
-This keeps migrations predictable while making room for PHP and future stacks.
-
-## Adding New Skills
-
-You have two options:
-
-**Option A**: Use the built-in skill
-
-Run `/bill-new-skill-all-agents` from any agent. It will ask for a name, description, and instructions, then create the skill file in this repo and set up symlinks to all your agents automatically. Use the naming strategy above when choosing the skill name.
-
-**Option B**: Manual
-
-1. Create `skills/<package>/bill-<capability-or-stack-skill>/SKILL.md` in this repo
-2. Run `./install.sh --mode safe` to sync to all agents
-
-Either way, the new skill becomes available in every connected agent.
+This repository is licensed under `MIT`. You may use, copy, modify, merge, publish, distribute, sublicense, and sell it, provided the license notice is retained.

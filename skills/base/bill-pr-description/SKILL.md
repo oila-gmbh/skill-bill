@@ -1,6 +1,6 @@
 ---
 name: bill-pr-description
-description: Use when generating a PR title, description, and QA steps from the current branch changes. Works standalone or as part of bill-kotlin-feature-implement.
+description: Use when generating a PR title, description, and QA steps from the current branch changes. Works standalone or as part of bill-feature-implement.
 ---
 
 # PR Description Generator
@@ -58,5 +58,5 @@ Use this exact template, filling in the sections:
 - Test instructions should be concrete enough for a reviewer to reproduce
 - If the feature is behind a flag, mention how to enable it for testing
 - Keep it concise — reviewers appreciate brevity
-- If invoked from `bill-kotlin-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-kotlin-feature-implement created it)
+- If invoked from `bill-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
 - If the caller provides an explicit comparison base or merge-base, use it instead of inferring one

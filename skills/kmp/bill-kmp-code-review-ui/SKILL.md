@@ -1,13 +1,13 @@
 ---
-name: bill-kmp-code-review-compose-check
-description: Improve, review, or create Jetpack Compose composable functions, screens, and components. Use when writing new composables, refactoring existing Compose UI code, reviewing Compose screens for best practices, or when asked to optimize Compose performance in KMP-oriented codebases. Enforces state hoisting, proper recomposition handling, slot-based APIs, accessibility, theming, string resources, preview annotations, and official Compose guidelines.
+name: bill-kmp-code-review-ui
+description: Use when reviewing or building KMP UI surfaces. Today this skill is implemented with Jetpack Compose-specific guidance, but it is the canonical KMP UI review capability so future platform UI guidance can live behind the same slash command. Enforces state hoisting, proper recomposition handling, slot-based APIs, accessibility, theming, string resources, preview annotations, and official UI framework guidelines.
 ---
 
-# Jetpack Compose Best Practices
+# KMP UI Best Practices
 
 ## Project Overrides
 
-If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kmp-code-review-compose-check` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kmp-code-review-ui` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
