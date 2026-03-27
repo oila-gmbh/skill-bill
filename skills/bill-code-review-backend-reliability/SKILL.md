@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-backend-reliability
-description: Review Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
+description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
 ---
 
 # Backend Reliability Review Specialist

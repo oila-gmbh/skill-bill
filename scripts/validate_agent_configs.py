@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import re
+import sys
+
+
+README_TOTAL_PATTERN = re.compile(r"collection of (\d+) AI skills")
+README_SECTION_PATTERN = re.compile(r"^### (.+) \((\d+) skills\)$")
+README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
+SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
+FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+
+
+def main() -> int:
+  root = resolve_root()
+  issues: list[str] = []
+
+  skill_files = discover_skill_files(root, issues)
+  skill_names = sorted(skill_files.keys())
+
+  for skill_name, skill_file in skill_files.items():
+    validate_skill_file(skill_name, skill_file, issues)
+
+  validate_readme(root / "README.md", skill_names, issues)
+  validate_skill_references(root, skill_names, issues)
+  validate_plugin_manifest(root / ".claude-plugin" / "plugin.json", issues)
+
+  if issues:
+    print("Agent-config validation failed:")
+    for issue in issues:
+      print(f"- {issue}")
+    return 1
+
+  print("Agent-config validation passed.")
+  print(f"Validated {len(skill_names)} skills, README catalog, skill references, and plugin metadata.")
+  return 0
+
+
+def resolve_root() -> Path:
+  if len(sys.argv) > 2:
+    raise SystemExit("Usage: validate_agent_configs.py [repo-root]")
+  if len(sys.argv) == 2:
+    return Path(sys.argv[1]).resolve()
+  return Path(__file__).resolve().parent.parent
+
+
+def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
+  skills_dir = root / "skills"
+  if not skills_dir.is_dir():
+    issues.append("skills/ directory is missing")
+    return {}
+
+  skill_files: dict[str, Path] = {}
+  for skill_dir in sorted(skills_dir.iterdir()):
+    if not skill_dir.is_dir():
+      continue
+    skill_file = skill_dir / "SKILL.md"
+    if not skill_file.is_file():
+      issues.append(f"{skill_dir.relative_to(root)} is missing SKILL.md")
+      continue
+    skill_files[skill_dir.name] = skill_file
+
+  if not skill_files:
+    issues.append("No skills were found under skills/")
+  return skill_files
+
+
+def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) -> None:
+  text = skill_file.read_text(encoding="utf-8")
+  frontmatter_match = FRONTMATTER_PATTERN.match(text)
+  if not frontmatter_match:
+    issues.append(f"{skill_file}: missing YAML frontmatter block")
+    return
+
+  frontmatter = parse_frontmatter(frontmatter_match.group(1))
+  declared_name = frontmatter.get("name", "")
+  description = frontmatter.get("description", "")
+
+  if declared_name != skill_name:
+    issues.append(
+      f"{skill_file}: frontmatter name '{declared_name}' does not match directory '{skill_name}'"
+    )
+
+  if not description:
+    issues.append(f"{skill_file}: frontmatter description is missing")
+
+
+def parse_frontmatter(block: str) -> dict[str, str]:
+  values: dict[str, str] = {}
+  for line in block.splitlines():
+    if ":" not in line:
+      continue
+    key, value = line.split(":", 1)
+    values[key.strip()] = value.strip()
+  return values
+
+
+def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]) -> None:
+  text = readme_path.read_text(encoding="utf-8")
+  total_match = README_TOTAL_PATTERN.search(text)
+  if not total_match:
+    issues.append("README.md: total skill count line is missing")
+  else:
+    declared_total = int(total_match.group(1))
+    actual_total = len(skill_names)
+    if declared_total != actual_total:
+      issues.append(
+        f"README.md: declares {declared_total} skills, but skills/ contains {actual_total}"
+      )
+
+  documented_skills: list[str] = []
+  lines = text.splitlines()
+  current_section = ""
+  expected_count = 0
+  section_count = 0
+
+  for line in lines + ["### END (0 skills)"]:
+    section_match = README_SECTION_PATTERN.match(line)
+    if section_match:
+      if current_section and section_count != expected_count:
+        issues.append(
+          f"README.md: section '{current_section}' declares {expected_count} skills but lists {section_count}"
+        )
+      current_section = section_match.group(1)
+      expected_count = int(section_match.group(2))
+      section_count = 0
+      continue
+
+    row_match = README_SKILL_ROW_PATTERN.match(line)
+    if row_match:
+      documented_skills.append(row_match.group(1))
+      section_count += 1
+
+  documented_set = sorted(set(documented_skills))
+  actual_set = sorted(skill_names)
+
+  missing_from_readme = sorted(set(actual_set) - set(documented_set))
+  extra_in_readme = sorted(set(documented_set) - set(actual_set))
+
+  if missing_from_readme:
+    issues.append(
+      "README.md: missing skills in catalog: " + ", ".join(missing_from_readme)
+    )
+  if extra_in_readme:
+    issues.append(
+      "README.md: documents unknown skills: " + ", ".join(extra_in_readme)
+    )
+
+
+def validate_skill_references(root: Path, skill_names: list[str], issues: list[str]) -> None:
+  known_skills = set(skill_names)
+  files_to_scan = sorted((root / "skills").glob("*/SKILL.md"))
+
+  for file_path in files_to_scan:
+    text = file_path.read_text(encoding="utf-8")
+    for reference in sorted(set(SKILL_REFERENCE_PATTERN.findall(text))):
+      if reference not in known_skills:
+        relative_path = file_path.relative_to(root)
+        issues.append(f"{relative_path}: references unknown skill '{reference}'")
+
+
+def validate_plugin_manifest(plugin_path: Path, issues: list[str]) -> None:
+  try:
+    content = plugin_path.read_text(encoding="utf-8")
+    data = json.loads(content)
+  except FileNotFoundError:
+    issues.append(".claude-plugin/plugin.json is missing")
+    return
+  except json.JSONDecodeError as error:
+    issues.append(f".claude-plugin/plugin.json: invalid JSON ({error})")
+    return
+
+  name = data.get("name")
+  description = data.get("description")
+  keywords = data.get("keywords")
+
+  if not isinstance(name, str) or not name.strip():
+    issues.append(".claude-plugin/plugin.json: name must be a non-empty string")
+  if not isinstance(description, str) or not description.strip():
+    issues.append(".claude-plugin/plugin.json: description must be a non-empty string")
+  if not isinstance(keywords, list) or not keywords:
+    issues.append(".claude-plugin/plugin.json: keywords must be a non-empty array")
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

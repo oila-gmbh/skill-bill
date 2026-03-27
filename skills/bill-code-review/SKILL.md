@@ -1,6 +1,6 @@
 ---
 name: bill-code-review
-description: Conduct a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Kotlin PR code review across Android, KMP, and backend/server projects. Detect project type conservatively, preserve Android/KMP review depth, and select the right specialist agents for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
 ---
 
 # Adaptive Kotlin PR Review

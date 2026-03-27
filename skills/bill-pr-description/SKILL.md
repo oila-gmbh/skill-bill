@@ -1,6 +1,6 @@
 ---
 name: bill-pr-description
-description: Generate a PR title, description, and QA steps from the current branch changes. Works standalone or as part of bill-feature-implement.
+description: Use when generating a PR title, description, and QA steps from the current branch changes. Works standalone or as part of bill-feature-implement.
 ---
 
 # PR Description Generator
