@@ -74,7 +74,7 @@ Installer modes:
 The repository groups source skills by package:
 
 - `skills/shared/` — cross-stack workflows and utilities
-- `skills/kotlin/` — Kotlin/Gradle-oriented skills
+- `skills/kotlin/` — Kotlin-focused skills
 - `skills/kmp/` — KMP/UI-specific skills
 
 Installed agent commands stay flat, so users still run `/bill-kotlin-code-review` rather than a package-qualified command.
