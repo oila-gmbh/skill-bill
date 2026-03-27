@@ -13,6 +13,7 @@ README_SECTION_PATTERN = re.compile(r"^### (.+) \((\d+) skills\)$")
 README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
 SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
 FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+SKILL_NAME_PATTERN = re.compile(r"^bill-[a-z0-9-]+$")
 
 
 def main() -> int:
@@ -55,12 +56,16 @@ def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
     return {}
 
   skill_files: dict[str, Path] = {}
-  for skill_dir in sorted(skills_dir.iterdir()):
+  for skill_file in sorted(skills_dir.rglob("SKILL.md")):
+    skill_dir = skill_file.parent
     if not skill_dir.is_dir():
       continue
-    skill_file = skill_dir / "SKILL.md"
-    if not skill_file.is_file():
-      issues.append(f"{skill_dir.relative_to(root)} is missing SKILL.md")
+    if skill_dir.name in skill_files:
+      issues.append(
+        "Duplicate skill directory name "
+        f"'{skill_dir.name}' found at "
+        f"{skill_files[skill_dir.name].parent.relative_to(root)} and {skill_dir.relative_to(root)}"
+      )
       continue
     skill_files[skill_dir.name] = skill_file
 
@@ -76,6 +81,8 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
     issues.append(f"{skill_file}: missing YAML frontmatter block")
     return
 
+  validate_skill_location(skill_name, skill_file, issues)
+
   frontmatter = parse_frontmatter(frontmatter_match.group(1))
   declared_name = frontmatter.get("name", "")
   description = frontmatter.get("description", "")
@@ -87,6 +94,58 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
 
   if not description:
     issues.append(f"{skill_file}: frontmatter description is missing")
+
+
+def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:
+  skills_dir = skill_file.parents[2]
+  relative_path = skill_file.relative_to(skills_dir)
+  parts = relative_path.parts
+
+  if len(parts) != 3:
+    issues.append(
+      f"{skill_file}: expected path format skills/<package>/<skill>/SKILL.md, got skills/{relative_path}"
+    )
+    return
+
+  package_name, directory_name, file_name = parts
+  if file_name != "SKILL.md":
+    issues.append(f"{skill_file}: expected skill file to be named SKILL.md")
+
+  if directory_name != skill_name:
+    issues.append(
+      f"{skill_file}: directory '{directory_name}' does not match discovered skill name '{skill_name}'"
+    )
+
+  if not SKILL_NAME_PATTERN.match(skill_name):
+    issues.append(
+      f"{skill_file}: skill name '{skill_name}' must match bill-<capability> or bill-<stack>-<capability>"
+    )
+
+  expected_prefixes = expected_prefixes_for_package(package_name)
+  if package_name == "shared":
+    if any(skill_name.startswith(prefix) for prefix in ("bill-kotlin-", "bill-kmp-", "bill-php-", "bill-gradle-")):
+      issues.append(
+        f"{skill_file}: shared skills must use neutral names; move '{skill_name}' to the matching package"
+      )
+    return
+
+  if not any(skill_name.startswith(prefix) for prefix in expected_prefixes):
+    issues.append(
+      f"{skill_file}: skill '{skill_name}' must live under skills/{package_name}/ and start with "
+      + " or ".join(f"'{prefix}'" for prefix in expected_prefixes)
+    )
+
+
+def expected_prefixes_for_package(package_name: str) -> tuple[str, ...]:
+  if package_name == "shared":
+    return ()
+  if package_name == "kotlin":
+    return ("bill-kotlin-", "bill-gradle-")
+  if package_name == "kmp":
+    return ("bill-kmp-",)
+  if package_name == "php":
+    return ("bill-php-",)
+  return (f"bill-{package_name}-",)
 
 
 def parse_frontmatter(block: str) -> dict[str, str]:
@@ -153,7 +212,7 @@ def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]
 
 def validate_skill_references(root: Path, skill_names: list[str], issues: list[str]) -> None:
   known_skills = set(skill_names)
-  files_to_scan = sorted((root / "skills").glob("*/SKILL.md"))
+  files_to_scan = sorted((root / "skills").rglob("SKILL.md"))
 
   for file_path in files_to_scan:
     text = file_path.read_text(encoding="utf-8")
