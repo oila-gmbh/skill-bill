@@ -1,0 +1,186 @@
+---
+name: bill-backend-kotlin-code-review
+description: Use when conducting a thorough Kotlin backend/server PR code review. Preserve backend review depth by running bill-kotlin-code-review as the baseline Kotlin review layer, then add backend-specific specialists such as API contracts, persistence, and reliability. Produces a structured review with risk register and prioritized action items.
+---
+
+# Backend Kotlin PR Review
+
+You are an experienced backend Kotlin architect conducting a code review.
+
+Your job is to preserve backend/server review depth without duplicating the shared Kotlin review logic.
+
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-backend-kotlin-code-review` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
+
+## Setup
+
+Determine the review scope:
+- Specific files (list paths)
+- Git commits (hashes/range)
+- Working changes (`git diff`)
+- Entire PR
+
+---
+
+## Project Classification
+
+Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source layout, module names, imports).
+
+Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for broad stack signals. This skill owns only the backend/server override that happens after Kotlin is already in scope.
+
+Classify the review as one of:
+- `backend-kotlin`
+- `mixed-backend-kotlin`
+- `not-backend-kotlin`
+
+### Backend/Server Signals
+
+- `io.ktor.server`, `routing {}`, `Application.module`
+- `spring-boot`, `@RestController`, `@Controller`, `@Service`, `@Repository`, `@Transactional`
+- Micronaut, Quarkus, http4k, Javalin, gRPC server code
+- `application.yml`, `application.yaml`, `application.conf`
+- SQL/ORM/data-access layers: Exposed, jOOQ, Hibernate/JPA, JDBC, R2DBC, Flyway, Liquibase
+- Queues, schedulers, consumers, caches, metrics, tracing, server auth middleware
+
+### Decision Rules
+
+- If this skill is invoked from `bill-kmp-code-review`, accept mixed Android/KMP + backend scope and focus only on backend/server coverage while leaving KMP-only concerns to the caller.
+- If backend/server signals are strong, keep the backend route.
+- If backend/server signals are weak or absent, delegate to `bill-kotlin-code-review` and stop instead of pretending backend-specific coverage exists.
+- If shared Kotlin infrastructure is touched alongside backend files, keep the backend route and let `bill-kotlin-code-review` handle shared Kotlin coverage while this skill adds backend specialists.
+
+---
+
+## Layered Review Plan
+
+### Step 1: Run `bill-kotlin-code-review` as the baseline review
+
+Run `bill-kotlin-code-review` against the same scope first. That skill owns:
+- shared Kotlin architecture, correctness, security, performance, and testing review
+- the baseline Kotlin findings that every backend/server review should inherit
+
+When invoking it from this skill:
+- tell it that backend/server scope is valid and should be treated as `backend-kotlin-baseline`
+- tell it to keep backend-only review concerns out of scope
+- pass the same diff source, changed files, and relevant override guidance
+
+### Step 2: Analyze the diff and select backend-specific agents
+
+| Signal in the diff | Agent to spawn |
+|---------------------|----------------|
+| Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `bill-backend-kotlin-code-review-api-contracts` |
+| Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-backend-kotlin-code-review-persistence` |
+| Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-backend-kotlin-code-review-reliability` |
+
+### Step 3: Launch backend specialists in parallel
+
+Spawn all selected backend specialists simultaneously using the `task` tool. Each agent gets:
+- the detected project type
+- the list of changed files
+- instructions to read its own skill file for the review rubric
+- the shared contract below
+
+If no backend-only triggers match but backend/server signals are clearly present, keep the baseline Kotlin review output and state that no extra backend-specific specialist was needed for this scope.
+
+---
+
+## Shared Contract For Every Specialist
+
+- Scope: review only the changes in the current PR/unit of work — do not flag pre-existing issues in unchanged code
+- Review only meaningful issues (bug, logic flaw, security risk, regression risk, architectural breakage)
+- Flag newly introduced deprecated components, APIs, or patterns when a supported alternative exists, or when deprecated usage is broad in scope and not explicitly justified
+- Ignore style, formatting, naming bikeshedding, and pure refactor preferences
+- Evidence is mandatory: include `file:line` + short description
+- Severity: `Blocker | Major | Minor`
+- Confidence: `High | Medium | Low`
+- Maximum 7 findings per specialist
+- Include a minimal, concrete fix for each finding
+
+### Required Finding Schema
+
+```text
+[SEVERITY] Area: Issue title
+  Location: file:line
+  Impact: Why it matters (1 sentence)
+  Fix: Concrete fix (1-2 lines)
+  Confidence: High/Medium/Low
+```
+
+---
+
+## Orchestrator Merge Rules
+
+1. Collect the baseline findings from `bill-kotlin-code-review`.
+2. Collect all backend-specific specialist findings.
+3. If a specialist agent fails or returns no output, note it in the summary and continue with available results.
+4. Deduplicate by root cause (same evidence or same failing behavior).
+5. Keep highest severity/confidence when duplicates conflict.
+6. Prioritize: Blocker > Major > Minor, then blast radius.
+7. Produce one consolidated report.
+
+---
+
+## Review Output Format
+
+### 1. Classification & Layer Summary
+```text
+Detected stack: backend-kotlin | mixed-backend-kotlin
+Signals: application.yml, @RestController, Exposed
+Baseline review: bill-kotlin-code-review
+Backend agents spawned: bill-backend-kotlin-code-review-api-contracts
+Reason: backend/server signals were high-confidence, so the backend layer was added on top of the baseline Kotlin review
+```
+
+### 2. Risk Register
+
+Format each issue as:
+```text
+[IMPACT_LEVEL] Area: Issue title
+  Location: file:line
+  Impact: Description
+  Fix: Concrete action
+```
+
+Impact levels: BLOCKER | MAJOR | MINOR
+
+### 3. Action Items (Max 10, prioritized)
+
+```text
+1. [P0 BLOCKER] Fix issue (Effort: S, Impact: High)
+2. [P1 MAJOR] Fix issue (Effort: M, Impact: Medium)
+3. [P2 MINOR] Fix issue (Effort: S, Impact: Low)
+```
+
+Priority: P0 (blocker) | P1 (critical) | P2 (important) | P3 (nice-to-have)
+Effort: S (<1h) | M (1-4h) | L (>4h)
+
+### 4. Verdict
+
+`Ship` | `Ship with fixes [list P0/P1 items]` | `Block until [list blockers]`
+
+---
+
+## Implementation Mode
+
+If invoked standalone, ask: **"Which item would you like me to fix?"**
+
+If invoked from `bill-feature-implement`, `bill-feature-verify`, `bill-kmp-code-review`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+
+After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.
+
+---
+
+## Review Principles
+
+- Changed code only: review what was added or modified in this PR — do not report issues in untouched code, even if it violates current rules
+- Evidence-based: cite `file:line`
+- Project-aware: each agent has project-specific rules in its skill file
+- Actionable: every issue must have a concrete fix
+- Proportional: don't nitpick style if architecture is broken
+- No overoptimization: do not report negligible performance findings with no measurable user-facing or production-facing impact
+- Honest: if unsure, say what context is missing

@@ -1,13 +1,13 @@
 ---
-name: bill-module-history
-description: Use when updating module-level agent/history.md with reusable, high-signal feature history entries and history hygiene rules.
+name: bill-boundary-history
+description: Use when updating module/package/area agent/history.md files with reusable, high-signal feature history entries and history hygiene rules.
 ---
 
-# Module History
+# Boundary History
 
 ## Project Overrides
 
-If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-module-history` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-boundary-history` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
@@ -17,8 +17,8 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 
 - Feature name
 - Feature size (`SMALL` / `MEDIUM` / `LARGE`)
-- Primary module (main module where the feature lives)
-- Affected modules list
+- Primary module/package/area (main boundary where the feature lives)
+- Affected module/package/area list
 - Feature flag name/pattern (or `N/A`)
 - Acceptance criteria coverage (`implemented/total`)
 - Change summary (what changed, patterns used, reusable components, breaking changes/limits)
@@ -42,7 +42,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 
 ```markdown
 ## [<date>] <feature-name>
-Modules: <list of affected modules>
+Areas: <list of affected modules/packages/areas>
 - <what changed> (1-2 lines each)
 - <new patterns introduced or followed>
 - <reusable components created> (mark with "reusable")
@@ -53,7 +53,7 @@ Acceptance criteria: <count>/<count> implemented
 
 ## File Rules
 
-- File path: `<primary-module>/agent/history.md`
+- File path: `<primary-boundary>/agent/history.md`
 - Newest entry first
 - Max **15 lines** per entry
 - No fixed entry cap

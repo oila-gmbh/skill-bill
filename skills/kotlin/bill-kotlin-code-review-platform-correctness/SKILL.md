@@ -1,6 +1,6 @@
 ---
 name: bill-kotlin-code-review-platform-correctness
-description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Android, KMP, backend/server, and general Kotlin code.
+description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code.
 ---
 
 # Platform & Correctness Review Specialist
@@ -19,7 +19,7 @@ Review only correctness and runtime-safety issues.
 
 ## Applicability
 
-Apply shared Kotlin correctness rules to all code. Apply Android/KMP-only rules only when Android/KMP signals are present. Apply backend/server-only rules only when backend/server signals are present.
+Use this specialist for shared Kotlin correctness risks across libraries, app layers, and backend services. Favor issues around ownership, concurrency, cancellation, and logic safety that remain meaningful regardless of platform.
 
 ## Project Overrides
 
@@ -39,48 +39,11 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 - Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
 - Validate ordering guarantees where multiple async sources can race or overwrite each other
 - Do not introduce deprecated APIs, components, or patterns when a supported alternative exists; if usage is unavoidable, it must be narrowly scoped and explicitly justified
-
-### Android/KMP-Specific Rules
-
-#### Dispatchers
-- Never use `Dispatchers.IO`, `Dispatchers.Main`, etc. directly when the project standard is `DispatcherProvider`
-- Check that injected `DispatcherProvider` is used consistently
-
-#### Coroutine Scoping
-- ViewModels use `viewModelScope`
-- Fire-and-forget operations that must survive ViewModel clearing use `@ApplicationScope` or the project equivalent
-- `LaunchedEffect` keys must be stable — avoid using full data objects as keys when a derived boolean or ID suffices
-
-#### Flow & State
-- Use `collectAsStateWithLifecycle()` in Compose, never `collectAsState()`
-- `StateFlow` for UI state, `SharedFlow` for one-time events unless the project intentionally standardizes on another pattern
-- Side effects emitted via `SharedFlow` must not be lost — verify collector is active
-- Check for race conditions between auto-dismiss timers and user interactions
-
-#### Flow Composition
-- When combining multiple flows, define source priority explicitly (primary vs enrichment streams)
-- Keep transformations pure and deterministic — no hidden fallback behavior
-- Emit a complete sealed UI state (`Loading`, `Content`, `Error`, `Empty`) where the screen contract expects it
-- Add `.catch { ... }` before terminal `.stateIn()` for transformation-level failures when the contract requires resilient UI state
-- Verify: primary present + enrichment missing, primary missing, one stream fails
-
-#### Lifecycle
-- No Activity/Fragment references held in ViewModels or repositories
-- `DisposableEffect` for cleanup of listeners/callbacks
-- `rememberSaveable` for state surviving configuration changes
-
-#### Error Handling
-- Repositories should absorb infra exceptions per project contract so callers do not need defensive try/catch everywhere
-- Log with context (include relevant IDs) using the project logger
-
-### Backend/Server-Specific Rules
-- Do not block event-loop/request threads with JDBC, file I/O, crypto, or HTTP calls unless explicitly shifted to a dedicated dispatcher/executor
-- Request handlers should not launch untracked coroutines that outlive the request unless work is delegated to a managed background component
-- Message consumers, schedulers, and jobs must be safe under retry/replay; acknowledge or commit only after durable success
-- Do not hold database transactions open across remote network calls or long waits
+- Work launched from callbacks, requests, or scheduled entry points must remain tied to an explicit owner or be delegated to a managed background component
+- Flow/state transformations should stay deterministic and make source priority explicit when multiple async inputs can race
 - Concurrent writes need atomic statements, locking, version checks, or another explicit consistency mechanism
-- Application/service scopes created at startup must be cancelled cleanly on shutdown
-- Verify timeout/cancellation propagation on outbound calls so abandoned requests do not continue wasting resources
+- Do not hold scarce resources (locks, transactions, open streams, file handles) across remote calls or long waits unless the contract explicitly requires it
+- Startup-owned or application-owned scopes must be cancelled cleanly during shutdown or cleanup
 
 ## Output Rules
 - Report at most 7 findings.

@@ -1,9 +1,11 @@
 ---
 name: bill-kotlin-quality-check
-description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Android/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them.
+description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Gradle/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them.
 ---
 
 # Kotlin Quality Check
+
+This is the current Gradle/Kotlin implementation behind the shared `bill-quality-check` router. Invoke it directly only when you already know the repo should use the Gradle/Kotlin quality-check path.
 
 Execute `./gradlew check` and systematically fix issues **only in files changed in the current unit of work**. Ignore pre-existing issues in untouched files.
 
@@ -78,7 +80,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 - Avoid comments unless absolutely necessary — prefer self-describing code
 - Use `.orEmpty()` instead of `?: ""`
 - Never use fully qualified names in code
-- Use string resources instead of hardcoded strings
+- Follow the project's localization and user-facing string conventions instead of introducing hardcoded UI text
 - Repositories should not throw exceptions — return concrete types
 - Never use `kotlin.Result`
 - Never use `Any` type
