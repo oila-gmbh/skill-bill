@@ -11,7 +11,11 @@ Your first job is to classify the project safely so Android/KMP reviews stay as 
 
 ## Project Overrides
 
-If an `AGENTS.md` file exists in the project root, read it and apply its rules alongside the defaults. Project rules take precedence when they conflict. Pass this instruction to all spawned sub-agents.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-code-review` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
 
 ## Setup
 
@@ -213,7 +217,7 @@ If invoked standalone, ask: **"Which item would you like me to fix?"**
 
 If invoked from `bill-kotlin-feature-implement` or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 
-After all P0 and P1 items are resolved, run `bill-gradle-gcheck` as final verification when the project uses Gradle and this review is being run standalone.
+After all P0 and P1 items are resolved, run `bill-kotlin-quality-check` as final verification when the project uses Gradle and this review is being run standalone.
 
 ---
 

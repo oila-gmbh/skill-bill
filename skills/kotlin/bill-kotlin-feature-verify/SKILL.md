@@ -5,7 +5,13 @@ description: Verify a PR against a task spec — extract acceptance criteria, ch
 
 # Feature Verify
 
-Structured PR verification against a task specification. Takes a spec + PR diff and produces a verdict with acceptance criteria coverage, feature flag compliance, and code review findings.
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-feature-verify` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. When you reuse another skill as part of this workflow, also apply that skill's matching override section when present.
 
 ## Workflow Overview
 
@@ -113,7 +119,7 @@ Run the `bill-kotlin-code-review` skill against the PR diff. This will:
 4. Merge and deduplicate findings
 5. Produce the risk register and action items
 
-Follow the full `bill-kotlin-code-review` skill instructions — do not abbreviate or skip agents.
+Follow the full `bill-kotlin-code-review` skill instructions, including any matching `.agents/skill-overrides.md` section — do not abbreviate or skip agents.
 
 ## Step 6: Completeness Audit
 

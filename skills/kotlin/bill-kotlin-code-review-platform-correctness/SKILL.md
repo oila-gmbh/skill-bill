@@ -23,7 +23,11 @@ Apply shared Kotlin correctness rules to all code. Apply Android/KMP-only rules 
 
 ## Project Overrides
 
-If an `AGENTS.md` file exists in the project root, read it and apply its rules alongside the defaults below. Project rules take precedence when they conflict.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-code-review-platform-correctness` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
 ## Project-Specific Rules
 

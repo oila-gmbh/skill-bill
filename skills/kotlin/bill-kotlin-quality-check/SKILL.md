@@ -1,9 +1,9 @@
 ---
-name: bill-gradle-gcheck
+name: bill-kotlin-quality-check
 description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Android/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them.
 ---
 
-# Gradle Check and Fix
+# Kotlin Quality Check
 
 Execute `./gradlew check` and systematically fix issues **only in files changed in the current unit of work**. Ignore pre-existing issues in untouched files.
 
@@ -66,7 +66,11 @@ These issues require file operations and should be fixed before other issues:
 
 ## Project Overrides
 
-If an `AGENTS.md` file exists in the project root, read it and apply its rules alongside the defaults below. Project rules take precedence when they conflict.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-quality-check` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
 ## Code Style Guidelines
 

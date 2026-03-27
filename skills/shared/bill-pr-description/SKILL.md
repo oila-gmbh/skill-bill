@@ -5,13 +5,21 @@ description: Use when generating a PR title, description, and QA steps from the 
 
 # PR Description Generator
 
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-pr-description` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
+
 Generate a PR title, description, and QA/test steps ready to paste. Present the result to the user for review.
 
 ## How It Works
 
 1. **Determine the comparison base** — use the branch this feature branch was created from when known, otherwise compute the best available merge-base from git context. Never assume `main`.
 2. **Gather context** — read the git diff from that merge-base to `HEAD`, along with the commit log and branch name
-3. **Read project guidelines** — check `CLAUDE.md` / `AGENTS.md` at the project root for any PR conventions
+3. **Read project guidelines** — check `CLAUDE.md`, `AGENTS.md`, and the matching `bill-pr-description` section in `.agents/skill-overrides.md` when present
 4. **Generate** the title and description using the template below
 5. **Present** the result to the user for review and adjustment
 

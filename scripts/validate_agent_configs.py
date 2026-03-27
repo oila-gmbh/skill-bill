@@ -14,6 +14,11 @@ README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
 SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
 FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 SKILL_NAME_PATTERN = re.compile(r"^bill-[a-z0-9-]+$")
+PROJECT_OVERRIDES_HEADING = "## Project Overrides"
+SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
+SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
+SKILL_OVERRIDE_TITLE = "# Skill Overrides"
+SKILL_OVERRIDE_SECTION_PATTERN = re.compile(r"^## (bill-[a-z0-9-]+)$")
 
 
 def main() -> int:
@@ -28,6 +33,18 @@ def main() -> int:
 
   validate_readme(root / "README.md", skill_names, issues)
   validate_skill_references(root, skill_names, issues)
+  validate_skill_override_markdown(
+    root / SKILL_OVERRIDE_EXAMPLE_FILE,
+    skill_names,
+    issues,
+    required=True,
+  )
+  validate_skill_override_markdown(
+    root / SKILL_OVERRIDE_FILE,
+    skill_names,
+    issues,
+    required=False,
+  )
   validate_plugin_manifest(root / ".claude-plugin" / "plugin.json", issues)
 
   if issues:
@@ -95,6 +112,12 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
   if not description:
     issues.append(f"{skill_file}: frontmatter description is missing")
 
+  if PROJECT_OVERRIDES_HEADING not in text:
+    issues.append(f"{skill_file}: missing '{PROJECT_OVERRIDES_HEADING}' section")
+
+  if SKILL_OVERRIDE_FILE not in text:
+    issues.append(f"{skill_file}: missing reference to '{SKILL_OVERRIDE_FILE}'")
+
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:
   skills_dir = skill_file.parents[2]
@@ -140,7 +163,7 @@ def expected_prefixes_for_package(package_name: str) -> tuple[str, ...]:
   if package_name == "shared":
     return ()
   if package_name == "kotlin":
-    return ("bill-kotlin-", "bill-gradle-")
+    return ("bill-kotlin-",)
   if package_name == "kmp":
     return ("bill-kmp-",)
   if package_name == "php":
@@ -220,6 +243,98 @@ def validate_skill_references(root: Path, skill_names: list[str], issues: list[s
       if reference not in known_skills:
         relative_path = file_path.relative_to(root)
         issues.append(f"{relative_path}: references unknown skill '{reference}'")
+
+
+def validate_skill_override_markdown(
+  file_path: Path,
+  skill_names: list[str],
+  issues: list[str],
+  *,
+  required: bool,
+) -> None:
+  if not file_path.exists():
+    if required:
+      issues.append(f"{file_path.relative_to(file_path.parent.parent)} is missing")
+    return
+
+  relative_path = file_path.relative_to(file_path.parent.parent)
+  lines = file_path.read_text(encoding="utf-8").splitlines()
+  known_skills = set(skill_names)
+  seen_sections: set[str] = set()
+  current_section: str | None = None
+  current_section_has_bullet = False
+  saw_title = False
+  saw_any_section = False
+
+  for index, line in enumerate(lines, start=1):
+    stripped = line.strip()
+    if not stripped:
+      continue
+
+    if stripped == SKILL_OVERRIDE_TITLE:
+      if saw_title or current_section is not None or index != 1:
+        issues.append(
+          f"{relative_path}:{index}: '{SKILL_OVERRIDE_TITLE}' must appear exactly once as the first line"
+        )
+      saw_title = True
+      continue
+
+    section_match = SKILL_OVERRIDE_SECTION_PATTERN.match(stripped)
+    if section_match:
+      if not saw_title:
+        issues.append(f"{relative_path}:{index}: missing '{SKILL_OVERRIDE_TITLE}' before sections")
+      if current_section is not None and not current_section_has_bullet:
+        issues.append(
+          f"{relative_path}:{index - 1}: section '{current_section}' must contain at least one bullet item"
+        )
+
+      section_name = section_match.group(1)
+      if section_name not in known_skills:
+        issues.append(
+          f"{relative_path}:{index}: section '{section_name}' is not an existing skill name"
+        )
+      if section_name in seen_sections:
+        issues.append(f"{relative_path}:{index}: duplicate section '{section_name}'")
+
+      seen_sections.add(section_name)
+      current_section = section_name
+      current_section_has_bullet = False
+      saw_any_section = True
+      continue
+
+    if stripped.startswith("#"):
+      issues.append(
+        f"{relative_path}:{index}: only '{SKILL_OVERRIDE_TITLE}' and '## bill-...' headings are allowed"
+      )
+      continue
+
+    if current_section is None:
+      issues.append(
+        f"{relative_path}:{index}: freeform text is not allowed outside a '## bill-...' section"
+      )
+      continue
+
+    if line.startswith("- "):
+      current_section_has_bullet = True
+      continue
+
+    if line.startswith("  ") and current_section_has_bullet:
+      continue
+
+    issues.append(
+      f"{relative_path}:{index}: section '{current_section}' must use bullet items; freeform text is not allowed"
+    )
+
+  if not saw_title:
+    issues.append(f"{relative_path}: missing '{SKILL_OVERRIDE_TITLE}' title")
+
+  if current_section is not None and not current_section_has_bullet:
+    issues.append(
+      f"{relative_path}: section '{current_section}' must contain at least one bullet item"
+    )
+
+  if not saw_any_section:
+    issues.append(f"{relative_path}: must contain at least one '## bill-...' section")
 
 
 def validate_plugin_manifest(plugin_path: Path, issues: list[str]) -> None:

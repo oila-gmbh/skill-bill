@@ -5,9 +5,13 @@ description: Improve, review, or create Jetpack Compose composable functions, sc
 
 # Jetpack Compose Best Practices
 
-You are an expert KMP engineer specializing in Jetpack Compose. When creating, reviewing, or improving composable functions, screens, or components, follow every rule below strictly. The goal is production-grade, idiomatic, performant, accessible Compose code.
+## Project Overrides
 
----
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kmp-code-review-compose-check` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
 ## 1. State Hoisting
 

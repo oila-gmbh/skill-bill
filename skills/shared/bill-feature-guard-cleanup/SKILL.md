@@ -5,7 +5,13 @@ description: Remove feature flags and legacy code after a feature is fully rolle
 
 # Feature Guard Cleanup
 
-Remove feature flags and their associated legacy code after full rollout.
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-feature-guard-cleanup` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+
+If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
+
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
 ## When To Use
 
@@ -41,7 +47,7 @@ Before deleting anything:
 
 ### Step 4: Verify
 
-Run `bill-gradle-gcheck` to ensure nothing is broken.
+Run `bill-kotlin-quality-check` to ensure nothing is broken.
 
 ## Patterns
 
@@ -95,7 +101,7 @@ navigateTo(CheckoutScreen)
 - [ ] All Legacy files deleted
 - [ ] All Legacy tests deleted
 - [ ] Flag definition removed from registry
-- [ ] `bill-gradle-gcheck` passes
+- [ ] `bill-kotlin-quality-check` passes
 - [ ] No orphaned imports or dependencies
 
 ## When to Ask User

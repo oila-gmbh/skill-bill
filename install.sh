@@ -18,11 +18,11 @@ err()   { printf "${RED}✗${NC} %s\n" "$1"; }
 
 usage() {
   cat <<USAGE
-Usage: ./install.sh [--mode safe|overwrite|interactive]
+Usage: ./install.sh [--mode safe|override|interactive]
 
 Modes:
   safe         Replace existing symlinks, migrate legacy plugin installs, and skip non-symlink conflicts. (default)
-  overwrite    Replace any existing target path, including local copies.
+  override     Replace any existing target path, including local copies, and prune stale bill-* installs.
   interactive  Prompt before replacing non-symlink conflicts.
 USAGE
 }
@@ -48,7 +48,7 @@ parse_args() {
   done
 
   case "$MODE" in
-    safe|overwrite|interactive) ;;
+    safe|override|interactive) ;;
     *)
       err "Invalid mode: $MODE"
       usage
@@ -102,7 +102,7 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-kotlin-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
   'bill-feature-implement:bill-kotlin-feature-implement'
   'bill-feature-verify:bill-kotlin-feature-verify'
-  'bill-gcheck:bill-gradle-gcheck'
+  'bill-gcheck:bill-kotlin-quality-check'
 )
 
 declare -a SKILL_NAMES=()
@@ -140,7 +140,7 @@ should_replace_target() {
   fi
 
   case "$MODE" in
-    overwrite)
+    override)
       return 0
       ;;
     interactive)
@@ -148,7 +148,7 @@ should_replace_target() {
       return $?
       ;;
     safe)
-      warn "Skipping '$target' (${reason}) because it is not a symlink. Re-run with --mode overwrite or --mode interactive to replace it."
+      warn "Skipping '$target' (${reason}) because it is not a symlink. Re-run with --mode override or --mode interactive to replace it."
       return 1
       ;;
   esac
@@ -289,6 +289,27 @@ remove_legacy_skill_paths() {
   done
 }
 
+prune_project_skill_paths() {
+  local target_dir="$1"
+  local installed_path skill_name
+
+  [[ -d "$target_dir" ]] || return 0
+
+  while IFS= read -r -d '' installed_path; do
+    skill_name="$(basename "$installed_path")"
+
+    if find_skill_index "$skill_name" >/dev/null 2>&1; then
+      continue
+    fi
+
+    if remove_if_allowed "$installed_path" "stale bill-* skill not present in plugin"; then
+      if [[ ! -e "$installed_path" && ! -L "$installed_path" ]]; then
+        ok "  pruned stale $skill_name"
+      fi
+    fi
+  done < <(find "$target_dir" -mindepth 1 -maxdepth 1 -name 'bill-*' -print0)
+}
+
 install_skill_link() {
   local target="$1"
   local source="$2"
@@ -316,6 +337,8 @@ info "Supported agents: copilot, claude, glm, codex"
 info "Install mode: $MODE"
 if [[ "$MODE" == safe ]]; then
   info "Safe mode replaces symlinks, migrates legacy plugin installs, and skips local directory/file conflicts."
+elif [[ "$MODE" == override ]]; then
+  info "Override mode replaces any existing target path and prunes stale bill-* installs."
 fi
 echo ""
 printf "${CYAN}▸${NC} Enter agents (comma-separated, primary first): "
@@ -352,6 +375,9 @@ echo ""
 
 mkdir -p "$PRIMARY_DIR"
 info "Installing to primary ($PRIMARY): $PRIMARY_DIR"
+if [[ "$MODE" == override ]]; then
+  prune_project_skill_paths "$PRIMARY_DIR"
+fi
 remove_legacy_skill_paths "$PRIMARY_DIR"
 for idx in "${!SKILL_NAMES[@]}"; do
   skill="${SKILL_NAMES[$idx]}"
@@ -371,6 +397,9 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   mkdir -p "$agent_dir"
   info "Symlinking $agent: $agent_dir → $PRIMARY_DIR"
+  if [[ "$MODE" == override ]]; then
+    prune_project_skill_paths "$agent_dir"
+  fi
   remove_legacy_skill_paths "$agent_dir"
 
   for skill in "${SKILL_NAMES[@]}"; do
