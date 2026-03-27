@@ -87,22 +87,26 @@ is_agent_available() {
 }
 
 declare -a RENAMED_SKILL_PAIRS=(
-  'bill-code-review:bill-kotlin-code-review'
+  'bill-module-history:bill-boundary-history'
   'bill-code-review-architecture:bill-kotlin-code-review-architecture'
-  'bill-code-review-backend-api-contracts:bill-kotlin-code-review-backend-api-contracts'
-  'bill-code-review-backend-persistence:bill-kotlin-code-review-backend-persistence'
-  'bill-code-review-backend-reliability:bill-kotlin-code-review-backend-reliability'
-  'bill-code-review-compose-check:bill-kmp-code-review-compose-check'
-  'bill-kotlin-code-review-compose-check:bill-kmp-code-review-compose-check'
+  'bill-code-review-backend-api-contracts:bill-backend-kotlin-code-review-api-contracts'
+  'bill-kotlin-code-review-backend-api-contracts:bill-backend-kotlin-code-review-api-contracts'
+  'bill-code-review-backend-persistence:bill-backend-kotlin-code-review-persistence'
+  'bill-kotlin-code-review-backend-persistence:bill-backend-kotlin-code-review-persistence'
+  'bill-code-review-backend-reliability:bill-backend-kotlin-code-review-reliability'
+  'bill-kotlin-code-review-backend-reliability:bill-backend-kotlin-code-review-reliability'
+  'bill-code-review-compose-check:bill-kmp-code-review-ui'
+  'bill-kotlin-code-review-compose-check:bill-kmp-code-review-ui'
+  'bill-kmp-code-review-compose-check:bill-kmp-code-review-ui'
   'bill-code-review-performance:bill-kotlin-code-review-performance'
   'bill-code-review-platform-correctness:bill-kotlin-code-review-platform-correctness'
   'bill-code-review-security:bill-kotlin-code-review-security'
   'bill-code-review-testing:bill-kotlin-code-review-testing'
   'bill-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
   'bill-kotlin-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
-  'bill-feature-implement:bill-kotlin-feature-implement'
-  'bill-feature-verify:bill-kotlin-feature-verify'
-  'bill-gcheck:bill-kotlin-quality-check'
+  'bill-kotlin-feature-implement:bill-feature-implement'
+  'bill-kotlin-feature-verify:bill-feature-verify'
+  'bill-gcheck:bill-quality-check'
 )
 
 declare -a SKILL_NAMES=()

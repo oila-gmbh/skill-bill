@@ -1,5 +1,5 @@
 ---
-name: bill-kotlin-code-review-backend-reliability
+name: bill-backend-kotlin-code-review-reliability
 description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
 ---
 
@@ -24,7 +24,7 @@ Use this specialist for backend/server code only.
 
 ## Project Overrides
 
-If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-code-review-backend-reliability` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-backend-kotlin-code-review-reliability` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 

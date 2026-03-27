@@ -1,13 +1,13 @@
 ---
-name: bill-kotlin-feature-verify
-description: Verify a PR against a task spec — extract acceptance criteria, check feature flag compliance, run full code review, and audit completeness. Use when reviewing teammates' PRs to ensure they match the design doc/spec. The reverse of bill-kotlin-feature-implement.
+name: bill-feature-verify
+description: Verify a PR against a task spec — extract acceptance criteria, check feature flag compliance, run full code review, and audit completeness. Use when reviewing teammates' PRs to ensure they match the design doc/spec. The reverse of bill-feature-implement.
 ---
 
 # Feature Verify
 
 ## Project Overrides
 
-If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-kotlin-feature-verify` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-feature-verify` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
@@ -111,15 +111,14 @@ Issues: <list, or "None">
 
 ## Step 5: Code Review
 
-Run the `bill-kotlin-code-review` skill against the PR diff. This will:
+Run the `bill-code-review` skill against the PR diff. This will:
 
-1. Always spawn `bill-kotlin-code-review-architecture`
-2. Analyze the diff and select additional specialist agents based on triggers
-3. Launch all agents in parallel
-4. Merge and deduplicate findings
-5. Produce the risk register and action items
+1. Detect the dominant stack in the review scope
+2. Route to the matching stack-specific code-review skill
+3. Let that skill perform stack-specific specialist selection and review
+4. Return the routed review findings and action items
 
-Follow the full `bill-kotlin-code-review` skill instructions, including any matching `.agents/skill-overrides.md` section — do not abbreviate or skip agents.
+Follow the full `bill-code-review` skill instructions, including any matching `.agents/skill-overrides.md` section — do not abbreviate or skip the delegated reviewer.
 
 ## Step 6: Completeness Audit
 
@@ -184,5 +183,5 @@ If the user wants a PR comment:
 ## Skills Reused
 
 This skill orchestrates:
-- `bill-kotlin-code-review` — full dynamic-agent code review (and its sub-agents: `bill-kotlin-code-review-architecture`, `bill-kmp-code-review-compose-check`, `bill-kmp-code-review-ux-accessibility`, `bill-kotlin-code-review-platform-correctness`, `bill-kotlin-code-review-security`, `bill-kotlin-code-review-performance`, `bill-kotlin-code-review-testing`, `bill-kotlin-code-review-backend-api-contracts`, `bill-kotlin-code-review-backend-persistence`, `bill-kotlin-code-review-backend-reliability`)
+- `bill-code-review` — shared router that delegates to the matching stack-specific code-review skill and its downstream specialists
 - `bill-feature-guard` — feature flag compliance checklist (read inline, not spawned)
