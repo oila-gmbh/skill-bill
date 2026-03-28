@@ -134,7 +134,7 @@ python3 scripts/validate_agent_configs.py
 
 ## Practical example
 
-If someone adds PHP support, the expected shape is:
+The PHP package follows this shape:
 
 - base-facing override names such as `bill-php-code-review` or `bill-php-quality-check`
 - optional approved code-review subskills such as `bill-php-code-review-security`
