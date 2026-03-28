@@ -117,6 +117,15 @@ chmod +x install.sh
 ./install.sh
 ```
 
+If you want a stable install target instead of tracking `main`, clone a release tag and install from that checkout:
+
+```bash
+TAG=v0.x.y
+git clone --branch "$TAG" --depth 1 <this-repo> ~/Development/skill-bill
+cd ~/Development/skill-bill
+./install.sh
+```
+
 The installer first asks which agent targets to install to. You can choose one or more entries, including `all`:
 
 ```text
@@ -271,6 +280,16 @@ python3 scripts/validate_agent_configs.py
 ```
 
 CI runs the same checks.
+
+## Versioning and releases
+
+Skill Bill uses tag-driven GitHub Releases.
+
+- stable releases use SemVer tags such as `v0.4.0`
+- prereleases use SemVer prerelease tags such as `v0.5.0-rc.1`
+- pushing a release tag reruns validation and publishes a GitHub Release with generated notes
+
+See `RELEASING.md` for the maintainer checklist and versioning policy.
 
 The validator enforces:
 
