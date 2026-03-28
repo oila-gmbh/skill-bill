@@ -56,6 +56,9 @@ class InstallScriptTest(unittest.TestCase):
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS)
+      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-php-code-review" / "review-orchestrator.md").exists())
 
   def test_installs_base_and_selected_go_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -151,7 +154,7 @@ class InstallScriptTest(unittest.TestCase):
     install_dir = Path(temp_home) / ".copilot" / "skills"
     if not install_dir.exists():
       return set()
-    return {path.name for path in install_dir.iterdir()}
+    return {path.name for path in install_dir.iterdir() if path.name.startswith("bill-")}
 
   def prepare_agent_homes(self, temp_home: str) -> None:
     for relative_dir in (
