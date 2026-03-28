@@ -33,6 +33,7 @@ Classify work as one of:
 - `backend-kotlin`
 - `kotlin`
 - `php`
+- `go`
 - `Unknown/Unsupported`
 
 ## Stack Signals
@@ -63,6 +64,13 @@ Classify work as one of:
 - `.php`, `artisan`, `routes/web.php`, `routes/api.php`, `bootstrap/app.php`
 - Laravel, Symfony, Slim, Doctrine, Eloquent, PHPUnit, Pest, Blade, Twig
 
+### go Signals
+
+- `go.mod`, `go.sum`, `go.work`, `go.work.sum`
+- `.go`, `cmd/`, `internal/`, `pkg/`, `vendor/`
+- `net/http`, `google.golang.org/grpc`, chi, gin, echo, fiber, cobra
+- `database/sql`, sqlx, `gorm.io`, `entgo.io`, migration tooling, worker or service packages using `context.Context`
+
 ## Decision Rules
 
 - If Android/KMP markers are strong, classify as `kmp`.
@@ -70,6 +78,7 @@ Classify work as one of:
 - If backend/server markers are strong without meaningful `kmp` markers, classify as `backend-kotlin`.
 - If generic Kotlin markers are present without meaningful `kmp` or `backend-kotlin` markers, classify as `kotlin`.
 - If PHP markers are strong, classify as `php`.
+- If Go markers are strong, classify as `go`.
 - If multiple supported stacks are present in one unit of work, classify as `Mixed` for routing purposes and delegate to each matching package-aligned stack-specific skill when the caller supports multi-route execution.
 - If no supported stack has clear evidence, classify as `Unknown/Unsupported` and say so explicitly.
 
