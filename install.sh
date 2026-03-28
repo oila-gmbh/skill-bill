@@ -678,6 +678,7 @@ add_legacy_name() {
 
 build_legacy_skill_names() {
   LEGACY_SKILL_NAMES=()
+  add_legacy_name ".bill-shared"
 
   local skill pair old_name
   for skill in "${SKILL_NAMES[@]}"; do

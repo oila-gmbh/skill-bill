@@ -11,7 +11,7 @@ import sys
 README_TOTAL_PATTERN = re.compile(r"collection of (\d+) AI skills")
 README_SECTION_PATTERN = re.compile(r"^### (.+) \((\d+) skills\)$")
 README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
-SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
+SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
 FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 SKILL_NAME_PATTERN = re.compile(r"^bill-[a-z0-9-]+$")
 PROJECT_OVERRIDES_HEADING = "## Project Overrides"
@@ -34,16 +34,56 @@ APPROVED_CODE_REVIEW_AREAS = {
 }
 ORCHESTRATION_PLAYBOOKS: dict[str, str] = {
   "stack-routing": "orchestration/stack-routing/PLAYBOOK.md",
+  "review-orchestrator": "orchestration/review-orchestrator/PLAYBOOK.md",
 }
-REQUIRED_PLAYBOOK_REFERENCES: dict[str, tuple[str, ...]] = {
-  "bill-code-review": ("stack-routing",),
-  "bill-quality-check": ("stack-routing",),
-  "bill-kotlin-code-review": ("stack-routing",),
-  "bill-backend-kotlin-code-review": ("stack-routing",),
-  "bill-kmp-code-review": ("stack-routing",),
-  "bill-php-code-review": ("stack-routing",),
-  "bill-go-code-review": ("stack-routing",),
+RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
+  "bill-code-review": ("stack-routing.md",),
+  "bill-quality-check": ("stack-routing.md",),
+  "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
+  "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
+  "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md"),
+  "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md"),
+  "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md"),
 }
+EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+  (
+    re.compile(r"\.bill-shared/orchestration/"),
+    "must reference skill-local supporting files instead of install-local playbook paths",
+  ),
+  (
+    re.compile(r"orchestration/(?:stack-routing|review-orchestrator)/PLAYBOOK\.md"),
+    "must reference skill-local supporting files instead of repo-side playbook paths at runtime",
+  ),
+)
+PORTABLE_REVIEW_SKILLS = {
+  "bill-kotlin-code-review",
+  "bill-backend-kotlin-code-review",
+  "bill-kmp-code-review",
+  "bill-php-code-review",
+  "bill-go-code-review",
+}
+NON_PORTABLE_REVIEW_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+  (
+    re.compile(r"`task`"),
+    "must not hardcode the `task` tool in shared review orchestration",
+  ),
+  (
+    re.compile(r"\bspawn_agent\b"),
+    "must not hardcode the `spawn_agent` tool in shared review orchestration",
+  ),
+  (
+    re.compile(r"\bsub-agent(s)?\b"),
+    "must not describe review delegation as sub-agents; use specialist review passes instead",
+  ),
+  (
+    re.compile(r"\bAgent to spawn\b"),
+    "must use portable routing-table wording such as 'Specialist review to run'",
+  ),
+  (
+    re.compile(r"\bAgents spawned\b"),
+    "must use portable summary wording such as 'Specialist reviews'",
+  ),
+)
 
 
 def main() -> int:
@@ -144,26 +184,52 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
   if SKILL_OVERRIDE_FILE not in text:
     issues.append(f"{skill_file}: missing reference to '{SKILL_OVERRIDE_FILE}'")
 
-  validate_required_playbook_references(skill_name, text, skill_file, issues)
+  validate_runtime_supporting_files(skill_name, text, skill_file, issues)
+  validate_portable_review_wording(skill_name, text, skill_file, issues)
 
 
-def validate_required_playbook_references(
+def validate_runtime_supporting_files(
   skill_name: str,
   text: str,
   skill_file: Path,
   issues: list[str],
 ) -> None:
-  required_references = REQUIRED_PLAYBOOK_REFERENCES.get(skill_name, ())
-  for required_reference in required_references:
-    playbook_path = ORCHESTRATION_PLAYBOOKS[required_reference]
-    if required_reference not in text and playbook_path not in text:
-      issues.append(
-        f"{skill_file}: must reference '{playbook_path}' as the shared routing playbook"
-      )
+  required_files = RUNTIME_SUPPORTING_FILES.get(skill_name)
+  if not required_files:
+    return
+
+  for pattern, message in EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS:
+    match = pattern.search(text)
+    if match:
+      issues.append(f"{skill_file}: {message}; found '{match.group(0)}'")
+
+  for file_name in required_files:
+    supporting_file = skill_file.parent / file_name
+    if file_name not in text:
+      issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
+    if not supporting_file.exists():
+      issues.append(f"{skill_file}: supporting file '{file_name}' is missing")
+    elif not supporting_file.is_symlink():
+      issues.append(f"{skill_file}: supporting file '{file_name}' must be a symlink to the shared snapshot")
+
+
+def validate_portable_review_wording(
+  skill_name: str,
+  text: str,
+  skill_file: Path,
+  issues: list[str],
+) -> None:
+  if skill_name not in PORTABLE_REVIEW_SKILLS:
+    return
+
+  for pattern, message in NON_PORTABLE_REVIEW_PATTERNS:
+    match = pattern.search(text)
+    if match:
+      issues.append(f"{skill_file}: {message}; found '{match.group(0)}'")
 
 
 def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
-  for playbook_name, relative_path in ORCHESTRATION_PLAYBOOKS.items():
+  for relative_path in ORCHESTRATION_PLAYBOOKS.values():
     playbook_path = root / relative_path
     if not playbook_path.is_file():
       issues.append(f"{relative_path} is missing")

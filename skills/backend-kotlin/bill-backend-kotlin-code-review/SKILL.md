@@ -15,7 +15,7 @@ If `.agents/skill-overrides.md` exists in the project root and contains a `## bi
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
-Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to every delegated or inline specialist review pass.
 
 ## Setup
 
@@ -31,9 +31,14 @@ Determine the review scope:
 
 Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source layout, module names, imports).
 
-Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for broad stack signals. This skill owns only the backend/server override that happens after Kotlin is already in scope.
+## Additional Resources
 
-Before spawning specialists or formatting the final report, read `orchestration/review-orchestrator/PLAYBOOK.md`. Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+
+Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for broad stack signals. This skill owns only the backend/server override that happens after Kotlin is already in scope.
+
+Before selecting backend specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
 
 Classify the review as one of:
 - `backend-kotlin`
@@ -71,21 +76,23 @@ When invoking it from this skill:
 - tell it to keep backend-only review concerns out of scope
 - pass the same diff source, changed files, and relevant override guidance
 
-### Step 2: Analyze the diff and select backend-specific agents
+### Step 2: Analyze the diff and select backend-specific specialist reviews
 
-| Signal in the diff | Agent to spawn |
-|---------------------|----------------|
+| Signal in the diff | Specialist review to run |
+|---------------------|--------------------------|
 | Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `bill-backend-kotlin-code-review-api-contracts` |
 | Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-backend-kotlin-code-review-persistence` |
 | Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-backend-kotlin-code-review-reliability` |
 
-### Step 3: Launch backend specialists in parallel
+### Step 3: Run backend specialist reviews
 
-Spawn all selected backend specialists simultaneously using the `task` tool. Each agent gets:
+Run all selected backend specialist review passes in parallel when the runtime supports delegation and current policy allows it. Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable, perform the same backend specialist review passes inline and say so in the summary.
+
+Each backend specialist review pass uses:
 - the detected project type
 - the list of changed files
 - instructions to read its own skill file for the review rubric
-- the shared specialist contract in `orchestration/review-orchestrator/PLAYBOOK.md`
+- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 If no backend-only triggers match but backend/server signals are clearly present, keep the baseline Kotlin review output and state that no extra backend-specific specialist was needed for this scope.
 
@@ -98,12 +105,11 @@ If no backend-only triggers match but backend/server signals are clearly present
 Detected stack: backend-kotlin | mixed-backend-kotlin
 Signals: application.yml, @RestController, Exposed
 Baseline review: bill-kotlin-code-review
-Backend agents spawned: bill-backend-kotlin-code-review-api-contracts
+Backend specialist reviews: bill-backend-kotlin-code-review-api-contracts
 Reason: backend/server signals were high-confidence, so the backend layer was added on top of the baseline Kotlin review
 ```
 
-For the shared risk register, action items, verdict format, merge rules, and review principles, follow
-`orchestration/review-orchestrator/PLAYBOOK.md`.
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes
 

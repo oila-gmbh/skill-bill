@@ -15,7 +15,7 @@ If `.agents/skill-overrides.md` exists in the project root and contains a `## bi
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
-Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to every delegated or inline specialist review pass.
 
 ## Setup
 
@@ -31,9 +31,14 @@ Determine the review scope:
 
 Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, source set layout, module names, imports).
 
-Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for routing Android/KMP work into the `kmp` package bucket.
+## Additional Resources
 
-Before spawning specialists or formatting the final report, read `orchestration/review-orchestrator/PLAYBOOK.md`. Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+
+Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for routing Android/KMP work into the `kmp` package bucket.
+
+Before selecting KMP specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
 
 Classify the review as one of:
 - `kmp`
@@ -85,18 +90,20 @@ When invoking the baseline review:
 
 Keep the mobile triggers focused on what the baseline review does not cover:
 
-| Signal in the diff | Agent to spawn |
-|---------------------|----------------|
+| Signal in the diff | Specialist review to run |
+|---------------------|--------------------------|
 | `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect` | `bill-kmp-code-review-ui` |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
 
-### Step 3: Launch KMP specialists in parallel
+### Step 3: Run KMP specialist reviews
 
-Spawn all selected KMP specialists simultaneously using the `task` tool. Each agent gets:
+Run all selected KMP specialist review passes in parallel when the runtime supports delegation and current policy allows it. Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable, perform the same KMP specialist review passes inline and say so in the summary.
+
+Each KMP specialist review pass uses:
 - the detected project type
 - the list of changed files
 - instructions to read its own skill file for the review rubric
-- the shared specialist contract in `orchestration/review-orchestrator/PLAYBOOK.md`
+- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
 
@@ -109,12 +116,11 @@ If no KMP-only triggers match but Android/KMP signals are clearly present, keep 
 Detected stack: kmp | mixed-kmp
 Signals: @Composable, AndroidManifest.xml, ViewModel
 Baseline review: bill-kotlin-code-review | bill-backend-kotlin-code-review
-KMP agents spawned: bill-kmp-code-review-ui
+KMP specialist reviews: bill-kmp-code-review-ui
 Reason: Android/KMP signals were high-confidence, so the mobile layer was added on top of the baseline Kotlin-family review
 ```
 
-For the shared risk register, action items, verdict format, merge rules, and review principles, follow
-`orchestration/review-orchestrator/PLAYBOOK.md`.
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes
 

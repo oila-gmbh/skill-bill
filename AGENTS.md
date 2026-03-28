@@ -19,9 +19,7 @@ The repository uses a strict three-layer model:
 
 - `skills/base/` — canonical, user-facing capabilities
 - `skills/<platform>/` — platform-specific overrides and approved platform-owned subskills
-- `orchestration/` — shared internal routing and decision logic; not user-facing slash commands
-
-Keep shared contracts in `skills/base/`, stack-specific behavior in `skills/<platform>/`, and reusable routing logic in `orchestration/`.
+- `orchestration/` — maintainer-facing reference snapshots for shared routing and review contracts; not a runtime dependency for installed skills
 
 ## Naming rules
 
@@ -58,7 +56,9 @@ Use only these two platform naming patterns unless the taxonomy itself is intent
 
 - Add platform capabilities only as base-capability overrides or approved `code-review-<area>` specializations.
 - Add a new package only when behavior is materially different from existing packages.
-- Put shared routing logic in `orchestration/`, not in installable skills.
+- Runtime-facing skills may reference sibling supporting files inside the same skill directory.
+- Use sibling supporting files for runtime-shared contracts instead of repo-relative or install-root-relative playbook paths.
+- Keep `orchestration/` snapshots aligned with the sibling supporting-file contracts when shared routing or review behavior changes.
 - Preserve stable base entry points even when a platform needs more depth behind the router.
 - Keep README skill counts and catalog entries accurate whenever skills change.
 - Update `install.sh` migration rules in the same change when renaming stack-bound skills.
@@ -87,10 +87,9 @@ When adding a new platform or language package:
    - `ALLOWED_PACKAGES`
    - any package-specific validation logic
    - any tests or assumptions tied to current package names
-4. Update `orchestration/stack-routing/PLAYBOOK.md`:
-   - add the platform to taxonomy
-   - add stack signals
-   - add routing decision rules
+4. Update maintainer reference snapshots when shared routing or review behavior changes:
+   - `orchestration/stack-routing/PLAYBOOK.md`
+   - `orchestration/review-orchestrator/PLAYBOOK.md`
 5. Update base routers if needed:
    - `skills/base/bill-code-review/SKILL.md`
    - `skills/base/bill-quality-check/SKILL.md`

@@ -95,6 +95,38 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn("package 'laravel' is not allowed", result.stdout)
 
+  def test_rejects_runtime_playbook_references(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+      ],
+      skill_contents={
+        "bill-code-review": self.skill_with_runtime_playbook_reference("bill-code-review"),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("must reference skill-local supporting files", result.stdout)
+
+  def test_rejects_non_portable_review_orchestration_wording(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("php", "bill-php-code-review"),
+      ],
+      skill_contents={
+        "bill-php-code-review": self.portable_review_fixture_with_forbidden_wording(
+          "bill-php-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("must not hardcode the `task` tool", result.stdout)
+      self.assertIn("must not describe review delegation as sub-agents", result.stdout)
+      self.assertIn("must use portable routing-table wording", result.stdout)
+      self.assertIn("must use portable summary wording", result.stdout)
+
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
       ["python3", str(VALIDATOR_PATH), str(repo_root)],
@@ -104,16 +136,28 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     )
 
   @contextmanager
-  def fixture_repo(self, skills: list[tuple[str, str]]):
+  def fixture_repo(
+    self,
+    skills: list[tuple[str, str]],
+    *,
+    skill_contents: dict[str, str] | None = None,
+  ):
     with tempfile.TemporaryDirectory() as temp_dir:
       repo_root = Path(temp_dir)
       self.write_readme(repo_root, [skill_name for _, skill_name in skills])
       self.write_skill_overrides_example(repo_root, skills[0][1])
       self.write_plugin_manifest(repo_root)
       self.write_stack_routing_playbook(repo_root)
+      self.write_review_orchestrator_playbook(repo_root)
 
       for package_name, skill_name in skills:
-        self.write_skill(repo_root, package_name, skill_name)
+        self.write_skill(
+          repo_root,
+          package_name,
+          skill_name,
+          content=(skill_contents or {}).get(skill_name),
+        )
+        self.write_supporting_files(repo_root, package_name, skill_name)
 
       yield repo_root
 
@@ -171,21 +215,67 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         """\
         ---
         name: stack-routing
-        description: Fixture routing playbook used for validator end-to-end coverage.
+        description: Maintainer-facing reference snapshot for shared stack routing behavior.
         ---
 
-        # Fixture Stack Routing
+        # Shared Stack Routing Snapshot
 
-        This fixture playbook exists so the validator can confirm orchestration files are present.
+        This maintainer-facing reference snapshot exists to document the shared routing contract.
+        It is not a runtime dependency for installed skills.
         """
       ),
       encoding="utf-8",
     )
 
-  def write_skill(self, repo_root: Path, package_name: str, skill_name: str) -> None:
+  def write_review_orchestrator_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        """\
+        ---
+        name: review-orchestrator
+        description: Maintainer-facing reference snapshot for shared review orchestration behavior.
+        ---
+
+        # Shared Review Orchestrator Snapshot
+
+        This maintainer-facing reference snapshot exists to document the shared review contract.
+        It is not a runtime dependency for installed skills.
+        """
+      ),
+      encoding="utf-8",
+    )
+
+  def write_skill(
+    self,
+    repo_root: Path,
+    package_name: str,
+    skill_name: str,
+    *,
+    content: str | None = None,
+  ) -> None:
     path = repo_root / "skills" / package_name / skill_name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(self.skill_markdown(skill_name), encoding="utf-8")
+    path.write_text(content or self.skill_markdown(skill_name), encoding="utf-8")
+
+  def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
+    support_map = {
+      "bill-code-review": ("stack-routing.md",),
+      "bill-quality-check": ("stack-routing.md",),
+      "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
+      "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
+      "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md"),
+      "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md"),
+      "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md"),
+    }
+    targets = {
+      "stack-routing.md": repo_root / "orchestration" / "stack-routing" / "PLAYBOOK.md",
+      "review-orchestrator.md": repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md",
+    }
+    skill_dir = repo_root / "skills" / package_name / skill_name
+    for file_name in support_map.get(skill_name, ()):
+      (skill_dir / file_name).symlink_to(targets[file_name])
 
   def skill_markdown(self, skill_name: str) -> str:
     return textwrap.dedent(
@@ -202,6 +292,48 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
 
       Use this fixture skill for validator end-to-end coverage.
+      """
+    )
+
+  def skill_with_runtime_playbook_reference(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill used for validator portability coverage.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      Read `.bill-shared/orchestration/stack-routing/PLAYBOOK.md` before routing.
+      """
+    )
+
+  def portable_review_fixture_with_forbidden_wording(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill used for validator portability coverage.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      | Signal | Agent to spawn |
+      | --- | --- |
+      | fixture | `bill-php-code-review-security` |
+
+      Spawn all selected sub-agents simultaneously using the `task` tool.
+
+      Agents spawned: bill-php-code-review-security
       """
     )
 

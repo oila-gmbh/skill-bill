@@ -27,13 +27,13 @@ The repo is organized around a strict three-layer model:
 
 - `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
 - `skills/<platform>/` — platform-specific overrides and approved subskills
-- `orchestration/` — internal playbooks used for shared routing and decision logic
+- `orchestration/` — maintainer-facing reference snapshots for shared routing and review contracts
 
 Think of it as markdown with inheritance:
 
 - base skills define the stable contracts
 - platform skills specialize them
-- orchestration decides which specialization to use
+- orchestration snapshots document the shared logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
 
 Current platform packages:
 
@@ -91,7 +91,7 @@ Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` 
 | GLM | `~/.glm/commands/` |
 | OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
 
-The installer links all selected agents to the same repo so updates stay in sync.
+The installer links all selected agents to the same repo so updates stay in sync. Runtime-facing skills reference supporting files that live beside `SKILL.md` inside each skill directory rather than depending on repo-relative playbook paths.
 
 ## Installation
 
@@ -132,6 +132,8 @@ all
 ```
 
 Re-running the installer in `safe` mode is add-only for valid platform packages, so you can install more platforms later without removing ones that were already linked.
+
+Shared routing and review contracts are documented in `orchestration/` and exposed to runtimes through sibling supporting files inside each skill directory. That keeps references local to the installed skill instead of relying on repo-relative playbook paths.
 
 Modes:
 

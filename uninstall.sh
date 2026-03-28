@@ -84,6 +84,7 @@ build_legacy_skill_names() {
   local old_name
 
   LEGACY_SKILL_NAMES=()
+  add_legacy_name ".bill-shared"
 
   for skill in "${SKILL_NAMES[@]}"; do
     if [[ "$skill" == bill-* ]]; then

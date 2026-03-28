@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review
-description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist agents for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist review passes for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
 ---
 
 # Adaptive Go PR Review
@@ -20,7 +20,7 @@ parts of the default workflow below.
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass
-relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
+relevant project-wide guidance and matching per-skill overrides to every delegated or inline specialist review pass.
 
 ## Setup
 
@@ -33,13 +33,14 @@ Determine the review scope:
 
 Inspect the changed files and repo markers before applying review heuristics.
 
-Before applying review heuristics, read `orchestration/stack-routing/PLAYBOOK.md` and use it as the source of truth
-for Go stack signals and mixed-stack routing expectations. This skill owns the Go review depth that applies after Go
-is already in scope.
+## Additional Resources
 
-Before spawning specialists or formatting the final report, read `orchestration/review-orchestrator/PLAYBOOK.md`. Use
-it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone
-behavior, and review principles used by stack-specific review orchestrators.
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+
+Before applying review heuristics, read [stack-routing.md](stack-routing.md) and use it as the source of truth for Go stack signals and mixed-stack routing expectations. This skill owns the Go review depth that applies after Go is already in scope.
+
+Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
 
 ---
 
@@ -51,7 +52,7 @@ Use the routing table below to decide which additional specialist skills to run 
 
 ### Routing Table
 
-| Signal in the diff                                                                                                                                       | Agent to spawn                              |
+| Signal in the diff                                                                                                                                       | Specialist review to run                    |
 |----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
 | Package boundaries, `cmd/`, `internal/`, shared libraries, interface placement, package-level `init()` side effects, dependency direction, adapters/ports, event ownership, orchestration | `bill-go-code-review-architecture`          |
 | Goroutines, channel ownership/close behavior, `sync`/`atomic` usage, context propagation, cancellation, loop-variable capture, nil/zero-value handling, wrapped error flow, time logic | `bill-go-code-review-platform-correctness`  |
@@ -63,7 +64,7 @@ Use the routing table below to decide which additional specialist skills to run 
 | Changed tests look suspiciously weak, tautological, or coverage-padding                                                                                  | `bill-unit-test-value-check`                |
 | Hot paths, repeated marshaling, per-request client creation, N+1 or repeated downstream calls, allocation churn, copy-heavy buffer use, unbounded buffers, goroutine storms                 | `bill-go-code-review-performance`           |
 
-## Dynamic Agent Selection
+## Dynamic Specialist Selection
 
 ### Step 1: Always include the baseline
 
@@ -72,9 +73,10 @@ Always include:
 - `bill-go-code-review-architecture`
 - `bill-go-code-review-platform-correctness`
 
-### Step 2: Analyze the diff and select additional agents
+### Step 2: Analyze the diff and select additional specialist reviews
 
-Inspect each changed file or tightly related change cluster separately and add the agents from the routing table that
+Inspect each changed file or tightly related change cluster separately and add the specialist reviews from the routing
+table that
 match its signals.
 
 Treat Go-specific runtime semantics as strong routing hints, not tie-breakers. If a change touches goroutine lifetime,
@@ -92,36 +94,37 @@ If different parts of the diff touch different review surfaces:
 
 ### Step 4: Apply minimum
 
-- Minimum 2 agents (architecture + platform-correctness)
+- Minimum 2 specialist reviews (architecture + platform-correctness)
 - If tests changed materially, include `bill-go-code-review-testing`
-- Maximum 7 agents
+- Maximum 7 specialist reviews
 
-### Step 5: Launch in parallel
+### Step 5: Run selected specialist reviews
 
-Spawn all selected sub-agents simultaneously when the agent/runtime supports sub-agents or parallel review passes.
+Run all selected specialist review passes in parallel when the runtime supports delegation and current policy allows it.
+Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable,
+perform the same specialist review passes inline and say so in the summary.
 
-Each sub-agent gets:
+Each specialist review pass uses:
 
 - The list of changed files
 - Instructions to read its own skill file for the review rubric
 - Relevant project-wide guidance and matching per-skill overrides
-- The shared specialist contract in `orchestration/review-orchestrator/PLAYBOOK.md`
+- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 ---
 
 ## Review Output Format
 
-### 1. Agent Summary
+### 1. Specialist Summary
 
 ```text
 Detected review scope: <working tree / commit range / PR diff / files>
 Signals: goroutines, context propagation, database/sql, changed tests
-Agents spawned: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence, bill-go-code-review-testing
+Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence, bill-go-code-review-testing
 Reason: concurrency-sensitive state handling changed, persistence code changed, and tests changed materially
 ```
 
-For the shared risk register, action items, verdict format, merge rules, and review principles, follow
-`orchestration/review-orchestrator/PLAYBOOK.md`.
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes
 
