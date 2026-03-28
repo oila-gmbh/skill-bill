@@ -7,6 +7,13 @@ import json
 import re
 import sys
 
+from skill_repo_contracts import (
+  ORCHESTRATION_PLAYBOOKS,
+  PORTABLE_REVIEW_SKILLS,
+  REVIEW_DELEGATION_REQUIRED_SECTIONS,
+  RUNTIME_SUPPORTING_FILES,
+)
+
 
 README_TOTAL_PATTERN = re.compile(r"collection of (\d+) AI skills")
 README_SECTION_PATTERN = re.compile(r"^### (.+) \((\d+) skills\)$")
@@ -32,20 +39,6 @@ APPROVED_CODE_REVIEW_AREAS = {
   "ui",
   "ux-accessibility",
 }
-ORCHESTRATION_PLAYBOOKS: dict[str, str] = {
-  "stack-routing": "orchestration/stack-routing/PLAYBOOK.md",
-  "review-orchestrator": "orchestration/review-orchestrator/PLAYBOOK.md",
-  "review-delegation": "orchestration/review-delegation/PLAYBOOK.md",
-}
-RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
-  "bill-code-review": ("stack-routing.md", "review-delegation.md"),
-  "bill-quality-check": ("stack-routing.md",),
-  "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-  "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-  "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-  "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-  "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-}
 EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
   (
     re.compile(r"\.bill-shared/orchestration/"),
@@ -56,19 +49,6 @@ EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = 
     "must reference skill-local supporting files instead of repo-side playbook paths at runtime",
   ),
 )
-REVIEW_DELEGATION_REQUIRED_SECTIONS = (
-  "## GitHub Copilot CLI",
-  "## Claude Code",
-  "## OpenAI Codex",
-  "## GLM",
-)
-PORTABLE_REVIEW_SKILLS = {
-  "bill-kotlin-code-review",
-  "bill-backend-kotlin-code-review",
-  "bill-kmp-code-review",
-  "bill-php-code-review",
-  "bill-go-code-review",
-}
 NON_PORTABLE_REVIEW_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
   (
     re.compile(r"`task`"),

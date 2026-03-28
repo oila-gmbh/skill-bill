@@ -4,9 +4,16 @@ from contextlib import contextmanager
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from skill_repo_contracts import RUNTIME_SUPPORTING_FILES, supporting_file_targets  # noqa: E402
 
 
 VALIDATOR_PATH = Path(__file__).resolve().parents[1] / "scripts" / "validate_agent_configs.py"
@@ -286,22 +293,9 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     path.write_text(content or self.skill_markdown(skill_name), encoding="utf-8")
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
-    support_map = {
-      "bill-code-review": ("stack-routing.md", "review-delegation.md"),
-      "bill-quality-check": ("stack-routing.md",),
-      "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-      "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-      "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-      "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-      "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
-    }
-    targets = {
-      "stack-routing.md": repo_root / "orchestration" / "stack-routing" / "PLAYBOOK.md",
-      "review-orchestrator.md": repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md",
-      "review-delegation.md": repo_root / "orchestration" / "review-delegation" / "PLAYBOOK.md",
-    }
+    targets = supporting_file_targets(repo_root)
     skill_dir = repo_root / "skills" / package_name / skill_name
-    for file_name in support_map.get(skill_name, ()):
+    for file_name in RUNTIME_SUPPORTING_FILES.get(skill_name, ()):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
   def skill_markdown(self, skill_name: str) -> str:

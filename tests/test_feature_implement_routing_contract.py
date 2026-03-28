@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from skill_repo_contracts import (  # noqa: E402
+  PORTABLE_REVIEW_SKILLS,
+  REVIEW_DELEGATION_REQUIRED_SECTIONS,
+  RUNTIME_SUPPORTING_FILES,
+  supporting_file_targets,
+  skills_requiring_supporting_file,
+)
 
 
 def read(relative_path: str) -> str:
@@ -22,37 +32,27 @@ GO_CODE_REVIEW = read("skills/go/bill-go-code-review/SKILL.md")
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
 REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
-PORTABLE_REVIEW_SKILLS = {
+PORTABLE_REVIEW_SKILL_TEXTS = {
   "bill-kotlin-code-review": KOTLIN_CODE_REVIEW,
   "bill-backend-kotlin-code-review": BACKEND_KOTLIN_CODE_REVIEW,
   "bill-kmp-code-review": KMP_CODE_REVIEW,
   "bill-php-code-review": PHP_CODE_REVIEW,
   "bill-go-code-review": GO_CODE_REVIEW,
 }
-STACK_ROUTING_SIDECAR_SKILLS = {
-  "bill-code-review": ROOT / "skills" / "base" / "bill-code-review" / "stack-routing.md",
-  "bill-quality-check": ROOT / "skills" / "base" / "bill-quality-check" / "stack-routing.md",
-  "bill-kotlin-code-review": ROOT / "skills" / "kotlin" / "bill-kotlin-code-review" / "stack-routing.md",
-  "bill-backend-kotlin-code-review": ROOT / "skills" / "backend-kotlin" / "bill-backend-kotlin-code-review" / "stack-routing.md",
-  "bill-kmp-code-review": ROOT / "skills" / "kmp" / "bill-kmp-code-review" / "stack-routing.md",
-  "bill-php-code-review": ROOT / "skills" / "php" / "bill-php-code-review" / "stack-routing.md",
-  "bill-go-code-review": ROOT / "skills" / "go" / "bill-go-code-review" / "stack-routing.md",
-}
-REVIEW_ORCHESTRATOR_SIDECAR_SKILLS = {
-  "bill-kotlin-code-review": ROOT / "skills" / "kotlin" / "bill-kotlin-code-review" / "review-orchestrator.md",
-  "bill-backend-kotlin-code-review": ROOT / "skills" / "backend-kotlin" / "bill-backend-kotlin-code-review" / "review-orchestrator.md",
-  "bill-kmp-code-review": ROOT / "skills" / "kmp" / "bill-kmp-code-review" / "review-orchestrator.md",
-  "bill-php-code-review": ROOT / "skills" / "php" / "bill-php-code-review" / "review-orchestrator.md",
-  "bill-go-code-review": ROOT / "skills" / "go" / "bill-go-code-review" / "review-orchestrator.md",
-}
-REVIEW_DELEGATION_SIDECAR_SKILLS = {
-  "bill-code-review": ROOT / "skills" / "base" / "bill-code-review" / "review-delegation.md",
-  "bill-kotlin-code-review": ROOT / "skills" / "kotlin" / "bill-kotlin-code-review" / "review-delegation.md",
-  "bill-backend-kotlin-code-review": ROOT / "skills" / "backend-kotlin" / "bill-backend-kotlin-code-review" / "review-delegation.md",
-  "bill-kmp-code-review": ROOT / "skills" / "kmp" / "bill-kmp-code-review" / "review-delegation.md",
-  "bill-php-code-review": ROOT / "skills" / "php" / "bill-php-code-review" / "review-delegation.md",
-  "bill-go-code-review": ROOT / "skills" / "go" / "bill-go-code-review" / "review-delegation.md",
-}
+
+
+def find_skill_dir(skill_name: str) -> Path:
+  matches = list((ROOT / "skills").rglob(f"{skill_name}/SKILL.md"))
+  if len(matches) != 1:
+    raise AssertionError(f"Expected exactly one SKILL.md for {skill_name}, found {len(matches)}")
+  return matches[0].parent
+
+
+def sidecar_paths(file_name: str) -> dict[str, Path]:
+  return {
+    skill_name: find_skill_dir(skill_name) / file_name
+    for skill_name in skills_requiring_supporting_file(file_name)
+  }
 
 
 class FeatureImplementRoutingContractTest(unittest.TestCase):
@@ -65,7 +65,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", CODE_REVIEW)
     self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", QUALITY_CHECK)
 
-    for skill_name, sidecar_path in STACK_ROUTING_SIDECAR_SKILLS.items():
+    for skill_name, sidecar_path in sidecar_paths("stack-routing.md").items():
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "stack-routing" / "PLAYBOOK.md")
@@ -80,10 +80,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Do not reference this repo-relative path directly", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_DELEGATION_PLAYBOOK)
-    self.assertIn("## GitHub Copilot CLI", REVIEW_DELEGATION_PLAYBOOK)
-    self.assertIn("## Claude Code", REVIEW_DELEGATION_PLAYBOOK)
-    self.assertIn("## OpenAI Codex", REVIEW_DELEGATION_PLAYBOOK)
-    self.assertIn("## GLM", REVIEW_DELEGATION_PLAYBOOK)
+    for section in REVIEW_DELEGATION_REQUIRED_SECTIONS:
+      self.assertIn(section, REVIEW_DELEGATION_PLAYBOOK)
 
   def test_feature_implement_invokes_shared_review_and_validation_routers(self) -> None:
     self.assertIn("Run the `bill-code-review` skill", FEATURE_IMPLEMENT)
@@ -199,7 +197,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       "Agents spawned",
     )
 
-    for skill_name, skill_text in PORTABLE_REVIEW_SKILLS.items():
+    for skill_name, skill_text in PORTABLE_REVIEW_SKILL_TEXTS.items():
       with self.subTest(skill=skill_name):
         self.assertIn("specialist review", skill_text)
         self.assertIn("[review-orchestrator.md](review-orchestrator.md)", skill_text)
@@ -213,12 +211,12 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         for forbidden_phrase in forbidden_phrases:
           self.assertNotIn(forbidden_phrase, skill_text)
 
-    for skill_name, sidecar_path in REVIEW_ORCHESTRATOR_SIDECAR_SKILLS.items():
+    for skill_name, sidecar_path in sidecar_paths("review-orchestrator.md").items():
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-orchestrator" / "PLAYBOOK.md")
 
-    for skill_name, sidecar_path in REVIEW_DELEGATION_SIDECAR_SKILLS.items():
+    for skill_name, sidecar_path in sidecar_paths("review-delegation.md").items():
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-delegation" / "PLAYBOOK.md")
