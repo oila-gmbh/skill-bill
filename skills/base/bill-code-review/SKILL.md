@@ -71,6 +71,7 @@ When routing to another skill, pass along:
 - the changed files or diff source
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
+- the parent thread's model when the runtime supports delegated-worker model inheritance
 - the delegated skill file path
 - the rule that the delegated skill must follow its own `SKILL.md` as the primary rubric
 - the delegated skill's `review-orchestrator.md` contract when the routed skill is a stack review orchestrator

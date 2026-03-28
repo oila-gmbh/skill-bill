@@ -95,6 +95,7 @@ Each backend specialist review pass uses:
 - the detected project type
 - the list of changed files
 - instructions to read its own skill file for the review rubric
+- the parent thread's model when the runtime supports delegated-worker model inheritance
 - the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 If no backend-only triggers match but backend/server signals are clearly present, keep the baseline Kotlin review output and state that no extra backend-specific specialist was needed for this scope.

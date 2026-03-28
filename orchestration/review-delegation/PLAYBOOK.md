@@ -13,6 +13,7 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 
 - Delegated review layers and specialist review passes must run as separate subagents on supported runtimes; do not collapse them into a single inline review.
 - Launch one delegated worker per routed stack-specific review skill or selected specialist review pass unless the current agent-specific section explicitly says otherwise.
+- When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
 - Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill file path, and the shared contract from `review-orchestrator.md`.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
 - If a supported runtime refuses or cannot start delegated workers, stop and report a delegation failure instead of silently falling back to inline review.
@@ -38,6 +39,7 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 
 - Explicitly request subagents.
 - Spawn one subagent per delegated review skill or specialist review pass.
+- Use the same model as the parent thread by default.
 - Tell each subagent to read the delegated skill file and return structured review findings only.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.

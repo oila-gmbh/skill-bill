@@ -105,6 +105,7 @@ Each specialist review pass uses:
 - The list of changed files
 - Instructions to read its own skill file for the review rubric
 - Relevant project-wide guidance and matching per-skill overrides
+- the parent thread's model when the runtime supports delegated-worker model inheritance
 - the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 ---
