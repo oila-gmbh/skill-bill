@@ -15,7 +15,7 @@ If `.agents/skill-overrides.md` exists in the project root and contains a `## bi
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
 
-Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to all spawned sub-agents.
+Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults. Pass relevant project-wide guidance and matching per-skill overrides to every delegated or inline specialist review pass.
 
 ## Setup
 
@@ -31,9 +31,14 @@ Determine the review scope:
 
 Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source layout, module names, imports).
 
-Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for broad stack signals. This skill owns only the Kotlin-family baseline after a caller decides Kotlin is in scope.
+## Additional Resources
 
-Before spawning specialists or formatting the final report, read `orchestration/review-orchestrator/PLAYBOOK.md`. Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+
+Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for broad stack signals. This skill owns only the Kotlin-family baseline after a caller decides Kotlin is in scope.
+
+Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
 
 Classify the review as one of:
 - `kotlin`
@@ -59,9 +64,9 @@ Classify the review as one of:
 
 ---
 
-## Dynamic Agent Selection
+## Dynamic Specialist Selection
 
-### Step 1: Always spawn `bill-kotlin-code-review-architecture`
+### Step 1: Always include `bill-kotlin-code-review-architecture`
 
 Architecture review is relevant for every non-trivial change.
 
@@ -71,10 +76,10 @@ Architecture review is relevant for every non-trivial change.
 - `kmp-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
 - `backend-kotlin-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
 
-### Step 3: Analyze the diff and select additional agents
+### Step 3: Analyze the diff and select additional specialist reviews
 
-| Signal in the diff | Agent to spawn |
-|---------------------|----------------|
+| Signal in the diff | Specialist review to run |
+|---------------------|--------------------------|
 | `launch`, `Flow`, `StateFlow`, `viewModelScope`, `LifecycleOwner`, `DispatcherProvider`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `bill-kotlin-code-review-platform-correctness` |
 | Auth, tokens, keys, passwords, encryption, HTTP clients, interceptors, sensitive data | `bill-kotlin-code-review-security` |
 | Heavy computation, blocking I/O, retry/polling loops, bulk data processing, redundant I/O | `bill-kotlin-code-review-performance` |
@@ -83,32 +88,33 @@ Architecture review is relevant for every non-trivial change.
 ### Step 4: Apply minimum
 
 - Minimum 2 agents (architecture + at least one other)
-- If no additional triggers match, spawn `bill-kotlin-code-review-platform-correctness` as the default second agent
+- If no additional triggers match, include `bill-kotlin-code-review-platform-correctness` as the default second specialist review
 - Maximum 5 agents
-- Do not spawn KMP-only specialists or backend-only specialists from this skill; leave those to the platform-specific override that owns them
+- Do not run KMP-only specialists or backend-only specialists from this skill; leave those to the platform-specific override that owns them
 
-### Step 5: Launch in parallel
+### Step 5: Run selected specialist reviews
 
-Spawn all selected agents simultaneously using the `task` tool. Each agent gets:
+Run all selected specialist review passes in parallel when the runtime supports delegation and current policy allows it. Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable, perform the same specialist review passes inline and say so in the summary.
+
+Each specialist review pass uses:
 - the detected project type
 - the list of changed files
 - instructions to read its own skill file for the review rubric
-- the shared specialist contract in `orchestration/review-orchestrator/PLAYBOOK.md`
+- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 ---
 
 ## Review Output Format
 
-### 1. Classification & Agent Summary
+### 1. Classification & Specialist Summary
 ```text
 Detected stack: kotlin | kmp-baseline | backend-kotlin-baseline
 Signals: <markers>
-Agents spawned: bill-kotlin-code-review-architecture, bill-kotlin-code-review-platform-correctness
+Specialist reviews: bill-kotlin-code-review-architecture, bill-kotlin-code-review-platform-correctness
 Reason: <why this Kotlin baseline route was selected>
 ```
 
-For the shared risk register, action items, verdict format, merge rules, and review principles, follow
-`orchestration/review-orchestrator/PLAYBOOK.md`.
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes
 

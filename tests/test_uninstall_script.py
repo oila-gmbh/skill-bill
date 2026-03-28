@@ -28,6 +28,7 @@ class UninstallScriptTest(unittest.TestCase):
       self.assertIn("Removed symlinks:", uninstall.stdout)
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".claude" / "commands" / "bill-code-review").exists())
+      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
 
   def test_uninstall_removes_legacy_skill_symlinks_and_is_idempotent(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
