@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -106,7 +107,7 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | BACKEND_KOTLIN_SKILLS)
 
-  def test_safe_rerun_adds_platform_without_pruning_existing_valid_one(self) -> None:
+  def test_rerun_reinstalls_only_selected_platforms(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       first = self.run_installer(temp_home, "copilot\nPHP\n")
       self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
@@ -114,21 +115,6 @@ class InstallScriptTest(unittest.TestCase):
       second = self.run_installer(
         temp_home,
         "copilot\nKotlin backend\n",
-      )
-      self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-
-      installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | BACKEND_KOTLIN_SKILLS)
-
-  def test_override_rerun_reinstalls_only_selected_platforms_after_uninstall(self) -> None:
-    with tempfile.TemporaryDirectory() as temp_home:
-      first = self.run_installer(temp_home, "copilot\nPHP\n")
-      self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
-
-      second = self.run_installer(
-        temp_home,
-        "copilot\nKotlin backend\n",
-        mode="override",
       )
       self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
       self.assertIn("Skill Bill Uninstaller", second.stdout)
@@ -136,16 +122,33 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS)
 
+  def test_rerun_replaces_existing_skill_directory_and_restores_sidecars(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      first = self.run_installer(temp_home, "copilot\nPHP\n")
+      self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+      installed_skill = Path(temp_home) / ".copilot" / "skills" / "bill-code-review"
+      self.assertTrue(installed_skill.is_symlink())
+      installed_skill.unlink()
+      shutil.copytree(ROOT / "skills" / "base" / "bill-code-review", installed_skill, symlinks=False)
+      (installed_skill / "stack-routing.md").write_text("stale sidecar", encoding="utf-8")
+
+      second = self.run_installer(temp_home, "copilot\nPHP\n")
+      self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+
+      self.assertTrue(installed_skill.is_symlink())
+      self.assertEqual(installed_skill.resolve(), ROOT / "skills" / "base" / "bill-code-review")
+      self.assertTrue((installed_skill / "stack-routing.md").exists())
+
   def run_installer(
     self,
     temp_home: str,
     user_input: str,
-    mode: str = "safe",
   ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["HOME"] = temp_home
     return subprocess.run(
-      ["bash", str(INSTALL_SCRIPT), "--mode", mode],
+      ["bash", str(INSTALL_SCRIPT)],
       cwd=ROOT,
       input=user_input,
       capture_output=True,
