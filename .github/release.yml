@@ -1,0 +1,22 @@
+changelog:
+  categories:
+    - title: Breaking and migration-sensitive changes
+      labels:
+        - breaking-change
+        - migration
+    - title: New skills and platform coverage
+      labels:
+        - skill
+        - platform
+        - routing
+    - title: Tooling and validation
+      labels:
+        - tooling
+        - validation
+        - ci
+    - title: Documentation
+      labels:
+        - docs
+  exclude:
+    labels:
+      - skip-changelog
