@@ -17,6 +17,7 @@ QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
+GO_CODE_REVIEW = read("skills/go/bill-go-code-review/SKILL.md")
 
 
 class FeatureImplementRoutingContractTest(unittest.TestCase):
@@ -70,6 +71,20 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn(
       "- Otherwise use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
+    )
+
+  def test_go_context_routes_to_go_review_and_quality_check(self) -> None:
+    self.assertIn(
+      "- If `go` signals dominate, delegate to `bill-go-code-review`.",
+      CODE_REVIEW,
+    )
+    self.assertIn(
+      "- If `go` signals dominate, delegate to the canonical `bill-go-quality-check` skill when it exists.",
+      QUALITY_CHECK,
+    )
+    self.assertIn(
+      "read `orchestration/stack-routing/PLAYBOOK.md`",
+      GO_CODE_REVIEW,
     )
 
   def test_kmp_plus_backend_context_uses_backend_baseline_inside_kmp_review(self) -> None:

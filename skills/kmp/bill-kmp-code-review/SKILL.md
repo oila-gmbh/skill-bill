@@ -33,6 +33,8 @@ Inspect both the changed files and repo markers (`build.gradle*`, `settings.grad
 
 Before classifying, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for routing Android/KMP work into the `kmp` package bucket.
 
+Before spawning specialists or formatting the final report, read `orchestration/review-orchestrator/PLAYBOOK.md`. Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+
 Classify the review as one of:
 - `kmp`
 - `mixed-kmp`
@@ -94,45 +96,9 @@ Spawn all selected KMP specialists simultaneously using the `task` tool. Each ag
 - the detected project type
 - the list of changed files
 - instructions to read its own skill file for the review rubric
-- the shared contract below
+- the shared specialist contract in `orchestration/review-orchestrator/PLAYBOOK.md`
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
-
----
-
-## Shared Contract For Every Specialist
-
-- Scope: review only the changes in the current PR/unit of work — do not flag pre-existing issues in unchanged code
-- Review only meaningful issues (bug, logic flaw, security risk, regression risk, architectural breakage)
-- Flag newly introduced deprecated components, APIs, or patterns when a supported alternative exists, or when deprecated usage is broad in scope and not explicitly justified
-- Ignore style, formatting, naming bikeshedding, and pure refactor preferences
-- Evidence is mandatory: include `file:line` + short description
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Maximum 7 findings per specialist
-- Include a minimal, concrete fix for each finding
-
-### Required Finding Schema
-
-```text
-[SEVERITY] Area: Issue title
-  Location: file:line
-  Impact: Why it matters (1 sentence)
-  Fix: Concrete fix (1-2 lines)
-  Confidence: High/Medium/Low
-```
-
----
-
-## Orchestrator Merge Rules
-
-1. Collect the baseline findings from `bill-kotlin-code-review` or `bill-backend-kotlin-code-review`.
-2. Collect all KMP-specific specialist findings.
-3. If a specialist agent fails or returns no output, note it in the summary and continue with available results.
-4. Deduplicate by root cause (same evidence or same failing behavior).
-5. Keep highest severity/confidence when duplicates conflict.
-6. Prioritize: Blocker > Major > Minor, then blast radius.
-7. Produce one consolidated report.
 
 ---
 
@@ -147,51 +113,10 @@ KMP agents spawned: bill-kmp-code-review-ui
 Reason: Android/KMP signals were high-confidence, so the mobile layer was added on top of the baseline Kotlin-family review
 ```
 
-### 2. Risk Register
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow
+`orchestration/review-orchestrator/PLAYBOOK.md`.
 
-Format each issue as:
-```text
-[IMPACT_LEVEL] Area: Issue title
-  Location: file:line
-  Impact: Description
-  Fix: Concrete action
-```
+## Implementation Mode Notes
 
-Impact levels: BLOCKER | MAJOR | MINOR
-
-### 3. Action Items (Max 10, prioritized)
-
-```text
-1. [P0 BLOCKER] Fix issue (Effort: S, Impact: High)
-2. [P1 MAJOR] Fix issue (Effort: M, Impact: Medium)
-3. [P2 MINOR] Fix issue (Effort: S, Impact: Low)
-```
-
-Priority: P0 (blocker) | P1 (critical) | P2 (important) | P3 (nice-to-have)
-Effort: S (<1h) | M (1-4h) | L (>4h)
-
-### 4. Verdict
-
-`Ship` | `Ship with fixes [list P0/P1 items]` | `Block until [list blockers]`
-
----
-
-## Implementation Mode
-
-If invoked standalone, ask: **"Which item would you like me to fix?"**
-
-If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
-
-After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.
-
----
-
-## Review Principles
-
-- Changed code only: review what was added or modified in this PR — do not report issues in untouched code, even if it violates current rules
-- Evidence-based: cite `file:line`
-- Project-aware: each agent has project-specific rules in its skill file
-- Actionable: every issue must have a concrete fix
-- Proportional: don't nitpick style if architecture is broken
-- No overoptimization: do not report negligible performance findings with no measurable user-facing or production-facing impact
-- Honest: if unsure, say what context is missing
+- If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.

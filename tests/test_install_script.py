@@ -24,6 +24,7 @@ BACKEND_KOTLIN_SKILLS = skill_names("backend-kotlin")
 KOTLIN_SKILLS = skill_names("kotlin")
 KMP_SKILLS = skill_names("kmp")
 PHP_SKILLS = skill_names("php")
+GO_SKILLS = skill_names("go")
 
 
 class InstallScriptTest(unittest.TestCase):
@@ -56,6 +57,14 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS)
 
+  def test_installs_base_and_selected_go_platform_only(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "copilot\nGo\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      installed = self.installed_skills(temp_home)
+      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS)
+
   def test_accepts_human_friendly_multi_platform_selection(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nKotlin backend, Kotlin, KMP\n")
@@ -73,12 +82,13 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("Kotlin (kotlin)", result.stdout)
       self.assertIn("KMP (kmp)", result.stdout)
       self.assertIn("PHP (php)", result.stdout)
+      self.assertIn("Go (go)", result.stdout)
       self.assertIn("all (install every platform package)", result.stdout)
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(
         installed,
-        BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | PHP_SKILLS,
+        BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | PHP_SKILLS | GO_SKILLS,
       )
 
   def test_ignores_empty_platform_tokens(self) -> None:

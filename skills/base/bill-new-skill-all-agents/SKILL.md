@@ -34,7 +34,7 @@ When asked to create a new skill, follow this workflow:
    - `base` for neutral skills like `bill-pr-description` or `bill-feature-guard`
    - `kotlin` for Kotlin-prefixed skills
    - `kmp` for KMP-prefixed skills
-   - `php` for PHP-prefixed skills
+   - `go` for Go-prefixed skills
    - If the package is unclear, ask once before creating files
 
 2. Known agents and their paths:
