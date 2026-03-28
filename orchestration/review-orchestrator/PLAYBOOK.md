@@ -21,12 +21,12 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 - Keep each specialist review pass to at most 7 findings
 - Include a minimal concrete fix for each finding
 
-## Delegation Portability Contract
+## Shared Delegation Contract
 
-- Use the runtime's available delegation mechanism for parallel specialist review passes when delegation is supported and permitted
-- Shared installable skills must not hardcode agent-specific delegation tool names such as `task` or `spawn_agent`
-- If delegation is unavailable, perform the same specialist review passes inline and say so in the summary
-- If a specialist review pass fails or returns no output, note it in the summary and continue with available results
+- Runtime-facing review skills must read `review-delegation.md` before delegating routed review layers or specialist review passes
+- On supported runtimes, delegated review layers and specialist review passes run as separate subagents; do not silently inline them
+- If a supported runtime cannot start the required delegated workers, stop and report the delegation failure instead of pretending the delegated review ran
+- If a specialist review pass fails or returns no output, note it in the summary and continue with available results when the parent skill contract permits it
 - When multiple review passes produce overlapping findings, deduplicate by root cause and keep the highest severity/confidence version
 - Prioritize final findings as `Blocker > Major > Minor`, then by blast radius
 

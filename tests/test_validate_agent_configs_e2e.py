@@ -149,6 +149,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_plugin_manifest(repo_root)
       self.write_stack_routing_playbook(repo_root)
       self.write_review_orchestrator_playbook(repo_root)
+      self.write_review_delegation_playbook(repo_root)
 
       for package_name, skill_name in skills:
         self.write_skill(
@@ -247,6 +248,31 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       encoding="utf-8",
     )
 
+  def write_review_delegation_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "review-delegation" / "PLAYBOOK.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        """\
+        ---
+        name: review-delegation
+        description: Maintainer-facing reference snapshot for agent-specific delegated review execution.
+        ---
+
+        # Shared Review Delegation Snapshot
+
+        This maintainer-facing reference snapshot exists to document the shared delegation contract.
+        Runtime-facing skills consume it through sibling supporting files.
+
+        ## GitHub Copilot CLI
+        ## Claude Code
+        ## OpenAI Codex
+        ## GLM
+        """
+      ),
+      encoding="utf-8",
+    )
+
   def write_skill(
     self,
     repo_root: Path,
@@ -261,17 +287,18 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     support_map = {
-      "bill-code-review": ("stack-routing.md",),
+      "bill-code-review": ("stack-routing.md", "review-delegation.md"),
       "bill-quality-check": ("stack-routing.md",),
-      "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
-      "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
-      "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md"),
-      "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md"),
-      "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md"),
+      "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+      "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+      "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+      "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+      "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
     }
     targets = {
       "stack-routing.md": repo_root / "orchestration" / "stack-routing" / "PLAYBOOK.md",
       "review-orchestrator.md": repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md",
+      "review-delegation.md": repo_root / "orchestration" / "review-delegation" / "PLAYBOOK.md",
     }
     skill_dir = repo_root / "skills" / package_name / skill_name
     for file_name in support_map.get(skill_name, ()):

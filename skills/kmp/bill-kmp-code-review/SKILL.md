@@ -35,10 +35,13 @@ Inspect both the changed files and repo markers (`build.gradle*`, `settings.grad
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+- For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
 Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for routing Android/KMP work into the `kmp` package bucket.
 
-Before selecting KMP specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
+Before selecting KMP specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+
+Before delegating baseline or KMP specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
 
 Classify the review as one of:
 - `kmp`
@@ -67,7 +70,7 @@ Classify the review as one of:
 
 ### Step 1: Choose and run the baseline Kotlin-family review
 
-Use the same scope to run exactly one baseline review layer:
+Use the same scope to run exactly one baseline review layer as a delegated subagent:
 - Use `bill-backend-kotlin-code-review` when backend/server files or markers are meaningfully in scope
 - Otherwise use `bill-kotlin-code-review`
 
@@ -97,7 +100,7 @@ Keep the mobile triggers focused on what the baseline review does not cover:
 
 ### Step 3: Run KMP specialist reviews
 
-Run all selected KMP specialist review passes in parallel when the runtime supports delegation and current policy allows it. Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable, perform the same KMP specialist review passes inline and say so in the summary.
+Run one delegated subagent per selected KMP specialist review pass. For supported runtimes, do not inline KMP specialist review passes or collapse them into the parent review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
 
 Each KMP specialist review pass uses:
 - the detected project type

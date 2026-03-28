@@ -35,10 +35,13 @@ Inspect both the changed files and repo markers (`build.gradle*`, `settings.grad
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+- For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
 Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for broad stack signals. This skill owns only the backend/server override that happens after Kotlin is already in scope.
 
-Before selecting backend specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
+Before selecting backend specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+
+Before delegating baseline or backend specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
 
 Classify the review as one of:
 - `backend-kotlin`
@@ -67,7 +70,7 @@ Classify the review as one of:
 
 ### Step 1: Run `bill-kotlin-code-review` as the baseline review
 
-Run `bill-kotlin-code-review` against the same scope first. That skill owns:
+Run `bill-kotlin-code-review` against the same scope first as a delegated subagent. That skill owns:
 - shared Kotlin architecture, correctness, security, performance, and testing review
 - the baseline Kotlin findings that every backend/server review should inherit
 
@@ -86,7 +89,7 @@ When invoking it from this skill:
 
 ### Step 3: Run backend specialist reviews
 
-Run all selected backend specialist review passes in parallel when the runtime supports delegation and current policy allows it. Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable, perform the same backend specialist review passes inline and say so in the summary.
+Run one delegated subagent per selected backend specialist review pass. For supported runtimes, do not inline backend specialist review passes or collapse them into the parent review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
 
 Each backend specialist review pass uses:
 - the detected project type
