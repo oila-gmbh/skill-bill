@@ -41,6 +41,7 @@ REQUIRED_PLAYBOOK_REFERENCES: dict[str, tuple[str, ...]] = {
   "bill-kotlin-code-review": ("stack-routing",),
   "bill-backend-kotlin-code-review": ("stack-routing",),
   "bill-kmp-code-review": ("stack-routing",),
+  "bill-php-code-review": ("stack-routing",),
 }
 
 

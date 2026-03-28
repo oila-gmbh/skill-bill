@@ -1,8 +1,8 @@
 # sKill Bill
 
-sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, and agent-config repositories.
+sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, PHP backends, and agent-config repositories.
 
-This repo is a collection of 24 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
+This repo is a collection of 34 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
 
 ## Why this exists
 
@@ -40,7 +40,7 @@ Current platform packages:
 - `kotlin`
 - `backend-kotlin`
 - `kmp`
-- `php` reserved for future expansion
+- `php`
 
 ## Naming and enforcement
 
@@ -76,8 +76,8 @@ Base entry points stay stable for users:
 
 They route internally to platform-specific skills:
 
-- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review`
-- `bill-quality-check` -> current stack-specific quality checker
+- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-php-code-review`
+- `bill-quality-check` -> current stack-specific quality checker, including `bill-php-quality-check` for PHP repos
 
 Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` until dedicated overrides exist.
 
@@ -121,7 +121,7 @@ claude plugin install ~/Development/skill-bill
 
 ## Skills Included
 
-### Code Review (14 skills)
+### Code Review (23 skills)
 
 | Skill | Purpose |
 |-------|---------|
@@ -139,6 +139,15 @@ claude plugin install ~/Development/skill-bill
 | `/bill-backend-kotlin-code-review-api-contracts` | Backend API contract review |
 | `/bill-backend-kotlin-code-review-persistence` | Backend persistence and migration review |
 | `/bill-backend-kotlin-code-review-reliability` | Backend reliability and observability review |
+| `/bill-php-code-review` | PHP backend review orchestrator |
+| `/bill-php-code-review-architecture` | PHP architecture and boundary review |
+| `/bill-php-code-review-platform-correctness` | PHP correctness, ordering, retry, and stale-state review |
+| `/bill-php-code-review-api-contracts` | PHP API contract and serialization review |
+| `/bill-php-code-review-persistence` | PHP persistence, transaction, and migration review |
+| `/bill-php-code-review-reliability` | PHP reliability, retry, and observability review |
+| `/bill-php-code-review-security` | PHP security review |
+| `/bill-php-code-review-performance` | PHP performance review |
+| `/bill-php-code-review-testing` | PHP test quality review |
 
 ### Feature Lifecycle (4 skills)
 
@@ -149,12 +158,13 @@ claude plugin install ~/Development/skill-bill
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
-### Utilities (6 skills)
+### Utilities (7 skills)
 
 | Skill | Purpose |
 |-------|---------|
 | `/bill-quality-check` | Shared quality-check router |
 | `/bill-kotlin-quality-check` | Gradle/Kotlin quality-check implementation |
+| `/bill-php-quality-check` | PHP quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |

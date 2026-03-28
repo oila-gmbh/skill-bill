@@ -1,6 +1,6 @@
 ---
 name: bill-feature-verify
-description: Verify a PR against a task spec — extract acceptance criteria, check feature flag compliance, run full code review, and audit completeness. Use when reviewing teammates' PRs to ensure they match the design doc/spec. The reverse of bill-feature-implement.
+description: Verify a PR against a task spec — extract acceptance criteria, decide whether rollout expectations matter, audit feature-flag behavior only when the spec or diff requires it, run full code review, and audit completeness. Use when reviewing teammates' PRs to ensure they match the design doc/spec. The reverse of bill-feature-implement.
 ---
 
 # Feature Verify
@@ -17,7 +17,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 
 ```
 Task Spec + PR → Extract Criteria → Gather Diff →
-  Feature Flag Audit (if spec requires) →
+  Feature Flag Audit (if rollout uses a feature flag) →
   Code Review (dynamic agents) →
   Completeness Audit (criteria vs code) →
   Consolidated Verdict
@@ -46,7 +46,7 @@ After reading the spec, produce in one pass:
 
 1. **Acceptance criteria** — numbered list of verifiable requirements
 2. **Non-goals** — things explicitly out of scope
-3. **Feature flag expectation** — does the spec require a feature flag? If yes, note the expected flag name/pattern
+3. **Rollout expectation** — does the spec require guarded rollout? If yes, note whether that means an existing or new feature flag and the expected name/pattern
 4. **Key technical constraints** — specific patterns, APIs, or architectural requirements mentioned in the spec
 
 Present as:
@@ -58,7 +58,7 @@ ACCEPTANCE CRITERIA:
 
 NON-GOALS: ...
 
-FEATURE FLAG: Required (<expected name/pattern>) | Not required | Not mentioned
+ROLLOUT: Existing feature flag (<name>) | New feature flag required (<expected name/pattern>) | Not required | Not mentioned
 
 TECHNICAL CONSTRAINTS: ...
 ```
@@ -79,18 +79,18 @@ Also gather:
 
 ## Step 4: Feature Flag Audit (conditional)
 
-**Skip if:** spec says no feature flag needed AND no feature flag appears in the diff.
+**Skip if:** the spec does not require feature-flagged rollout, no feature flag appears in the diff, and repo policy does not require one.
 
-**Run if:** spec requires a feature flag, OR a feature flag appears in the diff.
+**Run if:** the spec requires a feature flag, a feature flag appears in the diff, or the repo has explicit feature-flag policy for this change.
 
-Verify against `bill-feature-guard` principles:
+Verify against the repo's rollout requirements. If the repo does not define its own rollout rubric, use `bill-feature-guard` as a narrow checklist rather than assuming every repo follows it by default:
 
 1. **Flag exists** — is the flag defined in the codebase?
 2. **Rollback safety** — when flag is OFF, behavior is identical to before the PR
 3. **Minimal checks** — feature flag checks are at the highest practical level (not scattered)
 4. **Legacy preserved** — if Legacy pattern used, legacy code is untouched
 5. **No hybrid states** — no mixing of old/new behavior paths
-6. **Default value** — flag defaults to `false` (disabled)
+6. **Default value** — if a new flag is introduced, it defaults to `false` (disabled)
 
 Output:
 
@@ -184,4 +184,4 @@ If the user wants a PR comment:
 
 This skill orchestrates:
 - `bill-code-review` — shared router that delegates to the matching stack-specific code-review skill and its downstream specialists
-- `bill-feature-guard` — feature flag compliance checklist (read inline, not spawned)
+- `bill-feature-guard` — optional rollout / feature-flag checklist when the spec, diff, or repo policy requires it
