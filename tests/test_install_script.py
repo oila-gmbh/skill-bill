@@ -30,14 +30,15 @@ GO_SKILLS = skill_names("go")
 class InstallScriptTest(unittest.TestCase):
   maxDiff = None
 
-  def test_accepts_separate_agent_selection_and_primary_prompt(self) -> None:
+  def test_accepts_multi_agent_selection_without_primary_prompt(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      result = self.run_installer(temp_home, "all\nclaude\nPHP\n")
+      result = self.run_installer(temp_home, "all\nPHP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
       self.assertIn("Available agents:", result.stdout)
-      self.assertIn("Choose the primary agent:", result.stdout)
-      self.assertIn("Primary: claude", result.stdout)
+      self.assertNotIn("Choose the primary agent:", result.stdout)
+      self.assertNotIn("Primary:", result.stdout)
+      self.assertNotIn("via copilot", result.stdout)
 
       for relative_path in (
         ".copilot/skills/bill-code-review",
@@ -45,7 +46,9 @@ class InstallScriptTest(unittest.TestCase):
         ".glm/commands/bill-code-review",
         ".codex/skills/bill-code-review",
       ):
-        self.assertTrue((Path(temp_home) / relative_path).is_symlink(), relative_path)
+        path = Path(temp_home) / relative_path
+        self.assertTrue(path.is_symlink(), relative_path)
+        self.assertEqual(path.resolve(), ROOT / "skills" / "base" / "bill-code-review")
 
   def test_installs_base_and_selected_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -59,6 +62,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-php-code-review" / "review-orchestrator.md").exists())
+      self.assertIn("Installed agent: copilot", result.stdout)
 
   def test_installs_base_and_selected_go_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:

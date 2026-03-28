@@ -17,7 +17,7 @@ When asked to create a new skill, follow this workflow:
    - Skill name
    - One-line description
    - Full skill instructions/body
-   - Which agents to install to (comma-separated, primary first)
+   - Which agents to install to (comma-separated)
    - Whether the skill is base across stacks or specific to a stack/framework
 
 1a. Validate the proposed name against the repo naming strategy:
@@ -53,9 +53,8 @@ When asked to create a new skill, follow this workflow:
    - `$HOME/Development/skill-bill/skills/{package}/{slug}/SKILL.md`
    - This is the single source of truth — all agents point here via symlinks
 
-5. Create symlink chain (primary → canonical, secondary agents → primary):
-   a. Primary: `ln -s $HOME/Development/skill-bill/skills/{package}/{slug} {primary_path}/{slug}`
-   b. Each secondary: `ln -s {primary_path}/{slug} {secondary_path}/{slug}`
+5. Create direct symlinks from each selected agent to the canonical skill directory:
+   - `ln -s $HOME/Development/skill-bill/skills/{package}/{slug} {agent_path}/{slug}`
 
 6. Rules:
     - Never duplicate file content across agents — always use symlinks
@@ -67,6 +66,5 @@ When asked to create a new skill, follow this workflow:
 7. Return a short summary:
    - skill slug
    - canonical file path
-   - primary agent and symlink
-   - secondary symlinks created
+   - installed agent symlinks created
    - skipped agents

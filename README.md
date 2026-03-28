@@ -101,11 +101,10 @@ chmod +x install.sh
 ./install.sh --mode safe
 ```
 
-The installer first asks which agent targets to install to. You can choose one or more entries, including `all`, and if you choose more than one it then asks which selected agent should be primary:
+The installer first asks which agent targets to install to. You can choose one or more entries, including `all`:
 
 ```text
 all
-claude
 ```
 
 It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected.
