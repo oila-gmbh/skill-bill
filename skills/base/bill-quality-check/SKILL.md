@@ -31,13 +31,19 @@ Determine the current unit of work:
 
 Inspect the changed files and repo markers before routing.
 
+## Additional Resources
+
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+
 ## Shared Stack Detection
 
-Before routing, read `orchestration/stack-routing/PLAYBOOK.md`. Use it as the source of truth for:
+Before routing, read [stack-routing.md](stack-routing.md). Use it as the source of truth for:
 - stack taxonomy
 - signal collection order
 - dominant-stack tie-breakers
 - mixed-stack routing rules
+
+This supporting file lives beside `SKILL.md`; keep the routing rules in this skill aligned with it.
 
 Do not redefine stack signals here unless a route-specific exception is truly unique to quality-check behavior.
 

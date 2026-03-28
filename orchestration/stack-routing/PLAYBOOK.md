@@ -1,21 +1,13 @@
 ---
 name: stack-routing
-description: Internal playbook for stack detection, dominant-signal tie-breakers, and router delegation decisions.
+description: Maintainer-facing reference snapshot for shared stack detection, dominant-signal tie-breakers, and router delegation decisions.
 ---
 
-# Shared Stack Routing Playbook
+# Shared Stack Routing Snapshot
 
-Use this playbook when another skill needs to decide which stack-specific skill should handle the current repo, diff, or validation scope.
+This maintainer-facing reference snapshot documents the shared stack-routing contract used when authoring or updating installable skills.
 
-This is not the place for stack-specific review heuristics or build commands. Keep it focused on:
-- stack taxonomy
-- signal collection order
-- dominant-stack tie-breakers
-- mixed-stack delegation rules
-
-## Project Guidance
-
-If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance when using this playbook.
+Runtime-facing skills consume this contract through sibling supporting files such as `stack-routing.md` inside each skill directory. Do not reference this repo-relative path directly from installable skills.
 
 ## Signal Collection Order
 
@@ -36,56 +28,39 @@ Classify work as one of:
 - `go`
 - `Unknown/Unsupported`
 
-## Stack Signals
+## Strong Stack Signals
 
-### kmp Signals
+### kmp
 
-- `.kt`, `.kts`, `build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`
 - `kotlin("multiplatform")`, `org.jetbrains.kotlin.multiplatform`, `expect` / `actual`
-- `androidx`, `AndroidManifest.xml`, `androidMain`, `iosMain`, `commonMain`
-- Compose, Activities, Fragments, resources, platform source sets
+- `androidMain`, `iosMain`, `commonMain`, `AndroidManifest.xml`
+- Compose Multiplatform, Android resources, platform source sets
 
-### backend-kotlin Signals
+### backend-kotlin
 
-- `.kt`, `.kts`, `build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`
-- Kotlin backend/server modules or services without strong Android/KMP markers
-- `io.ktor.server`, Spring, Micronaut, Quarkus, http4k
-- Exposed, jOOQ, Flyway, Liquibase, Hibernate/JPA, JDBC, R2DBC
+- Kotlin files/builds plus server markers such as `io.ktor.server`, Spring, Micronaut, Quarkus, http4k
 - `application.yml`, `application.yaml`, `application.conf`
+- Exposed, jOOQ, Flyway, Liquibase, Hibernate/JPA, JDBC, R2DBC
 
-### kotlin Signals
+### kotlin
 
-- `.kt`, `.kts`, `build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`
 - Kotlin/JVM libraries, CLIs, or shared utilities without strong `kmp` or `backend-kotlin` markers
 
-### php Signals
+### php
 
-- `composer.json`, `composer.lock`, `phpunit.xml`, `phpunit.xml.dist`
-- `.php`, `artisan`, `routes/web.php`, `routes/api.php`, `bootstrap/app.php`
+- `composer.json`, `composer.lock`, `phpunit.xml*`, `.php`
 - Laravel, Symfony, Slim, Doctrine, Eloquent, PHPUnit, Pest, Blade, Twig
 
-### go Signals
+### go
 
-- `go.mod`, `go.sum`, `go.work`, `go.work.sum`
-- `.go`, `cmd/`, `internal/`, `pkg/`, `vendor/`
-- `net/http`, `google.golang.org/grpc`, chi, gin, echo, fiber, cobra
-- `database/sql`, sqlx, `gorm.io`, `entgo.io`, migration tooling, worker or service packages using `context.Context`
+- `go.mod`, `go.sum`, `go.work*`, `.go`, `cmd/`, `internal/`, `pkg/`
+- `net/http`, gRPC, chi, gin, echo, fiber, `database/sql`, sqlx, GORM, Ent
 
-## Decision Rules
+## Tie-Breakers
 
-- If Android/KMP markers are strong, classify as `kmp`.
-- Treat Android-only scope as `kmp` too; `kmp` is the package-aligned bucket for Android/KMP work.
-- If backend/server markers are strong without meaningful `kmp` markers, classify as `backend-kotlin`.
-- If generic Kotlin markers are present without meaningful `kmp` or `backend-kotlin` markers, classify as `kotlin`.
-- If PHP markers are strong, classify as `php`.
-- If Go markers are strong, classify as `go`.
-- If multiple supported stacks are present in one unit of work, classify as `Mixed` for routing purposes and delegate to each matching package-aligned stack-specific skill when the caller supports multi-route execution.
-- If no supported stack has clear evidence, classify as `Unknown/Unsupported` and say so explicitly.
-
-## Router Contract
-
-Skills that use this playbook should:
-- cite the detected stack
-- cite the key signals that drove the choice
-- explain whether they routed to one skill or multiple skills
-- keep stack-specific heuristics in the delegated skill, not here
+- If Android/KMP markers are strong, route to `kmp`
+- Treat Android-only scope as `kmp` because that is the package-aligned Android/KMP bucket
+- If backend/server markers are strong without meaningful `kmp` markers, route to `backend-kotlin`
+- If generic Kotlin markers appear without meaningful `kmp` or `backend-kotlin` markers, route to `kotlin`
+- If multiple supported stacks are clearly present, treat the scope as mixed and route to each matching stack-specific skill when the caller supports it
+- If no supported stack has clear evidence, stop and say the stack is unsupported instead of pretending coverage exists
