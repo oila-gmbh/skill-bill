@@ -26,7 +26,7 @@ Design Doc + Issue Key → Assess + Extract Criteria → [Size gate] → Create 
     Compact → bill-code-review (stack-routed review) → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
 
   LARGE (>15 tasks or >6 boundaries):
-    Save Spec → Read History → Feature Flag? → Plan (phased) → Implement →
+    Save Spec → Read History → [Rollout Control?] → Plan (phased) → Implement →
     Compact → bill-code-review (stack-routed review) → Compact → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
 ```
 
@@ -65,7 +65,7 @@ After reading the spec, perform the assessment **in one pass** — do not ask mu
    - Whether new boundaries or user-facing surfaces are needed
    - Whether sync/offline/migration is involved
 5. **Infer feature name** from the spec (e.g., `daily-report-ai-empty`)
-6. **Infer feature flag need** — if it's a new user-facing feature with rollout risk, suggest a flag; if it's an enhancement behind an existing flag, say N/A
+6. **Infer rollout need** — if the spec, user, existing rollout path, or repo policy requires guarded rollout, note the expected mechanism; otherwise default to `N/A` and do not invent a new feature flag only because the feature is large
 
 Present this as a single block:
 
@@ -80,7 +80,7 @@ Present this as a single block:
 📏 SIZE: SMALL (estimated ~N tasks, ~N boundaries)
 🏷️ FEATURE NAME: <name>
 🌿 BRANCH: feat/<ISSUE_KEY>-<feature-name>
-🚩 FEATURE FLAG: N/A (or suggested name + pattern)
+🚩 ROLLOUT: N/A | existing feature flag <name> | new feature flag <name/pattern>
 ```
 
 Then ask:
@@ -102,7 +102,7 @@ After the user confirms the assessment, create and switch to a new feature branc
 ## Step 2: Pre-Planning
 
 **All sizes:** Always **Save Spec** (the acceptance criteria serve as the contract for the completeness audit), **Read Boundary History** if history files exist near the affected module/package/area, and determine the **final validation strategy** automatically.
-**MEDIUM and LARGE only:** Also discover codebase patterns. Perform Feature Flag Setup when the feature is LARGE or when the user confirmed a flag is needed.
+**MEDIUM and LARGE only:** Also discover codebase patterns. Perform Feature Flag Setup only when the chosen rollout strategy requires a feature flag.
 
 ### Save Spec
 
@@ -139,7 +139,7 @@ Look for `agent/history.md` in each module, package root, or area boundary the f
 
 If no history exists, skip.
 
-### Feature Flag Setup (LARGE only, or when user confirmed flag needed)
+### Feature Flag Setup (only when rollout uses a feature flag)
 
 - Read the `bill-feature-guard` skill instructions and its matching `.agents/skill-overrides.md` section, then apply them inline
 - Determine the pattern (Legacy / DI Switch / Simple Conditional)
@@ -154,7 +154,7 @@ Explore the codebase concurrently with planning:
 3. Identify build/runtime dependencies for affected boundaries
 4. Note reusable components
 5. Identify validation surfaces so the final gate is chosen automatically:
-   - Gradle/Kotlin project or affected boundaries use that toolchain → `bill-quality-check`
+   - The affected repo or boundaries use a supported stack-routed quality-check path → `bill-quality-check`
    - Agent-config / skill repository (`SKILL.md`, `AGENTS.md`, `.agents/skill-overrides.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.github/copilot-instructions*`, installer/config files, repo-native validation scripts) → inline agent-config validation
    - Mixed repository → run both
 6. If a repo-native validation script already exists, reuse it instead of inventing a new ad hoc checklist
@@ -171,14 +171,14 @@ Do NOT present a separate "codebase patterns" section to the user — fold these
 
 **Additional rules for MEDIUM/LARGE:**
 - If plan exceeds **15 tasks**, split into phases with a checkpoint between each
-- If feature-guarded, every task states how it respects the flag strategy
+- If the rollout strategy uses a feature flag, every task states how it respects that flag strategy
 - Reference relevant design artifacts by filename where relevant (for example mockups, screenshots, wireframes, API examples)
 
 **Plan format:**
 ```
 ## Implementation Plan: <feature-name>
 
-### Feature Flag
+### Rollout
 - Flag: <name> (or N/A)
 - Pattern: <pattern> (or N/A)
 
@@ -307,7 +307,7 @@ After completeness audit passes, **infer the final validation gate automatically
 
 ### Validation strategy
 
-- **Gradle/Kotlin repos or affected boundaries use that toolchain:** run `bill-quality-check`
+- **Repos or affected boundaries use a supported stack-routed quality-check path:** run `bill-quality-check`
 - **Agent-config / skill repos touched:** run inline agent-config validation
 - **Both:** run both gates
 - **Neither:** run the closest existing repo-native validation command or test command already present in the project
@@ -357,7 +357,7 @@ Pass along:
 ## Skills Invoked
 
 This skill orchestrates (by reading their instructions and applying inline):
-- `bill-feature-guard` — if feature flag is needed (LARGE, or when confirmed)
+- `bill-feature-guard` — if the chosen rollout strategy requires a feature flag
 - `bill-code-review` — automatic after implementation; it detects the dominant stack and delegates to the matching stack-specific reviewer
 - `bill-quality-check` — when the affected repo/boundaries use a stack-routed quality-check path
 - `bill-boundary-history` — writes/maintains boundary-level `agent/history.md` for impactful or larger features
@@ -372,7 +372,7 @@ This skill orchestrates (by reading their instructions and applying inline):
 | Sync/migration involved | No | No | Yes |
 | Save spec to disk | Yes | Yes | Yes |
 | Read boundary history | If exists | Yes | Yes |
-| Feature flag ceremony | No | If needed | Full |
+| Feature flag ceremony | If required | If required | If required |
 | Codebase discovery section | Inline | Inline | Inline |
 | Compaction steps | No | Post-impl | Post-impl + post-review |
 | Review agents | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) | Dynamic (2-6, based on diff) |

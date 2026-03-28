@@ -46,6 +46,7 @@ Do not redefine stack signals here unless a route-specific exception is truly un
 - If `kmp` signals dominate, delegate to `bill-kmp-code-review`.
 - If `backend-kotlin` signals dominate, delegate to `bill-backend-kotlin-code-review`.
 - If `kotlin` signals dominate without meaningful `kmp` or `backend-kotlin` markers, delegate to `bill-kotlin-code-review`.
+- If `php` signals dominate, delegate to `bill-php-code-review`.
 - If the review scope mixes `kmp` with other Kotlin-family scope, prefer `bill-kmp-code-review` because it layers the appropriate Kotlin-family baseline internally instead of running multiple Kotlin-family orchestrators side by side.
 - If the review scope mixes `backend-kotlin` with generic `kotlin` but not `kmp`, prefer `bill-backend-kotlin-code-review` because it layers `bill-kotlin-code-review` internally instead of running both side by side.
 - If another supported stack dominates, delegate to that stack's canonical `bill-<stack>-code-review` skill when it exists in the available skill catalog.

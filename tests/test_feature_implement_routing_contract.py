@@ -17,6 +17,7 @@ QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
+PHP_CODE_REVIEW = read("skills/php/bill-php-code-review/SKILL.md")
 
 
 class FeatureImplementRoutingContractTest(unittest.TestCase):
@@ -70,6 +71,20 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn(
       "- Otherwise use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
+    )
+
+  def test_php_context_routes_to_php_review_and_quality_check(self) -> None:
+    self.assertIn(
+      "- If `php` signals dominate, delegate to `bill-php-code-review`.",
+      CODE_REVIEW,
+    )
+    self.assertIn(
+      "- If `php` signals dominate, delegate to the canonical `bill-php-quality-check` skill when it exists.",
+      QUALITY_CHECK,
+    )
+    self.assertIn(
+      "read `orchestration/stack-routing/PLAYBOOK.md`",
+      PHP_CODE_REVIEW,
     )
 
   def test_kmp_plus_backend_context_uses_backend_baseline_inside_kmp_review(self) -> None:
