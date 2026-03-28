@@ -12,6 +12,8 @@ Review only correctness and runtime-safety issues.
 - Race conditions, ordering bugs, and stale-state updates
 - Nullability/edge-case failures and crash paths
 - State-machine and contract handling correctness
+- Business-rule drift in conditionals, reducers, refactors, and retries
+- Violated invariants, missing guards, and wrong branch selection in changed logic
 - Resource ownership and lifecycle safety where relevant
 
 ## Ignore
@@ -45,9 +47,18 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 - Do not hold scarce resources (locks, transactions, open streams, file handles) across remote calls or long waits unless the contract explicitly requires it
 - Startup-owned or application-owned scopes must be cancelled cleanly during shutdown or cleanup
 
+### Business Logic / Invariant Checks
+- Guard ordering in `if`/`when`, reducers, and state transitions must preserve business-rule priority and reject invalid states before success paths
+- Refactors, extracted helpers, and shared transformation pipelines must not collapse distinct business cases into the same outcome unless the contract explicitly changed
+- Null, absent, empty, default, and sentinel values must preserve their business meaning across mapping, storage, transport, and UI state
+- Partial-success, optimistic update, and rollback paths must not report durable success before the contract's required effect actually happens
+- Retry, recollection, resubscription, or repeated lifecycle entry must not bypass one-time business checks or re-apply one-time user-visible effects unless the contract explicitly permits it
+- Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
+
 ## Output Rules
 - Report at most 7 findings.
 - Include reproducible failure scenario for Major/Blocker findings.
+- Potential edge-case findings must be grounded in a reachable code path or declared contract. Identify the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.
 - Include `file:line` evidence for each finding.
 - Severity: `Blocker | Major | Minor`
 - Confidence: `High | Medium | Low`
