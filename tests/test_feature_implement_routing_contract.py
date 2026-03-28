@@ -21,6 +21,7 @@ PHP_CODE_REVIEW = read("skills/php/bill-php-code-review/SKILL.md")
 GO_CODE_REVIEW = read("skills/go/bill-go-code-review/SKILL.md")
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
+REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
 PORTABLE_REVIEW_SKILLS = {
   "bill-kotlin-code-review": KOTLIN_CODE_REVIEW,
   "bill-backend-kotlin-code-review": BACKEND_KOTLIN_CODE_REVIEW,
@@ -44,11 +45,20 @@ REVIEW_ORCHESTRATOR_SIDECAR_SKILLS = {
   "bill-php-code-review": ROOT / "skills" / "php" / "bill-php-code-review" / "review-orchestrator.md",
   "bill-go-code-review": ROOT / "skills" / "go" / "bill-go-code-review" / "review-orchestrator.md",
 }
+REVIEW_DELEGATION_SIDECAR_SKILLS = {
+  "bill-code-review": ROOT / "skills" / "base" / "bill-code-review" / "review-delegation.md",
+  "bill-kotlin-code-review": ROOT / "skills" / "kotlin" / "bill-kotlin-code-review" / "review-delegation.md",
+  "bill-backend-kotlin-code-review": ROOT / "skills" / "backend-kotlin" / "bill-backend-kotlin-code-review" / "review-delegation.md",
+  "bill-kmp-code-review": ROOT / "skills" / "kmp" / "bill-kmp-code-review" / "review-delegation.md",
+  "bill-php-code-review": ROOT / "skills" / "php" / "bill-php-code-review" / "review-delegation.md",
+  "bill-go-code-review": ROOT / "skills" / "go" / "bill-go-code-review" / "review-delegation.md",
+}
 
 
 class FeatureImplementRoutingContractTest(unittest.TestCase):
   def test_shared_router_skills_reference_local_stack_routing_sidecars(self) -> None:
     self.assertIn("[stack-routing.md](stack-routing.md)", CODE_REVIEW)
+    self.assertIn("[review-delegation.md](review-delegation.md)", CODE_REVIEW)
     self.assertIn("[stack-routing.md](stack-routing.md)", QUALITY_CHECK)
     self.assertNotIn(".bill-shared/orchestration/", CODE_REVIEW)
     self.assertNotIn(".bill-shared/orchestration/", QUALITY_CHECK)
@@ -63,10 +73,17 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
   def test_reference_playbooks_remain_available_for_maintainers(self) -> None:
     self.assertIn("maintainer-facing reference snapshot", STACK_ROUTING_PLAYBOOK)
     self.assertIn("maintainer-facing reference snapshot", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("maintainer-facing reference snapshot", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("sibling supporting files", STACK_ROUTING_PLAYBOOK)
     self.assertIn("sibling supporting files", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("sibling supporting files", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("Do not reference this repo-relative path directly", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("## GitHub Copilot CLI", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("## Claude Code", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("## OpenAI Codex", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("## GLM", REVIEW_DELEGATION_PLAYBOOK)
 
   def test_feature_implement_invokes_shared_review_and_validation_routers(self) -> None:
     self.assertIn("Run the `bill-code-review` skill", FEATURE_IMPLEMENT)
@@ -172,7 +189,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       KOTLIN_CODE_REVIEW,
     )
 
-  def test_stack_review_skills_use_portable_specialist_review_wording(self) -> None:
+  def test_stack_review_skills_require_delegated_subagent_execution(self) -> None:
     forbidden_phrases = (
       "`task`",
       "spawn_agent",
@@ -185,13 +202,14 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     for skill_name, skill_text in PORTABLE_REVIEW_SKILLS.items():
       with self.subTest(skill=skill_name):
         self.assertIn("specialist review", skill_text)
-        self.assertIn("delegation mechanism", skill_text)
-        self.assertIn("perform the same", skill_text)
-        self.assertIn("inline and say so in the summary", skill_text)
         self.assertIn("[review-orchestrator.md](review-orchestrator.md)", skill_text)
+        self.assertIn("[review-delegation.md](review-delegation.md)", skill_text)
+        self.assertIn("delegated subagent", skill_text)
+        self.assertIn("guaranteed delegated review execution is unavailable", skill_text)
         self.assertNotIn(".bill-shared/orchestration/", skill_text)
         self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", skill_text)
         self.assertNotIn("orchestration/review-orchestrator/PLAYBOOK.md", skill_text)
+        self.assertNotIn("orchestration/review-delegation/PLAYBOOK.md", skill_text)
         for forbidden_phrase in forbidden_phrases:
           self.assertNotIn(forbidden_phrase, skill_text)
 
@@ -199,6 +217,11 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-orchestrator" / "PLAYBOOK.md")
+
+    for skill_name, sidecar_path in REVIEW_DELEGATION_SIDECAR_SKILLS.items():
+      with self.subTest(skill=skill_name):
+        self.assertTrue(sidecar_path.is_symlink())
+        self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-delegation" / "PLAYBOOK.md")
 
 
 if __name__ == "__main__":

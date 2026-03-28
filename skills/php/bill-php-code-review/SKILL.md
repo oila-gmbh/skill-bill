@@ -37,10 +37,13 @@ Inspect the changed files and repo markers before applying review heuristics.
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
+- For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
 Before applying review heuristics, read [stack-routing.md](stack-routing.md) and use it as the source of truth for PHP stack signals and mixed-stack routing expectations. This skill owns the PHP review depth that applies after PHP is already in scope.
 
-Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, review principles, and delegation portability used by stack-specific review orchestrators.
+Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+
+Before delegating specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
 
 ---
 
@@ -95,9 +98,7 @@ If different parts of the diff touch different review surfaces:
 
 ### Step 5: Run selected specialist reviews
 
-Run all selected specialist review passes in parallel when the runtime supports delegation and current policy allows it.
-Use the runtime's available delegation mechanism rather than naming a specific tool. If delegation is unavailable,
-perform the same specialist review passes inline and say so in the summary.
+Run one delegated subagent per selected specialist review pass. For supported runtimes, do not inline specialist review passes or collapse multiple specialists into a single combined review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
 
 Each specialist review pass uses:
 

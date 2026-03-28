@@ -35,15 +35,16 @@ APPROVED_CODE_REVIEW_AREAS = {
 ORCHESTRATION_PLAYBOOKS: dict[str, str] = {
   "stack-routing": "orchestration/stack-routing/PLAYBOOK.md",
   "review-orchestrator": "orchestration/review-orchestrator/PLAYBOOK.md",
+  "review-delegation": "orchestration/review-delegation/PLAYBOOK.md",
 }
 RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
-  "bill-code-review": ("stack-routing.md",),
+  "bill-code-review": ("stack-routing.md", "review-delegation.md"),
   "bill-quality-check": ("stack-routing.md",),
-  "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
-  "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md"),
-  "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md"),
-  "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md"),
-  "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md"),
+  "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+  "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+  "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+  "bill-php-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
+  "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
 }
 EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
   (
@@ -51,9 +52,15 @@ EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = 
     "must reference skill-local supporting files instead of install-local playbook paths",
   ),
   (
-    re.compile(r"orchestration/(?:stack-routing|review-orchestrator)/PLAYBOOK\.md"),
+    re.compile(r"orchestration/(?:stack-routing|review-orchestrator|review-delegation)/PLAYBOOK\.md"),
     "must reference skill-local supporting files instead of repo-side playbook paths at runtime",
   ),
+)
+REVIEW_DELEGATION_REQUIRED_SECTIONS = (
+  "## GitHub Copilot CLI",
+  "## Claude Code",
+  "## OpenAI Codex",
+  "## GLM",
 )
 PORTABLE_REVIEW_SKILLS = {
   "bill-kotlin-code-review",
@@ -229,7 +236,7 @@ def validate_portable_review_wording(
 
 
 def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
-  for relative_path in ORCHESTRATION_PLAYBOOKS.values():
+  for playbook_name, relative_path in ORCHESTRATION_PLAYBOOKS.items():
     playbook_path = root / relative_path
     if not playbook_path.is_file():
       issues.append(f"{relative_path} is missing")
@@ -240,6 +247,10 @@ def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
       issues.append(f"{relative_path}: missing YAML frontmatter block")
     if SKILL_OVERRIDE_FILE in text:
       issues.append(f"{relative_path}: orchestration playbooks must not reference '{SKILL_OVERRIDE_FILE}'")
+    if playbook_name == "review-delegation":
+      for section in REVIEW_DELEGATION_REQUIRED_SECTIONS:
+        if section not in text:
+          issues.append(f"{relative_path}: missing required delegation section '{section}'")
 
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:

@@ -27,13 +27,13 @@ The repo is organized around a strict three-layer model:
 
 - `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
 - `skills/<platform>/` — platform-specific overrides and approved subskills
-- `orchestration/` — maintainer-facing reference snapshots for shared routing and review contracts
+- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, and delegation contracts
 
 Think of it as markdown with inheritance:
 
 - base skills define the stable contracts
 - platform skills specialize them
-- orchestration snapshots document the shared logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
+- orchestration snapshots document the shared routing, review, and delegation logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
 
 Current platform packages:
 
@@ -132,7 +132,7 @@ all
 
 Each installer run replaces the existing Skill Bill links and reinstalls only the agent and platform selections from that run.
 
-Shared routing and review contracts are documented in `orchestration/` and exposed to runtimes through sibling supporting files inside each skill directory. That keeps references local to the installed skill instead of relying on repo-relative playbook paths.
+Shared routing, review, and delegation contracts are documented in `orchestration/` and exposed to runtimes through sibling supporting files inside each skill directory. That keeps references local to the installed skill instead of relying on repo-relative playbook paths.
 
 The installer always removes existing Skill Bill links before reinstalling the selected agents and platforms.
 

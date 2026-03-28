@@ -34,6 +34,7 @@ Inspect both the changed files and repo markers before routing.
 ## Additional Resources
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
 ## Shared Stack Detection
 
@@ -63,14 +64,20 @@ Do not redefine stack signals here unless a route-specific exception is truly un
 
 ## Delegation Contract
 
+Before delegating to another skill, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific delegated execution of routed stack-specific review skills.
+
 When routing to another skill, pass along:
 - the exact review scope
 - the changed files or diff source
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
+- the delegated skill file path
 - the rule that the delegated skill must follow its own `SKILL.md` as the primary rubric
+- the delegated skill's `review-orchestrator.md` contract when the routed skill is a stack review orchestrator
 
-Use parallel delegation only when multiple supported stacks are clearly in scope.
+For supported runtimes, execute routed stack-specific reviews as delegated subagents rather than reviewing inline in this router. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
+
+Use parallel delegated subagents only when multiple supported stacks are clearly in scope.
 
 ## Output Format
 
