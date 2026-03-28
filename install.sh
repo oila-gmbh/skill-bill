@@ -22,7 +22,7 @@ Usage: ./install.sh [--mode safe|override|interactive]
 
 Modes:
   safe         Replace existing symlinks, migrate legacy plugin installs, and skip non-symlink conflicts. (default)
-  override     Replace any existing target path, including local copies, and prune stale bill-* installs.
+  override     Run uninstall.sh first, then reinstall only the selected platforms.
   interactive  Prompt before replacing non-symlink conflicts.
 USAGE
 }
@@ -444,6 +444,7 @@ display_platform_name() {
     kotlin) printf 'Kotlin' ;;
     kmp) printf 'KMP' ;;
     php) printf 'PHP' ;;
+    go) printf 'Go' ;;
     *)
       local label="${1//-/ }"
       printf '%s' "$label"
@@ -461,7 +462,7 @@ build_platform_packages() {
   done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 
   PLATFORM_PACKAGES=()
-  for package in backend-kotlin kotlin kmp php; do
+  for package in backend-kotlin kotlin kmp php go; do
     if array_contains "$package" "${discovered[@]:-}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
