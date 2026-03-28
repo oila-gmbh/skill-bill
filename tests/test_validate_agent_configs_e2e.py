@@ -35,6 +35,16 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_accepts_go_platform_override_of_dynamic_base_capability(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-ship-it"),
+        ("go", "bill-go-ship-it"),
+      ]
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
   def test_rejects_platform_only_capability_name(self) -> None:
     with self.fixture_repo(
       [
@@ -59,6 +69,20 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn("code-review specialization 'laravel' is not approved", result.stdout)
+
+  def test_rejects_go_platform_only_capability_name(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-ship-it"),
+        ("go", "bill-go-gin-ship-it"),
+      ]
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "platform skill 'bill-go-gin-ship-it' must either override an approved base skill",
+        result.stdout,
+      )
 
   def test_rejects_unknown_platform_package(self) -> None:
     with self.fixture_repo(

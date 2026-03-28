@@ -32,7 +32,7 @@ Classify work as one of:
 - `kmp`
 - `backend-kotlin`
 - `kotlin`
-- `php`
+- `go`
 - `Unknown/Unsupported`
 
 ## Stack Signals
@@ -57,11 +57,12 @@ Classify work as one of:
 - `.kt`, `.kts`, `build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`
 - Kotlin/JVM libraries, CLIs, or shared utilities without strong `kmp` or `backend-kotlin` markers
 
-### php Signals
+### go Signals
 
-- `composer.json`, `composer.lock`, `phpunit.xml`, `phpunit.xml.dist`
-- `.php`, `artisan`, `routes/web.php`, `routes/api.php`, `bootstrap/app.php`
-- Laravel, Symfony, Slim, Doctrine, Eloquent, PHPUnit, Pest, Blade, Twig
+- `go.mod`, `go.sum`, `go.work`, `go.work.sum`
+- `.go`, `cmd/`, `internal/`, `pkg/`, `vendor/`
+- `net/http`, `google.golang.org/grpc`, chi, gin, echo, fiber, cobra
+- `database/sql`, sqlx, `gorm.io`, `entgo.io`, migration tooling, worker or service packages using `context.Context`
 
 ## Decision Rules
 
@@ -69,7 +70,7 @@ Classify work as one of:
 - Treat Android-only scope as `kmp` too; `kmp` is the package-aligned bucket for Android/KMP work.
 - If backend/server markers are strong without meaningful `kmp` markers, classify as `backend-kotlin`.
 - If generic Kotlin markers are present without meaningful `kmp` or `backend-kotlin` markers, classify as `kotlin`.
-- If PHP markers are strong, classify as `php`.
+- If Go markers are strong, classify as `go`.
 - If multiple supported stacks are present in one unit of work, classify as `Mixed` for routing purposes and delegate to each matching package-aligned stack-specific skill when the caller supports multi-route execution.
 - If no supported stack has clear evidence, classify as `Unknown/Unsupported` and say so explicitly.
 

@@ -1,8 +1,8 @@
 # sKill Bill
 
-sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, and agent-config repositories.
+sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, Go backends/services, and agent-config repositories.
 
-This repo is a collection of 24 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
+This repo is a collection of 34 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
 
 ## Why this exists
 
@@ -40,7 +40,7 @@ Current platform packages:
 - `kotlin`
 - `backend-kotlin`
 - `kmp`
-- `php` reserved for future expansion
+- `go`
 
 ## Naming and enforcement
 
@@ -76,8 +76,8 @@ Base entry points stay stable for users:
 
 They route internally to platform-specific skills:
 
-- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review`
-- `bill-quality-check` -> current stack-specific quality checker
+- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-go-code-review`
+- `bill-quality-check` -> current stack-specific quality checker, including `bill-go-quality-check` for Go repos
 
 Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` until dedicated overrides exist.
 
@@ -116,7 +116,7 @@ Available options are shown as separate entries:
 Kotlin backend
 Kotlin
 KMP
-PHP
+Go
 all
 ```
 
@@ -124,7 +124,7 @@ Example platform selections:
 
 ```text
 Kotlin backend, Kotlin, KMP
-PHP
+Go
 all
 ```
 
@@ -155,7 +155,7 @@ The uninstaller is idempotent. It removes current Skill Bill skill names plus kn
 
 ## Skills Included
 
-### Code Review (14 skills)
+### Code Review (23 skills)
 
 | Skill | Purpose |
 |-------|---------|
@@ -173,6 +173,15 @@ The uninstaller is idempotent. It removes current Skill Bill skill names plus kn
 | `/bill-backend-kotlin-code-review-api-contracts` | Backend API contract review |
 | `/bill-backend-kotlin-code-review-persistence` | Backend persistence and migration review |
 | `/bill-backend-kotlin-code-review-reliability` | Backend reliability and observability review |
+| `/bill-go-code-review` | Go backend/service review orchestrator |
+| `/bill-go-code-review-architecture` | Go architecture and package-boundary review |
+| `/bill-go-code-review-platform-correctness` | Go correctness, goroutine safety, and context review |
+| `/bill-go-code-review-api-contracts` | Go API contract and serialization review |
+| `/bill-go-code-review-persistence` | Go persistence, transaction, and migration review |
+| `/bill-go-code-review-reliability` | Go reliability, timeout, and observability review |
+| `/bill-go-code-review-security` | Go security review |
+| `/bill-go-code-review-performance` | Go performance review |
+| `/bill-go-code-review-testing` | Go test quality review |
 
 ### Feature Lifecycle (4 skills)
 
@@ -183,12 +192,13 @@ The uninstaller is idempotent. It removes current Skill Bill skill names plus kn
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
-### Utilities (6 skills)
+### Utilities (7 skills)
 
 | Skill | Purpose |
 |-------|---------|
 | `/bill-quality-check` | Shared quality-check router |
 | `/bill-kotlin-quality-check` | Gradle/Kotlin quality-check implementation |
+| `/bill-go-quality-check` | Go quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps |
