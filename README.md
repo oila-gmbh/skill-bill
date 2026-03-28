@@ -98,14 +98,13 @@ The installer links all selected agents to the same repo so updates stay in sync
 git clone <this-repo> ~/Development/skill-bill
 cd ~/Development/skill-bill
 chmod +x install.sh
-./install.sh --mode safe
+./install.sh
 ```
 
-The installer first asks which agent targets to install to. You can choose one or more entries, including `all`, and if you choose more than one it then asks which selected agent should be primary:
+The installer first asks which agent targets to install to. You can choose one or more entries, including `all`:
 
 ```text
 all
-claude
 ```
 
 It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected.
@@ -128,15 +127,11 @@ Go
 all
 ```
 
-Re-running the installer in `safe` mode is add-only for valid platform packages, so you can install more platforms later without removing ones that were already linked.
+Each installer run replaces the existing Skill Bill links and reinstalls only the agent and platform selections from that run.
 
 Shared routing and review contracts are documented in `orchestration/` and exposed to runtimes through sibling supporting files inside each skill directory. That keeps references local to the installed skill instead of relying on repo-relative playbook paths.
 
-Modes:
-
-- `safe` — replace symlinks, migrate plugin-managed legacy installs, skip non-symlink conflicts
-- `override` — run `./uninstall.sh` first, then reinstall only the selected platforms
-- `interactive` — prompt before replacing non-symlink conflicts
+The installer always removes existing Skill Bill links before reinstalling the selected agents and platforms.
 
 If you only use Claude Code, you can also install this repo as a Claude plugin:
 
@@ -268,7 +263,7 @@ Manual path:
 
 1. create `skills/<package>/<skill-name>/SKILL.md`
 2. follow the naming rules above
-3. run `./install.sh --mode safe`
+3. run `./install.sh`
 4. update docs and validation if you intentionally add a new package or naming shape
 
 ## License

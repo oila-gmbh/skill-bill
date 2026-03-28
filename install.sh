@@ -3,7 +3,6 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
-MODE="safe"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -18,23 +17,13 @@ err()   { printf "${RED}✗${NC} %s\n" "$1"; }
 
 usage() {
   cat <<USAGE
-Usage: ./install.sh [--mode safe|override|interactive]
-
-Modes:
-  safe         Replace existing symlinks, migrate legacy plugin installs, and skip non-symlink conflicts. (default)
-  override     Run uninstall.sh first, then reinstall only the selected platforms.
-  interactive  Prompt before replacing non-symlink conflicts.
+Usage: ./install.sh
 USAGE
 }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --mode)
-        [[ $# -ge 2 ]] || { err "Missing value for --mode"; usage; exit 1; }
-        MODE="$2"
-        shift 2
-        ;;
       --help|-h)
         usage
         exit 0
@@ -46,15 +35,6 @@ parse_args() {
         ;;
     esac
   done
-
-  case "$MODE" in
-    safe|override|interactive) ;;
-    *)
-      err "Invalid mode: $MODE"
-      usage
-      exit 1
-      ;;
-  esac
 }
 
 get_agent_path() {
@@ -70,19 +50,6 @@ get_agent_path() {
       fi
       ;;
     *)       return 1 ;;
-  esac
-}
-
-is_agent_available() {
-  case "$1" in
-    codex)
-      [[ -d "$HOME/.codex" || -d "$HOME/.agents" ]]
-      ;;
-    *)
-      local agent_dir
-      agent_dir="$(get_agent_path "$1")"
-      [[ -d "$(dirname "$agent_dir")" ]]
-      ;;
   esac
 }
 
@@ -117,67 +84,16 @@ declare -a INSTALL_SKILL_PATHS=()
 declare -a PLATFORM_PACKAGES=()
 declare -a SELECTED_PLATFORM_PACKAGES=()
 declare -a LEGACY_SKILL_NAMES=()
-declare -a SKIPPED_TARGETS=()
-
-auto_replace_allowed() {
-  local target="$1"
-  [[ -L "$target" ]]
-}
-
-confirm_replace() {
-  local target="$1"
-  local reason="$2"
-  local answer
-
-  while true; do
-    printf "${CYAN}▸${NC} Replace '%s' (%s)? [y/N]: " "$target" "$reason"
-    read -r answer
-    case "$answer" in
-      y|Y|yes|YES) return 0 ;;
-      n|N|no|NO|'') return 1 ;;
-      *) warn "Please answer y or n." ;;
-    esac
-  done
-}
-
-should_replace_target() {
-  local target="$1"
-  local reason="$2"
-
-  if auto_replace_allowed "$target"; then
-    return 0
-  fi
-
-  case "$MODE" in
-    override)
-      return 0
-      ;;
-    interactive)
-      confirm_replace "$target" "$reason"
-      return $?
-      ;;
-    safe)
-      warn "Skipping '$target' (${reason}) because it is not a symlink. Re-run with --mode override or --mode interactive to replace it."
-      return 1
-      ;;
-  esac
-}
 
 remove_if_allowed() {
   local target="$1"
-  local reason="$2"
 
   if [[ ! -e "$target" && ! -L "$target" ]]; then
     return 0
   fi
 
-  if should_replace_target "$target" "$reason"; then
-    rm -rf "$target"
-    return 0
-  fi
-
-  SKIPPED_TARGETS+=("$target")
-  return 1
+  rm -rf "$target"
+  return 0
 }
 
 lookup_renamed_skill() {
@@ -300,32 +216,6 @@ format_agent_list() {
   printf '%s' "$result"
 }
 
-set_primary_agent() {
-  local target="$1"
-  local reordered_names=()
-  local reordered_paths=()
-  local idx
-
-  for idx in "${!AGENT_NAMES[@]}"; do
-    if [[ "${AGENT_NAMES[$idx]}" == "$target" ]]; then
-      reordered_names+=("${AGENT_NAMES[$idx]}")
-      reordered_paths+=("${AGENT_PATHS[$idx]}")
-    fi
-  done
-
-  for idx in "${!AGENT_NAMES[@]}"; do
-    if [[ "${AGENT_NAMES[$idx]}" != "$target" ]]; then
-      reordered_names+=("${AGENT_NAMES[$idx]}")
-      reordered_paths+=("${AGENT_PATHS[$idx]}")
-    fi
-  done
-
-  AGENT_NAMES=("${reordered_names[@]}")
-  AGENT_PATHS=("${reordered_paths[@]}")
-  PRIMARY="${AGENT_NAMES[0]}"
-  PRIMARY_DIR="${AGENT_PATHS[0]}"
-}
-
 prompt_for_agent_selection() {
   local input
   local raw_tokens=()
@@ -386,55 +276,6 @@ prompt_for_agent_selection() {
     fi
 
     return 0
-  done
-}
-
-prompt_for_primary_agent() {
-  local input
-  local normalized
-  local idx
-
-  if [[ ${#AGENT_NAMES[@]} -eq 1 ]]; then
-    PRIMARY="${AGENT_NAMES[0]}"
-    PRIMARY_DIR="${AGENT_PATHS[0]}"
-    return 0
-  fi
-
-  while true; do
-    echo ""
-    info "Selected agents: $(format_agent_list "${AGENT_NAMES[@]}")"
-    info "Choose the primary agent:"
-    for idx in "${!AGENT_NAMES[@]}"; do
-      printf "  %s. %s\n" "$((idx + 1))" "${AGENT_NAMES[$idx]}"
-    done
-    printf "${CYAN}▸${NC} Enter primary agent: "
-    read -r input
-    input="$(trim_string "$input")"
-
-    if [[ -z "$input" ]]; then
-      warn "No primary agent provided. Choose one of the selected agents."
-      continue
-    fi
-
-    if [[ "$input" =~ ^[0-9]+$ ]]; then
-      idx=$((input - 1))
-      if (( idx >= 0 && idx < ${#AGENT_NAMES[@]} )); then
-        set_primary_agent "${AGENT_NAMES[$idx]}"
-        return 0
-      fi
-      warn "Unknown primary selection: $input"
-      continue
-    fi
-
-    normalized="$(normalize_agent_token "$input")"
-    for idx in "${!AGENT_NAMES[@]}"; do
-      if [[ "$normalized" == "${AGENT_NAMES[$idx]}" ]]; then
-        set_primary_agent "${AGENT_NAMES[$idx]}"
-        return 0
-      fi
-    done
-
-    warn "Unknown primary selection: $input"
   done
 }
 
@@ -712,7 +553,7 @@ remove_legacy_skill_paths() {
       fi
     fi
 
-    if remove_if_allowed "$legacy_target" "legacy install path"; then
+    if remove_if_allowed "$legacy_target"; then
       if [[ -e "$legacy_target" || -L "$legacy_target" ]]; then
         :
       else
@@ -732,11 +573,8 @@ install_skill_link() {
   local label="$3"
 
   if [[ -e "$target" || -L "$target" ]]; then
-    if ! remove_if_allowed "$target" "existing install target"; then
-      warn "  skipped $label"
-      return
+      remove_if_allowed "$target"
     fi
-  fi
 
   ln -s "$source" "$target"
   ok "  $label"
@@ -751,60 +589,33 @@ echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
 info "Supported agents: copilot, claude, glm, codex"
-info "Install mode: $MODE"
-if [[ "$MODE" == safe ]]; then
-  info "Safe mode replaces symlinks, migrates legacy plugin installs, and skips local directory/file conflicts."
-elif [[ "$MODE" == override ]]; then
-  info "Override mode runs the uninstaller first, then reinstalls only the selected platforms."
-fi
+info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
 prompt_for_agent_selection
-prompt_for_primary_agent
 prompt_for_platform_selection
 build_install_skill_names
 
 echo ""
 info "Plugin:  $PLUGIN_DIR"
-info "Primary: $PRIMARY ($PRIMARY_DIR)"
 info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
 info "Skills found: ${#SKILL_NAMES[@]}"
 info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
 echo ""
 
-if [[ "$MODE" == override ]]; then
-  info "Override mode removes existing Skill Bill symlinks before reinstalling the selected platforms."
-  bash "$PLUGIN_DIR/uninstall.sh"
-  echo ""
-fi
-
-mkdir -p "$PRIMARY_DIR"
-info "Installing to primary ($PRIMARY): $PRIMARY_DIR"
-if [[ "$MODE" != override ]]; then
-  remove_legacy_skill_paths "$PRIMARY_DIR"
-fi
-for idx in "${!INSTALL_SKILL_NAMES[@]}"; do
-  skill="${INSTALL_SKILL_NAMES[$idx]}"
-  install_skill_link "$PRIMARY_DIR/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
-done
+info "Removing existing Skill Bill symlinks before reinstalling the selected platforms."
+bash "$PLUGIN_DIR/uninstall.sh"
 echo ""
 
 for i in "${!AGENT_NAMES[@]}"; do
-  [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
 
-  if ! is_agent_available "$agent"; then
-    warn "Skipping $agent (not installed)"
-    continue
-  fi
-
   mkdir -p "$agent_dir"
-  info "Symlinking $agent: $agent_dir → $PRIMARY_DIR"
-  if [[ "$MODE" != override ]]; then
-    remove_legacy_skill_paths "$agent_dir"
-  fi
+  info "Installing to $agent: $agent_dir"
+  remove_legacy_skill_paths "$agent_dir"
 
-  for skill in "${INSTALL_SKILL_NAMES[@]}"; do
-    install_skill_link "$agent_dir/$skill" "$PRIMARY_DIR/$skill" "$skill"
+  for idx in "${!INSTALL_SKILL_NAMES[@]}"; do
+    skill="${INSTALL_SKILL_NAMES[$idx]}"
+    install_skill_link "$agent_dir/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
   done
   echo ""
 done
@@ -812,26 +623,14 @@ done
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
-info "Primary agent:   $PRIMARY → $PRIMARY_DIR"
 info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
 for i in "${!AGENT_NAMES[@]}"; do
-  [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
-  if is_agent_available "$agent"; then
-    info "Linked agent:    $agent → $agent_dir (via $PRIMARY)"
-  fi
+  info "Installed agent: $agent → $agent_dir"
 done
-
-if [[ ${#SKIPPED_TARGETS[@]} -gt 0 ]]; then
-  echo ""
-  warn "Skipped ${#SKIPPED_TARGETS[@]} existing path(s):"
-  for skipped in "${SKIPPED_TARGETS[@]}"; do
-    warn "  $skipped"
-  done
-fi
 
 echo ""
 info "Edit skills in: $PLUGIN_DIR/skills/"
-info "Run './install.sh --mode safe' again to add missing platform packages."
+info "Run './install.sh' again to reinstall with a different agent or platform selection."
 echo ""
