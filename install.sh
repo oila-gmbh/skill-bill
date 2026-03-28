@@ -109,8 +109,13 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-gcheck:bill-quality-check'
 )
 
+declare -a SUPPORTED_AGENTS=(copilot claude glm codex)
 declare -a SKILL_NAMES=()
 declare -a SKILL_PATHS=()
+declare -a INSTALL_SKILL_NAMES=()
+declare -a INSTALL_SKILL_PATHS=()
+declare -a PLATFORM_PACKAGES=()
+declare -a SELECTED_PLATFORM_PACKAGES=()
 declare -a LEGACY_SKILL_NAMES=()
 declare -a SKIPPED_TARGETS=()
 
@@ -205,6 +210,418 @@ find_skill_index() {
   return 1
 }
 
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+trim_string() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+normalize_platform_token() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_/-'
+}
+
+normalize_agent_token() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
+}
+
+add_agent_selection() {
+  local agent="$1"
+  if ! array_contains "$agent" "${AGENT_NAMES[@]:-}"; then
+    AGENT_NAMES+=("$agent")
+    AGENT_PATHS+=("$(get_agent_path "$agent")")
+  fi
+}
+
+resolve_agent_selection() {
+  local token="$1"
+  local normalized
+  local index
+  local all_index
+  local agent
+
+  token="$(trim_string "$token")"
+  [[ -n "$token" ]] || return 1
+
+  if [[ "$token" =~ ^[0-9]+$ ]]; then
+    index=$((token - 1))
+    if (( index >= 0 && index < ${#SUPPORTED_AGENTS[@]} )); then
+      printf '%s\n' "${SUPPORTED_AGENTS[$index]}"
+      return 0
+    fi
+    all_index=${#SUPPORTED_AGENTS[@]}
+    if (( index == all_index )); then
+      printf '__all__\n'
+      return 0
+    fi
+    return 1
+  fi
+
+  normalized="$(normalize_agent_token "$token")"
+  if [[ "$normalized" == "all" ]]; then
+    printf '__all__\n'
+    return 0
+  fi
+
+  for agent in "${SUPPORTED_AGENTS[@]}"; do
+    if [[ "$normalized" == "$agent" ]]; then
+      printf '%s\n' "$agent"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+format_agent_list() {
+  local result=""
+  local agent
+
+  for agent in "$@"; do
+    if [[ -z "$result" ]]; then
+      result="$agent"
+    else
+      result="$result, $agent"
+    fi
+  done
+
+  printf '%s' "$result"
+}
+
+set_primary_agent() {
+  local target="$1"
+  local reordered_names=()
+  local reordered_paths=()
+  local idx
+
+  for idx in "${!AGENT_NAMES[@]}"; do
+    if [[ "${AGENT_NAMES[$idx]}" == "$target" ]]; then
+      reordered_names+=("${AGENT_NAMES[$idx]}")
+      reordered_paths+=("${AGENT_PATHS[$idx]}")
+    fi
+  done
+
+  for idx in "${!AGENT_NAMES[@]}"; do
+    if [[ "${AGENT_NAMES[$idx]}" != "$target" ]]; then
+      reordered_names+=("${AGENT_NAMES[$idx]}")
+      reordered_paths+=("${AGENT_PATHS[$idx]}")
+    fi
+  done
+
+  AGENT_NAMES=("${reordered_names[@]}")
+  AGENT_PATHS=("${reordered_paths[@]}")
+  PRIMARY="${AGENT_NAMES[0]}"
+  PRIMARY_DIR="${AGENT_PATHS[0]}"
+}
+
+prompt_for_agent_selection() {
+  local input
+  local raw_tokens=()
+  local invalid_tokens=()
+  local token
+  local resolved
+  local i
+  local option_number
+  local supported_agent
+
+  while true; do
+    echo ""
+    info "Available agents:"
+    for i in "${!SUPPORTED_AGENTS[@]}"; do
+      printf "  %s. %s\n" "$((i + 1))" "${SUPPORTED_AGENTS[$i]}"
+    done
+    option_number=$(( ${#SUPPORTED_AGENTS[@]} + 1 ))
+    printf "  %s. all (install to every supported agent)\n" "$option_number"
+    info "Choose one or more agents (comma-separated)."
+    printf "${CYAN}▸${NC} Enter agents: "
+    read -r input
+
+    if [[ -z "$(trim_string "$input")" ]]; then
+      warn "No agents provided. Choose at least one agent."
+      continue
+    fi
+
+    AGENT_NAMES=()
+    AGENT_PATHS=()
+    invalid_tokens=()
+    IFS=',' read -ra raw_tokens <<< "$input"
+
+    for token in "${raw_tokens[@]:-}"; do
+      token="$(trim_string "$token")"
+      [[ -z "$token" ]] && continue
+      resolved="$(resolve_agent_selection "$token" 2>/dev/null || true)"
+      if [[ -z "$resolved" ]]; then
+        invalid_tokens+=("$token")
+        continue
+      fi
+      if [[ "$resolved" == "__all__" ]]; then
+        for supported_agent in "${SUPPORTED_AGENTS[@]:-}"; do
+          add_agent_selection "$supported_agent"
+        done
+        continue
+      fi
+      add_agent_selection "$resolved"
+    done
+
+    if [[ ${#invalid_tokens[@]} -gt 0 ]]; then
+      warn "Unknown agent selection: $(printf '%s, ' "${invalid_tokens[@]}" | sed 's/, $//')"
+      continue
+    fi
+
+    if [[ ${#AGENT_NAMES[@]} -eq 0 ]]; then
+      warn "No valid agents selected. Choose at least one agent."
+      continue
+    fi
+
+    return 0
+  done
+}
+
+prompt_for_primary_agent() {
+  local input
+  local normalized
+  local idx
+
+  if [[ ${#AGENT_NAMES[@]} -eq 1 ]]; then
+    PRIMARY="${AGENT_NAMES[0]}"
+    PRIMARY_DIR="${AGENT_PATHS[0]}"
+    return 0
+  fi
+
+  while true; do
+    echo ""
+    info "Selected agents: $(format_agent_list "${AGENT_NAMES[@]}")"
+    info "Choose the primary agent:"
+    for idx in "${!AGENT_NAMES[@]}"; do
+      printf "  %s. %s\n" "$((idx + 1))" "${AGENT_NAMES[$idx]}"
+    done
+    printf "${CYAN}▸${NC} Enter primary agent: "
+    read -r input
+    input="$(trim_string "$input")"
+
+    if [[ -z "$input" ]]; then
+      warn "No primary agent provided. Choose one of the selected agents."
+      continue
+    fi
+
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+      idx=$((input - 1))
+      if (( idx >= 0 && idx < ${#AGENT_NAMES[@]} )); then
+        set_primary_agent "${AGENT_NAMES[$idx]}"
+        return 0
+      fi
+      warn "Unknown primary selection: $input"
+      continue
+    fi
+
+    normalized="$(normalize_agent_token "$input")"
+    for idx in "${!AGENT_NAMES[@]}"; do
+      if [[ "$normalized" == "${AGENT_NAMES[$idx]}" ]]; then
+        set_primary_agent "${AGENT_NAMES[$idx]}"
+        return 0
+      fi
+    done
+
+    warn "Unknown primary selection: $input"
+  done
+}
+
+display_platform_name() {
+  case "$1" in
+    backend-kotlin) printf 'Kotlin backend' ;;
+    kotlin) printf 'Kotlin' ;;
+    kmp) printf 'KMP' ;;
+    php) printf 'PHP' ;;
+    *)
+      local label="${1//-/ }"
+      printf '%s' "$label"
+      ;;
+  esac
+}
+
+build_platform_packages() {
+  local discovered=()
+  local package
+
+  while IFS= read -r package; do
+    [[ "$package" == "base" ]] && continue
+    discovered+=("$package")
+  done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+
+  PLATFORM_PACKAGES=()
+  for package in backend-kotlin kotlin kmp php; do
+    if array_contains "$package" "${discovered[@]:-}"; then
+      PLATFORM_PACKAGES+=("$package")
+    fi
+  done
+
+  for package in "${discovered[@]:-}"; do
+    if ! array_contains "$package" "${PLATFORM_PACKAGES[@]:-}"; then
+      PLATFORM_PACKAGES+=("$package")
+    fi
+  done
+}
+
+resolve_platform_selection() {
+  local token="$1"
+  local normalized
+  local package
+  local index
+  local all_index
+
+  token="$(trim_string "$token")"
+  [[ -n "$token" ]] || return 1
+
+  if [[ "$token" =~ ^[0-9]+$ ]]; then
+    index=$((token - 1))
+    if (( index >= 0 && index < ${#PLATFORM_PACKAGES[@]} )); then
+      printf '%s\n' "${PLATFORM_PACKAGES[$index]}"
+      return 0
+    fi
+    all_index=${#PLATFORM_PACKAGES[@]}
+    if (( index == all_index )); then
+      printf '__all__\n'
+      return 0
+    fi
+    return 1
+  fi
+
+  normalized="$(normalize_platform_token "$token")"
+  case "$normalized" in
+    all)
+      printf '__all__\n'
+      return 0
+      ;;
+    backendkotlin|kotlinbackend)
+      printf 'backend-kotlin\n'
+      return 0
+      ;;
+    kotlin)
+      printf 'kotlin\n'
+      return 0
+      ;;
+    kmp|androidkmp)
+      printf 'kmp\n'
+      return 0
+      ;;
+    php)
+      printf 'php\n'
+      return 0
+      ;;
+  esac
+
+  for package in "${PLATFORM_PACKAGES[@]}"; do
+    if [[ "$normalized" == "$(normalize_platform_token "$package")" ]]; then
+      printf '%s\n' "$package"
+      return 0
+    fi
+    if [[ "$normalized" == "$(normalize_platform_token "$(display_platform_name "$package")")" ]]; then
+      printf '%s\n' "$package"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+format_platform_list() {
+  local result=""
+  local package
+  local label
+
+  for package in "$@"; do
+    label="$(display_platform_name "$package")"
+    if [[ -z "$result" ]]; then
+      result="$label"
+    else
+      result="$result, $label"
+    fi
+  done
+
+  printf '%s' "$result"
+}
+
+prompt_for_platform_selection() {
+  local input
+  local i
+  local option_number
+  local package
+  local token
+  local resolved
+  local invalid_tokens=()
+  local raw_tokens=()
+
+  if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+    SELECTED_PLATFORM_PACKAGES=()
+    return 0
+  fi
+
+  while true; do
+    echo ""
+    info "Available platforms:"
+    for i in "${!PLATFORM_PACKAGES[@]}"; do
+      package="${PLATFORM_PACKAGES[$i]}"
+      printf "  %s. %s (%s)\n" "$((i + 1))" "$(display_platform_name "$package")" "$package"
+    done
+    option_number=$(( ${#PLATFORM_PACKAGES[@]} + 1 ))
+    printf "  %s. all (install every platform package)\n" "$option_number"
+    info "Base skills are always installed."
+    info "Choose one or more platform options (comma-separated)."
+    printf "${CYAN}▸${NC} Enter platforms (e.g. Kotlin backend, Kotlin, KMP or PHP): "
+    read -r input
+
+    if [[ -z "$(trim_string "$input")" ]]; then
+      warn "No platforms provided. Choose at least one platform."
+      continue
+    fi
+
+    SELECTED_PLATFORM_PACKAGES=()
+    invalid_tokens=()
+    IFS=',' read -ra raw_tokens <<< "$input"
+
+    for token in "${raw_tokens[@]}"; do
+      token="$(trim_string "$token")"
+      [[ -z "$token" ]] && continue
+      resolved="$(resolve_platform_selection "$token" 2>/dev/null || true)"
+      if [[ -z "$resolved" ]]; then
+        invalid_tokens+=("$token")
+        continue
+      fi
+      if [[ "$resolved" == "__all__" ]]; then
+        SELECTED_PLATFORM_PACKAGES=("${PLATFORM_PACKAGES[@]}")
+        break
+      fi
+      if ! array_contains "$resolved" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+        SELECTED_PLATFORM_PACKAGES+=("$resolved")
+      fi
+    done
+
+    if [[ ${#invalid_tokens[@]} -gt 0 ]]; then
+      warn "Unknown platform selection: $(printf '%s, ' "${invalid_tokens[@]}" | sed 's/, $//')"
+      continue
+    fi
+
+    if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+      warn "No valid platforms selected. Choose at least one platform."
+      continue
+    fi
+
+    return 0
+  done
+}
+
 build_skill_names() {
   local skill_file skill_dir skill_name
   local existing_idx
@@ -226,6 +643,25 @@ build_skill_names() {
     SKILL_NAMES+=("$skill_name")
     SKILL_PATHS+=("$skill_dir")
   done < <(find "$SKILLS_DIR" -type f -name 'SKILL.md' | sort)
+}
+
+build_install_skill_names() {
+  local idx
+  local skill_dir
+  local package_name
+
+  INSTALL_SKILL_NAMES=()
+  INSTALL_SKILL_PATHS=()
+
+  for idx in "${!SKILL_NAMES[@]}"; do
+    skill_dir="${SKILL_PATHS[$idx]}"
+    package_name="$(basename "$(dirname "$skill_dir")")"
+
+    if [[ "$package_name" == "base" ]] || array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+      INSTALL_SKILL_NAMES+=("${SKILL_NAMES[$idx]}")
+      INSTALL_SKILL_PATHS+=("$skill_dir")
+    fi
+  done
 }
 
 add_legacy_name() {
@@ -293,27 +729,6 @@ remove_legacy_skill_paths() {
   done
 }
 
-prune_project_skill_paths() {
-  local target_dir="$1"
-  local installed_path skill_name
-
-  [[ -d "$target_dir" ]] || return 0
-
-  while IFS= read -r -d '' installed_path; do
-    skill_name="$(basename "$installed_path")"
-
-    if find_skill_index "$skill_name" >/dev/null 2>&1; then
-      continue
-    fi
-
-    if remove_if_allowed "$installed_path" "stale bill-* skill not present in plugin"; then
-      if [[ ! -e "$installed_path" && ! -L "$installed_path" ]]; then
-        ok "  pruned stale $skill_name"
-      fi
-    fi
-  done < <(find "$target_dir" -mindepth 1 -maxdepth 1 -name 'bill-*' -print0)
-}
-
 install_skill_link() {
   local target="$1"
   local source="$2"
@@ -333,6 +748,7 @@ install_skill_link() {
 parse_args "$@"
 build_skill_names
 build_legacy_skill_names
+build_platform_packages
 
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
@@ -342,50 +758,35 @@ info "Install mode: $MODE"
 if [[ "$MODE" == safe ]]; then
   info "Safe mode replaces symlinks, migrates legacy plugin installs, and skips local directory/file conflicts."
 elif [[ "$MODE" == override ]]; then
-  info "Override mode replaces any existing target path and prunes stale bill-* installs."
+  info "Override mode runs the uninstaller first, then reinstalls only the selected platforms."
 fi
-echo ""
-printf "${CYAN}▸${NC} Enter agents (comma-separated, primary first): "
-read -r input
-
-if [[ -z "$input" ]]; then
-  err "No agents provided"
-  exit 1
-fi
-
-IFS=',' read -ra RAW_AGENTS <<< "$input"
-
-AGENT_NAMES=()
-AGENT_PATHS=()
-for raw in "${RAW_AGENTS[@]}"; do
-  agent="$(echo "$raw" | tr -d '[:space:]')"
-  path="$(get_agent_path "$agent" 2>/dev/null || true)"
-  if [[ -z "$path" ]]; then
-    err "Unknown agent: $agent"
-    exit 1
-  fi
-  AGENT_NAMES+=("$agent")
-  AGENT_PATHS+=("$path")
-done
-
-PRIMARY="${AGENT_NAMES[0]}"
-PRIMARY_DIR="${AGENT_PATHS[0]}"
+prompt_for_agent_selection
+prompt_for_primary_agent
+prompt_for_platform_selection
+build_install_skill_names
 
 echo ""
 info "Plugin:  $PLUGIN_DIR"
 info "Primary: $PRIMARY ($PRIMARY_DIR)"
+info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
 info "Skills found: ${#SKILL_NAMES[@]}"
+info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
 echo ""
+
+if [[ "$MODE" == override ]]; then
+  info "Override mode removes existing Skill Bill symlinks before reinstalling the selected platforms."
+  bash "$PLUGIN_DIR/uninstall.sh"
+  echo ""
+fi
 
 mkdir -p "$PRIMARY_DIR"
 info "Installing to primary ($PRIMARY): $PRIMARY_DIR"
-if [[ "$MODE" == override ]]; then
-  prune_project_skill_paths "$PRIMARY_DIR"
+if [[ "$MODE" != override ]]; then
+  remove_legacy_skill_paths "$PRIMARY_DIR"
 fi
-remove_legacy_skill_paths "$PRIMARY_DIR"
-for idx in "${!SKILL_NAMES[@]}"; do
-  skill="${SKILL_NAMES[$idx]}"
-  install_skill_link "$PRIMARY_DIR/$skill" "${SKILL_PATHS[$idx]}" "$skill → plugin"
+for idx in "${!INSTALL_SKILL_NAMES[@]}"; do
+  skill="${INSTALL_SKILL_NAMES[$idx]}"
+  install_skill_link "$PRIMARY_DIR/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
 done
 echo ""
 
@@ -401,12 +802,11 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   mkdir -p "$agent_dir"
   info "Symlinking $agent: $agent_dir → $PRIMARY_DIR"
-  if [[ "$MODE" == override ]]; then
-    prune_project_skill_paths "$agent_dir"
+  if [[ "$MODE" != override ]]; then
+    remove_legacy_skill_paths "$agent_dir"
   fi
-  remove_legacy_skill_paths "$agent_dir"
 
-  for skill in "${SKILL_NAMES[@]}"; do
+  for skill in "${INSTALL_SKILL_NAMES[@]}"; do
     install_skill_link "$agent_dir/$skill" "$PRIMARY_DIR/$skill" "$skill"
   done
   echo ""
@@ -416,6 +816,7 @@ printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Primary agent:   $PRIMARY → $PRIMARY_DIR"
+info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
 for i in "${!AGENT_NAMES[@]}"; do
   [[ "$i" -eq 0 ]] && continue
   agent="${AGENT_NAMES[$i]}"
@@ -435,5 +836,5 @@ fi
 
 echo ""
 info "Edit skills in: $PLUGIN_DIR/skills/"
-info "Run './install.sh --mode safe' again after adding new skills."
+info "Run './install.sh --mode safe' again to add missing platform packages."
 echo ""

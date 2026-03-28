@@ -101,16 +101,39 @@ chmod +x install.sh
 ./install.sh --mode safe
 ```
 
-The installer asks for a comma-separated agent list, primary first:
+The installer first asks which agent targets to install to. You can choose one or more entries, including `all`, and if you choose more than one it then asks which selected agent should be primary:
 
 ```text
-copilot, claude, glm, codex
+all
+claude
 ```
+
+It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected.
+
+Available options are shown as separate entries:
+
+```text
+Kotlin backend
+Kotlin
+KMP
+PHP
+all
+```
+
+Example platform selections:
+
+```text
+Kotlin backend, Kotlin, KMP
+PHP
+all
+```
+
+Re-running the installer in `safe` mode is add-only for valid platform packages, so you can install more platforms later without removing ones that were already linked.
 
 Modes:
 
 - `safe` — replace symlinks, migrate plugin-managed legacy installs, skip non-symlink conflicts
-- `override` — replace any existing target path and prune stale `bill-*` installs
+- `override` — run `./uninstall.sh` first, then reinstall only the selected platforms
 - `interactive` — prompt before replacing non-symlink conflicts
 
 If you only use Claude Code, you can also install this repo as a Claude plugin:
@@ -118,6 +141,17 @@ If you only use Claude Code, you can also install this repo as a Claude plugin:
 ```bash
 claude plugin install ~/Development/skill-bill
 ```
+
+## Uninstallation
+
+To remove Skill Bill skill symlinks from the supported agent install paths:
+
+```bash
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+The uninstaller is idempotent. It removes current Skill Bill skill names plus known legacy install names when they are present as symlinks, and skips non-symlink paths.
 
 ## Skills Included
 
