@@ -1,8 +1,8 @@
 # sKill Bill
 
-sKill Bill is a portable AI skill suite for code review, feature implementation, and developer tooling. It is strongest today for Kotlin, Android/KMP, Kotlin backend/server, PHP backends, Go backends/services, and agent-config repositories.
+Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
 
-This repo is a collection of 44 AI skills installed into your coding agents from one source of truth. The goal is simple: keep high-value skills reusable across agents while preventing the skill catalog from turning into a pile of random prompts.
+sKill Bill is a portable collection of 44 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, PHP backends, and Go backends/services.
 
 ## Why this exists
 
@@ -21,81 +21,82 @@ sKill Bill treats skills more like software:
 - CI-enforced naming and structure
 - one repo synced to every supported agent
 
-## Core model
+## What it looks like
 
-The repo is organized around a strict three-layer model:
+You interact through a handful of stable base commands. They auto-detect your stack and route to the right specialists.
 
-- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
-- `skills/<platform>/` — platform-specific overrides and approved subskills
-- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, and delegation contracts
+**Code review** — one command, stack-aware specialist reviews:
 
-Think of it as markdown with inheritance:
+```
+/bill-code-review
 
-- base skills define the stable contracts
-- platform skills specialize them
-- orchestration snapshots document the shared routing, review, and delegation logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
+Detected stack: kotlin
+Routed to: bill-kotlin-code-review
+Specialist reviews: architecture, platform-correctness, testing
 
-## Fast mental model
+[ARCHITECTURE]
+P0: Shared state mutation not protected by synchronization
 
-If you only remember four things, remember these:
+[PLATFORM CORRECTNESS]
+P1: ViewModel scope used outside main thread context
 
-1. Users enter through stable skills in `skills/base/`.
-2. Platform depth lives in `skills/<platform>/`.
-3. Shared logic is documented in `orchestration/`, but runtimes consume it through sibling sidecars such as `stack-routing.md`, `review-orchestrator.md`, and `review-delegation.md`.
-4. Topology changes should start in `scripts/skill_repo_contracts.py`, then flow into skills, tests, and docs.
+[TESTING]
+Minor: Test coverage for error path incomplete
+```
 
-That last file is the canonical map for:
+**Feature implementation** — end-to-end from design doc to PR:
 
-- which shared playbook snapshots exist
-- which runtime-facing skills require which sidecars
-- which review skills are governed by the shared review/delegation contract
+```
+/bill-feature-implement
 
-Current platform packages:
+1. Collects design doc, creates acceptance criteria
+2. Creates branch, plans implementation tasks
+3. Implements each task atomically
+4. Runs /bill-code-review (auto-routed to your stack)
+5. Completeness audit against acceptance criteria
+6. Runs /bill-quality-check (auto-routed)
+7. Generates PR description
+```
 
-- `kotlin`
-- `backend-kotlin`
-- `kmp`
-- `php`
-- `go`
+**Quality check** — auto-routed to your stack's toolchain:
 
-## Naming and enforcement
+```
+/bill-quality-check
 
-Naming is intentionally strict:
+Detected stack: kotlin
+Routed to: bill-kotlin-quality-check
 
-- base skills may use any neutral `bill-<capability>` name
-- platform overrides must use `bill-<platform>-<base-capability>`
-- deeper specialization is only allowed for code review:
-  - `bill-<platform>-code-review-<area>`
+Running ./gradlew check...
+Build: PASS
+Tests: 247 passed
+Lint: PASS
+```
 
-Approved `code-review` areas:
+## How routing works
 
-- `architecture`
-- `performance`
-- `platform-correctness`
-- `security`
-- `testing`
-- `api-contracts`
-- `persistence`
-- `reliability`
-- `ui`
-- `ux-accessibility`
+A single `feature-implement` run chains 10-12 skill invocations:
 
-That means new stacks can extend the system, but they cannot invent random new naming shapes without intentionally updating the validator and docs.
-
-## Routing model
+```
+/bill-feature-implement
+├── plan + acceptance criteria
+├── implementation (atomic tasks)
+├── /bill-code-review (auto-routed)
+│   └── e.g. bill-kotlin-code-review
+│       ├── architecture (subagent)
+│       ├── platform-correctness (subagent)
+│       ├── security (subagent, if applicable)
+│       └── testing (subagent, if applicable)
+├── /bill-quality-check (auto-routed)
+│   └── e.g. bill-kotlin-quality-check
+├── completeness audit
+└── /bill-pr-description
+```
 
 Base entry points stay stable for users:
 
-- `/bill-code-review`
-- `/bill-quality-check`
-- `/bill-feature-implement`
-
-They route internally to platform-specific skills:
-
-- `bill-code-review` -> `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-php-code-review` | `bill-go-code-review`
-- `bill-quality-check` -> current stack-specific quality checker, including `bill-php-quality-check` for PHP repos and `bill-go-quality-check` for Go repos
-
-Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` until dedicated overrides exist.
+- `/bill-code-review` routes to `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-php-code-review` | `bill-go-code-review`
+- `/bill-quality-check` routes to the matching stack-specific quality checker
+- `/bill-feature-implement` orchestrates the full workflow
 
 ## Supported agents
 
@@ -106,12 +107,12 @@ Today, `backend-kotlin` and `kmp` both fall back to `bill-kotlin-quality-check` 
 | GLM | `~/.glm/commands/` |
 | OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
 
-The installer links all selected agents to the same repo so updates stay in sync. Runtime-facing skills reference supporting files that live beside `SKILL.md` inside each skill directory rather than depending on repo-relative playbook paths.
+The installer links all selected agents to the same repo so updates stay in sync.
 
 ## Installation
 
 ```bash
-git clone <this-repo> ~/Development/skill-bill
+git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
 cd ~/Development/skill-bill
 chmod +x install.sh
 ./install.sh
@@ -121,7 +122,7 @@ If you want a stable install target instead of tracking `main`, clone a release 
 
 ```bash
 TAG=v0.x.y
-git clone --branch "$TAG" --depth 1 <this-repo> ~/Development/skill-bill
+git clone --branch "$TAG" --depth 1 https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
 cd ~/Development/skill-bill
 ./install.sh
 ```
@@ -155,8 +156,6 @@ all
 ```
 
 Each installer run replaces the existing Skill Bill links and reinstalls only the agent and platform selections from that run.
-
-Shared routing, review, and delegation contracts are documented in `orchestration/` and exposed to runtimes through sibling supporting files inside each skill directory. That keeps references local to the installed skill instead of relying on repo-relative playbook paths.
 
 The installer always removes existing Skill Bill links before reinstalling the selected agents and platforms.
 
@@ -267,6 +266,69 @@ Example:
 - Keep QA steps concise.
 ```
 
+## Architecture
+
+### Core model
+
+The repo is organized around a strict three-layer model:
+
+- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
+- `skills/<platform>/` — platform-specific overrides and approved subskills
+- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, and delegation contracts
+
+Think of it as markdown with inheritance:
+
+- base skills define the stable contracts
+- platform skills specialize them
+- orchestration snapshots document the shared routing, review, and delegation logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
+
+### Fast mental model
+
+If you only remember four things, remember these:
+
+1. Users enter through stable skills in `skills/base/`.
+2. Platform depth lives in `skills/<platform>/`.
+3. Shared logic is documented in `orchestration/`, but runtimes consume it through sibling sidecars such as `stack-routing.md`, `review-orchestrator.md`, and `review-delegation.md`.
+4. Topology changes should start in `scripts/skill_repo_contracts.py`, then flow into skills, tests, and docs.
+
+That last file is the canonical map for:
+
+- which shared playbook snapshots exist
+- which runtime-facing skills require which sidecars
+- which review skills are governed by the shared review/delegation contract
+
+Current platform packages:
+
+- `kotlin`
+- `backend-kotlin`
+- `kmp`
+- `php`
+- `go`
+
+### Naming and enforcement
+
+Naming is intentionally strict:
+
+- base skills may use any neutral `bill-<capability>` name
+- platform overrides must use `bill-<platform>-<base-capability>`
+- deeper specialization is only allowed for code review:
+  - `bill-<platform>-code-review-<area>`
+
+Approved `code-review` areas:
+
+- `architecture`
+- `performance`
+- `platform-correctness`
+- `security`
+- `testing`
+- `api-contracts`
+- `persistence`
+- `reliability`
+- `ui`
+- `ux-accessibility`
+
+That means new stacks can extend the system, but they cannot invent random new naming shapes without intentionally updating the validator and docs.
+
 ## Validation
 
 This repo validates both content quality and taxonomy rules.
@@ -315,4 +377,4 @@ Manual path:
 
 ## License
 
-This repository is licensed under `MIT`. You may use, copy, modify, merge, publish, distribute, sublicense, and sell it, provided the license notice is retained.
+MIT — free to use, copy, modify, merge, publish, distribute, sublicense, and sell, provided the license notice is retained.
