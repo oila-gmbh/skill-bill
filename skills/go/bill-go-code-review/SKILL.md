@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review
-description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist review passes for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist review passes for the diff. Produces a structured review with risk register and prioritized action items.
 ---
 
 # Adaptive Go PR Review
@@ -63,8 +63,6 @@ Use the routing table below to decide which additional specialist skills to run 
 | `database/sql`, `sqlx`, `sqlc`, GORM, Ent, repositories, transactions, migrations, locking, bulk writes, schema evolution, row/statement lifecycle                                         | `bill-go-code-review-persistence`           |
 | HTTP/gRPC clients, queues/workers, retries, deadlines, shutdown logic, queue overflow/backpressure, readiness/health, caches, rate limiting, metrics/logging/tracing, background work    | `bill-go-code-review-reliability`           |
 | Auth/authz, middleware/interceptor chains, secrets, TLS/transport security, `os/exec`, file/path handling, SQL construction, template output, SSRF, token/session or cookie handling      | `bill-go-code-review-security`              |
-| Test files changed, race-sensitive tests, `t.Run`/`t.Parallel`, fuzz tests, flaky time/concurrency tests, weak assertions, missing regression proof                                          | `bill-go-code-review-testing`               |
-| Changed tests look suspiciously weak, tautological, or coverage-padding                                                                                  | `bill-unit-test-value-check`                |
 | Hot paths, repeated marshaling, per-request client creation, N+1 or repeated downstream calls, allocation churn, copy-heavy buffer use, unbounded buffers, goroutine storms                 | `bill-go-code-review-performance`           |
 
 ## Dynamic Specialist Selection
@@ -98,7 +96,6 @@ If different parts of the diff touch different review surfaces:
 ### Step 4: Apply minimum
 
 - Minimum 2 specialist reviews (architecture + platform-correctness)
-- If tests changed materially, include `bill-go-code-review-testing`
 - Maximum 7 specialist reviews
 
 ### Step 5: Run selected specialist reviews
@@ -122,8 +119,8 @@ Each specialist review pass uses:
 ```text
 Detected review scope: <working tree / commit range / PR diff / files>
 Signals: goroutines, context propagation, database/sql, changed tests
-Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence, bill-go-code-review-testing
-Reason: concurrency-sensitive state handling changed, persistence code changed, and tests changed materially
+Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence
+Reason: concurrency-sensitive state handling changed, persistence code changed
 ```
 
 For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
