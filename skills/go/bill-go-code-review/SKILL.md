@@ -29,14 +29,10 @@ Determine the review scope:
 
 - Specific files (list paths)
 - Git commits (hashes/range)
-- Staged changes (`git diff --cached`; index only)
-- Unstaged changes (`git diff`; working tree only)
-- Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
+- Working changes (`git diff`)
 - Entire PR
 
 Inspect the changed files and repo markers before applying review heuristics.
-
-Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
 ## Additional Resources
 
@@ -44,15 +40,19 @@ Resolve the scope before reviewing. If the caller asks for staged changes, inspe
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
-When the caller already passed the detected stack, skip reading [stack-routing.md](stack-routing.md). For standalone invocation, read it before classifying.
+Before applying review heuristics, read [stack-routing.md](stack-routing.md) and use it as the source of truth for Go stack signals and mixed-stack routing expectations. This skill owns the Go review depth that applies after Go is already in scope.
 
-Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md) unless the caller already passed the shared review contract.
+Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
 
-Before delegating specialist review passes, read only your current runtime's section in [review-delegation.md](review-delegation.md).
+Before delegating specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
 
 ---
 
-## Dynamic Specialist Selection
+## Review Scope
+
+Inspect the changed files and changed areas.
+
+Use the routing table below to decide which additional specialist skills to run for each meaningful changed area.
 
 ### Routing Table
 
@@ -66,6 +66,8 @@ Before delegating specialist review passes, read only your current runtime's sec
 | Auth/authz, middleware/interceptor chains, secrets, TLS/transport security, `os/exec`, file/path handling, SQL construction, template output, SSRF, token/session or cookie handling      | `bill-go-code-review-security`              |
 | Hot paths, repeated marshaling, per-request client creation, N+1 or repeated downstream calls, allocation churn, copy-heavy buffer use, unbounded buffers, goroutine storms                 | `bill-go-code-review-performance`           |
 
+## Dynamic Specialist Selection
+
 ### Step 1: Always include the baseline
 
 Always include:
@@ -76,7 +78,8 @@ Always include:
 ### Step 2: Analyze the diff and select additional specialist reviews
 
 Inspect each changed file or tightly related change cluster separately and add the specialist reviews from the routing
-table that match its signals.
+table that
+match its signals.
 
 Treat Go-specific runtime semantics as strong routing hints, not tie-breakers. If a change touches goroutine lifetime,
 loop-variable capture, wrapped error checks, struct-tag presence semantics, or `database/sql` row/transaction cleanup,
@@ -96,94 +99,37 @@ If different parts of the diff touch different review surfaces:
 - Minimum 2 specialist reviews (architecture + platform-correctness)
 - Maximum 7 specialist reviews
 
-### Step 5: Choose execution mode
+### Step 5: Run selected specialist reviews
 
-Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrator.md).
+Run one delegated subagent per selected specialist review pass. For supported runtimes, do not inline specialist review passes or collapse multiple specialists into a single combined review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
 
-- Use `inline` only when the Go review scope stays small and low-risk under the shared execution-mode contract
-- Use `delegated` when the diff is large, the risk profile is high, multiple review surfaces are meaningfully involved, or the safest choice is unclear
+Each specialist review pass uses:
 
-### Step 5.5: Scope diff per specialist (delegated mode only)
-
-When execution mode is `delegated`, build a per-specialist file list before launching subagents:
-
-1. Scan each changed file's name and imports for the routing-table signals from the Routing Table
-2. Map each file to the specialists whose signals it matches
-3. `bill-go-code-review-architecture` always receives all changed files
-4. Every other specialist receives only files matching its routing-table signals
-5. If a non-architecture specialist's scoped file list is empty, drop it from the selected set
-6. After scoping, re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-go-code-review-platform-correctness` with all changed files as the default second
-
-This is a lightweight file-level classification (names + imports), not a full review.
-
-### Step 6: Run selected specialist reviews
-
-If execution mode is `inline`:
-
-- run the selected specialist review passes sequentially in the current thread
-- read each specialist skill file as the primary rubric for that pass
-- apply the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
-- keep findings attributed to each specialist before merging and deduplicating them for the final report
-
-If execution mode is `delegated`:
-
-- run one delegated subagent per selected specialist review pass
-- pass the specialist-scoped file list (from Step 5.5), applicable active learnings, instructions to read the specialist skill file, relevant project-wide guidance and matching per-skill overrides, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [specialist-contract.md](specialist-contract.md)
-- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
+- The list of changed files
+- Instructions to read its own skill file for the review rubric
+- Relevant project-wide guidance and matching per-skill overrides
+- the parent thread's model when the runtime supports delegated-worker model inheritance
+- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 
 ---
 
-## Review Output
+## Review Output Format
 
-### 1. Summary
-
-```text
-Review session ID: <review-session-id>
-Review run ID: <review-run-id>
-Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
-Detected stack: <stack>
-Signals: <markers>
-Execution mode: inline | delegated
-Applied learnings: none | <learning references>
-Specialist reviews: <selected specialists>
-Reason: <why these specialists were selected>
-```
-
-Every finding in `### 2. Risk Register` must use this exact bullet format (do NOT use markdown tables):
+### 1. Specialist Summary
 
 ```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
+Detected review scope: <working tree / commit range / PR diff / files>
+Signals: goroutines, context propagation, database/sql, changed tests
+Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence
+Reason: concurrency-sensitive state handling changed, persistence code changed
 ```
 
-Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
+For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
-### Auto-Import
+## Implementation Mode Notes
 
-After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
-
-Call the `import_review` MCP tool:
-- `review_text`: the complete review output (Section 1 through Section 4)
-
-### Auto-Triage
-
-After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
-
-Each finding gets one decision using its position number from the risk register:
-- `fix` — the finding was accepted and the fix was applied
-- `accept` — the finding was accepted but no code change was needed
-- `skip` — the finding was intentionally skipped (append a reason after ` - `)
-- `false_positive` — the finding was incorrect
-
-Call the `triage_findings` MCP tool:
-- `review_run_id`: the review run ID from the review output
-- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
-
-Skip auto-triage when the review produced no findings.
-
-For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
-
-### Implementation Mode Notes
-
-- If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
-- After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.
+- If invoked from `bill-feature-implement` or another orchestration skill, do not pause for user selection. Return
+  prioritized findings so the caller can auto-fix `P0` and `P1` items and decide whether to carry `Minor` items
+  forward.
+- After all `P0` and `P1` items are resolved, run `bill-go-quality-check` as final verification when this review is
+  being run standalone.
