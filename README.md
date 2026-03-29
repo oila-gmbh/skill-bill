@@ -159,12 +159,6 @@ Each installer run replaces the existing Skill Bill links and reinstalls only th
 
 The installer always removes existing Skill Bill links before reinstalling the selected agents and platforms.
 
-If you only use Claude Code, you can also install this repo as a Claude plugin:
-
-```bash
-claude plugin install ~/Development/skill-bill
-```
-
 ## Uninstallation
 
 To remove Skill Bill skill symlinks from the supported agent install paths:
