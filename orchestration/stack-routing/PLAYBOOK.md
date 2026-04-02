@@ -21,6 +21,7 @@ When classifying stack or platform:
 ## Stack Taxonomy
 
 Classify work as one of:
+- `agent-config`
 - `kmp`
 - `backend-kotlin`
 - `kotlin`
@@ -29,6 +30,13 @@ Classify work as one of:
 - `Unknown/Unsupported`
 
 ## Strong Stack Signals
+
+### agent-config
+
+- `SKILL.md`, `AGENTS.md`, `CLAUDE.md`
+- `install.sh`, `uninstall.sh`, `config.yaml`, `.claude-plugin/plugin.json`
+- `orchestration/`, `skills/`, `scripts/validate_agent_configs.py`, `scripts/skill_repo_contracts.py`
+- tests or docs that primarily govern skill contracts, routing, installer behavior, or catalog validation
 
 ### kmp
 
@@ -58,6 +66,7 @@ Classify work as one of:
 
 ## Tie-Breakers
 
+- If skill/agent-config repository markers dominate, route to `agent-config`
 - If Android/KMP markers are strong, route to `kmp`
 - Treat Android-only scope as `kmp` because that is the package-aligned Android/KMP bucket
 - If backend/server markers are strong without meaningful `kmp` markers, route to `backend-kotlin`

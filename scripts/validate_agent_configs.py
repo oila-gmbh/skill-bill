@@ -26,7 +26,7 @@ SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
 SKILL_OVERRIDE_TITLE = "# Skill Overrides"
 SKILL_OVERRIDE_SECTION_PATTERN = re.compile(r"^## (bill-[a-z0-9-]+)$")
-ALLOWED_PACKAGES = ("base", "kotlin", "kmp", "backend-kotlin", "php", "go")
+ALLOWED_PACKAGES = ("base", "agent-config", "kotlin", "kmp", "backend-kotlin", "php", "go")
 APPROVED_CODE_REVIEW_AREAS = {
   "api-contracts",
   "architecture",
@@ -266,7 +266,7 @@ def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]
 
   expected_prefixes = expected_prefixes_for_package(package_name)
   if package_name == "base":
-    if any(skill_name.startswith(prefix) for prefix in ("bill-kotlin-", "bill-kmp-", "bill-backend-kotlin-", "bill-php-", "bill-go-", "bill-gradle-")):
+    if any(skill_name.startswith(prefix) for prefix in ("bill-agent-config-", "bill-kotlin-", "bill-kmp-", "bill-backend-kotlin-", "bill-php-", "bill-go-", "bill-gradle-")):
       issues.append(
         f"{skill_file}: base skills must use neutral names; move '{skill_name}' to the matching package"
       )

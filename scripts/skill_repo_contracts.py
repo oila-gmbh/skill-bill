@@ -18,6 +18,7 @@ SUPPORTING_FILE_TARGETS: dict[str, str] = {
 RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
   "bill-code-review": ("stack-routing.md", "review-delegation.md"),
   "bill-quality-check": ("stack-routing.md",),
+  "bill-agent-config-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
   "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
   "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
   "bill-kmp-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md"),
@@ -33,6 +34,7 @@ REVIEW_DELEGATION_REQUIRED_SECTIONS = (
 )
 
 PORTABLE_REVIEW_SKILLS = (
+  "bill-agent-config-code-review",
   "bill-kotlin-code-review",
   "bill-backend-kotlin-code-review",
   "bill-kmp-code-review",

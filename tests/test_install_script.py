@@ -38,6 +38,7 @@ KOTLIN_SKILLS = skill_names("kotlin")
 KMP_SKILLS = skill_names("kmp")
 PHP_SKILLS = skill_names("php")
 GO_SKILLS = skill_names("go")
+AGENT_CONFIG_SKILLS = skill_names("agent-config")
 
 
 class InstallScriptTest(unittest.TestCase):
@@ -88,6 +89,14 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | GO_SKILLS)
 
+  def test_installs_base_and_selected_agent_config_platform_only(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "copilot\nAgent config\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      installed = self.installed_skills(temp_home)
+      self.assertEqual(installed, BASE_SKILLS | AGENT_CONFIG_SKILLS)
+
   def test_installs_custom_prefix_aliases_and_rewrites_skill_names(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nPHP\nacme\n")
@@ -134,12 +143,13 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("KMP (kmp)", result.stdout)
       self.assertIn("PHP (php)", result.stdout)
       self.assertIn("Go (go)", result.stdout)
+      self.assertIn("Agent config (agent-config)", result.stdout)
       self.assertIn("all (install every platform package)", result.stdout)
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(
         installed,
-        BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | PHP_SKILLS | GO_SKILLS,
+        BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | PHP_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS,
       )
 
   def test_ignores_empty_platform_tokens(self) -> None:
