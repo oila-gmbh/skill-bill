@@ -52,6 +52,16 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_accepts_agent_config_platform_override_of_dynamic_base_capability(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-ship-it"),
+        ("agent-config", "bill-agent-config-ship-it"),
+      ]
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
   def test_rejects_platform_only_capability_name(self) -> None:
     with self.fixture_repo(
       [

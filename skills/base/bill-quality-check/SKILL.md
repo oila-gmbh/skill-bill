@@ -52,6 +52,7 @@ Do not redefine stack signals here unless a route-specific exception is truly un
 - If `kmp` signals dominate, delegate to the canonical quality-check implementation for the `kmp` package when it exists.
 - If `backend-kotlin` signals dominate, delegate to the canonical quality-check implementation for the `backend-kotlin` package when it exists.
 - If `kotlin` signals dominate, delegate to the canonical `bill-kotlin-quality-check` skill when it exists.
+- If `agent-config` signals dominate, delegate to the canonical `bill-agent-config-quality-check` skill when it exists.
 - If `php` signals dominate, delegate to the canonical `bill-php-quality-check` skill when it exists.
 - If `go` signals dominate, delegate to the canonical `bill-go-quality-check` skill when it exists.
 - Today, until separate `kmp` and `backend-kotlin` quality-check implementations exist, route `kmp`, `backend-kotlin`, and `kotlin` work to `bill-kotlin-quality-check`.

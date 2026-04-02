@@ -322,6 +322,7 @@ prompt_for_agent_selection() {
 
 display_platform_name() {
   case "$1" in
+    agent-config) printf 'Agent config' ;;
     backend-kotlin) printf 'Kotlin backend' ;;
     kotlin) printf 'Kotlin' ;;
     kmp) printf 'KMP' ;;
@@ -344,7 +345,7 @@ build_platform_packages() {
   done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 
   PLATFORM_PACKAGES=()
-  for package in backend-kotlin kotlin kmp php go; do
+  for package in backend-kotlin kotlin kmp php go agent-config; do
     if array_contains "$package" "${discovered[@]:-}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
@@ -389,6 +390,10 @@ resolve_platform_selection() {
       ;;
     backendkotlin|kotlinbackend)
       printf 'backend-kotlin\n'
+      return 0
+      ;;
+    agentconfig|skillrepo|skillsinfra)
+      printf 'agent-config\n'
       return 0
       ;;
     kotlin)

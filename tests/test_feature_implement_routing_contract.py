@@ -25,6 +25,8 @@ FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md")
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
+AGENT_CONFIG_CODE_REVIEW = read("skills/agent-config/bill-agent-config-code-review/SKILL.md")
+AGENT_CONFIG_QUALITY_CHECK = read("skills/agent-config/bill-agent-config-quality-check/SKILL.md")
 KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
@@ -34,6 +36,7 @@ STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
 REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
 PORTABLE_REVIEW_SKILL_TEXTS = {
+  "bill-agent-config-code-review": AGENT_CONFIG_CODE_REVIEW,
   "bill-kotlin-code-review": KOTLIN_CODE_REVIEW,
   "bill-backend-kotlin-code-review": BACKEND_KOTLIN_CODE_REVIEW,
   "bill-kmp-code-review": KMP_CODE_REVIEW,
@@ -118,6 +121,20 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       "- If `kotlin` signals dominate, delegate to the canonical `bill-kotlin-quality-check` skill when it exists.",
       QUALITY_CHECK,
     )
+
+  def test_agent_config_context_routes_to_agent_config_review_and_quality_check(self) -> None:
+    self.assertIn(
+      "- If `agent-config` signals dominate, delegate to `bill-agent-config-code-review`.",
+      CODE_REVIEW,
+    )
+    self.assertIn(
+      "- If `agent-config` signals dominate, delegate to the canonical `bill-agent-config-quality-check` skill when it exists.",
+      QUALITY_CHECK,
+    )
+    self.assertIn("[stack-routing.md](stack-routing.md)", AGENT_CONFIG_CODE_REVIEW)
+    self.assertIn("[review-orchestrator.md](review-orchestrator.md)", AGENT_CONFIG_CODE_REVIEW)
+    self.assertIn("[review-delegation.md](review-delegation.md)", AGENT_CONFIG_CODE_REVIEW)
+    self.assertIn("Typical Commands In This Repo Type:", AGENT_CONFIG_QUALITY_CHECK)
 
   def test_backend_kotlin_context_routes_to_backend_review_and_current_quality_check(self) -> None:
     self.assertIn(
