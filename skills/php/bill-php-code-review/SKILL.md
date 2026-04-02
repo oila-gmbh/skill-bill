@@ -28,10 +28,14 @@ Determine the review scope:
 
 - Specific files (list paths)
 - Git commits (hashes/range)
-- Working changes (`git diff`)
+- Staged changes (`git diff --cached`; index only)
+- Unstaged changes (`git diff`; working tree only)
+- Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
 - Entire PR
 
 Inspect the changed files and repo markers before applying review heuristics.
+
+Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
 ## Additional Resources
 
@@ -96,17 +100,27 @@ If different parts of the diff touch different review surfaces:
 - If tests changed materially, include `bill-php-code-review-testing`
 - Maximum 7 specialist reviews
 
-### Step 5: Run selected specialist reviews
+### Step 5: Choose execution mode
 
-Run one delegated subagent per selected specialist review pass. For supported runtimes, do not inline specialist review passes or collapse multiple specialists into a single combined review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
+Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrator.md).
 
-Each specialist review pass uses:
+- Use `inline` only when the PHP review scope stays small and low-risk under the shared execution-mode contract
+- Use `delegated` when the diff is large, the risk profile is high, multiple review surfaces are meaningfully involved, or the safest choice is unclear
 
-- The list of changed files
-- Instructions to read its own skill file for the review rubric
-- Relevant project-wide guidance and matching per-skill overrides
-- the parent thread's model when the runtime supports delegated-worker model inheritance
-- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+### Step 6: Run selected specialist reviews
+
+If execution mode is `inline`:
+
+- run the selected specialist review passes sequentially in the current thread
+- read each specialist skill file as the primary rubric for that pass
+- apply the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- keep findings attributed to each specialist before merging and deduplicating them for the final report
+
+If execution mode is `delegated`:
+
+- run one delegated subagent per selected specialist review pass
+- pass the list of changed files, instructions to read the specialist skill file, relevant project-wide guidance and matching per-skill overrides, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 ---
 
@@ -115,8 +129,9 @@ Each specialist review pass uses:
 ### 1. Specialist Summary
 
 ```text
-Detected review scope: <working tree / commit range / PR diff / files>
+Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Signals: transactions, projections, changed tests
+Execution mode: inline | delegated
 Specialist reviews: bill-php-code-review-architecture, bill-php-code-review-platform-correctness, bill-php-code-review-persistence, bill-php-code-review-testing
 Reason: transaction and projection paths changed, plus tests changed materially
 ```

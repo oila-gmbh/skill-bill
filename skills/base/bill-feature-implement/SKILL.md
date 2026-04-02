@@ -242,7 +242,7 @@ Then re-read `.feature-specs/<feature-name>/spec.md` to refresh acceptance crite
 Run the `bill-code-review` skill and its matching `.agents/skill-overrides.md` section, then apply them inline. Treat that skill as the source of truth for:
 - Stack detection and routing
 - Stack-specific reviewer selection
-- Parallel review execution
+- Adaptive inline-vs-delegated review execution
 - Finding deduplication and prioritization
 
 Pass the following context from this run:

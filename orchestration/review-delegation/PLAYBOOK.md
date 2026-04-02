@@ -11,13 +11,14 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 
 ## Shared Delegation Rules
 
-- Delegated review layers and specialist review passes must run as separate subagents on supported runtimes; do not collapse them into a single inline review.
+- Use this delegation contract only after the shared execution-mode contract selects `delegated` review.
+- Delegated review layers and specialist review passes must run as separate subagents on supported runtimes; do not collapse a delegated-required scope into a single inline review.
 - Launch one delegated worker per routed stack-specific review skill or selected specialist review pass unless the current agent-specific section explicitly says otherwise.
 - When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
 - Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill file path, and the shared contract from `review-orchestrator.md`.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
-- If a supported runtime refuses or cannot start delegated workers, stop and report a delegation failure instead of silently falling back to inline review.
-- If the current runtime is not documented below, stop and say guaranteed delegated review execution is unsupported.
+- If delegated review is required for the current scope and a supported runtime refuses or cannot start delegated workers, stop and report that delegated review is required for this scope but unavailable on the current runtime.
+- If the current runtime is not documented below, stop and say delegated review is unsupported for delegated-required scopes.
 
 ## GitHub Copilot CLI
 

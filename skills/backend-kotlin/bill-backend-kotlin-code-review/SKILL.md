@@ -22,8 +22,12 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 Determine the review scope:
 - Specific files (list paths)
 - Git commits (hashes/range)
-- Working changes (`git diff`)
+- Staged changes (`git diff --cached`; index only)
+- Unstaged changes (`git diff`; working tree only)
+- Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
 - Entire PR
+
+Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
 ---
 
@@ -68,18 +72,29 @@ Classify the review as one of:
 
 ## Layered Review Plan
 
-### Step 1: Run `bill-kotlin-code-review` as the baseline review
+### Step 1: Choose execution mode
 
-Run `bill-kotlin-code-review` against the same scope first as a delegated subagent. That skill owns:
+Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrator.md).
+
+- Use `inline` only when the backend review scope stays small and low-risk under the shared execution-mode contract
+- Use `delegated` when the diff is large, backend-only specialist risk is present, multiple layers are meaningfully involved, or the safest choice is unclear
+
+### Step 2: Run `bill-kotlin-code-review` as the baseline review
+
+Run `bill-kotlin-code-review` against the same scope first. That skill owns:
 - shared Kotlin architecture, correctness, security, performance, and testing review
 - the baseline Kotlin findings that every backend/server review should inherit
 
-When invoking it from this skill:
+When invoking it from this skill in either execution mode:
 - tell it that backend/server scope is valid and should be treated as `backend-kotlin-baseline`
 - tell it to keep backend-only review concerns out of scope
 - pass the same diff source, changed files, and relevant override guidance
 
-### Step 2: Analyze the diff and select backend-specific specialist reviews
+If execution mode is `inline`, apply `bill-kotlin-code-review` inline in the current thread.
+
+If execution mode is `delegated`, run `bill-kotlin-code-review` as a delegated subagent and use the runtime-specific delegation contract from [review-delegation.md](review-delegation.md).
+
+### Step 3: Analyze the diff and select backend-specific specialist reviews
 
 | Signal in the diff | Specialist review to run |
 |---------------------|--------------------------|
@@ -87,16 +102,18 @@ When invoking it from this skill:
 | Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-backend-kotlin-code-review-persistence` |
 | Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-backend-kotlin-code-review-reliability` |
 
-### Step 3: Run backend specialist reviews
+### Step 4: Run backend specialist reviews
 
-Run one delegated subagent per selected backend specialist review pass. For supported runtimes, do not inline backend specialist review passes or collapse them into the parent review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
+If execution mode is `inline`:
+- run the selected backend specialist review passes sequentially in the current thread
+- read each backend specialist skill file as the primary rubric for that pass
+- apply the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- keep findings attributed to each layer before merging and deduplicating them for the final report
 
-Each backend specialist review pass uses:
-- the detected project type
-- the list of changed files
-- instructions to read its own skill file for the review rubric
-- the parent thread's model when the runtime supports delegated-worker model inheritance
-- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+If execution mode is `delegated`:
+- run one delegated subagent per selected backend specialist review pass
+- pass the detected project type, list of changed files, instructions to read the backend specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 If no backend-only triggers match but backend/server signals are clearly present, keep the baseline Kotlin review output and state that no extra backend-specific specialist was needed for this scope.
 
@@ -106,8 +123,10 @@ If no backend-only triggers match but backend/server signals are clearly present
 
 ### 1. Classification & Layer Summary
 ```text
+Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: backend-kotlin | mixed-backend-kotlin
 Signals: application.yml, @RestController, Exposed
+Execution mode: inline | delegated
 Baseline review: bill-kotlin-code-review
 Backend specialist reviews: bill-backend-kotlin-code-review-api-contracts
 Reason: backend/server signals were high-confidence, so the backend layer was added on top of the baseline Kotlin review
