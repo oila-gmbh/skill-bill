@@ -137,42 +137,52 @@ The installer first asks which agent targets to install to. You can choose one o
 all
 ```
 
-It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected.
+It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected. The primary input path is **comma-separated numbers**, though platform names still work too.
 
 Available options are shown as separate entries:
 
 ```text
-Kotlin backend
-Kotlin
-KMP
-PHP
-Go
-all
+1. Kotlin backend
+2. Kotlin
+3. KMP
+4. PHP
+5. Go
+6. all
 ```
 
 Example platform selections:
 
 ```text
-Kotlin backend, Kotlin, KMP
-PHP
-Go
-all
+1,2,3
+4
+5
+6
 ```
 
-Each installer run replaces the existing Skill Bill links and reinstalls only the agent and platform selections from that run.
+Finally, the installer asks for the **user-facing command prefix**. Press Enter to keep the default `bill` prefix, or enter your own team/org prefix:
 
-The installer always removes existing Skill Bill links before reinstalling the selected agents and platforms.
+```text
+bill
+acme
+platform
+```
+
+Canonical in-repo skill names stay `bill-*`. A custom prefix changes only the installed command names (for example `acme-code-review`) and rewrites installed skill references so routed workflows still resolve under that namespace.
+
+Each installer run replaces the existing Skill Bill installs and reinstalls only the agent and platform selections from that run.
+
+The installer always removes existing Skill Bill installs before reinstalling the selected agents and platforms. The default `bill` prefix keeps the current symlink-based install behavior. Custom prefixes install generated alias copies, so re-run `./install.sh` after editing skills in the repo.
 
 ## Uninstallation
 
-To remove Skill Bill skill symlinks from the supported agent install paths:
+To remove Skill Bill skill installs from the supported agent install paths:
 
 ```bash
 chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-The uninstaller is idempotent. It removes current Skill Bill skill names plus known legacy install names when they are present as symlinks, and skips non-symlink paths.
+The uninstaller is idempotent. It removes current Skill Bill installs, generated alias installs, and known legacy install names when they are present, and skips unrelated non-symlink paths.
 
 ## Skills Included
 
@@ -232,7 +242,7 @@ The uninstaller is idempotent. It removes current Skill Bill skill names plus kn
 | `/bill-go-quality-check` | Go quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
-| `/bill-pr-description` | Generate PR title, description, and QA steps |
+| `/bill-pr-description` | Generate PR title, description, and QA steps, preferring repo PR templates when present |
 | `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
 
 ## Project customization
