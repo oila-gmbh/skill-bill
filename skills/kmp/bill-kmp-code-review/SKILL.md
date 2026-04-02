@@ -22,8 +22,12 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 Determine the review scope:
 - Specific files (list paths)
 - Git commits (hashes/range)
-- Working changes (`git diff`)
+- Staged changes (`git diff --cached`; index only)
+- Unstaged changes (`git diff`; working tree only)
+- Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
 - Entire PR
+
+Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
 ---
 
@@ -68,9 +72,16 @@ Classify the review as one of:
 
 ## Layered Review Plan
 
-### Step 1: Choose and run the baseline Kotlin-family review
+### Step 1: Choose execution mode
 
-Use the same scope to run exactly one baseline review layer as a delegated subagent:
+Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrator.md).
+
+- Use `inline` only when the Android/KMP review scope stays small and low-risk under the shared execution-mode contract
+- Use `delegated` when the diff is large, mobile or backend specialist risk is present, mixed scope is meaningfully involved, or the safest choice is unclear
+
+### Step 2: Choose and run the baseline Kotlin-family review
+
+Use the same scope to run exactly one baseline review layer:
 - Use `bill-backend-kotlin-code-review` when backend/server files or markers are meaningfully in scope
 - Otherwise use `bill-kotlin-code-review`
 
@@ -79,12 +90,16 @@ That baseline review layer owns:
 - backend/server specialist selection when backend signals are present
 - the baseline Kotlin findings that every Android/KMP review should inherit
 
-When invoking the baseline review:
+When invoking the baseline review in either execution mode:
 - tell it that Android/KMP scope is valid
 - tell it to keep KMP-only review concerns out of scope
 - pass the same diff source, changed files, and relevant override guidance
 
-### Step 2: Analyze the diff and select KMP-specific agents
+If execution mode is `inline`, apply the selected baseline review inline in the current thread.
+
+If execution mode is `delegated`, run the selected baseline review as a delegated subagent and use the runtime-specific delegation contract from [review-delegation.md](review-delegation.md).
+
+### Step 3: Analyze the diff and select KMP-specific agents
 
 - Preserve Android/KMP specialists for any Android/KMP files even when backend files are changed in the same PR
 - A single PR may spawn both the baseline review and KMP-only specialists, but keep the KMP-specific specialist count at 2 or fewer
@@ -98,16 +113,18 @@ Keep the mobile triggers focused on what the baseline review does not cover:
 | `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect` | `bill-kmp-code-review-ui` |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
 
-### Step 3: Run KMP specialist reviews
+### Step 4: Run KMP specialist reviews
 
-Run one delegated subagent per selected KMP specialist review pass. For supported runtimes, do not inline KMP specialist review passes or collapse them into the parent review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
+If execution mode is `inline`:
+- run the selected KMP specialist review passes sequentially in the current thread
+- read each KMP specialist skill file as the primary rubric for that pass
+- apply the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- keep findings attributed to each layer before merging and deduplicating them for the final report
 
-Each KMP specialist review pass uses:
-- the detected project type
-- the list of changed files
-- instructions to read its own skill file for the review rubric
-- the parent thread's model when the runtime supports delegated-worker model inheritance
-- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+If execution mode is `delegated`:
+- run one delegated subagent per selected KMP specialist review pass
+- pass the detected project type, list of changed files, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
 
@@ -117,8 +134,10 @@ If no KMP-only triggers match but Android/KMP signals are clearly present, keep 
 
 ### 1. Classification & Layer Summary
 ```text
+Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: kmp | mixed-kmp
 Signals: @Composable, AndroidManifest.xml, ViewModel
+Execution mode: inline | delegated
 Baseline review: bill-kotlin-code-review | bill-backend-kotlin-code-review
 KMP specialist reviews: bill-kmp-code-review-ui
 Reason: Android/KMP signals were high-confidence, so the mobile layer was added on top of the baseline Kotlin-family review

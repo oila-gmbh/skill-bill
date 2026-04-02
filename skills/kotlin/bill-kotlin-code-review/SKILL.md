@@ -22,8 +22,12 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 Determine the review scope:
 - Specific files (list paths)
 - Git commits (hashes/range)
-- Working changes (`git diff`)
+- Staged changes (`git diff --cached`; index only)
+- Unstaged changes (`git diff`; working tree only)
+- Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
 - Entire PR
+
+Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
 ---
 
@@ -95,16 +99,25 @@ Architecture review is relevant for every non-trivial change.
 - Maximum 5 agents
 - Do not run KMP-only specialists or backend-only specialists from this skill; leave those to the platform-specific override that owns them
 
-### Step 5: Run selected specialist reviews
+### Step 5: Choose execution mode
 
-Run one delegated subagent per selected specialist review pass. For supported runtimes, do not inline specialist review passes or collapse multiple specialists into a single combined review. If the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that guaranteed delegated review execution is unavailable.
+Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrator.md).
 
-Each specialist review pass uses:
-- the detected project type
-- the list of changed files
-- instructions to read its own skill file for the review rubric
-- the parent thread's model when the runtime supports delegated-worker model inheritance
-- the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- Use `inline` only when the Kotlin review scope stays small and low-risk under the shared execution-mode contract
+- Use `delegated` when the diff is large, the risk profile is high, multiple layers are meaningfully involved, or the safest choice is unclear
+
+### Step 6: Run selected specialist reviews
+
+If execution mode is `inline`:
+- run the selected specialist review passes sequentially in the current thread
+- read each specialist skill file as the primary rubric for that pass
+- apply the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- keep findings attributed to each specialist before merging and deduplicating them for the final report
+
+If execution mode is `delegated`:
+- run one delegated subagent per selected specialist review pass
+- pass the detected project type, list of changed files, instructions to read the specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 ---
 
@@ -112,8 +125,10 @@ Each specialist review pass uses:
 
 ### 1. Classification & Specialist Summary
 ```text
+Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: kotlin | kmp-baseline | backend-kotlin-baseline
 Signals: <markers>
+Execution mode: inline | delegated
 Specialist reviews: bill-kotlin-code-review-architecture, bill-kotlin-code-review-platform-correctness
 Reason: <why this Kotlin baseline route was selected>
 ```

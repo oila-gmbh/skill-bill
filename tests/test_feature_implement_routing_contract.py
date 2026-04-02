@@ -80,6 +80,12 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Do not reference this repo-relative path directly", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("Supported scope labels are `staged changes`, `unstaged changes`, `working tree`, `commit range`, `PR diff`, and `files`", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("When the caller asks for staged changes, inspect only the staged/index diff", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("The parent review owns only the delegated workers it launched itself.", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("Track delegated workers by the ids returned when they are launched.", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("Do not use `list_agents` to discover delegated workers during normal review execution.", REVIEW_DELEGATION_PLAYBOOK)
     for section in REVIEW_DELEGATION_REQUIRED_SECTIONS:
       self.assertIn(section, REVIEW_DELEGATION_PLAYBOOK)
 
@@ -88,6 +94,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("run `bill-quality-check`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
+    self.assertIn("Adaptive inline-vs-delegated review execution", FEATURE_IMPLEMENT)
 
   def test_kotlin_context_routes_to_kotlin_review_and_quality_check(self) -> None:
     self.assertIn(
@@ -113,7 +120,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       QUALITY_CHECK,
     )
     self.assertIn(
-      "### Step 1: Run `bill-kotlin-code-review` as the baseline review",
+      "### Step 2: Run `bill-kotlin-code-review` as the baseline review",
       BACKEND_KOTLIN_CODE_REVIEW,
     )
 
@@ -187,7 +194,26 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       KOTLIN_CODE_REVIEW,
     )
 
-  def test_stack_review_skills_require_delegated_subagent_execution(self) -> None:
+  def test_router_uses_adaptive_execution_contract(self) -> None:
+    self.assertIn(
+      "Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>",
+      CODE_REVIEW,
+    )
+    self.assertIn("Execution mode: inline | delegated", CODE_REVIEW)
+    self.assertIn(
+      "If the caller asks for staged changes, route and review only the staged diff",
+      CODE_REVIEW,
+    )
+    self.assertIn(
+      "If the routed skill selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection",
+      CODE_REVIEW,
+    )
+    self.assertIn(
+      "If delegated review is required for the current scope and the runtime lacks a documented delegation path or cannot start the required worker(s), stop and report that delegated review is required for this scope but unavailable on the current runtime",
+      CODE_REVIEW,
+    )
+
+  def test_stack_review_skills_define_adaptive_execution_modes(self) -> None:
     forbidden_phrases = (
       "`task`",
       "spawn_agent",
@@ -202,8 +228,25 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertIn("specialist review", skill_text)
         self.assertIn("[review-orchestrator.md](review-orchestrator.md)", skill_text)
         self.assertIn("[review-delegation.md](review-delegation.md)", skill_text)
-        self.assertIn("delegated subagent", skill_text)
-        self.assertIn("guaranteed delegated review execution is unavailable", skill_text)
+        self.assertIn(
+          "Staged changes (`git diff --cached`; index only)",
+          skill_text,
+        )
+        self.assertIn(
+          "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff",
+          skill_text,
+        )
+        self.assertIn(
+          "Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>",
+          skill_text,
+        )
+        self.assertIn("Execution mode: inline | delegated", skill_text)
+        self.assertIn("Use `inline` only", skill_text)
+        self.assertIn("If execution mode is `delegated`", skill_text)
+        self.assertIn(
+          "delegated review is required for this scope but unavailable on the current runtime",
+          skill_text,
+        )
         self.assertNotIn(".bill-shared/orchestration/", skill_text)
         self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", skill_text)
         self.assertNotIn("orchestration/review-orchestrator/PLAYBOOK.md", skill_text)
