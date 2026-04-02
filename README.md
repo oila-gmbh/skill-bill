@@ -2,7 +2,7 @@
 
 Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
 
-sKill Bill is a portable collection of 34 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, and Go backends/services.
+sKill Bill is a portable collection of 36 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, Go backends/services, and governed skill/agent-config repositories.
 
 ## Why this exists
 
@@ -98,7 +98,7 @@ Small, low-risk review scopes may stay inline in one thread. Larger or higher-ri
 
 Base entry points stay stable for users:
 
-- `/bill-code-review` routes to `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-go-code-review`
+- `/bill-code-review` routes to `bill-agent-config-code-review` | `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-go-code-review`
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
 
@@ -146,7 +146,8 @@ Available options are shown as separate entries:
 2. Kotlin
 3. KMP
 4. Go
-5. all
+5. Agent config
+6. all
 ```
 
 Example platform selections:
@@ -155,6 +156,7 @@ Example platform selections:
 1,2,3
 4
 5
+6
 ```
 
 Finally, the installer asks for the **user-facing command prefix**. Press Enter to keep the default `bill` prefix, or enter your own team/org prefix:
@@ -184,11 +186,12 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 
 ## Skills Included
 
-### Code Review (23 skills)
+### Code Review (24 skills)
 
 | Skill | Purpose |
 |-------|---------|
 | `/bill-code-review` | Shared review router |
+| `/bill-agent-config-code-review` | Review skill/agent-config repositories |
 | `/bill-kotlin-code-review` | Kotlin baseline review orchestrator |
 | `/bill-backend-kotlin-code-review` | Backend Kotlin review override |
 | `/bill-kmp-code-review` | Android/KMP review override |
@@ -221,11 +224,12 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
-### Utilities (7 skills)
+### Utilities (8 skills)
 
 | Skill | Purpose |
 |-------|---------|
 | `/bill-quality-check` | Shared quality-check router |
+| `/bill-agent-config-quality-check` | Agent-config repository quality-check implementation |
 | `/bill-kotlin-quality-check` | Gradle/Kotlin quality-check implementation |
 | `/bill-go-quality-check` | Go quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
@@ -295,10 +299,10 @@ That last file is the canonical map for:
 
 Current platform packages:
 
+- `agent-config`
 - `kotlin`
 - `backend-kotlin`
 - `kmp`
-- `php`
 - `go`
 
 ### Naming and enforcement

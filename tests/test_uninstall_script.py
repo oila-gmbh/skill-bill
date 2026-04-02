@@ -18,7 +18,7 @@ class UninstallScriptTest(unittest.TestCase):
   def test_uninstall_removes_skill_symlinks_from_supported_agents(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot, claude\ncopilot\nPHP\n")
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot, claude\ncopilot\nGo\n")
       self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").is_symlink())
       self.assertTrue((Path(temp_home) / ".claude" / "commands" / "bill-code-review").is_symlink())
@@ -33,7 +33,7 @@ class UninstallScriptTest(unittest.TestCase):
   def test_uninstall_removes_generated_alias_installs(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nPHP\nacme\n")
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nGo\nacme\n")
       self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").is_dir())
 

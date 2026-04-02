@@ -26,7 +26,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("php", "bill-php-ship-it"),
+        ("go", "bill-go-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
@@ -36,7 +36,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("php", "bill-php-code-review-security"),
+        ("go", "bill-go-code-review-security"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
@@ -52,17 +52,27 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_accepts_agent_config_platform_override_of_dynamic_base_capability(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-ship-it"),
+        ("agent-config", "bill-agent-config-ship-it"),
+      ]
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
   def test_rejects_platform_only_capability_name(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("php", "bill-php-laravel-ship-it"),
+        ("go", "bill-go-gin-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "platform skill 'bill-php-laravel-ship-it' must either override an approved base skill",
+        "platform skill 'bill-go-gin-ship-it' must either override an approved base skill",
         result.stdout,
       )
 
@@ -70,12 +80,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("php", "bill-php-code-review-laravel"),
+        ("go", "bill-go-code-review-gin"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("code-review specialization 'laravel' is not approved", result.stdout)
+      self.assertIn("code-review specialization 'gin' is not approved", result.stdout)
 
   def test_rejects_go_platform_only_capability_name(self) -> None:
     with self.fixture_repo(
@@ -119,11 +129,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("php", "bill-php-code-review"),
+        ("go", "bill-go-code-review"),
       ],
       skill_contents={
-        "bill-php-code-review": self.portable_review_fixture_with_forbidden_wording(
-          "bill-php-code-review"
+        "bill-go-code-review": self.portable_review_fixture_with_forbidden_wording(
+          "bill-go-code-review"
         ),
       },
     ) as repo_root:
@@ -350,11 +360,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       | Signal | Agent to spawn |
       | --- | --- |
-      | fixture | `bill-php-code-review-security` |
+      | fixture | `bill-go-code-review-security` |
 
       Spawn all selected sub-agents simultaneously using the `task` tool.
 
-      Agents spawned: bill-php-code-review-security
+      Agents spawned: bill-go-code-review-security
       """
     )
 
