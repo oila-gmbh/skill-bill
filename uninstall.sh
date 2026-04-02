@@ -3,6 +3,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
+MANAGED_INSTALL_MARKER=".skill-bill-install"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -109,6 +110,13 @@ remove_skill_target() {
     return
   fi
 
+  if [[ -d "$target" && -f "$target/$MANAGED_INSTALL_MARKER" ]]; then
+    rm -rf "$target"
+    REMOVED_TARGETS+=("$target")
+    ok "  removed $(basename "$target")"
+    return
+  fi
+
   if [[ -e "$target" ]]; then
     SKIPPED_TARGETS+=("$target")
     warn "  skipped $(basename "$target") (not a symlink)"
@@ -130,6 +138,13 @@ remove_from_agent_dir() {
   before_skipped=${#SKIPPED_TARGETS[@]}
 
   info "Checking $label: $target_dir"
+  shopt -s nullglob
+  for managed_target in "$target_dir"/*; do
+    if [[ -d "$managed_target" && -f "$managed_target/$MANAGED_INSTALL_MARKER" ]]; then
+      remove_skill_target "$managed_target"
+    fi
+  done
+  shopt -u nullglob
   for skill_name in "${SKILL_NAMES[@]}"; do
     remove_skill_target "$target_dir/$skill_name"
   done
@@ -148,7 +163,7 @@ build_legacy_skill_names
 echo ""
 printf "${CYAN}━━━ Skill Bill Uninstaller ━━━${NC}\n"
 echo ""
-info "Removing Skill Bill symlinks from supported agent paths."
+info "Removing Skill Bill installs from supported agent paths."
 
 remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
 remove_from_agent_dir "claude" "$HOME/.claude/commands"
@@ -159,7 +174,7 @@ remove_from_agent_dir "codex" "$HOME/.agents/skills"
 echo ""
 printf "${GREEN}━━━ Uninstall complete ━━━${NC}\n"
 echo ""
-info "Removed symlinks: ${#REMOVED_TARGETS[@]}"
+info "Removed installs: ${#REMOVED_TARGETS[@]}"
 if [[ ${#SKIPPED_TARGETS[@]} -gt 0 ]]; then
   warn "Skipped non-symlink paths: ${#SKIPPED_TARGETS[@]}"
 fi
