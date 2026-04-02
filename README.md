@@ -32,6 +32,7 @@ You interact through a handful of stable base commands. They auto-detect your st
 
 Detected stack: kotlin
 Routed to: bill-kotlin-code-review
+Execution mode: inline
 Specialist reviews: architecture, platform-correctness, testing
 
 [ARCHITECTURE]
@@ -82,15 +83,18 @@ A single `feature-implement` run chains 10-12 skill invocations:
 ├── implementation (atomic tasks)
 ├── /bill-code-review (auto-routed)
 │   └── e.g. bill-kotlin-code-review
-│       ├── architecture (subagent)
-│       ├── platform-correctness (subagent)
-│       ├── security (subagent, if applicable)
-│       └── testing (subagent, if applicable)
+│       ├── execution mode: inline or delegated
+│       ├── architecture (inline pass or subagent)
+│       ├── platform-correctness (inline pass or subagent)
+│       ├── security (inline pass or subagent, if applicable)
+│       └── testing (inline pass or subagent, if applicable)
 ├── /bill-quality-check (auto-routed)
 │   └── e.g. bill-kotlin-quality-check
 ├── completeness audit
 └── /bill-pr-description
 ```
+
+Small, low-risk review scopes may stay inline in one thread. Larger or higher-risk scopes use delegated review passes and report the chosen execution mode explicitly.
 
 Base entry points stay stable for users:
 
