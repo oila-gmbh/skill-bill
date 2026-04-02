@@ -24,6 +24,7 @@ def read(relative_path: str) -> str:
 FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md")
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
+PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
 KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
@@ -95,6 +96,18 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
     self.assertIn("Adaptive inline-vs-delegated review execution", FEATURE_IMPLEMENT)
+
+  def test_pr_description_prefers_repo_native_templates(self) -> None:
+    self.assertIn("## Repo-Native PR Template Preference", PR_DESCRIPTION)
+    self.assertIn("`.github/pull_request_template.md`", PR_DESCRIPTION)
+    self.assertIn("`.github/PULL_REQUEST_TEMPLATE.md`", PR_DESCRIPTION)
+    self.assertIn("`pull_request_template.md`", PR_DESCRIPTION)
+    self.assertIn("`PULL_REQUEST_TEMPLATE.md`", PR_DESCRIPTION)
+    self.assertIn("`.github/pull_request_template/*.md`", PR_DESCRIPTION)
+    self.assertIn("`.github/PULL_REQUEST_TEMPLATE/*.md`", PR_DESCRIPTION)
+    self.assertIn("If multiple templates exist and there is no obvious default, do not guess silently; ask the user which template to use.", PR_DESCRIPTION)
+    self.assertIn("If no repo-native template exists, fall back to the built-in Skill Bill template below.", PR_DESCRIPTION)
+    self.assertIn("Use this built-in template only when no repo-native PR template is available", PR_DESCRIPTION)
 
   def test_kotlin_context_routes_to_kotlin_review_and_quality_check(self) -> None:
     self.assertIn(

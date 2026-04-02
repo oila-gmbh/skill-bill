@@ -242,7 +242,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 | `/bill-go-quality-check` | Go quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
-| `/bill-pr-description` | Generate PR title, description, and QA steps |
+| `/bill-pr-description` | Generate PR title, description, and QA steps, preferring repo PR templates when present |
 | `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
 
 ## Project customization
