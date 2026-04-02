@@ -25,10 +25,22 @@ class UninstallScriptTest(unittest.TestCase):
 
       uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
       self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
-      self.assertIn("Removed symlinks:", uninstall.stdout)
+      self.assertIn("Removed installs:", uninstall.stdout)
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".claude" / "commands" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
+
+  def test_uninstall_removes_generated_alias_installs(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nPHP\nacme\n")
+      self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").is_dir())
+
+      uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
+      self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
+      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").exists())
+      self.assertIn("Removed installs:", uninstall.stdout)
 
   def test_uninstall_removes_legacy_skill_symlinks_and_is_idempotent(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -44,7 +56,7 @@ class UninstallScriptTest(unittest.TestCase):
 
       second = self.run_script(UNINSTALL_SCRIPT, temp_home)
       self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-      self.assertIn("Removed symlinks: 0", second.stdout)
+      self.assertIn("Removed installs: 0", second.stdout)
 
   def prepare_agent_homes(self, temp_home: str) -> None:
     for relative_dir in (
