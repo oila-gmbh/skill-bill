@@ -41,6 +41,17 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 - If any inline-eligibility condition is false or unclear, choose `delegated`
 - Inline mode must still run the selected baseline or specialist review passes deliberately, using each reviewer's own rubric and the shared specialist contract; do not collapse the review into a generic skim
 
+## Shared Learnings Context
+
+- The top-level review caller owns learnings resolution for the current review context
+- When applied learnings are already passed in by the caller, reuse them instead of re-resolving them independently in nested review layers
+- For a top-level or standalone review, resolve active learnings for the current repo and routed review skill before running the review when a local learnings resolver is available
+- Apply only active learnings; do not use disabled learnings as review context
+- Prefer more specific scopes in this order: `skill`, `repo`, `global`
+- Treat learnings as explicit context, not as hidden suppression rules; do not let them override evidence-based correctness, security, or contract findings
+- If no learnings were passed in and no local resolver is available, report `Applied learnings: none` instead of inventing hidden context
+- Pass the applied learnings forward to delegated or layered review passes when the current review routes additional workers
+
 ## Shared Delegation Contract
 
 - Runtime-facing review skills must read `review-delegation.md` before delegating routed review layers or specialist review passes
@@ -52,11 +63,27 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 
 ## Shared Report Structure
 
+Section 1 summary must include `Review session ID: <review-session-id>`.
+Section 1 summary must include `Review run ID: <review-run-id>`.
 Section 1 summary must include `Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>`.
 Section 1 summary must include `Execution mode: inline | delegated`.
+Section 1 summary must include `Applied learnings: none | <learning references>`.
+
+Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS`. If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
+
+Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS`. If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any follow-up feedback workflow for the current review output.
 
 After Section 1 in a stack-specific review skill, use:
 
 - `### 2. Risk Register`
 - `### 3. Action Items (Max 10, prioritized)`
 - `### 4. Verdict`
+
+Every finding in `### 2. Risk Register` must use this machine-readable format:
+
+```text
+- [F-001] <Severity> | <Confidence> | <file:line> | <description>
+```
+
+Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow.
+Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on.

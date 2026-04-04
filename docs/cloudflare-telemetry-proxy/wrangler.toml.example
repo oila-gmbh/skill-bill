@@ -1,0 +1,6 @@
+name = "skill-bill-telemetry-proxy"
+main = "worker.js"
+compatibility_date = "2026-04-03"
+
+[vars]
+POSTHOG_HOST = "https://us.i.posthog.com"

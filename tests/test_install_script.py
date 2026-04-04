@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
 import os
 import shutil
@@ -69,17 +71,18 @@ class InstallScriptTest(unittest.TestCase):
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nPHP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertIn("Available platforms:", result.stdout)
-      self.assertIn("Base skills are always installed.", result.stdout)
-      self.assertIn("Choose one or more platform numbers (comma-separated).", result.stdout)
+      self.assertIn("Available optional platforms:", result.stdout)
+      self.assertIn("Base skills and Agent config skills are always installed.", result.stdout)
+      self.assertIn("Choose one or more optional platform numbers (comma-separated).", result.stdout)
       self.assertIn("Command prefix: bill-", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-php-code-review" / "review-orchestrator.md").exists())
       self.assertIn("Installed agent: copilot", result.stdout)
+      self.assertTrue(self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")["telemetry"]["enabled"])
 
   def test_installs_base_and_selected_go_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -87,15 +90,16 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
 
-  def test_installs_base_and_selected_agent_config_platform_only(self) -> None:
+  def test_installs_agent_config_skills_automatically(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nAgent config\n")
+      result = self.run_installer(temp_home, "copilot\nPHP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+      self.assertNotIn("Agent config (agent-config)", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
 
   def test_installs_custom_prefix_aliases_and_rewrites_skill_names(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -105,7 +109,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("Custom prefixes install generated alias copies.", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, alias_skill_names(BASE_SKILLS | PHP_SKILLS, "acme"))
+      self.assertEqual(installed, alias_skill_names(BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS, "acme"))
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").exists())
 
       installed_skill = Path(temp_home) / ".copilot" / "skills" / "acme-code-review"
@@ -122,7 +126,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | AGENT_CONFIG_SKILLS)
       self.assertTrue(PHP_SKILLS.isdisjoint(installed))
 
   def test_accepts_human_friendly_multi_platform_selection(self) -> None:
@@ -131,7 +135,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | AGENT_CONFIG_SKILLS)
       self.assertTrue(PHP_SKILLS.isdisjoint(installed))
 
   def test_shows_each_platform_option_and_supports_all(self) -> None:
@@ -143,8 +147,8 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("KMP (kmp)", result.stdout)
       self.assertIn("PHP (php)", result.stdout)
       self.assertIn("Go (go)", result.stdout)
-      self.assertIn("Agent config (agent-config)", result.stdout)
       self.assertIn("all (install every platform package)", result.stdout)
+      self.assertNotIn("Agent config (agent-config)", result.stdout)
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(
@@ -158,7 +162,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | BACKEND_KOTLIN_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | BACKEND_KOTLIN_SKILLS | AGENT_CONFIG_SKILLS)
 
   def test_rerun_reinstalls_only_selected_platforms(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -173,7 +177,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("Skill Bill Uninstaller", second.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | AGENT_CONFIG_SKILLS)
 
   def test_rerun_replaces_previous_custom_prefix_aliases(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -188,7 +192,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertTrue((install_dir / "platform-code-review").exists())
       self.assertEqual(
         self.installed_skills(temp_home),
-        alias_skill_names(BASE_SKILLS | PHP_SKILLS, "platform"),
+        alias_skill_names(BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS, "platform"),
       )
 
   def test_rerun_replaces_existing_skill_directory_and_restores_sidecars(self) -> None:
@@ -209,13 +213,128 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(installed_skill.resolve(), ROOT / "skills" / "base" / "bill-code-review")
       self.assertTrue((installed_skill / "stack-routing.md").exists())
 
+  def test_installer_writes_telemetry_config_with_default_enabled(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "copilot\nPHP\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+      self.assertIn("Enable telemetry by default?", result.stdout)
+
+      config = self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")
+      self.assertEqual(
+        config["telemetry"],
+        {
+          "batch_size": 50,
+          "enabled": True,
+          "proxy_url": "",
+        },
+      )
+      self.assertTrue(config["install_id"])
+
+  def test_installer_supports_telemetry_opt_out_without_creating_state(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "copilot\nPHP\n\nn\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      state_dir = Path(temp_home) / ".skill-bill"
+      self.assertFalse((state_dir / "config.json").exists())
+      self.assertFalse((state_dir / "review-metrics.db").exists())
+
+  def test_installer_respects_custom_telemetry_config_path_when_enabled(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      custom_state_dir = Path(temp_home) / "custom-state"
+      custom_config_path = custom_state_dir / "config.json"
+      custom_db_path = custom_state_dir / "review-metrics.db"
+
+      result = self.run_installer(
+        temp_home,
+        "copilot\nPHP\n",
+        extra_env={
+          "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
+          "SKILL_BILL_REVIEW_DB": str(custom_db_path),
+        },
+      )
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      self.assertFalse((Path(temp_home) / ".skill-bill" / "config.json").exists())
+      self.assertTrue(custom_config_path.exists())
+      self.assertTrue(self.telemetry_config(custom_config_path)["telemetry"]["enabled"])
+
+  def test_installer_respects_custom_telemetry_paths_when_disabled(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      custom_state_dir = Path(temp_home) / "custom-state"
+      custom_config_path = custom_state_dir / "config.json"
+      custom_db_path = custom_state_dir / "review-metrics.db"
+      custom_state_dir.mkdir(parents=True, exist_ok=True)
+      custom_config_path.write_text(
+        json.dumps(
+          {
+            "install_id": "install-test-123",
+            "telemetry": {
+              "enabled": True,
+              "proxy_url": "",
+              "batch_size": 50,
+            },
+          },
+          indent=2,
+          sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+      )
+      connection = sqlite3.connect(custom_db_path)
+      try:
+        connection.execute(
+          """
+          CREATE TABLE telemetry_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_name TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            synced_at TEXT,
+            last_error TEXT NOT NULL DEFAULT ''
+          )
+          """
+        )
+        connection.execute(
+          """
+          INSERT INTO telemetry_outbox (event_name, payload_json)
+          VALUES (?, ?)
+          """,
+          ("skillbill_review_finished", "{}"),
+        )
+        connection.commit()
+      finally:
+        connection.close()
+
+      result = self.run_installer(
+        temp_home,
+        "copilot\nPHP\n\nn\n",
+        extra_env={
+          "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
+          "SKILL_BILL_REVIEW_DB": str(custom_db_path),
+        },
+      )
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      self.assertFalse((Path(temp_home) / ".skill-bill" / "config.json").exists())
+      self.assertFalse(custom_config_path.exists())
+      connection = sqlite3.connect(custom_db_path)
+      try:
+        remaining_events = connection.execute("SELECT COUNT(*) FROM telemetry_outbox").fetchone()[0]
+      finally:
+        connection.close()
+      self.assertEqual(remaining_events, 0)
+
   def run_installer(
     self,
     temp_home: str,
     user_input: str,
+    *,
+    extra_env: dict[str, str] | None = None,
   ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["HOME"] = temp_home
+    if extra_env is not None:
+      env.update(extra_env)
     return subprocess.run(
       ["bash", str(INSTALL_SCRIPT)],
       cwd=ROOT,
@@ -240,6 +359,9 @@ class InstallScriptTest(unittest.TestCase):
       ".codex",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
+
+  def telemetry_config(self, config_path: Path) -> dict[str, object]:
+    return json.loads(config_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

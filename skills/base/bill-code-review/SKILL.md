@@ -35,6 +35,18 @@ Inspect both the changed files and repo markers before routing.
 
 Resolve the scope before routing. If the caller asks for staged changes, route and review only the staged diff; do not let unstaged edits expand the findings beyond repo-marker stack detection.
 
+## Local Review Learnings
+
+The top-level router owns learnings resolution for the current review context.
+
+- When a local learnings resolver is available, resolve active learnings for the current repo and routed review skill before final routed review execution.
+- Routed and delegated reviewers should reuse applied learnings passed by the caller instead of re-resolving them independently.
+- Apply only active learnings.
+- Prefer more specific scopes in this order: `skill`, `repo`, `global`.
+- Treat learnings as explicit context, not as hidden suppression rules.
+- If no learnings can be resolved, report `Applied learnings: none`.
+- Pass the applied learning references forward to routed review layers and report them in the review summary.
+
 ## Additional Resources
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
@@ -69,7 +81,7 @@ Do not redefine stack signals here unless a route-specific exception is truly un
 
 ## Execution Contract
 
-Before running delegated routed reviews, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific delegated execution of routed stack-specific review skills.
+For multi-stack delegated routing, read [review-delegation.md](review-delegation.md) (only your current runtime's section). Skip it for single-stack reviews — the routed skill handles its own delegation.
 
 For a single routed stack-specific review skill:
 - Let the routed stack-specific reviewer choose `inline` or `delegated` using its own `review-orchestrator.md` contract
@@ -84,6 +96,9 @@ For multiple routed stack-specific review skills:
 When routing to another skill, pass along:
 - the exact resolved review scope label
 - the exact review scope
+- the current `review_session_id` when one already exists
+- the current `review_run_id` when one already exists
+- the applicable active learnings for the current repo and routed review skill when they are available
 - the changed files or diff source
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
@@ -94,14 +109,21 @@ When routing to another skill, pass along:
 
 ## Output Format
 
+Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS`. If a parent workflow already passed a `review_session_id`, reuse it instead of generating a new one.
+
+Generate one review run id per routed review using the format `rvw-YYYYMMDD-HHMMSS`. If a parent workflow already passed a `review_run_id`, reuse it instead of generating a new one.
+
 For a single routed skill:
 
 ```text
 Routed to: <skill-name>
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: <stack>
 Signals: <markers>
 Execution mode: inline | delegated
+Applied learnings: none | <learning references>
 Reason: <why this stack-specific reviewer was selected and why this execution mode was used>
 
 <review output>
@@ -111,10 +133,13 @@ For multiple delegated skills:
 
 ```text
 Routed to: <skill-a>, <skill-b>
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: Mixed
 Signals: <markers>
 Execution mode: delegated
+Applied learnings: none | <learning references>
 Reason: <why multiple stack-specific reviewers were selected and why delegated routing was required>
 
 <merged delegated review output>
@@ -128,3 +153,20 @@ Detected stack: Unknown/Unsupported
 Signals: <markers>
 Result: No matching stack-specific code-review skill is available yet.
 ```
+
+## Auto-Import
+
+After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
+
+Resolve the path to `scripts/review_metrics.py` by following this skill file's real path (resolving symlinks) up to the repository root. For example, if this SKILL.md resolves to `/path/to/skill-bill/skills/base/bill-code-review/SKILL.md`, the script lives at `/path/to/skill-bill/scripts/review_metrics.py`.
+
+Run a single shell command that writes the review output to a temporary file, imports it, and cleans up:
+
+```bash
+tmp=$(mktemp) && cat > "$tmp" << 'REVIEW_EOF'
+<complete review output (Section 1 through Section 4)>
+REVIEW_EOF
+python3 <resolved-script-path> import-review "$tmp" --format json && rm -f "$tmp"
+```
+
+Skip auto-import when the resolved `scripts/review_metrics.py` path does not exist.

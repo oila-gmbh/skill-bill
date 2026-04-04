@@ -84,9 +84,11 @@ declare -a INSTALL_SKILL_NAMES=()
 declare -a INSTALL_SKILL_PATHS=()
 declare -a INSTALL_TARGET_NAMES=()
 declare -a PLATFORM_PACKAGES=()
+declare -a REQUIRED_PLATFORM_PACKAGES=(agent-config)
 declare -a SELECTED_PLATFORM_PACKAGES=()
 declare -a LEGACY_SKILL_NAMES=()
 INSTALL_PREFIX="bill"
+TELEMETRY_ENABLED="true"
 
 remove_if_allowed() {
   local target="$1"
@@ -345,13 +347,16 @@ build_platform_packages() {
   done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 
   PLATFORM_PACKAGES=()
-  for package in backend-kotlin kotlin kmp php go agent-config; do
+  for package in backend-kotlin kotlin kmp php go; do
     if array_contains "$package" "${discovered[@]:-}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
   done
 
   for package in "${discovered[@]:-}"; do
+    if array_contains "$package" "${REQUIRED_PLATFORM_PACKAGES[@]:-}"; then
+      continue
+    fi
     if ! array_contains "$package" "${PLATFORM_PACKAGES[@]:-}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
@@ -393,7 +398,7 @@ resolve_platform_selection() {
       return 0
       ;;
     agentconfig|skillrepo|skillsinfra)
-      printf 'agent-config\n'
+      printf '__deprecated_agent_config__\n'
       return 0
       ;;
     kotlin)
@@ -406,6 +411,10 @@ resolve_platform_selection() {
       ;;
     php)
       printf 'php\n'
+      return 0
+      ;;
+    go|golang)
+      printf 'go\n'
       return 0
       ;;
   esac
@@ -441,6 +450,16 @@ format_platform_list() {
   printf '%s' "$result"
 }
 
+append_required_platform_packages() {
+  local package
+
+  for package in "${REQUIRED_PLATFORM_PACKAGES[@]:-}"; do
+    if [[ -d "$SKILLS_DIR/$package" ]] && ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+      SELECTED_PLATFORM_PACKAGES+=("$package")
+    fi
+  done
+}
+
 prompt_for_platform_selection() {
   local input
   local i
@@ -453,25 +472,26 @@ prompt_for_platform_selection() {
 
   if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]]; then
     SELECTED_PLATFORM_PACKAGES=()
+    append_required_platform_packages
     return 0
   fi
 
   while true; do
     echo ""
-    info "Available platforms:"
+    info "Available optional platforms:"
     for i in "${!PLATFORM_PACKAGES[@]}"; do
       package="${PLATFORM_PACKAGES[$i]}"
       printf "  %s. %s (%s)\n" "$((i + 1))" "$(display_platform_name "$package")" "$package"
     done
     option_number=$(( ${#PLATFORM_PACKAGES[@]} + 1 ))
     printf "  %s. all (install every platform package)\n" "$option_number"
-    info "Base skills are always installed."
-    info "Choose one or more platform numbers (comma-separated). Names still work if you prefer them."
+    info "Base skills and Agent config skills are always installed."
+    info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms (e.g. 1,3 or %s): " "$option_number"
     read -r input
 
     if [[ -z "$(trim_string "$input")" ]]; then
-      warn "No platforms provided. Choose at least one platform."
+      warn "No platforms provided. Choose at least one optional platform."
       continue
     fi
 
@@ -485,6 +505,10 @@ prompt_for_platform_selection() {
       resolved="$(resolve_platform_selection "$token" 2>/dev/null || true)"
       if [[ -z "$resolved" ]]; then
         invalid_tokens+=("$token")
+        continue
+      fi
+      if [[ "$resolved" == "__deprecated_agent_config__" ]]; then
+        info "Agent config is now always installed. The '$token' alias is no longer needed."
         continue
       fi
       if [[ "$resolved" == "__all__" ]]; then
@@ -502,10 +526,11 @@ prompt_for_platform_selection() {
     fi
 
     if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
-      warn "No valid platforms selected. Choose at least one platform."
+      warn "No valid platforms selected. Choose at least one optional platform."
       continue
     fi
 
+    append_required_platform_packages
     return 0
   done
 }
@@ -536,6 +561,36 @@ prompt_for_skill_prefix() {
 
     INSTALL_PREFIX="$normalized"
     return 0
+  done
+}
+
+prompt_for_telemetry_preference() {
+  local input
+  local normalized
+
+  while true; do
+    echo ""
+    info "Anonymous telemetry can stay enabled locally and sync through the hosted relay by default or a custom proxy override."
+    info "Default: enabled. You can opt out now or later."
+    printf "${CYAN}▸${NC} Enable telemetry by default? [Y/n]: "
+    if ! read -r input; then
+      input=""
+    fi
+
+    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
+      ""|y|yes)
+        TELEMETRY_ENABLED="true"
+        return 0
+        ;;
+      n|no)
+        TELEMETRY_ENABLED="false"
+        return 0
+        ;;
+      *)
+        warn "Enter y, yes, n, no, or press Enter for the default."
+        ;;
+    esac
   done
 }
 
@@ -757,6 +812,7 @@ info "Install behavior: replace existing Skill Bill installs and reinstall the s
 prompt_for_agent_selection
 prompt_for_platform_selection
 prompt_for_skill_prefix
+prompt_for_telemetry_preference
 build_install_skill_names
 
 echo ""
@@ -765,6 +821,7 @@ info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
 info "Skills found: ${#SKILL_NAMES[@]}"
 info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
 info "Command prefix: ${INSTALL_PREFIX}-"
+info "Telemetry:      $([[ "$TELEMETRY_ENABLED" == "true" ]] && printf 'enabled' || printf 'disabled')"
 echo ""
 
 info "Removing existing Skill Bill installs before reinstalling the selected platforms."
@@ -787,11 +844,31 @@ for i in "${!AGENT_NAMES[@]}"; do
   echo ""
 done
 
+SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
+export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
+export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
+
+if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+  if ! python3 "$PLUGIN_DIR/scripts/review_metrics.py" telemetry enable --format json >/dev/null; then
+    warn "Telemetry setup failed."
+    TELEMETRY_ENABLED="setup_failed"
+  fi
+elif [[ -e "$SKILL_BILL_CONFIG_PATH" || -e "$SKILL_BILL_REVIEW_DB" ]]; then
+  python3 "$PLUGIN_DIR/scripts/review_metrics.py" telemetry disable --format json >/dev/null || warn "Telemetry setup failed."
+fi
+
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
 info "Command prefix:  ${INSTALL_PREFIX}-"
+if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+  info "Telemetry:       enabled by default"
+elif [[ "$TELEMETRY_ENABLED" == "setup_failed" ]]; then
+  info "Telemetry:       setup failed (python3 may be unavailable)"
+else
+  info "Telemetry:       disabled"
+fi
 for i in "${!AGENT_NAMES[@]}"; do
   agent="${AGENT_NAMES[$i]}"
   agent_dir="${AGENT_PATHS[$i]}"
@@ -803,5 +880,6 @@ info "Edit skills in: $PLUGIN_DIR/skills/"
 if [[ "$INSTALL_PREFIX" != "bill" ]]; then
   info "Custom prefixes install generated alias copies. Re-run './install.sh' after editing skills."
 fi
+info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
 info "Run './install.sh' again to reinstall with a different agent or platform selection."
 echo ""

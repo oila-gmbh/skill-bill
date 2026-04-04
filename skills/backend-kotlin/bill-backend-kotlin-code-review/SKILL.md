@@ -41,11 +41,11 @@ Inspect both the changed files and repo markers (`build.gradle*`, `settings.grad
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
-Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for broad stack signals. This skill owns only the backend/server override that happens after Kotlin is already in scope.
+When the caller already passed the detected stack, skip reading [stack-routing.md](stack-routing.md). For standalone invocation, read it before classifying.
 
-Before selecting backend specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+Before selecting backend specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md) unless the caller already passed the shared review contract.
 
-Before delegating baseline or backend specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
+Before delegating baseline or backend specialist review passes, read only your current runtime's section in [review-delegation.md](review-delegation.md).
 
 Classify the review as one of:
 - `backend-kotlin`
@@ -112,7 +112,7 @@ If execution mode is `inline`:
 
 If execution mode is `delegated`:
 - run one delegated subagent per selected backend specialist review pass
-- pass the detected project type, list of changed files, instructions to read the backend specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- pass the detected project type, list of changed files, applicable active learnings, instructions to read the backend specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 - if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 If no backend-only triggers match but backend/server signals are clearly present, keep the baseline Kotlin review output and state that no extra backend-specific specialist was needed for this scope.
@@ -123,10 +123,13 @@ If no backend-only triggers match but backend/server signals are clearly present
 
 ### 1. Classification & Layer Summary
 ```text
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: backend-kotlin | mixed-backend-kotlin
 Signals: application.yml, @RestController, Exposed
 Execution mode: inline | delegated
+Applied learnings: none | <learning references>
 Baseline review: bill-kotlin-code-review
 Backend specialist reviews: bill-backend-kotlin-code-review-api-contracts
 Reason: backend/server signals were high-confidence, so the backend layer was added on top of the baseline Kotlin review

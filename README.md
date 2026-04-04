@@ -30,19 +30,18 @@ You interact through a handful of stable base commands. They auto-detect your st
 ```
 /bill-code-review
 
+Review session ID: rvs-20260402-221530
+Review run ID: rvw-20260402-221530
 Detected stack: kotlin
 Routed to: bill-kotlin-code-review
 Execution mode: inline
+Applied learnings: none
 Specialist reviews: architecture, platform-correctness, testing
 
-[ARCHITECTURE]
-P0: Shared state mutation not protected by synchronization
-
-[PLATFORM CORRECTNESS]
-P1: ViewModel scope used outside main thread context
-
-[TESTING]
-Minor: Test coverage for error path incomplete
+### 2. Risk Register
+- [F-001] Major | High | app/src/main/java/...:42 | Shared state mutation is not protected by synchronization.
+- [F-002] Major | Medium | app/src/main/java/...:88 | ViewModel scope is used from the wrong thread context.
+- [F-003] Minor | High | app/src/test/...:17 | Error-path coverage is missing for the new branch.
 ```
 
 **Feature implementation** — end-to-end from design doc to PR:
@@ -102,6 +101,10 @@ Base entry points stay stable for users:
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
 
+## Review telemetry
+
+Skill Bill records review acceptance metrics locally in SQLite and can optionally sync anonymized analytics to a hosted relay or custom proxy. See [docs/review-telemetry.md](docs/review-telemetry.md) for the full workflow, CLI reference, learnings management, telemetry events, and proxy configuration.
+
 ## Supported agents
 
 | Agent | Install path |
@@ -137,7 +140,7 @@ The installer first asks which agent targets to install to. You can choose one o
 all
 ```
 
-It then shows the available platform packages and asks which ones to install. Base skills in `skills/base/` are always installed; platform packages are installed only when selected. The primary input path is **comma-separated numbers**, though platform names still work too.
+It then shows the available **optional** platform packages and asks which ones to install. Base skills in `skills/base/` and the governed `agent-config` package are always installed; the remaining platform packages are installed only when selected. The primary input path is **comma-separated numbers**, though platform names still work too.
 
 Available options are shown as separate entries:
 
@@ -147,8 +150,7 @@ Available options are shown as separate entries:
 3. KMP
 4. PHP
 5. Go
-6. Agent config
-7. all
+6. all
 ```
 
 Example platform selections:
@@ -158,7 +160,6 @@ Example platform selections:
 4
 5
 6
-7
 ```
 
 Finally, the installer asks for the **user-facing command prefix**. Press Enter to keep the default `bill` prefix, or enter your own team/org prefix:

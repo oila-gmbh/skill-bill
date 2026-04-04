@@ -2,3 +2,6 @@
 .DS_Store
 *.swp
 *~
+__pycache__/
+docs/cloudflare-telemetry-proxy/wrangler.toml
+docs/cloudflare-telemetry-proxy/.wrangler/

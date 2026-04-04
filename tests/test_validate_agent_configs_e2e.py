@@ -13,7 +13,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from skill_repo_contracts import RUNTIME_SUPPORTING_FILES, supporting_file_targets  # noqa: E402
+from skill_repo_contracts import (  # noqa: E402
+  APPLIED_LEARNINGS_PLACEHOLDER,
+  REVIEW_RUN_ID_FORMAT,
+  REVIEW_RUN_ID_PLACEHOLDER,
+  REVIEW_SESSION_ID_FORMAT,
+  REVIEW_SESSION_ID_PLACEHOLDER,
+  RISK_REGISTER_FINDING_FORMAT,
+  RUNTIME_SUPPORTING_FILES,
+  supporting_file_targets,
+)
 
 
 VALIDATOR_PATH = Path(__file__).resolve().parents[1] / "scripts" / "validate_agent_configs.py"
@@ -144,6 +153,58 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("must use portable routing-table wording", result.stdout)
       self.assertIn("must use portable summary wording", result.stdout)
 
+  def test_rejects_portable_review_skill_without_review_run_id_contract(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("php", "bill-php-code-review"),
+      ],
+      skill_contents={
+        "bill-code-review": self.router_fixture_without_review_run_id(),
+        "bill-php-code-review": self.portable_review_fixture_without_review_run_id(
+          "bill-php-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("shared code-review router must expose", result.stdout)
+      self.assertIn("portable review skills must expose", result.stdout)
+      self.assertIn(REVIEW_SESSION_ID_PLACEHOLDER, result.stdout)
+      self.assertIn("shared code-review router must define the review run id format", result.stdout)
+      self.assertIn("shared code-review router must define the review session id format", result.stdout)
+
+  def test_rejects_portable_review_skill_without_applied_learnings_contract(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("php", "bill-php-code-review"),
+      ],
+      skill_contents={
+        "bill-code-review": self.router_fixture_without_applied_learnings(),
+        "bill-php-code-review": self.portable_review_fixture_without_applied_learnings(
+          "bill-php-code-review"
+        ),
+      },
+      review_orchestrator_has_applied_learnings=False,
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("shared code-review router must expose", result.stdout)
+      self.assertIn("portable review skills must expose", result.stdout)
+      self.assertIn("review orchestration contract must expose", result.stdout)
+
+  def test_rejects_review_orchestrator_without_machine_readable_finding_contract(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-code-review")],
+      review_orchestrator_has_telemetry=False,
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("review orchestration contract must expose", result.stdout)
+      self.assertIn(REVIEW_SESSION_ID_PLACEHOLDER, result.stdout)
+      self.assertIn("review orchestration contract must define machine-readable findings", result.stdout)
+
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
       ["python3", str(VALIDATOR_PATH), str(repo_root)],
@@ -158,6 +219,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     skills: list[tuple[str, str]],
     *,
     skill_contents: dict[str, str] | None = None,
+    review_orchestrator_has_telemetry: bool = True,
+    review_orchestrator_has_applied_learnings: bool = True,
   ):
     with tempfile.TemporaryDirectory() as temp_dir:
       repo_root = Path(temp_dir)
@@ -165,7 +228,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_skill_overrides_example(repo_root, skills[0][1])
       self.write_plugin_manifest(repo_root)
       self.write_stack_routing_playbook(repo_root)
-      self.write_review_orchestrator_playbook(repo_root)
+      self.write_review_orchestrator_playbook(
+        repo_root,
+        include_telemetry=review_orchestrator_has_telemetry,
+        include_applied_learnings=review_orchestrator_has_applied_learnings,
+      )
       self.write_review_delegation_playbook(repo_root)
 
       for package_name, skill_name in skills:
@@ -245,25 +312,41 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       encoding="utf-8",
     )
 
-  def write_review_orchestrator_playbook(self, repo_root: Path) -> None:
+  def write_review_orchestrator_playbook(
+    self,
+    repo_root: Path,
+    *,
+    include_telemetry: bool = True,
+    include_applied_learnings: bool = True,
+  ) -> None:
     path = repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-      textwrap.dedent(
-        """\
-        ---
-        name: review-orchestrator
-        description: Maintainer-facing reference snapshot for shared review orchestration behavior.
-        ---
+    playbook = textwrap.dedent(
+      """\
+      ---
+      name: review-orchestrator
+      description: Maintainer-facing reference snapshot for shared review orchestration behavior.
+      ---
 
-        # Shared Review Orchestrator Snapshot
+      # Shared Review Orchestrator Snapshot
 
-        This maintainer-facing reference snapshot exists to document the shared review contract.
-        It is not a runtime dependency for installed skills.
-        """
-      ),
-      encoding="utf-8",
+      This maintainer-facing reference snapshot exists to document the shared review contract.
+      It is not a runtime dependency for installed skills.
+      """
     )
+    if include_telemetry:
+      playbook = (
+        playbook
+        + f"\n{REVIEW_SESSION_ID_PLACEHOLDER}\n"
+        + f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.\n"
+        + f"\n{REVIEW_RUN_ID_PLACEHOLDER}\n"
+        + f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.\n"
+      )
+    if include_applied_learnings:
+      playbook = playbook + f"{APPLIED_LEARNINGS_PLACEHOLDER}\n"
+    if include_telemetry:
+      playbook = playbook + f"{RISK_REGISTER_FINDING_FORMAT}\n"
+    path.write_text(playbook, encoding="utf-8")
 
   def write_review_delegation_playbook(self, repo_root: Path) -> None:
     path = repo_root / "orchestration" / "review-delegation" / "PLAYBOOK.md"
@@ -285,6 +368,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         ## Claude Code
         ## OpenAI Codex
         ## GLM
+
+        Every delegated worker must receive the current `review_session_id` and `review_run_id` when they already exist.
         """
       ),
       encoding="utf-8",
@@ -309,6 +394,15 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
   def skill_markdown(self, skill_name: str) -> str:
+    review_run_line = ""
+    if skill_name == "bill-code-review" or skill_name in RUNTIME_SUPPORTING_FILES:
+      review_run_line = (
+        f"\n{REVIEW_SESSION_ID_PLACEHOLDER}\n"
+        + f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}."
+        + f"\n{REVIEW_RUN_ID_PLACEHOLDER}\n"
+        + f"Use the review run id format {REVIEW_RUN_ID_FORMAT}."
+        + f"\n{APPLIED_LEARNINGS_PLACEHOLDER}"
+      )
     return textwrap.dedent(
       f"""\
       ---
@@ -322,7 +416,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
 
-      Use this fixture skill for validator end-to-end coverage.
+      Use this fixture skill for validator end-to-end coverage.{review_run_line}
       """
     )
 
@@ -340,6 +434,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
 
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
       Read `.bill-shared/orchestration/stack-routing/PLAYBOOK.md` before routing.
       """
     )
@@ -358,6 +454,9 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
 
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
       | Signal | Agent to spawn |
       | --- | --- |
       | fixture | `bill-php-code-review-security` |
@@ -365,6 +464,88 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       Spawn all selected sub-agents simultaneously using the `task` tool.
 
       Agents spawned: bill-php-code-review-security
+      """
+    )
+
+  def router_fixture_without_review_run_id(self) -> str:
+    return textwrap.dedent(
+      """\
+      ---
+      name: bill-code-review
+      description: Fixture shared review router used for validator telemetry coverage.
+      ---
+
+      # bill-code-review
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-code-review` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      Shared router fixture without telemetry summary output.
+      """
+    )
+
+  def portable_review_fixture_without_review_run_id(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill missing telemetry summary output.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      Specialist review fixture content.
+      """
+    )
+
+  def router_fixture_without_applied_learnings(self) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: bill-code-review
+      description: Fixture shared review router missing applied learnings output.
+      ---
+
+      # bill-code-review
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-code-review` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      Use the review session id format {REVIEW_SESSION_ID_FORMAT}.
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      Use the review run id format {REVIEW_RUN_ID_FORMAT}.
+      Shared router fixture without learnings summary output.
+      """
+    )
+
+  def portable_review_fixture_without_applied_learnings(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill missing applied learnings summary output.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      Specialist review fixture content.
       """
     )
 

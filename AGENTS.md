@@ -60,7 +60,7 @@ Use only these two platform naming patterns unless the taxonomy itself is intent
 - Use sibling supporting files for runtime-shared routing, review, and delegation contracts instead of repo-relative or install-root-relative playbook paths.
 - Keep `orchestration/` snapshots aligned with the sibling supporting-file contracts when shared routing, review, or delegation behavior changes.
 - Preserve stable base entry points even when a platform needs more depth behind the router.
-- Keep README skill counts and catalog entries accurate whenever skills change.
+- Keep README.md (user-facing only, do not read for agent context) skill counts and catalog entries accurate whenever skills change.
 - Update `install.sh` migration rules in the same change when renaming stack-bound skills.
 
 ## Adding a new platform or language
@@ -95,7 +95,7 @@ When adding a new platform or language package:
    - `skills/base/bill-code-review/SKILL.md`
    - `skills/base/bill-quality-check/SKILL.md`
 6. Add or update platform overrides, not duplicate base workflows unnecessarily.
-7. Update `README.md`:
+7. Update `README.md` (user-facing only, do not read for agent context):
    - project description if platform support meaningfully changes the pitch
    - current platform list
    - skill catalog
