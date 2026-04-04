@@ -168,3 +168,24 @@ skill-bill import-review "$tmp" --format json && rm -f "$tmp"
 ```
 
 Skip auto-import when the `skill-bill` CLI is not installed.
+
+## Auto-Triage
+
+After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
+
+Build the `--decision` flags from the user's responses. Each finding gets one decision using its position number from the risk register:
+- `fix` — the finding was accepted and the fix was applied
+- `accept` — the finding was accepted but no code change was needed
+- `skip` — the finding was intentionally skipped (append a reason after `-`)
+- `false_positive` — the finding was incorrect
+
+Run a single shell command:
+
+```bash
+skill-bill triage --run-id <review-run-id> \
+  --decision "<number> <action>" \
+  --decision "<number> <action> - <reason>" \
+  --format json
+```
+
+Skip auto-triage when the `skill-bill` CLI is not installed or when the review produced no findings.

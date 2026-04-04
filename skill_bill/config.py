@@ -163,7 +163,7 @@ def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
   if enabled and not install_id:
     raise ValueError(
       f"Telemetry is enabled but no install_id is configured at '{config_path}'. "
-      "Run 'python3 scripts/review_metrics.py telemetry enable' to create one."
+      "Run 'skill-bill telemetry enable' to create one."
     )
 
   return TelemetrySettings(
