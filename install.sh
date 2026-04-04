@@ -848,9 +848,16 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
+info "Installing skill-bill CLI..."
+if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
+  ok "skill-bill CLI installed"
+else
+  warn "Could not install skill-bill CLI (python3 or pip may be unavailable)."
+fi
+
 if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
   if ! python3 -m skill_bill telemetry enable --format json >/dev/null 2>&1; then
-    warn "Telemetry setup failed. Run 'pip install -e $PLUGIN_DIR' to install the skill-bill CLI."
+    warn "Telemetry setup failed."
     TELEMETRY_ENABLED="setup_failed"
   fi
 elif [[ -e "$SKILL_BILL_CONFIG_PATH" || -e "$SKILL_BILL_REVIEW_DB" ]]; then
