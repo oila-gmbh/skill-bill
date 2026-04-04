@@ -158,15 +158,13 @@ Result: No matching stack-specific code-review skill is available yet.
 
 After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
 
-Resolve the path to `scripts/review_metrics.py` by following this skill file's real path (resolving symlinks) up to the repository root. For example, if this SKILL.md resolves to `/path/to/skill-bill/skills/base/bill-code-review/SKILL.md`, the script lives at `/path/to/skill-bill/scripts/review_metrics.py`.
-
 Run a single shell command that writes the review output to a temporary file, imports it, and cleans up:
 
 ```bash
 tmp=$(mktemp) && cat > "$tmp" << 'REVIEW_EOF'
 <complete review output (Section 1 through Section 4)>
 REVIEW_EOF
-python3 <resolved-script-path> import-review "$tmp" --format json && rm -f "$tmp"
+skill-bill import-review "$tmp" --format json && rm -f "$tmp"
 ```
 
-Skip auto-import when the resolved `scripts/review_metrics.py` path does not exist.
+Skip auto-import when the `skill-bill` CLI is not installed.

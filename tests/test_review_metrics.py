@@ -13,9 +13,25 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT))
 
-import review_metrics  # noqa: E402
+from skill_bill import cli as review_metrics_cli  # noqa: E402
+from skill_bill import config as review_metrics_config  # noqa: E402
+from skill_bill import constants as review_metrics_constants  # noqa: E402
+from skill_bill import sync as review_metrics_sync  # noqa: E402
+
+
+class _ReviewMetricsCompat:
+  CONFIG_ENVIRONMENT_KEY = review_metrics_constants.CONFIG_ENVIRONMENT_KEY
+  TELEMETRY_ENABLED_ENVIRONMENT_KEY = review_metrics_constants.TELEMETRY_ENABLED_ENVIRONMENT_KEY
+  TELEMETRY_PROXY_URL_ENVIRONMENT_KEY = review_metrics_constants.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
+  INSTALL_ID_ENVIRONMENT_KEY = review_metrics_constants.INSTALL_ID_ENVIRONMENT_KEY
+  DEFAULT_TELEMETRY_PROXY_URL = review_metrics_constants.DEFAULT_TELEMETRY_PROXY_URL
+  urllib = review_metrics_sync.urllib
+  main = staticmethod(review_metrics_cli.main)
+
+
+review_metrics = _ReviewMetricsCompat()
 
 
 SAMPLE_REVIEW = """\

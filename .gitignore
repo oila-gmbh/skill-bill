@@ -3,5 +3,7 @@
 *.swp
 *~
 __pycache__/
-docs/cloudflare-telemetry-proxy/wrangler.toml
+*.egg-info/
+dist/
+build/
 docs/cloudflare-telemetry-proxy/.wrangler/
