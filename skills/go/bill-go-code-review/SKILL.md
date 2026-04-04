@@ -43,11 +43,11 @@ Resolve the scope before reviewing. If the caller asks for staged changes, inspe
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
-Before applying review heuristics, read [stack-routing.md](stack-routing.md) and use it as the source of truth for Go stack signals and mixed-stack routing expectations. This skill owns the Go review depth that applies after Go is already in scope.
+When the caller already passed the detected stack, skip reading [stack-routing.md](stack-routing.md). For standalone invocation, read it before classifying.
 
-Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+Before selecting specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md) unless the caller already passed the shared review contract.
 
-Before delegating specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
+Before delegating specialist review passes, read only your current runtime's section in [review-delegation.md](review-delegation.md).
 
 ---
 
@@ -124,7 +124,7 @@ If execution mode is `inline`:
 If execution mode is `delegated`:
 
 - run one delegated subagent per selected specialist review pass
-- pass the list of changed files, instructions to read the specialist skill file, relevant project-wide guidance and matching per-skill overrides, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- pass the list of changed files, applicable active learnings, instructions to read the specialist skill file, relevant project-wide guidance and matching per-skill overrides, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 - if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 ---
@@ -134,9 +134,12 @@ If execution mode is `delegated`:
 ### 1. Specialist Summary
 
 ```text
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Signals: goroutines, context propagation, database/sql, changed tests
 Execution mode: inline | delegated
+Applied learnings: none | <learning references>
 Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence, bill-go-code-review-testing
 Reason: concurrency-sensitive state handling changed, persistence code changed, and tests changed materially
 ```

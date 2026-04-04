@@ -41,11 +41,11 @@ Inspect both the changed files and repo markers (`build.gradle*`, `settings.grad
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
-Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for routing Android/KMP work into the `kmp` package bucket.
+When the caller already passed the detected stack, skip reading [stack-routing.md](stack-routing.md). For standalone invocation, read it before classifying.
 
-Before selecting KMP specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist contract, merge rules, common output sections, shared standalone behavior, and review principles used by stack-specific review orchestrators.
+Before selecting KMP specialist review passes or formatting the final report, read [review-orchestrator.md](review-orchestrator.md) unless the caller already passed the shared review contract.
 
-Before delegating baseline or KMP specialist review passes, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific subagent execution.
+Before delegating baseline or KMP specialist review passes, read only your current runtime's section in [review-delegation.md](review-delegation.md).
 
 Classify the review as one of:
 - `kmp`
@@ -123,7 +123,7 @@ If execution mode is `inline`:
 
 If execution mode is `delegated`:
 - run one delegated subagent per selected KMP specialist review pass
-- pass the detected project type, list of changed files, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- pass the detected project type, list of changed files, applicable active learnings, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
 - if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
@@ -134,10 +134,13 @@ If no KMP-only triggers match but Android/KMP signals are clearly present, keep 
 
 ### 1. Classification & Layer Summary
 ```text
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: kmp | mixed-kmp
 Signals: @Composable, AndroidManifest.xml, ViewModel
 Execution mode: inline | delegated
+Applied learnings: none | <learning references>
 Baseline review: bill-kotlin-code-review | bill-backend-kotlin-code-review
 KMP specialist reviews: bill-kmp-code-review-ui
 Reason: Android/KMP signals were high-confidence, so the mobile layer was added on top of the baseline Kotlin-family review

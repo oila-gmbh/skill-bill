@@ -37,11 +37,11 @@ Inspect both the changed files and repo markers for skill/agent-config signals.
 - For shared review-orchestration rules, see [review-orchestrator.md](review-orchestrator.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
-Before classifying, read [stack-routing.md](stack-routing.md). Use it as the source of truth for `agent-config` signals and mixed-stack routing expectations.
+When the caller already passed the detected stack, skip reading [stack-routing.md](stack-routing.md). For standalone invocation, read it before classifying.
 
-Before selecting review depth or formatting the final report, read [review-orchestrator.md](review-orchestrator.md). Use it as the source of truth for the shared specialist review contract, merge rules, common output sections, and review principles used by stack-specific review orchestrators.
+Before selecting review depth or formatting the final report, read [review-orchestrator.md](review-orchestrator.md) unless the caller already passed the shared review contract.
 
-Before delegating review execution, read [review-delegation.md](review-delegation.md). Use it as the source of truth for agent-specific delegated execution.
+Before delegating review execution, read only your current runtime's section in [review-delegation.md](review-delegation.md).
 
 ## Review Focus
 
@@ -71,10 +71,13 @@ If execution mode is `delegated`, run this same review in delegated execution us
 
 ### 1. Classification & Review Summary
 ```text
+Review session ID: <review-session-id>
+Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: agent-config
 Signals: SKILL.md, AGENTS.md, install.sh, orchestration/, validator tests
 Execution mode: inline | delegated
+Applied learnings: none | <learning references>
 Review focus: routing/contracts, installer/runtime safety, docs/tests/catalog consistency
 Reason: skill/agent-config repository signals dominate, so the governed repo review layer was selected
 ```
