@@ -236,7 +236,6 @@ def learnings_show_command(args: argparse.Namespace) -> int:
 def learnings_resolve_command(args: argparse.Namespace) -> int:
   db_path = resolve_db_path(args.db)
   connection = ensure_database(db_path)
-  telemetry_enabled = telemetry_is_enabled()
   try:
     with connection:
       repo_scope_key, skill_name, rows = resolve_learnings(

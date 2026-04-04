@@ -15,23 +15,17 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from skill_bill import cli as review_metrics_cli  # noqa: E402
-from skill_bill import config as review_metrics_config  # noqa: E402
-from skill_bill import constants as review_metrics_constants  # noqa: E402
-from skill_bill import sync as review_metrics_sync  # noqa: E402
+import urllib.error  # noqa: E402
+import urllib.request  # noqa: E402
 
-
-class _ReviewMetricsCompat:
-  CONFIG_ENVIRONMENT_KEY = review_metrics_constants.CONFIG_ENVIRONMENT_KEY
-  TELEMETRY_ENABLED_ENVIRONMENT_KEY = review_metrics_constants.TELEMETRY_ENABLED_ENVIRONMENT_KEY
-  TELEMETRY_PROXY_URL_ENVIRONMENT_KEY = review_metrics_constants.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
-  INSTALL_ID_ENVIRONMENT_KEY = review_metrics_constants.INSTALL_ID_ENVIRONMENT_KEY
-  DEFAULT_TELEMETRY_PROXY_URL = review_metrics_constants.DEFAULT_TELEMETRY_PROXY_URL
-  urllib = review_metrics_sync.urllib
-  main = staticmethod(review_metrics_cli.main)
-
-
-review_metrics = _ReviewMetricsCompat()
+from skill_bill.cli import main  # noqa: E402
+from skill_bill.constants import (  # noqa: E402
+  CONFIG_ENVIRONMENT_KEY,
+  DEFAULT_TELEMETRY_PROXY_URL,
+  INSTALL_ID_ENVIRONMENT_KEY,
+  TELEMETRY_ENABLED_ENVIRONMENT_KEY,
+  TELEMETRY_PROXY_URL_ENVIRONMENT_KEY,
+)
 
 
 SAMPLE_REVIEW = """\
@@ -532,7 +526,7 @@ Reason: agent-config signals dominate
     with tempfile.TemporaryDirectory() as temp_dir:
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
-      env = {review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path)}
+      env = {CONFIG_ENVIRONMENT_KEY: str(config_path)}
       self.import_sample_review(db_path, temp_dir, env=env)
 
       triage = self.run_cli(
@@ -662,7 +656,7 @@ Reason: agent-config signals dominate
 
       result = self.run_cli(
         ["--db", str(db_path), "telemetry", "status", "--format", "json"],
-        env={review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path)},
+        env={CONFIG_ENVIRONMENT_KEY: str(config_path)},
       )
 
       self.assertEqual(result["exit_code"], 0, result["stderr"])
@@ -671,7 +665,7 @@ Reason: agent-config signals dominate
       self.assertEqual(payload["sync_target"], "disabled")
       self.assertTrue(payload["remote_configured"])
       self.assertFalse(payload["proxy_configured"])
-      self.assertEqual(payload["proxy_url"], review_metrics.DEFAULT_TELEMETRY_PROXY_URL)
+      self.assertEqual(payload["proxy_url"], DEFAULT_TELEMETRY_PROXY_URL)
       self.assertIsNone(payload["custom_proxy_url"])
       self.assertEqual(payload["pending_events"], 0)
       self.assertFalse(config_path.exists())
@@ -681,7 +675,7 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
       }
 
       enabled = self.run_cli(
@@ -751,7 +745,7 @@ Reason: agent-config signals dominate
 
       status = self.run_cli(
         ["--db", str(db_path), "telemetry", "status", "--format", "json"],
-        env={review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path)},
+        env={CONFIG_ENVIRONMENT_KEY: str(config_path)},
       )
 
       self.assertEqual(status["exit_code"], 0, status["stderr"])
@@ -767,9 +761,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -829,9 +823,9 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
       )
 
@@ -868,9 +862,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_and_resolve_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -895,12 +889,12 @@ Reason: agent-config signals dominate
         return FakeResponse()
 
       sync_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
-      with patch.object(review_metrics.urllib.request, "urlopen", side_effect=fake_urlopen):
+      with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
         sync_result = self.run_cli(
           ["--db", str(db_path), "telemetry", "sync", "--format", "json"],
           env=sync_env,
@@ -925,9 +919,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_and_resolve_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -935,10 +929,10 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
         failing_urls={"https://telemetry.example.dev/ingest"},
       )
@@ -962,9 +956,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -990,10 +984,10 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
       )
 
@@ -1051,9 +1045,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_and_resolve_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
       self.import_and_resolve_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
@@ -1062,10 +1056,10 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
       )
 
@@ -1083,9 +1077,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -1151,10 +1145,10 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
       )
 
@@ -1196,9 +1190,9 @@ Reason: agent-config signals dominate
       db_path = Path(temp_dir) / "metrics.db"
       config_path = Path(temp_dir) / "config.json"
       enabled_env = {
-        review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-        review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-        review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
       }
       self.import_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
 
@@ -1263,10 +1257,10 @@ Reason: agent-config signals dominate
         db_path,
         config_path,
         env={
-          review_metrics.CONFIG_ENVIRONMENT_KEY: str(config_path),
-          review_metrics.TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
-          review_metrics.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
-          review_metrics.INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
         },
       )
 
@@ -1361,10 +1355,10 @@ Reason: agent-config signals dominate
       captured_urls.append(request.full_url)
       captured_requests.append(json.loads(request.data.decode("utf-8")))
       if request.full_url in failing_urls:
-        raise review_metrics.urllib.error.URLError("proxy unavailable")
+        raise urllib.error.URLError("proxy unavailable")
       return FakeResponse()
 
-    with patch.object(review_metrics.urllib.request, "urlopen", side_effect=fake_urlopen):
+    with patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
       sync_result = self.run_cli(
         ["--db", str(db_path), "telemetry", "sync", "--format", "json"],
         env=env,
@@ -1378,9 +1372,9 @@ Reason: agent-config signals dominate
     env: dict[str, str] | None = None,
   ) -> dict[str, str | int]:
     with patch.object(
-      review_metrics.urllib.request,
+      urllib.request,
       "urlopen",
-      side_effect=review_metrics.urllib.error.URLError("telemetry blocked in test setup"),
+      side_effect=urllib.error.URLError("telemetry blocked in test setup"),
     ):
       return self.run_cli(argv, env=env)
 
@@ -1392,14 +1386,14 @@ Reason: agent-config signals dominate
       for key, value in os.environ.items()
       if not key.startswith("SKILL_BILL_")
     }
-    if review_metrics.CONFIG_ENVIRONMENT_KEY not in (env or {}):
-      patched_env[review_metrics.CONFIG_ENVIRONMENT_KEY] = os.path.join(
+    if CONFIG_ENVIRONMENT_KEY not in (env or {}):
+      patched_env[CONFIG_ENVIRONMENT_KEY] = os.path.join(
         tempfile.gettempdir(), f"skill-bill-test-config-{os.getpid()}.json"
       )
     patched_env.update(env or {})
     with patch.dict(os.environ, patched_env, clear=True):
       with redirect_stdout(stdout), redirect_stderr(stderr):
-        exit_code = review_metrics.main(argv)
+        exit_code = main(argv)
     return {
       "exit_code": exit_code,
       "stdout": stdout.getvalue(),
