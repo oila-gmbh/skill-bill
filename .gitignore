@@ -1,6 +1,8 @@
 .DS_Store
 *.swp
 *~
+.env
+.env.*
 __pycache__/
 *.egg-info/
 dist/

@@ -181,16 +181,31 @@ def build_review_finished_payload(
   payload = summarize_finding_rows(finding_rows)
   for key in ("rejected_findings", "rejected_rate", "rejected_findings_with_notes"):
     payload.pop(key, None)
+  payload["rejected_finding_details"] = [
+    {
+      "finding_id": detail["finding_id"],
+      "severity": detail["severity"],
+      "confidence": detail["confidence"],
+      "outcome_type": detail["outcome_type"],
+    }
+    for detail in payload.get("rejected_finding_details", [])
+  ]
   specialist_reviews_raw = str(review_summary["specialist_reviews"] or "")
   specialist_reviews = [s.strip() for s in specialist_reviews_raw.split(",") if s.strip()]
   session_id = str(review_summary["review_session_id"] or "")
+  raw_scope = str(review_summary["detected_scope"] or "")
+  normalized_scope = raw_scope.split("(")[0].strip() if "(" in raw_scope else raw_scope
   learnings_data = fetch_session_learnings(connection, session_id) if session_id else None
+  learnings_anonymous = [
+    {"reference": entry["reference"], "scope": entry["scope"]}
+    for entry in (learnings_data.get("learnings", []) if learnings_data else [])
+  ]
   payload.update(
     {
       "review_session_id": session_id,
       "routed_skill": review_summary["routed_skill"],
       "review_subskills": specialist_reviews,
-      "review_scope": review_summary["detected_scope"],
+      "review_scope": normalized_scope,
       "review_platform": review_summary["detected_stack"],
       "execution_mode": review_summary["execution_mode"],
       "review_finished_at": review_summary["review_finished_at"],
@@ -198,7 +213,7 @@ def build_review_finished_payload(
       "applied_learning_references": learnings_data.get("applied_learning_references", []) if learnings_data else [],
       "applied_learnings": learnings_data.get("applied_learnings", "none") if learnings_data else "none",
       "scope_counts": learnings_data.get("scope_counts", {}) if learnings_data else {},
-      "learnings": learnings_data.get("learnings", []) if learnings_data else [],
+      "learnings": learnings_anonymous,
     }
   )
   return payload
@@ -215,10 +230,25 @@ def update_review_finished_telemetry_state(
   if enabled is None:
     enabled = telemetry_is_enabled()
   review_summary = fetch_review_summary(connection, review_run_id)
+
+  session_id = str(review_summary["review_session_id"] or "")
+  if session_id:
+    already_emitted = connection.execute(
+      """
+      SELECT 1 FROM review_runs
+      WHERE review_session_id = ?
+        AND review_run_id != ?
+        AND review_finished_event_emitted_at IS NOT NULL
+      """,
+      (session_id, review_run_id),
+    ).fetchone()
+    if already_emitted:
+      return
+
   finding_rows = latest_finding_outcomes(connection, review_run_id=review_run_id)
   summarized_findings = summarize_finding_rows(finding_rows)
 
-  if int(summarized_findings["unresolved_findings"]) > 0:
+  if int(summarized_findings["total_findings"]) > 0 and int(summarized_findings["unresolved_findings"]) > 0:
     if review_summary["review_finished_at"] or review_summary["review_finished_event_emitted_at"]:
       clear_review_finished_telemetry_state(connection, review_run_id)
     return

@@ -57,6 +57,43 @@ Reason: agent-config signals dominate
 No findings.
 """
 
+TABLE_FORMAT_A_REVIEW = """\
+Routed to: bill-kmp-code-review
+Review session ID: rvs-20260402-tbl-a
+Review run ID: rvw-20260402-tbl-a
+Detected review scope: files
+Detected stack: kmp
+Signals: commonMain, expect/actual
+Execution mode: inline
+Reason: kmp signals dominate
+
+## Section 2 — Risk Register
+
+| # | Severity | Category | File | Line(s) | Finding |
+|---|----------|----------|------|---------|---------|
+| 1 | High | Correctness | ViewModel.kt | 147-152 | init block calls refresh() |
+| 2 | Medium | UI | Screen.kt | 156 | Loading indicator not centered |
+| 3 | Low | DRY | ScreenDesktop.kt | 496-528 | Duplicates RegularDomainText |
+"""
+
+TABLE_FORMAT_B_REVIEW = """\
+Routed to: bill-kmp-code-review
+Review session ID: rvs-20260402-tbl-b
+Review run ID: rvw-20260402-tbl-b
+Detected review scope: files
+Detected stack: kmp
+Signals: commonMain, expect/actual
+Execution mode: inline
+Reason: kmp signals dominate
+
+## Section 2 — Risk Register
+
+| # | Severity | File | Line(s) | Finding |
+|---|----------|------|---------|---------|
+| 1 | P1 | Screen.kt | 292 | remember keyed on recreated lambda |
+| 2 | P2 | Screen.kt | 311-340 | Single-use data class wrappers add indirection |
+"""
+
 
 class ReviewMetricsTest(unittest.TestCase):
   def test_import_review_creates_run_and_findings(self) -> None:
@@ -102,6 +139,100 @@ class ReviewMetricsTest(unittest.TestCase):
       self.assertEqual(stats_payload["accepted_findings"], 0)
       self.assertEqual(stats_payload["rejected_findings"], 0)
       self.assertEqual(stats_payload["unresolved_findings"], 0)
+
+  def test_import_table_format_a_with_category_column(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      review_path = Path(temp_dir) / "review.txt"
+      review_path.write_text(TABLE_FORMAT_A_REVIEW, encoding="utf-8")
+
+      result = self.run_cli(
+        ["--db", str(db_path), "import-review", str(review_path), "--format", "json"]
+      )
+
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertEqual(payload["review_run_id"], "rvw-20260402-tbl-a")
+      self.assertEqual(payload["finding_count"], 3)
+
+      conn = sqlite3.connect(str(db_path))
+      conn.row_factory = sqlite3.Row
+      findings = conn.execute(
+        "SELECT finding_id, severity, confidence, location, description "
+        "FROM findings WHERE review_run_id = ? ORDER BY finding_id",
+        ("rvw-20260402-tbl-a",),
+      ).fetchall()
+      conn.close()
+
+      self.assertEqual(len(findings), 3)
+      self.assertEqual(findings[0]["finding_id"], "F-001")
+      self.assertEqual(findings[0]["severity"], "Major")
+      self.assertEqual(findings[0]["confidence"], "Medium")
+      self.assertEqual(findings[0]["location"], "ViewModel.kt:147-152")
+      self.assertEqual(findings[1]["finding_id"], "F-002")
+      self.assertEqual(findings[1]["severity"], "Minor")
+      self.assertEqual(findings[2]["finding_id"], "F-003")
+      self.assertEqual(findings[2]["severity"], "Minor")
+
+  def test_import_table_format_b_with_priority_severity(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      review_path = Path(temp_dir) / "review.txt"
+      review_path.write_text(TABLE_FORMAT_B_REVIEW, encoding="utf-8")
+
+      result = self.run_cli(
+        ["--db", str(db_path), "import-review", str(review_path), "--format", "json"]
+      )
+
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertEqual(payload["review_run_id"], "rvw-20260402-tbl-b")
+      self.assertEqual(payload["finding_count"], 2)
+
+      conn = sqlite3.connect(str(db_path))
+      conn.row_factory = sqlite3.Row
+      findings = conn.execute(
+        "SELECT finding_id, severity, confidence, location "
+        "FROM findings WHERE review_run_id = ? ORDER BY finding_id",
+        ("rvw-20260402-tbl-b",),
+      ).fetchall()
+      conn.close()
+
+      self.assertEqual(len(findings), 2)
+      self.assertEqual(findings[0]["finding_id"], "F-001")
+      self.assertEqual(findings[0]["severity"], "Blocker")
+      self.assertEqual(findings[0]["confidence"], "Medium")
+      self.assertEqual(findings[0]["location"], "Screen.kt:292")
+      self.assertEqual(findings[1]["finding_id"], "F-002")
+      self.assertEqual(findings[1]["severity"], "Major")
+      self.assertEqual(findings[1]["location"], "Screen.kt:311-340")
+
+  def test_bullet_format_takes_priority_over_table_fallback(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      review_path = Path(temp_dir) / "review.txt"
+      review_path.write_text(SAMPLE_REVIEW, encoding="utf-8")
+
+      result = self.run_cli(
+        ["--db", str(db_path), "import-review", str(review_path), "--format", "json"]
+      )
+
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertEqual(payload["finding_count"], 2)
+
+      conn = sqlite3.connect(str(db_path))
+      conn.row_factory = sqlite3.Row
+      findings = conn.execute(
+        "SELECT finding_id, confidence FROM findings WHERE review_run_id = ? ORDER BY finding_id",
+        ("rvw-20260402-001",),
+      ).fetchall()
+      conn.close()
+
+      self.assertEqual(findings[0]["finding_id"], "F-001")
+      self.assertEqual(findings[0]["confidence"], "High")
+      self.assertEqual(findings[1]["finding_id"], "F-002")
+      self.assertEqual(findings[1]["confidence"], "Medium")
 
   def test_record_feedback_and_stats_report_latest_outcomes(self) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -850,9 +981,6 @@ Reason: agent-config signals dominate
           {
             "reference": "L-001",
             "scope": "skill",
-            "title": "README staleness after routing changes is expected",
-            "rule_text": "Do not flag README wording as stale after routing changes — it is updated in the next docs pass.",
-            "rationale": "README wording is stale by design during routing changes",
           }
         ],
       )
@@ -1009,7 +1137,7 @@ Reason: agent-config signals dominate
       finished_event = events[0]
       self.assertEqual(finished_event["distinct_id"], "install-test-123")
       self.assertFalse(finished_event["properties"].get("$process_person_profile", True))
-      self.assertIn("$insert_id", finished_event["properties"])
+      self.assertNotIn("$insert_id", finished_event["properties"])
 
       review_summary = finished_event["properties"]
       self.assertEqual(review_summary["review_session_id"], "rvs-20260402-001")
@@ -1032,10 +1160,7 @@ Reason: agent-config signals dominate
             "finding_id": "F-002",
             "severity": "Minor",
             "confidence": "Medium",
-            "location": "install.sh:88",
-            "description": "Installer prompt wording is inconsistent with the new flow.",
             "outcome_type": "fix_rejected",
-            "note": "installer wording is intentional",
           }
         ],
       )
@@ -1178,10 +1303,7 @@ Reason: agent-config signals dominate
           "finding_id": "F-001",
           "severity": "Major",
           "confidence": "High",
-          "location": "README.md:12",
-          "description": "README wording is stale after the routing change.",
           "outcome_type": "false_positive",
-          "note": "rule does not apply to this repo",
         },
       )
 

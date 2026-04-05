@@ -135,7 +135,15 @@ Backend specialist reviews: bill-backend-kotlin-code-review-api-contracts
 Reason: backend/server signals were high-confidence, so the backend layer was added on top of the baseline Kotlin review
 ```
 
-For the shared risk register, action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
+Every finding in `### 2. Risk Register` must use this exact bullet format (do NOT use markdown tables):
+
+```text
+- [F-001] <Severity> | <Confidence> | <file:line> | <description>
+```
+
+Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
+
+For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes
 

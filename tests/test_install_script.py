@@ -93,12 +93,12 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installs_agent_config_skills_automatically(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n")
+      result = self.run_installer(temp_home, "copilot\nGo\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
       self.assertNotIn("Agent config (agent-config)", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
 
   def test_installs_custom_prefix_aliases_and_rewrites_skill_names(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:

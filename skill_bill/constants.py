@@ -56,6 +56,20 @@ FINDING_PATTERN = re.compile(
   r"(?P<description>.+)$",
   re.MULTILINE,
 )
+SEVERITY_ALIASES: dict[str, str] = {
+  "high": "Major",
+  "medium": "Minor",
+  "low": "Minor",
+  "p1": "Blocker",
+  "p2": "Major",
+  "p3": "Minor",
+  "critical": "Blocker",
+  "blocker": "Blocker",
+  "major": "Major",
+  "minor": "Minor",
+  "info": "Minor",
+}
+
 TRIAGE_DECISION_PATTERN = re.compile(
   r"^\s*(?P<number>\d+)\s+(?P<action>false[-_ ]positive|fix|accept|accepted|edit|edited|dismiss|skip|reject)"
   r"(?:\s*(?:[:-]\s*|\s+)(?P<note>.+))?\s*$",

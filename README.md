@@ -103,7 +103,7 @@ Base entry points stay stable for users:
 
 ## Review telemetry
 
-Skill Bill records review acceptance metrics locally in SQLite and can optionally sync anonymized analytics to a hosted relay or custom proxy. See [docs/review-telemetry.md](docs/review-telemetry.md) for the full workflow, CLI reference, learnings management, telemetry events, and proxy configuration.
+Skill Bill records review acceptance metrics locally in SQLite and can optionally sync anonymized analytics to a hosted relay or custom proxy. The `skill-bill` MCP server exposes review import, triage, learnings, and stats as native agent tools — no bash commands needed. See [docs/review-telemetry.md](docs/review-telemetry.md) for the full workflow, CLI reference, learnings management, telemetry events, and proxy configuration.
 
 ## Supported agents
 

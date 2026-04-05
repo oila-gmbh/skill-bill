@@ -362,6 +362,18 @@ Choose the right composable for the job:
 
 ---
 
+## Output Format
+
+Every finding must use this exact bullet format for downstream tooling:
+
+```text
+- [F-001] <Severity> | <Confidence> | <file:line> | <description>
+```
+
+Do NOT use markdown tables, numbered lists, or any other format for findings.
+
+---
+
 ## Checklist
 
 Before considering a composable done, verify:
