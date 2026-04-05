@@ -1,3 +1,13 @@
+## [2026-04-05] mcp-server
+Areas: skill_bill/, skills/base/bill-code-review, install.sh, pyproject.toml, tests/
+- Added MCP server (FastMCP/stdio) exposing 5 tools: import_review, triage_findings, resolve_learnings, review_stats, doctor
+- Tools wrap existing skill_bill.* module functions directly — zero logic duplication (reusable)
+- bill-code-review SKILL.md Auto-Import/Auto-Triage now prefer MCP tools with CLI fallback
+- .mcp.json in repo root for Claude Code auto-discovery; install.sh confirms registration
+- pyproject.toml adds `mcp` as first external dependency
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-04] runtime-package-migration
 Areas: skill_bill/, scripts/, skills/base/bill-code-review, install.sh, .github/workflows/, tests/
 - Migrated monolithic scripts/review_metrics.py into skill_bill/ Python package with 10 domain modules (constants, db, config, review, triage, learnings, stats, sync, output, cli)
