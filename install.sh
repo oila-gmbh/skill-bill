@@ -848,9 +848,42 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
-info "Installing skill-bill CLI..."
+info "Installing skill-bill CLI and MCP server..."
 if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
   ok "skill-bill CLI installed"
+  register_mcp_server() {
+    local config_path="$1"
+    local label="$2"
+    if python3 -c "
+import json, sys, os
+path = sys.argv[1]
+try:
+    settings = json.loads(open(path).read())
+except (FileNotFoundError, json.JSONDecodeError):
+    settings = {}
+servers = settings.get('mcpServers', {})
+servers['skill-bill'] = {
+    'type': 'stdio',
+    'command': 'python3',
+    'args': ['-m', 'skill_bill.mcp_server']
+}
+settings['mcpServers'] = servers
+os.makedirs(os.path.dirname(path), exist_ok=True)
+open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
+" "$config_path" 2>/dev/null; then
+      ok "  skill-bill MCP server registered ($label)"
+    else
+      warn "  Could not register MCP server ($label)."
+    fi
+  }
+  for i in "${!AGENT_NAMES[@]}"; do
+    case "${AGENT_NAMES[$i]}" in
+      claude)  register_mcp_server "$HOME/.claude/settings.local.json" "claude" ;;
+      copilot) register_mcp_server "$HOME/.copilot/mcp-config.json" "copilot" ;;
+      codex)   register_mcp_server "$HOME/.codex/mcp-config.json" "codex" ;;
+      glm)     register_mcp_server "$HOME/.glm/mcp-config.json" "glm" ;;
+    esac
+  done
 else
   warn "Could not install skill-bill CLI (python3 or pip may be unavailable)."
 fi

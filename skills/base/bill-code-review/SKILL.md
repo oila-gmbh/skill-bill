@@ -158,34 +158,21 @@ Result: No matching stack-specific code-review skill is available yet.
 
 After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
 
-Run a single shell command that writes the review output to a temporary file, imports it, and cleans up:
-
-```bash
-tmp=$(mktemp) && cat > "$tmp" << 'REVIEW_EOF'
-<complete review output (Section 1 through Section 4)>
-REVIEW_EOF
-skill-bill import-review "$tmp" --format json && rm -f "$tmp"
-```
-
-Skip auto-import when the `skill-bill` CLI is not installed.
+Call the `import_review` MCP tool:
+- `review_text`: the complete review output (Section 1 through Section 4)
 
 ## Auto-Triage
 
 After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
 
-Build the `--decision` flags from the user's responses. Each finding gets one decision using its position number from the risk register:
+Each finding gets one decision using its position number from the risk register:
 - `fix` — the finding was accepted and the fix was applied
 - `accept` — the finding was accepted but no code change was needed
-- `skip` — the finding was intentionally skipped (append a reason after `-`)
+- `skip` — the finding was intentionally skipped (append a reason after ` - `)
 - `false_positive` — the finding was incorrect
 
-Run a single shell command:
+Call the `triage_findings` MCP tool:
+- `review_run_id`: the review run ID from the review output
+- `decisions`: list of decision strings, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
-```bash
-skill-bill triage --run-id <review-run-id> \
-  --decision "<number> <action>" \
-  --decision "<number> <action> - <reason>" \
-  --format json
-```
-
-Skip auto-triage when the `skill-bill` CLI is not installed or when the review produced no findings.
+Skip auto-triage when the review produced no findings.
