@@ -113,6 +113,16 @@ Keep the mobile triggers focused on what the baseline review does not cover:
 | `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect` | `bill-kmp-code-review-ui` |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
 
+### Step 3.5: Scope diff per KMP specialist (delegated mode only)
+
+When execution mode is `delegated`, build a per-specialist file list before launching KMP specialist subagents:
+
+1. Scan each changed file's name and imports for the KMP routing-table signals from Step 3
+2. Map each file to the KMP specialists whose signals it matches
+3. If a specialist's scoped file list is empty, drop it from the selected set
+
+This is a lightweight file-level classification (names + imports), not a full review.
+
 ### Step 4: Run KMP specialist reviews
 
 If execution mode is `inline`:
@@ -123,7 +133,7 @@ If execution mode is `inline`:
 
 If execution mode is `delegated`:
 - run one delegated subagent per selected KMP specialist review pass
-- pass the detected project type, list of changed files, applicable active learnings, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- pass the specialist-scoped file list (from Step 3.5), applicable active learnings, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [specialist-contract.md](specialist-contract.md)
 - if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
