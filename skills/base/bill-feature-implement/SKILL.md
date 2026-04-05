@@ -19,15 +19,15 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 Design Doc + Issue Key → Assess + Extract Criteria → [Size gate] → Create Branch →
 
   SMALL (≤5 tasks, ≤3 boundaries):
-    Save Spec → [Read History] → Plan → Implement → bill-code-review (narrow scope, stack-routed review) → Completeness Audit → Final Validation Gate (auto-selected) → [Write History if impactful] → PR Description
+    Save Spec → [Read History] → Plan → Implement → bill-code-review (narrow scope, stack-routed review) → Completeness Audit → Final Validation Gate → [Write History if impactful] → Commit+Push → PR Description
 
   MEDIUM (6-15 tasks, ≤6 boundaries):
     Save Spec → Read History → Plan → Implement →
-    Compact → bill-code-review (stack-routed review) → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
+    Compact → bill-code-review (stack-routed review) → Completeness Audit → Final Validation Gate → Write History → Commit+Push → PR Description
 
   LARGE (>15 tasks or >6 boundaries):
     Save Spec → Read History → [Rollout Control?] → Plan (phased) → Implement →
-    Compact → bill-code-review (stack-routed review) → Compact → Completeness Audit → Final Validation Gate (auto-selected) → Write History → PR Description
+    Compact → bill-code-review (stack-routed review) → Compact → Completeness Audit → Final Validation Gate → Write History → Commit+Push → PR Description
 ```
 
 ## Step 1: Collect Design Doc + Assess Size
@@ -301,6 +301,10 @@ If yes: plan missing items → implement → review → re-audit. Max **2 audit 
 
 Update spec status to **Complete** (MEDIUM/LARGE only).
 
+## Finalization sequence (Steps 6b → 9)
+
+Once the completeness audit passes, run Steps 6b through 9 as a **continuous sequence without pausing for user confirmation**. The only reason to stop is if a step fails. Do not ask the user to approve commits, pushes, or PR creation — these are part of the contracted workflow output.
+
 ## Step 6b: Final Validation Gate (All sizes)
 
 After completeness audit passes, **infer the final validation gate automatically** from the repo shape and changed files. Do not ask the user to choose.
@@ -339,7 +343,15 @@ Pass the required inputs from this run:
 
 The `bill-boundary-history` skill owns the write/skip rules, entry format, and history-file hygiene rules.
 
-## Step 8: Generate PR Description (All sizes)
+## Step 8: Commit and Push
+
+Commit all changes and push the feature branch:
+
+1. Stage all new and modified files from this feature (do not use `git add -A`)
+2. Commit with message format: `feat: [<ISSUE_KEY>] <concise description>`
+3. Push the branch to the remote with `-u` to set upstream tracking
+
+## Step 9: Generate PR Description (All sizes)
 
 Run the `bill-pr-description` skill and its matching `.agents/skill-overrides.md` section to generate a PR title, description, and QA steps.
 

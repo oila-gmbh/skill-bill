@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 import os
 import re
@@ -17,6 +18,19 @@ def resolve_db_path(cli_value: str | None) -> Path:
   if candidate:
     return Path(candidate).expanduser().resolve()
   return DEFAULT_DB_PATH.expanduser().resolve()
+
+
+@contextmanager
+def open_db(cli_value: str | None = None, *, sync: bool = True):
+  from skill_bill.sync import auto_sync_telemetry
+  db_path = resolve_db_path(cli_value)
+  connection = ensure_database(db_path)
+  try:
+    yield connection, db_path
+  finally:
+    connection.close()
+  if sync:
+    auto_sync_telemetry(db_path)
 
 
 def ensure_database(path: Path) -> sqlite3.Connection:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import os
 import sys
@@ -34,17 +35,25 @@ Reason: agent-config signals dominate
 """
 
 
-class McpServerToolTest(unittest.TestCase):
+class McpServerEnabledTest(unittest.TestCase):
 
   def setUp(self) -> None:
     self.temp_dir = tempfile.mkdtemp()
     self.db_path = os.path.join(self.temp_dir, "metrics.db")
     self.config_path = os.path.join(self.temp_dir, "config.json")
+    Path(self.config_path).write_text(
+      json.dumps({
+        "install_id": "test-install-id",
+        "telemetry": {"enabled": True, "proxy_url": "", "batch_size": 50},
+      }),
+      encoding="utf-8",
+    )
     self._original_env = {}
     env_overrides = {
       "SKILL_BILL_REVIEW_DB": self.db_path,
       "SKILL_BILL_CONFIG_PATH": self.config_path,
-      "SKILL_BILL_TELEMETRY_ENABLED": "false",
+      "SKILL_BILL_TELEMETRY_ENABLED": "true",
+      "SKILL_BILL_INSTALL_ID": "test-install-id",
     }
     for key, value in env_overrides.items():
       self._original_env[key] = os.environ.get(key)
@@ -65,7 +74,6 @@ class McpServerToolTest(unittest.TestCase):
     self.assertIn("db_path", result)
     self.assertIn("db_exists", result)
     self.assertIn("telemetry_enabled", result)
-    self.assertFalse(result["telemetry_enabled"])
 
   def test_import_review_parses_and_stores(self) -> None:
     result = import_review(review_text=SAMPLE_REVIEW)
@@ -119,6 +127,61 @@ class McpServerToolTest(unittest.TestCase):
     stats_after = review_stats(review_run_id="rvw-20260405-mcp")
     self.assertEqual(stats_after["unresolved_findings"], 0)
     self.assertEqual(stats_after["accepted_findings"], 2)
+
+
+class McpServerDisabledTest(unittest.TestCase):
+
+  def setUp(self) -> None:
+    self.temp_dir = tempfile.mkdtemp()
+    self._original_env = {}
+    env_overrides = {
+      "SKILL_BILL_REVIEW_DB": os.path.join(self.temp_dir, "metrics.db"),
+      "SKILL_BILL_CONFIG_PATH": os.path.join(self.temp_dir, "config.json"),
+      "SKILL_BILL_TELEMETRY_ENABLED": "false",
+    }
+    for key, value in env_overrides.items():
+      self._original_env[key] = os.environ.get(key)
+      os.environ[key] = value
+
+  def tearDown(self) -> None:
+    for key, value in self._original_env.items():
+      if value is None:
+        os.environ.pop(key, None)
+      else:
+        os.environ[key] = value
+    import shutil
+    shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+  def test_import_review_skips_when_disabled(self) -> None:
+    result = import_review(review_text=SAMPLE_REVIEW)
+    self.assertEqual(result["status"], "skipped")
+    self.assertEqual(result["review_run_id"], "rvw-20260405-mcp")
+    self.assertEqual(result["finding_count"], 2)
+    self.assertNotIn("db_path", result)
+
+  def test_triage_findings_skips_when_disabled(self) -> None:
+    result = triage_findings(
+      review_run_id="rvw-20260405-mcp",
+      decisions=["1 fix"],
+    )
+    self.assertEqual(result["status"], "skipped")
+    self.assertNotIn("recorded", result)
+
+  def test_resolve_learnings_skips_when_disabled(self) -> None:
+    result = resolve_learnings()
+    self.assertEqual(result["status"], "skipped")
+    self.assertEqual(result["applied_learnings"], "none")
+    self.assertEqual(result["learnings"], [])
+
+  def test_doctor_still_works_when_disabled(self) -> None:
+    result = doctor()
+    self.assertIn("version", result)
+    self.assertFalse(result["telemetry_enabled"])
+
+  def test_no_db_created_when_disabled(self) -> None:
+    import_review(review_text=SAMPLE_REVIEW)
+    db_path = os.path.join(self.temp_dir, "metrics.db")
+    self.assertFalse(os.path.exists(db_path))
 
 
 if __name__ == "__main__":

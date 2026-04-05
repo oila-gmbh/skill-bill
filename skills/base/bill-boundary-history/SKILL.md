@@ -54,6 +54,7 @@ Acceptance criteria: <count>/<count> implemented
 ## File Rules
 
 - File path: `<primary-boundary>/agent/history.md`
+- If the file does not exist, create it along with any missing parent directories
 - Newest entry first
 - Max **15 lines** per entry
 - No fixed entry cap

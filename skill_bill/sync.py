@@ -33,7 +33,6 @@ def build_telemetry_batch(settings: TelemetrySettings, rows: list[sqlite3.Row]) 
     payload = json.loads(str(row["payload_json"]))
     properties = dict(payload)
     properties["$process_person_profile"] = False
-    properties["$insert_id"] = f"skill-bill-outbox-{row['id']}"
     batch.append(
       {
         "event": row["event_name"],

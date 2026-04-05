@@ -87,7 +87,8 @@ architecture shape, review the implementation against that saved shape as well.
 - Confidence: `High | Medium | Low`
 - Include a minimal, concrete fix.
 
-## Output Table
+## Output Format
+
 Start with a short review summary:
 
 ```text
@@ -95,7 +96,10 @@ Shared sections applied: Shared Architecture, Go Package / Interface Checks
 Relevant deeper sections applied: Events / Background Work / Integration Architecture
 ```
 
-Then include:
+Then list findings using this exact bullet format for downstream tooling:
 
-| Area | Severity | Confidence | Evidence | Why it matters | Minimal fix |
-|------|----------|------------|----------|----------------|-------------|
+```text
+- [F-001] <Severity> | <Confidence> | <file:line> | <description>
+```
+
+Do NOT use markdown tables, numbered lists, or any other format for findings.

@@ -18,7 +18,7 @@ from skill_bill.constants import (
   LEARNING_SCOPES,
   LEARNING_STATUSES,
 )
-from skill_bill.db import ensure_database, resolve_db_path
+from skill_bill.db import open_db, resolve_db_path
 from skill_bill.learnings import (
   add_learning,
   delete_learning,
@@ -48,7 +48,6 @@ from skill_bill.review import (
 )
 from skill_bill.stats import stats_payload
 from skill_bill.sync import (
-  auto_sync_telemetry,
   sync_result_payload,
   sync_telemetry,
   telemetry_status_payload,
@@ -61,15 +60,16 @@ from skill_bill.triage import (
 
 
 def import_review_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
   text, source_path = read_input(args.input)
   review = parse_review(text)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     save_imported_review(connection, review, source_path=source_path)
-  finally:
-    connection.close()
-
+    if len(review.findings) == 0:
+      from skill_bill.stats import update_review_finished_telemetry_state
+      update_review_finished_telemetry_state(
+        connection,
+        review_run_id=review.review_run_id,
+      )
   emit(
     {
       "db_path": str(db_path),
@@ -83,14 +83,11 @@ def import_review_command(args: argparse.Namespace) -> int:
     },
     args.format,
   )
-  auto_sync_telemetry(db_path)
   return 0
 
 
 def record_feedback_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     record_feedback(
       connection,
       review_run_id=args.run_id,
@@ -98,10 +95,6 @@ def record_feedback_command(args: argparse.Namespace) -> int:
       event_type=args.event,
       note=args.note,
     )
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   emit(
     {
       "db_path": str(db_path),
@@ -115,9 +108,7 @@ def record_feedback_command(args: argparse.Namespace) -> int:
 
 
 def triage_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     numbered_findings = fetch_numbered_findings(connection, args.run_id)
     if args.list or not args.decision:
       if args.format == "json":
@@ -142,10 +133,6 @@ def triage_command(args: argparse.Namespace) -> int:
         event_type=decision.outcome_type,
         note=decision.note,
       )
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   if args.format == "json":
     emit(
       {
@@ -169,22 +156,15 @@ def triage_command(args: argparse.Namespace) -> int:
 
 
 def stats_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db, sync=False) as (connection, db_path):
     payload = stats_payload(connection, args.run_id)
-  finally:
-    connection.close()
-
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
 
 
 def learnings_add_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     learning_id = add_learning(
       connection,
       scope=args.scope,
@@ -196,23 +176,14 @@ def learnings_add_command(args: argparse.Namespace) -> int:
       source_finding_id=args.from_finding,
     )
     payload = learning_payload(get_learning(connection, learning_id))
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
 
 
 def learnings_list_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db, sync=False) as (connection, db_path):
     payload_entries = [learning_payload(row) for row in list_learnings(connection, status=args.status)]
-  finally:
-    connection.close()
-
   if args.format == "json":
     emit({"db_path": str(db_path), "learnings": payload_entries}, args.format)
   else:
@@ -221,22 +192,15 @@ def learnings_list_command(args: argparse.Namespace) -> int:
 
 
 def learnings_show_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db, sync=False) as (connection, db_path):
     payload = learning_payload(get_learning(connection, args.id))
-  finally:
-    connection.close()
-
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
 
 
 def learnings_resolve_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     with connection:
       repo_scope_key, skill_name, rows = resolve_learnings(
         connection,
@@ -258,10 +222,6 @@ def learnings_resolve_command(args: argparse.Namespace) -> int:
           review_session_id=args.review_session_id,
           learnings_json=json.dumps(learnings_cache, sort_keys=True),
         )
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   payload = {
     "db_path": str(db_path),
     "repo_scope_key": repo_scope_key,
@@ -284,15 +244,13 @@ def learnings_resolve_command(args: argparse.Namespace) -> int:
 
 
 def learnings_edit_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
   if all(
     value is None
     for value in (args.scope, args.scope_key, args.title, args.rule, args.reason)
   ):
     raise ValueError("Learning edit requires at least one field to update.")
 
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     payload = learning_payload(
       edit_learning(
         connection,
@@ -304,40 +262,24 @@ def learnings_edit_command(args: argparse.Namespace) -> int:
         rationale=args.reason,
       )
     )
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
 
 
 def learnings_status_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     payload = learning_payload(
       set_learning_status(connection, learning_id=args.id, status=args.status_value)
     )
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
 
 
 def learnings_delete_command(args: argparse.Namespace) -> int:
-  db_path = resolve_db_path(args.db)
-  connection = ensure_database(db_path)
-  try:
+  with open_db(args.db) as (connection, db_path):
     delete_learning(connection, args.id)
-  finally:
-    connection.close()
-
-  auto_sync_telemetry(db_path)
   emit(
     {
       "db_path": str(db_path),

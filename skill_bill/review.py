@@ -4,11 +4,11 @@ from pathlib import Path
 import sqlite3
 import sys
 
-from skill_bill.config import telemetry_is_enabled
 from skill_bill.constants import (
   FINDING_PATTERN,
   REVIEW_RUN_ID_PATTERN,
   REVIEW_SESSION_ID_PATTERN,
+  SEVERITY_ALIASES,
   SUMMARY_PATTERNS,
   SPECIALIST_REVIEWS_PATTERN,
   ImportedFinding,
@@ -16,7 +16,6 @@ from skill_bill.constants import (
 )
 from skill_bill.stats import (
   clear_review_finished_telemetry_state,
-  update_review_finished_telemetry_state,
 )
 
 
@@ -30,6 +29,24 @@ def parse_review(text: str) -> ImportedReview:
     raise ValueError("Review output is missing 'Review session ID: <review-session-id>'.")
   review_session_id = review_session_match.group("value")
 
+  findings = _parse_bullet_findings(text)
+  if not findings:
+    findings = _parse_table_findings(text)
+
+  return ImportedReview(
+    review_run_id=review_run_id,
+    review_session_id=review_session_id,
+    raw_text=text,
+    routed_skill=extract_summary_value(text, "routed_skill"),
+    detected_scope=extract_summary_value(text, "detected_scope"),
+    detected_stack=extract_summary_value(text, "detected_stack"),
+    execution_mode=extract_summary_value(text, "execution_mode"),
+    specialist_reviews=extract_specialist_reviews(text),
+    findings=tuple(findings),
+  )
+
+
+def _parse_bullet_findings(text: str) -> list[ImportedFinding]:
   findings: list[ImportedFinding] = []
   seen_ids: set[str] = set()
   for match in FINDING_PATTERN.finditer(text):
@@ -47,18 +64,108 @@ def parse_review(text: str) -> ImportedReview:
         finding_text=match.group(0).strip(),
       )
     )
+  return findings
 
-  return ImportedReview(
-    review_run_id=review_run_id,
-    review_session_id=review_session_id,
-    raw_text=text,
-    routed_skill=extract_summary_value(text, "routed_skill"),
-    detected_scope=extract_summary_value(text, "detected_scope"),
-    detected_stack=extract_summary_value(text, "detected_stack"),
-    execution_mode=extract_summary_value(text, "execution_mode"),
-    specialist_reviews=extract_specialist_reviews(text),
-    findings=tuple(findings),
-  )
+
+def _normalize_severity(raw: str) -> str:
+  return SEVERITY_ALIASES.get(raw.strip().lower(), "Minor")
+
+
+def _parse_table_findings(text: str) -> list[ImportedFinding]:
+  lines = text.split("\n")
+  header_idx = None
+  for i, line in enumerate(lines):
+    cells = [c.strip().lower() for c in line.split("|")]
+    if any(c in ("severity", "sev") for c in cells) and any(c in ("#", "id", "no", "no.") for c in cells):
+      header_idx = i
+      break
+
+  if header_idx is None:
+    return []
+
+  header_cells = [c.strip() for c in lines[header_idx].split("|")]
+  col_names = [c.lower() for c in header_cells]
+
+  col_map: dict[str, int] = {}
+  for idx, name in enumerate(col_names):
+    if name in ("#", "id", "no", "no."):
+      col_map["number"] = idx
+    elif name in ("severity", "sev"):
+      col_map["severity"] = idx
+    elif name in ("confidence", "conf"):
+      col_map["confidence"] = idx
+    elif name in ("file", "filename"):
+      col_map["file"] = idx
+    elif name in ("line", "lines", "line(s)"):
+      col_map["lines"] = idx
+    elif name in ("finding", "description", "issue"):
+      col_map["description"] = idx
+
+  if not {"number", "severity", "description"}.issubset(col_map):
+    return []
+
+  findings: list[ImportedFinding] = []
+  for line in lines[header_idx + 1 :]:
+    stripped = line.strip()
+    if not stripped.startswith("|"):
+      if stripped == "" or not stripped.startswith("|"):
+        if findings:
+          break
+        continue
+      break
+
+    cells = [c.strip() for c in stripped.split("|")]
+    if all(set(c) <= {"-", ":", " "} for c in cells if c):
+      continue
+
+    number_val = cells[col_map["number"]] if col_map["number"] < len(cells) else ""
+    if not number_val.isdigit():
+      continue
+
+    finding_id = f"F-{int(number_val):03d}"
+    raw_severity = cells[col_map["severity"]] if col_map["severity"] < len(cells) else ""
+    severity = _normalize_severity(raw_severity)
+
+    confidence = "Medium"
+    if "confidence" in col_map and col_map["confidence"] < len(cells):
+      raw_conf = cells[col_map["confidence"]].strip()
+      if raw_conf in ("High", "Medium", "Low"):
+        confidence = raw_conf
+
+    file_val = ""
+    if "file" in col_map and col_map["file"] < len(cells):
+      file_val = cells[col_map["file"]].strip()
+
+    lines_val = ""
+    if "lines" in col_map and col_map["lines"] < len(cells):
+      lines_val = cells[col_map["lines"]].strip()
+
+    if file_val and lines_val and lines_val != "—":
+      location = f"{file_val}:{lines_val}"
+    elif file_val:
+      location = file_val
+    else:
+      location = ""
+
+    description = ""
+    if "description" in col_map and col_map["description"] < len(cells):
+      description = cells[col_map["description"]].strip()
+
+    if not description:
+      continue
+
+    findings.append(
+      ImportedFinding(
+        finding_id=finding_id,
+        severity=severity,
+        confidence=confidence,
+        location=location,
+        description=description,
+        finding_text=stripped,
+      )
+    )
+
+  return findings
 
 
 def extract_summary_value(text: str, key: str) -> str | None:
@@ -91,7 +198,6 @@ def save_imported_review(
   *,
   source_path: str | None,
 ) -> None:
-  telemetry_enabled = telemetry_is_enabled()
   existing_review_summary = connection.execute(
     """
     SELECT review_session_id, routed_skill, detected_scope, detected_stack, execution_mode, specialist_reviews
@@ -179,12 +285,6 @@ def save_imported_review(
             finding.finding_text,
           ),
         )
-
-    update_review_finished_telemetry_state(
-      connection,
-      review_run_id=review.review_run_id,
-      enabled=telemetry_enabled,
-    )
 
 
 def fetch_imported_findings(

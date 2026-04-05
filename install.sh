@@ -848,13 +848,14 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
-info "Installing skill-bill CLI and MCP server..."
-if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
-  ok "skill-bill CLI installed"
-  register_mcp_server() {
-    local config_path="$1"
-    local label="$2"
-    if python3 -c "
+if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+  info "Installing skill-bill CLI and MCP server..."
+  if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
+    ok "skill-bill CLI installed"
+    register_mcp_json() {
+      local config_path="$1"
+      local label="$2"
+      if python3 -c "
 import json, sys, os
 path = sys.argv[1]
 try:
@@ -864,28 +865,68 @@ except (FileNotFoundError, json.JSONDecodeError):
 servers = settings.get('mcpServers', {})
 servers['skill-bill'] = {
     'type': 'stdio',
-    'command': 'python3',
+    'command': sys.executable,
     'args': ['-m', 'skill_bill.mcp_server']
 }
 settings['mcpServers'] = servers
 os.makedirs(os.path.dirname(path), exist_ok=True)
 open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
 " "$config_path" 2>/dev/null; then
-      ok "  skill-bill MCP server registered ($label)"
-    else
-      warn "  Could not register MCP server ($label)."
-    fi
-  }
-  for i in "${!AGENT_NAMES[@]}"; do
-    case "${AGENT_NAMES[$i]}" in
-      claude)  register_mcp_server "$HOME/.claude/settings.local.json" "claude" ;;
-      copilot) register_mcp_server "$HOME/.copilot/mcp-config.json" "copilot" ;;
-      codex)   register_mcp_server "$HOME/.codex/mcp-config.json" "codex" ;;
-      glm)     register_mcp_server "$HOME/.glm/mcp-config.json" "glm" ;;
-    esac
-  done
-else
-  warn "Could not install skill-bill CLI (python3 or pip may be unavailable)."
+        ok "  skill-bill MCP server registered ($label)"
+      else
+        warn "  Could not register MCP server ($label)."
+      fi
+    }
+    register_mcp_toml() {
+      local config_path="$1"
+      local label="$2"
+      if python3 -c "
+import sys, os
+path = sys.argv[1]
+python_cmd = sys.executable
+section = '[mcp_servers.skill-bill]'
+lines = []
+if os.path.exists(path):
+    lines = open(path).read().splitlines()
+filtered = []
+skip = False
+for line in lines:
+    if line.strip() == section:
+        skip = True
+        continue
+    if skip and (line.startswith('[') or not line.strip()):
+        if line.startswith('['):
+            skip = False
+            filtered.append(line)
+        continue
+    if not skip:
+        filtered.append(line)
+while filtered and not filtered[-1].strip():
+    filtered.pop()
+filtered.append('')
+filtered.append(section)
+filtered.append(f'command = \"{python_cmd}\"')
+filtered.append('args = [\"-m\", \"skill_bill.mcp_server\"]')
+filtered.append('')
+os.makedirs(os.path.dirname(path), exist_ok=True)
+open(path, 'w').write('\n'.join(filtered))
+" "$config_path" 2>/dev/null; then
+        ok "  skill-bill MCP server registered ($label)"
+      else
+        warn "  Could not register MCP server ($label)."
+      fi
+    }
+    for i in "${!AGENT_NAMES[@]}"; do
+      case "${AGENT_NAMES[$i]}" in
+        claude)  register_mcp_json "$HOME/.claude.json" "claude" ;;
+        copilot) register_mcp_json "$HOME/.copilot/mcp-config.json" "copilot" ;;
+        codex)   register_mcp_toml "$HOME/.codex/config.toml" "codex" ;;
+        glm)     register_mcp_json "$HOME/.glm/mcp-config.json" "glm" ;;
+      esac
+    done
+  else
+    warn "Could not install skill-bill CLI (python3 or pip may be unavailable)."
+  fi
 fi
 
 if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
@@ -920,6 +961,8 @@ info "Edit skills in: $PLUGIN_DIR/skills/"
 if [[ "$INSTALL_PREFIX" != "bill" ]]; then
   info "Custom prefixes install generated alias copies. Re-run './install.sh' after editing skills."
 fi
-info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
+if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+  info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
+fi
 info "Run './install.sh' again to reinstall with a different agent or platform selection."
 echo ""

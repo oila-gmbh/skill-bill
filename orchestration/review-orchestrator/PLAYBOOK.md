@@ -69,9 +69,9 @@ Section 1 summary must include `Detected review scope: <staged changes / unstage
 Section 1 summary must include `Execution mode: inline | delegated`.
 Section 1 summary must include `Applied learnings: none | <learning references>`.
 
-Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS`. If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
+Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvs-20260405-143022-a7f3`). If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
 
-Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS`. If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any follow-up feedback workflow for the current review output.
+Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvw-20260405-143022-b2e1`). If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any follow-up feedback workflow for the current review output.
 
 After Section 1 in a stack-specific review skill, use:
 
@@ -79,11 +79,15 @@ After Section 1 in a stack-specific review skill, use:
 - `### 3. Action Items (Max 10, prioritized)`
 - `### 4. Verdict`
 
-Every finding in `### 2. Risk Register` must use this machine-readable format:
+Every finding in `### 2. Risk Register` must use this exact machine-readable bullet format:
 
 ```text
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
 ```
 
-Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow.
-Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on.
+Do NOT use markdown tables, numbered lists, or any other format for findings. The bullet format above is required for downstream tooling (triage, telemetry, stats) to parse findings correctly.
+
+- Severity must be one of: `Blocker`, `Major`, `Minor`
+- Confidence must be one of: `High`, `Medium`, `Low`
+- Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
+- Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on

@@ -109,9 +109,9 @@ When routing to another skill, pass along:
 
 ## Output Format
 
-Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS`. If a parent workflow already passed a `review_session_id`, reuse it instead of generating a new one.
+Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix (e.g. `rvs-20260405-143022-a7f3`). The suffix ensures uniqueness across concurrent or same-second reviews. If a parent workflow already passed a `review_session_id`, reuse it instead of generating a new one.
 
-Generate one review run id per routed review using the format `rvw-YYYYMMDD-HHMMSS`. If a parent workflow already passed a `review_run_id`, reuse it instead of generating a new one.
+Generate one review run id per routed review using the format `rvw-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix (e.g. `rvw-20260405-143022-b2e1`). If a parent workflow already passed a `review_run_id`, reuse it instead of generating a new one.
 
 For a single routed skill:
 
