@@ -106,6 +106,19 @@ Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrato
 - Use `inline` only when the Kotlin review scope stays small and low-risk under the shared execution-mode contract
 - Use `delegated` when the diff is large, the risk profile is high, multiple layers are meaningfully involved, or the safest choice is unclear
 
+### Step 5.5: Scope diff per specialist (delegated mode only)
+
+When execution mode is `delegated`, build a per-specialist file list before launching subagents:
+
+1. Scan each changed file's name and imports for the routing-table signals from Step 3
+2. Map each file to the specialists whose signals it matches
+3. `bill-kotlin-code-review-architecture` always receives all changed files
+4. Every other specialist receives only files matching its routing-table signals
+5. If a non-architecture specialist's scoped file list is empty, drop it from the selected set
+6. After scoping, re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-kotlin-code-review-platform-correctness` with all changed files as the default second
+
+This is a lightweight file-level classification (names + imports), not a full review.
+
 ### Step 6: Run selected specialist reviews
 
 If execution mode is `inline`:
@@ -116,7 +129,7 @@ If execution mode is `inline`:
 
 If execution mode is `delegated`:
 - run one delegated subagent per selected specialist review pass
-- pass the detected project type, list of changed files, applicable active learnings, instructions to read the specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [review-orchestrator.md](review-orchestrator.md)
+- pass the specialist-scoped file list (from Step 5.5), applicable active learnings, instructions to read the specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract in [specialist-contract.md](specialist-contract.md)
 - if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
 ---
