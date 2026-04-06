@@ -291,6 +291,19 @@ class ReviewMetricsTest(unittest.TestCase):
       self.assertEqual(payload["latest_outcome_counts"]["fix_rejected"], 1)
       self.assertEqual(payload["accepted_severity_counts"], {"Blocker": 0, "Major": 1, "Minor": 0})
       self.assertEqual(payload["rejected_severity_counts"], {"Blocker": 0, "Major": 0, "Minor": 1})
+      self.assertEqual(
+        payload["accepted_finding_details"],
+        [
+          {
+            "finding_id": "F-001",
+            "severity": "Major",
+            "confidence": "High",
+            "location": "README.md:12",
+            "description": "README wording is stale after the routing change.",
+            "outcome_type": "finding_accepted",
+          }
+        ],
+      )
       self.assertEqual(payload["rejected_findings_with_notes"], 1)
       self.assertEqual(
         payload["rejected_finding_details"],
@@ -552,6 +565,61 @@ Reason: agent-config signals dominate
           "SELECT note FROM feedback_events WHERE finding_id = 'F-001'"
         ).fetchone()[0]
       self.assertEqual(note, "")
+
+  def test_triage_accepts_structured_selection_decisions(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      self.import_sample_review(db_path, temp_dir)
+
+      result = self.run_cli(
+        [
+          "--db",
+          str(db_path),
+          "triage",
+          "--run-id",
+          "rvw-20260402-001",
+          "--decision",
+          "fix=[1] reject=[2]",
+          "--format",
+          "json",
+        ]
+      )
+
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertEqual(
+        payload["recorded"],
+        [
+          {
+            "number": 1,
+            "finding_id": "F-001",
+            "outcome_type": "fix_applied",
+            "note": "",
+          },
+          {
+            "number": 2,
+            "finding_id": "F-002",
+            "outcome_type": "fix_rejected",
+            "note": "",
+          },
+        ],
+      )
+
+      with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+          """
+          SELECT finding_id, event_type, note
+          FROM feedback_events
+          ORDER BY id
+          """
+        ).fetchall()
+      self.assertEqual(
+        rows,
+        [
+          ("F-001", "fix_applied", ""),
+          ("F-002", "fix_rejected", ""),
+        ],
+      )
 
   def test_learnings_crud_keeps_history_separate_from_feedback(self) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -971,12 +1039,12 @@ Reason: agent-config signals dominate
 
       finished = events[0]["properties"]
       self.assertEqual(finished["review_session_id"], "rvs-20260402-001")
-      self.assertEqual(finished["applied_learning_count"], 1)
-      self.assertEqual(finished["applied_learning_references"], ["L-001"])
-      self.assertEqual(finished["applied_learnings"], "L-001")
-      self.assertEqual(finished["scope_counts"], {"global": 0, "repo": 0, "skill": 1})
+      self.assertEqual(finished["learnings"]["applied_count"], 1)
+      self.assertEqual(finished["learnings"]["applied_references"], ["L-001"])
+      self.assertEqual(finished["learnings"]["applied_summary"], "L-001")
+      self.assertEqual(finished["learnings"]["scope_counts"], {"global": 0, "repo": 0, "skill": 1})
       self.assertEqual(
-        finished["learnings"],
+        finished["learnings"]["entries"],
         [
           {
             "reference": "L-001",
@@ -1146,13 +1214,39 @@ Reason: agent-config signals dominate
       self.assertNotIn("rejected_findings", review_summary)
       self.assertNotIn("rejected_rate", review_summary)
       self.assertNotIn("rejected_findings_with_notes", review_summary)
+      self.assertNotIn("latest_outcome_counts", review_summary)
+      self.assertNotIn("unresolved_severity_counts", review_summary)
+      self.assertNotIn("rejected_severity_counts", review_summary)
       self.assertNotIn("detected_stack", review_summary)
+      self.assertNotIn("applied_learning_count", review_summary)
+      self.assertNotIn("applied_learning_references", review_summary)
+      self.assertNotIn("applied_learnings", review_summary)
+      self.assertNotIn("scope_counts", review_summary)
       self.assertEqual(review_summary["accepted_findings"], 1)
       self.assertEqual(review_summary["unresolved_findings"], 0)
-      self.assertEqual(review_summary["latest_outcome_counts"]["fix_applied"], 1)
-      self.assertEqual(review_summary["latest_outcome_counts"]["fix_rejected"], 1)
       self.assertTrue(review_summary["review_finished_at"])
       self.assertEqual(review_summary["review_subskills"], [])
+      self.assertEqual(
+        review_summary["learnings"],
+        {
+          "applied_count": 0,
+          "applied_references": [],
+          "applied_summary": "none",
+          "scope_counts": {"global": 0, "repo": 0, "skill": 0},
+          "entries": [],
+        },
+      )
+      self.assertEqual(
+        review_summary["accepted_finding_details"],
+        [
+          {
+            "finding_id": "F-001",
+            "severity": "Major",
+            "confidence": "High",
+            "outcome_type": "fix_applied",
+          }
+        ],
+      )
       self.assertEqual(
         review_summary["rejected_finding_details"],
         [
@@ -1161,6 +1255,71 @@ Reason: agent-config signals dominate
             "severity": "Minor",
             "confidence": "Medium",
             "outcome_type": "fix_rejected",
+          }
+        ],
+      )
+
+  def test_telemetry_sync_emits_review_finished_event_after_partial_triage(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      enabled_env = {
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+      }
+      self.import_sample_review(db_path, temp_dir, env=enabled_env, block_telemetry_delivery=True)
+
+      triage_result = self.run_cli_with_blocked_telemetry_delivery(
+        [
+          "--db",
+          str(db_path),
+          "triage",
+          "--run-id",
+          "rvw-20260402-001",
+          "--decision",
+          "1 fix - updated README copy",
+          "--format",
+          "json",
+        ],
+        env=enabled_env,
+      )
+      self.assertEqual(triage_result["exit_code"], 0, triage_result["stderr"])
+
+      sync_result, captured_urls, captured_requests = self.sync_with_capture(
+        db_path,
+        config_path,
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        },
+      )
+
+      self.assertEqual(sync_result["exit_code"], 0, sync_result["stderr"])
+      payload = json.loads(sync_result["stdout"])
+      self.assertEqual(payload["sync_status"], "synced")
+      self.assertEqual(payload["synced_events"], 1)
+      self.assertEqual(payload["pending_events"], 0)
+      self.assertEqual(captured_urls, ["https://telemetry.example.dev/ingest"])
+      self.assertEqual(len(captured_requests), 1)
+
+      events = captured_requests[0]["batch"]
+      self.assertEqual([event["event"] for event in events], ["skillbill_review_finished"])
+
+      review_summary = events[0]["properties"]
+      self.assertEqual(review_summary["accepted_findings"], 1)
+      self.assertEqual(review_summary["unresolved_findings"], 1)
+      self.assertEqual(review_summary["rejected_finding_details"], [])
+      self.assertEqual(
+        review_summary["accepted_finding_details"],
+        [
+          {
+            "finding_id": "F-001",
+            "severity": "Major",
+            "confidence": "High",
+            "outcome_type": "fix_applied",
           }
         ],
       )
@@ -1293,10 +1452,10 @@ Reason: agent-config signals dominate
 
       review_summary = events[0]["properties"]
       self.assertEqual(review_summary["accepted_findings"], 0)
+      self.assertEqual(review_summary["accepted_finding_details"], [])
       self.assertEqual(len(review_summary["rejected_finding_details"]), 2)
       self.assertEqual(review_summary["unresolved_findings"], 0)
-      self.assertEqual(review_summary["latest_outcome_counts"]["finding_accepted"], 0)
-      self.assertEqual(review_summary["latest_outcome_counts"]["false_positive"], 2)
+      self.assertNotIn("latest_outcome_counts", review_summary)
       self.assertEqual(
         review_summary["rejected_finding_details"][0],
         {
@@ -1388,10 +1547,15 @@ Reason: agent-config signals dominate
 
       self.assertEqual(sync_result["exit_code"], 0, sync_result["stderr"])
       payload = json.loads(sync_result["stdout"])
-      self.assertEqual(payload["sync_status"], "noop")
-      self.assertEqual(payload["synced_events"], 0)
-      self.assertEqual(captured_urls, [])
-      self.assertEqual(captured_requests, [])
+      self.assertEqual(payload["sync_status"], "synced")
+      self.assertEqual(payload["synced_events"], 1)
+      self.assertEqual(payload["pending_events"], 0)
+      self.assertEqual(captured_urls, ["https://telemetry.example.dev/ingest"])
+      self.assertEqual(len(captured_requests), 1)
+      self.assertEqual(
+        [event["event"] for event in captured_requests[0]["batch"]],
+        ["skillbill_review_finished"],
+      )
 
   def import_sample_review(
     self,

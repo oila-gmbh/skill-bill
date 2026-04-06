@@ -42,12 +42,13 @@ Example:
 skill-bill import-review review.txt
 skill-bill triage --run-id rvw-20260402-001
 skill-bill triage --run-id rvw-20260402-001 --decision "1 fix - keep current terminology" --decision "2 skip - intentional"
+skill-bill triage --run-id rvw-20260402-001 --decision "fix=[1] reject=[2]"
 skill-bill triage --run-id rvw-20260402-001 --decision "all fix"
 skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-agent-config-code-review --review-session-id rvs-20260402-001
 skill-bill stats --run-id rvw-20260402-001 --format json
 ```
 
-The `triage` command maps the visible numbers back to the stable `F-001` ids internally. Use `all <action>` to apply the same action to every finding. Supported triage actions are:
+The `triage` command maps the visible numbers back to the stable `F-001` ids internally. For agent-driven flows, prefer a structured selection string like `fix=[1,3] reject=[2]` so every finding is resolved deterministically in one step. Use `all <action>` to apply the same action to every finding. Supported triage actions are:
 
 - `fix` -> records `fix_applied`
 - `accept` -> records `finding_accepted`
@@ -107,7 +108,7 @@ The telemetry model emits a single event per review lifecycle:
 
 - one `skillbill_review_finished` event when a review lifecycle becomes fully resolved (all findings triaged)
 
-The finished event carries: total/accepted/unresolved finding counts, accepted and unresolved severity breakdowns, per-finding outcome counts, rejected-finding details (finding id, severity, confidence, and outcome type only — no file paths, descriptions, or notes), applied learning references and scope counts (no learning content), routed skill, review platform, normalized review scope type, execution mode, specialist reviews, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
+The finished event carries: total/accepted/unresolved finding counts, accepted/rejected finding details (finding id, severity, confidence, and outcome type only — no file paths, descriptions, or notes), a nested `learnings` object (`applied_count`, `applied_references`, `applied_summary`, `scope_counts`, and anonymized `entries`), routed skill, review platform, normalized review scope type, execution mode, specialist reviews, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. `unresolved_findings` is the count of findings whose latest outcome is not terminal yet; the finished event is emitted only once that count reaches zero. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
 
 When `learnings resolve` is called with `--review-session-id`, the resolved learnings are cached locally and included in the matching `skillbill_review_finished` event when it fires.
 
@@ -144,7 +145,7 @@ skill-bill telemetry sync
 
 What gets sent:
 
-- completed review run snapshots with aggregate finding counts, accepted/rejected totals, severity buckets, routed skill/platform context, rejected-finding details (finding id, severity, confidence, outcome type only), applied learning references and scope counts
+- completed review run snapshots with aggregate finding counts, accepted/rejected totals, routed skill/platform context, accepted/rejected finding details (finding id, severity, confidence, outcome type only), and nested learning metadata (`applied_count`, `applied_references`, `applied_summary`, `scope_counts`, anonymized `entries`)
 
 What does not get sent:
 
