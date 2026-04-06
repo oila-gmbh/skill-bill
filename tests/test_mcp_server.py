@@ -95,6 +95,31 @@ class McpServerEnabledTest(unittest.TestCase):
     self.assertEqual(result["recorded"][1]["outcome_type"], "fix_rejected")
     self.assertEqual(result["recorded"][1]["note"], "intentional")
 
+  def test_triage_findings_accepts_structured_selection_decisions(self) -> None:
+    import_review(review_text=SAMPLE_REVIEW)
+    result = triage_findings(
+      review_run_id="rvw-20260405-mcp",
+      decisions=["fix=[1] reject=[2]"],
+    )
+    self.assertEqual(result["review_run_id"], "rvw-20260405-mcp")
+    self.assertEqual(
+      result["recorded"],
+      [
+        {
+          "number": 1,
+          "finding_id": "F-001",
+          "outcome_type": "fix_applied",
+          "note": "",
+        },
+        {
+          "number": 2,
+          "finding_id": "F-002",
+          "outcome_type": "fix_rejected",
+          "note": "",
+        },
+      ],
+    )
+
   def test_review_stats_returns_metrics(self) -> None:
     import_review(review_text=SAMPLE_REVIEW)
     result = review_stats(review_run_id="rvw-20260405-mcp")

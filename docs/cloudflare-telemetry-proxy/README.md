@@ -11,7 +11,7 @@ This example lets Skill Bill clients send telemetry to a small Cloudflare Worker
 
 The client payload stays the same privacy-scoped metadata produced by the `skill-bill` CLI and MCP server:
 
-- completed review run snapshots with aggregate finding counts, severity buckets, rejected-finding metadata (severity + confidence only), and applied learning references
+- completed review run snapshots with aggregate finding counts, accepted/rejected finding metadata (finding id, severity, confidence, and outcome type only), and nested learning metadata
 
 It excludes:
 
