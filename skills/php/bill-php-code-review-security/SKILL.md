@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-security
-description: Use when reviewing security risks in changed PHP/backend code including auth/session safety, secrets handling, trust boundaries, sensitive data exposure, injection, file handling, and output encoding.
+description: Use when reviewing security risks in changed PHP/backend code including auth/session safety, secrets handling, trust boundaries, sensitive data exposure, injection, file handling, and output encoding. Use when user mentions auth, XSS, CSRF, injection, upload safety, or security review in PHP.
 ---
 
 # Security Review Specialist

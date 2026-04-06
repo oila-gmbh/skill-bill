@@ -1,32 +1,13 @@
 ---
 name: bill-go-code-review-platform-correctness
-description: Use when reviewing behavior correctness, edge cases, goroutine/channel safety, context cancellation, error handling, and concurrency-sensitive logic in Go backend/service changes.
+description: Use when reviewing behavior correctness, edge cases, goroutine/channel safety, context cancellation, error handling, and concurrency-sensitive logic in Go backend/service changes. Use when user mentions goroutine leak, channel safety, context cancellation, race condition, or nil handling in Go.
 ---
 
 # Platform-Correctness Review Specialist
 
-Review only correctness issues that change behavior or make behavior unsafe.
+Review only correctness issues that change behavior or make behavior unsafe. Focus on business-logic correctness, context/cancellation, zero-value/nil handling, concurrency safety, and runtime-safety issues. Ignore style or readability without correctness impact.
 
-Within the Go package, `platform-correctness` is the package-aligned correctness lane. In practice, this specialist is
-primarily about backend business-logic correctness, context/cancellation correctness, zero-value and nil handling,
-concurrency safety, and runtime-safety issues in changed Go code.
-
-## Focus
-- Race conditions, ordering bugs, and stale-state updates
-- Nil/zero-value edge cases, panic paths, and crash paths
-- Context propagation, cancellation, and timeout correctness
-- Business-rule drift in conditionals, refactors, retries, and state transitions
-- Violated invariants, missing guards, and wrong branch selection in changed logic
-- Partial-success or alternate-path behavior that no longer matches the declared contract
-- Goroutine/channel lifetime correctness and duplicate-delivery safety
-
-## Ignore
-- Style or readability feedback without correctness impact
-
-## Applicability
-
-Apply shared backend correctness rules to all backend/service code. Apply the deeper concern-specific checks only when
-the changed code uses those mechanisms.
+Apply shared backend correctness rules to all backend/service code. Apply deeper concern-specific checks only when the changed code uses those mechanisms.
 
 ## Project Overrides
 

@@ -27,7 +27,7 @@ def read(relative_path: str) -> str:
   return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md")
+FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md") + "\n" + read("skills/base/bill-feature-implement/reference.md")
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
@@ -165,7 +165,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       QUALITY_CHECK,
     )
     self.assertIn(
-      "### Step 2: Run `bill-kotlin-code-review` as the baseline review",
+      "Step 2: Run `bill-kotlin-code-review` as the baseline review",
       BACKEND_KOTLIN_CODE_REVIEW,
     )
 

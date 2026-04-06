@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-reliability
-description: Use when reviewing PHP backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
+description: Use when reviewing PHP backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions job reliability, queue retry, cache invalidation, external client timeout, or observability in PHP.
 ---
 
 # Backend Reliability Review Specialist

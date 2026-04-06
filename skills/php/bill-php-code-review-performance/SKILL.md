@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-performance
-description: Use when reviewing performance risks in PHP backend/server code, including hot-path work, blocking I/O, ORM/query-shape issues, inefficient DB/network access, serialization/rendering overhead, buffering, and resource waste.
+description: Use when reviewing performance risks in PHP backend/server code, including hot-path work, blocking I/O, ORM/query-shape issues, inefficient DB/network access, serialization/rendering overhead, buffering, and resource waste. Use when user mentions N+1, query performance, rendering waste, serialization overhead, or hot path in PHP.
 ---
 
 # Performance Review Specialist
