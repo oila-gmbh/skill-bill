@@ -35,7 +35,7 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - `inline` is allowed only when the review scope is small and low-risk; treat a scope as inline-eligible only when all of the following are true:
   - one routed stack-specific review skill is sufficient
-  - the diff is small enough to inspect in one thread without losing coverage
+  - the diff contains at most 10 changed files and at most 400 changed lines (additions + deletions); if either threshold is exceeded, the diff is too large for inline
   - no mixed-stack or mixed KMP/backend layering requires multiple routed review layers
   - no high-risk signals dominate the diff, such as auth/security/secrets changes, public API or schema changes, persistence or migration changes, concurrency/lifecycle/threading changes, retries/timeouts/caching/observability changes, rollout/feature-flag changes, or broad config/infra changes
 - If any inline-eligibility condition is false or unclear, choose `delegated`
@@ -115,3 +115,7 @@ Call the `triage_findings` MCP tool:
 - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
 Skip auto-triage when the review produced no findings.
+
+## Specialist Contract Subset
+
+Delegated specialist subagents receive `specialist-contract.md` instead of this full file. That file contains only "Shared Contract For Every Specialist" and "Shared Report Structure" — the two sections specialists need. Orchestrator-only sections (Scope, Execution Mode, Learnings, Delegation) are omitted to reduce per-subagent token cost. Keep `specialist-contract.md` in sync when updating those two sections.
