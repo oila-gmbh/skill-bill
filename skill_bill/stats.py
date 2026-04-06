@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from skill_bill.config import telemetry_is_enabled
+from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import (
   ACCEPTED_FINDING_OUTCOME_TYPES,
   FINDING_OUTCOME_TYPES,
@@ -182,6 +182,7 @@ def build_review_finished_payload(
   review_run_id: str,
   review_summary: sqlite3.Row | None = None,
   finding_rows: list[sqlite3.Row] | None = None,
+  level: str = "anonymous",
 ) -> dict[str, object]:
   from skill_bill.learnings import fetch_session_learnings
   from skill_bill.review import fetch_review_summary
@@ -202,19 +203,36 @@ def build_review_finished_payload(
   ):
     payload.pop(key, None)
 
-  def redact_finding_details(details: object) -> list[dict[str, object]]:
-    return [
-      {
-        "finding_id": detail["finding_id"],
-        "severity": detail["severity"],
-        "confidence": detail["confidence"],
-        "outcome_type": detail["outcome_type"],
-      }
-      for detail in details if isinstance(detail, dict)
-    ]
+  if level == "full":
+    def enrich_finding_details(details: object) -> list[dict[str, object]]:
+      return [
+        {
+          "finding_id": detail["finding_id"],
+          "severity": detail["severity"],
+          "confidence": detail["confidence"],
+          "outcome_type": detail["outcome_type"],
+          "location": detail.get("location", ""),
+          "description": detail.get("description", ""),
+          **({"note": detail["note"]} if detail.get("note") else {}),
+        }
+        for detail in details if isinstance(detail, dict)
+      ]
+    payload["accepted_finding_details"] = enrich_finding_details(payload.get("accepted_finding_details", []))
+    payload["rejected_finding_details"] = enrich_finding_details(payload.get("rejected_finding_details", []))
+  else:
+    def redact_finding_details(details: object) -> list[dict[str, object]]:
+      return [
+        {
+          "finding_id": detail["finding_id"],
+          "severity": detail["severity"],
+          "confidence": detail["confidence"],
+          "outcome_type": detail["outcome_type"],
+        }
+        for detail in details if isinstance(detail, dict)
+      ]
+    payload["accepted_finding_details"] = redact_finding_details(payload.get("accepted_finding_details", []))
+    payload["rejected_finding_details"] = redact_finding_details(payload.get("rejected_finding_details", []))
 
-  payload["accepted_finding_details"] = redact_finding_details(payload.get("accepted_finding_details", []))
-  payload["rejected_finding_details"] = redact_finding_details(payload.get("rejected_finding_details", []))
   specialist_reviews_raw = str(review_summary["specialist_reviews"] or "")
   specialist_reviews = [s.strip() for s in specialist_reviews_raw.split(",") if s.strip()]
   session_id = str(review_summary["review_session_id"] or "")
@@ -222,10 +240,23 @@ def build_review_finished_payload(
   normalized_scope = raw_scope.split("(")[0].strip() if "(" in raw_scope else raw_scope
   learnings_data = fetch_session_learnings(connection, session_id) if session_id else None
   default_scope_counts = {"global": 0, "repo": 0, "skill": 0}
-  learnings_anonymous = [
-    {"reference": entry["reference"], "scope": entry["scope"]}
-    for entry in (learnings_data.get("learnings", []) if learnings_data else [])
-  ]
+
+  if level == "full":
+    learnings_entries = [
+      {
+        "reference": entry["reference"],
+        "scope": entry["scope"],
+        **({"title": entry["title"]} if entry.get("title") else {}),
+        **({"rule_text": entry["rule_text"]} if entry.get("rule_text") else {}),
+      }
+      for entry in (learnings_data.get("learnings", []) if learnings_data else [])
+    ]
+  else:
+    learnings_entries = [
+      {"reference": entry["reference"], "scope": entry["scope"]}
+      for entry in (learnings_data.get("learnings", []) if learnings_data else [])
+    ]
+
   payload.update(
     {
       "review_session_id": session_id,
@@ -242,7 +273,7 @@ def build_review_finished_payload(
         "scope_counts": dict(default_scope_counts | (learnings_data.get("scope_counts") or {}))
         if learnings_data
         else dict(default_scope_counts),
-        "entries": learnings_anonymous,
+        "entries": learnings_entries,
       },
     }
   )
@@ -254,11 +285,22 @@ def update_review_finished_telemetry_state(
   *,
   review_run_id: str,
   enabled: bool | None = None,
+  level: str | None = None,
 ) -> None:
   from skill_bill.review import fetch_review_summary
 
-  if enabled is None:
-    enabled = telemetry_is_enabled()
+  if enabled is None or level is None:
+    try:
+      settings = load_telemetry_settings()
+      if enabled is None:
+        enabled = settings.enabled
+      if level is None:
+        level = settings.level
+    except ValueError:
+      if enabled is None:
+        enabled = False
+      if level is None:
+        level = "off"
   review_summary = fetch_review_summary(connection, review_run_id)
 
   session_id = str(review_summary["review_session_id"] or "")
@@ -300,6 +342,7 @@ def update_review_finished_telemetry_state(
     review_run_id=review_run_id,
     review_summary=review_summary,
     finding_rows=finding_rows,
+    level=level,
   )
 
   if review_summary["review_finished_event_emitted_at"]:

@@ -74,6 +74,9 @@ class McpServerEnabledTest(unittest.TestCase):
     self.assertIn("db_path", result)
     self.assertIn("db_exists", result)
     self.assertIn("telemetry_enabled", result)
+    self.assertIn("telemetry_level", result)
+    self.assertTrue(result["telemetry_enabled"])
+    self.assertEqual(result["telemetry_level"], "anonymous")
 
   def test_import_review_parses_and_stores(self) -> None:
     result = import_review(review_text=SAMPLE_REVIEW)
@@ -202,6 +205,7 @@ class McpServerDisabledTest(unittest.TestCase):
     result = doctor()
     self.assertIn("version", result)
     self.assertFalse(result["telemetry_enabled"])
+    self.assertEqual(result["telemetry_level"], "off")
 
   def test_no_db_created_when_disabled(self) -> None:
     import_review(review_text=SAMPLE_REVIEW)
