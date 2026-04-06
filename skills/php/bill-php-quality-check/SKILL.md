@@ -1,6 +1,6 @@
 ---
 name: bill-php-quality-check
-description: Run the project's canonical quality-check command(s) and systematically fix all issues without using suppressions. Use when running repo-defined checks, tests, linting, static analysis, architecture checks, or security validation in PHP/Laravel projects. Fixes issues properly at the root cause instead of suppressing them.
+description: Run the project's canonical quality-check command(s) and systematically fix all issues without using suppressions. Use when running repo-defined checks, tests, linting, static analysis, architecture checks, or security validation in PHP/Laravel projects. Fixes issues properly at the root cause instead of suppressing them. Use when user mentions run PHP checks, PHPStan, PHP CS Fixer, Laravel Pint, or fix PHP lint issues.
 ---
 
 # PHP Quality Check

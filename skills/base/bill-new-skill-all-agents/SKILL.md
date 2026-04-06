@@ -1,6 +1,6 @@
 ---
 name: bill-new-skill-all-agents
-description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex).
+description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex). Use when user mentions create skill, new skill, add skill, or sync skill to agents.
 ---
 
 ## Project Overrides

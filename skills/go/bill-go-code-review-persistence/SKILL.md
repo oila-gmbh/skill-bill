@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-persistence
-description: Use when reviewing Go backend/service persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior.
+description: Use when reviewing Go backend/service persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, SQL, transaction, migration, GORM, sqlx, or query correctness in Go.
 ---
 
 # Backend Persistence Review Specialist

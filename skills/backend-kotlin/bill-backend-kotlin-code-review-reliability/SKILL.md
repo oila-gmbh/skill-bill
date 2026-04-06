@@ -1,6 +1,6 @@
 ---
 name: bill-backend-kotlin-code-review-reliability
-description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
+description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions timeout, retry logic, circuit breaker, caching, or observability in Kotlin backend.
 ---
 
 # Backend Reliability Review Specialist

@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-persistence
-description: Use when reviewing PHP backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior.
+description: Use when reviewing PHP backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, Eloquent, query builder, migrations, transactions, or ORM in PHP.
 ---
 
 # Backend Persistence Review Specialist

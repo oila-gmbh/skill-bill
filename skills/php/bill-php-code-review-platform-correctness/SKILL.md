@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-platform-correctness
-description: Use when reviewing behavior correctness, edge cases, retry and idempotency behavior, ordering bugs, and concurrency-sensitive logic in PHP backend/server changes.
+description: Use when reviewing behavior correctness, edge cases, retry and idempotency behavior, ordering bugs, and concurrency-sensitive logic in PHP backend/server changes. Use when user mentions PHP correctness, state transitions, retry logic, idempotency, or ordering bugs in PHP.
 ---
 
 # Platform-Correctness Review Specialist

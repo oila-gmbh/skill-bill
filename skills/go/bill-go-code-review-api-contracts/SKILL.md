@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-api-contracts
-description: Use when reviewing Go backend/service API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility.
+description: Use when reviewing Go backend/service API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, HTTP handler, gRPC, struct tags, omitempty, or status codes in Go.
 ---
 
 # Backend API & Contract Review Specialist

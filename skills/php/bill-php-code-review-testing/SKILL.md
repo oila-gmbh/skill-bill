@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-testing
-description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in PHP backend/server code.
+description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in PHP backend/server code. Use when user mentions test quality, PHPUnit, contract tests, test coverage, or test reliability in PHP.
 ---
 
 # Testing Review Specialist

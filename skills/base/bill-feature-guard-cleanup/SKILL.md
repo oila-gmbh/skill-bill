@@ -1,6 +1,6 @@
 ---
 name: bill-feature-guard-cleanup
-description: Remove feature flags and legacy code after a feature is fully rolled out. Use when a feature flag has been enabled for all users and the legacy path is no longer needed. Safely deletes Legacy classes, removes flag checks, and inlines the winning code path.
+description: Remove feature flags and legacy code after a feature is fully rolled out. Use when a feature flag has been enabled for all users and the legacy path is no longer needed. Safely deletes Legacy classes, removes flag checks, and inlines the winning code path. Use when user mentions remove feature flag, cleanup flag, delete legacy code, or flag fully rolled out.
 ---
 
 # Feature Guard Cleanup
@@ -51,47 +51,7 @@ Run `bill-quality-check` to ensure nothing is broken.
 
 ## Patterns
 
-### Simple conditional cleanup
-```kotlin
-// Before:
-val result = if (featureFlags.isEnabled(NewCheckout)) {
-    newCheckoutFlow()
-} else {
-    legacyCheckoutFlow()
-}
-
-// After:
-val result = newCheckoutFlow()
-```
-
-### DI/Factory cleanup
-```kotlin
-// Before:
-@Provides
-fun providePaymentService(
-    featureFlags: FeatureFlagProvider,
-    legacy: LegacyPaymentService,
-    newService: NewPaymentService
-): PaymentService {
-    return if (featureFlags.isEnabled(NewPayment)) newService else legacy
-}
-
-// After:
-@Provides
-fun providePaymentService(
-    newService: NewPaymentService
-): PaymentService = newService
-```
-
-### Navigation/Router cleanup
-```kotlin
-// Before:
-if (featureEnabled) navigateTo(CheckoutScreen) else navigateTo(CheckoutScreenLegacy)
-
-// After:
-navigateTo(CheckoutScreen)
-// Delete: CheckoutScreenLegacy.kt
-```
+See [patterns.md](patterns.md) for code examples of each cleanup pattern (conditional, DI/factory, navigation/router).
 
 ## Checklist
 

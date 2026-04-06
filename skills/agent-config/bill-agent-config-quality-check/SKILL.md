@@ -1,6 +1,6 @@
 ---
 name: bill-agent-config-quality-check
-description: Run the repository's canonical validation commands for governed skill and agent-configuration repositories, then fix issues in the current unit of work without using suppressions. Use when validating skill contracts, routing docs, installers, catalogs, and repo-native validator scripts.
+description: Run the repository's canonical validation commands for governed skill and agent-configuration repositories, then fix issues in the current unit of work without using suppressions. Use when validating skill contracts, routing docs, installers, catalogs, and repo-native validator scripts. Use when user mentions validate skills, validate agent config, run skill validation, or check skill contracts.
 ---
 
 # Agent-Config Repository Quality Check

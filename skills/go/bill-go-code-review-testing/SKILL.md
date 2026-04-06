@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-testing
-description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Go backend/service code.
+description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Go backend/service code. Use when user mentions test quality, t.Run, t.Parallel, fuzz test, flaky test, or test coverage in Go.
 ---
 
 # Testing Review Specialist

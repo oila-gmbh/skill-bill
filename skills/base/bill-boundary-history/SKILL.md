@@ -1,6 +1,6 @@
 ---
 name: bill-boundary-history
-description: Use when updating module/package/area agent/history.md files with reusable, high-signal feature history entries and history hygiene rules.
+description: Use when updating module/package/area agent/history.md files with reusable, high-signal feature history entries and history hygiene rules. Use when user mentions update history, write history entry, boundary history, or record feature history.
 ---
 
 # Boundary History

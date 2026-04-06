@@ -1,6 +1,6 @@
 ---
 name: bill-quality-check
-description: Use when you want a generic quality-check entry point that detects the dominant stack in scope and delegates to the matching stack-specific quality-check skill.
+description: Use when you want a generic quality-check entry point that detects the dominant stack in scope and delegates to the matching stack-specific quality-check skill. Use when user mentions run checks, validate, lint, format, quality check, or run quality.
 ---
 
 # Shared Quality Check Router
@@ -71,32 +71,11 @@ When routing to another skill, pass along:
 
 ## Output Format
 
-For a single delegated skill:
-
 ```text
-Routed to: <skill-name>
-Detected stack: <stack>
+Routed to: <skill-name(s)>
+Detected stack: <stack> | Mixed | Unknown/Unsupported
 Signals: <markers>
 Reason: <why this stack-specific quality-checker was selected>
 
-<delegated quality-check output>
-```
-
-For multiple delegated skills:
-
-```text
-Routed to: <skill-a>, <skill-b>
-Detected stack: Mixed
-Signals: <markers>
-Reason: <why multiple stack-specific quality-checkers were selected>
-
-<merged delegated quality-check output>
-```
-
-For unsupported stacks:
-
-```text
-Detected stack: Unknown/Unsupported
-Signals: <markers>
-Result: No matching stack-specific quality-check skill is available yet.
+<delegated quality-check output, or "No matching skill available yet" for unsupported>
 ```

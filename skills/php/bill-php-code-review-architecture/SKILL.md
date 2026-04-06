@@ -1,30 +1,15 @@
 ---
 name: bill-php-code-review-architecture
-description: Use when reviewing architecture, boundaries, layering, and source-of-truth consistency in PHP backend or server-rendered changes.
+description: Use when reviewing architecture, boundaries, layering, and source-of-truth consistency in PHP backend or server-rendered changes. Use when user mentions PHP architecture, layering, ports/adapters, CQRS, module boundaries, or DDD in PHP.
 ---
 
 # Architecture Review Specialist
 
 Review only high-signal architectural issues.
 
-## Focus
-- Layer boundaries and dependency direction
-- Module ownership and source-of-truth consistency
-- Sync/async interaction boundaries, idempotency, and data ownership
-- Separation between transport, domain, application, persistence, and integration concerns
-- Architectural drift introduced by convenience shortcuts
+Focus on layer boundaries, dependency direction, module ownership, source-of-truth consistency, sync/async boundaries, and architectural drift. Ignore formatting/style-only and naming preferences without architectural impact.
 
-## Ignore
-- Formatting/style-only comments
-- Naming preferences without architectural impact
-
-## Applicability
-
-Apply shared architecture rules to every review.
-
-If changed areas touch read composition, projections, events/outbox, transport orchestration, or transaction boundaries, apply the corresponding deeper checks there as well.
-
-If different parts of the diff touch different architectural concerns, review those changed areas with the relevant deeper rules instead of forcing one model onto the whole change.
+Apply shared architecture rules to every review. Apply deeper concern-specific checks only when the changed code touches those areas.
 
 ## Project Overrides
 

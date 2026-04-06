@@ -1,6 +1,6 @@
 ---
 name: bill-go-quality-check
-description: Run the project's canonical quality-check command(s) and systematically fix all issues without using suppressions. Use when running repo-defined checks, tests, linting, static analysis, formatting, or security validation in Go projects. Fixes issues properly at the root cause instead of suppressing them.
+description: Run the project's canonical quality-check command(s) and systematically fix all issues without using suppressions. Use when running repo-defined checks, tests, linting, static analysis, formatting, or security validation in Go projects. Fixes issues properly at the root cause instead of suppressing them. Use when user mentions run Go checks, go vet, golangci-lint, go test, or fix Go lint issues.
 ---
 
 # Go Quality Check

@@ -1,6 +1,6 @@
 ---
 name: bill-php-code-review-api-contracts
-description: Use when reviewing PHP backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility.
+description: Use when reviewing PHP backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, Laravel routes, controllers, request validation, or response serialization in PHP.
 ---
 
 # Backend API & Contract Review Specialist
