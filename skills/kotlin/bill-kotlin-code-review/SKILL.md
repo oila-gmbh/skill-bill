@@ -144,6 +144,30 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
+## Auto-Import
+
+After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
+
+Call the `import_review` MCP tool:
+- `review_text`: the complete review output (Section 1 through Section 4)
+
+## Auto-Triage
+
+After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
+
+Each finding gets one decision using its position number from the risk register:
+- `fix` — the finding was accepted and the fix was applied
+- `accept` — the finding was accepted but no code change was needed
+- `skip` — the finding was intentionally skipped (append a reason after ` - `)
+- `false_positive` — the finding was incorrect
+
+Call the `triage_findings` MCP tool:
+- `review_run_id`: the review run ID from the review output
+- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
+
+Skip auto-triage when the review produced no findings.
+
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
 ## Implementation Mode Notes

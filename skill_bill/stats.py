@@ -91,6 +91,7 @@ def summarize_finding_rows(finding_rows: list[sqlite3.Row]) -> dict[str, object]
   accepted_severity_counts = empty_severity_counts()
   rejected_severity_counts = empty_severity_counts()
   unresolved_severity_counts = empty_severity_counts()
+  accepted_finding_details: list[dict[str, object]] = []
   rejected_findings: list[dict[str, object]] = []
   accepted_findings = 0
   rejected_findings_count = 0
@@ -107,6 +108,16 @@ def summarize_finding_rows(finding_rows: list[sqlite3.Row]) -> dict[str, object]
     if outcome_type in ACCEPTED_FINDING_OUTCOME_TYPES:
       accepted_findings += 1
       accepted_severity_counts[severity] += 1
+      accepted_finding_details.append(
+        {
+          "finding_id": row["finding_id"],
+          "severity": severity,
+          "confidence": row["confidence"],
+          "location": row["location"],
+          "description": row["description"],
+          "outcome_type": outcome_type,
+        }
+      )
       continue
 
     if outcome_type in REJECTED_FINDING_OUTCOME_TYPES:
@@ -144,6 +155,7 @@ def summarize_finding_rows(finding_rows: list[sqlite3.Row]) -> dict[str, object]
     "accepted_severity_counts": accepted_severity_counts,
     "rejected_severity_counts": rejected_severity_counts,
     "unresolved_severity_counts": unresolved_severity_counts,
+    "accepted_finding_details": accepted_finding_details,
     "rejected_findings_with_notes": rejected_findings_with_notes,
     "rejected_finding_details": rejected_findings,
   }
@@ -179,23 +191,37 @@ def build_review_finished_payload(
   if finding_rows is None:
     finding_rows = latest_finding_outcomes(connection, review_run_id=review_run_id)
   payload = summarize_finding_rows(finding_rows)
-  for key in ("rejected_findings", "rejected_rate", "rejected_findings_with_notes"):
+  for key in (
+    "rejected_findings",
+    "rejected_rate",
+    "rejected_findings_with_notes",
+    "latest_outcome_counts",
+    "unresolved_severity_counts",
+    "accepted_severity_counts",
+    "rejected_severity_counts",
+  ):
     payload.pop(key, None)
-  payload["rejected_finding_details"] = [
-    {
-      "finding_id": detail["finding_id"],
-      "severity": detail["severity"],
-      "confidence": detail["confidence"],
-      "outcome_type": detail["outcome_type"],
-    }
-    for detail in payload.get("rejected_finding_details", [])
-  ]
+
+  def redact_finding_details(details: object) -> list[dict[str, object]]:
+    return [
+      {
+        "finding_id": detail["finding_id"],
+        "severity": detail["severity"],
+        "confidence": detail["confidence"],
+        "outcome_type": detail["outcome_type"],
+      }
+      for detail in details if isinstance(detail, dict)
+    ]
+
+  payload["accepted_finding_details"] = redact_finding_details(payload.get("accepted_finding_details", []))
+  payload["rejected_finding_details"] = redact_finding_details(payload.get("rejected_finding_details", []))
   specialist_reviews_raw = str(review_summary["specialist_reviews"] or "")
   specialist_reviews = [s.strip() for s in specialist_reviews_raw.split(",") if s.strip()]
   session_id = str(review_summary["review_session_id"] or "")
   raw_scope = str(review_summary["detected_scope"] or "")
   normalized_scope = raw_scope.split("(")[0].strip() if "(" in raw_scope else raw_scope
   learnings_data = fetch_session_learnings(connection, session_id) if session_id else None
+  default_scope_counts = {"global": 0, "repo": 0, "skill": 0}
   learnings_anonymous = [
     {"reference": entry["reference"], "scope": entry["scope"]}
     for entry in (learnings_data.get("learnings", []) if learnings_data else [])
@@ -209,11 +235,15 @@ def build_review_finished_payload(
       "review_platform": review_summary["detected_stack"],
       "execution_mode": review_summary["execution_mode"],
       "review_finished_at": review_summary["review_finished_at"],
-      "applied_learning_count": learnings_data.get("applied_learning_count", 0) if learnings_data else 0,
-      "applied_learning_references": learnings_data.get("applied_learning_references", []) if learnings_data else [],
-      "applied_learnings": learnings_data.get("applied_learnings", "none") if learnings_data else "none",
-      "scope_counts": learnings_data.get("scope_counts", {}) if learnings_data else {},
-      "learnings": learnings_anonymous,
+      "learnings": {
+        "applied_count": learnings_data.get("applied_learning_count", 0) if learnings_data else 0,
+        "applied_references": learnings_data.get("applied_learning_references", []) if learnings_data else [],
+        "applied_summary": learnings_data.get("applied_learnings", "none") if learnings_data else "none",
+        "scope_counts": dict(default_scope_counts | (learnings_data.get("scope_counts") or {}))
+        if learnings_data
+        else dict(default_scope_counts),
+        "entries": learnings_anonymous,
+      },
     }
   )
   return payload
@@ -247,8 +277,9 @@ def update_review_finished_telemetry_state(
 
   finding_rows = latest_finding_outcomes(connection, review_run_id=review_run_id)
   summarized_findings = summarize_finding_rows(finding_rows)
+  resolved_findings = int(summarized_findings["accepted_findings"]) + int(summarized_findings["rejected_findings"])
 
-  if int(summarized_findings["total_findings"]) > 0 and int(summarized_findings["unresolved_findings"]) > 0:
+  if int(summarized_findings["total_findings"]) > 0 and resolved_findings == 0:
     if review_summary["review_finished_at"] or review_summary["review_finished_event_emitted_at"]:
       clear_review_finished_telemetry_state(connection, review_run_id)
     return
@@ -273,7 +304,11 @@ def update_review_finished_telemetry_state(
 
   if review_summary["review_finished_event_emitted_at"]:
     if enabled:
-      update_pending_review_finished_event(connection, review_run_id=review_run_id, payload=payload)
+      update_pending_review_finished_event(
+        connection,
+        review_session_id=str(review_summary["review_session_id"] or ""),
+        payload=payload,
+      )
     return
 
   enqueue_telemetry_event(
@@ -296,7 +331,7 @@ def update_review_finished_telemetry_state(
 def update_pending_review_finished_event(
   connection: sqlite3.Connection,
   *,
-  review_run_id: str,
+  review_session_id: str,
   payload: dict[str, object],
 ) -> None:
   connection.execute(
@@ -305,9 +340,9 @@ def update_pending_review_finished_event(
     SET payload_json = ?
     WHERE event_name = 'skillbill_review_finished'
       AND synced_at IS NULL
-      AND json_extract(payload_json, '$.review_run_id') = ?
+      AND json_extract(payload_json, '$.review_session_id') = ?
     """,
-    (json.dumps(payload, sort_keys=True), review_run_id),
+    (json.dumps(payload, sort_keys=True), review_session_id),
   )
 
 

@@ -91,3 +91,27 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Confidence must be one of: `High`, `Medium`, `Low`
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
+
+## Auto-Import
+
+After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
+
+Call the `import_review` MCP tool:
+- `review_text`: the complete review output (Section 1 through Section 4)
+
+## Auto-Triage
+
+After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the review lifecycle can complete and the finished telemetry event can fire.
+
+Each finding gets one decision using its position number from the risk register:
+- `fix` — the finding was accepted and the fix was applied
+- `accept` — the finding was accepted but no code change was needed
+- `skip` — the finding was intentionally skipped (append a reason after ` - `)
+- `false_positive` — the finding was incorrect
+
+Call the `triage_findings` MCP tool:
+- `review_run_id`: the review run ID from the review output
+- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
+
+Skip auto-triage when the review produced no findings.

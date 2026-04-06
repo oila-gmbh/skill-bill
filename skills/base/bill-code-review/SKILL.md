@@ -173,6 +173,7 @@ Each finding gets one decision using its position number from the risk register:
 
 Call the `triage_findings` MCP tool:
 - `review_run_id`: the review run ID from the review output
-- `decisions`: list of decision strings, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
+- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
 Skip auto-triage when the review produced no findings.

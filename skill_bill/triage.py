@@ -7,6 +7,8 @@ from skill_bill.constants import (
   BULK_TRIAGE_PATTERN,
   MEANINGFUL_NOTE_PATTERN,
   TRIAGE_DECISION_PATTERN,
+  TRIAGE_SELECTION_ENTRY_PATTERN,
+  TRIAGE_SELECTION_SEPARATOR_PATTERN,
   TriageDecision,
 )
 from skill_bill.db import finding_exists, review_exists
@@ -19,7 +21,13 @@ def expand_bulk_decisions(
 ) -> list[str]:
   expanded: list[str] = []
   for raw_decision in raw_decisions:
-    bulk_match = BULK_TRIAGE_PATTERN.fullmatch(raw_decision.strip())
+    stripped = raw_decision.strip()
+    structured_expansion = expand_structured_decision(stripped)
+    if structured_expansion is not None:
+      expanded.extend(structured_expansion)
+      continue
+
+    bulk_match = BULK_TRIAGE_PATTERN.fullmatch(stripped)
     if bulk_match:
       action = bulk_match.group("action")
       note = bulk_match.group("note") or ""
@@ -28,6 +36,49 @@ def expand_bulk_decisions(
         expanded.append(f"{entry['number']} {action}{suffix}")
     else:
       expanded.append(raw_decision)
+  return expanded
+
+
+def expand_structured_decision(raw_decision: str) -> list[str] | None:
+  if "=" not in raw_decision or "[" not in raw_decision or "]" not in raw_decision:
+    return None
+
+  matches = list(TRIAGE_SELECTION_ENTRY_PATTERN.finditer(raw_decision))
+  if not matches:
+    raise ValueError(
+      "Invalid structured triage decision format. Use entries like "
+      "'fix=[1] reject=[2,3]'."
+    )
+
+  expanded: list[str] = []
+  cursor = 0
+  for match in matches:
+    separator = raw_decision[cursor:match.start()]
+    if not TRIAGE_SELECTION_SEPARATOR_PATTERN.fullmatch(separator):
+      raise ValueError(
+        "Invalid structured triage decision format. Use entries like "
+        "'fix=[1] reject=[2,3]'."
+      )
+
+    action = match.group("action")
+    numbers_block = match.group("numbers").strip()
+    if numbers_block:
+      for raw_number in numbers_block.split(","):
+        number = raw_number.strip()
+        if not number.isdigit():
+          raise ValueError(
+            "Invalid structured triage decision format. Lists must contain "
+            f"only finding numbers, got '{raw_number.strip()}'."
+          )
+        expanded.append(f"{number} {action}")
+    cursor = match.end()
+
+  tail = raw_decision[cursor:]
+  if not TRIAGE_SELECTION_SEPARATOR_PATTERN.fullmatch(tail):
+    raise ValueError(
+      "Invalid structured triage decision format. Use entries like "
+      "'fix=[1] reject=[2,3]'."
+    )
   return expanded
 
 
@@ -48,7 +99,7 @@ def parse_triage_decisions(
     if not match:
       raise ValueError(
         "Invalid triage decision format. Use entries like '1 fix', "
-        "'2 skip - intentional', 'all fix', or 'all skip - reason'."
+        "'2 skip - intentional', 'all fix', or 'fix=[1] reject=[2]'."
       )
 
     number = int(match.group("number"))
