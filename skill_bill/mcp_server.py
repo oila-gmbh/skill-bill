@@ -70,7 +70,8 @@ def triage_findings(review_run_id: str, decisions: list[str]) -> dict:
   """Record triage decisions for findings in an imported review run.
 
   Each decision is a string like '1 fix', '2 skip - intentional',
-  '3 accept', or 'all fix'. The number refers to the finding's position
+  '3 accept', 'all fix', or a structured selection like
+  'fix=[1,3] reject=[2]'. The numbers refer to the finding positions
   in the risk register.
 
   Valid actions: fix, accept, skip, edit, false_positive.
