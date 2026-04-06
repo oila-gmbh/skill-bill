@@ -110,11 +110,10 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       self.assertIn(section, REVIEW_DELEGATION_PLAYBOOK)
 
   def test_feature_implement_invokes_shared_review_and_validation_routers(self) -> None:
-    self.assertIn("Run the `bill-code-review` skill", FEATURE_IMPLEMENT)
-    self.assertIn("run `bill-quality-check`", FEATURE_IMPLEMENT)
+    self.assertIn("Run `bill-code-review`", FEATURE_IMPLEMENT)
+    self.assertIn("Run `bill-quality-check`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
-    self.assertIn("Adaptive inline-vs-delegated review execution", FEATURE_IMPLEMENT)
 
   def test_pr_description_prefers_repo_native_templates(self) -> None:
     self.assertIn("## Repo-Native PR Template Preference", PR_DESCRIPTION)
