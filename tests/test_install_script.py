@@ -82,7 +82,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-php-code-review" / "review-orchestrator.md").exists())
       self.assertIn("Installed agent: copilot", result.stdout)
-      self.assertTrue(self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")["telemetry"]["enabled"])
+      self.assertEqual(self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")["telemetry"]["level"], "anonymous")
 
   def test_installs_base_and_selected_go_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -213,18 +213,18 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(installed_skill.resolve(), ROOT / "skills" / "base" / "bill-code-review")
       self.assertTrue((installed_skill / "stack-routing.md").exists())
 
-  def test_installer_writes_telemetry_config_with_default_enabled(self) -> None:
+  def test_installer_writes_telemetry_config_with_default_anonymous(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nPHP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertIn("Enable telemetry by default?", result.stdout)
+      self.assertIn("Choose a telemetry level", result.stdout)
 
       config = self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")
       self.assertEqual(
         config["telemetry"],
         {
           "batch_size": 50,
-          "enabled": True,
+          "level": "anonymous",
           "proxy_url": "",
         },
       )
@@ -232,7 +232,7 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installer_supports_telemetry_opt_out_without_creating_state(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n\nn\n")
+      result = self.run_installer(temp_home, "copilot\nPHP\n\n3\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       state_dir = Path(temp_home) / ".skill-bill"
@@ -257,7 +257,7 @@ class InstallScriptTest(unittest.TestCase):
 
       self.assertFalse((Path(temp_home) / ".skill-bill" / "config.json").exists())
       self.assertTrue(custom_config_path.exists())
-      self.assertTrue(self.telemetry_config(custom_config_path)["telemetry"]["enabled"])
+      self.assertEqual(self.telemetry_config(custom_config_path)["telemetry"]["level"], "anonymous")
 
   def test_installer_respects_custom_telemetry_paths_when_disabled(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -307,7 +307,7 @@ class InstallScriptTest(unittest.TestCase):
 
       result = self.run_installer(
         temp_home,
-        "copilot\nPHP\n\nn\n",
+        "copilot\nPHP\n\n3\n",
         extra_env={
           "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
           "SKILL_BILL_REVIEW_DB": str(custom_db_path),
@@ -323,6 +323,15 @@ class InstallScriptTest(unittest.TestCase):
       finally:
         connection.close()
       self.assertEqual(remaining_events, 0)
+
+  def test_installer_supports_full_telemetry_level(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "copilot\nPHP\n\n2\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      config = self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")
+      self.assertEqual(config["telemetry"]["level"], "full")
+      self.assertNotIn("enabled", config["telemetry"])
 
   def run_installer(
     self,

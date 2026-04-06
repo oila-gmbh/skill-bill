@@ -5,7 +5,7 @@ import json
 from mcp.server.fastmcp import FastMCP
 
 from skill_bill import __version__
-from skill_bill.config import telemetry_is_enabled
+from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import LEARNING_SCOPE_PRECEDENCE
 from skill_bill.db import open_db, resolve_db_path
 from skill_bill.learnings import (
@@ -185,11 +185,19 @@ def doctor() -> dict:
   and telemetry status.
   """
   db_path = resolve_db_path(None)
+  try:
+    settings = load_telemetry_settings()
+    telemetry_enabled = settings.enabled
+    telemetry_level = settings.level
+  except ValueError:
+    telemetry_enabled = False
+    telemetry_level = "off"
   return {
     "version": __version__,
     "db_path": str(db_path),
     "db_exists": db_path.exists(),
-    "telemetry_enabled": telemetry_is_enabled(),
+    "telemetry_enabled": telemetry_enabled,
+    "telemetry_level": telemetry_level,
   }
 
 

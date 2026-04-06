@@ -88,7 +88,7 @@ declare -a REQUIRED_PLATFORM_PACKAGES=(agent-config)
 declare -a SELECTED_PLATFORM_PACKAGES=()
 declare -a LEGACY_SKILL_NAMES=()
 INSTALL_PREFIX="bill"
-TELEMETRY_ENABLED="true"
+TELEMETRY_LEVEL="anonymous"
 
 remove_if_allowed() {
   local target="$1"
@@ -570,25 +570,31 @@ prompt_for_telemetry_preference() {
 
   while true; do
     echo ""
-    info "Anonymous telemetry can stay enabled locally and sync through the hosted relay by default or a custom proxy override."
-    info "Default: enabled. You can opt out now or later."
-    printf "${CYAN}▸${NC} Enable telemetry by default? [Y/n]: "
+    info "Choose a telemetry level. You can change it later with 'skill-bill telemetry set-level'."
+    printf "  1. anonymous (default) — aggregate counts, no content\n"
+    printf "  2. full — includes finding details, learnings, rejection notes\n"
+    printf "  3. off — no telemetry\n"
+    printf "${CYAN}▸${NC} Enter telemetry level [1]: "
     if ! read -r input; then
       input=""
     fi
 
     normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
     case "$normalized" in
-      ""|y|yes)
-        TELEMETRY_ENABLED="true"
+      ""|1|anonymous)
+        TELEMETRY_LEVEL="anonymous"
         return 0
         ;;
-      n|no)
-        TELEMETRY_ENABLED="false"
+      2|full)
+        TELEMETRY_LEVEL="full"
+        return 0
+        ;;
+      3|off)
+        TELEMETRY_LEVEL="off"
         return 0
         ;;
       *)
-        warn "Enter y, yes, n, no, or press Enter for the default."
+        warn "Enter 1, 2, 3, anonymous, full, off, or press Enter for the default."
         ;;
     esac
   done
@@ -821,7 +827,7 @@ info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
 info "Skills found: ${#SKILL_NAMES[@]}"
 info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
 info "Command prefix: ${INSTALL_PREFIX}-"
-info "Telemetry:      $([[ "$TELEMETRY_ENABLED" == "true" ]] && printf 'enabled' || printf 'disabled')"
+info "Telemetry:      $TELEMETRY_LEVEL"
 echo ""
 
 info "Removing existing Skill Bill installs before reinstalling the selected platforms."
@@ -848,7 +854,7 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
-if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   info "Installing skill-bill CLI and MCP server..."
   if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
     ok "skill-bill CLI installed"
@@ -929,10 +935,10 @@ open(path, 'w').write('\n'.join(filtered))
   fi
 fi
 
-if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
-  if ! python3 -m skill_bill telemetry enable --format json >/dev/null 2>&1; then
+if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
+  if ! python3 -m skill_bill telemetry set-level "$TELEMETRY_LEVEL" --format json >/dev/null 2>&1; then
     warn "Telemetry setup failed."
-    TELEMETRY_ENABLED="setup_failed"
+    TELEMETRY_LEVEL="setup_failed"
   fi
 elif [[ -e "$SKILL_BILL_CONFIG_PATH" || -e "$SKILL_BILL_REVIEW_DB" ]]; then
   python3 -m skill_bill telemetry disable --format json >/dev/null 2>&1 || warn "Telemetry setup failed."
@@ -943,12 +949,10 @@ echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
 info "Command prefix:  ${INSTALL_PREFIX}-"
-if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
-  info "Telemetry:       enabled by default"
-elif [[ "$TELEMETRY_ENABLED" == "setup_failed" ]]; then
+if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
   info "Telemetry:       setup failed (python3 may be unavailable)"
 else
-  info "Telemetry:       disabled"
+  info "Telemetry:       $TELEMETRY_LEVEL"
 fi
 for i in "${!AGENT_NAMES[@]}"; do
   agent="${AGENT_NAMES[$i]}"
@@ -961,7 +965,7 @@ info "Edit skills in: $PLUGIN_DIR/skills/"
 if [[ "$INSTALL_PREFIX" != "bill" ]]; then
   info "Custom prefixes install generated alias copies. Re-run './install.sh' after editing skills."
 fi
-if [[ "$TELEMETRY_ENABLED" == "true" ]]; then
+if [[ "$TELEMETRY_LEVEL" != "off" && "$TELEMETRY_LEVEL" != "setup_failed" ]]; then
   info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
 fi
 info "Run './install.sh' again to reinstall with a different agent or platform selection."

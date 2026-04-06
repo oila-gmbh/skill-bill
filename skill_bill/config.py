@@ -14,6 +14,8 @@ from skill_bill.constants import (
   INSTALL_ID_ENVIRONMENT_KEY,
   TELEMETRY_BATCH_SIZE_ENVIRONMENT_KEY,
   TELEMETRY_ENABLED_ENVIRONMENT_KEY,
+  TELEMETRY_LEVEL_ENVIRONMENT_KEY,
+  TELEMETRY_LEVELS,
   TELEMETRY_PROXY_URL_ENVIRONMENT_KEY,
   TelemetrySettings,
 )
@@ -37,9 +39,7 @@ def default_local_config() -> dict[str, object]:
   return {
     "install_id": str(uuid.uuid4()),
     "telemetry": {
-      "enabled": True,
-      # Leave this blank in the written config so users can clearly see
-      # whether they have chosen a custom proxy override.
+      "level": "anonymous",
       "proxy_url": "",
       "batch_size": DEFAULT_TELEMETRY_BATCH_SIZE,
     },
@@ -75,7 +75,21 @@ def ensure_local_config(path: Path) -> dict[str, object]:
   telemetry_raw = payload.get("telemetry")
   telemetry = dict(telemetry_raw) if isinstance(telemetry_raw, dict) else {}
   default_telemetry = defaults["telemetry"]
-  for key in ("enabled", "proxy_url", "batch_size"):
+
+  if "level" not in telemetry and "enabled" in telemetry:
+    enabled_raw = telemetry.pop("enabled")
+    if isinstance(enabled_raw, bool):
+      telemetry["level"] = "anonymous" if enabled_raw else "off"
+    elif isinstance(enabled_raw, str):
+      telemetry["level"] = "anonymous" if parse_bool_value(enabled_raw, name="telemetry.enabled") else "off"
+    else:
+      telemetry["level"] = "anonymous" if bool(enabled_raw) else "off"
+    changed = True
+  elif "enabled" in telemetry:
+    del telemetry["enabled"]
+    changed = True
+
+  for key in ("level", "proxy_url", "batch_size"):
     if key not in telemetry:
       telemetry[key] = default_telemetry[key]
       changed = True
@@ -107,10 +121,17 @@ def parse_positive_int(raw_value: str, *, name: str) -> int:
   return value
 
 
+def parse_telemetry_level(raw_value: str, *, name: str) -> str:
+  normalized = raw_value.strip().lower()
+  if normalized in TELEMETRY_LEVELS:
+    return normalized
+  raise ValueError(f"{name} must be one of: {', '.join(TELEMETRY_LEVELS)}.")
+
+
 def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
   config_path = resolve_config_path()
   config = ensure_local_config(config_path) if materialize else read_local_config(config_path)
-  enabled = False
+  level = "off"
   custom_proxy_url = ""
   batch_size = DEFAULT_TELEMETRY_BATCH_SIZE
   install_id = ""
@@ -124,13 +145,20 @@ def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
     else:
       raise ValueError(f"Telemetry config at '{config_path}' must contain a 'telemetry' object.")
 
-    enabled_raw = telemetry.get("enabled", True)
-    if isinstance(enabled_raw, bool):
-      enabled = enabled_raw
-    elif isinstance(enabled_raw, str):
-      enabled = parse_bool_value(enabled_raw, name="telemetry.enabled")
+    level_raw = telemetry.get("level")
+    enabled_raw = telemetry.get("enabled")
+    if level_raw is not None:
+      level = parse_telemetry_level(str(level_raw), name="telemetry.level")
+    elif enabled_raw is not None:
+      if isinstance(enabled_raw, bool):
+        level = "anonymous" if enabled_raw else "off"
+      elif isinstance(enabled_raw, str):
+        level = "anonymous" if parse_bool_value(enabled_raw, name="telemetry.enabled") else "off"
+      else:
+        level = "anonymous" if bool(enabled_raw) else "off"
     else:
-      enabled = bool(enabled_raw)
+      level = "anonymous"
+
     custom_proxy_url = str(telemetry.get("proxy_url", "")).strip()
     batch_size_raw = telemetry.get("batch_size", DEFAULT_TELEMETRY_BATCH_SIZE)
     batch_size = (
@@ -140,10 +168,16 @@ def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
     )
     install_id = str(config.get("install_id", "")).strip()
 
-  if os.environ.get(TELEMETRY_ENABLED_ENVIRONMENT_KEY):
-    enabled = parse_bool_value(
-      os.environ[TELEMETRY_ENABLED_ENVIRONMENT_KEY],
-      name=TELEMETRY_ENABLED_ENVIRONMENT_KEY,
+  if os.environ.get(TELEMETRY_LEVEL_ENVIRONMENT_KEY):
+    level = parse_telemetry_level(
+      os.environ[TELEMETRY_LEVEL_ENVIRONMENT_KEY],
+      name=TELEMETRY_LEVEL_ENVIRONMENT_KEY,
+    )
+  elif os.environ.get(TELEMETRY_ENABLED_ENVIRONMENT_KEY):
+    level = (
+      "anonymous"
+      if parse_bool_value(os.environ[TELEMETRY_ENABLED_ENVIRONMENT_KEY], name=TELEMETRY_ENABLED_ENVIRONMENT_KEY)
+      else "off"
     )
   if os.environ.get(TELEMETRY_PROXY_URL_ENVIRONMENT_KEY):
     custom_proxy_url = os.environ[TELEMETRY_PROXY_URL_ENVIRONMENT_KEY].strip()
@@ -155,6 +189,7 @@ def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
       name=TELEMETRY_BATCH_SIZE_ENVIRONMENT_KEY,
     )
 
+  enabled = level != "off"
   hosted_relay_url = DEFAULT_TELEMETRY_PROXY_URL.rstrip("/")
   normalized_custom_proxy_url = custom_proxy_url.rstrip("/")
   if normalized_custom_proxy_url == hosted_relay_url:
@@ -168,6 +203,7 @@ def load_telemetry_settings(*, materialize: bool = False) -> TelemetrySettings:
 
   return TelemetrySettings(
     config_path=config_path,
+    level=level,
     enabled=enabled,
     install_id=install_id,
     proxy_url=proxy_url,
@@ -206,14 +242,17 @@ def purge_telemetry_outbox(db_path: Path) -> int:
     connection.close()
 
 
-def set_telemetry_enabled(enabled: bool, *, db_path: Path | None = None) -> tuple[TelemetrySettings, int]:
+def set_telemetry_level(level: str, *, db_path: Path | None = None) -> tuple[TelemetrySettings, int]:
+  if level not in TELEMETRY_LEVELS:
+    raise ValueError(f"Telemetry level must be one of: {', '.join(TELEMETRY_LEVELS)}.")
   config_path = resolve_config_path()
-  if enabled:
+  if level != "off":
     payload = ensure_local_config(config_path)
     telemetry = payload["telemetry"]
     if not isinstance(telemetry, dict):
       raise ValueError(f"Telemetry config at '{config_path}' must contain a 'telemetry' object.")
-    telemetry["enabled"] = True
+    telemetry["level"] = level
+    telemetry.pop("enabled", None)
     payload["telemetry"] = telemetry
     config_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return (load_telemetry_settings(materialize=True), 0)
@@ -222,3 +261,7 @@ def set_telemetry_enabled(enabled: bool, *, db_path: Path | None = None) -> tupl
     config_path.unlink()
   cleared_events = 0 if db_path is None else purge_telemetry_outbox(db_path)
   return (load_telemetry_settings(), cleared_events)
+
+
+def set_telemetry_enabled(enabled: bool, *, db_path: Path | None = None) -> tuple[TelemetrySettings, int]:
+  return set_telemetry_level("anonymous" if enabled else "off", db_path=db_path)

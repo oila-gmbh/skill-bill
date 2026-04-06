@@ -10,9 +10,11 @@ DEFAULT_CONFIG_PATH = Path.home() / ".skill-bill" / "config.json"
 DB_ENVIRONMENT_KEY = "SKILL_BILL_REVIEW_DB"
 CONFIG_ENVIRONMENT_KEY = "SKILL_BILL_CONFIG_PATH"
 TELEMETRY_ENABLED_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_ENABLED"
+TELEMETRY_LEVEL_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_LEVEL"
 TELEMETRY_PROXY_URL_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_PROXY_URL"
 INSTALL_ID_ENVIRONMENT_KEY = "SKILL_BILL_INSTALL_ID"
 TELEMETRY_BATCH_SIZE_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_BATCH_SIZE"
+TELEMETRY_LEVELS = ("off", "anonymous", "full")
 DEFAULT_TELEMETRY_PROXY_URL = "https://skill-bill-telemetry-proxy.skillbill.workers.dev"
 DEFAULT_TELEMETRY_BATCH_SIZE = 50
 FINDING_OUTCOME_TYPES = (
@@ -122,6 +124,7 @@ class TriageDecision:
 @dataclass(frozen=True)
 class TelemetrySettings:
   config_path: Path
+  level: str
   enabled: bool
   install_id: str
   proxy_url: str
@@ -136,6 +139,7 @@ class SyncResult:
   pending_events: int
   config_path: Path
   telemetry_enabled: bool
+  telemetry_level: str
   remote_configured: bool
   proxy_configured: bool
   sync_target: str
