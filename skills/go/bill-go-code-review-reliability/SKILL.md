@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-reliability
-description: Use when reviewing Go backend/service reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures.
+description: Use when reviewing Go backend/service reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions timeout, retry, shutdown, health check, backpressure, or rate limiting in Go.
 ---
 
 # Backend Reliability Review Specialist

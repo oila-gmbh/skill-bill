@@ -1,6 +1,6 @@
 ---
 name: bill-agent-config-code-review
-description: Use when conducting a thorough code review for governed skill, prompt, and agent-configuration repositories. Focus on routing correctness, contract drift, installer safety, portability, and docs/tests/catalog consistency. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough code review for governed skill, prompt, and agent-configuration repositories. Focus on routing correctness, contract drift, installer safety, portability, and docs/tests/catalog consistency. Produces a structured review with risk register and prioritized action items. Use when user mentions review skill config, review agent config, routing review, installer review, or skill repository review.
 ---
 
 # Agent-Config Repository Review
@@ -67,19 +67,20 @@ If execution mode is `inline`, review the scope directly in the current thread u
 
 If execution mode is `delegated`, run this same review in delegated execution using [review-delegation.md](review-delegation.md). If delegated review is required for this scope but unavailable on the current runtime, stop and report that explicitly. Do not invent deeper nested `agent-config` review passes unless the package grows approved specializations later.
 
-## Review Output Format
+## Review Output
 
-### 1. Classification & Review Summary
+### 1. Summary
+
 ```text
 Review session ID: <review-session-id>
 Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
-Detected stack: agent-config
-Signals: SKILL.md, AGENTS.md, install.sh, orchestration/, validator tests
+Detected stack: <stack>
+Signals: <markers>
 Execution mode: inline | delegated
 Applied learnings: none | <learning references>
-Review focus: routing/contracts, installer/runtime safety, docs/tests/catalog consistency
-Reason: skill/agent-config repository signals dominate, so the governed repo review layer was selected
+Specialist reviews: <selected specialists>
+Reason: <why these specialists were selected>
 ```
 
 Every finding in `### 2. Risk Register` must use this exact bullet format (do NOT use markdown tables):
@@ -90,14 +91,14 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
-## Auto-Import
+### Auto-Import
 
 After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
 
 Call the `import_review` MCP tool:
 - `review_text`: the complete review output (Section 1 through Section 4)
 
-## Auto-Triage
+### Auto-Triage
 
 After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
 
@@ -115,3 +116,8 @@ Call the `triage_findings` MCP tool:
 Skip auto-triage when the review produced no findings.
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
+
+### Implementation Mode Notes
+
+- If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.

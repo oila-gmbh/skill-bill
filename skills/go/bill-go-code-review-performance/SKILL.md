@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-performance
-description: Use when reviewing performance risks in Go backend/service code, including hot-path work, blocking I/O, query-shape issues, inefficient DB/network access, marshaling overhead, buffering, goroutine churn, and resource waste.
+description: Use when reviewing performance risks in Go backend/service code, including hot-path work, blocking I/O, query-shape issues, inefficient DB/network access, marshaling overhead, buffering, goroutine churn, and resource waste. Use when user mentions performance, N+1, allocation churn, goroutine storm, or marshaling overhead in Go.
 ---
 
 # Performance Review Specialist

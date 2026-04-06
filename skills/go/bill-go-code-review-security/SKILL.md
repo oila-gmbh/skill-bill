@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review-security
-description: Use when reviewing security risks in changed Go backend/service code including auth/session safety, secrets handling, trust boundaries, sensitive data exposure, injection, file handling, and output encoding.
+description: Use when reviewing security risks in changed Go backend/service code including auth/session safety, secrets handling, trust boundaries, sensitive data exposure, injection, file handling, and output encoding. Use when user mentions auth, secrets, TLS, injection, SSRF, or security review in Go.
 ---
 
 # Security Review Specialist

@@ -1,30 +1,13 @@
 ---
 name: bill-go-code-review-platform-correctness
-description: Use when reviewing behavior correctness, edge cases, goroutine/channel safety, context cancellation, error handling, and concurrency-sensitive logic in Go backend/service changes.
+description: Use when reviewing behavior correctness, edge cases, goroutine/channel safety, context cancellation, error handling, and concurrency-sensitive logic in Go backend/service changes. Use when user mentions goroutine leak, channel safety, context cancellation, race condition, or nil handling in Go.
 ---
 
 # Platform-Correctness Review Specialist
 
-Review only correctness issues that change behavior or make behavior unsafe.
+Review only correctness issues that change behavior or make behavior unsafe. Focus on business-logic correctness, context/cancellation, zero-value/nil handling, concurrency safety, and runtime-safety issues. Ignore style or readability without correctness impact.
 
-Within the Go package, `platform-correctness` is the package-aligned correctness lane. In practice, this specialist is
-primarily about backend business-logic correctness, context/cancellation correctness, zero-value and nil handling,
-concurrency safety, and runtime-safety issues in changed Go code.
-
-## Focus
-- Race conditions, ordering bugs, and stale-state updates
-- Nil/zero-value edge cases, panic paths, and crash paths
-- Context propagation, cancellation, and timeout correctness
-- Business-rule drift in conditionals, refactors, retries, and state transitions
-- Goroutine/channel lifetime correctness and duplicate-delivery safety
-
-## Ignore
-- Style or readability feedback without correctness impact
-
-## Applicability
-
-Apply shared backend correctness rules to all backend/service code. Apply the deeper concern-specific checks only when
-the changed code uses those mechanisms.
+Apply shared backend correctness rules to all backend/service code. Apply deeper concern-specific checks only when the changed code uses those mechanisms.
 
 ## Project Overrides
 
@@ -46,6 +29,14 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 - Do not introduce deprecated APIs or patterns when a supported alternative exists; if usage is unavoidable, it must be narrowly scoped and explicitly justified
 - State transitions must preserve declared invariants and reject invalid intermediate states
 - Time, timezone, deadline, and clock-boundary logic must be explicit where behavior depends on them
+
+### Business Logic / Invariant Checks
+- Guard ordering must preserve business-rule priority and must not make terminal, invalid, or exceptional states reachable as normal success paths
+- Refactors, condition merges, and extracted helpers must not collapse previously distinct business cases into the same outcome unless the contract explicitly changed
+- Nil vs zero vs empty vs defaulted values must preserve their business meaning across validation, mapping, persistence, and response code
+- Multi-step workflows must not persist state that contradicts the reported outcome or skip cleanup that the surrounding contract depends on
+- One-time or prerequisite checks must still run on retry, replay, duplicate delivery, and alternate entry paths unless the contract explicitly permits bypassing them
+- Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
 
 ### Go Runtime / Language-Behavior Checks
 - Functions that depend on cancellation, deadlines, tracing, or auth context should accept `context.Context` explicitly and pass it through the call chain
@@ -82,6 +73,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 ## Output Rules
 - Report at most 7 findings.
 - Include reproducible failure scenario for Major/Blocker findings.
+- Potential edge-case findings must be grounded in a reachable code path or declared contract. Identify the triggering input, state, or event sequence and the violated invariant or expected behavior.
 - Include `file:line` evidence for each finding.
 - Severity: `Blocker | Major | Minor`
 - Confidence: `High | Medium | Low`
