@@ -194,6 +194,23 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("portable review skills must expose", result.stdout)
       self.assertIn("review orchestration contract must expose", result.stdout)
 
+  def test_rejects_portable_review_skill_without_inline_lifecycle_handoff(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("php", "bill-php-code-review"),
+      ],
+      skill_contents={
+        "bill-php-code-review": self.portable_review_fixture_without_inline_lifecycle_handoff(
+          "bill-php-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("portable review skills must define the inline auto-import section", result.stdout)
+      self.assertIn("portable review skills must describe the triage_findings lifecycle handoff", result.stdout)
+
   def test_rejects_review_orchestrator_without_machine_readable_finding_contract(self) -> None:
     with self.fixture_repo(
       [("base", "bill-code-review")],
@@ -457,6 +474,18 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      ## Auto-Import
+
+      Call the `import_review` MCP tool:
+      - `review_text`: the complete review output (Section 1 through Section 4)
+
+      ## Auto-Triage
+
+      Call the `triage_findings` MCP tool:
+      - `review_run_id`: the review run ID from the review output
+      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+
+      Skip auto-triage when the review produced no findings.
       | Signal | Agent to spawn |
       | --- | --- |
       | fixture | `bill-php-code-review-security` |
@@ -499,8 +528,22 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
 
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
+      ## Auto-Import
+
+      Call the `import_review` MCP tool:
+      - `review_text`: the complete review output (Section 1 through Section 4)
+
+      ## Auto-Triage
+
+      Call the `triage_findings` MCP tool:
+      - `review_run_id`: the review run ID from the review output
+      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+
+      Skip auto-triage when the review produced no findings.
       Specialist review fixture content.
       """
     )
@@ -543,6 +586,41 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      ## Auto-Import
+
+      Call the `import_review` MCP tool:
+      - `review_text`: the complete review output (Section 1 through Section 4)
+
+      ## Auto-Triage
+
+      Call the `triage_findings` MCP tool:
+      - `review_run_id`: the review run ID from the review output
+      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+
+      Skip auto-triage when the review produced no findings.
+      Specialist review fixture content.
+      """
+    )
+
+  def portable_review_fixture_without_inline_lifecycle_handoff(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill missing inline lifecycle handoff.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       Specialist review fixture content.

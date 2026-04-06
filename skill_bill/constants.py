@@ -80,6 +80,12 @@ BULK_TRIAGE_PATTERN = re.compile(
   r"(?:\s*(?:[:-]\s*|\s+)(?P<note>.+))?\s*$",
   re.IGNORECASE,
 )
+TRIAGE_SELECTION_ENTRY_PATTERN = re.compile(
+  r"(?P<action>false[-_ ]positive|fix|accept|accepted|edit|edited|dismiss|skip|reject)"
+  r"\s*=\s*\[(?P<numbers>[^\]]*)\]",
+  re.IGNORECASE,
+)
+TRIAGE_SELECTION_SEPARATOR_PATTERN = re.compile(r"[\s,]*")
 
 
 @dataclass(frozen=True)

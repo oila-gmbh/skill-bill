@@ -77,6 +77,13 @@ NON_PORTABLE_REVIEW_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     "must use portable summary wording such as 'Specialist reviews'",
   ),
 )
+PORTABLE_REVIEW_LIFECYCLE_REQUIREMENTS: tuple[tuple[str, str], ...] = (
+  ("## Auto-Import", "portable review skills must define the inline auto-import section"),
+  ("Call the `import_review` MCP tool:", "portable review skills must describe the import_review lifecycle handoff"),
+  ("## Auto-Triage", "portable review skills must define the inline auto-triage section"),
+  ("Call the `triage_findings` MCP tool:", "portable review skills must describe the triage_findings lifecycle handoff"),
+  ("Skip auto-triage when the review produced no findings.", "portable review skills must define the no-findings auto-triage rule"),
+)
 
 
 def main() -> int:
@@ -234,6 +241,9 @@ def validate_portable_review_wording(
     issues.append(f"{skill_file}: portable review skills must expose '{REVIEW_RUN_ID_PLACEHOLDER}'")
   if APPLIED_LEARNINGS_PLACEHOLDER not in text:
     issues.append(f"{skill_file}: portable review skills must expose '{APPLIED_LEARNINGS_PLACEHOLDER}'")
+  for required_text, message in PORTABLE_REVIEW_LIFECYCLE_REQUIREMENTS:
+    if required_text not in text:
+      issues.append(f"{skill_file}: {message}; missing '{required_text}'")
 
   for pattern, message in NON_PORTABLE_REVIEW_PATTERNS:
     match = pattern.search(text)
