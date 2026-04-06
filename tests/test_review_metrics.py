@@ -24,6 +24,7 @@ from skill_bill.constants import (  # noqa: E402
   DEFAULT_TELEMETRY_PROXY_URL,
   INSTALL_ID_ENVIRONMENT_KEY,
   TELEMETRY_ENABLED_ENVIRONMENT_KEY,
+  TELEMETRY_LEVEL_ENVIRONMENT_KEY,
   TELEMETRY_PROXY_URL_ENVIRONMENT_KEY,
 )
 
@@ -861,6 +862,7 @@ Reason: agent-config signals dominate
       self.assertEqual(result["exit_code"], 0, result["stderr"])
       payload = json.loads(result["stdout"])
       self.assertFalse(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "off")
       self.assertEqual(payload["sync_target"], "disabled")
       self.assertTrue(payload["remote_configured"])
       self.assertFalse(payload["proxy_configured"])
@@ -1556,6 +1558,298 @@ Reason: agent-config signals dominate
         [event["event"] for event in captured_requests[0]["batch"]],
         ["skillbill_review_finished"],
       )
+
+  def test_telemetry_set_level_command(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      env = {CONFIG_ENVIRONMENT_KEY: str(config_path)}
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "set-level", "full", "--format", "json"],
+        env=env,
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertTrue(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "full")
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "set-level", "anonymous", "--format", "json"],
+        env=env,
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertTrue(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "anonymous")
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "set-level", "off", "--format", "json"],
+        env=env,
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertFalse(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "off")
+
+  def test_telemetry_enable_with_level_flag(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      env = {CONFIG_ENVIRONMENT_KEY: str(config_path)}
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "enable", "--level", "full", "--format", "json"],
+        env=env,
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertTrue(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "full")
+
+  def test_telemetry_level_backward_compat_enabled_true_maps_to_anonymous(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      config_path.write_text(
+        json.dumps({
+          "install_id": "install-test-123",
+          "telemetry": {"enabled": True, "proxy_url": "", "batch_size": 50},
+        }, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+      )
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "status", "--format", "json"],
+        env={CONFIG_ENVIRONMENT_KEY: str(config_path)},
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertTrue(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "anonymous")
+
+  def test_telemetry_level_backward_compat_enabled_false_maps_to_off(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      config_path.write_text(
+        json.dumps({
+          "install_id": "install-test-123",
+          "telemetry": {"enabled": False, "proxy_url": "", "batch_size": 50},
+        }, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+      )
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "status", "--format", "json"],
+        env={CONFIG_ENVIRONMENT_KEY: str(config_path)},
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertFalse(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "off")
+
+  def test_telemetry_level_env_var_overrides_config(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      config_path.write_text(
+        json.dumps({
+          "install_id": "install-test-123",
+          "telemetry": {"level": "anonymous", "proxy_url": "", "batch_size": 50},
+        }, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+      )
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "status", "--format", "json"],
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_LEVEL_ENVIRONMENT_KEY: "full",
+        },
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertTrue(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "full")
+
+  def test_telemetry_level_env_var_takes_precedence_over_legacy_enabled_env(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+
+      result = self.run_cli(
+        ["--db", str(db_path), "telemetry", "enable", "--format", "json"],
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_LEVEL_ENVIRONMENT_KEY: "off",
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        },
+      )
+      self.assertEqual(result["exit_code"], 0, result["stderr"])
+      payload = json.loads(result["stdout"])
+      self.assertFalse(payload["telemetry_enabled"])
+      self.assertEqual(payload["telemetry_level"], "off")
+
+  def test_telemetry_full_level_payload_includes_finding_details(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      full_env = {
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_LEVEL_ENVIRONMENT_KEY: "full",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+      }
+      self.import_and_resolve_sample_review(
+        db_path, temp_dir, env=full_env, block_telemetry_delivery=True,
+      )
+
+      sync_result, captured_urls, captured_requests = self.sync_with_capture(
+        db_path,
+        config_path,
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_LEVEL_ENVIRONMENT_KEY: "full",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        },
+      )
+      self.assertEqual(sync_result["exit_code"], 0, sync_result["stderr"])
+      events = captured_requests[0]["batch"]
+      finished = events[0]["properties"]
+
+      accepted = finished["accepted_finding_details"]
+      self.assertTrue(len(accepted) > 0)
+      self.assertIn("description", accepted[0])
+      self.assertIn("location", accepted[0])
+
+      rejected = finished["rejected_finding_details"]
+      self.assertTrue(len(rejected) > 0)
+      self.assertIn("description", rejected[0])
+      self.assertIn("location", rejected[0])
+
+  def test_telemetry_anonymous_level_payload_redacts_finding_details(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      anon_env = {
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+      }
+      self.import_and_resolve_sample_review(
+        db_path, temp_dir, env=anon_env, block_telemetry_delivery=True,
+      )
+
+      sync_result, captured_urls, captured_requests = self.sync_with_capture(
+        db_path,
+        config_path,
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_ENABLED_ENVIRONMENT_KEY: "true",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        },
+      )
+      self.assertEqual(sync_result["exit_code"], 0, sync_result["stderr"])
+      events = captured_requests[0]["batch"]
+      finished = events[0]["properties"]
+
+      accepted = finished["accepted_finding_details"]
+      self.assertTrue(len(accepted) > 0)
+      self.assertNotIn("description", accepted[0])
+      self.assertNotIn("location", accepted[0])
+
+  def test_telemetry_full_level_payload_includes_learning_content(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      db_path = Path(temp_dir) / "metrics.db"
+      config_path = Path(temp_dir) / "config.json"
+      full_env = {
+        CONFIG_ENVIRONMENT_KEY: str(config_path),
+        TELEMETRY_LEVEL_ENVIRONMENT_KEY: "full",
+        INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+      }
+      self.import_sample_review(db_path, temp_dir, env=full_env, block_telemetry_delivery=True)
+
+      self.run_cli_with_blocked_telemetry_delivery(
+        [
+          "--db", str(db_path),
+          "triage", "--run-id", "rvw-20260402-001",
+          "--decision", "1 reject - stale by design",
+          "--format", "json",
+        ],
+        env=full_env,
+      )
+      self.run_cli_with_blocked_telemetry_delivery(
+        [
+          "--db", str(db_path),
+          "learnings", "add",
+          "--scope", "global", "--title", "README staleness expected",
+          "--rule", "Do not flag README as stale during routing changes.",
+          "--from-run", "rvw-20260402-001", "--from-finding", "F-001",
+          "--format", "json",
+        ],
+        env=full_env,
+      )
+      self.run_cli_with_blocked_telemetry_delivery(
+        [
+          "--db", str(db_path),
+          "learnings", "resolve",
+          "--review-session-id", "rvs-20260402-001",
+          "--format", "json",
+        ],
+        env=full_env,
+      )
+      self.run_cli_with_blocked_telemetry_delivery(
+        [
+          "--db", str(db_path),
+          "triage", "--run-id", "rvw-20260402-001",
+          "--decision", "2 accept",
+          "--format", "json",
+        ],
+        env=full_env,
+      )
+
+      sync_result, _, captured_requests = self.sync_with_capture(
+        db_path,
+        config_path,
+        env={
+          CONFIG_ENVIRONMENT_KEY: str(config_path),
+          TELEMETRY_LEVEL_ENVIRONMENT_KEY: "full",
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY: "https://telemetry.example.dev/ingest",
+          INSTALL_ID_ENVIRONMENT_KEY: "install-test-123",
+        },
+      )
+      self.assertEqual(sync_result["exit_code"], 0, sync_result["stderr"])
+      events = captured_requests[0]["batch"]
+      finished = events[0]["properties"]
+
+      entries = finished["learnings"]["entries"]
+      self.assertTrue(len(entries) > 0)
+      self.assertIn("title", entries[0])
+      self.assertIn("rule_text", entries[0])
+
+  def test_config_migration_replaces_enabled_with_level(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      config_path = Path(temp_dir) / "config.json"
+      config_path.write_text(
+        json.dumps({
+          "install_id": "install-test-123",
+          "telemetry": {"enabled": True, "proxy_url": "", "batch_size": 50},
+        }, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+      )
+      db_path = Path(temp_dir) / "metrics.db"
+
+      self.run_cli(
+        ["--db", str(db_path), "telemetry", "enable", "--format", "json"],
+        env={CONFIG_ENVIRONMENT_KEY: str(config_path)},
+      )
+
+      migrated = json.loads(config_path.read_text(encoding="utf-8"))
+      self.assertIn("level", migrated["telemetry"])
+      self.assertNotIn("enabled", migrated["telemetry"])
 
   def import_sample_review(
     self,

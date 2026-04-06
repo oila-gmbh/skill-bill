@@ -1,6 +1,6 @@
 # Review telemetry
 
-Skill Bill can record a measurement loop for code-review usefulness. Telemetry is enabled by default with an opt-out prompt during install.
+Skill Bill can record a measurement loop for code-review usefulness. Telemetry uses a three-level model selected during install: `off`, `anonymous` (default), or `full`.
 
 - each top-level review session should expose a `Review session ID: ...` using `rvs-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix for uniqueness)
 - each concrete review output should expose a `Review run ID: ...` using `rvw-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix for uniqueness)
@@ -102,24 +102,36 @@ Resolution stays local-first and explicit:
 
 This is intentionally not hidden auto-learning. The learnings layer remains inspectable, editable, disable-able, and deletable by the user.
 
+## Telemetry levels
+
+Telemetry has three levels:
+
+| Level | What is sent |
+|-------|-------------|
+| `off` | Nothing. No events are queued or sent. |
+| `anonymous` | Aggregate counts, finding ids with severity/confidence/outcome type, anonymized learning references. No file paths, descriptions, notes, or learning content. |
+| `full` | Everything in `anonymous` plus: finding descriptions/titles, file locations, rejection notes, and learning content (title, rule text). Useful for teams that want actionable detail. |
+
+The default level is `anonymous`. Existing configs with `telemetry.enabled: true` are migrated to `anonymous`; `enabled: false` becomes `off`.
+
 ## Telemetry events
 
 The telemetry model emits a single event per review lifecycle:
 
 - one `skillbill_review_finished` event when a review lifecycle becomes fully resolved (all findings triaged)
 
-The finished event carries: total/accepted/unresolved finding counts, accepted/rejected finding details (finding id, severity, confidence, and outcome type only — no file paths, descriptions, or notes), a nested `learnings` object (`applied_count`, `applied_references`, `applied_summary`, `scope_counts`, and anonymized `entries`), routed skill, review platform, normalized review scope type, execution mode, specialist reviews, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. `unresolved_findings` is the count of findings whose latest outcome is not terminal yet; the finished event is emitted only once that count reaches zero. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
+The finished event carries: total/accepted/unresolved finding counts, accepted/rejected finding details, a nested `learnings` object, routed skill, review platform, normalized review scope type, execution mode, specialist reviews, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. The detail within finding and learning entries depends on the telemetry level (see table above). `unresolved_findings` is the count of findings whose latest outcome is not terminal yet; the finished event is emitted only once that count reaches zero. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
 
 When `learnings resolve` is called with `--review-session-id`, the resolved learnings are cached locally and included in the matching `skillbill_review_finished` event when it fires.
 
 ## Remote sync defaults
 
-Fresh installs still default telemetry to enabled, with an opt-out prompt during `./install.sh`. When telemetry is enabled, Skill Bill generates an install id, writes telemetry config to `~/.skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.
+Fresh installs default telemetry to `anonymous`, with a level prompt during `./install.sh`. When telemetry level is not `off`, Skill Bill generates an install id, writes telemetry config to `~/.skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.
 
-- enabled telemetry can enqueue local telemetry events in SQLite before sync
+- enabled telemetry (`anonymous` or `full`) can enqueue local telemetry events in SQLite before sync
 - the helper can batch-sync pending events automatically after local writes to the hosted relay, or to a configured custom proxy override
 - if the remote destination is missing or unavailable, local workflows still succeed and the enabled telemetry outbox stays pending
-- disabled telemetry is a no-op: no telemetry config is required, no telemetry events are queued locally, and telemetry payload-building is skipped
+- `off` telemetry is a no-op: no telemetry config is required, no telemetry events are queued locally, and telemetry payload-building is skipped
 - `skill-bill telemetry disable` removes local telemetry config and clears any queued telemetry events without deleting non-telemetry review data
 
 Default hosted relay:
@@ -138,28 +150,20 @@ Telemetry commands:
 
 ```bash
 skill-bill telemetry status
-skill-bill telemetry enable
-skill-bill telemetry disable
+skill-bill telemetry enable                  # defaults to anonymous
+skill-bill telemetry enable --level full     # enable with full detail
+skill-bill telemetry set-level full          # change level directly
+skill-bill telemetry set-level anonymous
+skill-bill telemetry disable                 # sets level to off
 skill-bill telemetry sync
 ```
-
-What gets sent:
-
-- completed review run snapshots with aggregate finding counts, accepted/rejected totals, routed skill/platform context, accepted/rejected finding details (finding id, severity, confidence, outcome type only), and nested learning metadata (`applied_count`, `applied_references`, `applied_summary`, `scope_counts`, anonymized `entries`)
-
-What does not get sent:
-
-- repository identity, branch names, or file paths
-- raw review text or finding descriptions
-- learning content (title, rule text, rationale)
-- rejection notes
-- local-only learning bookkeeping events such as add, edit, disable, and delete
 
 Proxy configuration:
 
 ```bash
 export SKILL_BILL_TELEMETRY_PROXY_URL="https://your-worker.your-subdomain.workers.dev"
-export SKILL_BILL_TELEMETRY_ENABLED="true"                  # optional override
+export SKILL_BILL_TELEMETRY_LEVEL="full"                   # optional override (off, anonymous, full)
+export SKILL_BILL_TELEMETRY_ENABLED="true"                 # legacy override (maps true→anonymous, false→off)
 export SKILL_BILL_TELEMETRY_BATCH_SIZE="50"                # optional override
 export SKILL_BILL_CONFIG_PATH="$HOME/.skill-bill/config.json"  # optional override
 ```

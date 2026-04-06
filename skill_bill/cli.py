@@ -8,6 +8,7 @@ from skill_bill import __version__
 from skill_bill.config import (
   load_telemetry_settings,
   set_telemetry_enabled,
+  set_telemetry_level,
   telemetry_is_enabled,
 )
 from skill_bill.constants import (
@@ -17,6 +18,7 @@ from skill_bill.constants import (
   LEARNING_SCOPE_PRECEDENCE,
   LEARNING_SCOPES,
   LEARNING_STATUSES,
+  TELEMETRY_LEVELS,
 )
 from skill_bill.db import open_db, resolve_db_path
 from skill_bill.learnings import (
@@ -303,13 +305,38 @@ def telemetry_sync_command(args: argparse.Namespace) -> int:
 
 
 def telemetry_toggle_command(args: argparse.Namespace) -> int:
-  settings, cleared_events = set_telemetry_enabled(
-    args.enabled_value,
+  level = getattr(args, "level_value", None)
+  if level is None:
+    level = "anonymous" if args.enabled_value else "off"
+  settings, cleared_events = set_telemetry_level(
+    level,
     db_path=resolve_db_path(args.db),
   )
   payload = {
     "config_path": str(settings.config_path),
     "telemetry_enabled": settings.enabled,
+    "telemetry_level": settings.level,
+    "sync_target": telemetry_sync_target(settings),
+    "remote_configured": bool(settings.proxy_url),
+    "proxy_configured": bool(settings.custom_proxy_url),
+    "proxy_url": settings.proxy_url,
+    "custom_proxy_url": settings.custom_proxy_url,
+    "install_id": settings.install_id,
+    "cleared_events": cleared_events,
+  }
+  emit(payload, args.format)
+  return 0
+
+
+def telemetry_set_level_command(args: argparse.Namespace) -> int:
+  settings, cleared_events = set_telemetry_level(
+    args.level,
+    db_path=resolve_db_path(args.db),
+  )
+  payload = {
+    "config_path": str(settings.config_path),
+    "telemetry_enabled": settings.enabled,
+    "telemetry_level": settings.level,
     "sync_target": telemetry_sync_target(settings),
     "remote_configured": bool(settings.proxy_url),
     "proxy_configured": bool(settings.custom_proxy_url),
@@ -329,12 +356,19 @@ def version_command(args: argparse.Namespace) -> int:
 
 def doctor_command(args: argparse.Namespace) -> int:
   db_path = resolve_db_path(args.db)
-  telemetry_enabled = telemetry_is_enabled()
+  try:
+    settings = load_telemetry_settings()
+    telemetry_enabled = settings.enabled
+    telemetry_level = settings.level
+  except ValueError:
+    telemetry_enabled = False
+    telemetry_level = "off"
   payload: dict[str, object] = {
     "version": __version__,
     "db_path": str(db_path),
     "db_exists": db_path.exists(),
     "telemetry_enabled": telemetry_enabled,
+    "telemetry_level": telemetry_level,
   }
   emit(payload, args.format)
   return 0
@@ -484,12 +518,31 @@ def build_parser() -> argparse.ArgumentParser:
   telemetry_sync_parser.set_defaults(handler=telemetry_sync_command)
 
   telemetry_enable_parser = telemetry_subparsers.add_parser("enable", help="Enable remote telemetry sync.")
+  telemetry_enable_parser.add_argument(
+    "--level",
+    choices=("anonymous", "full"),
+    default="anonymous",
+    dest="level_value",
+    help="Telemetry detail level. Defaults to anonymous.",
+  )
   telemetry_enable_parser.add_argument("--format", choices=("text", "json"), default="text")
   telemetry_enable_parser.set_defaults(handler=telemetry_toggle_command, enabled_value=True)
 
   telemetry_disable_parser = telemetry_subparsers.add_parser("disable", help="Disable remote telemetry sync.")
   telemetry_disable_parser.add_argument("--format", choices=("text", "json"), default="text")
   telemetry_disable_parser.set_defaults(handler=telemetry_toggle_command, enabled_value=False)
+
+  telemetry_set_level_parser = telemetry_subparsers.add_parser(
+    "set-level",
+    help="Set the telemetry detail level directly.",
+  )
+  telemetry_set_level_parser.add_argument(
+    "level",
+    choices=TELEMETRY_LEVELS,
+    help="Telemetry level: off, anonymous, or full.",
+  )
+  telemetry_set_level_parser.add_argument("--format", choices=("text", "json"), default="text")
+  telemetry_set_level_parser.set_defaults(handler=telemetry_set_level_command)
 
   version_parser = subparsers.add_parser("version", help="Show the installed skill-bill version.")
   version_parser.add_argument("--format", choices=("text", "json"), default="text")
