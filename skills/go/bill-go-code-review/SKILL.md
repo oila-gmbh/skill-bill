@@ -1,6 +1,6 @@
 ---
 name: bill-go-code-review
-description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist review passes for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Go PR code review across backend/service projects. Classify changed areas conservatively, select the right specialist review passes for the diff, including real test-value review when tests change. Produces a structured review with risk register and prioritized action items. Use when user mentions Go review, review Go PR, Go code review, or asks to review .go files.
 ---
 
 # Adaptive Go PR Review
@@ -51,11 +51,7 @@ Before delegating specialist review passes, read only your current runtime's sec
 
 ---
 
-## Review Scope
-
-Inspect the changed files and changed areas.
-
-Use the routing table below to decide which additional specialist skills to run for each meaningful changed area.
+## Dynamic Specialist Selection
 
 ### Routing Table
 
@@ -71,8 +67,6 @@ Use the routing table below to decide which additional specialist skills to run 
 | Changed tests look suspiciously weak, tautological, or coverage-padding                                                                                  | `bill-unit-test-value-check`                |
 | Hot paths, repeated marshaling, per-request client creation, N+1 or repeated downstream calls, allocation churn, copy-heavy buffer use, unbounded buffers, goroutine storms                 | `bill-go-code-review-performance`           |
 
-## Dynamic Specialist Selection
-
 ### Step 1: Always include the baseline
 
 Always include:
@@ -83,8 +77,7 @@ Always include:
 ### Step 2: Analyze the diff and select additional specialist reviews
 
 Inspect each changed file or tightly related change cluster separately and add the specialist reviews from the routing
-table that
-match its signals.
+table that match its signals.
 
 Treat Go-specific runtime semantics as strong routing hints, not tie-breakers. If a change touches goroutine lifetime,
 loop-variable capture, wrapped error checks, struct-tag presence semantics, or `database/sql` row/transaction cleanup,
@@ -142,19 +135,20 @@ If execution mode is `delegated`:
 
 ---
 
-## Review Output Format
+## Review Output
 
-### 1. Specialist Summary
+### 1. Summary
 
 ```text
 Review session ID: <review-session-id>
 Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
-Signals: goroutines, context propagation, database/sql, changed tests
+Detected stack: <stack>
+Signals: <markers>
 Execution mode: inline | delegated
 Applied learnings: none | <learning references>
-Specialist reviews: bill-go-code-review-architecture, bill-go-code-review-platform-correctness, bill-go-code-review-persistence, bill-go-code-review-testing
-Reason: concurrency-sensitive state handling changed, persistence code changed, and tests changed materially
+Specialist reviews: <selected specialists>
+Reason: <why these specialists were selected>
 ```
 
 Every finding in `### 2. Risk Register` must use this exact bullet format (do NOT use markdown tables):
@@ -165,14 +159,14 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
-## Auto-Import
+### Auto-Import
 
 After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
 
 Call the `import_review` MCP tool:
 - `review_text`: the complete review output (Section 1 through Section 4)
 
-## Auto-Triage
+### Auto-Triage
 
 After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
 
@@ -191,10 +185,7 @@ Skip auto-triage when the review produced no findings.
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
-## Implementation Mode Notes
+### Implementation Mode Notes
 
-- If invoked from `bill-feature-implement` or another orchestration skill, do not pause for user selection. Return
-  prioritized findings so the caller can auto-fix `P0` and `P1` items and decide whether to carry `Minor` items
-  forward.
-- After all `P0` and `P1` items are resolved, run `bill-go-quality-check` as final verification when this review is
-  being run standalone.
+- If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.

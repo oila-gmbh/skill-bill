@@ -1,6 +1,6 @@
 ---
 name: bill-kmp-code-review
-description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items.
+description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
 ---
 
 # Android/KMP PR Review
@@ -140,20 +140,20 @@ If no KMP-only triggers match but Android/KMP signals are clearly present, keep 
 
 ---
 
-## Review Output Format
+## Review Output
 
-### 1. Classification & Layer Summary
+### 1. Summary
+
 ```text
 Review session ID: <review-session-id>
 Review run ID: <review-run-id>
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
-Detected stack: kmp | mixed-kmp
-Signals: @Composable, AndroidManifest.xml, ViewModel
+Detected stack: <stack>
+Signals: <markers>
 Execution mode: inline | delegated
 Applied learnings: none | <learning references>
-Baseline review: bill-kotlin-code-review | bill-backend-kotlin-code-review
-KMP specialist reviews: bill-kmp-code-review-ui
-Reason: Android/KMP signals were high-confidence, so the mobile layer was added on top of the baseline Kotlin-family review
+Specialist reviews: <selected specialists>
+Reason: <why these specialists were selected>
 ```
 
 Every finding in `### 2. Risk Register` must use this exact bullet format (do NOT use markdown tables):
@@ -164,14 +164,14 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
-## Auto-Import
+### Auto-Import
 
 After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
 
 Call the `import_review` MCP tool:
 - `review_text`: the complete review output (Section 1 through Section 4)
 
-## Auto-Triage
+### Auto-Triage
 
 After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
 
@@ -190,7 +190,7 @@ Skip auto-triage when the review produced no findings.
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 
-## Implementation Mode Notes
+### Implementation Mode Notes
 
 - If invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 - After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and this review is being run standalone.
