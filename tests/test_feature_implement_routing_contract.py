@@ -123,9 +123,9 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`PULL_REQUEST_TEMPLATE.md`", PR_DESCRIPTION)
     self.assertIn("`.github/pull_request_template/*.md`", PR_DESCRIPTION)
     self.assertIn("`.github/PULL_REQUEST_TEMPLATE/*.md`", PR_DESCRIPTION)
-    self.assertIn("If multiple templates exist and there is no obvious default, do not guess silently; ask the user which template to use.", PR_DESCRIPTION)
-    self.assertIn("If no repo-native template exists, fall back to the built-in Skill Bill template below.", PR_DESCRIPTION)
-    self.assertIn("Use this built-in template only when no repo-native PR template is available", PR_DESCRIPTION)
+    self.assertIn("When multiple templates are found and there is no obvious default, ask the user which one to use.", PR_DESCRIPTION)
+    self.assertIn("Only when NO repo-native template is found at any of the above locations, fall back to the built-in Skill Bill template in the section below.", PR_DESCRIPTION)
+    self.assertIn("Always search for a repo-native PR template first", PR_DESCRIPTION)
 
   def test_kotlin_context_routes_to_kotlin_review_and_quality_check(self) -> None:
     self.assertIn(
