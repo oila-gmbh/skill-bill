@@ -18,15 +18,17 @@ Generate a PR title, description, and QA/test steps ready to paste. Present the 
 ## How It Works
 
 1. **Determine the comparison base** — use the branch this feature branch was created from when known, otherwise compute the best available merge-base from git context. Never assume `main`.
-2. **Gather context** — read the git diff from that merge-base to `HEAD`, along with the commit log and branch name
-3. **Read project guidelines** — check `CLAUDE.md`, `AGENTS.md`, and the matching `bill-pr-description` section in `.agents/skill-overrides.md` when present
-4. **Prefer a repo-native PR template when available** — check standard repository template locations before falling back to the built-in template
-5. **Generate** the title and description using the selected template
-6. **Present** the result to the user for review and adjustment
+2. **Gather context** — read the git diff from that merge-base to `HEAD`, along with the commit log and branch name.
+3. **Read project guidelines** — check `CLAUDE.md`, `AGENTS.md`, and the matching `bill-pr-description` section in `.agents/skill-overrides.md` when present.
+4. **Search for a repo-native PR template** — this is mandatory before generating anything. Search ALL standard template locations listed below. Read any template file found. This step must produce either a found template or a confirmed absence.
+5. **Generate** the title and description using the repo-native template if one was found, or the built-in fallback template only if no repo-native template exists.
+6. **Present** the result to the user for review and adjustment.
 
-## Repo-Native PR Template Preference
+## Repo-Native PR Template Search (mandatory)
 
-Before using the built-in Skill Bill template, inspect the target repository for PR templates in these standard locations:
+You MUST search for a repo-native PR template before generating any description. Do not skip this step. Do not assume no template exists without checking.
+
+Search these locations in order, using glob or file-read tools:
 
 1. `.github/pull_request_template.md`
 2. `.github/PULL_REQUEST_TEMPLATE.md`
@@ -34,23 +36,26 @@ Before using the built-in Skill Bill template, inspect the target repository for
 4. `PULL_REQUEST_TEMPLATE.md`
 5. `.github/pull_request_template/*.md`
 6. `.github/PULL_REQUEST_TEMPLATE/*.md`
+7. `docs/pull_request_template.md`
 
-Apply the following rules:
+When a repo-native template is found:
 
-- If exactly one template exists in the default single-file locations above, use it.
-- If no default single-file template exists but exactly one directory-based template exists, use it.
-- If multiple templates exist and there is no obvious default, do not guess silently; ask the user which template to use.
-- If no repo-native template exists, fall back to the built-in Skill Bill template below.
-- When using a repo-native template, preserve its headings, checklist structure, and section order rather than reshaping it into the Skill Bill fallback format.
-- Still use the gathered git/spec context to fill the chosen template with concise, reviewer-friendly content.
+- **Use it as the output structure.** Preserve its headings, checklist items, section order, and any placeholder text exactly as authored.
+- Do NOT reshape it into the built-in Skill Bill format.
+- Fill the template sections with concise, reviewer-friendly content derived from the gathered git/spec context.
+- If the template contains checklist items, keep them and check/uncheck as appropriate.
+
+When multiple templates are found and there is no obvious default, ask the user which one to use.
+
+Only when NO repo-native template is found at any of the above locations, fall back to the built-in Skill Bill template in the section below.
 
 ## PR Title
 
 Short, under 70 characters, prefixed with the ticket ID if the branch name contains one (e.g., `feat: [ME-4493] Show empty state for daily report AI`).
 
-## PR Description Template
+## Built-in Fallback Template
 
-Use this exact template, filling in the sections:
+**This template is a fallback.** Use it ONLY when no repo-native PR template was found in the search above.
 
 ```markdown
 # Summary
@@ -79,6 +84,6 @@ Use this exact template, filling in the sections:
 - Test instructions should be concrete enough for a reviewer to reproduce
 - If the feature is behind a flag, mention how to enable it for testing
 - Keep it concise — reviewers appreciate brevity
-- Use this built-in template only when no repo-native PR template is available
+- Always search for a repo-native PR template first — never skip the search step
 - If invoked from `bill-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
 - If the caller provides an explicit comparison base or merge-base, use it instead of inferring one
