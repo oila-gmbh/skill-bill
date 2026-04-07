@@ -116,7 +116,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
 
   def test_pr_description_prefers_repo_native_templates(self) -> None:
-    self.assertIn("## Repo-Native PR Template Preference", PR_DESCRIPTION)
+    self.assertIn("## Repo-Native PR Template Search (mandatory)", PR_DESCRIPTION)
     self.assertIn("`.github/pull_request_template.md`", PR_DESCRIPTION)
     self.assertIn("`.github/PULL_REQUEST_TEMPLATE.md`", PR_DESCRIPTION)
     self.assertIn("`pull_request_template.md`", PR_DESCRIPTION)
