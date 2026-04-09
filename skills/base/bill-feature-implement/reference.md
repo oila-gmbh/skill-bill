@@ -12,6 +12,10 @@ For SMALL features the acceptance criteria stay in context — no spec file need
 
 Look for `agent/history.md` in each boundary the feature touches. Read newest entries first, stop once entries are no longer relevant. Use to reuse components and follow latest patterns. Skip if none exist.
 
+### Read Boundary Decisions
+
+Look for `agent/decisions.md` in each boundary the feature touches. If the file exists, scan only the `## [date] title` header lines first. Read full entries only for decisions whose titles are relevant to the boundaries, patterns, or interfaces this feature will touch. Skip if none exist.
+
 ### Feature Flag Setup (only when rollout uses a feature flag)
 
 - Read the `bill-feature-guard` skill instructions and its matching `.agents/skill-overrides.md` section, then apply them inline
@@ -105,6 +109,8 @@ All sizes: feature flag if required, code review (dynamic 2-6 agents), `bill-qua
 - Implementation fails mid-plan: stop, report which task failed and why, ask user
 - Review enters fix loop (>3 iterations): stop, report remaining issues, hand to user
 - Completeness audit loops (>2 iterations): report remaining gaps, let user decide
+
+In all early-exit cases, call `feature_implement_finished` with the appropriate `completion_status` (`abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error`) so the telemetry session is closed.
 
 ## Skills Invoked
 

@@ -2,7 +2,7 @@
 
 Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
 
-sKill Bill is a portable collection of 37 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, Go backends/services, and governed skill/agent-config repositories.
+sKill Bill is a portable collection of 38 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, Go backends/services, and governed skill/agent-config repositories.
 
 ## Why this exists
 
@@ -225,7 +225,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
-### Utilities (9 skills)
+### Utilities (10 skills)
 
 | Skill | Purpose |
 |-------|---------|
@@ -234,6 +234,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 | `/bill-kotlin-quality-check` | Gradle/Kotlin quality-check implementation |
 | `/bill-go-quality-check` | Go quality-check implementation |
 | `/bill-boundary-history` | Maintain `agent/history.md` at module/package/area boundaries |
+| `/bill-boundary-decisions` | Record architectural/implementation decisions in `agent/decisions.md` |
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps, preferring repo PR templates when present |
 | `/bill-grill-plan` | Stress-test a plan or design by walking every decision branch |
