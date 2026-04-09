@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from skill_bill.constants import (
   AUDIT_RESULTS,
+  BOUNDARY_HISTORY_VALUES,
   COMPLETION_STATUSES,
   EVENT_FEATURE_IMPLEMENT_FINISHED,
   EVENT_FEATURE_IMPLEMENT_STARTED,
@@ -57,6 +58,7 @@ def validate_finished_params(
   feature_flag_pattern: str,
   audit_result: str,
   validation_result: str,
+  boundary_history_value: str,
 ) -> str | None:
   error = validate_enum(completion_status, COMPLETION_STATUSES, "completion_status")
   if error:
@@ -68,6 +70,9 @@ def validate_finished_params(
   if error:
     return error
   error = validate_enum(validation_result, VALIDATION_RESULTS, "validation_result")
+  if error:
+    return error
+  error = validate_enum(boundary_history_value, BOUNDARY_HISTORY_VALUES, "boundary_history_value")
   if error:
     return error
   return None
@@ -131,6 +136,7 @@ def save_finished(
   audit_iterations: int,
   validation_result: str,
   boundary_history_written: bool,
+  boundary_history_value: str,
   pr_created: bool,
   plan_deviation_notes: str,
 ) -> None:
@@ -158,6 +164,7 @@ def save_finished(
           audit_iterations = ?,
           validation_result = ?,
           boundary_history_written = ?,
+          boundary_history_value = ?,
           pr_created = ?,
           plan_deviation_notes = ?,
           finished_at = CURRENT_TIMESTAMP
@@ -178,6 +185,7 @@ def save_finished(
           audit_iterations,
           validation_result,
           1 if boundary_history_written else 0,
+          boundary_history_value,
           1 if pr_created else 0,
           plan_deviation_notes,
           session_id,
@@ -193,8 +201,9 @@ def save_finished(
           feature_flag_pattern, files_created, files_modified,
           tasks_completed, review_iterations, audit_result,
           audit_iterations, validation_result, boundary_history_written,
-          pr_created, plan_deviation_notes, finished_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          boundary_history_value, pr_created, plan_deviation_notes,
+          finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
           session_id,
@@ -212,6 +221,7 @@ def save_finished(
           audit_iterations,
           validation_result,
           1 if boundary_history_written else 0,
+          boundary_history_value,
           1 if pr_created else 0,
           plan_deviation_notes,
         ),
@@ -290,6 +300,7 @@ def build_finished_payload(
     "audit_iterations": row["audit_iterations"] or 0,
     "validation_result": row["validation_result"] or "skipped",
     "boundary_history_written": bool(row["boundary_history_written"]),
+    "boundary_history_value": row["boundary_history_value"] or "none",
     "pr_created": bool(row["pr_created"]),
     "duration_seconds": duration_seconds,
   })

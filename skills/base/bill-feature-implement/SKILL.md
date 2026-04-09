@@ -98,6 +98,7 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `files_created`, `files_modified`, `tasks_completed`
 - `review_iterations`, `audit_result` (`all_pass`, `had_gaps`, or `skipped`), `audit_iterations`
 - `validation_result` (`pass`, `fail`, or `skipped`), `boundary_history_written`, `pr_created`
+- `boundary_history_value`: how useful the boundary history was during pre-planning (`none` if no history existed, `irrelevant`, `low`, `medium`, or `high`)
 - `plan_deviation_notes`: brief note if the plan changed during execution (empty if no deviations)
 
 For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.

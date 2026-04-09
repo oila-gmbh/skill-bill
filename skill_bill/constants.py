@@ -40,6 +40,7 @@ FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
 SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
 ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")
 FEATURE_FLAG_PATTERNS = ("simple_conditional", "di_switch", "legacy", "none")
+BOUNDARY_HISTORY_VALUES = ("none", "irrelevant", "low", "medium", "high")
 AUDIT_RESULTS = ("all_pass", "had_gaps", "skipped")
 VALIDATION_RESULTS = ("pass", "fail", "skipped")
 COMPLETION_STATUSES = (

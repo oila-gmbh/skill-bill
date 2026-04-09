@@ -47,6 +47,7 @@ FINISHED_PARAMS = {
   "audit_iterations": 1,
   "validation_result": "pass",
   "boundary_history_written": True,
+  "boundary_history_value": "medium",
   "pr_created": True,
   "plan_deviation_notes": "Task 5 split into 5a/5b",
 }
