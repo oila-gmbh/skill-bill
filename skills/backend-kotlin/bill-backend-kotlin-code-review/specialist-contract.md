@@ -27,7 +27,7 @@ Section 1 summary must include `Detected review scope: <staged changes / unstage
 Section 1 summary must include `Execution mode: inline | delegated`.
 Section 1 summary must include `Applied learnings: none | <learning references>`.
 
-Generate one review session id per top-level review using the format `rvs-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvs-20260405-143022-a7f3`). If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
+Generate one review session id per top-level review using the format `rvs-<uuid4>` (e.g. `rvs-550e8400-e29b-41d4-a716-446655440000`). If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
 
 Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvw-20260405-143022-b2e1`). If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any follow-up feedback workflow for the current review output.
 

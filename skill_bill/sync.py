@@ -32,6 +32,7 @@ def build_telemetry_batch(settings: TelemetrySettings, rows: list[sqlite3.Row]) 
   for row in rows:
     payload = json.loads(str(row["payload_json"]))
     properties = dict(payload)
+    properties["install_id"] = settings.install_id
     properties["$process_person_profile"] = False
     batch.append(
       {
