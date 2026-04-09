@@ -119,6 +119,40 @@ def ensure_database(path: Path) -> sqlite3.Connection:
       learnings_json TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS feature_implement_sessions (
+      session_id TEXT PRIMARY KEY,
+      issue_key_provided INTEGER NOT NULL DEFAULT 0,
+      issue_key_type TEXT NOT NULL DEFAULT 'none',
+      spec_input_types TEXT NOT NULL DEFAULT '',
+      spec_word_count INTEGER NOT NULL DEFAULT 0,
+      feature_size TEXT NOT NULL DEFAULT 'SMALL',
+      feature_name TEXT NOT NULL DEFAULT '',
+      rollout_needed INTEGER NOT NULL DEFAULT 0,
+      acceptance_criteria_count INTEGER NOT NULL DEFAULT 0,
+      open_questions_count INTEGER NOT NULL DEFAULT 0,
+      spec_summary TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      started_event_emitted_at TEXT,
+      completion_status TEXT NOT NULL DEFAULT '',
+      plan_correction_count INTEGER,
+      plan_task_count INTEGER,
+      plan_phase_count INTEGER,
+      feature_flag_used INTEGER,
+      feature_flag_pattern TEXT,
+      files_created INTEGER,
+      files_modified INTEGER,
+      tasks_completed INTEGER,
+      review_iterations INTEGER,
+      audit_result TEXT,
+      audit_iterations INTEGER,
+      validation_result TEXT,
+      boundary_history_written INTEGER,
+      pr_created INTEGER,
+      plan_deviation_notes TEXT NOT NULL DEFAULT '',
+      finished_at TEXT,
+      finished_event_emitted_at TEXT
+    );
     """
   )
   ensure_column(connection, "review_runs", "review_session_id", "TEXT")

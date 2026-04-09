@@ -124,6 +124,73 @@ The finished event carries: total/accepted/unresolved finding counts, accepted/r
 
 When `learnings resolve` is called with `--review-session-id`, the resolved learnings are cached locally and included in the matching `skillbill_review_finished` event when it fires.
 
+## Feature-implement telemetry
+
+The feature-implement workflow emits two events per session:
+
+- `skillbill_feature_implement_started` — emitted after Step 1 assessment is confirmed by the user
+- `skillbill_feature_implement_finished` — emitted after Step 9 (PR created) or when the workflow ends early
+
+Each feature-implement session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
+
+The MCP server exposes `feature_implement_started` and `feature_implement_finished` as agent tools. The skill instructions tell the agent when to call each tool.
+
+### Started event payload
+
+Both `anonymous` and `full` levels include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | `fis-YYYYMMDD-HHMMSS-XXXX` |
+| `issue_key_provided` | boolean | Whether the user provided a Jira/Linear/GitHub issue key |
+| `issue_key_type` | string | `jira`, `linear`, `github`, `other`, or `none` |
+| `spec_input_types` | list | Input types: `raw_text`, `pdf`, `markdown_file`, `image`, `directory` |
+| `spec_word_count` | integer | Approximate word count of the design spec |
+| `feature_size` | string | `SMALL`, `MEDIUM`, or `LARGE` |
+| `rollout_needed` | boolean | Whether a feature flag / guarded rollout is needed |
+| `acceptance_criteria_count` | integer | Number of acceptance criteria |
+| `open_questions_count` | integer | Number of open questions before resolution |
+
+`full` level adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `feature_name` | string | Inferred feature name |
+| `spec_summary` | string | One-sentence summary of the feature |
+
+### Finished event payload
+
+Includes all started fields plus:
+
+Both `anonymous` and `full` levels:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `completion_status` | string | `completed`, `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error` |
+| `plan_correction_count` | integer | Times the user corrected the assessment/plan (0 = confirmed immediately) |
+| `plan_task_count` | integer | Total tasks in the plan |
+| `plan_phase_count` | integer | Number of phases |
+| `feature_flag_used` | boolean | Whether a feature flag was used |
+| `feature_flag_pattern` | string | `simple_conditional`, `di_switch`, `legacy`, or `none` |
+| `files_created` | integer | New files created |
+| `files_modified` | integer | Existing files modified |
+| `tasks_completed` | integer | Tasks completed |
+| `review_iterations` | integer | Code review iteration count |
+| `audit_result` | string | `all_pass`, `had_gaps`, or `skipped` |
+| `audit_iterations` | integer | Completeness audit iteration count |
+| `validation_result` | string | `pass`, `fail`, or `skipped` |
+| `boundary_history_written` | boolean | Whether boundary history was written |
+| `pr_created` | boolean | Whether a PR was created |
+| `duration_seconds` | integer | Wall-clock seconds from started to finished |
+
+`full` level adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plan_deviation_notes` | string | Brief note if the plan changed during execution |
+
+Fields always excluded (both levels): repo name, branch name, raw spec content, raw plan content, file paths, acceptance criteria text.
+
 ## Remote sync defaults
 
 Fresh installs default telemetry to `anonymous`, with a level prompt during `./install.sh`. When telemetry level is not `off`, Skill Bill generates an install id, writes telemetry config to `~/.skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.

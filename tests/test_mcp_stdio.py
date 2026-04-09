@@ -29,7 +29,15 @@ Reason: agent-config signals dominate
 - [F-002] Minor | Medium | install.sh:88 | Installer prompt wording is inconsistent with the new flow.
 """
 
-EXPECTED_TOOLS = {"doctor", "import_review", "resolve_learnings", "review_stats", "triage_findings"}
+EXPECTED_TOOLS = {
+  "doctor",
+  "feature_implement_finished",
+  "feature_implement_started",
+  "import_review",
+  "resolve_learnings",
+  "review_stats",
+  "triage_findings",
+}
 
 
 class McpStdioTest(unittest.TestCase):

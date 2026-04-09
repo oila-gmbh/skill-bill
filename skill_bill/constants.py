@@ -33,6 +33,22 @@ REJECTED_FINDING_OUTCOME_TYPES = ("fix_rejected", "false_positive")
 LEARNING_SCOPES = ("global", "repo", "skill")
 LEARNING_STATUSES = ("active", "disabled")
 LEARNING_SCOPE_PRECEDENCE = ("skill", "repo", "global")
+
+EVENT_FEATURE_IMPLEMENT_STARTED = "skillbill_feature_implement_started"
+EVENT_FEATURE_IMPLEMENT_FINISHED = "skillbill_feature_implement_finished"
+FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
+SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
+ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")
+FEATURE_FLAG_PATTERNS = ("simple_conditional", "di_switch", "legacy", "none")
+AUDIT_RESULTS = ("all_pass", "had_gaps", "skipped")
+VALIDATION_RESULTS = ("pass", "fail", "skipped")
+COMPLETION_STATUSES = (
+  "completed",
+  "abandoned_at_planning",
+  "abandoned_at_implementation",
+  "abandoned_at_review",
+  "error",
+)
 MEANINGFUL_NOTE_PATTERN = re.compile(r"[A-Za-z0-9]")
 
 REVIEW_RUN_ID_PATTERN = re.compile(r"^Review run ID:\s*(?P<value>[A-Za-z0-9._:-]+)\s*$", re.MULTILINE)

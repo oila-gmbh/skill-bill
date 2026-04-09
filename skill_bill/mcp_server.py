@@ -8,6 +8,15 @@ from skill_bill import __version__
 from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import LEARNING_SCOPE_PRECEDENCE
 from skill_bill.db import open_db, resolve_db_path
+from skill_bill.feature_implement import (
+  emit_finished,
+  emit_started,
+  generate_feature_session_id,
+  save_finished,
+  save_started,
+  validate_finished_params,
+  validate_started_params,
+)
 from skill_bill.learnings import (
   learning_payload,
   learning_summary_payload,
@@ -199,6 +208,131 @@ def doctor() -> dict:
     "telemetry_enabled": telemetry_enabled,
     "telemetry_level": telemetry_level,
   }
+
+
+@mcp.tool()
+def feature_implement_started(
+  feature_size: str,
+  acceptance_criteria_count: int,
+  open_questions_count: int,
+  spec_input_types: list[str],
+  spec_word_count: int,
+  rollout_needed: bool,
+  feature_name: str = "",
+  issue_key: str = "",
+  issue_key_type: str = "none",
+  spec_summary: str = "",
+) -> dict:
+  """Record the start of a feature-implement session.
+
+  Call this after the Step 1 assessment is confirmed by the user.
+  Returns a session_id to pass to feature_implement_finished later.
+  """
+  session_id = generate_feature_session_id()
+  issue_key_provided = bool(issue_key.strip())
+
+  validation_error = validate_started_params(
+    feature_size=feature_size,
+    issue_key_type=issue_key_type,
+    spec_input_types=spec_input_types,
+  )
+  if validation_error:
+    return {"status": "error", "session_id": session_id, "error": validation_error}
+
+  if not telemetry_is_enabled():
+    return {"status": "skipped", "session_id": session_id}
+
+  with open_db() as (connection, db_path):
+    save_started(
+      connection,
+      session_id=session_id,
+      issue_key_provided=issue_key_provided,
+      issue_key_type=issue_key_type,
+      spec_input_types=spec_input_types,
+      spec_word_count=spec_word_count,
+      feature_size=feature_size,
+      feature_name=feature_name,
+      rollout_needed=rollout_needed,
+      acceptance_criteria_count=acceptance_criteria_count,
+      open_questions_count=open_questions_count,
+      spec_summary=spec_summary,
+    )
+    settings = load_telemetry_settings()
+    emit_started(
+      connection,
+      session_id=session_id,
+      enabled=settings.enabled,
+      level=settings.level,
+    )
+  return {"status": "ok", "session_id": session_id}
+
+
+@mcp.tool()
+def feature_implement_finished(
+  session_id: str,
+  completion_status: str,
+  plan_correction_count: int,
+  plan_task_count: int,
+  plan_phase_count: int,
+  feature_flag_used: bool,
+  files_created: int,
+  files_modified: int,
+  tasks_completed: int,
+  review_iterations: int,
+  audit_result: str,
+  audit_iterations: int,
+  validation_result: str,
+  boundary_history_written: bool,
+  pr_created: bool,
+  feature_flag_pattern: str = "none",
+  plan_deviation_notes: str = "",
+) -> dict:
+  """Record the completion of a feature-implement session.
+
+  Call this after Step 9 (PR created) or when the workflow ends early.
+  The session_id must match the value returned by feature_implement_started.
+  """
+  validation_error = validate_finished_params(
+    completion_status=completion_status,
+    feature_flag_pattern=feature_flag_pattern,
+    audit_result=audit_result,
+    validation_result=validation_result,
+  )
+  if validation_error:
+    return {"status": "error", "session_id": session_id, "error": validation_error}
+
+  if not telemetry_is_enabled():
+    return {"status": "skipped", "session_id": session_id}
+
+  with open_db() as (connection, db_path):
+    save_finished(
+      connection,
+      session_id=session_id,
+      completion_status=completion_status,
+      plan_correction_count=plan_correction_count,
+      plan_task_count=plan_task_count,
+      plan_phase_count=plan_phase_count,
+      feature_flag_used=feature_flag_used,
+      feature_flag_pattern=feature_flag_pattern,
+      files_created=files_created,
+      files_modified=files_modified,
+      tasks_completed=tasks_completed,
+      review_iterations=review_iterations,
+      audit_result=audit_result,
+      audit_iterations=audit_iterations,
+      validation_result=validation_result,
+      boundary_history_written=boundary_history_written,
+      pr_created=pr_created,
+      plan_deviation_notes=plan_deviation_notes,
+    )
+    settings = load_telemetry_settings()
+    emit_finished(
+      connection,
+      session_id=session_id,
+      enabled=settings.enabled,
+      level=settings.level,
+    )
+  return {"status": "ok", "session_id": session_id}
 
 
 def main() -> None:

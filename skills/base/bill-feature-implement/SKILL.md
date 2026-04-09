@@ -33,6 +33,20 @@ Present everything together in one pass:
 
 Then ask: **Confirm or adjust the above before I plan.** Open questions must be resolved before proceeding. The confirmed criteria are the **contract** for the completeness audit.
 
+### Telemetry: Record Started
+
+After the user confirms the assessment, call the `feature_implement_started` MCP tool with:
+- `feature_size`, `acceptance_criteria_count`, `open_questions_count`
+- `spec_input_types`: list of input types the user provided (`raw_text`, `pdf`, `markdown_file`, `image`, `directory`)
+- `spec_word_count`: approximate word count of the design spec
+- `rollout_needed`: whether a feature flag / guarded rollout is needed
+- `feature_name`: the inferred feature name
+- `issue_key`: the issue key if provided, empty string otherwise
+- `issue_key_type`: `jira` (e.g. ME-5066), `linear` (e.g. LIN-123 or UUID), `github` (e.g. #42), `other`, or `none`
+- `spec_summary`: one sentence summarizing what the feature does
+
+Save the returned `session_id` for `feature_implement_finished`. If the tool returns `status: skipped`, continue normally.
+
 ## Step 1b: Create Feature Branch
 
 After confirmation: `git checkout -b feat/{ISSUE_KEY}-{feature-name}`
@@ -72,6 +86,21 @@ If gaps found: plan → implement → review → re-audit. Max **2 audit iterati
 Once completeness audit passes, run Steps 6b through 9 as a **continuous sequence without pausing**. The only reason to stop is if a step fails.
 
 For detailed finalization steps (validation gate, boundary history, commit/push, PR description), see [reference.md](reference.md).
+
+### Telemetry: Record Finished
+
+After the PR is created (or when the workflow ends early due to error or user abandonment), call the `feature_implement_finished` MCP tool with:
+- `session_id`: from `feature_implement_started`
+- `completion_status`: `completed` if PR was created, otherwise `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error`
+- `plan_correction_count`: how many times the user corrected the assessment or plan (0 if confirmed without changes)
+- `plan_task_count`, `plan_phase_count`
+- `feature_flag_used`, `feature_flag_pattern` (`simple_conditional`, `di_switch`, `legacy`, or `none`)
+- `files_created`, `files_modified`, `tasks_completed`
+- `review_iterations`, `audit_result` (`all_pass`, `had_gaps`, or `skipped`), `audit_iterations`
+- `validation_result` (`pass`, `fail`, or `skipped`), `boundary_history_written`, `pr_created`
+- `plan_deviation_notes`: brief note if the plan changed during execution (empty if no deviations)
+
+For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.
 
 ## Reference
 
