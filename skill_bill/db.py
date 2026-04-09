@@ -148,6 +148,7 @@ def ensure_database(path: Path) -> sqlite3.Connection:
       audit_iterations INTEGER,
       validation_result TEXT,
       boundary_history_written INTEGER,
+      boundary_history_value TEXT NOT NULL DEFAULT 'none',
       pr_created INTEGER,
       plan_deviation_notes TEXT NOT NULL DEFAULT '',
       finished_at TEXT,
@@ -160,6 +161,12 @@ def ensure_database(path: Path) -> sqlite3.Connection:
   ensure_column(connection, "review_runs", "review_finished_event_emitted_at", "TEXT")
   ensure_column(connection, "review_runs", "specialist_reviews", "TEXT NOT NULL DEFAULT ''")
   backfill_review_session_ids(connection)
+  ensure_column(
+    connection,
+    "feature_implement_sessions",
+    "boundary_history_value",
+    "TEXT NOT NULL DEFAULT 'none'",
+  )
   migrate_feedback_events_schema(connection)
   return connection
 

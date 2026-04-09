@@ -285,6 +285,7 @@ def feature_implement_finished(
   boundary_history_written: bool,
   pr_created: bool,
   feature_flag_pattern: str = "none",
+  boundary_history_value: str = "none",
   plan_deviation_notes: str = "",
 ) -> dict:
   """Record the completion of a feature-implement session.
@@ -297,6 +298,7 @@ def feature_implement_finished(
     feature_flag_pattern=feature_flag_pattern,
     audit_result=audit_result,
     validation_result=validation_result,
+    boundary_history_value=boundary_history_value,
   )
   if validation_error:
     return {"status": "error", "session_id": session_id, "error": validation_error}
@@ -322,6 +324,7 @@ def feature_implement_finished(
       audit_iterations=audit_iterations,
       validation_result=validation_result,
       boundary_history_written=boundary_history_written,
+      boundary_history_value=boundary_history_value,
       pr_created=pr_created,
       plan_deviation_notes=plan_deviation_notes,
     )

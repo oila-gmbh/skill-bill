@@ -12,6 +12,8 @@ For SMALL features the acceptance criteria stay in context — no spec file need
 
 Look for `agent/history.md` in each boundary the feature touches. Read newest entries first, stop once entries are no longer relevant. Use to reuse components and follow latest patterns. Skip if none exist.
 
+After reading, assess how useful the history was for this feature: `irrelevant` (nothing applied), `low` (minor context), `medium` (reused patterns or avoided pitfalls), `high` (directly shaped the approach). Use `none` if no history files existed. Report this as `boundary_history_value` in the finished telemetry.
+
 ### Read Boundary Decisions
 
 Look for `agent/decisions.md` in each boundary the feature touches. If the file exists, scan only the `## [date] title` header lines first. Read full entries only for decisions whose titles are relevant to the boundaries, patterns, or interfaces this feature will touch. Skip if none exist.
