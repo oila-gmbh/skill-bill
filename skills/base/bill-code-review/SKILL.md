@@ -85,7 +85,7 @@ For multi-stack delegated routing, read [review-delegation.md](review-delegation
 
 For a single routed stack-specific review skill:
 - Let the routed stack-specific reviewer choose `inline` or `delegated` using its own `review-orchestrator.md` contract
-- If the routed skill selects `inline`, read the routed skill's `SKILL.md` as the primary rubric and its `review-orchestrator.md` for the shared report structure and finding format, then execute the review in the current thread following the routed skill's full specification — do not invent your own output format or section structure
+- If the routed skill selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection
 - If the routed skill selects `delegated`, use `review-delegation.md` and pass along the routed skill file path plus the required review context
 
 For multiple routed stack-specific review skills:
@@ -176,4 +176,4 @@ Call the `triage_findings` MCP tool:
 - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
-When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.
+Skip auto-triage when the review produced no findings.

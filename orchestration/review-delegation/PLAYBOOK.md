@@ -30,6 +30,7 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 - Use background mode for parallel delegated passes, capture every returned `agent_id`, then wait on and read only those tracked ids before merging results in the parent review.
 - Do not use `list_agents` to discover delegated workers during normal review execution. Reserve it for explicit recovery/debugging only.
 - Do not call `read_agent` on nested workers launched by a delegated child review. Read only the child review agent you launched and let that child return its own merged result.
+- For a single delegated pass, still use a subagent instead of reviewing inline.
 
 ## Claude Code
 

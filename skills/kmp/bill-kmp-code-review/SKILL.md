@@ -186,7 +186,7 @@ Call the `triage_findings` MCP tool:
 - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
-When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.
+Skip auto-triage when the review produced no findings.
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 

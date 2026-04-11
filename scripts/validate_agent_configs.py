@@ -82,7 +82,7 @@ PORTABLE_REVIEW_LIFECYCLE_REQUIREMENTS: tuple[tuple[str, str], ...] = (
   ("Call the `import_review` MCP tool:", "portable review skills must describe the import_review lifecycle handoff"),
   ("## Auto-Triage", "portable review skills must define the inline auto-triage section"),
   ("Call the `triage_findings` MCP tool:", "portable review skills must describe the triage_findings lifecycle handoff"),
-  ("When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.", "portable review skills must define the no-findings auto-triage rule"),
+  ("Skip auto-triage when the review produced no findings.", "portable review skills must define the no-findings auto-triage rule"),
 )
 
 
@@ -459,28 +459,16 @@ def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]
     )
 
 
-def discover_copilot_agent_names(root: Path) -> set[str]:
-  agents_dir = root / ".github" / "agents"
-  if not agents_dir.is_dir():
-    return set()
-  names: set[str] = set()
-  for agent_file in agents_dir.glob("*.agent.md"):
-    name = agent_file.stem.removesuffix(".agent")
-    if name:
-      names.add(name)
-  return names
-
-
 def validate_skill_references(root: Path, skill_names: list[str], issues: list[str]) -> None:
-  known_names = set(skill_names) | discover_copilot_agent_names(root)
+  known_skills = set(skill_names)
   files_to_scan = sorted((root / "skills").rglob("SKILL.md"))
 
   for file_path in files_to_scan:
     text = file_path.read_text(encoding="utf-8")
     for reference in sorted(set(SKILL_REFERENCE_PATTERN.findall(text))):
-      if reference not in known_names:
+      if reference not in known_skills:
         relative_path = file_path.relative_to(root)
-        issues.append(f"{relative_path}: references unknown skill or agent '{reference}'")
+        issues.append(f"{relative_path}: references unknown skill '{reference}'")
 
 
 def validate_skill_override_markdown(

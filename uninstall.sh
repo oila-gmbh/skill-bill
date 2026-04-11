@@ -3,9 +3,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
-CUSTOM_AGENT_SOURCE_DIR="$PLUGIN_DIR/.github/agents"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
-MANAGED_AGENT_FILE_MARKER="<!-- managed_by=skill-bill-agent -->"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -42,7 +40,6 @@ declare -a RENAMED_SKILL_PAIRS=(
 )
 
 declare -a SKILL_NAMES=()
-declare -a CUSTOM_AGENT_FILE_NAMES=()
 declare -a LEGACY_SKILL_NAMES=()
 declare -a REMOVED_TARGETS=()
 declare -a SKIPPED_TARGETS=()
@@ -73,20 +70,6 @@ build_skill_names() {
       SKILL_NAMES+=("$skill_name")
     fi
   done < <(find "$SKILLS_DIR" -type f -name 'SKILL.md' | sort)
-}
-
-build_custom_agent_files() {
-  local agent_file
-
-  CUSTOM_AGENT_FILE_NAMES=()
-
-  if [[ ! -d "$CUSTOM_AGENT_SOURCE_DIR" ]]; then
-    return 0
-  fi
-
-  while IFS= read -r agent_file; do
-    CUSTOM_AGENT_FILE_NAMES+=("$(basename "$agent_file")")
-  done < <(find "$CUSTOM_AGENT_SOURCE_DIR" -type f -name '*.agent.md' | sort)
 }
 
 add_legacy_name() {
@@ -140,35 +123,6 @@ remove_skill_target() {
   fi
 }
 
-custom_agent_file_is_managed() {
-  local target="$1"
-  [[ -f "$target" ]] || return 1
-  grep -Fqx "$MANAGED_AGENT_FILE_MARKER" "$target"
-}
-
-remove_custom_agent_target() {
-  local target="$1"
-
-  if [[ -L "$target" ]]; then
-    rm -f "$target"
-    REMOVED_TARGETS+=("$target")
-    ok "  removed $(basename "$target")"
-    return
-  fi
-
-  if custom_agent_file_is_managed "$target"; then
-    rm -f "$target"
-    REMOVED_TARGETS+=("$target")
-    ok "  removed $(basename "$target")"
-    return
-  fi
-
-  if [[ -e "$target" ]]; then
-    SKIPPED_TARGETS+=("$target")
-    warn "  skipped $(basename "$target") (not managed by Skill Bill)"
-  fi
-}
-
 remove_from_agent_dir() {
   local label="$1"
   local target_dir="$2"
@@ -199,33 +153,6 @@ remove_from_agent_dir() {
   done
 
   if [[ ${#REMOVED_TARGETS[@]} -eq "$before_removed" && ${#SKIPPED_TARGETS[@]} -eq "$before_skipped" ]]; then
-    info "  nothing to remove"
-  fi
-}
-
-remove_from_custom_agent_dir() {
-  local label="$1"
-  local target_dir="$2"
-  local before_removed
-  local agent_file
-
-  if [[ ! -d "$target_dir" ]]; then
-    return 0
-  fi
-
-  before_removed=${#REMOVED_TARGETS[@]}
-
-  info "Checking $label custom agents: $target_dir"
-  for agent_file in "$target_dir"/*.agent.md; do
-    [[ -e "$agent_file" ]] || continue
-    if custom_agent_file_is_managed "$agent_file"; then
-      rm -f "$agent_file"
-      REMOVED_TARGETS+=("$agent_file")
-      ok "  removed $(basename "$agent_file")"
-    fi
-  done
-
-  if [[ ${#REMOVED_TARGETS[@]} -eq "$before_removed" ]]; then
     info "  nothing to remove"
   fi
 }
@@ -295,7 +222,6 @@ open(path, 'w').write('\n'.join(filtered))
 }
 
 build_skill_names
-build_custom_agent_files
 build_legacy_skill_names
 
 echo ""
@@ -304,7 +230,6 @@ echo ""
 info "Removing Skill Bill installs from supported agent paths."
 
 remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
-remove_from_custom_agent_dir "copilot" "$HOME/.copilot/agents"
 remove_from_agent_dir "claude" "$HOME/.claude/commands"
 remove_from_agent_dir "glm" "$HOME/.glm/commands"
 remove_from_agent_dir "codex" "$HOME/.codex/skills"

@@ -10,7 +10,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = ROOT / "install.sh"
 UNINSTALL_SCRIPT = ROOT / "uninstall.sh"
-COPILOT_AGENT_TEMPLATES_DIR = ROOT / ".github" / "agents"
 
 
 class UninstallScriptTest(unittest.TestCase):
@@ -19,7 +18,7 @@ class UninstallScriptTest(unittest.TestCase):
   def test_uninstall_removes_skill_symlinks_from_supported_agents(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot, claude\nPHP\n")
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot, claude\ncopilot\nPHP\n")
       self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").is_symlink())
       self.assertTrue((Path(temp_home) / ".claude" / "commands" / "bill-code-review").is_symlink())
@@ -31,21 +30,17 @@ class UninstallScriptTest(unittest.TestCase):
       self.assertFalse((Path(temp_home) / ".claude" / "commands" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
 
-  def test_uninstall_removes_copilot_custom_agents(self) -> None:
+  def test_uninstall_removes_generated_alias_installs(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nPHP\n")
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nPHP\nacme\n")
       self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
-
-      agents_dir = Path(temp_home) / ".copilot" / "agents"
-      for agent_file in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-        self.assertTrue((agents_dir / agent_file.name).exists(), agent_file.name)
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").is_dir())
 
       uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
       self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
-
-      for agent_file in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-        self.assertFalse((agents_dir / agent_file.name).exists(), agent_file.name)
+      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").exists())
+      self.assertIn("Removed installs:", uninstall.stdout)
 
   def test_uninstall_removes_legacy_skill_symlinks_and_is_idempotent(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -66,7 +61,6 @@ class UninstallScriptTest(unittest.TestCase):
   def prepare_agent_homes(self, temp_home: str) -> None:
     for relative_dir in (
       ".copilot/skills",
-      ".copilot/agents",
       ".claude/commands",
       ".glm/commands",
       ".codex/skills",

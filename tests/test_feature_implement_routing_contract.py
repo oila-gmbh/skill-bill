@@ -258,7 +258,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       CODE_REVIEW,
     )
     self.assertIn(
-      "If the routed skill selects `inline`, read the routed skill's `SKILL.md` as the primary rubric and its `review-orchestrator.md` for the shared report structure and finding format",
+      "If the routed skill selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection",
       CODE_REVIEW,
     )
     self.assertIn(
@@ -299,7 +299,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertIn("Call the `import_review` MCP tool:", skill_text)
         self.assertIn("## Auto-Triage", skill_text)
         self.assertIn("Call the `triage_findings` MCP tool:", skill_text)
-        self.assertIn("When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.", skill_text)
+        self.assertIn("Skip auto-triage when the review produced no findings.", skill_text)
         self.assertIn("Execution mode: inline | delegated", skill_text)
         self.assertIn("Use `inline` only", skill_text)
         self.assertIn("If execution mode is `delegated`", skill_text)

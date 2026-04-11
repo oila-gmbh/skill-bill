@@ -2,7 +2,7 @@
 
 Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
 
-sKill Bill is a portable collection of 50 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, PHP backends, Go backends/services, and governed skill/agent-config repositories.
+sKill Bill is a portable collection of 48 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, PHP backends, Go backends/services, and governed skill/agent-config repositories.
 
 ## Why this exists
 
@@ -109,12 +109,12 @@ Skill Bill records review acceptance metrics locally in SQLite and can optionall
 
 | Agent | Install path |
 |-------|--------------|
-| GitHub Copilot | `~/.copilot/skills/` and `~/.copilot/agents/` |
+| GitHub Copilot | `~/.copilot/skills/` |
 | Claude Code | `~/.claude/commands/` |
 | GLM | `~/.glm/commands/` |
 | OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
 
-The installer links all selected agents to the same repo so updates stay in sync. Copilot keeps the portable skill install plus an additive custom-agent layer sourced from `.github/agents/`.
+The installer links all selected agents to the same repo so updates stay in sync.
 
 ## Installation
 
@@ -162,9 +162,19 @@ Example platform selections:
 6
 ```
 
+Finally, the installer asks for the **user-facing command prefix**. Press Enter to keep the default `bill` prefix, or enter your own team/org prefix:
+
+```text
+bill
+acme
+platform
+```
+
+Canonical in-repo skill names stay `bill-*`. A custom prefix changes only the installed command names (for example `acme-code-review`) and rewrites installed skill references so routed workflows still resolve under that namespace.
+
 Each installer run replaces the existing Skill Bill installs and reinstalls only the agent and platform selections from that run.
 
-For Copilot installs, Skill Bill also installs managed custom agents into `~/.copilot/agents/` from the repo-owned templates in `.github/agents/`. The feature-implement agent orchestrates a full pipeline — planning, implementation, code review, fix resolution, quality check, and finalization — by delegating each stage to a dedicated sub-agent with isolated context, using Copilot's native agent-spawning capability without changing the portable skill model used by other agent targets.
+The installer always removes existing Skill Bill installs before reinstalling the selected agents and platforms. The default `bill` prefix keeps the current symlink-based install behavior. Custom prefixes install generated alias copies, so re-run `./install.sh` after editing skills in the repo.
 
 ## Uninstallation
 
@@ -175,7 +185,7 @@ chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-The uninstaller is idempotent. It removes current Skill Bill installs, generated alias installs, managed Copilot custom agents, and known legacy install names when they are present, and skips unrelated non-symlink paths.
+The uninstaller is idempotent. It removes current Skill Bill installs, generated alias installs, and known legacy install names when they are present, and skips unrelated non-symlink paths.
 
 ## Skills Included
 
@@ -217,13 +227,11 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 | `/bill-go-code-review-performance` | Go performance review |
 | `/bill-go-code-review-testing` | Go test quality review |
 
-### Feature Lifecycle (6 skills)
+### Feature Lifecycle (4 skills)
 
 | Skill | Purpose |
 |-------|---------|
 | `/bill-feature-implement` | Spec-to-verified implementation workflow |
-| `/bill-feature-implement-agentic` | Runtime-agnostic orchestrator with subagent delegation |
-| `/bill-feature-implement-copilot` | Copilot-optimized orchestrator with sub-agent delegation |
 | `/bill-feature-verify` | Verify a PR against a task spec |
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |

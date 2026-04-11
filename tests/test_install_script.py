@@ -13,13 +13,24 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = ROOT / "install.sh"
 SKILLS_DIR = ROOT / "skills"
-COPILOT_AGENT_TEMPLATES_DIR = ROOT / ".github" / "agents"
 
 
 def skill_names(package_name: str) -> set[str]:
   return {
     skill_file.parent.name
     for skill_file in (SKILLS_DIR / package_name).glob("*/SKILL.md")
+  }
+
+
+def alias_skill_names(skills: set[str], prefix: str) -> set[str]:
+  if prefix == "bill":
+    return set(skills)
+
+  return {
+    f"{prefix}-{skill.removeprefix('bill-')}"
+    if skill.startswith("bill-")
+    else skill
+    for skill in skills
   }
 
 
@@ -30,62 +41,6 @@ KMP_SKILLS = skill_names("kmp")
 PHP_SKILLS = skill_names("php")
 GO_SKILLS = skill_names("go")
 AGENT_CONFIG_SKILLS = skill_names("agent-config")
-COPILOT_AGENT_FILES = {path.name for path in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md")}
-
-READONLY_AGENTS = {"bill-plan"}
-READONLY_FORBIDDEN_TOOLS = {"edit", "execute"}
-
-
-def parse_agent_frontmatter(path: Path) -> dict[str, str]:
-  text = path.read_text(encoding="utf-8")
-  if not text.startswith("---\n"):
-    return {}
-  end = text.index("\n---\n", 4)
-  block = text[4:end]
-  values: dict[str, str] = {}
-  for line in block.splitlines():
-    if ":" not in line:
-      continue
-    key, value = line.split(":", 1)
-    values[key.strip()] = value.strip()
-  return values
-
-
-class CopilotAgentTemplateTest(unittest.TestCase):
-  maxDiff = None
-
-  def test_every_agent_template_has_required_frontmatter_fields(self) -> None:
-    for path in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-      fm = parse_agent_frontmatter(path)
-      self.assertIn("name", fm, f"{path.name}: missing name")
-      self.assertIn("description", fm, f"{path.name}: missing description")
-      self.assertIn("tools", fm, f"{path.name}: missing tools")
-
-  def test_agent_cross_references_point_to_existing_templates(self) -> None:
-    known_names = set()
-    for path in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-      fm = parse_agent_frontmatter(path)
-      known_names.add(fm.get("name", ""))
-
-    for path in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-      fm = parse_agent_frontmatter(path)
-      agents_field = fm.get("agents", "")
-      if not agents_field:
-        continue
-      for ref in agents_field.strip("[]").replace('"', "").split(","):
-        ref = ref.strip()
-        if ref:
-          self.assertIn(ref, known_names, f"{path.name}: references unknown agent '{ref}'")
-
-  def test_readonly_agents_do_not_have_edit_or_execute_tools(self) -> None:
-    for path in COPILOT_AGENT_TEMPLATES_DIR.glob("*.agent.md"):
-      fm = parse_agent_frontmatter(path)
-      name = fm.get("name", "")
-      if name not in READONLY_AGENTS:
-        continue
-      tools = fm.get("tools", "")
-      for forbidden in READONLY_FORBIDDEN_TOOLS:
-        self.assertNotIn(forbidden, tools, f"{path.name}: read-only agent has '{forbidden}' tool")
 
 
 class InstallScriptTest(unittest.TestCase):
@@ -100,6 +55,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertNotIn("Choose the primary agent:", result.stdout)
       self.assertNotIn("Primary:", result.stdout)
       self.assertNotIn("via copilot", result.stdout)
+      self.assertIn("Choose the user-facing skill prefix.", result.stdout)
 
       for relative_path in (
         ".copilot/skills/bill-code-review",
@@ -118,6 +74,7 @@ class InstallScriptTest(unittest.TestCase):
       self.assertIn("Available optional platforms:", result.stdout)
       self.assertIn("Base skills and Agent config skills are always installed.", result.stdout)
       self.assertIn("Choose one or more optional platform numbers (comma-separated).", result.stdout)
+      self.assertIn("Command prefix: bill-", result.stdout)
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
@@ -144,34 +101,24 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
 
-  def test_installs_copilot_custom_agents_from_repo_templates(self) -> None:
+  def test_installs_custom_prefix_aliases_and_rewrites_skill_names(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n")
+      result = self.run_installer(temp_home, "copilot\nPHP\nacme\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertIn("Installing Copilot custom agents:", result.stdout)
+      self.assertIn("Command prefix: acme-", result.stdout)
+      self.assertIn("Custom prefixes install generated alias copies.", result.stdout)
 
-      installed_agents = self.installed_custom_agents(temp_home)
-      self.assertEqual(installed_agents, COPILOT_AGENT_FILES)
+      installed = self.installed_skills(temp_home)
+      self.assertEqual(installed, alias_skill_names(BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS, "acme"))
+      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "bill-code-review").exists())
 
-      for agent_file in COPILOT_AGENT_FILES:
-        installed_agent = Path(temp_home) / ".copilot" / "agents" / agent_file
-        self.assertTrue(installed_agent.is_file(), agent_file)
-        self.assertFalse(installed_agent.is_symlink(), agent_file)
-
-      agent_text = (Path(temp_home) / ".copilot" / "agents" / "bill-quality-check.agent.md").read_text(encoding="utf-8")
-      self.assertIn("name: bill-quality-check", agent_text)
-      self.assertIn("<!-- managed_by=skill-bill-agent -->", agent_text)
-
-  def test_all_installed_skills_are_symlinks(self) -> None:
-    with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n")
-      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-      install_dir = Path(temp_home) / ".copilot" / "skills"
-      for path in install_dir.iterdir():
-        if path.name.startswith("."):
-          continue
-        self.assertTrue(path.is_symlink(), f"{path.name} should be a symlink")
+      installed_skill = Path(temp_home) / ".copilot" / "skills" / "acme-code-review"
+      self.assertTrue(installed_skill.is_dir())
+      self.assertTrue((installed_skill / ".skill-bill-install").exists())
+      skill_text = (installed_skill / "SKILL.md").read_text(encoding="utf-8")
+      self.assertIn("name: acme-code-review", skill_text)
+      self.assertIn("delegate to `acme-php-code-review`.", skill_text)
+      self.assertNotIn("name: bill-code-review", skill_text)
 
   def test_accepts_numeric_multi_platform_selection(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -232,7 +179,23 @@ class InstallScriptTest(unittest.TestCase):
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | AGENT_CONFIG_SKILLS)
 
-  def test_rerun_replaces_existing_skill_directory_and_restores_symlinks(self) -> None:
+  def test_rerun_replaces_previous_custom_prefix_aliases(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      first = self.run_installer(temp_home, "copilot\nPHP\nacme\n")
+      self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+      second = self.run_installer(temp_home, "copilot\nPHP\nplatform\n")
+      self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+
+      install_dir = Path(temp_home) / ".copilot" / "skills"
+      self.assertFalse((install_dir / "acme-code-review").exists())
+      self.assertTrue((install_dir / "platform-code-review").exists())
+      self.assertEqual(
+        self.installed_skills(temp_home),
+        alias_skill_names(BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS, "platform"),
+      )
+
+  def test_rerun_replaces_existing_skill_directory_and_restores_sidecars(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       first = self.run_installer(temp_home, "copilot\nPHP\n")
       self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
@@ -269,7 +232,7 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installer_supports_telemetry_opt_out_without_creating_state(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n3\n")
+      result = self.run_installer(temp_home, "copilot\nPHP\n\n3\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       state_dir = Path(temp_home) / ".skill-bill"
@@ -344,7 +307,7 @@ class InstallScriptTest(unittest.TestCase):
 
       result = self.run_installer(
         temp_home,
-        "copilot\nPHP\n3\n",
+        "copilot\nPHP\n\n3\n",
         extra_env={
           "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
           "SKILL_BILL_REVIEW_DB": str(custom_db_path),
@@ -363,7 +326,7 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installer_supports_full_telemetry_level(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nPHP\n2\n")
+      result = self.run_installer(temp_home, "copilot\nPHP\n\n2\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       config = self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")
@@ -397,16 +360,9 @@ class InstallScriptTest(unittest.TestCase):
       return set()
     return {path.name for path in install_dir.iterdir() if not path.name.startswith(".")}
 
-  def installed_custom_agents(self, temp_home: str) -> set[str]:
-    install_dir = Path(temp_home) / ".copilot" / "agents"
-    if not install_dir.exists():
-      return set()
-    return {path.name for path in install_dir.iterdir() if path.name.endswith(".agent.md")}
-
   def prepare_agent_homes(self, temp_home: str) -> None:
     for relative_dir in (
       ".copilot",
-      ".copilot/agents",
       ".claude",
       ".glm",
       ".codex",

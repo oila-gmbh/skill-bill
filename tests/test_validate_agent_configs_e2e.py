@@ -485,7 +485,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.
+      Skip auto-triage when the review produced no findings.
       | Signal | Agent to spawn |
       | --- | --- |
       | fixture | `bill-php-code-review-security` |
@@ -543,7 +543,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.
+      Skip auto-triage when the review produced no findings.
       Specialist review fixture content.
       """
     )
@@ -599,7 +599,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      When the review produced no findings, call `triage_findings` with an empty decisions list to close the review lifecycle.
+      Skip auto-triage when the review produced no findings.
       Specialist review fixture content.
       """
     )
