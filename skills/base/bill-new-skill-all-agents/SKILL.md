@@ -1,6 +1,6 @@
 ---
 name: bill-new-skill-all-agents
-description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex). Use when user mentions create skill, new skill, add skill, or sync skill to agents.
+description: Use when creating a new skill and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex, Opencode). Use when user mentions create skill, new skill, add skill, or sync skill to agents.
 ---
 
 ## Project Overrides
@@ -38,10 +38,11 @@ When asked to create a new skill, follow this workflow:
    - If the package is unclear, ask once before creating files
 
 2. Known agents and their paths:
-   - copilot: `$HOME/.copilot/skills`
-   - claude: `$HOME/.claude/commands`
-   - glm: `$HOME/.glm/commands`
-   - codex: prefer `$HOME/.codex/skills`, fallback to `$HOME/.agents/skills`
+    - copilot: `$HOME/.copilot/skills`
+    - claude: `$HOME/.claude/commands`
+    - glm: `$HOME/.glm/commands`
+    - codex: prefer `$HOME/.codex/skills`, fallback to `$HOME/.agents/skills`
+    - opencode: `$HOME/.config/opencode/skills`
 
 3. Normalize the skill name to a slug:
    - lowercase
