@@ -15,12 +15,20 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from skill_repo_contracts import (  # noqa: E402
   APPLIED_LEARNINGS_PLACEHOLDER,
+  CHILD_METADATA_HANDOFF_RULE,
+  CHILD_NO_IMPORT_RULE,
+  CHILD_NO_TRIAGE_RULE,
+  NO_FINDINGS_TRIAGE_RULE,
+  PARENT_IMPORT_RULE,
+  PARENT_TRIAGE_RULE,
   REVIEW_RUN_ID_FORMAT,
   REVIEW_RUN_ID_PLACEHOLDER,
   REVIEW_SESSION_ID_FORMAT,
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
   RUNTIME_SUPPORTING_FILES,
+  TELEMETRY_OWNERSHIP_HEADING,
+  TRIAGE_OWNERSHIP_HEADING,
   supporting_file_targets,
 )
 
@@ -194,7 +202,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("portable review skills must expose", result.stdout)
       self.assertIn("review orchestration contract must expose", result.stdout)
 
-  def test_rejects_portable_review_skill_without_inline_lifecycle_handoff(self) -> None:
+  def test_rejects_portable_review_skill_without_parent_owned_telemetry_handoff(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
@@ -208,8 +216,25 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("portable review skills must define the inline auto-import section", result.stdout)
-      self.assertIn("portable review skills must describe the triage_findings lifecycle handoff", result.stdout)
+      self.assertIn("portable review skills must define the telemetry ownership section", result.stdout)
+      self.assertIn("portable review skills must describe the parent-owned triage_findings handoff", result.stdout)
+
+  def test_rejects_portable_review_skill_without_heading_based_telemetry_sections(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("go", "bill-go-code-review"),
+      ],
+      skill_contents={
+        "bill-go-code-review": self.portable_review_fixture_with_plaintext_telemetry_sections(
+          "bill-go-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("portable review skills must define the telemetry ownership section as a markdown heading", result.stdout)
+      self.assertIn("portable review skills must define the triage ownership section as a markdown heading", result.stdout)
 
   def test_rejects_review_orchestrator_without_machine_readable_finding_contract(self) -> None:
     with self.fixture_repo(
@@ -221,6 +246,16 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("review orchestration contract must expose", result.stdout)
       self.assertIn(REVIEW_SESSION_ID_PLACEHOLDER, result.stdout)
       self.assertIn("review orchestration contract must define machine-readable findings", result.stdout)
+
+  def test_rejects_review_orchestrator_without_heading_based_telemetry_sections(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-code-review")],
+      review_orchestrator_uses_heading_sections=False,
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("review orchestration contract must define the telemetry ownership section as a markdown heading", result.stdout)
+      self.assertIn("review orchestration contract must define the triage ownership section as a markdown heading", result.stdout)
 
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -238,6 +273,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     skill_contents: dict[str, str] | None = None,
     review_orchestrator_has_telemetry: bool = True,
     review_orchestrator_has_applied_learnings: bool = True,
+    review_orchestrator_uses_heading_sections: bool = True,
   ):
     with tempfile.TemporaryDirectory() as temp_dir:
       repo_root = Path(temp_dir)
@@ -249,6 +285,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         repo_root,
         include_telemetry=review_orchestrator_has_telemetry,
         include_applied_learnings=review_orchestrator_has_applied_learnings,
+        use_heading_sections=review_orchestrator_uses_heading_sections,
       )
       self.write_review_delegation_playbook(repo_root)
 
@@ -335,6 +372,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     *,
     include_telemetry: bool = True,
     include_applied_learnings: bool = True,
+    use_heading_sections: bool = True,
   ) -> None:
     path = repo_root / "orchestration" / "review-orchestrator" / "PLAYBOOK.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -358,11 +396,24 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         + f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.\n"
         + f"\n{REVIEW_RUN_ID_PLACEHOLDER}\n"
         + f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.\n"
-      )
+    )
     if include_applied_learnings:
       playbook = playbook + f"{APPLIED_LEARNINGS_PLACEHOLDER}\n"
     if include_telemetry:
-      playbook = playbook + f"{RISK_REGISTER_FINDING_FORMAT}\n"
+      telemetry_heading = f"## {TELEMETRY_OWNERSHIP_HEADING}" if use_heading_sections else TELEMETRY_OWNERSHIP_HEADING
+      triage_heading = f"## {TRIAGE_OWNERSHIP_HEADING}" if use_heading_sections else TRIAGE_OWNERSHIP_HEADING
+      playbook = (
+        playbook
+        + f"{RISK_REGISTER_FINDING_FORMAT}\n"
+        + f"{telemetry_heading}\n"
+        + f"{PARENT_IMPORT_RULE}\n"
+        + f"{CHILD_NO_IMPORT_RULE}\n"
+        + f"{CHILD_METADATA_HANDOFF_RULE}\n"
+        + f"{triage_heading}\n"
+        + f"{PARENT_TRIAGE_RULE}\n"
+        + f"{CHILD_NO_TRIAGE_RULE}\n"
+        + f"{NO_FINDINGS_TRIAGE_RULE}\n"
+      )
     path.write_text(playbook, encoding="utf-8")
 
   def write_review_delegation_playbook(self, repo_root: Path) -> None:
@@ -474,18 +525,21 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
-      ## Auto-Import
+      ## Telemetry Ownership
 
-      Call the `import_review` MCP tool:
+      {CHILD_NO_IMPORT_RULE}
+      {CHILD_METADATA_HANDOFF_RULE}
+      {PARENT_IMPORT_RULE}
       - `review_text`: the complete review output (Section 1 through Section 4)
 
-      ## Auto-Triage
+      ## Triage Ownership
 
-      Call the `triage_findings` MCP tool:
+      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
+      {PARENT_TRIAGE_RULE}
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      Skip auto-triage when the review produced no findings.
+      {NO_FINDINGS_TRIAGE_RULE}
       | Signal | Agent to spawn |
       | --- | --- |
       | fixture | `bill-go-code-review-security` |
@@ -532,18 +586,21 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {APPLIED_LEARNINGS_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
-      ## Auto-Import
+      ## Telemetry Ownership
 
-      Call the `import_review` MCP tool:
+      {CHILD_NO_IMPORT_RULE}
+      {CHILD_METADATA_HANDOFF_RULE}
+      {PARENT_IMPORT_RULE}
       - `review_text`: the complete review output (Section 1 through Section 4)
 
-      ## Auto-Triage
+      ## Triage Ownership
 
-      Call the `triage_findings` MCP tool:
+      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
+      {PARENT_TRIAGE_RULE}
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      Skip auto-triage when the review produced no findings.
+      {NO_FINDINGS_TRIAGE_RULE}
       Specialist review fixture content.
       """
     )
@@ -588,18 +645,21 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_RUN_ID_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
-      ## Auto-Import
+      ## Telemetry Ownership
 
-      Call the `import_review` MCP tool:
+      {CHILD_NO_IMPORT_RULE}
+      {CHILD_METADATA_HANDOFF_RULE}
+      {PARENT_IMPORT_RULE}
       - `review_text`: the complete review output (Section 1 through Section 4)
 
-      ## Auto-Triage
+      ## Triage Ownership
 
-      Call the `triage_findings` MCP tool:
+      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
+      {PARENT_TRIAGE_RULE}
       - `review_run_id`: the review run ID from the review output
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
-      Skip auto-triage when the review produced no findings.
+      {NO_FINDINGS_TRIAGE_RULE}
       Specialist review fixture content.
       """
     )
@@ -609,7 +669,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       f"""\
       ---
       name: {skill_name}
-      description: Fixture review skill missing inline lifecycle handoff.
+      description: Fixture review skill missing parent-owned telemetry handoff.
       ---
 
       # {skill_name}
@@ -623,6 +683,44 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {APPLIED_LEARNINGS_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
+      Specialist review fixture content.
+      """
+    )
+
+  def portable_review_fixture_with_plaintext_telemetry_sections(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill with plain-text telemetry labels instead of markdown headings.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      {TELEMETRY_OWNERSHIP_HEADING}
+
+      {CHILD_NO_IMPORT_RULE}
+      {CHILD_METADATA_HANDOFF_RULE}
+      {PARENT_IMPORT_RULE}
+      - `review_text`: the complete review output (Section 1 through Section 4)
+
+      {TRIAGE_OWNERSHIP_HEADING}
+
+      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
+      {PARENT_TRIAGE_RULE}
+      - `review_run_id`: the review run ID from the review output
+      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+
+      {NO_FINDINGS_TRIAGE_RULE}
       Specialist review fixture content.
       """
     )

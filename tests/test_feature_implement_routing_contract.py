@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 import unittest
 
@@ -10,6 +11,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from skill_repo_contracts import (  # noqa: E402
   APPLIED_LEARNINGS_PLACEHOLDER,
+  CHILD_METADATA_HANDOFF_RULE,
+  CHILD_NO_IMPORT_RULE,
+  CHILD_NO_TRIAGE_RULE,
+  NO_FINDINGS_TRIAGE_RULE,
+  PARENT_IMPORT_RULE,
+  PARENT_TRIAGE_RULE,
   PORTABLE_REVIEW_SKILLS,
   REVIEW_DELEGATION_REQUIRED_SECTIONS,
   REVIEW_RUN_ID_FORMAT,
@@ -18,6 +25,8 @@ from skill_repo_contracts import (  # noqa: E402
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
   RUNTIME_SUPPORTING_FILES,
+  TELEMETRY_OWNERSHIP_HEADING,
+  TRIAGE_OWNERSHIP_HEADING,
   supporting_file_targets,
   skills_requiring_supporting_file,
 )
@@ -63,6 +72,24 @@ def sidecar_paths(file_name: str) -> dict[str, Path]:
   }
 
 
+def markdown_heading_pattern(heading: str) -> re.Pattern[str]:
+  return re.compile(rf"^#{{2,6}} {re.escape(heading)}$", re.MULTILINE)
+
+
+def extract_level_two_section(text: str, heading: str) -> str:
+  match = re.search(
+    rf"(?ms)^## {re.escape(heading)}\n.*?(?=^## |\Z)",
+    text,
+  )
+  if not match:
+    raise AssertionError(f"Missing level-two section '{heading}'")
+  return match.group(0).strip()
+
+
+def read_specialist_contract(skill_name: str) -> str:
+  return (find_skill_dir(skill_name) / "specialist-contract.md").read_text(encoding="utf-8")
+
+
 class FeatureImplementRoutingContractTest(unittest.TestCase):
   def test_shared_router_skills_reference_local_stack_routing_sidecars(self) -> None:
     self.assertIn("[stack-routing.md](stack-routing.md)", CODE_REVIEW)
@@ -99,11 +126,22 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Prefer more specific scopes in this order: `skill`, `repo`, `global`", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("reuse it instead of generating a new one", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn(RISK_REGISTER_FINDING_FORMAT, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertRegex(REVIEW_ORCHESTRATOR_PLAYBOOK, markdown_heading_pattern(TELEMETRY_OWNERSHIP_HEADING))
+    self.assertIn("The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(CHILD_NO_IMPORT_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(CHILD_METADATA_HANDOFF_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(PARENT_IMPORT_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertRegex(REVIEW_ORCHESTRATOR_PLAYBOOK, markdown_heading_pattern(TRIAGE_OWNERSHIP_HEADING))
+    self.assertIn(CHILD_NO_TRIAGE_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(PARENT_TRIAGE_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(NO_FINDINGS_TRIAGE_RULE, REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("The parent review owns only the delegated workers it launched itself.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Track delegated workers by the ids returned when they are launched.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("the current `review_session_id` and `review_run_id` when they already exist", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("any applicable active learnings when they are available", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Do not use `list_agents` to discover delegated workers during normal review execution.", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("Delegated workers must not call those telemetry tools themselves.", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("return structured review output plus telemetry-relevant metadata to the parent", REVIEW_DELEGATION_PLAYBOOK)
     for section in REVIEW_DELEGATION_REQUIRED_SECTIONS:
       self.assertIn(section, REVIEW_DELEGATION_PLAYBOOK)
 
@@ -249,6 +287,14 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       "If delegated review is required for the current scope and the runtime lacks a documented delegation path or cannot start the required worker(s), stop and report that delegated review is required for this scope but unavailable on the current runtime",
       CODE_REVIEW,
     )
+    self.assertRegex(CODE_REVIEW, markdown_heading_pattern(TELEMETRY_OWNERSHIP_HEADING))
+    self.assertIn(PARENT_IMPORT_RULE, CODE_REVIEW)
+    self.assertIn(CHILD_NO_IMPORT_RULE, CODE_REVIEW)
+    self.assertIn(CHILD_METADATA_HANDOFF_RULE, CODE_REVIEW)
+    self.assertRegex(CODE_REVIEW, markdown_heading_pattern(TRIAGE_OWNERSHIP_HEADING))
+    self.assertIn(PARENT_TRIAGE_RULE, CODE_REVIEW)
+    self.assertIn(CHILD_NO_TRIAGE_RULE, CODE_REVIEW)
+    self.assertIn(NO_FINDINGS_TRIAGE_RULE, CODE_REVIEW)
 
   def test_stack_review_skills_define_adaptive_execution_modes(self) -> None:
     forbidden_phrases = (
@@ -279,11 +325,14 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         )
         self.assertIn(REVIEW_RUN_ID_PLACEHOLDER, skill_text)
         self.assertIn(APPLIED_LEARNINGS_PLACEHOLDER, skill_text)
-        self.assertIn("## Auto-Import", skill_text)
-        self.assertIn("Call the `import_review` MCP tool:", skill_text)
-        self.assertIn("## Auto-Triage", skill_text)
-        self.assertIn("Call the `triage_findings` MCP tool:", skill_text)
-        self.assertIn("Skip auto-triage when the review produced no findings.", skill_text)
+        self.assertRegex(skill_text, markdown_heading_pattern(TELEMETRY_OWNERSHIP_HEADING))
+        self.assertIn(PARENT_IMPORT_RULE, skill_text)
+        self.assertIn(CHILD_NO_IMPORT_RULE, skill_text)
+        self.assertIn(CHILD_METADATA_HANDOFF_RULE, skill_text)
+        self.assertRegex(skill_text, markdown_heading_pattern(TRIAGE_OWNERSHIP_HEADING))
+        self.assertIn(PARENT_TRIAGE_RULE, skill_text)
+        self.assertIn(CHILD_NO_TRIAGE_RULE, skill_text)
+        self.assertIn(NO_FINDINGS_TRIAGE_RULE, skill_text)
         self.assertIn("Execution mode: inline | delegated", skill_text)
         self.assertIn("Use `inline` only", skill_text)
         self.assertIn("If execution mode is `delegated`", skill_text)
@@ -307,6 +356,29 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-delegation" / "PLAYBOOK.md")
+
+  def test_specialist_contracts_match_orchestrator_subset(self) -> None:
+    expected = "\n\n".join(
+      (
+        extract_level_two_section(REVIEW_ORCHESTRATOR_PLAYBOOK, "Shared Contract For Every Specialist"),
+        extract_level_two_section(REVIEW_ORCHESTRATOR_PLAYBOOK, "Shared Report Structure"),
+      )
+    )
+
+    for skill_name in PORTABLE_REVIEW_SKILL_TEXTS:
+      with self.subTest(skill=skill_name):
+        specialist_text = read_specialist_contract(skill_name)
+        actual = "\n\n".join(
+          (
+            extract_level_two_section(specialist_text, "Shared Contract For Every Specialist"),
+            extract_level_two_section(specialist_text, "Shared Report Structure"),
+          )
+        )
+        self.assertEqual(expected, actual)
+        self.assertNotIn("## Shared Scope Contract", specialist_text)
+        self.assertNotIn("## Shared Execution Mode Contract", specialist_text)
+        self.assertNotIn("## Shared Learnings Context", specialist_text)
+        self.assertNotIn("## Shared Delegation Contract", specialist_text)
 
 
 if __name__ == "__main__":

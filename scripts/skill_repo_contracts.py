@@ -46,6 +46,27 @@ REVIEW_SESSION_ID_PLACEHOLDER = "Review session ID: <review-session-id>"
 REVIEW_SESSION_ID_FORMAT = "rvs-<uuid4>"
 APPLIED_LEARNINGS_PLACEHOLDER = "Applied learnings: none | <learning references>"
 RISK_REGISTER_FINDING_FORMAT = "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
+TELEMETRY_OWNERSHIP_HEADING = "Telemetry Ownership"
+TRIAGE_OWNERSHIP_HEADING = "Triage Ownership"
+PARENT_IMPORT_RULE = (
+  "If this review owns the final merged review output for the current review lifecycle, call the "
+  "`import_review` MCP tool:"
+)
+CHILD_NO_IMPORT_RULE = (
+  "If this review is delegated or layered under another review, do not call `import_review`."
+)
+CHILD_METADATA_HANDOFF_RULE = (
+  "Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, "
+  "detected scope/stack, execution mode, specialist reviews) to the parent review instead."
+)
+PARENT_TRIAGE_RULE = (
+  "If this review owns the final merged review output for the current review lifecycle and the user "
+  "responds to findings, call the `triage_findings` MCP tool:"
+)
+CHILD_NO_TRIAGE_RULE = (
+  "If this review is delegated or layered under another review, do not call `triage_findings`;"
+)
+NO_FINDINGS_TRIAGE_RULE = "Skip triage recording when the final parent-owned review produced no findings."
 
 
 def skills_requiring_supporting_file(file_name: str) -> tuple[str, ...]:

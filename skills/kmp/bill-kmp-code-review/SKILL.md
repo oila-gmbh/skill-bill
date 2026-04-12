@@ -164,16 +164,19 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
-### Auto-Import
+### Telemetry Ownership
 
-After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
+The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.
 
-Call the `import_review` MCP tool:
-- `review_text`: the complete review output (Section 1 through Section 4)
+- If this review is delegated or layered under another review, do not call `import_review`. Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, detected scope/stack, execution mode, specialist reviews) to the parent review instead.
+- If this review owns the final merged review output for the current review lifecycle, call the `import_review` MCP tool:
+  - `review_text`: the complete review output (Section 1 through Section 4)
 
-### Auto-Triage
+### Triage Ownership
 
-After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the telemetry event fires.
+The same parent review owns triage recording after the user responds to findings.
+
+- If this review is delegated or layered under another review, do not call `triage_findings`; the parent review owns triage handoff and telemetry completion.
 
 Each finding gets one decision using its position number from the risk register:
 - `fix` — the finding was accepted and the fix was applied
@@ -181,12 +184,12 @@ Each finding gets one decision using its position number from the risk register:
 - `skip` — the finding was intentionally skipped (append a reason after ` - `)
 - `false_positive` — the finding was incorrect
 
-Call the `triage_findings` MCP tool:
-- `review_run_id`: the review run ID from the review output
-- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
+- If this review owns the final merged review output for the current review lifecycle and the user responds to findings, call the `triage_findings` MCP tool:
+  - `review_run_id`: the review run ID from the review output
+  - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+  - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
-Skip auto-triage when the review produced no findings.
+Skip triage recording when the final parent-owned review produced no findings.
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 

@@ -69,9 +69,9 @@ Section 1 summary must include `Detected review scope: <staged changes / unstage
 Section 1 summary must include `Execution mode: inline | delegated`.
 Section 1 summary must include `Applied learnings: none | <learning references>`.
 
-Generate one review session id per top-level review using the format `rvs-<uuid4>` (e.g. `rvs-550e8400-e29b-41d4-a716-446655440000`). If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, follow-up telemetry, and any learnings-resolution workflow for the current review lifecycle.
+Generate one review session id per top-level review using the format `rvs-<uuid4>` (e.g. `rvs-550e8400-e29b-41d4-a716-446655440000`). If a parent reviewer already passed a `review_session_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same session id across the summary, parent-review handoff, and any learnings-resolution workflow for the current review lifecycle.
 
-Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvw-20260405-143022-b2e1`). If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any follow-up feedback workflow for the current review output.
+Generate one review run id per concrete review output using the format `rvw-YYYYMMDD-HHMMSS-XXXX` where `XXXX` is a random 4-character alphanumeric suffix for uniqueness (e.g. `rvw-20260405-143022-b2e1`). If a parent reviewer already passed a `review_run_id` into a delegated or layered review, reuse it instead of generating a new one. Reuse that same run id across the summary, the risk register, and any parent-review handoff or follow-up feedback workflow for the current review output.
 
 After Section 1 in a stack-specific review skill, use:
 
@@ -92,16 +92,19 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
 
-## Auto-Import
+## Telemetry Ownership
 
-After producing the final review output, automatically import it into the local telemetry store so the review run and findings are recorded without manual intervention.
+The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.
 
-Call the `import_review` MCP tool:
-- `review_text`: the complete review output (Section 1 through Section 4)
+- If this review is delegated or layered under another review, do not call `import_review`. Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, detected scope/stack, execution mode, specialist reviews) to the parent review instead.
+- If this review owns the final merged review output for the current review lifecycle, call the `import_review` MCP tool:
+  - `review_text`: the complete review output (Section 1 through Section 4)
 
-## Auto-Triage
+## Triage Ownership
 
-After the user responds to the review findings and the agent has acted on each decision (applied fixes, skipped findings, etc.), record the triage decisions so the review lifecycle can complete and the finished telemetry event can fire.
+The same parent review owns triage recording after the user responds to findings so the review lifecycle can complete and the finished telemetry event can fire.
+
+- If this review is delegated or layered under another review, do not call `triage_findings`; the parent review owns triage handoff and telemetry completion.
 
 Each finding gets one decision using its position number from the risk register:
 - `fix` — the finding was accepted and the fix was applied
@@ -109,12 +112,12 @@ Each finding gets one decision using its position number from the risk register:
 - `skip` — the finding was intentionally skipped (append a reason after ` - `)
 - `false_positive` — the finding was incorrect
 
-Call the `triage_findings` MCP tool:
-- `review_run_id`: the review run ID from the review output
-- `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-- fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
+- If this review owns the final merged review output for the current review lifecycle and the user responds to findings, call the `triage_findings` MCP tool:
+  - `review_run_id`: the review run ID from the review output
+  - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
+  - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
 
-Skip auto-triage when the review produced no findings.
+Skip triage recording when the final parent-owned review produced no findings.
 
 ## Specialist Contract Subset
 

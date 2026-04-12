@@ -56,6 +56,8 @@ The `triage` command maps the visible numbers back to the stable `F-001` ids int
 - `skip`, `dismiss`, or `reject` -> records `fix_rejected`
 - `false positive` -> records `false_positive`
 
+In agent-driven review flows, only the parent review that owns the final merged review output for the current review lifecycle should call `import_review` and `triage_findings`. Delegated child reviews stay telemetry-free and return their review data and metadata to that parent.
+
 You can still use the low-level command when you want direct control:
 
 ```bash

@@ -103,11 +103,11 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installs_opencode_skills_and_registers_mcp(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "opencode\nPHP\n")
+      result = self.run_installer(temp_home, "opencode\nGo\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home, relative_dir=".config/opencode/skills")
-      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
       self.assertIn("Installed agent: opencode", result.stdout)
 
       config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
@@ -121,7 +121,7 @@ class InstallScriptTest(unittest.TestCase):
       config_path.parent.mkdir(parents=True, exist_ok=True)
       config_path.write_text('{\n  // keep this user setting\n  "theme": "opencode",\n}\n', encoding="utf-8")
 
-      result = self.run_installer(temp_home, "opencode\nPHP\n")
+      result = self.run_installer(temp_home, "opencode\nGo\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       config = json.loads(config_path.read_text(encoding="utf-8"))

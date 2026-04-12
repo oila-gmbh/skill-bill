@@ -9,7 +9,13 @@ import sys
 
 from skill_repo_contracts import (
   APPLIED_LEARNINGS_PLACEHOLDER,
+  CHILD_METADATA_HANDOFF_RULE,
+  CHILD_NO_IMPORT_RULE,
+  CHILD_NO_TRIAGE_RULE,
   ORCHESTRATION_PLAYBOOKS,
+  NO_FINDINGS_TRIAGE_RULE,
+  PARENT_IMPORT_RULE,
+  PARENT_TRIAGE_RULE,
   PORTABLE_REVIEW_SKILLS,
   REVIEW_DELEGATION_REQUIRED_SECTIONS,
   REVIEW_RUN_ID_FORMAT,
@@ -18,6 +24,8 @@ from skill_repo_contracts import (
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
   RUNTIME_SUPPORTING_FILES,
+  TELEMETRY_OWNERSHIP_HEADING,
+  TRIAGE_OWNERSHIP_HEADING,
 )
 
 
@@ -77,12 +85,21 @@ NON_PORTABLE_REVIEW_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     "must use portable summary wording such as 'Specialist reviews'",
   ),
 )
-PORTABLE_REVIEW_LIFECYCLE_REQUIREMENTS: tuple[tuple[str, str], ...] = (
-  ("## Auto-Import", "portable review skills must define the inline auto-import section"),
-  ("Call the `import_review` MCP tool:", "portable review skills must describe the import_review lifecycle handoff"),
-  ("## Auto-Triage", "portable review skills must define the inline auto-triage section"),
-  ("Call the `triage_findings` MCP tool:", "portable review skills must describe the triage_findings lifecycle handoff"),
-  ("Skip auto-triage when the review produced no findings.", "portable review skills must define the no-findings auto-triage rule"),
+PORTABLE_REVIEW_TELEMETRY_REQUIREMENTS: tuple[tuple[str, str], ...] = (
+  (PARENT_IMPORT_RULE, "portable review skills must describe the parent-owned import_review handoff"),
+  (CHILD_NO_IMPORT_RULE, "portable review skills must forbid delegated child reviews from calling import_review"),
+  (CHILD_METADATA_HANDOFF_RULE, "portable review skills must describe the delegated child metadata handoff"),
+  (PARENT_TRIAGE_RULE, "portable review skills must describe the parent-owned triage_findings handoff"),
+  (CHILD_NO_TRIAGE_RULE, "portable review skills must forbid delegated child reviews from calling triage_findings"),
+  (NO_FINDINGS_TRIAGE_RULE, "portable review skills must define the final parent-owned no-findings triage rule"),
+)
+REVIEW_ORCHESTRATOR_TELEMETRY_REQUIREMENTS: tuple[tuple[str, str], ...] = (
+  (PARENT_IMPORT_RULE, "review orchestration contract must describe the parent-owned import_review handoff"),
+  (CHILD_NO_IMPORT_RULE, "review orchestration contract must forbid delegated child reviews from calling import_review"),
+  (CHILD_METADATA_HANDOFF_RULE, "review orchestration contract must describe the delegated child metadata handoff"),
+  (PARENT_TRIAGE_RULE, "review orchestration contract must describe the parent-owned triage_findings handoff"),
+  (CHILD_NO_TRIAGE_RULE, "review orchestration contract must forbid delegated child reviews from calling triage_findings"),
+  (NO_FINDINGS_TRIAGE_RULE, "review orchestration contract must define the final parent-owned no-findings triage rule"),
 )
 
 
@@ -241,7 +258,19 @@ def validate_portable_review_wording(
     issues.append(f"{skill_file}: portable review skills must expose '{REVIEW_RUN_ID_PLACEHOLDER}'")
   if APPLIED_LEARNINGS_PLACEHOLDER not in text:
     issues.append(f"{skill_file}: portable review skills must expose '{APPLIED_LEARNINGS_PLACEHOLDER}'")
-  for required_text, message in PORTABLE_REVIEW_LIFECYCLE_REQUIREMENTS:
+  require_markdown_heading(
+    text,
+    TELEMETRY_OWNERSHIP_HEADING,
+    f"{skill_file}: portable review skills must define the telemetry ownership section as a markdown heading",
+    issues,
+  )
+  require_markdown_heading(
+    text,
+    TRIAGE_OWNERSHIP_HEADING,
+    f"{skill_file}: portable review skills must define the triage ownership section as a markdown heading",
+    issues,
+  )
+  for required_text, message in PORTABLE_REVIEW_TELEMETRY_REQUIREMENTS:
     if required_text not in text:
       issues.append(f"{skill_file}: {message}; missing '{required_text}'")
 
@@ -292,6 +321,26 @@ def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
         issues.append(
           f"{relative_path}: review orchestration contract must define machine-readable findings as '{RISK_REGISTER_FINDING_FORMAT}'"
         )
+      require_markdown_heading(
+        text,
+        TELEMETRY_OWNERSHIP_HEADING,
+        f"{relative_path}: review orchestration contract must define the telemetry ownership section as a markdown heading",
+        issues,
+      )
+      require_markdown_heading(
+        text,
+        TRIAGE_OWNERSHIP_HEADING,
+        f"{relative_path}: review orchestration contract must define the triage ownership section as a markdown heading",
+        issues,
+      )
+      for required_text, message in REVIEW_ORCHESTRATOR_TELEMETRY_REQUIREMENTS:
+        if required_text not in text:
+          issues.append(f"{relative_path}: {message}; missing '{required_text}'")
+
+
+def require_markdown_heading(text: str, heading: str, message: str, issues: list[str]) -> None:
+  if not re.search(rf"(?m)^#{{2,6}} {re.escape(heading)}$", text):
+    issues.append(message)
 
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:
