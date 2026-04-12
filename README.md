@@ -113,8 +113,9 @@ Skill Bill records review acceptance metrics locally in SQLite and can optionall
 | Claude Code | `~/.claude/commands/` |
 | GLM | `~/.glm/commands/` |
 | OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
+| OpenCode | `~/.config/opencode/skills/` |
 
-The installer links all selected agents to the same repo so updates stay in sync.
+The installer links all selected agents to the same repo so updates stay in sync, and registers the local Skill Bill MCP server for agents with config-based MCP support.
 
 ## Installation
 

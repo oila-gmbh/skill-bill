@@ -1,3 +1,12 @@
+## [2026-04-11] opencode-agent-support
+Areas: install.sh, uninstall.sh, README, skills/base/bill-new-skill-all-agents, tests
+- Added OpenCode as a first-class installer target with skills installed into its global skills directory and included in supported-agent docs and skill-sync guidance.
+- Registered Skill Bill in the OpenCode global config using the `mcp.skill-bill` local-command shape instead of the existing `mcpServers`/TOML patterns used by other agents.
+- Added JSONC-aware OpenCode config handling (comments and trailing commas) so MCP registration/removal stays compatible with real user configs. reusable
+- Extended installer and uninstaller regression coverage to lock the OpenCode path and MCP contract in place.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-04-05] mcp-server
 Areas: skill_bill/, skills/base/bill-code-review, install.sh, pyproject.toml, tests/
 - Added MCP server (FastMCP/stdio) exposing 5 tools: import_review, triage_findings, resolve_learnings, review_stats, doctor

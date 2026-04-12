@@ -43,6 +43,7 @@ get_agent_path() {
     copilot) echo "$HOME/.copilot/skills" ;;
     claude)  echo "$HOME/.claude/commands" ;;
     glm)     echo "$HOME/.glm/commands" ;;
+    opencode) echo "$HOME/.config/opencode/skills" ;;
     codex)
       if [[ -d "$HOME/.codex" || -d "$HOME/.codex/skills" ]]; then
         echo "$HOME/.codex/skills"
@@ -77,7 +78,7 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-gcheck:bill-quality-check'
 )
 
-declare -a SUPPORTED_AGENTS=(copilot claude glm codex)
+declare -a SUPPORTED_AGENTS=(copilot claude glm codex opencode)
 declare -a SKILL_NAMES=()
 declare -a SKILL_PATHS=()
 declare -a INSTALL_SKILL_NAMES=()
@@ -813,7 +814,7 @@ build_platform_packages
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
-info "Supported agents: copilot, claude, glm, codex"
+info "Supported agents: copilot, claude, glm, codex, opencode"
 info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
 prompt_for_agent_selection
 prompt_for_platform_selection
@@ -922,12 +923,134 @@ open(path, 'w').write('\n'.join(filtered))
         warn "  Could not register MCP server ($label)."
       fi
     }
+    register_mcp_jsonc_opencode() {
+      local config_path="$1"
+      local label="$2"
+      if python3 -c "
+import json, sys, os
+
+path = sys.argv[1]
+
+def strip_jsonc(text):
+    result = []
+    in_string = False
+    escape = False
+    in_line_comment = False
+    in_block_comment = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < len(text) else ''
+        if in_line_comment:
+            if ch in '\r\n':
+                in_line_comment = False
+                result.append(ch)
+            i += 1
+            continue
+        if in_block_comment:
+            if ch == '*' and nxt == '/':
+                in_block_comment = False
+                i += 2
+            else:
+                i += 1
+            continue
+        if in_string:
+            result.append(ch)
+            if escape:
+                escape = False
+            elif ch == '\\\\':
+                escape = True
+            elif ch == '\"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '\"':
+            in_string = True
+            result.append(ch)
+            i += 1
+            continue
+        if ch == '/' and nxt == '/':
+            in_line_comment = True
+            i += 2
+            continue
+        if ch == '/' and nxt == '*':
+            in_block_comment = True
+            i += 2
+            continue
+        result.append(ch)
+        i += 1
+    return ''.join(result)
+
+def strip_trailing_commas(text):
+    result = []
+    in_string = False
+    escape = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if in_string:
+            result.append(ch)
+            if escape:
+                escape = False
+            elif ch == '\\\\':
+                escape = True
+            elif ch == '\"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '\"':
+            in_string = True
+            result.append(ch)
+            i += 1
+            continue
+        if ch == ',':
+            j = i + 1
+            while j < len(text) and text[j] in ' \t\r\n':
+                j += 1
+            if j < len(text) and text[j] in '}]':
+                i += 1
+                continue
+        result.append(ch)
+        i += 1
+    return ''.join(result)
+
+try:
+    raw = open(path).read()
+except FileNotFoundError:
+    settings = {}
+else:
+    if raw.strip():
+        settings = json.loads(strip_trailing_commas(strip_jsonc(raw)))
+    else:
+        settings = {}
+
+if not isinstance(settings, dict):
+    sys.exit(1)
+
+mcp = settings.get('mcp', {})
+if not isinstance(mcp, dict):
+    mcp = {}
+mcp['skill-bill'] = {
+    'type': 'local',
+    'command': [sys.executable, '-m', 'skill_bill.mcp_server'],
+    'enabled': True,
+}
+settings['mcp'] = mcp
+os.makedirs(os.path.dirname(path), exist_ok=True)
+open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
+" "$config_path" 2>/dev/null; then
+        ok "  skill-bill MCP server registered ($label)"
+      else
+        warn "  Could not register MCP server ($label)."
+      fi
+    }
     for i in "${!AGENT_NAMES[@]}"; do
       case "${AGENT_NAMES[$i]}" in
         claude)  register_mcp_json "$HOME/.claude.json" "claude" ;;
         copilot) register_mcp_json "$HOME/.copilot/mcp-config.json" "copilot" ;;
         codex)   register_mcp_toml "$HOME/.codex/config.toml" "codex" ;;
         glm)     register_mcp_json "$HOME/.glm/mcp-config.json" "glm" ;;
+        opencode) register_mcp_jsonc_opencode "$HOME/.config/opencode/opencode.json" "opencode" ;;
       esac
     done
   else

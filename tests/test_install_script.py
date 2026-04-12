@@ -62,6 +62,7 @@ class InstallScriptTest(unittest.TestCase):
         ".claude/commands/bill-code-review",
         ".glm/commands/bill-code-review",
         ".codex/skills/bill-code-review",
+        ".config/opencode/skills/bill-code-review",
       ):
         path = Path(temp_home) / relative_path
         self.assertTrue(path.is_symlink(), relative_path)
@@ -100,6 +101,33 @@ class InstallScriptTest(unittest.TestCase):
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
+
+  def test_installs_opencode_skills_and_registers_mcp(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "opencode\nPHP\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      installed = self.installed_skills(temp_home, relative_dir=".config/opencode/skills")
+      self.assertEqual(installed, BASE_SKILLS | PHP_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertIn("Installed agent: opencode", result.stdout)
+
+      config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
+      self.assertEqual(config["mcp"]["skill-bill"]["type"], "local")
+      self.assertEqual(config["mcp"]["skill-bill"]["command"][1:], ["-m", "skill_bill.mcp_server"])
+      self.assertTrue(config["mcp"]["skill-bill"]["enabled"])
+
+  def test_installer_merges_opencode_jsonc_config_when_registering_mcp(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      config_path = Path(temp_home) / ".config" / "opencode" / "opencode.json"
+      config_path.parent.mkdir(parents=True, exist_ok=True)
+      config_path.write_text('{\n  // keep this user setting\n  "theme": "opencode",\n}\n', encoding="utf-8")
+
+      result = self.run_installer(temp_home, "opencode\nPHP\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      config = json.loads(config_path.read_text(encoding="utf-8"))
+      self.assertEqual(config["theme"], "opencode")
+      self.assertIn("skill-bill", config["mcp"])
 
   def test_installs_custom_prefix_aliases_and_rewrites_skill_names(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -354,8 +382,8 @@ class InstallScriptTest(unittest.TestCase):
       env=env,
     )
 
-  def installed_skills(self, temp_home: str) -> set[str]:
-    install_dir = Path(temp_home) / ".copilot" / "skills"
+  def installed_skills(self, temp_home: str, *, relative_dir: str = ".copilot/skills") -> set[str]:
+    install_dir = Path(temp_home) / relative_dir
     if not install_dir.exists():
       return set()
     return {path.name for path in install_dir.iterdir() if not path.name.startswith(".")}
@@ -366,6 +394,7 @@ class InstallScriptTest(unittest.TestCase):
       ".claude",
       ".glm",
       ".codex",
+      ".config/opencode",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
 

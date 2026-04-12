@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import os
 import subprocess
@@ -42,6 +43,24 @@ class UninstallScriptTest(unittest.TestCase):
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").exists())
       self.assertIn("Removed installs:", uninstall.stdout)
 
+  def test_uninstall_removes_opencode_skill_and_mcp_registration(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      install = self.run_script(INSTALL_SCRIPT, temp_home, "opencode\nPHP\n")
+      self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
+      self.assertTrue((Path(temp_home) / ".config" / "opencode" / "skills" / "bill-code-review").is_symlink())
+
+      config_path = Path(temp_home) / ".config" / "opencode" / "opencode.json"
+      config = json.loads(config_path.read_text(encoding="utf-8"))
+      self.assertIn("skill-bill", config["mcp"])
+
+      uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
+      self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
+      self.assertFalse((Path(temp_home) / ".config" / "opencode" / "skills" / "bill-code-review").exists())
+
+      config = json.loads(config_path.read_text(encoding="utf-8"))
+      self.assertNotIn("mcp", config)
+
   def test_uninstall_removes_legacy_skill_symlinks_and_is_idempotent(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
@@ -65,6 +84,7 @@ class UninstallScriptTest(unittest.TestCase):
       ".glm/commands",
       ".codex/skills",
       ".agents/skills",
+      ".config/opencode/skills",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
 
