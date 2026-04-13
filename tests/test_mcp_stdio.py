@@ -58,6 +58,9 @@ class McpStdioTest(unittest.TestCase):
       "SKILL_BILL_REVIEW_DB": os.path.join(self.temp_dir, "metrics.db"),
       "SKILL_BILL_CONFIG_PATH": os.path.join(self.temp_dir, "config.json"),
       "SKILL_BILL_TELEMETRY_ENABLED": "false",
+      # Belt-and-braces: even when telemetry is off in this fixture, pin the
+      # relay URL so an accidental enable can never ship to prod (#43).
+      "SKILL_BILL_TELEMETRY_PROXY_URL": "http://127.0.0.1:0",
     })
 
   def tearDown(self) -> None:

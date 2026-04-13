@@ -43,6 +43,10 @@ class PrDescriptionEnabledTest(unittest.TestCase):
       "SKILL_BILL_CONFIG_PATH": self.config_path,
       "SKILL_BILL_TELEMETRY_ENABLED": "true",
       "SKILL_BILL_INSTALL_ID": "test-install-id",
+      # Defensive: pin the relay URL to an unreachable loopback so any
+      # accidental telemetry sync during tests cannot ship events to the
+      # production PostHog project (#43).
+      "SKILL_BILL_TELEMETRY_PROXY_URL": "http://127.0.0.1:0",
     }
     for key, value in env_overrides.items():
       self._original_env[key] = os.environ.get(key)
@@ -139,6 +143,9 @@ class PrDescriptionDisabledTest(unittest.TestCase):
       "SKILL_BILL_REVIEW_DB": os.path.join(self.temp_dir, "metrics.db"),
       "SKILL_BILL_CONFIG_PATH": os.path.join(self.temp_dir, "config.json"),
       "SKILL_BILL_TELEMETRY_ENABLED": "false",
+      # Belt-and-braces: even when telemetry is off in this fixture, pin the
+      # relay URL so an accidental enable can never ship to prod (#43).
+      "SKILL_BILL_TELEMETRY_PROXY_URL": "http://127.0.0.1:0",
     }
     for key, value in env_overrides.items():
       self._original_env[key] = os.environ.get(key)
