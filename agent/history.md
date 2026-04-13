@@ -1,3 +1,13 @@
+## [2026-04-13] feature-implement-agentic
+Areas: skills/base/bill-feature-implement-agentic/, scripts/validate_agent_configs.py, README.md
+- Added experimental `bill-feature-implement-agentic` peer of `bill-feature-implement`. Same end-to-end workflow, but pre-planning, planning, implementation, completeness audit, quality check, and PR description each run inside a dedicated `Agent` subagent to keep the orchestrator context small. Code review stays in the orchestrator because `bill-code-review` already spawns specialist subagents.
+- Reusable pattern: per-phase subagent briefing templates + strict `RESULT:` JSON return contracts (see reference.md). Orchestrator keeps only the structured returns in context. reusable
+- Subagent runs are sequential in the same worktree (no parallelism, no worktree isolation). Quality-check and PR-description subagents are responsible for calling their MCP tools with `orchestrated=true` themselves and returning the `telemetry_payload` up to the parent.
+- Registered the new skill in validator's `ORCHESTRATOR_SKILLS` so `validate_orchestrator_passthrough` enforces the `orchestrated=true` instruction for it too.
+- Classic `bill-feature-implement` stays as the default; agentic variant is opt-in for users willing to trade inline visibility for a smaller orchestrator context window.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-13] skill-telemetry-orchestration-contract
 Areas: skill_bill/, skills/base/*, docs/review-telemetry.md, scripts/validate_agent_configs.py, tests/
 - Introduced an `orchestrated` flag on every telemeterable MCP tool so nested skills return a `telemetry_payload` to the parent instead of emitting their own events. Reusable pattern: standalone mode persists+emits, orchestrated mode no-ops and returns a structured payload with a `skill` field.

@@ -178,6 +178,7 @@ def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
 ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
   # (skill_dir, files_to_scan_relative_to_skill_dir)
   ("skills/base/bill-feature-implement", ("SKILL.md", "reference.md")),
+  ("skills/base/bill-feature-implement-agentic", ("SKILL.md", "reference.md")),
   ("skills/base/bill-feature-verify", ("SKILL.md",)),
 )
 ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
