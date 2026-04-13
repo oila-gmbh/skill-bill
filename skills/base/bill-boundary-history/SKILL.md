@@ -25,7 +25,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 
 ## Input Recovery
 
-- If the caller omits part of the context, derive only the missing pieces from the current diff and `.feature-specs/<feature-name>/spec.md` when available
+- If the caller omits part of the context, derive only the missing pieces from the current diff and `.feature-specs/<ISSUE_KEY>-<feature-name>/spec.md` when available
 - Do not skip writing solely because the caller forgot to pass a change summary
 
 ## Write/Skip Rules

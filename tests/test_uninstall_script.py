@@ -31,16 +31,23 @@ class UninstallScriptTest(unittest.TestCase):
       self.assertFalse((Path(temp_home) / ".claude" / "commands" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
 
-  def test_uninstall_removes_generated_alias_installs(self) -> None:
+  def test_uninstall_removes_legacy_managed_install_directories(self) -> None:
+    """Earlier installer versions supported a custom prefix that generated
+    real directories marked with .skill-bill-install. The uninstaller must
+    still clean those up for users upgrading from prior versions."""
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      install = self.run_script(INSTALL_SCRIPT, temp_home, "copilot\nPHP\nacme\n")
-      self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
-      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").is_dir())
+      managed_dir = Path(temp_home) / ".copilot" / "skills" / "acme-code-review"
+      managed_dir.mkdir(parents=True)
+      (managed_dir / "SKILL.md").write_text("name: acme-code-review\n", encoding="utf-8")
+      (managed_dir / ".skill-bill-install").write_text(
+        "managed_by=skill-bill\ncanonical_name=bill-code-review\ninstalled_name=acme-code-review\nprefix=acme\n",
+        encoding="utf-8",
+      )
 
       uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
       self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
-      self.assertFalse((Path(temp_home) / ".copilot" / "skills" / "acme-code-review").exists())
+      self.assertFalse(managed_dir.exists())
       self.assertIn("Removed installs:", uninstall.stdout)
 
   def test_uninstall_removes_opencode_skill_and_mcp_registration(self) -> None:

@@ -163,19 +163,9 @@ Example platform selections:
 6
 ```
 
-Finally, the installer asks for the **user-facing command prefix**. Press Enter to keep the default `bill` prefix, or enter your own team/org prefix:
-
-```text
-bill
-acme
-platform
-```
-
-Canonical in-repo skill names stay `bill-*`. A custom prefix changes only the installed command names (for example `acme-code-review`) and rewrites installed skill references so routed workflows still resolve under that namespace.
-
 Each installer run replaces the existing Skill Bill installs and reinstalls only the agent and platform selections from that run.
 
-The installer always removes existing Skill Bill installs before reinstalling the selected agents and platforms. The default `bill` prefix keeps the current symlink-based install behavior. Custom prefixes install generated alias copies, so re-run `./install.sh` after editing skills in the repo.
+The installer always removes existing Skill Bill installs before reinstalling the selected agents and platforms. Installed skills are symlinks back to `skills/` in this repo, so edits to skill files are picked up immediately without re-running `./install.sh`.
 
 ## Uninstallation
 

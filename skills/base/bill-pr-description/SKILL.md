@@ -85,7 +85,7 @@ Short, under 70 characters, prefixed with the ticket ID if the branch name conta
 - If the feature is behind a flag, mention how to enable it for testing
 - Keep it concise — reviewers appreciate brevity
 - Always search for a repo-native PR template first — never skip the search step
-- If invoked from `bill-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
+- If invoked from `bill-feature-implement`, check `.feature-specs/<ISSUE_KEY>-<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
 - If the caller provides an explicit comparison base or merge-base, use it instead of inferring one
 
 ## Telemetry

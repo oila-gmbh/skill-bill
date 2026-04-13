@@ -83,12 +83,10 @@ declare -a SKILL_NAMES=()
 declare -a SKILL_PATHS=()
 declare -a INSTALL_SKILL_NAMES=()
 declare -a INSTALL_SKILL_PATHS=()
-declare -a INSTALL_TARGET_NAMES=()
 declare -a PLATFORM_PACKAGES=()
 declare -a REQUIRED_PLATFORM_PACKAGES=(agent-config)
 declare -a SELECTED_PLATFORM_PACKAGES=()
 declare -a LEGACY_SKILL_NAMES=()
-INSTALL_PREFIX="bill"
 TELEMETRY_LEVEL="anonymous"
 
 remove_if_allowed() {
@@ -163,38 +161,12 @@ trim_string() {
   printf '%s' "$value"
 }
 
-normalize_prefix_token() {
-  local value
-  value="$(trim_string "$1")"
-  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
-  value="${value#/}"
-  while [[ "$value" == *- ]]; do
-    value="${value%-}"
-  done
-  printf '%s' "$value"
-}
-
 normalize_platform_token() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_/-'
 }
 
 normalize_agent_token() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
-}
-
-is_valid_prefix() {
-  [[ "$1" =~ ^[a-z][a-z0-9-]*$ ]]
-}
-
-alias_skill_name() {
-  local canonical_name="$1"
-
-  if [[ "$INSTALL_PREFIX" == "bill" ]] || [[ "$canonical_name" != bill-* ]]; then
-    printf '%s' "$canonical_name"
-    return 0
-  fi
-
-  printf '%s-%s' "$INSTALL_PREFIX" "${canonical_name#bill-}"
 }
 
 add_agent_selection() {
@@ -536,35 +508,6 @@ prompt_for_platform_selection() {
   done
 }
 
-prompt_for_skill_prefix() {
-  local input
-  local normalized
-
-  while true; do
-    echo ""
-    info "Choose the user-facing skill prefix."
-    info "Press Enter to keep the default prefix: bill"
-    printf "${CYAN}▸${NC} Enter prefix: "
-    if ! read -r input; then
-      input=""
-    fi
-
-    normalized="$(normalize_prefix_token "$input")"
-    if [[ -z "$normalized" ]]; then
-      INSTALL_PREFIX="bill"
-      return 0
-    fi
-
-    if ! is_valid_prefix "$normalized"; then
-      warn "Prefix must start with a letter and use only lowercase letters, digits, or hyphens."
-      continue
-    fi
-
-    INSTALL_PREFIX="$normalized"
-    return 0
-  done
-}
-
 prompt_for_telemetry_preference() {
   local input
   local normalized
@@ -632,7 +575,6 @@ build_install_skill_names() {
 
   INSTALL_SKILL_NAMES=()
   INSTALL_SKILL_PATHS=()
-  INSTALL_TARGET_NAMES=()
 
   for idx in "${!SKILL_NAMES[@]}"; do
     skill_dir="${SKILL_PATHS[$idx]}"
@@ -642,7 +584,6 @@ build_install_skill_names() {
     if [[ "$package_name" == "base" ]] || array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
       INSTALL_SKILL_NAMES+=("$canonical_name")
       INSTALL_SKILL_PATHS+=("$skill_dir")
-      INSTALL_TARGET_NAMES+=("$(alias_skill_name "$canonical_name")")
     fi
   done
 }
@@ -713,14 +654,14 @@ remove_legacy_skill_paths() {
   done
 }
 
-install_skill_link() {
+install_skill() {
   local target="$1"
   local source="$2"
   local label="$3"
 
   if [[ -e "$target" || -L "$target" ]]; then
-      remove_if_allowed "$target"
-    fi
+    remove_if_allowed "$target"
+  fi
 
   ln -s "$source" "$target"
   ok "  $label"
@@ -740,72 +681,6 @@ path_has_matching_skill_name() {
   [[ "$declared_name" == "$expected_name" ]]
 }
 
-rewrite_markdown_file() {
-  local source_file="$1"
-  local target_file="$2"
-
-  if [[ "$INSTALL_PREFIX" == "bill" ]]; then
-    cp "$source_file" "$target_file"
-    return 0
-  fi
-
-  SKILL_BILL_INSTALL_PREFIX="$INSTALL_PREFIX" perl -0pe \
-    's/\bbill-([a-z0-9-]+)/$ENV{"SKILL_BILL_INSTALL_PREFIX"} . "-" . $1/ge' \
-    "$source_file" > "$target_file"
-}
-
-install_generated_skill_dir() {
-  local target="$1"
-  local source="$2"
-  local label="$3"
-  local source_path
-  local relative_path
-  local target_path
-
-  if [[ -e "$target" || -L "$target" ]]; then
-    remove_if_allowed "$target"
-  fi
-
-  mkdir -p "$target"
-  {
-    printf 'managed_by=skill-bill\n'
-    printf 'canonical_name=%s\n' "$(basename "$source")"
-    printf 'installed_name=%s\n' "$(basename "$target")"
-    printf 'prefix=%s\n' "$INSTALL_PREFIX"
-  } > "$target/$MANAGED_INSTALL_MARKER"
-
-  while IFS= read -r source_path; do
-    relative_path="${source_path#$source/}"
-    target_path="$target/$relative_path"
-
-    if [[ -d "$source_path" ]]; then
-      mkdir -p "$target_path"
-      continue
-    fi
-
-    mkdir -p "$(dirname "$target_path")"
-    if [[ "$source_path" == *.md ]]; then
-      rewrite_markdown_file "$source_path" "$target_path"
-    else
-      cp "$source_path" "$target_path"
-    fi
-  done < <(find "$source" -mindepth 1 | sort)
-
-  ok "  $label"
-}
-
-install_skill() {
-  local target="$1"
-  local source="$2"
-  local label="$3"
-
-  if [[ "$INSTALL_PREFIX" == "bill" ]]; then
-    install_skill_link "$target" "$source" "$label"
-  else
-    install_generated_skill_dir "$target" "$source" "$label"
-  fi
-}
-
 parse_args "$@"
 build_skill_names
 build_legacy_skill_names
@@ -818,7 +693,6 @@ info "Supported agents: copilot, claude, glm, codex, opencode"
 info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
 prompt_for_agent_selection
 prompt_for_platform_selection
-prompt_for_skill_prefix
 prompt_for_telemetry_preference
 build_install_skill_names
 
@@ -827,7 +701,6 @@ info "Plugin:  $PLUGIN_DIR"
 info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
 info "Skills found: ${#SKILL_NAMES[@]}"
 info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
-info "Command prefix: ${INSTALL_PREFIX}-"
 info "Telemetry:      $TELEMETRY_LEVEL"
 echo ""
 
@@ -845,8 +718,7 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   for idx in "${!INSTALL_SKILL_NAMES[@]}"; do
     skill="${INSTALL_SKILL_NAMES[$idx]}"
-    target_skill="${INSTALL_TARGET_NAMES[$idx]}"
-    install_skill "$agent_dir/$target_skill" "${INSTALL_SKILL_PATHS[$idx]}" "$target_skill → plugin ($skill)"
+    install_skill "$agent_dir/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
   done
   echo ""
 done
@@ -1111,7 +983,6 @@ printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
-info "Command prefix:  ${INSTALL_PREFIX}-"
 if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
   info "Telemetry:       setup failed (python3 may be unavailable)"
 else
@@ -1125,9 +996,6 @@ done
 
 echo ""
 info "Edit skills in: $PLUGIN_DIR/skills/"
-if [[ "$INSTALL_PREFIX" != "bill" ]]; then
-  info "Custom prefixes install generated alias copies. Re-run './install.sh' after editing skills."
-fi
 if [[ "$TELEMETRY_LEVEL" != "off" && "$TELEMETRY_LEVEL" != "setup_failed" ]]; then
   info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
 fi

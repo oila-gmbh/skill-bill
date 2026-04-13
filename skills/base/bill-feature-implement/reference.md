@@ -6,6 +6,8 @@
 
 Save to `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` with: feature name, issue key, date, status (`In Progress`), sources, acceptance criteria, and consolidated spec content. Preserve code blocks, schemas, field definitions, and enums verbatim; narrative sections may be summarized.
 
+The directory name **must** begin with the issue key collected in Step 1 (e.g. `SKILL-10-awesome-feature`, `ME-5066-payment-retry`). Never create a spec directory without the issue-key prefix — Step 1 is responsible for rejecting any run that lacks one.
+
 For SMALL features the acceptance criteria stay in context — no spec file needed.
 
 ### Read Boundary History
@@ -89,7 +91,7 @@ Run `bill-boundary-history` (read its skill file and apply inline). The skill ow
 ### Step 8: Commit and Push
 
 1. Stage all new and modified files from this feature (do not use `git add -A`)
-2. Commit with message format: `feat: [<ISSUE_KEY>] <concise description>`
+2. Commit with message format: `feat: <concise description>` (omit the issue key — the branch name already carries it)
 3. Push the branch to the remote with `-u` to set upstream tracking
 
 ### Step 9: Generate PR Description (All sizes)
