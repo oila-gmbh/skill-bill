@@ -78,3 +78,19 @@ Reason: <why this stack-specific quality-checker was selected>
 
 <delegated quality-check output, or "No matching skill available yet" for unsupported>
 ```
+
+## Telemetry
+
+This skill is telemeterable via the `quality_check_started` and `quality_check_finished` MCP tools. This router does not emit telemetry on its own — routing metadata is carried in the concrete stack-specific skill's telemetry call.
+
+**Standalone invocation** (user runs `bill-quality-check` directly):
+1. Call `quality_check_started` once stack routing is decided, with `routed_skill`, `detected_stack`, `scope_type` (`files` / `working_tree` / `branch_diff` / `repo`), and `initial_failure_count` (0 if the first check has not run yet).
+2. Save the returned `session_id`.
+3. Call `quality_check_finished` when the quality-check loop finishes, with `session_id`, `final_failure_count`, `iterations`, `result` (`pass` / `fail` / `skipped` / `unsupported_stack`), optional `failing_check_names` and `unsupported_reason`.
+
+**Orchestrated invocation** (invoked by another skill such as `bill-feature-implement` that passes `orchestrated=true`):
+1. Skip `quality_check_started` entirely.
+2. Call `quality_check_finished` once with `orchestrated=true` and all started+finished fields combined (`routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, `final_failure_count`, `iterations`, `result`, `failing_check_names`, `unsupported_reason`, `duration_seconds`).
+3. The tool returns `{"mode": "orchestrated", "telemetry_payload": {...}}`. Return that payload to the orchestrator — it will embed it in its own finished event.
+
+The orchestrated flag must come from the caller. Never assume orchestrated mode from ambient state.

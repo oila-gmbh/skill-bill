@@ -1981,5 +1981,108 @@ Reason: agent-config signals dominate
     }
 
 
+class ReviewOrchestratedRetrofitTest(unittest.TestCase):
+  """MCP-level coverage for import_review / triage_findings orchestrated=True."""
+
+  def setUp(self) -> None:
+    import shutil as _shutil
+    self._shutil = _shutil
+    self.temp_dir = tempfile.mkdtemp()
+    self.db_path = os.path.join(self.temp_dir, "metrics.db")
+    self.config_path = os.path.join(self.temp_dir, "config.json")
+    Path(self.config_path).write_text(
+      json.dumps({
+        "install_id": "test-install-id",
+        "telemetry": {"level": "anonymous", "proxy_url": "", "batch_size": 50},
+      }),
+      encoding="utf-8",
+    )
+    self._original_env: dict[str, str | None] = {}
+    env_overrides = {
+      "SKILL_BILL_REVIEW_DB": self.db_path,
+      "SKILL_BILL_CONFIG_PATH": self.config_path,
+      "SKILL_BILL_TELEMETRY_ENABLED": "true",
+      "SKILL_BILL_INSTALL_ID": "test-install-id",
+    }
+    for key, value in env_overrides.items():
+      self._original_env[key] = os.environ.get(key)
+      os.environ[key] = value
+
+  def tearDown(self) -> None:
+    for key, value in self._original_env.items():
+      if value is None:
+        os.environ.pop(key, None)
+      else:
+        os.environ[key] = value
+    self._shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+  def _outbox_rows(self, event_name: str) -> list[sqlite3.Row]:
+    conn = sqlite3.connect(self.db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+      "SELECT * FROM telemetry_outbox WHERE event_name = ?",
+      (event_name,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+  def test_import_review_orchestrated_marks_row_and_suppresses_zero_finding_emit(self) -> None:
+    from skill_bill.mcp_server import import_review
+
+    result = import_review(review_text=ZERO_FINDING_REVIEW, orchestrated=True)
+    self.assertEqual(result["mode"], "orchestrated")
+    # Review had zero findings so the review lifecycle auto-resolves and the
+    # payload is returned instead of enqueued.
+    self.assertIn("telemetry_payload", result)
+    self.assertEqual(result["telemetry_payload"]["skill"], "bill-code-review")
+    rows = self._outbox_rows("skillbill_review_finished")
+    self.assertEqual(len(rows), 0)
+
+    # Row is persisted locally and marked orchestrated.
+    conn = sqlite3.connect(self.db_path)
+    conn.row_factory = sqlite3.Row
+    run_row = conn.execute(
+      "SELECT orchestrated_run FROM review_runs WHERE review_run_id = ?",
+      ("rvw-20260402-empty",),
+    ).fetchone()
+    conn.close()
+    self.assertIsNotNone(run_row)
+    self.assertEqual(int(run_row["orchestrated_run"]), 1)
+
+  def test_triage_findings_orchestrated_returns_payload_and_does_not_emit(self) -> None:
+    from skill_bill.mcp_server import import_review, triage_findings
+
+    import_result = import_review(review_text=SAMPLE_REVIEW, orchestrated=True)
+    self.assertEqual(import_result["mode"], "orchestrated")
+    # Two findings, still unresolved -> no payload yet
+    self.assertNotIn("telemetry_payload", import_result)
+
+    triage_result = triage_findings(
+      review_run_id="rvw-20260402-001",
+      decisions=["fix=[1,2]"],
+      orchestrated=True,
+    )
+    self.assertEqual(triage_result["mode"], "orchestrated")
+    self.assertIn("telemetry_payload", triage_result)
+    self.assertEqual(triage_result["telemetry_payload"]["skill"], "bill-code-review")
+    self.assertEqual(triage_result["telemetry_payload"]["total_findings"], 2)
+
+    # No outbox emission from any of these calls.
+    rows = self._outbox_rows("skillbill_review_finished")
+    self.assertEqual(len(rows), 0)
+
+  def test_standalone_still_emits_when_flag_missing(self) -> None:
+    from skill_bill.mcp_server import import_review, triage_findings
+
+    import_review(review_text=SAMPLE_REVIEW)
+    triage_findings(
+      review_run_id="rvw-20260402-001",
+      decisions=["fix=[1,2]"],
+    )
+    # Graceful default: children emit when orchestrated flag is missing.
+    rows = self._outbox_rows("skillbill_review_finished")
+    self.assertEqual(len(rows), 1)
+
+
 if __name__ == "__main__":
   unittest.main()

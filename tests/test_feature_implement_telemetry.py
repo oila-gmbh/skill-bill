@@ -246,6 +246,72 @@ class FeatureImplementEnabledTest(unittest.TestCase):
     self.assertEqual(result["status"], "error")
     self.assertIn("completion_status", result["error"])
 
+  def test_finished_without_child_steps_defaults_to_empty_list(self) -> None:
+    started = feature_implement_started(**STARTED_PARAMS)
+    feature_implement_finished(session_id=started["session_id"], **FINISHED_PARAMS)
+    rows = self._outbox_rows("skillbill_feature_implement_finished")
+    payload = json.loads(rows[0]["payload_json"])
+    self.assertEqual(payload["child_steps"], [])
+
+  def test_finished_embeds_child_steps_in_emitted_event(self) -> None:
+    started = feature_implement_started(**STARTED_PARAMS)
+    child_steps = [
+      {
+        "skill": "bill-code-review",
+        "total_findings": 5,
+        "accepted_findings": 4,
+        "rejected_findings": 1,
+      },
+      {
+        "skill": "bill-quality-check",
+        "routed_skill": "bill-kotlin-quality-check",
+        "result": "pass",
+        "iterations": 1,
+      },
+      {
+        "skill": "bill-pr-description",
+        "commit_count": 2,
+        "pr_created": True,
+      },
+    ]
+    params = dict(FINISHED_PARAMS)
+    params["child_steps"] = child_steps
+    feature_implement_finished(session_id=started["session_id"], **params)
+    rows = self._outbox_rows("skillbill_feature_implement_finished")
+    payload = json.loads(rows[0]["payload_json"])
+    self.assertEqual(len(payload["child_steps"]), 3)
+    skills = [step["skill"] for step in payload["child_steps"]]
+    self.assertEqual(skills, ["bill-code-review", "bill-quality-check", "bill-pr-description"])
+    # Each child_step entry retains the shape the child returned — no mutation.
+    self.assertEqual(payload["child_steps"][0]["total_findings"], 5)
+    self.assertEqual(payload["child_steps"][1]["result"], "pass")
+    self.assertTrue(payload["child_steps"][2]["pr_created"])
+
+  def test_child_steps_respect_level_as_built_by_children(self) -> None:
+    # The parent aggregates whatever the children returned. Anonymous-level
+    # children return anonymous-shape entries; full-level children return
+    # full-shape entries. Parent trusts and passes through.
+    started = feature_implement_started(**STARTED_PARAMS)
+    anonymous_entry = {
+      "skill": "bill-quality-check",
+      "routed_skill": "bill-kotlin-quality-check",
+      "result": "pass",
+    }
+    full_entry = {
+      "skill": "bill-quality-check",
+      "routed_skill": "bill-kotlin-quality-check",
+      "result": "pass",
+      "failing_check_names": [],
+      "unsupported_reason": "",
+    }
+    params = dict(FINISHED_PARAMS)
+    params["child_steps"] = [anonymous_entry, full_entry]
+    feature_implement_finished(session_id=started["session_id"], **params)
+    rows = self._outbox_rows("skillbill_feature_implement_finished")
+    payload = json.loads(rows[0]["payload_json"])
+    self.assertNotIn("failing_check_names", payload["child_steps"][0])
+    self.assertIn("failing_check_names", payload["child_steps"][1])
+
 
 class FeatureImplementDisabledTest(unittest.TestCase):
 

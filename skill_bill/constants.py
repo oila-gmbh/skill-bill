@@ -36,6 +36,25 @@ LEARNING_SCOPE_PRECEDENCE = ("skill", "repo", "global")
 
 EVENT_FEATURE_IMPLEMENT_STARTED = "skillbill_feature_implement_started"
 EVENT_FEATURE_IMPLEMENT_FINISHED = "skillbill_feature_implement_finished"
+EVENT_QUALITY_CHECK_STARTED = "skillbill_quality_check_started"
+EVENT_QUALITY_CHECK_FINISHED = "skillbill_quality_check_finished"
+EVENT_FEATURE_VERIFY_STARTED = "skillbill_feature_verify_started"
+EVENT_FEATURE_VERIFY_FINISHED = "skillbill_feature_verify_finished"
+EVENT_PR_DESCRIPTION_GENERATED = "skillbill_pr_description_generated"
+
+FEATURE_IMPLEMENT_SESSION_PREFIX = "fis"
+QUALITY_CHECK_SESSION_PREFIX = "qck"
+FEATURE_VERIFY_SESSION_PREFIX = "fvr"
+PR_DESCRIPTION_SESSION_PREFIX = "prd"
+
+QUALITY_CHECK_RESULTS = ("pass", "fail", "skipped", "unsupported_stack")
+QUALITY_CHECK_SCOPE_TYPES = ("files", "working_tree", "branch_diff", "repo")
+FEATURE_VERIFY_COMPLETION_STATUSES = (
+  "completed",
+  "abandoned_at_review",
+  "abandoned_at_audit",
+  "error",
+)
 FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
 SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
 ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")

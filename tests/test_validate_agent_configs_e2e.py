@@ -257,6 +257,27 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("review orchestration contract must define the telemetry ownership section as a markdown heading", result.stdout)
       self.assertIn("review orchestration contract must define the triage ownership section as a markdown heading", result.stdout)
 
+  def test_accepts_orchestrator_skill_with_orchestrated_passthrough(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
+      skill_md = repo_root / "skills" / "base" / "bill-feature-implement" / "SKILL.md"
+      skill_md.write_text(
+        skill_md.read_text(encoding="utf-8")
+        + "\n\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n",
+        encoding="utf-8",
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_rejects_orchestrator_skill_without_orchestrated_passthrough(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
+      # Fixture skill uses the default boilerplate with no orchestration note.
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "orchestrator skill must instruct the agent to pass 'orchestrated=true'",
+        result.stdout,
+      )
+
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
       ["python3", str(VALIDATOR_PATH), str(repo_root)],

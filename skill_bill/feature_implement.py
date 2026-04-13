@@ -139,7 +139,9 @@ def save_finished(
   boundary_history_value: str,
   pr_created: bool,
   plan_deviation_notes: str,
+  child_steps: list[dict] | None = None,
 ) -> None:
+  child_steps_json = json.dumps(list(child_steps or []), sort_keys=True)
   exists = connection.execute(
     "SELECT 1 FROM feature_implement_sessions WHERE session_id = ?",
     (session_id,),
@@ -167,6 +169,7 @@ def save_finished(
           boundary_history_value = ?,
           pr_created = ?,
           plan_deviation_notes = ?,
+          child_steps_json = ?,
           finished_at = CURRENT_TIMESTAMP
         WHERE session_id = ?
         """,
@@ -188,6 +191,7 @@ def save_finished(
           boundary_history_value,
           1 if pr_created else 0,
           plan_deviation_notes,
+          child_steps_json,
           session_id,
         ),
       )
@@ -202,8 +206,8 @@ def save_finished(
           tasks_completed, review_iterations, audit_result,
           audit_iterations, validation_result, boundary_history_written,
           boundary_history_value, pr_created, plan_deviation_notes,
-          finished_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          child_steps_json, finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
           session_id,
@@ -224,6 +228,7 @@ def save_finished(
           boundary_history_value,
           1 if pr_created else 0,
           plan_deviation_notes,
+          child_steps_json,
         ),
       )
 
@@ -285,6 +290,14 @@ def build_finished_payload(
     except (ValueError, TypeError):
       pass
 
+  child_steps_raw = row["child_steps_json"] or ""
+  try:
+    child_steps = json.loads(child_steps_raw) if child_steps_raw else []
+    if not isinstance(child_steps, list):
+      child_steps = []
+  except json.JSONDecodeError:
+    child_steps = []
+
   payload.update({
     "completion_status": row["completion_status"] or "",
     "plan_correction_count": row["plan_correction_count"] or 0,
@@ -303,6 +316,7 @@ def build_finished_payload(
     "boundary_history_value": row["boundary_history_value"] or "none",
     "pr_created": bool(row["pr_created"]),
     "duration_seconds": duration_seconds,
+    "child_steps": child_steps,
   })
 
   if level == "full":

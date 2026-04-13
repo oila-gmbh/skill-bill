@@ -150,7 +150,7 @@ def record_feedback(
   finding_ids: list[str],
   event_type: str,
   note: str,
-) -> None:
+) -> dict[str, object] | None:
   if not review_exists(connection, review_run_id):
     raise ValueError(f"Unknown review run id '{review_run_id}'. Import the review first.")
 
@@ -176,7 +176,7 @@ def record_feedback(
         (review_run_id, finding_id, event_type, note),
       )
 
-    update_review_finished_telemetry_state(
+    return update_review_finished_telemetry_state(
       connection,
       review_run_id=review_run_id,
       enabled=telemetry_enabled,

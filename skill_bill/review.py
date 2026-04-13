@@ -325,7 +325,8 @@ def fetch_review_summary(connection: sqlite3.Connection, review_run_id: str) -> 
       execution_mode,
       specialist_reviews,
       review_finished_at,
-      review_finished_event_emitted_at
+      review_finished_event_emitted_at,
+      orchestrated_run
     FROM review_runs
     WHERE review_run_id = ?
     """,

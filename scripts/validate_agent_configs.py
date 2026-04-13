@@ -116,6 +116,7 @@ def main() -> int:
   validate_readme(root / "README.md", skill_names, issues)
   validate_orchestration_playbooks(root, issues)
   validate_skill_references(root, skill_names, issues)
+  validate_orchestrator_passthrough(root, issues)
   validate_skill_override_markdown(
     root / SKILL_OVERRIDE_EXAMPLE_FILE,
     skill_names,
@@ -172,6 +173,39 @@ def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
   if not skill_files:
     issues.append("No skills were found under skills/")
   return skill_files
+
+
+ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+  # (skill_dir, files_to_scan_relative_to_skill_dir)
+  ("skills/base/bill-feature-implement", ("SKILL.md", "reference.md")),
+  ("skills/base/bill-feature-verify", ("SKILL.md",)),
+)
+ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
+
+
+def validate_orchestrator_passthrough(root: Path, issues: list[str]) -> None:
+  """Each orchestrator skill must instruct the agent to pass orchestrated=true
+  to the child MCP tools it invokes, so nested skills don't emit their own
+  telemetry events. Missing this makes a workflow silently emit duplicate
+  events instead of producing a single rolled-up event.
+  """
+  for skill_dir_rel, files in ORCHESTRATOR_SKILLS:
+    skill_dir = root / skill_dir_rel
+    if not skill_dir.exists():
+      # Only enforce the rule when the skill exists; do not require its presence.
+      # This keeps fixture test repos that don't include orchestrator skills
+      # passing without having to seed the orchestrator fixtures they don't use.
+      continue
+    combined_text = ""
+    for file_name in files:
+      file_path = skill_dir / file_name
+      if file_path.exists():
+        combined_text += file_path.read_text(encoding="utf-8") + "\n"
+    if ORCHESTRATED_PASS_THROUGH_MARKER not in combined_text.lower():
+      issues.append(
+        f"{skill_dir}: orchestrator skill must instruct the agent to pass "
+        f"'{ORCHESTRATED_PASS_THROUGH_MARKER}' when invoking child telemeterable tools"
+      )
 
 
 def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) -> None:

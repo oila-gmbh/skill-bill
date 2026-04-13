@@ -286,7 +286,14 @@ def update_review_finished_telemetry_state(
   review_run_id: str,
   enabled: bool | None = None,
   level: str | None = None,
-) -> None:
+) -> dict[str, object] | None:
+  """Drive the review-finished telemetry lifecycle.
+
+  Returns the built finished payload when the review lifecycle is fully
+  resolved, so orchestrated callers can embed it in a parent event without
+  a local emission. For standalone (non-orchestrated) runs, the payload is
+  also enqueued to the outbox as before.
+  """
   from skill_bill.review import fetch_review_summary
 
   if enabled is None or level is None:
@@ -315,7 +322,7 @@ def update_review_finished_telemetry_state(
       (session_id, review_run_id),
     ).fetchone()
     if already_emitted:
-      return
+      return None
 
   finding_rows = latest_finding_outcomes(connection, review_run_id=review_run_id)
   summarized_findings = summarize_finding_rows(finding_rows)
@@ -324,7 +331,7 @@ def update_review_finished_telemetry_state(
   if int(summarized_findings["total_findings"]) > 0 and resolved_findings == 0:
     if review_summary["review_finished_at"] or review_summary["review_finished_event_emitted_at"]:
       clear_review_finished_telemetry_state(connection, review_run_id)
-    return
+    return None
 
   if not review_summary["review_finished_at"]:
     connection.execute(
@@ -345,6 +352,17 @@ def update_review_finished_telemetry_state(
     level=level,
   )
 
+  orchestrated = False
+  try:
+    orchestrated = bool(review_summary["orchestrated_run"])
+  except (IndexError, KeyError):
+    orchestrated = False
+
+  if orchestrated:
+    # Parent-owned: never enqueue. The caller retrieves this payload and
+    # embeds it in its own finished event.
+    return payload
+
   if review_summary["review_finished_event_emitted_at"]:
     if enabled:
       update_pending_review_finished_event(
@@ -352,7 +370,7 @@ def update_review_finished_telemetry_state(
         review_session_id=str(review_summary["review_session_id"] or ""),
         payload=payload,
       )
-    return
+    return payload
 
   enqueue_telemetry_event(
     connection,
@@ -369,6 +387,7 @@ def update_review_finished_telemetry_state(
       """,
       (review_run_id,),
     )
+  return payload
 
 
 def update_pending_review_finished_event(

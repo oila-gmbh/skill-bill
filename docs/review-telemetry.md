@@ -126,6 +126,192 @@ The finished event carries: total/accepted/unresolved finding counts, accepted/r
 
 When `learnings resolve` is called with `--review-session-id`, the resolved learnings are cached locally and included in the matching `skillbill_review_finished` event when it fires.
 
+## Session correlation
+
+Skill Bill uses **parent-owned telemetry** across the whole skill suite. A single user-initiated workflow produces **exactly one** telemetry event, even when multiple skills run inside it.
+
+### Standalone-first contract
+
+Every telemeterable skill must be usable alone. When invoked directly by a user, each skill generates its own session id and emits its own events:
+
+- `bill-code-review` — `skillbill_review_finished` (once the review lifecycle resolves)
+- `bill-quality-check` — `skillbill_quality_check_started` + `_finished`
+- `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
+- `bill-pr-description` — `skillbill_pr_description_generated`
+- `bill-feature-implement` — `skillbill_feature_implement_started` + `_finished`
+
+### The `orchestrated` flag
+
+Every telemeterable MCP tool accepts `orchestrated: bool = false`.
+
+- **`orchestrated=false` (standalone):** the tool generates its own session id, emits started/finished events, and owns its lifecycle.
+- **`orchestrated=true` (nested):** the tool emits **zero** telemetry events. Instead it returns a `telemetry_payload` dict on the tool result that the caller (the orchestrator) collects.
+
+The orchestrator is responsible for setting the flag. A child skill never infers orchestrated mode from ambient state.
+
+### `child_steps` aggregation
+
+When the parent's finished event fires, it embeds each collected `telemetry_payload` in a `child_steps` array. One workflow, one event:
+
+```json
+{
+  "event": "skillbill_feature_implement_finished",
+  "session_id": "fis-20260413-104704-l84r",
+  "completion_status": "completed",
+  "duration_seconds": 1820,
+  "child_steps": [
+    {
+      "skill": "bill-code-review",
+      "review_session_id": "rvs-...",
+      "total_findings": 7,
+      "accepted_findings": 6,
+      "rejected_findings": 1,
+      ...
+    },
+    {
+      "skill": "bill-quality-check",
+      "routed_skill": "bill-agent-config-quality-check",
+      "result": "pass",
+      "iterations": 2,
+      ...
+    },
+    {
+      "skill": "bill-pr-description",
+      "commit_count": 3,
+      "pr_created": true,
+      ...
+    }
+  ],
+  ...
+}
+```
+
+### Graceful degradation
+
+If a parent skill forgets to pass `orchestrated=true` to a child, the child emits its own standalone event. The workflow produces extra events but nothing is lost. Always pass the flag from the orchestrator's `SKILL.md` instructions.
+
+### Non-goals
+
+- **No cross-event correlation field.** There is no `parent_session_id` joining separate events — correlation by construction (one event per workflow) replaces correlation by foreign key.
+- **No auto-detection.** Children never decide "am I orchestrated?" themselves.
+- **No global session registry.** Each skill run is self-sufficient.
+
+### Router skills never emit
+
+`bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry of their own — routing metadata is carried inside the concrete routed skill's telemetry call. They pass `orchestrated` through to the routed concrete skill unchanged.
+
+### Event catalog
+
+| Event | Emitted by | Orchestrated alternative |
+|-------|------------|--------------------------|
+| `skillbill_feature_implement_started` | `bill-feature-implement` (Step 1 confirm) | — (top-level only) |
+| `skillbill_feature_implement_finished` | `bill-feature-implement` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
+| `skillbill_review_finished` | `bill-code-review` (lifecycle resolved) | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
+| `skillbill_quality_check_started` | `bill-quality-check` (standalone) | skipped in orchestrated mode |
+| `skillbill_quality_check_finished` | `bill-quality-check` (standalone) | `quality_check_finished(orchestrated=true)` returns payload |
+| `skillbill_feature_verify_started` | `bill-feature-verify` (standalone) | skipped in orchestrated mode |
+| `skillbill_feature_verify_finished` | `bill-feature-verify` (standalone) | `feature_verify_finished(orchestrated=true)` returns payload |
+| `skillbill_pr_description_generated` | `bill-pr-description` (standalone) | `pr_description_generated(orchestrated=true)` returns payload |
+
+## Quality-check telemetry
+
+The quality-check workflow emits two events per standalone session:
+
+- `skillbill_quality_check_started` — emitted once stack routing is resolved and the first check run begins
+- `skillbill_quality_check_finished` — emitted when the quality-check loop terminates
+
+Session id format: `qck-YYYYMMDD-HHMMSS-XXXX`.
+
+### Quality-check payloads
+
+Both `anonymous` and `full`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
+| `routed_skill` | string | Concrete stack-specific skill delegated to (`bill-kotlin-quality-check`, `bill-agent-config-quality-check`, …) |
+| `detected_stack` | string | Dominant stack routed for |
+| `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
+| `initial_failure_count` | integer | Failing checks before the first fix run |
+
+`_finished` adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `final_failure_count` | integer | Failing checks after the last fix attempt |
+| `iterations` | integer | Fix-run cycles |
+| `result` | string | `pass`, `fail`, `skipped`, or `unsupported_stack` |
+| `duration_seconds` | integer | Wall-clock seconds from started to finished |
+
+`full` level additionally includes in `_finished`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `failing_check_names` | list | Check names that remained failing at the end |
+| `unsupported_reason` | string | Explanation when `result` is `unsupported_stack` |
+
+## Feature-verify telemetry
+
+The feature-verify workflow emits two events per standalone session:
+
+- `skillbill_feature_verify_started` — emitted after Step 2 (acceptance criteria confirmed)
+- `skillbill_feature_verify_finished` — emitted after Step 7 (verdict delivered) or when the workflow ends early
+
+Session id format: `fvr-YYYYMMDD-HHMMSS-XXXX`.
+
+### Feature-verify payloads
+
+Both levels:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | `fvr-YYYYMMDD-HHMMSS-XXXX` |
+| `acceptance_criteria_count` | integer | Number of criteria extracted from the spec |
+| `rollout_relevant` | boolean | Whether the spec requires a guarded rollout audit |
+
+`_finished` adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `feature_flag_audit_performed` | boolean | Whether the rollout/feature-flag audit ran |
+| `review_iterations` | integer | Code-review iteration count |
+| `audit_result` | string | `all_pass`, `had_gaps`, or `skipped` |
+| `completion_status` | string | `completed`, `abandoned_at_review`, `abandoned_at_audit`, or `error` |
+| `duration_seconds` | integer | Wall-clock seconds from started to finished |
+
+`full` adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `spec_summary` | string | One-sentence summary of the verified feature (from `_started`) |
+| `gaps_found` | list | Short descriptions of gaps identified during the completeness audit |
+
+## PR description telemetry
+
+The PR description workflow emits a single event per generation:
+
+- `skillbill_pr_description_generated` — emitted after the PR description is presented (and, when applicable, after the PR is created)
+
+Session id format: `prd-YYYYMMDD-HHMMSS-XXXX`.
+
+### PR description payload
+
+Both levels:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | `prd-YYYYMMDD-HHMMSS-XXXX` |
+| `commit_count` | integer | Commits included in the PR |
+| `files_changed_count` | integer | Files changed in the PR |
+| `was_edited_by_user` | boolean | Whether the user requested changes to the generated description |
+| `pr_created` | boolean | Whether the PR was actually created |
+
+`full` adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pr_title` | string | Generated PR title |
+
 ## Feature-implement telemetry
 
 The feature-implement workflow emits two events per session:
@@ -190,6 +376,12 @@ Both `anonymous` and `full` levels:
 | Field | Type | Description |
 |-------|------|-------------|
 | `plan_deviation_notes` | string | Brief note if the plan changed during execution |
+
+Both levels also include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `child_steps` | list | `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session (see the "Session correlation" section). Empty list when no children were orchestrated. |
 
 Fields always excluded (both levels): repo name, branch name, raw spec content, raw plan content, file paths, acceptance criteria text.
 

@@ -80,6 +80,8 @@ Run `bill-quality-check` — it detects the dominant stack (including agent-conf
 
 If `bill-quality-check` reports no supported stack for the affected repo, fall back to the closest existing repo-native validation command or test command already present in the project.
 
+**Orchestrated telemetry:** call `quality_check_finished` with `orchestrated=true` once the check completes. Pass all started fields (`routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`) alongside the finished fields. Append the returned `telemetry_payload` to the `child_steps` list.
+
 ### Step 7: Write Boundary History
 
 Run `bill-boundary-history` (read its skill file and apply inline). The skill owns write/skip rules and entry format.
@@ -93,6 +95,8 @@ Run `bill-boundary-history` (read its skill file and apply inline). The skill ow
 ### Step 9: Generate PR Description (All sizes)
 
 Run `bill-pr-description` (read its skill file and apply inline) to generate a PR title, description, and QA steps.
+
+**Orchestrated telemetry:** call `pr_description_generated` with `orchestrated=true` once the PR is created. Append the returned `telemetry_payload` to the `child_steps` list. Pass that list to `feature_implement_finished`.
 
 ## Size Reference
 

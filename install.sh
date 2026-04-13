@@ -850,14 +850,54 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
+find_python_310_plus() {
+  local candidate
+  for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+        echo "$candidate"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+ensure_skill_bill_venv() {
+  local venv_dir="$PLUGIN_DIR/.venv"
+  local venv_python="$venv_dir/bin/python"
+  local system_python
+  if ! system_python="$(find_python_310_plus)"; then
+    return 1
+  fi
+  if [ -x "$venv_python" ] && "$venv_python" -c 'import mcp' >/dev/null 2>&1; then
+    echo "$venv_python"
+    return 0
+  fi
+  if [ -d "$venv_dir" ] && [ ! -x "$venv_python" ]; then
+    rm -rf "$venv_dir"
+  fi
+  if [ ! -d "$venv_dir" ]; then
+    if ! "$system_python" -m venv "$venv_dir" >/dev/null 2>&1; then
+      return 1
+    fi
+  fi
+  "$venv_python" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
+  if ! "$venv_python" -m pip install --quiet -e "$PLUGIN_DIR" >/dev/null 2>&1; then
+    return 1
+  fi
+  echo "$venv_python"
+  return 0
+}
+
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   info "Installing skill-bill CLI and MCP server..."
-  if python3 -m pip install -e "$PLUGIN_DIR" --quiet 2>/dev/null; then
+  if SKILL_BILL_PYTHON="$(ensure_skill_bill_venv)"; then
     ok "skill-bill CLI installed"
     register_mcp_json() {
       local config_path="$1"
       local label="$2"
-      if python3 -c "
+      if "$SKILL_BILL_PYTHON" -c "
 import json, sys, os
 path = sys.argv[1]
 try:
@@ -882,7 +922,7 @@ open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
     register_mcp_toml() {
       local config_path="$1"
       local label="$2"
-      if python3 -c "
+      if "$SKILL_BILL_PYTHON" -c "
 import sys, os
 path = sys.argv[1]
 python_cmd = sys.executable
@@ -921,7 +961,7 @@ open(path, 'w').write('\n'.join(filtered))
     register_mcp_jsonc_opencode() {
       local config_path="$1"
       local label="$2"
-      if python3 -c "
+      if "$SKILL_BILL_PYTHON" -c "
 import json, sys, os
 
 path = sys.argv[1]

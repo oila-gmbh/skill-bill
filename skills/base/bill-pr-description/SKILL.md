@@ -87,3 +87,11 @@ Short, under 70 characters, prefixed with the ticket ID if the branch name conta
 - Always search for a repo-native PR template first — never skip the search step
 - If invoked from `bill-feature-implement`, check `.feature-specs/<feature-name>/spec.md` for additional context (this file only exists when bill-feature-implement created it)
 - If the caller provides an explicit comparison base or merge-base, use it instead of inferring one
+
+## Telemetry
+
+This skill emits a single `skillbill_pr_description_generated` event via the `pr_description_generated` MCP tool.
+
+**Standalone invocation:** after presenting the PR description (and after the user has created the PR, if applicable), call `pr_description_generated` with `commit_count`, `files_changed_count`, `was_edited_by_user` (true if the user requested changes to the generated description), `pr_created` (true if the PR has actually been created), and optional `pr_title`.
+
+**Orchestrated invocation** (when called from `bill-feature-implement` or similar parent that passes `orchestrated=true`): call `pr_description_generated` with `orchestrated=true` and the same fields. The tool returns `{"mode": "orchestrated", "telemetry_payload": {...}}`. Return that payload to the orchestrator — it will embed it in its own finished event.

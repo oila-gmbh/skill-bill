@@ -120,6 +120,39 @@ def ensure_database(path: Path) -> sqlite3.Connection:
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS quality_check_sessions (
+      session_id TEXT PRIMARY KEY,
+      routed_skill TEXT NOT NULL DEFAULT '',
+      detected_stack TEXT NOT NULL DEFAULT '',
+      scope_type TEXT NOT NULL DEFAULT '',
+      initial_failure_count INTEGER NOT NULL DEFAULT 0,
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      started_event_emitted_at TEXT,
+      final_failure_count INTEGER,
+      iterations INTEGER,
+      result TEXT,
+      failing_check_names TEXT NOT NULL DEFAULT '',
+      unsupported_reason TEXT NOT NULL DEFAULT '',
+      finished_at TEXT,
+      finished_event_emitted_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS feature_verify_sessions (
+      session_id TEXT PRIMARY KEY,
+      acceptance_criteria_count INTEGER NOT NULL DEFAULT 0,
+      rollout_relevant INTEGER NOT NULL DEFAULT 0,
+      spec_summary TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      started_event_emitted_at TEXT,
+      feature_flag_audit_performed INTEGER,
+      review_iterations INTEGER,
+      audit_result TEXT,
+      completion_status TEXT,
+      gaps_found TEXT NOT NULL DEFAULT '',
+      finished_at TEXT,
+      finished_event_emitted_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS feature_implement_sessions (
       session_id TEXT PRIMARY KEY,
       issue_key_provided INTEGER NOT NULL DEFAULT 0,
@@ -160,12 +193,19 @@ def ensure_database(path: Path) -> sqlite3.Connection:
   ensure_column(connection, "review_runs", "review_finished_at", "TEXT")
   ensure_column(connection, "review_runs", "review_finished_event_emitted_at", "TEXT")
   ensure_column(connection, "review_runs", "specialist_reviews", "TEXT NOT NULL DEFAULT ''")
+  ensure_column(connection, "review_runs", "orchestrated_run", "INTEGER NOT NULL DEFAULT 0")
   backfill_review_session_ids(connection)
   ensure_column(
     connection,
     "feature_implement_sessions",
     "boundary_history_value",
     "TEXT NOT NULL DEFAULT 'none'",
+  )
+  ensure_column(
+    connection,
+    "feature_implement_sessions",
+    "child_steps_json",
+    "TEXT NOT NULL DEFAULT ''",
   )
   migrate_feedback_events_schema(connection)
   return connection
