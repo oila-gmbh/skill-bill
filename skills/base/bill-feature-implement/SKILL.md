@@ -17,7 +17,7 @@ Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGEN
 
 Ask the user for:
 1. **Feature design doc** — inline text, file path, or directory of spec files
-2. **Issue key** (e.g., `ME-5066`)
+2. **Issue key** (e.g., `ME-5066`, `SKILL-10`) — **required**. The issue key prefixes the branch name, spec directory, and commit message. If the user has no issue yet, stop and ask them to create one before continuing; do not invent a placeholder.
 
 Accept PDFs (read in page ranges if >10 pages), markdown, images. If a directory, read all files and synthesize. If spec exceeds ~8,000 words, ask which sections matter most.
 
@@ -41,8 +41,8 @@ After the user confirms the assessment, call the `feature_implement_started` MCP
 - `spec_word_count`: approximate word count of the design spec
 - `rollout_needed`: whether a feature flag / guarded rollout is needed
 - `feature_name`: the inferred feature name
-- `issue_key`: the issue key if provided, empty string otherwise
-- `issue_key_type`: `jira` (e.g. ME-5066), `linear` (e.g. LIN-123 or UUID), `github` (e.g. #42), `other`, or `none`
+- `issue_key`: the issue key the user provided (required — Step 1 does not proceed without it)
+- `issue_key_type`: `jira` (e.g. ME-5066), `linear` (e.g. LIN-123, SKILL-10, or UUID), `github` (e.g. #42), or `other`
 - `spec_summary`: one sentence summarizing what the feature does
 
 Save the returned `session_id` for `feature_implement_finished`. If the tool returns `status: skipped`, continue normally.
