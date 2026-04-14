@@ -158,6 +158,8 @@ The orchestrator appends the returned `telemetry_payload` to the `child_steps` l
 
 ### Telemetry: Record Finished
 
+For the shared telemetry contract including orchestrated flag semantics, child step collection, and graceful-degradation rules, follow [telemetry-contract.md](telemetry-contract.md).
+
 After the PR is created (or when the workflow ends early due to error or user abandonment), call the `feature_implement_finished` MCP tool with:
 - `session_id`: from `feature_implement_started`
 - `completion_status`: `completed` if PR was created, otherwise `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error`
@@ -172,18 +174,6 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `child_steps`: list of `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session
 
 For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.
-
-### Orchestration contract
-
-This skill acts as the parent for code review, quality checks, and PR description generation. When invoking those child workflows, pass `orchestrated=true` to their MCP tools and collect each returned `telemetry_payload`. Subagents that invoke child MCP tools are responsible for passing `orchestrated=true` themselves and returning the `telemetry_payload` up to the orchestrator. Append those payloads to a running `child_steps` list and pass the list to `feature_implement_finished`. The children will not emit their own telemetry events — the full workflow produces exactly one `skillbill_feature_implement_finished` event that carries the `child_steps` inside.
-
-Tools to call with `orchestrated=true` during this workflow:
-- `import_review` and `triage_findings` (orchestrator — when the code-review step runs)
-- `quality_check_finished` (quality-check subagent; skip `quality_check_started` in orchestrated mode; pass all started+finished fields directly to `quality_check_finished`)
-- `feature_verify_finished` (if feature-verify is invoked)
-- `pr_description_generated` (PR-description subagent)
-
-If a child skill is invoked but `orchestrated=true` is not passed, that child will emit its own standalone event — graceful degradation, but produces an extra event the workflow did not intend. Always pass the flag.
 
 ## Reference
 

@@ -12,6 +12,7 @@ from skill_repo_contracts import (
   CHILD_METADATA_HANDOFF_RULE,
   CHILD_NO_IMPORT_RULE,
   CHILD_NO_TRIAGE_RULE,
+  INLINE_TELEMETRY_CONTRACT_MARKERS,
   ORCHESTRATION_PLAYBOOKS,
   NO_FINDINGS_TRIAGE_RULE,
   PARENT_IMPORT_RULE,
@@ -24,6 +25,7 @@ from skill_repo_contracts import (
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
   RUNTIME_SUPPORTING_FILES,
+  TELEMETERABLE_SKILLS,
   TELEMETRY_OWNERSHIP_HEADING,
   TRIAGE_OWNERSHIP_HEADING,
 )
@@ -59,7 +61,7 @@ EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = 
     "must reference skill-local supporting files instead of install-local playbook paths",
   ),
   (
-    re.compile(r"orchestration/(?:stack-routing|review-orchestrator|review-delegation)/PLAYBOOK\.md"),
+    re.compile(r"orchestration/(?:stack-routing|review-orchestrator|review-delegation|telemetry-contract)/PLAYBOOK\.md"),
     "must reference skill-local supporting files instead of repo-side playbook paths at runtime",
   ),
 )
@@ -130,6 +132,7 @@ def main() -> int:
     required=False,
   )
   validate_plugin_manifest(root / ".claude-plugin" / "plugin.json", issues)
+  validate_no_inline_telemetry_contract_drift(root, issues)
 
   if issues:
     print("Agent-config validation failed:")
@@ -207,6 +210,39 @@ def validate_orchestrator_passthrough(root: Path, issues: list[str]) -> None:
         f"{skill_dir}: orchestrator skill must instruct the agent to pass "
         f"'{ORCHESTRATED_PASS_THROUGH_MARKER}' when invoking child telemeterable tools"
       )
+
+
+def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -> None:
+  """Reject telemeterable skills that contain inline telemetry contract markers.
+
+  Every telemeterable skill should reference the shared telemetry-contract.md
+  sidecar instead of embedding shared contract text. This check catches drift
+  re-accumulation: a skill that references the sidecar but also contains
+  forbidden marker text fails validation.
+  """
+  for skill_name in TELEMETERABLE_SKILLS:
+    skill_dirs = list((root / "skills").rglob(skill_name))
+    if not skill_dirs:
+      continue
+    skill_dir = skill_dirs[0]
+    files_to_scan = ["SKILL.md"]
+    orchestrator_files = dict(ORCHESTRATOR_SKILLS)
+    if str(skill_dir.relative_to(root)) in orchestrator_files:
+      for f in orchestrator_files[str(skill_dir.relative_to(root))]:
+        if f not in files_to_scan:
+          files_to_scan.append(f)
+    for file_name in files_to_scan:
+      file_path = skill_dir / file_name
+      if not file_path.exists():
+        continue
+      text = file_path.read_text(encoding="utf-8")
+      for marker in INLINE_TELEMETRY_CONTRACT_MARKERS:
+        if marker in text:
+          issues.append(
+            f"{file_path.relative_to(root)}: telemeterable skill must not contain inline "
+            f"telemetry contract text; found '{marker}'. Use the shared "
+            f"telemetry-contract.md sidecar instead."
+          )
 
 
 def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) -> None:
@@ -293,21 +329,6 @@ def validate_portable_review_wording(
     issues.append(f"{skill_file}: portable review skills must expose '{REVIEW_RUN_ID_PLACEHOLDER}'")
   if APPLIED_LEARNINGS_PLACEHOLDER not in text:
     issues.append(f"{skill_file}: portable review skills must expose '{APPLIED_LEARNINGS_PLACEHOLDER}'")
-  require_markdown_heading(
-    text,
-    TELEMETRY_OWNERSHIP_HEADING,
-    f"{skill_file}: portable review skills must define the telemetry ownership section as a markdown heading",
-    issues,
-  )
-  require_markdown_heading(
-    text,
-    TRIAGE_OWNERSHIP_HEADING,
-    f"{skill_file}: portable review skills must define the triage ownership section as a markdown heading",
-    issues,
-  )
-  for required_text, message in PORTABLE_REVIEW_TELEMETRY_REQUIREMENTS:
-    if required_text not in text:
-      issues.append(f"{skill_file}: {message}; missing '{required_text}'")
 
   for pattern, message in NON_PORTABLE_REVIEW_PATTERNS:
     match = pattern.search(text)
@@ -368,6 +389,22 @@ def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
         f"{relative_path}: review orchestration contract must define the triage ownership section as a markdown heading",
         issues,
       )
+    if playbook_name == "telemetry-contract":
+      require_markdown_heading(
+        text,
+        TELEMETRY_OWNERSHIP_HEADING,
+        f"{relative_path}: telemetry contract must define the telemetry ownership section as a markdown heading",
+        issues,
+      )
+      require_markdown_heading(
+        text,
+        TRIAGE_OWNERSHIP_HEADING,
+        f"{relative_path}: telemetry contract must define the triage ownership section as a markdown heading",
+        issues,
+      )
+      for required_text, message in PORTABLE_REVIEW_TELEMETRY_REQUIREMENTS:
+        if required_text not in text:
+          issues.append(f"{relative_path}: {message}; missing '{required_text}'")
       for required_text, message in REVIEW_ORCHESTRATOR_TELEMETRY_REQUIREMENTS:
         if required_text not in text:
           issues.append(f"{relative_path}: {message}; missing '{required_text}'")

@@ -126,6 +126,12 @@ The finished event carries: total/accepted/unresolved finding counts, accepted/r
 
 When `learnings resolve` is called with `--review-session-id`, the resolved learnings are cached locally and included in the matching `skillbill_review_finished` event when it fires.
 
+## Where this contract lives
+
+The shared telemetry contract — standalone-first behavior, orchestrated flag semantics, child_steps aggregation, routers-never-emit rule, and ownership rules for `import_review` / `triage_findings` — is the single source of truth at `orchestration/telemetry-contract/PLAYBOOK.md`.
+
+Each telemeterable skill consumes this contract through a `telemetry-contract.md` symlink sidecar inside the skill directory. That symlink resolves to `orchestration/telemetry-contract/PLAYBOOK.md`, so agents reading the skill always reach the canonical rules without needing to know the repo layout. Skill-specific telemetry fields (session id format, event names, payload fields) remain in each skill's own `SKILL.md`.
+
 ## Session correlation
 
 Skill Bill uses **parent-owned telemetry** across the whole skill suite. A single user-initiated workflow produces **exactly one** telemetry event, even when multiple skills run inside it.

@@ -152,33 +152,10 @@ Signals: <markers>
 Result: No matching stack-specific code-review skill is available yet.
 ```
 
-## Telemetry Ownership
+## Telemetry
 
-This router is thin by design and **never emits telemetry on its own** — routing metadata is carried in the concrete routed skill's telemetry call. The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.
+This router is thin by design and **never emits telemetry on its own** — routing metadata is carried in the concrete routed skill's telemetry call.
 
-- If this review is delegated or layered under another review, do not call `import_review`. Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, detected scope/stack, execution mode, specialist reviews) to the parent review instead.
-- If this review owns the final merged review output for the current review lifecycle, call the `import_review` MCP tool:
-  - `review_text`: the complete review output (Section 1 through Section 4)
-  - `orchestrated`: pass `true` if this review is itself nested inside another orchestrator workflow (for example when `bill-feature-implement` drives the review); pass `false` or omit when the user invoked the review directly. In orchestrated mode, the MCP tool suppresses outbox emission and returns a `telemetry_payload` for the parent to embed in its own finished event.
-
-## Triage Ownership
-
-The same parent review owns triage recording after the user responds to findings.
-
-- If this review is delegated or layered under another review, do not call `triage_findings`; the parent review owns triage handoff and telemetry completion.
-
-Each finding gets one decision using its position number from the risk register:
-- `fix` — the finding was accepted and the fix was applied
-- `accept` — the finding was accepted but no code change was needed
-- `skip` — the finding was intentionally skipped (append a reason after ` - `)
-- `false_positive` — the finding was incorrect
-
-- If this review owns the final merged review output for the current review lifecycle and the user responds to findings, call the `triage_findings` MCP tool:
-  - `review_run_id`: the review run ID from the review output
-  - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-  - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
-  - `orchestrated`: pass `true` when this review is nested inside another orchestrator workflow so the final `triage_findings` call returns a `telemetry_payload` for the parent to embed. Must match whatever was passed to `import_review` for the same review run.
-
-Skip triage recording when the final parent-owned review produced no findings.
+For telemetry ownership, triage ownership, and the `orchestrated` flag contract, follow [telemetry-contract.md](telemetry-contract.md).
 
 The `orchestrated` flag must come from the caller (the orchestrator passes it explicitly). A standalone review never sees the flag set and always emits `skillbill_review_finished` as before.

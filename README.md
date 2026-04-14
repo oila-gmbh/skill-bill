@@ -275,7 +275,7 @@ Think of it as markdown with inheritance:
 
 - base skills define the stable contracts
 - platform skills specialize them
-- orchestration snapshots document the shared routing, review, and delegation logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
+- orchestration snapshots document the shared routing, review, delegation, and telemetry logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
 
 ### Fast mental model
 
@@ -283,7 +283,7 @@ If you only remember four things, remember these:
 
 1. Users enter through stable skills in `skills/base/`.
 2. Platform depth lives in `skills/<platform>/`.
-3. Shared logic is documented in `orchestration/`, but runtimes consume it through sibling sidecars such as `stack-routing.md`, `review-orchestrator.md`, and `review-delegation.md`.
+3. Shared logic is documented in `orchestration/`, but runtimes consume it through sibling sidecars such as `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, and `telemetry-contract.md`.
 4. Topology changes should start in `scripts/skill_repo_contracts.py`, then flow into skills, tests, and docs.
 
 That last file is the canonical map for:

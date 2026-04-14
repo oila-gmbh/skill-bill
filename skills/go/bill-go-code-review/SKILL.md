@@ -159,32 +159,9 @@ Every finding in `### 2. Risk Register` must use this exact bullet format (do NO
 
 Severity: `Blocker | Major | Minor`. Confidence: `High | Medium | Low`.
 
-### Telemetry Ownership
+### Telemetry
 
-The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.
-
-- If this review is delegated or layered under another review, do not call `import_review`. Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, detected scope/stack, execution mode, specialist reviews) to the parent review instead.
-- If this review owns the final merged review output for the current review lifecycle, call the `import_review` MCP tool:
-  - `review_text`: the complete review output (Section 1 through Section 4)
-
-### Triage Ownership
-
-The same parent review owns triage recording after the user responds to findings.
-
-- If this review is delegated or layered under another review, do not call `triage_findings`; the parent review owns triage handoff and telemetry completion.
-
-Each finding gets one decision using its position number from the risk register:
-- `fix` — the finding was accepted and the fix was applied
-- `accept` — the finding was accepted but no code change was needed
-- `skip` — the finding was intentionally skipped (append a reason after ` - `)
-- `false_positive` — the finding was incorrect
-
-- If this review owns the final merged review output for the current review lifecycle and the user responds to findings, call the `triage_findings` MCP tool:
-  - `review_run_id`: the review run ID from the review output
-  - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-  - fallback: explicit numbered decisions still work, e.g. `["1 fix", "2 skip - intentional", "3 accept"]`
-
-Skip triage recording when the final parent-owned review produced no findings.
+For telemetry ownership, triage ownership, and the `orchestrated` flag contract, follow [telemetry-contract.md](telemetry-contract.md).
 
 For action items, verdict format, merge rules, and review principles, follow [review-orchestrator.md](review-orchestrator.md).
 

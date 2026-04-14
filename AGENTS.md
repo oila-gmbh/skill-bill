@@ -19,7 +19,7 @@ The repository uses a strict three-layer model:
 
 - `skills/base/` — canonical, user-facing capabilities
 - `skills/<platform>/` — platform-specific overrides and approved platform-owned subskills
-- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, and delegation contracts; not a runtime dependency for installed skills
+- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, delegation, and telemetry contracts; not a runtime dependency for installed skills
 
 ## Naming rules
 
@@ -57,8 +57,8 @@ Use only these two platform naming patterns unless the taxonomy itself is intent
 - Add platform capabilities only as base-capability overrides or approved `code-review-<area>` specializations.
 - Add a new package only when behavior is materially different from existing packages.
 - Runtime-facing skills may reference sibling supporting files inside the same skill directory.
-- Use sibling supporting files for runtime-shared routing, review, and delegation contracts instead of repo-relative or install-root-relative playbook paths.
-- Keep `orchestration/` snapshots aligned with the sibling supporting-file contracts when shared routing, review, or delegation behavior changes.
+- Use sibling supporting files for runtime-shared routing, review, delegation, and telemetry contracts instead of repo-relative or install-root-relative playbook paths.
+- Keep `orchestration/` snapshots aligned with the sibling supporting-file contracts when shared routing, review, delegation, or telemetry behavior changes.
 - Preserve stable base entry points even when a platform needs more depth behind the router.
 - Keep README.md (user-facing only, do not read for agent context) skill counts and catalog entries accurate whenever skills change.
 - Update `install.sh` migration rules in the same change when renaming stack-bound skills.
@@ -87,10 +87,11 @@ When adding a new platform or language package:
    - `ALLOWED_PACKAGES`
    - any package-specific validation logic
    - any tests or assumptions tied to current package names
-4. Update maintainer reference snapshots when shared routing or review behavior changes:
+4. Update maintainer reference snapshots when shared routing, review, or telemetry behavior changes:
    - `orchestration/stack-routing/PLAYBOOK.md`
    - `orchestration/review-orchestrator/PLAYBOOK.md`
    - `orchestration/review-delegation/PLAYBOOK.md`
+   - `orchestration/telemetry-contract/PLAYBOOK.md`
 5. Update base routers if needed:
    - `skills/base/bill-code-review/SKILL.md`
    - `skills/base/bill-quality-check/SKILL.md`
@@ -134,8 +135,8 @@ python3 scripts/validate_agent_configs.py
 
 ## Practical example
 
-If someone adds PHP support, the expected shape is:
+If someone adds a new platform package, the expected shape is:
 
-- base-facing override names such as `bill-php-code-review` or `bill-php-quality-check`
-- optional approved code-review subskills such as `bill-php-code-review-security`
-- no names like `bill-php-laravel-code-review` unless the naming rules themselves are intentionally changed and validated
+- base-facing override names such as `bill-acme-code-review` or `bill-acme-quality-check`
+- optional approved code-review subskills such as `bill-acme-code-review-security`
+- no names like `bill-acme-framework-code-review` unless the naming rules themselves are intentionally changed and validated

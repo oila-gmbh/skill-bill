@@ -18,6 +18,7 @@ from skill_repo_contracts import (  # noqa: E402
   CHILD_METADATA_HANDOFF_RULE,
   CHILD_NO_IMPORT_RULE,
   CHILD_NO_TRIAGE_RULE,
+  INLINE_TELEMETRY_CONTRACT_MARKERS,
   NO_FINDINGS_TRIAGE_RULE,
   PARENT_IMPORT_RULE,
   PARENT_TRIAGE_RULE,
@@ -27,6 +28,7 @@ from skill_repo_contracts import (  # noqa: E402
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
   RUNTIME_SUPPORTING_FILES,
+  TELEMETERABLE_SKILLS,
   TELEMETRY_OWNERSHIP_HEADING,
   TRIAGE_OWNERSHIP_HEADING,
   supporting_file_targets,
@@ -202,7 +204,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("portable review skills must expose", result.stdout)
       self.assertIn("review orchestration contract must expose", result.stdout)
 
-  def test_rejects_portable_review_skill_without_parent_owned_telemetry_handoff(self) -> None:
+  def test_rejects_portable_review_skill_without_telemetry_sidecar(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
@@ -216,25 +218,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("portable review skills must define the telemetry ownership section", result.stdout)
-      self.assertIn("portable review skills must describe the parent-owned triage_findings handoff", result.stdout)
-
-  def test_rejects_portable_review_skill_without_heading_based_telemetry_sections(self) -> None:
-    with self.fixture_repo(
-      [
-        ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
-      ],
-      skill_contents={
-        "bill-go-code-review": self.portable_review_fixture_with_plaintext_telemetry_sections(
-          "bill-go-code-review"
-        ),
-      },
-    ) as repo_root:
-      result = self.run_validator(repo_root)
-      self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("portable review skills must define the telemetry ownership section as a markdown heading", result.stdout)
-      self.assertIn("portable review skills must define the triage ownership section as a markdown heading", result.stdout)
+      self.assertIn("must reference local supporting file 'telemetry-contract.md'", result.stdout)
 
   def test_rejects_review_orchestrator_without_machine_readable_finding_contract(self) -> None:
     with self.fixture_repo(
@@ -278,6 +262,48 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         result.stdout,
       )
 
+  def test_accepts_telemeterable_skill_with_sidecar_reference(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("go", "bill-go-code-review"),
+      ],
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_rejects_telemeterable_skill_without_sidecar_reference(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("go", "bill-go-code-review"),
+      ],
+      skill_contents={
+        "bill-go-code-review": self.portable_review_fixture_without_telemetry_sidecar_reference(
+          "bill-go-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("must reference local supporting file 'telemetry-contract.md'", result.stdout)
+
+  def test_rejects_telemeterable_skill_with_inline_contract_drift(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-code-review"),
+        ("go", "bill-go-code-review"),
+      ],
+      skill_contents={
+        "bill-go-code-review": self.portable_review_fixture_with_inline_telemetry_drift(
+          "bill-go-code-review"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("must not contain inline telemetry contract text", result.stdout)
+
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
       ["python3", str(VALIDATOR_PATH), str(repo_root)],
@@ -309,6 +335,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         use_heading_sections=review_orchestrator_uses_heading_sections,
       )
       self.write_review_delegation_playbook(repo_root)
+      self.write_telemetry_contract_playbook(repo_root)
 
       for package_name, skill_name in skills:
         self.write_skill(
@@ -464,6 +491,37 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       encoding="utf-8",
     )
 
+  def write_telemetry_contract_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "telemetry-contract" / "PLAYBOOK.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        f"""\
+        ---
+        name: telemetry-contract
+        description: Canonical shared telemetry contract for skill-bill skills.
+        ---
+
+        # Shared Telemetry Contract
+
+        This maintainer-facing reference snapshot documents the shared telemetry contract.
+
+        ## Telemetry Ownership
+
+        {PARENT_IMPORT_RULE}
+        {CHILD_NO_IMPORT_RULE}
+        {CHILD_METADATA_HANDOFF_RULE}
+
+        ## Triage Ownership
+
+        {PARENT_TRIAGE_RULE}
+        {CHILD_NO_TRIAGE_RULE}
+        {NO_FINDINGS_TRIAGE_RULE}
+        """
+      ),
+      encoding="utf-8",
+    )
+
   def write_skill(
     self,
     repo_root: Path,
@@ -483,31 +541,31 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
   def skill_markdown(self, skill_name: str) -> str:
-    review_run_line = ""
+    lines = [
+      f"---",
+      f"name: {skill_name}",
+      f"description: Use when validating fixture taxonomy behavior for {skill_name}.",
+      f"---",
+      f"",
+      f"# {skill_name}",
+      f"",
+      f"## Project Overrides",
+      f"",
+      f"If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.",
+      f"",
+      f"Use this fixture skill for validator end-to-end coverage.",
+    ]
     if skill_name == "bill-code-review" or skill_name in RUNTIME_SUPPORTING_FILES:
-      review_run_line = (
-        f"\n{REVIEW_SESSION_ID_PLACEHOLDER}\n"
-        + f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}."
-        + f"\n{REVIEW_RUN_ID_PLACEHOLDER}\n"
-        + f"Use the review run id format {REVIEW_RUN_ID_FORMAT}."
-        + f"\n{APPLIED_LEARNINGS_PLACEHOLDER}"
-      )
-    return textwrap.dedent(
-      f"""\
-      ---
-      name: {skill_name}
-      description: Use when validating fixture taxonomy behavior for {skill_name}.
-      ---
-
-      # {skill_name}
-
-      ## Project Overrides
-
-      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
-
-      Use this fixture skill for validator end-to-end coverage.{review_run_line}
-      """
-    )
+      lines.extend([
+        REVIEW_SESSION_ID_PLACEHOLDER,
+        f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.",
+        REVIEW_RUN_ID_PLACEHOLDER,
+        f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
+        APPLIED_LEARNINGS_PLACEHOLDER,
+      ])
+    for sidecar in RUNTIME_SUPPORTING_FILES.get(skill_name, ()):
+      lines.append(f"[{sidecar}]({sidecar})")
+    return "\n".join(lines) + "\n"
 
   def skill_with_runtime_playbook_reference(self, skill_name: str) -> str:
     return textwrap.dedent(
@@ -546,21 +604,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
-      ## Telemetry Ownership
+      For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
 
-      {CHILD_NO_IMPORT_RULE}
-      {CHILD_METADATA_HANDOFF_RULE}
-      {PARENT_IMPORT_RULE}
-      - `review_text`: the complete review output (Section 1 through Section 4)
-
-      ## Triage Ownership
-
-      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
-      {PARENT_TRIAGE_RULE}
-      - `review_run_id`: the review run ID from the review output
-      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-
-      {NO_FINDINGS_TRIAGE_RULE}
       | Signal | Agent to spawn |
       | --- | --- |
       | fixture | `bill-go-code-review-security` |
@@ -607,21 +652,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {APPLIED_LEARNINGS_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
-      ## Telemetry Ownership
-
-      {CHILD_NO_IMPORT_RULE}
-      {CHILD_METADATA_HANDOFF_RULE}
-      {PARENT_IMPORT_RULE}
-      - `review_text`: the complete review output (Section 1 through Section 4)
-
-      ## Triage Ownership
-
-      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
-      {PARENT_TRIAGE_RULE}
-      - `review_run_id`: the review run ID from the review output
-      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-
-      {NO_FINDINGS_TRIAGE_RULE}
+      For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
       Specialist review fixture content.
       """
     )
@@ -666,21 +697,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_RUN_ID_PLACEHOLDER}
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
-      ## Telemetry Ownership
-
-      {CHILD_NO_IMPORT_RULE}
-      {CHILD_METADATA_HANDOFF_RULE}
-      {PARENT_IMPORT_RULE}
-      - `review_text`: the complete review output (Section 1 through Section 4)
-
-      ## Triage Ownership
-
-      {CHILD_NO_TRIAGE_RULE} the parent review owns triage handoff and telemetry completion.
-      {PARENT_TRIAGE_RULE}
-      - `review_run_id`: the review run ID from the review output
-      - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
-
-      {NO_FINDINGS_TRIAGE_RULE}
+      For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
       Specialist review fixture content.
       """
     )
@@ -742,6 +759,60 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       - `decisions`: prefer a single structured selection string that fully resolves the review, e.g. `["fix=[1,3] reject=[2]"]`
 
       {NO_FINDINGS_TRIAGE_RULE}
+      Specialist review fixture content.
+      """
+    )
+
+
+  def portable_review_fixture_without_telemetry_sidecar_reference(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill missing the shared telemetry sidecar reference.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      [stack-routing.md](stack-routing.md)
+      Specialist review fixture content.
+      """
+    )
+
+  def portable_review_fixture_with_inline_telemetry_drift(self, skill_name: str) -> str:
+    return textwrap.dedent(
+      f"""\
+      ---
+      name: {skill_name}
+      description: Fixture review skill that references the sidecar but also contains inline contract text.
+      ---
+
+      # {skill_name}
+
+      ## Project Overrides
+
+      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
+
+      {REVIEW_SESSION_ID_PLACEHOLDER}
+      {REVIEW_RUN_ID_PLACEHOLDER}
+      {APPLIED_LEARNINGS_PLACEHOLDER}
+      [review-orchestrator.md](review-orchestrator.md)
+      [review-delegation.md](review-delegation.md)
+      [stack-routing.md](stack-routing.md)
+      [telemetry-contract.md](telemetry-contract.md)
+
+      ## Standalone-first contract
+
+      This is inline contract text that should be in the sidecar, not here.
       Specialist review fixture content.
       """
     )

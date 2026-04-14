@@ -83,6 +83,10 @@ Reason: <why this stack-specific quality-checker was selected>
 
 This skill is telemeterable via the `quality_check_started` and `quality_check_finished` MCP tools. This router does not emit telemetry on its own — routing metadata is carried in the concrete stack-specific skill's telemetry call.
 
+For the shared telemetry contract including the `orchestrated` flag semantics, follow [telemetry-contract.md](telemetry-contract.md).
+
+### Skill-specific telemetry fields
+
 **Standalone invocation** (user runs `bill-quality-check` directly):
 1. Call `quality_check_started` once stack routing is decided, with `routed_skill`, `detected_stack`, `scope_type` (`files` / `working_tree` / `branch_diff` / `repo`), and `initial_failure_count` (0 if the first check has not run yet).
 2. Save the returned `session_id`.
