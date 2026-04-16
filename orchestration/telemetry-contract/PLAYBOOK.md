@@ -58,7 +58,7 @@ PR description skills (`bill-pr-description`) use the `pr_description_generated`
 
 ### Feature-implement skills
 
-Feature-implement skills (`bill-feature-implement`, `bill-feature-implement-agentic`) use the `feature_implement_started` and `feature_implement_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
+Feature-implement skills (`bill-feature-implement`) use the `feature_implement_started` and `feature_implement_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
 
 ## child_steps aggregation
 

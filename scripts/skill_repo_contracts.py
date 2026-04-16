@@ -92,16 +92,6 @@ RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
     "android-compose-edge-to-edge.md",
     "android-compose-adaptive-layouts.md",
   ),
-  "bill-feature-implement-agentic": (
-    "telemetry-contract.md",
-    "android-compose-implementation.md",
-    "android-navigation-implementation.md",
-    "android-interop-implementation.md",
-    "android-design-system-implementation.md",
-    "android-r8-implementation.md",
-    "android-compose-edge-to-edge.md",
-    "android-compose-adaptive-layouts.md",
-  ),
   "bill-feature-verify": ("telemetry-contract.md",),
   "bill-pr-description": ("telemetry-contract.md",),
 }

@@ -201,7 +201,6 @@ def discover_addon_files(root: Path) -> list[Path]:
 ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
   # (skill_dir, files_to_scan_relative_to_skill_dir)
   ("skills/base/bill-feature-implement", ("SKILL.md", "reference.md")),
-  ("skills/base/bill-feature-implement-agentic", ("SKILL.md", "reference.md")),
   ("skills/base/bill-feature-verify", ("SKILL.md",)),
 )
 ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
@@ -314,7 +313,7 @@ def validate_runtime_supporting_files(
   for file_name in required_files:
     supporting_file = skill_file.parent / file_name
     if (
-      skill_name in {"bill-feature-implement", "bill-feature-implement-agentic"}
+      skill_name == "bill-feature-implement"
       and file_name in ADDON_SUPPORTING_FILE_TARGETS
     ):
       if file_name not in text and "matching stack-owned add-on supporting files" not in text:

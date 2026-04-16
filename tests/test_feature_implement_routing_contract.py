@@ -39,7 +39,6 @@ def read(relative_path: str) -> str:
 
 
 FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md") + "\n" + read("skills/base/bill-feature-implement/reference.md")
-FEATURE_IMPLEMENT_AGENTIC = read("skills/base/bill-feature-implement-agentic/SKILL.md") + "\n" + read("skills/base/bill-feature-implement-agentic/reference.md")
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
@@ -170,8 +169,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       self.assertIn(section, REVIEW_DELEGATION_PLAYBOOK)
 
   def test_feature_implement_invokes_shared_review_and_validation_routers(self) -> None:
-    self.assertIn("Run `bill-code-review`", FEATURE_IMPLEMENT)
-    self.assertIn("Run `bill-quality-check`", FEATURE_IMPLEMENT)
+    self.assertIn("bill-code-review", FEATURE_IMPLEMENT)
+    self.assertIn("bill-quality-check", FEATURE_IMPLEMENT)
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
 
@@ -262,48 +261,28 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
 
   def test_kmp_feature_implement_defers_governed_addons_to_stack_routing(self) -> None:
     self.assertIn(
-      "When `kmp` signals dominate, resolve governed add-ons only after stack routing.",
-      FEATURE_IMPLEMENT,
-    )
-    self.assertIn(
-      "Let the routed stack own add-on detection and selection",
-      FEATURE_IMPLEMENT,
-    )
-    self.assertIn(
-      "scan the matching stack-owned add-on supporting files' `## Section index` headings first",
-      FEATURE_IMPLEMENT,
-    )
-    self.assertIn(
-      "If the add-on is split into topic files, open only the linked topic files whose cues match the work.",
-      FEATURE_IMPLEMENT,
-    )
-    self.assertNotIn(
-      "android-compose-implementation.md",
-      FEATURE_IMPLEMENT,
-    )
-    self.assertIn(
       "When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`.",
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
     self.assertIn(
       "Let the routed stack own add-on detection and selection",
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
     self.assertIn(
       "scan the matching stack-owned add-on supporting files' `## Section index` headings first",
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
     self.assertIn(
       "If the add-on is split into topic files, open only the linked topic files whose cues match the work",
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
     self.assertNotIn(
       "android-compose-implementation.md",
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
     self.assertIn(
       '"selected_addons": ["<addon-slug>", ...]',
-      FEATURE_IMPLEMENT_AGENTIC,
+      FEATURE_IMPLEMENT,
     )
 
   def test_kmp_compose_review_skill_keeps_review_rubric_as_enforcement_layer(self) -> None:

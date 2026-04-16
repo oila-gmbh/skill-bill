@@ -1,3 +1,11 @@
+## [2026-04-16] sunset-legacy-feature-implement
+Areas: skills/base/, scripts/, orchestration/, tests/, install.sh, README.md
+- Sunset the orchestrator-centric `bill-feature-implement` and promoted the subagent-based `bill-feature-implement-agentic` to become the canonical `bill-feature-implement`. The subagent architecture (pre-planning, planning, implementation, audit, quality-check, and PR-description phases each in their own subagent) is now the default and only implementation. reusable
+- Added `bill-feature-implement-agentic:bill-feature-implement` migration rule in `install.sh` so existing installs automatically clean up the old `-agentic` symlink on next install.
+- Stripped all "experimental" and "-agentic" language from SKILL.md and reference.md. Updated validator, contracts, orchestration telemetry playbook, README catalog (49→48 skills), and routing-contract tests.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-15] addon-system
 Areas: AGENTS.md, scripts/, orchestration/, skills/base/, skills/kmp/, tests/, install.sh, README.md
 - Added a governed stack-owned add-on layer under `skills/<platform>/addons/` so framework/runtime depth stays behind dominant-stack routing instead of becoming new top-level packages or slash commands. reusable
