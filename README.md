@@ -2,7 +2,9 @@
 
 Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
 
-sKill Bill is a portable collection of 38 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Currently strongest for Kotlin, Android/KMP, Kotlin backend/server, Go backends/services, and governed skill/agent-config repositories.
+sKill Bill is a portable collection of 38 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Platform depth varies — see [platform coverage tiers](#platform-coverage-tiers) for what each stack gets today.
+
+Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs verify review output.
 
 ## Why this exists
 
@@ -120,6 +122,24 @@ Base entry points stay stable for users:
 - `/bill-code-review` routes to `bill-agent-config-code-review` | `bill-kotlin-code-review` | `bill-backend-kotlin-code-review` | `bill-kmp-code-review` | `bill-go-code-review`
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
+
+## Platform coverage tiers
+
+Not all platforms are at the same depth. The table below shows what each stack gets today so you know what to expect — and where to contribute.
+
+| Tier | Platforms | What you get | Skill count |
+|------|-----------|-------------|-------------|
+| **Deep** | Kotlin, KMP | Multi-layer specialist routing (KMP → Kotlin baseline), 12 governed Android add-ons (Compose, navigation, interop, design-system, R8), inline/delegated execution modes, quality-check | 10 skills + 12 add-ons |
+| **Deep** | Backend-Kotlin | Layers 3 backend-specific specialists (api-contracts, persistence, reliability) on the Kotlin baseline | 4 skills (+ Kotlin baseline) |
+| **Solid** | Go | Full code-review orchestrator with 8 specialist areas, quality-check, no governed add-ons or framework-specific depth | 10 skills |
+| **Meta** | Agent-config | Self-referential: reviews and validates this skill repo itself | 2 skills |
+
+**What "Deep" means vs "Solid":**
+
+- Deep platforms have multi-layer routing, governed add-ons for framework-specific guidance, and specialist areas that compose across packages.
+- Solid platforms have a full specialist roster but no governed add-ons or multi-layer routing. Go covers 8 code-review areas — the gap is framework-specific depth (e.g., no Chi/Gin add-ons for Go).
+
+The Go framework-depth gap is a visible backlog item, not a missing feature. Governed add-ons can be added under `skills/go/addons/` when framework-specific guidance is needed.
 
 ## Review telemetry
 
@@ -288,13 +308,13 @@ The repo is organized around a strict three-layer model:
 
 - `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
 - `skills/<platform>/` — platform-specific overrides and approved subskills
-- `orchestration/` — maintainer-facing reference snapshots for shared routing, review, and delegation contracts
+- `orchestration/` — single source of truth for shared routing, review, delegation, and telemetry contracts
 
 Think of it as markdown with inheritance:
 
 - base skills define the stable contracts
 - platform skills specialize them
-- orchestration snapshots document the shared routing, review, delegation, and telemetry logic that runtime-facing skills can reference via sibling supporting files in the same skill directory
+- orchestration files are the canonical shared contracts for routing, review, delegation, and telemetry; skills link to them via sibling symlinks, so changes propagate to every linked skill immediately
 
 ### Fast mental model
 
@@ -314,11 +334,11 @@ That last file is the canonical map for:
 
 Current platform packages:
 
-- `agent-config`
-- `kotlin`
-- `backend-kotlin`
-- `kmp`
-- `go`
+- `kotlin` — Deep (7 skills, baseline for KMP and backend-kotlin)
+- `kmp` — Deep (3 skills + 12 governed add-ons, layers on kotlin)
+- `backend-kotlin` — Deep (4 skills, layers on kotlin)
+- `go` — Solid (10 skills, no add-ons)
+- `agent-config` — Meta (2 skills)
 
 ### Naming and enforcement
 
@@ -351,9 +371,9 @@ This repo validates both content quality and taxonomy rules.
 Local checks:
 
 ```bash
-python3 -m unittest discover -s tests
+.venv/bin/python3 -m unittest discover -s tests
 npx --yes agnix --strict .
-python3 scripts/validate_agent_configs.py
+.venv/bin/python3 scripts/validate_agent_configs.py
 ```
 
 CI runs the same checks.

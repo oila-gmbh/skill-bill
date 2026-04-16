@@ -1,13 +1,13 @@
 ---
 name: review-orchestrator
-description: Maintainer-facing reference snapshot for shared stack-specific code-review orchestration contracts, merge rules, and output structure.
+description: Single source of truth for shared stack-specific code-review orchestration contracts, merge rules, and output structure. Skills link to this via sibling symlinks.
 ---
 
-# Shared Code Review Orchestrator Snapshot
+# Shared Code Review Orchestrator Contract
 
-This maintainer-facing reference snapshot documents the shared review-orchestration contract used when authoring or updating installable skills.
+This is the canonical review-orchestration contract. Skills consume it through sibling symlinks (e.g. `review-orchestrator.md` inside each skill directory), so changes here propagate to every linked skill immediately.
 
-Runtime-facing skills consume this contract through sibling supporting files such as `review-orchestrator.md` inside each skill directory. Do not reference this repo-relative path directly from installable skills.
+Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
 
 ## Shared Contract For Every Specialist
 

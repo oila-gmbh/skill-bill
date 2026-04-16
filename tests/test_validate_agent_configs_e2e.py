@@ -446,13 +446,13 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         """\
         ---
         name: stack-routing
-        description: Maintainer-facing reference snapshot for shared stack routing behavior.
+        description: Single source of truth for shared stack routing behavior.
         ---
 
-        # Shared Stack Routing Snapshot
+        # Shared Stack Routing Contract
 
-        This maintainer-facing reference snapshot exists to document the shared routing contract.
-        It is not a runtime dependency for installed skills.
+        This is the canonical stack-routing contract. Skills consume it through sibling symlinks,
+        so changes here propagate to every linked skill immediately.
         """
       ),
       encoding="utf-8",
@@ -472,13 +472,13 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       """\
       ---
       name: review-orchestrator
-      description: Maintainer-facing reference snapshot for shared review orchestration behavior.
+      description: Single source of truth for shared review orchestration contracts.
       ---
 
-      # Shared Review Orchestrator Snapshot
+      # Shared Code Review Orchestrator Contract
 
-      This maintainer-facing reference snapshot exists to document the shared review contract.
-      It is not a runtime dependency for installed skills.
+      This is the canonical review-orchestration contract. Skills consume it through sibling symlinks,
+      so changes here propagate to every linked skill immediately.
       """
     )
     if include_telemetry:
@@ -516,13 +516,13 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         """\
         ---
         name: review-delegation
-        description: Maintainer-facing reference snapshot for agent-specific delegated review execution.
+        description: Single source of truth for agent-specific delegated review execution.
         ---
 
-        # Shared Review Delegation Snapshot
+        # Shared Review Delegation Contract
 
-        This maintainer-facing reference snapshot exists to document the shared delegation contract.
-        Runtime-facing skills consume it through sibling supporting files.
+        This is the canonical review-delegation contract. Skills consume it through sibling symlinks,
+        so changes here propagate to every linked skill immediately.
 
         ## GitHub Copilot CLI
         ## Claude Code
@@ -543,12 +543,13 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         f"""\
         ---
         name: telemetry-contract
-        description: Canonical shared telemetry contract for skill-bill skills.
+        description: Single source of truth for shared telemetry event semantics, orchestration flags, and learnings resolution.
         ---
 
         # Shared Telemetry Contract
 
-        This maintainer-facing reference snapshot documents the shared telemetry contract.
+        This is the canonical telemetry contract for skill-bill skills. Skills consume it through sibling symlinks,
+        so changes here propagate to every linked skill immediately.
 
         ## Telemetry Ownership
 

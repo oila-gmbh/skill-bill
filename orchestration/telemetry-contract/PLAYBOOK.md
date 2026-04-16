@@ -1,11 +1,13 @@
 ---
 name: telemetry-contract
-description: Canonical shared telemetry contract for skill-bill skills.
+description: Single source of truth for shared telemetry event semantics, orchestration flags, and learnings resolution. Skills link to this via sibling symlinks.
 ---
 
 # Shared Telemetry Contract
 
-This maintainer-facing reference snapshot documents the shared telemetry contract used across all telemeterable skills in the skill-bill suite. Runtime-facing skills consume this contract through a sibling `telemetry-contract.md` file inside each skill directory. Do not reference this repo-relative path directly from installable skills.
+This is the canonical telemetry contract for skill-bill skills. Skills consume it through a sibling `telemetry-contract.md` symlink inside each skill directory, so changes here propagate to every linked skill immediately.
+
+Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
 
 ## Standalone-first contract
 

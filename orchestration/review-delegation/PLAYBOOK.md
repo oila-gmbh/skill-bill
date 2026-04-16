@@ -1,13 +1,13 @@
 ---
 name: review-delegation
-description: Maintainer-facing reference snapshot for agent-specific delegated code-review execution.
+description: Single source of truth for agent-specific delegated code-review execution. Skills link to this via sibling symlinks.
 ---
 
-# Shared Review Delegation Snapshot
+# Shared Review Delegation Contract
 
-This maintainer-facing reference snapshot documents the agent-specific delegation contract used when authoring or updating installable code-review skills.
+This is the canonical review-delegation contract. Skills consume it through sibling symlinks (e.g. `review-delegation.md` inside each skill directory), so changes here propagate to every linked skill immediately.
 
-Runtime-facing skills consume this contract through sibling supporting files such as `review-delegation.md` inside each skill directory. Do not reference this repo-relative path directly from installable skills.
+Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
 
 ## Shared Delegation Rules
 

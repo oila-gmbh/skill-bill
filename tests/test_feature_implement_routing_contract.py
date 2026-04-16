@@ -122,12 +122,12 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "stack-routing" / "PLAYBOOK.md")
 
   def test_reference_playbooks_remain_available_for_maintainers(self) -> None:
-    self.assertIn("maintainer-facing reference snapshot", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("maintainer-facing reference snapshot", REVIEW_ORCHESTRATOR_PLAYBOOK)
-    self.assertIn("maintainer-facing reference snapshot", REVIEW_DELEGATION_PLAYBOOK)
-    self.assertIn("sibling supporting files", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("sibling supporting files", REVIEW_ORCHESTRATOR_PLAYBOOK)
-    self.assertIn("sibling supporting files", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("canonical", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("canonical", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("canonical", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("sibling symlinks", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("sibling symlinks", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn("sibling symlinks", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("Do not reference this repo-relative path directly", REVIEW_DELEGATION_PLAYBOOK)

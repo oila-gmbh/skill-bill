@@ -1,13 +1,13 @@
 ---
 name: stack-routing
-description: Maintainer-facing reference snapshot for shared stack detection, dominant-signal tie-breakers, and router delegation decisions.
+description: Single source of truth for shared stack detection, dominant-signal tie-breakers, and router delegation decisions. Skills link to this via sibling symlinks.
 ---
 
-# Shared Stack Routing Snapshot
+# Shared Stack Routing Contract
 
-This maintainer-facing reference snapshot documents the shared stack-routing contract used when authoring or updating installable skills.
+This is the canonical stack-routing contract. Skills consume it through sibling symlinks (e.g. `stack-routing.md` inside each skill directory), so changes here propagate to every linked skill immediately.
 
-Runtime-facing skills consume this contract through sibling supporting files such as `stack-routing.md` inside each skill directory. Do not reference this repo-relative path directly from installable skills.
+Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
 
 ## Signal Collection Order
 

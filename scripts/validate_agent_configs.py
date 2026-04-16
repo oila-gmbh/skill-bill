@@ -325,7 +325,7 @@ def validate_runtime_supporting_files(
     if not supporting_file.exists():
       issues.append(f"{skill_file}: supporting file '{file_name}' is missing")
     elif not supporting_file.is_symlink():
-      issues.append(f"{skill_file}: supporting file '{file_name}' must be a symlink to the shared snapshot")
+      issues.append(f"{skill_file}: supporting file '{file_name}' must be a symlink to the shared contract")
 
 
 def validate_portable_review_wording(
