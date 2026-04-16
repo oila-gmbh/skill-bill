@@ -84,10 +84,11 @@ Spawn a subagent with the pre-planning briefing defined in [reference.md](refere
 - For MEDIUM/LARGE, save the spec to `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` with status `In Progress`.
 - Read `CLAUDE.md`, `AGENTS.md`, and the matching `bill-feature-implement-agentic` section in `.agents/skill-overrides.md` when present.
 - Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies for affected boundaries, reusable components.
+- When `kmp` signals dominate, resolve governed add-ons only after stack routing. Start from `Selected add-ons: none`. Let the routed stack own add-on detection and selection, then scan the matching stack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
 - Confirm `bill-quality-check` can route this repo; if not, pick a repo-native validation command.
 - If the rollout uses a feature flag, read `bill-feature-guard` inline and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
-The subagent returns the **pre-planning return contract** (see reference.md). The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent.
+The subagent returns the **pre-planning return contract** (see reference.md), including any selected governed add-ons as metadata. The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent.
 
 ## Step 3: Create Implementation Plan (subagent)
 

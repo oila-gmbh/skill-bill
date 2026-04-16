@@ -55,6 +55,7 @@ After confirmation: `git checkout -b feat/{ISSUE_KEY}-{feature-name}`
 
 **All sizes:** Read Boundary History if history files exist, determine final validation strategy.
 **MEDIUM and LARGE only:** Also Save Spec, discover codebase patterns, Feature Flag Setup if needed.
+When `kmp` signals dominate, resolve governed add-ons only after stack routing. Start from `Selected add-ons: none`. Let the routed stack own add-on detection and selection, then scan the matching stack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work. Keep add-ons as routed-stack metadata, not as new commands or package labels.
 
 For detailed pre-planning instructions, see [reference.md](reference.md).
 

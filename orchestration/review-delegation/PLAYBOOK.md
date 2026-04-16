@@ -17,11 +17,13 @@ Runtime-facing skills consume this contract through sibling supporting files suc
 - The parent review owns only the delegated workers it launched itself. If a delegated child review launches more workers internally, treat those nested workers as opaque implementation detail and consume only the child review's final merged result.
 - The parent review that owns the final merged review output also owns `import_review` and `triage_findings`. Delegated workers must not call those telemetry tools themselves.
 - When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
-- Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill file path, the current `review_session_id` and `review_run_id` when they already exist, any applicable active learnings when they are available, the shared specialist contract from `specialist-contract.md`, and the rule that delegated workers must return telemetry-relevant metadata to the parent instead of calling telemetry tools directly.
+- Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill file path, the current `review_session_id` and `review_run_id` when they already exist, any applicable active learnings when they are available, any already-selected governed add-ons, the shared specialist contract from `specialist-contract.md`, and the rule that delegated workers must return telemetry-relevant metadata to the parent instead of calling telemetry tools directly.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
 - Track delegated workers by the ids returned when they are launched. Do not discover or poll delegated workers through broad global listing in the normal review path.
 - If delegated review is required for the current scope and a supported runtime refuses or cannot start delegated workers, stop and report that delegated review is required for this scope but unavailable on the current runtime.
 - If the current runtime is not documented below, stop and say delegated review is unsupported for delegated-required scopes.
+
+Governed add-ons may narrow or enrich delegated review instructions only after the parent review has already resolved the dominant stack and selected the applicable add-ons.
 
 ## GitHub Copilot CLI
 

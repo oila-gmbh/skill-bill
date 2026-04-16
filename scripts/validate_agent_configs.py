@@ -8,6 +8,8 @@ import re
 import sys
 
 from skill_repo_contracts import (
+  ADDON_SUPPORTING_FILE_TARGETS,
+  ADDON_DIRECTORY_NAME,
   APPLIED_LEARNINGS_PLACEHOLDER,
   CHILD_METADATA_HANDOFF_RULE,
   CHILD_NO_IMPORT_RULE,
@@ -37,6 +39,7 @@ README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
 SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
 FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 SKILL_NAME_PATTERN = re.compile(r"^bill-[a-z0-9-]+$")
+ADDON_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PROJECT_OVERRIDES_HEADING = "## Project Overrides"
 SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
@@ -111,9 +114,12 @@ def main() -> int:
 
   skill_files = discover_skill_files(root, issues)
   skill_names = sorted(skill_files.keys())
+  addon_files = discover_addon_files(root)
 
   for skill_name, skill_file in skill_files.items():
     validate_skill_file(skill_name, skill_file, issues)
+  for addon_file in addon_files:
+    validate_addon_file(addon_file, root, issues)
 
   validate_readme(root / "README.md", skill_names, issues)
   validate_orchestration_playbooks(root, issues)
@@ -141,7 +147,10 @@ def main() -> int:
     return 1
 
   print("Agent-config validation passed.")
-  print(f"Validated {len(skill_names)} skills, README catalog, skill references, and plugin metadata.")
+  print(
+    f"Validated {len(skill_names)} skills, {len(addon_files)} governed add-on files, "
+    "README catalog, skill references, and plugin metadata."
+  )
   return 0
 
 
@@ -176,6 +185,17 @@ def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
   if not skill_files:
     issues.append("No skills were found under skills/")
   return skill_files
+
+
+def discover_addon_files(root: Path) -> list[Path]:
+  skills_dir = root / "skills"
+  if not skills_dir.is_dir():
+    return []
+  return sorted(
+    path
+    for path in skills_dir.rglob("*.md")
+    if ADDON_DIRECTORY_NAME in path.relative_to(skills_dir).parts
+  )
 
 
 ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -293,7 +313,15 @@ def validate_runtime_supporting_files(
 
   for file_name in required_files:
     supporting_file = skill_file.parent / file_name
-    if file_name not in text:
+    if (
+      skill_name in {"bill-feature-implement", "bill-feature-implement-agentic"}
+      and file_name in ADDON_SUPPORTING_FILE_TARGETS
+    ):
+      if file_name not in text and "matching stack-owned add-on supporting files" not in text:
+        issues.append(
+          f"{skill_file}: must reference local supporting file '{file_name}' or describe stack-owned add-on support-file selection"
+        )
+    elif file_name not in text:
       issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
     if not supporting_file.exists():
       issues.append(f"{skill_file}: supporting file '{file_name}' is missing")
@@ -413,6 +441,47 @@ def validate_orchestration_playbooks(root: Path, issues: list[str]) -> None:
 def require_markdown_heading(text: str, heading: str, message: str, issues: list[str]) -> None:
   if not re.search(rf"(?m)^#{{2,6}} {re.escape(heading)}$", text):
     issues.append(message)
+
+
+def validate_addon_file(addon_file: Path, root: Path, issues: list[str]) -> None:
+  skills_dir = root / "skills"
+  relative_path = addon_file.relative_to(skills_dir)
+  parts = relative_path.parts
+
+  if len(parts) != 3:
+    issues.append(
+      f"{addon_file}: expected add-on path format skills/<package>/{ADDON_DIRECTORY_NAME}/<addon-file>.md, "
+      f"got skills/{relative_path}"
+    )
+    return
+
+  package_name, directory_name, file_name = parts
+  if directory_name != ADDON_DIRECTORY_NAME:
+    issues.append(
+      f"{addon_file}: governed add-ons must live under skills/<package>/{ADDON_DIRECTORY_NAME}/"
+    )
+    return
+
+  if package_name == "base":
+    issues.append(f"{addon_file}: governed add-ons must be stack-owned, not placed under skills/base/")
+    return
+
+  if package_name not in ALLOWED_PACKAGES:
+    issues.append(
+      f"{addon_file}: add-on package '{package_name}' is not allowed; use one of "
+      f"{', '.join(package for package in ALLOWED_PACKAGES if package != 'base')}"
+    )
+    return
+
+  if not file_name.endswith(".md"):
+    issues.append(f"{addon_file}: add-on file '{file_name}' must end with '.md'")
+    return
+
+  addon_name = file_name.removesuffix(".md")
+  if not ADDON_SLUG_PATTERN.match(addon_name):
+    issues.append(
+      f"{addon_file}: add-on file '{file_name}' must use lowercase kebab-case"
+    )
 
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:

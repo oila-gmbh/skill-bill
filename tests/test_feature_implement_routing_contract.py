@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from skill_repo_contracts import (  # noqa: E402
+  ADDON_REPORTING_LINE,
   APPLIED_LEARNINGS_PLACEHOLDER,
   CHILD_METADATA_HANDOFF_RULE,
   CHILD_NO_IMPORT_RULE,
@@ -27,6 +28,7 @@ from skill_repo_contracts import (  # noqa: E402
   RUNTIME_SUPPORTING_FILES,
   TELEMETRY_OWNERSHIP_HEADING,
   TRIAGE_OWNERSHIP_HEADING,
+  governed_addon_slugs_for_stack,
   supporting_file_targets,
   skills_requiring_supporting_file,
 )
@@ -37,6 +39,7 @@ def read(relative_path: str) -> str:
 
 
 FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md") + "\n" + read("skills/base/bill-feature-implement/reference.md")
+FEATURE_IMPLEMENT_AGENTIC = read("skills/base/bill-feature-implement-agentic/SKILL.md") + "\n" + read("skills/base/bill-feature-implement-agentic/reference.md")
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
@@ -45,6 +48,19 @@ AGENT_CONFIG_QUALITY_CHECK = read("skills/agent-config/bill-agent-config-quality
 KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
+KMP_ANDROID_COMPOSE_EDGE_TO_EDGE = read("skills/kmp/addons/android-compose-edge-to-edge.md")
+KMP_ANDROID_COMPOSE_ADAPTIVE = read("skills/kmp/addons/android-compose-adaptive-layouts.md")
+KMP_ANDROID_COMPOSE_IMPLEMENTATION = read("skills/kmp/addons/android-compose-implementation.md")
+KMP_ANDROID_COMPOSE_REVIEW = read("skills/kmp/addons/android-compose-review.md")
+KMP_ANDROID_NAVIGATION_IMPLEMENTATION = read("skills/kmp/addons/android-navigation-implementation.md")
+KMP_ANDROID_NAVIGATION_REVIEW = read("skills/kmp/addons/android-navigation-review.md")
+KMP_ANDROID_INTEROP_IMPLEMENTATION = read("skills/kmp/addons/android-interop-implementation.md")
+KMP_ANDROID_INTEROP_REVIEW = read("skills/kmp/addons/android-interop-review.md")
+KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION = read("skills/kmp/addons/android-design-system-implementation.md")
+KMP_ANDROID_DESIGN_SYSTEM_REVIEW = read("skills/kmp/addons/android-design-system-review.md")
+KMP_ANDROID_R8_IMPLEMENTATION = read("skills/kmp/addons/android-r8-implementation.md")
+KMP_ANDROID_R8_REVIEW = read("skills/kmp/addons/android-r8-review.md")
+KMP_COMPOSE_UI_REVIEW = read("skills/kmp/bill-kmp-code-review-ui/SKILL.md")
 GO_CODE_REVIEW = read("skills/go/bill-go-code-review/SKILL.md")
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
@@ -119,6 +135,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Supported scope labels are `staged changes`, `unstaged changes`, `working tree`, `commit range`, `PR diff`, and `files`", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("When the caller asks for staged changes, inspect only the staged/index diff", REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn("Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>", REVIEW_ORCHESTRATOR_PLAYBOOK)
+    self.assertIn(ADDON_REPORTING_LINE, REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn(REVIEW_SESSION_ID_PLACEHOLDER, REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn(REVIEW_SESSION_ID_FORMAT, REVIEW_ORCHESTRATOR_PLAYBOOK)
     self.assertIn(REVIEW_RUN_ID_PLACEHOLDER, REVIEW_ORCHESTRATOR_PLAYBOOK)
@@ -140,10 +157,12 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn(CHILD_NO_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
     self.assertIn(PARENT_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
     self.assertIn(NO_FINDINGS_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
+    self.assertIn("## Governed add-ons", TELEMETRY_CONTRACT_PLAYBOOK)
     self.assertIn("The parent review owns only the delegated workers it launched itself.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Track delegated workers by the ids returned when they are launched.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("the current `review_session_id` and `review_run_id` when they already exist", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("any applicable active learnings when they are available", REVIEW_DELEGATION_PLAYBOOK)
+    self.assertIn("any already-selected governed add-ons", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Do not use `list_agents` to discover delegated workers during normal review execution.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("Delegated workers must not call those telemetry tools themselves.", REVIEW_DELEGATION_PLAYBOOK)
     self.assertIn("return structured review output plus telemetry-relevant metadata to the parent", REVIEW_DELEGATION_PLAYBOOK)
@@ -227,6 +246,178 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       "- Otherwise use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
     )
+
+  def test_kmp_governed_addons_apply_only_after_stack_routing(self) -> None:
+    self.assertEqual(
+      governed_addon_slugs_for_stack("kmp"),
+      ("android-compose", "android-navigation", "android-interop", "android-design-system", "android-r8"),
+    )
+    self.assertIn("## Post-Stack Add-Ons", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("Resolve governed add-ons only after the dominant stack route is chosen.", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("Selected add-ons: none", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("### KMP pilot: `android-navigation`", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("### KMP pilot: `android-interop`", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("### KMP pilot: `android-design-system`", STACK_ROUTING_PLAYBOOK)
+    self.assertIn("### KMP pilot: `android-r8`", STACK_ROUTING_PLAYBOOK)
+
+  def test_kmp_feature_implement_defers_governed_addons_to_stack_routing(self) -> None:
+    self.assertIn(
+      "When `kmp` signals dominate, resolve governed add-ons only after stack routing.",
+      FEATURE_IMPLEMENT,
+    )
+    self.assertIn(
+      "Let the routed stack own add-on detection and selection",
+      FEATURE_IMPLEMENT,
+    )
+    self.assertIn(
+      "scan the matching stack-owned add-on supporting files' `## Section index` headings first",
+      FEATURE_IMPLEMENT,
+    )
+    self.assertIn(
+      "If the add-on is split into topic files, open only the linked topic files whose cues match the work.",
+      FEATURE_IMPLEMENT,
+    )
+    self.assertNotIn(
+      "android-compose-implementation.md",
+      FEATURE_IMPLEMENT,
+    )
+    self.assertIn(
+      "When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`.",
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+    self.assertIn(
+      "Let the routed stack own add-on detection and selection",
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+    self.assertIn(
+      "scan the matching stack-owned add-on supporting files' `## Section index` headings first",
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+    self.assertIn(
+      "If the add-on is split into topic files, open only the linked topic files whose cues match the work",
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+    self.assertNotIn(
+      "android-compose-implementation.md",
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+    self.assertIn(
+      '"selected_addons": ["<addon-slug>", ...]',
+      FEATURE_IMPLEMENT_AGENTIC,
+    )
+
+  def test_kmp_compose_review_skill_keeps_review_rubric_as_enforcement_layer(self) -> None:
+    self.assertIn(
+      "When the parent KMP review selects the `android-compose` add-on, scan [android-compose-review.md](android-compose-review.md) first. If the add-on is split into topic files, open only the linked topic files whose cues match the diff, such as [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md) and [android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md).",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "When the parent KMP review selects `android-navigation`, scan [android-navigation-review.md](android-navigation-review.md) first",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "When the parent KMP review selects `android-interop`, scan [android-interop-review.md](android-interop-review.md) first",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "When the parent KMP review selects `android-design-system`, scan [android-design-system-review.md](android-design-system-review.md) first",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "For review enforcement, read [compose-guidelines.md](compose-guidelines.md) as the Compose review rubric",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "do not treat it as a standalone review command.",
+      KMP_COMPOSE_UI_REVIEW,
+    )
+    self.assertIn(
+      "This file is a review index for `bill-kmp-code-review` and `bill-kmp-code-review-ui`.",
+      KMP_ANDROID_COMPOSE_REVIEW,
+    )
+    self.assertIn(
+      "## Section index",
+      KMP_ANDROID_COMPOSE_REVIEW,
+    )
+    self.assertIn(
+      "[android-compose-edge-to-edge.md](android-compose-edge-to-edge.md)",
+      KMP_ANDROID_COMPOSE_REVIEW,
+    )
+    self.assertIn(
+      "[android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md)",
+      KMP_ANDROID_COMPOSE_REVIEW,
+    )
+    self.assertIn("[android-navigation-review.md](android-navigation-review.md)", KMP_ANDROID_COMPOSE_REVIEW)
+    self.assertIn("[android-design-system-review.md](android-design-system-review.md)", KMP_ANDROID_COMPOSE_REVIEW)
+    self.assertIn("[android-interop-review.md](android-interop-review.md)", KMP_ANDROID_COMPOSE_REVIEW)
+    self.assertIn(
+      "- Keep this add-on subordinate to the routed `kmp` review.",
+      KMP_ANDROID_COMPOSE_REVIEW,
+    )
+    for skill_name, sidecar_path in sidecar_paths("android-compose-review.md").items():
+      with self.subTest(skill=skill_name):
+        self.assertTrue(sidecar_path.is_symlink())
+        self.assertEqual(sidecar_path.resolve(), ROOT / "skills" / "kmp" / "addons" / "android-compose-review.md")
+    self.assertIn(
+      "Selected add-ons: none | <add-on slugs>",
+      KMP_CODE_REVIEW,
+    )
+
+  def test_kmp_android_compose_implementation_addon_is_sectioned_for_selective_reads(self) -> None:
+    self.assertIn("## Section index", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn(
+      "open only the linked topic files whose cues match the current work instead of loading all Android guidance by default.",
+      KMP_ANDROID_COMPOSE_IMPLEMENTATION,
+    )
+    self.assertIn("[android-compose-edge-to-edge.md](android-compose-edge-to-edge.md)", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn("[android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md)", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn("[android-navigation-implementation.md](android-navigation-implementation.md)", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn("[android-design-system-implementation.md](android-design-system-implementation.md)", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn("[android-interop-implementation.md](android-interop-implementation.md)", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+    self.assertIn("## Android-specific verification checklist", KMP_ANDROID_COMPOSE_IMPLEMENTATION)
+
+  def test_kmp_android_compose_topic_files_add_android_specific_depth_without_generic_compose_duplication(self) -> None:
+    self.assertIn("system/edge-to-edge", KMP_ANDROID_COMPOSE_EDGE_TO_EDGE)
+    self.assertIn("## Source recipes", KMP_ANDROID_COMPOSE_EDGE_TO_EDGE)
+    self.assertIn("adjustResize", KMP_ANDROID_COMPOSE_EDGE_TO_EDGE)
+    self.assertIn("## Source recipes", KMP_ANDROID_COMPOSE_ADAPTIVE)
+    self.assertIn("list-detail", KMP_ANDROID_COMPOSE_ADAPTIVE)
+    self.assertIn("material-listdetail", KMP_ANDROID_COMPOSE_ADAPTIVE)
+    self.assertIn("NavigationSuiteScaffold", KMP_ANDROID_COMPOSE_ADAPTIVE)
+    self.assertIn("system-bar legibility", KMP_ANDROID_COMPOSE_EDGE_TO_EDGE)
+
+  def test_kmp_android_navigation_addon_captures_android_navigation_depth(self) -> None:
+    self.assertIn("common-ui", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("multiple-backstacks", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("bottomsheet", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("modular-hilt", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("results-event", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("synthetic back stack", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("back stack per top-level route", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("typed destination models", KMP_ANDROID_NAVIGATION_IMPLEMENTATION)
+    self.assertIn("Android navigation risks", KMP_ANDROID_NAVIGATION_REVIEW)
+
+  def test_kmp_android_interop_and_design_system_addons_capture_android_ui_host_depth(self) -> None:
+    self.assertIn("AndroidView", KMP_ANDROID_INTEROP_IMPLEMENTATION)
+    self.assertIn("AndroidFragment", KMP_ANDROID_INTEROP_IMPLEMENTATION)
+    self.assertIn("rememberUpdatedState", KMP_ANDROID_INTEROP_IMPLEMENTATION)
+    self.assertIn("Interop", KMP_ANDROID_INTEROP_REVIEW)
+    self.assertIn("MaterialTheme", KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION)
+    self.assertIn("design-system", KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION)
+    self.assertIn("hybrid XML/Compose", KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION)
+    self.assertIn("duplicate or parallel Android theme layers", KMP_ANDROID_DESIGN_SYSTEM_REVIEW)
+
+  def test_kmp_android_r8_addons_capture_android_shrinker_guidance(self) -> None:
+    self.assertIn("## Section index", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("proguard-rules.pro", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("proguard-android-optimize.txt", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("-dontshrink", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("Class.forName", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("android-r8", KMP_ANDROID_R8_IMPLEMENTATION)
+    self.assertIn("proguard-rules.pro", KMP_ANDROID_R8_REVIEW)
+    self.assertIn("consumer rules already cover them", KMP_ANDROID_R8_REVIEW)
+    self.assertIn("Parcelable", KMP_ANDROID_R8_REVIEW)
+    self.assertIn("Android shrinker risks", KMP_ANDROID_R8_REVIEW)
 
   def test_go_context_routes_to_go_review_and_quality_check(self) -> None:
     self.assertIn(

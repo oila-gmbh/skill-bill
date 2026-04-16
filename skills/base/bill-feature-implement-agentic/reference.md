@@ -42,6 +42,7 @@ Instructions:
 3. Read `agent/history.md` in each boundary likely to be touched (newest first; stop when no longer relevant). Rate boundary-history value as: none | irrelevant | low | medium | high.
 4. Scan `agent/decisions.md` header lines in each likely boundary; open full entries only when titles look relevant.
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
+   When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed stack own add-on detection and selection, then scan the matching stack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
 6. Confirm `bill-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
 7. If rollout uses a feature flag, read `bill-feature-guard` inline and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
@@ -51,6 +52,7 @@ Return exactly one RESULT: block as your final message, containing valid JSON wi
 RESULT:
 {
   "spec_path": "<path or null for SMALL>",
+  "selected_addons": ["<addon-slug>", ...],
   "boundaries_touched": ["<module/package/area>", ...],
   "boundary_history_digest": "<concise summary — patterns to reuse, pitfalls to avoid>",
   "boundary_history_value": "none|irrelevant|low|medium|high",

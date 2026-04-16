@@ -73,6 +73,14 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
 
 `bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry of their own — routing metadata is carried inside the concrete routed skill's telemetry call. They pass `orchestrated` through to the routed concrete skill unchanged.
 
+## Governed add-ons
+
+Governed add-ons are stack-owned guidance assets, not standalone skills.
+
+- Add-ons never emit telemetry, own sessions, or appear in `child_steps`.
+- Resolve add-ons only after stack routing selects the owning package.
+- If a routed skill reports add-ons, include them as ordinary routing metadata such as `Selected add-ons: ...`; do not treat add-ons as separate routed skills.
+
 ## Telemetry Ownership
 
 The review layer that owns the final merged review output for the current review lifecycle owns review telemetry.

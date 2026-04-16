@@ -37,6 +37,8 @@ Explore the codebase concurrently with planning:
 5. Confirm that `bill-quality-check` can route the affected repo or boundaries (it handles all supported stacks including agent-config repos)
 6. If a repo-native validation script already exists, reuse it instead of inventing a new ad hoc checklist
 
+When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed stack own add-on detection and selection, then scan the matching stack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work. Keep add-ons as stack-owned metadata in the plan or digest instead of rewriting the routed stack.
+
 Do NOT present a separate "codebase patterns" section to the user — fold these findings directly into the implementation plan.
 
 ## Planning Rules

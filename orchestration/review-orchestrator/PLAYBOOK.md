@@ -92,6 +92,12 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
 
+## Governed Add-Ons
+
+Stack-specific review skills that own governed add-ons may add `Selected add-ons: none | <add-on slugs>` to Section 1 after stack classification is complete.
+
+Governed add-ons supplement a routed stack review after stack classification is complete. They do not create new review entry points or specialist names on their own.
+
 ## Telemetry Ownership
 
 See [orchestration/telemetry-contract/PLAYBOOK.md](../telemetry-contract/PLAYBOOK.md) for the full telemetry and triage ownership contract.

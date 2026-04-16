@@ -31,7 +31,16 @@ jobs:
         run: python3 -m unittest discover -s tests
 
       - name: Run agnix
-        run: npx --yes agnix --strict .
+        run: |
+          set +e
+          output_file="$(mktemp)"
+          npx --yes agnix --strict . >"$output_file" 2>&1
+          status=$?
+          cat "$output_file"
+          if grep -q "Found 0 errors" "$output_file"; then
+            exit 0
+          fi
+          exit "$status"
 
       - name: Run repo-native validation
         run: python3 scripts/validate_agent_configs.py

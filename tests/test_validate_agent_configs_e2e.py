@@ -131,6 +131,49 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn("package 'laravel' is not allowed", result.stdout)
 
+  def test_accepts_governed_addon_files_under_stack_addons_dir(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+      self.assertIn("12 governed add-on files", result.stdout)
+
+  def test_accepts_governed_addon_files_with_future_expansion_names(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      bare_addon = repo_root / "skills" / "kmp" / "addons" / "eloquent.md"
+      area_scoped_addon = repo_root / "skills" / "kmp" / "addons" / "eloquent-persistence.md"
+      bare_addon.write_text("# valid\n", encoding="utf-8")
+      area_scoped_addon.write_text("# valid\n", encoding="utf-8")
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+      self.assertIn("14 governed add-on files", result.stdout)
+
+  def test_rejects_governed_addon_under_base_package(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
+      path = repo_root / "skills" / "base" / "addons" / "android-compose-review.md"
+      path.parent.mkdir(parents=True, exist_ok=True)
+      path.write_text("# invalid\n", encoding="utf-8")
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("governed add-ons must be stack-owned", result.stdout)
+
+  def test_rejects_governed_addon_with_invalid_filename_shape(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
+      path = repo_root / "skills" / "kmp" / "addons" / "android-compose-Notes.md"
+      path.parent.mkdir(parents=True, exist_ok=True)
+      path.write_text("# invalid\n", encoding="utf-8")
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("must use lowercase kebab-case", result.stdout)
+
+  def test_rejects_nested_governed_addon_path(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
+      path = repo_root / "skills" / "kmp" / "addons" / "android-compose" / "review.md"
+      path.parent.mkdir(parents=True, exist_ok=True)
+      path.write_text("# invalid\n", encoding="utf-8")
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("expected add-on path format skills/<package>/addons/<addon-file>.md", result.stdout)
+
   def test_rejects_runtime_playbook_references(self) -> None:
     with self.fixture_repo(
       [
@@ -336,6 +379,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       )
       self.write_review_delegation_playbook(repo_root)
       self.write_telemetry_contract_playbook(repo_root)
+      self.write_governed_addons(repo_root)
 
       for package_name, skill_name in skills:
         self.write_skill(
@@ -521,6 +565,59 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       ),
       encoding="utf-8",
     )
+
+  def write_governed_addons(self, repo_root: Path) -> None:
+    implementation = repo_root / "skills" / "kmp" / "addons" / "android-compose-implementation.md"
+    implementation.parent.mkdir(parents=True, exist_ok=True)
+    implementation.write_text(
+      textwrap.dedent(
+        """\
+        # KMP Android Compose Add-On
+
+        This governed add-on provides implementation guidance for KMP Compose work.
+
+        ## Section index
+        - [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md)
+        - [android-navigation-implementation.md](android-navigation-implementation.md)
+        """
+      ),
+      encoding="utf-8",
+    )
+    review = repo_root / "skills" / "kmp" / "addons" / "android-compose-review.md"
+    review.write_text(
+      textwrap.dedent(
+        """\
+        # KMP Android Compose Review Add-On
+
+        This governed add-on provides review guidance for KMP Compose work.
+
+        ## Section index
+        - [android-navigation-review.md](android-navigation-review.md)
+        - [android-r8-review.md](android-r8-review.md)
+        """
+      ),
+      encoding="utf-8",
+    )
+    edge_to_edge = repo_root / "skills" / "kmp" / "addons" / "android-compose-edge-to-edge.md"
+    edge_to_edge.write_text("# Edge-to-edge\n", encoding="utf-8")
+    adaptive = repo_root / "skills" / "kmp" / "addons" / "android-compose-adaptive-layouts.md"
+    adaptive.write_text("# Adaptive layouts\n", encoding="utf-8")
+    navigation_impl = repo_root / "skills" / "kmp" / "addons" / "android-navigation-implementation.md"
+    navigation_impl.write_text("# Navigation implementation\n", encoding="utf-8")
+    navigation_review = repo_root / "skills" / "kmp" / "addons" / "android-navigation-review.md"
+    navigation_review.write_text("# Navigation review\n", encoding="utf-8")
+    interop_impl = repo_root / "skills" / "kmp" / "addons" / "android-interop-implementation.md"
+    interop_impl.write_text("# Interop implementation\n", encoding="utf-8")
+    interop_review = repo_root / "skills" / "kmp" / "addons" / "android-interop-review.md"
+    interop_review.write_text("# Interop review\n", encoding="utf-8")
+    design_impl = repo_root / "skills" / "kmp" / "addons" / "android-design-system-implementation.md"
+    design_impl.write_text("# Design system implementation\n", encoding="utf-8")
+    design_review = repo_root / "skills" / "kmp" / "addons" / "android-design-system-review.md"
+    design_review.write_text("# Design system review\n", encoding="utf-8")
+    r8_implementation = repo_root / "skills" / "kmp" / "addons" / "android-r8-implementation.md"
+    r8_implementation.write_text("# R8 implementation\n", encoding="utf-8")
+    r8_review = repo_root / "skills" / "kmp" / "addons" / "android-r8-review.md"
+    r8_review.write_text("# R8 review\n", encoding="utf-8")
 
   def write_skill(
     self,

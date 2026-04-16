@@ -13,12 +13,24 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Compose Guidelines
+## Compose Review Rubric
 
-Read [compose-guidelines.md](compose-guidelines.md) for the full Compose review rubric covering:
+The canonical KMP UI review command stays `bill-kmp-code-review-ui`. Governed add-ons apply only after the parent review has already routed to `kmp`.
+
+When the parent KMP review selects the `android-compose` add-on, scan [android-compose-review.md](android-compose-review.md) first. If the add-on is split into topic files, open only the linked topic files whose cues match the diff, such as [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md) and [android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md).
+
+When the parent KMP review selects `android-navigation`, scan [android-navigation-review.md](android-navigation-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
+
+When the parent KMP review selects `android-interop`, scan [android-interop-review.md](android-interop-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
+
+When the parent KMP review selects `android-design-system`, scan [android-design-system-review.md](android-design-system-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
+
+When no governed add-on applies, keep `Selected add-ons: none` and use the base Compose review rubric by itself.
+
+For review enforcement, read [compose-guidelines.md](compose-guidelines.md) as the Compose review rubric covering:
 state hoisting, signature conventions, recomposition & performance, theming, string resources, composable structure, side effects, navigation, previews, error/loading states, UI element selection, modifier best practices, and ViewModel integration.
 
-Apply every section as a review checklist when reviewing `@Composable` code.
+Apply every section from `compose-guidelines.md` as a review checklist when reviewing `@Composable` code. Use the governed add-on only to extend the routed KMP review with transferable Android/Compose concerns; do not treat it as a standalone review command.
 
 ## Output Format
 
