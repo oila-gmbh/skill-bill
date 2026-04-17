@@ -1,3 +1,12 @@
+## [2026-04-17] boundary-history-value-rubric
+Areas: skills/base/bill-feature-implement/, tests/
+- Anchored the `boundary_history_value` telemetry field with a five-value rubric (`none` | `irrelevant` | `low` | `medium` | `high`) nested under step 3 of the pre-planning briefing's Instructions list in `reference.md`. Added a citation guardrail: `medium`/`high` ratings MUST cite a specific past entry in `boundary_history_digest`, otherwise downgrade to `low`. Enum, DB schema, validation, MCP signature, and platform-pack manifests all unchanged — the field is pass-through so this is a prompt-level fix, not a contract change. reusable
+- Fixed `SKILL.md:171` `none` overload: clarified it means "no history existed at pre-read time" and documented that `boundary_history_written=true` paired with `value=none` is a legal combination (fresh boundary where `bill-boundary-history` creates the first entry post-completion). Full rubric stays in `reference.md`; SKILL.md keeps a one-line gloss per value.
+- Motivated by a 180-day PostHog distribution on `skillbill_feature_implement_finished` (553 runs: 89% `medium`, 1.1% `high`, 0.4% `none`, 0.2% `low`, 9.4% unreported) — classic central-tendency bias from an unanchored 5-point scale. Expect post-merge distribution to shift; split the time series at merge date when analyzing.
+- Added a round-trip test in `FeatureImplementEnabledTest` that loops every `BOUNDARY_HISTORY_VALUES` entry through `feature_implement_started` + `feature_implement_finished` and asserts persistence in both the `feature_implement_sessions` row and the emitted `skillbill_feature_implement_finished` outbox payload, pinning the enum tuple shape. reusable
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-17] quality-check-shell-pilot
 Areas: orchestration/shell-content-contract/, skill_bill/, skills/base/bill-quality-check/, platform-packs/{agent-config,go,kotlin,php}/quality-check/, platform-packs/{agent-config,go,kotlin,php}/platform.yaml, scripts/, install.sh, uninstall.sh, tests/, README.md, docs/getting-started-for-teams.md, CLAUDE.md
 - Promoted `bill-quality-check` onto the shell+content contract via an additive extension: the shell contract version stays `1.0` and gains a new optional top-level manifest key, `declared_quality_check_file`, that points at a per-platform `platform-packs/<slug>/quality-check/<name>/SKILL.md`. Packs without the key remain contract-compliant. reusable
