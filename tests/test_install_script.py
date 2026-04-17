@@ -13,13 +13,29 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = ROOT / "install.sh"
 SKILLS_DIR = ROOT / "skills"
+PLATFORM_PACKS_DIR = ROOT / "platform-packs"
 
 
 def skill_names(package_name: str) -> set[str]:
-  return {
-    skill_file.parent.name
-    for skill_file in (SKILLS_DIR / package_name).glob("*/SKILL.md")
-  }
+  """Return every skill name belonging to a package, across both trees.
+
+  SKILL-14 split platform code-review content out of ``skills/`` into
+  ``platform-packs/``. The installer walks both trees; the test helpers
+  must mirror that union so the installer-behavior assertions stay
+  accurate.
+  """
+  names: set[str] = set()
+  skills_package = SKILLS_DIR / package_name
+  if skills_package.is_dir():
+    names.update(
+      skill_file.parent.name for skill_file in skills_package.glob("*/SKILL.md")
+    )
+  packs_package = PLATFORM_PACKS_DIR / package_name
+  if packs_package.is_dir():
+    names.update(
+      skill_file.parent.name for skill_file in packs_package.rglob("SKILL.md")
+    )
+  return names
 
 
 BASE_SKILLS = skill_names("base")

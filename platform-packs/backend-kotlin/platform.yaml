@@ -1,0 +1,38 @@
+platform: backend-kotlin
+contract_version: "1.0"
+display_name: Kotlin backend
+governs_addons: false
+
+routing_signals:
+  strong:
+    - "io.ktor.server"
+    - "org.springframework"
+    - "io.micronaut"
+    - "io.quarkus"
+    - "org.http4k"
+    - "application.yml"
+    - "application.yaml"
+    - "application.conf"
+    - "org.jetbrains.exposed"
+    - "org.jooq"
+    - "org.flywaydb"
+    - "org.liquibase"
+    - "jakarta.persistence"
+    - "javax.persistence"
+    - "r2dbc"
+  tie_breakers:
+    - "If backend/server markers are strong without meaningful KMP markers, prefer this pack."
+    - "If mixed with generic Kotlin but not KMP, prefer this pack because it layers the Kotlin baseline internally."
+  addon_signals: []
+
+declared_code_review_areas:
+  - api-contracts
+  - persistence
+  - reliability
+
+declared_files:
+  baseline: code-review/bill-backend-kotlin-code-review/SKILL.md
+  areas:
+    api-contracts: code-review/bill-backend-kotlin-code-review-api-contracts/SKILL.md
+    persistence: code-review/bill-backend-kotlin-code-review-persistence/SKILL.md
+    reliability: code-review/bill-backend-kotlin-code-review-reliability/SKILL.md

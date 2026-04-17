@@ -42,11 +42,11 @@ FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md") + "\n" +
 CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
-AGENT_CONFIG_CODE_REVIEW = read("skills/agent-config/bill-agent-config-code-review/SKILL.md")
+AGENT_CONFIG_CODE_REVIEW = read("platform-packs/agent-config/code-review/bill-agent-config-code-review/SKILL.md")
 AGENT_CONFIG_QUALITY_CHECK = read("skills/agent-config/bill-agent-config-quality-check/SKILL.md")
-KOTLIN_CODE_REVIEW = read("skills/kotlin/bill-kotlin-code-review/SKILL.md")
-BACKEND_KOTLIN_CODE_REVIEW = read("skills/backend-kotlin/bill-backend-kotlin-code-review/SKILL.md")
-KMP_CODE_REVIEW = read("skills/kmp/bill-kmp-code-review/SKILL.md")
+KOTLIN_CODE_REVIEW = read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
+BACKEND_KOTLIN_CODE_REVIEW = read("platform-packs/backend-kotlin/code-review/bill-backend-kotlin-code-review/SKILL.md")
+KMP_CODE_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review/SKILL.md")
 KMP_ANDROID_COMPOSE_EDGE_TO_EDGE = read("skills/kmp/addons/android-compose-edge-to-edge.md")
 KMP_ANDROID_COMPOSE_ADAPTIVE = read("skills/kmp/addons/android-compose-adaptive-layouts.md")
 KMP_ANDROID_COMPOSE_IMPLEMENTATION = read("skills/kmp/addons/android-compose-implementation.md")
@@ -59,8 +59,8 @@ KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION = read("skills/kmp/addons/android-desig
 KMP_ANDROID_DESIGN_SYSTEM_REVIEW = read("skills/kmp/addons/android-design-system-review.md")
 KMP_ANDROID_R8_IMPLEMENTATION = read("skills/kmp/addons/android-r8-implementation.md")
 KMP_ANDROID_R8_REVIEW = read("skills/kmp/addons/android-r8-review.md")
-KMP_COMPOSE_UI_REVIEW = read("skills/kmp/bill-kmp-code-review-ui/SKILL.md")
-GO_CODE_REVIEW = read("skills/go/bill-go-code-review/SKILL.md")
+KMP_COMPOSE_UI_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review-ui/SKILL.md")
+GO_CODE_REVIEW = read("platform-packs/go/code-review/bill-go-code-review/SKILL.md")
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
 REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
@@ -76,6 +76,7 @@ PORTABLE_REVIEW_SKILL_TEXTS = {
 
 def find_skill_dir(skill_name: str) -> Path:
   matches = list((ROOT / "skills").rglob(f"{skill_name}/SKILL.md"))
+  matches.extend((ROOT / "platform-packs").rglob(f"{skill_name}/SKILL.md"))
   if len(matches) != 1:
     raise AssertionError(f"Expected exactly one SKILL.md for {skill_name}, found {len(matches)}")
   return matches[0].parent
@@ -187,20 +188,21 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Always search for a repo-native PR template first", PR_DESCRIPTION)
 
   def test_kotlin_context_routes_to_kotlin_review_and_quality_check(self) -> None:
-    self.assertIn(
-      "- If `kotlin` signals dominate without meaningful `kmp` or `backend-kotlin` markers, delegate to `bill-kotlin-code-review`.",
-      CODE_REVIEW,
-    )
+    # SKILL-14 made `bill-code-review` manifest-driven. The shell no longer
+    # hardcodes per-platform routing lines; routing discovers packs from
+    # platform-packs/<slug>/platform.yaml. The quality-check router still
+    # enumerates platforms inline since SKILL-14 explicitly leaves it out of
+    # the pilot.
+    self.assertIn("Generate a `routed_skill` value of `bill-<slug>-code-review`", CODE_REVIEW)
     self.assertIn(
       "- If `kotlin` signals dominate, delegate to the canonical `bill-kotlin-quality-check` skill when it exists.",
       QUALITY_CHECK,
     )
 
   def test_agent_config_context_routes_to_agent_config_review_and_quality_check(self) -> None:
-    self.assertIn(
-      "- If `agent-config` signals dominate, delegate to `bill-agent-config-code-review`.",
-      CODE_REVIEW,
-    )
+    # Manifest-driven routing: the shell owns discovery; the agent-config
+    # platform pack declares the routing signals and the routed skill.
+    self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn(
       "- If `agent-config` signals dominate, delegate to the canonical `bill-agent-config-quality-check` skill when it exists.",
       QUALITY_CHECK,
@@ -211,10 +213,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Typical Commands In This Repo Type:", AGENT_CONFIG_QUALITY_CHECK)
 
   def test_backend_kotlin_context_routes_to_backend_review_and_current_quality_check(self) -> None:
-    self.assertIn(
-      "- If `backend-kotlin` signals dominate, delegate to `bill-backend-kotlin-code-review`.",
-      CODE_REVIEW,
-    )
+    # Shell is manifest-driven (SKILL-14). Quality-check still enumerates.
+    self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn(
       "- If `backend-kotlin` signals dominate, delegate to the canonical quality-check implementation for the `backend-kotlin` package when it exists.",
       QUALITY_CHECK,
@@ -229,10 +229,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     )
 
   def test_kmp_context_routes_to_kmp_review_and_current_quality_check(self) -> None:
-    self.assertIn(
-      "- If `kmp` signals dominate, delegate to `bill-kmp-code-review`.",
-      CODE_REVIEW,
-    )
+    # Shell is manifest-driven (SKILL-14). Quality-check still enumerates.
+    self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn(
       "- If `kmp` signals dominate, delegate to the canonical quality-check implementation for the `kmp` package when it exists.",
       QUALITY_CHECK,
@@ -247,6 +245,10 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     )
 
   def test_kmp_governed_addons_apply_only_after_stack_routing(self) -> None:
+    # SKILL-14 leaves GOVERNED_STACK_ADDONS hardcoded with a TODO (see
+    # scripts/skill_repo_contracts.py). Discovery of add-on governance is
+    # scheduled for SKILL-15. The rest of the add-on contract moved to the
+    # discovery-driven stack-routing playbook.
     self.assertEqual(
       governed_addon_slugs_for_stack("kmp"),
       ("android-compose", "android-navigation", "android-interop", "android-design-system", "android-r8"),
@@ -254,10 +256,6 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("## Post-Stack Add-Ons", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Resolve governed add-ons only after the dominant stack route is chosen.", STACK_ROUTING_PLAYBOOK)
     self.assertIn("Selected add-ons: none", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("### KMP pilot: `android-navigation`", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("### KMP pilot: `android-interop`", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("### KMP pilot: `android-design-system`", STACK_ROUTING_PLAYBOOK)
-    self.assertIn("### KMP pilot: `android-r8`", STACK_ROUTING_PLAYBOOK)
 
   def test_kmp_feature_implement_defers_governed_addons_to_stack_routing(self) -> None:
     self.assertIn(
@@ -399,10 +397,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Android shrinker risks", KMP_ANDROID_R8_REVIEW)
 
   def test_go_context_routes_to_go_review_and_quality_check(self) -> None:
-    self.assertIn(
-      "- If `go` signals dominate, delegate to `bill-go-code-review`.",
-      CODE_REVIEW,
-    )
+    # SKILL-14: shell is manifest-driven, quality-check still enumerates.
+    self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn(
       "- If `go` signals dominate, delegate to the canonical `bill-go-quality-check` skill when it exists.",
       QUALITY_CHECK,
@@ -455,7 +451,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       CODE_REVIEW,
     )
     self.assertIn(
-      "If the routed skill selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection",
+      "If the routed pack selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection",
       CODE_REVIEW,
     )
     self.assertIn(

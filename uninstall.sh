@@ -3,6 +3,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
+PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
 
 RED='\033[0;31m'
@@ -69,7 +70,14 @@ build_skill_names() {
     if ! array_contains "$skill_name" "${SKILL_NAMES[@]:-}"; then
       SKILL_NAMES+=("$skill_name")
     fi
-  done < <(find "$SKILLS_DIR" -type f -name 'SKILL.md' | sort)
+  done < <(
+    {
+      find "$SKILLS_DIR" -type f -name 'SKILL.md'
+      if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
+        find "$PLATFORM_PACKS_DIR" -type f -name 'SKILL.md'
+      fi
+    } | sort
+  )
 }
 
 add_legacy_name() {

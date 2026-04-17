@@ -1,0 +1,15 @@
+platform: extra_area
+contract_version: "1.0"
+display_name: Extra-Area Fixture Pack
+routing_signals:
+  strong:
+    - ".fixture"
+  tie_breakers: []
+  addon_signals: []
+declared_code_review_areas:
+  - architecture
+declared_files:
+  baseline: code-review/SKILL.md
+  areas:
+    architecture: code-review/architecture.md
+    performance: code-review/performance.md

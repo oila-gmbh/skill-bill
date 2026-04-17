@@ -1,0 +1,11 @@
+platform: bad_version
+contract_version: "9.99"
+routing_signals:
+  strong:
+    - ".bad"
+  tie_breakers: []
+  addon_signals: []
+declared_code_review_areas: []
+declared_files:
+  baseline: code-review/SKILL.md
+  areas: {}

@@ -3,15 +3,24 @@ name: bill-code-review
 description: Use when you want a generic code-review entry point that detects the dominant stack in scope and delegates to the matching stack-specific review skill. Use when user mentions code review, review my changes, review this PR, review staged changes, or asks to review code.
 ---
 
-# Shared Code Review Router
+# Shared Code Review Shell
 
-Use this as the neutral review entry point for feature workflows and standalone reviews.
+This skill is a governed **shell**. It owns ceremony, orchestration, output
+structure, telemetry, and contract enforcement. It is deliberately
+platform-independent: every piece of platform-specific review reasoning lives
+in a user-owned platform pack under `platform-packs/<platform>/`.
 
-Keep this skill thin:
-- detect the dominant stack in the review scope
-- choose the matching stack-specific code-review skill
-- pass through the same scope and relevant context
-- do not duplicate stack-specific review heuristics here
+Keep this shell thin:
+
+- detect the dominant stack in the review scope via manifest-driven discovery
+- load the matching platform pack through the shell+content contract
+- enforce output structure, severity/confidence scales, and telemetry ceremony
+- refuse to run when a platform pack is missing or out of contract — never
+  silently fall back
+
+The shell targets shell contract version **`1.0`**. Platform packs must
+declare the same `contract_version` in their `platform.yaml`. Version
+mismatch is a hard failure — see the loud-fail rules below.
 
 ## Project Overrides
 
@@ -37,7 +46,7 @@ Resolve the scope before routing. If the caller asks for staged changes, route a
 
 ## Local Review Learnings
 
-The top-level router owns learnings resolution for the current review context.
+The shell owns learnings resolution for the current review context.
 
 - When a local learnings resolver is available, resolve active learnings for the current repo and routed review skill before final routed review execution.
 - Routed and delegated reviewers should reuse applied learnings passed by the caller instead of re-resolving them independently.
@@ -50,45 +59,71 @@ The top-level router owns learnings resolution for the current review context.
 ## Additional Resources
 
 - For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For the shell+content contract and loud-fail rules, see [shell-content-contract.md](shell-content-contract.md).
 - For agent-specific delegated review execution, see [review-delegation.md](review-delegation.md).
 
 ## Shared Stack Detection
 
 Before routing, read [stack-routing.md](stack-routing.md). Use it as the source of truth for:
-- stack taxonomy
+- stack taxonomy (derived from discovered platform packs)
 - signal collection order
 - dominant-stack tie-breakers
 - mixed-stack routing rules
 
-This supporting file lives beside `SKILL.md`; keep the routing rules in this skill aligned with it.
+This supporting file lives beside `SKILL.md`; keep the routing rules in this shell aligned with it.
 
 Do not redefine stack signals here unless a route-specific exception is truly unique to code review.
 
 ## Routing Rules
 
-- If `kmp` signals dominate, delegate to `bill-kmp-code-review`.
-- If `backend-kotlin` signals dominate, delegate to `bill-backend-kotlin-code-review`.
-- If `kotlin` signals dominate without meaningful `kmp` or `backend-kotlin` markers, delegate to `bill-kotlin-code-review`.
-- If `agent-config` signals dominate, delegate to `bill-agent-config-code-review`.
-- If `go` signals dominate, delegate to `bill-go-code-review`.
-- If the review scope mixes `kmp` with other Kotlin-family scope, prefer `bill-kmp-code-review` because it layers the appropriate Kotlin-family baseline internally instead of running multiple Kotlin-family orchestrators side by side.
-- If the review scope mixes `backend-kotlin` with generic `kotlin` but not `kmp`, prefer `bill-backend-kotlin-code-review` because it layers `bill-kotlin-code-review` internally instead of running both side by side.
-- If another supported stack dominates, delegate to that stack's canonical `bill-<stack>-code-review` skill when it exists in the available skill catalog.
-- If multiple supported stacks appear in one review scope, route to each matching stack-specific skill and merge the results using delegated execution.
-- If the required stack-specific skill does not exist yet, say so explicitly and stop instead of pretending coverage exists.
-- The routed stack-specific skill is the source of truth for classification details, specialist selection, review heuristics, and single-stack execution mode.
+Stack detection and routing are manifest-driven. The shell discovers every
+`platform-packs/<slug>/platform.yaml`, reads each pack's declared routing
+signals, and chooses the dominant stack using the tie-breakers declared in
+[stack-routing.md](stack-routing.md). The shell does not enumerate platform
+names inline.
+
+- Generate a `routed_skill` value of `bill-<slug>-code-review` for the
+  dominant pack. This contract is preserved exactly so existing user-facing
+  commands keep working.
+- If the review scope is mixed and multiple packs have strong signals, route
+  to each matching pack and merge the results using delegated execution.
+- If a pack declares tie-breakers that subsume other packs (for example, a
+  pack that layers another platform baseline internally), prefer the
+  subsuming pack to avoid running overlapping reviewers side by side.
+- If no pack has evidence, stop and say the stack is unsupported instead of
+  pretending coverage exists.
+- The routed platform pack is the source of truth for classification details,
+  specialist selection, review heuristics, and single-stack execution mode.
+
+### Loud-fail contract enforcement
+
+Before executing a routed review, the shell validates the chosen pack against
+the shell+content contract described in
+[shell-content-contract.md](shell-content-contract.md). Any failure stops the
+run immediately and prints a specific error naming the failing artifact:
+
+- `MissingManifestError` — the pack has no `platform.yaml`.
+- `InvalidManifestSchemaError` — the manifest fails schema validation.
+- `ContractVersionMismatchError` — `contract_version` does not match the
+  shell's target version; print both versions and the offending pack slug.
+- `MissingContentFileError` — a declared content file does not exist.
+- `MissingRequiredSectionError` — a declared content file is missing a
+  required H2 section.
+
+The shell never silently substitutes a default reviewer. A broken pack must
+be repaired before `/bill-code-review` can complete.
 
 ## Execution Contract
 
-For multi-stack delegated routing, read [review-delegation.md](review-delegation.md) (only your current runtime's section). Skip it for single-stack reviews — the routed skill handles its own delegation.
+For multi-stack delegated routing, read [review-delegation.md](review-delegation.md) (only your current runtime's section). Skip it for single-stack reviews — the routed pack handles its own delegation.
 
-For a single routed stack-specific review skill:
-- Let the routed stack-specific reviewer choose `inline` or `delegated` using its own `review-orchestrator.md` contract
-- If the routed skill selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection
-- If the routed skill selects `delegated`, use `review-delegation.md` and pass along the routed skill file path plus the required review context
+For a single routed platform pack:
+- Let the routed pack choose `inline` or `delegated` using its own `review-orchestrator.md` contract
+- If the routed pack selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection
+- If the routed pack selects `delegated`, use `review-delegation.md` and pass along the routed skill file path plus the required review context
 
-For multiple routed stack-specific review skills:
-- Use delegated workers for each routed stack-specific review skill and merge the results in the parent review
+For multiple routed platform packs:
+- Use delegated workers for each routed pack and merge the results in the parent review
 - Use parallel delegated workers only when multiple supported stacks are clearly in scope
 - If delegated review is required for the current scope and the runtime lacks a documented delegation path or cannot start the required worker(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
 
@@ -101,11 +136,26 @@ When routing to another skill, pass along:
 - the changed files or diff source
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
+- the parent thread's model when the runtime supports delegated-worker model inheritance
 - the delegated skill file path
 - the rule that the delegated skill must follow its own `SKILL.md` as the primary rubric
-- the delegated skill's `review-orchestrator.md` contract when the routed skill is a stack review orchestrator
+- the delegated skill's `review-orchestrator.md` contract when the routed pack is a stack review orchestrator
 
 ## Output Format
+
+The shell owns the output structure. Every routed review must emit:
+
+- **Summary** — one-paragraph summary of the review scope and dominant risks.
+- **Risk Register** — machine-readable findings in the form
+  `- [F-001] <Severity> | <Confidence> | <file:line> | <description>`.
+- **Action Items** — prioritized list of repairs keyed to the risk register.
+- **Verdict** — `approve` | `approve-with-changes` | `request-changes`.
+
+Severity scale: `Critical`, `Major`, `Minor`, `Nit`.
+Confidence scale: `High`, `Medium`, `Low`.
+
+Execution mode must be reported explicitly (`inline` or `delegated`) so
+downstream tooling can audit how the review was produced.
 
 Generate one review session id per top-level review using the format `rvs-<uuid4>` (e.g. `rvs-550e8400-e29b-41d4-a716-446655440000`). If a parent workflow already passed a `review_session_id`, reuse it instead of generating a new one.
 
@@ -149,12 +199,12 @@ For unsupported stacks:
 Detected review scope: <staged changes / unstaged changes / working tree / commit range / PR diff / files>
 Detected stack: Unknown/Unsupported
 Signals: <markers>
-Result: No matching stack-specific code-review skill is available yet.
+Result: No matching platform pack is available yet.
 ```
 
 ## Telemetry
 
-This router is thin by design and **never emits telemetry on its own** — routing metadata is carried in the concrete routed skill's telemetry call.
+This shell is thin by design and **never emits telemetry on its own** — routing metadata is carried in the concrete routed pack's telemetry call.
 
 For telemetry ownership, triage ownership, and the `orchestrated` flag contract, follow [telemetry-contract.md](telemetry-contract.md).
 

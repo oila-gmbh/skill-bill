@@ -84,6 +84,17 @@ Strict structure, enforced by the validator:
 
 `AGENTS.md` at the repo root applies to all skills. Use it for cross-cutting context like "this service writes to both Postgres and DynamoDB" — context every review skill benefits from knowing.
 
+## Forking a platform pack
+
+`/bill-code-review` uses a shell + content split. The shell at `skills/base/bill-code-review/` is governed and shared; the reviewer reasoning lives in **platform packs** under `platform-packs/<platform>/`. Teams that need platform-specific customization beyond `.agents/skill-overrides.md` can fork a pack:
+
+1. Copy `platform-packs/<platform>/` (e.g. `platform-packs/kotlin/`) into your team's own checkout.
+2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.0"` in lockstep with the shell.
+3. Edit or add per-area content files. Each declared file must contain the six required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks. The shell refuses to run with a named error if any required piece is missing — no silent fallback.
+4. Point your local install at the forked pack and re-run `./install.sh`.
+
+The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
+
 ## What to expect from review output
 
 A typical `/bill-code-review` run produces four sections:

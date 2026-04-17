@@ -1,0 +1,15 @@
+platform: valid_pack
+contract_version: "1.0"
+display_name: Valid Fixture Pack
+routing_signals:
+  strong:
+    - ".fixture"
+  tie_breakers:
+    - "Prefer valid_pack when generic markers dominate."
+  addon_signals: []
+declared_code_review_areas:
+  - architecture
+declared_files:
+  baseline: code-review/SKILL.md
+  areas:
+    architecture: code-review/architecture.md

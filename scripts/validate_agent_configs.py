@@ -7,7 +7,17 @@ import json
 import re
 import sys
 
-from skill_repo_contracts import (
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
+from skill_bill.shell_content_contract import (  # noqa: E402
+  APPROVED_CODE_REVIEW_AREAS as SHELL_APPROVED_CODE_REVIEW_AREAS,
+  SHELL_CONTRACT_VERSION,
+  ShellContentContractError,
+  discover_platform_packs,
+)
+
+from skill_repo_contracts import (  # noqa: E402
   ADDON_SUPPORTING_FILE_TARGETS,
   ADDON_DIRECTORY_NAME,
   APPLIED_LEARNINGS_PLACEHOLDER,
@@ -45,26 +55,46 @@ SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
 SKILL_OVERRIDE_TITLE = "# Skill Overrides"
 SKILL_OVERRIDE_SECTION_PATTERN = re.compile(r"^## (bill-[a-z0-9-]+)$")
-ALLOWED_PACKAGES = ("base", "agent-config", "kotlin", "kmp", "backend-kotlin", "go")
-APPROVED_CODE_REVIEW_AREAS = {
-  "api-contracts",
-  "architecture",
-  "performance",
-  "persistence",
-  "platform-correctness",
-  "reliability",
-  "security",
-  "testing",
-  "ui",
-  "ux-accessibility",
-}
+# ALLOWED_PACKAGES is discovery-driven: "base" plus every non-hidden directory
+# under ``skills/`` and every non-hidden directory under ``platform-packs/``.
+# AC9 demands no enumerated platform names survive in the validator, so we
+# compute the set at module-import time from the live filesystem layout.
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+
+
+def _discover_allowed_packages(root: Path) -> tuple[str, ...]:
+  """Compute the set of package directory names the validator recognizes.
+
+  The rule: "base" is always allowed; every other package name is a live
+  directory under ``skills/`` or ``platform-packs/``. The validator keeps
+  this discovery-driven so adding a platform pack does not require editing
+  the validator (AC9).
+  """
+  discovered: set[str] = {"base"}
+  for container_name in ("skills", "platform-packs"):
+    container = root / container_name
+    if not container.is_dir():
+      continue
+    for entry in container.iterdir():
+      if not entry.is_dir() or entry.name.startswith("."):
+        continue
+      discovered.add(entry.name)
+  return tuple(sorted(discovered))
+
+
+ALLOWED_PACKAGES = _discover_allowed_packages(_ROOT_DIR)
+# The approved code-review area set is owned by the shell+content contract.
+# The validator re-exports it under the historic name so the existing call
+# sites continue to compile; platform code-review area enforcement is now
+# driven by each platform pack's declared_code_review_areas.
+APPROVED_CODE_REVIEW_AREAS = set(SHELL_APPROVED_CODE_REVIEW_AREAS)
 EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
   (
     re.compile(r"\.bill-shared/orchestration/"),
     "must reference skill-local supporting files instead of install-local playbook paths",
   ),
   (
-    re.compile(r"orchestration/(?:stack-routing|review-orchestrator|review-delegation|telemetry-contract)/PLAYBOOK\.md"),
+    re.compile(r"orchestration/(?:stack-routing|review-orchestrator|review-delegation|telemetry-contract|shell-content-contract)/PLAYBOOK\.md"),
     "must reference skill-local supporting files instead of repo-side playbook paths at runtime",
   ),
 )
@@ -113,11 +143,14 @@ def main() -> int:
   issues: list[str] = []
 
   skill_files = discover_skill_files(root, issues)
-  skill_names = sorted(skill_files.keys())
+  platform_pack_skill_files = discover_platform_pack_skill_files(root)
+  skill_names = sorted(set(skill_files.keys()) | set(platform_pack_skill_files.keys()))
   addon_files = discover_addon_files(root)
 
   for skill_name, skill_file in skill_files.items():
     validate_skill_file(skill_name, skill_file, issues)
+  for skill_name, skill_file in platform_pack_skill_files.items():
+    validate_platform_pack_skill_file(skill_name, skill_file, issues)
   for addon_file in addon_files:
     validate_addon_file(addon_file, root, issues)
 
@@ -139,6 +172,7 @@ def main() -> int:
   )
   validate_plugin_manifest(root / ".claude-plugin" / "plugin.json", issues)
   validate_no_inline_telemetry_contract_drift(root, issues)
+  platform_pack_slugs = validate_platform_packs(root, issues)
 
   if issues:
     print("Agent-config validation failed:")
@@ -149,9 +183,45 @@ def main() -> int:
   print("Agent-config validation passed.")
   print(
     f"Validated {len(skill_names)} skills, {len(addon_files)} governed add-on files, "
+    f"{len(platform_pack_slugs)} platform packs, "
     "README catalog, skill references, and plugin metadata."
   )
   return 0
+
+
+def validate_platform_packs(root: Path, issues: list[str]) -> list[str]:
+  """Walk ``platform-packs/`` and validate every pack through the loader.
+
+  The loader raises the first loud-fail error it finds per pack; this
+  validator surfaces the error text verbatim so operators see the exact
+  artifact at fault. Returns the list of slugs successfully loaded so
+  subsequent validators can reason about them.
+  """
+  packs_root = root / "platform-packs"
+  if not packs_root.is_dir():
+    return []
+
+  slugs: list[str] = []
+  for entry in sorted(packs_root.iterdir()):
+    if not entry.is_dir() or entry.name.startswith("."):
+      continue
+    try:
+      # Load and validate one pack at a time so one bad pack does not hide
+      # validation issues in other packs.
+      from skill_bill.shell_content_contract import load_platform_pack
+      pack = load_platform_pack(entry)
+    except ShellContentContractError as error:
+      issues.append(f"platform-packs/{entry.name}: {error}")
+      continue
+
+    if pack.contract_version != SHELL_CONTRACT_VERSION:
+      issues.append(
+        f"platform-packs/{entry.name}: contract_version '{pack.contract_version}' "
+        f"does not match shell '{SHELL_CONTRACT_VERSION}'"
+      )
+      continue
+    slugs.append(pack.slug)
+  return slugs
 
 
 def resolve_root() -> Path:
@@ -185,6 +255,61 @@ def discover_skill_files(root: Path, issues: list[str]) -> dict[str, Path]:
   if not skill_files:
     issues.append("No skills were found under skills/")
   return skill_files
+
+
+def discover_platform_pack_skill_files(root: Path) -> dict[str, Path]:
+  """Enumerate SKILL.md files shipped under platform-packs/.
+
+  Platform packs own code-review content outside ``skills/``; their skill
+  directories still ship a SKILL.md that end users invoke by name, so the
+  validator must know about them to enforce cross-references and README
+  catalog membership.
+  """
+  packs_root = root / "platform-packs"
+  if not packs_root.is_dir():
+    return {}
+
+  found: dict[str, Path] = {}
+  for skill_file in sorted(packs_root.rglob("SKILL.md")):
+    skill_dir = skill_file.parent
+    if not skill_dir.is_dir():
+      continue
+    # Skip anything not named bill-*; platform-packs may host supporting files.
+    if not skill_dir.name.startswith("bill-"):
+      continue
+    found[skill_dir.name] = skill_file
+  return found
+
+
+def validate_platform_pack_skill_file(skill_name: str, skill_file: Path, issues: list[str]) -> None:
+  """Lightweight validation for relocated platform-pack skills.
+
+  Platform packs declare their own manifest and section contract via
+  ``platform.yaml``; the shell+content loader is the authoritative checker
+  there. This routine only enforces the always-applicable pieces that apply
+  to every installable SKILL.md: frontmatter shape, declared name matches
+  directory, and a description field.
+  """
+  text = skill_file.read_text(encoding="utf-8")
+  frontmatter_match = FRONTMATTER_PATTERN.match(text)
+  if not frontmatter_match:
+    issues.append(f"{skill_file}: missing YAML frontmatter block")
+    return
+  frontmatter = parse_frontmatter(frontmatter_match.group(1))
+  declared_name = frontmatter.get("name", "")
+  description = frontmatter.get("description", "")
+  if declared_name != skill_name:
+    issues.append(
+      f"{skill_file}: frontmatter name '{declared_name}' does not match directory '{skill_name}'"
+    )
+  if not description:
+    issues.append(f"{skill_file}: frontmatter description is missing")
+  if not SKILL_NAME_PATTERN.match(skill_name):
+    issues.append(
+      f"{skill_file}: skill name '{skill_name}' must match an approved bill-* naming pattern"
+    )
+  validate_runtime_supporting_files(skill_name, text, skill_file, issues)
+  validate_portable_review_wording(skill_name, text, skill_file, issues)
 
 
 def discover_addon_files(root: Path) -> list[Path]:
@@ -241,6 +366,11 @@ def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -
   """
   for skill_name in TELEMETERABLE_SKILLS:
     skill_dirs = list((root / "skills").rglob(skill_name))
+    packs_root = root / "platform-packs"
+    if packs_root.is_dir():
+      skill_dirs.extend(packs_root.rglob(skill_name))
+    # Only consider directories, not file matches.
+    skill_dirs = [p for p in skill_dirs if p.is_dir()]
     if not skill_dirs:
       continue
     skill_dir = skill_dirs[0]
@@ -651,6 +781,9 @@ def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]
 def validate_skill_references(root: Path, skill_names: list[str], issues: list[str]) -> None:
   known_skills = set(skill_names)
   files_to_scan = sorted((root / "skills").rglob("SKILL.md"))
+  platform_packs_dir = root / "platform-packs"
+  if platform_packs_dir.is_dir():
+    files_to_scan.extend(sorted(platform_packs_dir.rglob("SKILL.md")))
 
   for file_path in files_to_scan:
     text = file_path.read_text(encoding="utf-8")

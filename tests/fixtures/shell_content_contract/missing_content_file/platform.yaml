@@ -1,0 +1,11 @@
+platform: missing_content_file
+contract_version: "1.0"
+routing_signals:
+  strong:
+    - ".missing"
+  tie_breakers: []
+  addon_signals: []
+declared_code_review_areas: []
+declared_files:
+  baseline: code-review/SKILL.md
+  areas: {}

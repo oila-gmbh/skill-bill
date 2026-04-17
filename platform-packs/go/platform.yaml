@@ -1,0 +1,47 @@
+platform: go
+contract_version: "1.0"
+display_name: Go
+governs_addons: false
+
+routing_signals:
+  strong:
+    - "go.mod"
+    - "go.sum"
+    - "go.work"
+    - ".go"
+    - "cmd/"
+    - "internal/"
+    - "pkg/"
+    - "net/http"
+    - "google.golang.org/grpc"
+    - "github.com/go-chi/chi"
+    - "github.com/gin-gonic/gin"
+    - "github.com/labstack/echo"
+    - "github.com/gofiber/fiber"
+    - "gorm.io/gorm"
+    - "entgo.io/ent"
+  tie_breakers:
+    - "If Go markers dominate, prefer this pack."
+  addon_signals: []
+
+declared_code_review_areas:
+  - architecture
+  - platform-correctness
+  - api-contracts
+  - persistence
+  - reliability
+  - security
+  - performance
+  - testing
+
+declared_files:
+  baseline: code-review/bill-go-code-review/SKILL.md
+  areas:
+    architecture: code-review/bill-go-code-review-architecture/SKILL.md
+    platform-correctness: code-review/bill-go-code-review-platform-correctness/SKILL.md
+    api-contracts: code-review/bill-go-code-review-api-contracts/SKILL.md
+    persistence: code-review/bill-go-code-review-persistence/SKILL.md
+    reliability: code-review/bill-go-code-review-reliability/SKILL.md
+    security: code-review/bill-go-code-review-security/SKILL.md
+    performance: code-review/bill-go-code-review-performance/SKILL.md
+    testing: code-review/bill-go-code-review-testing/SKILL.md

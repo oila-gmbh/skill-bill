@@ -1,0 +1,34 @@
+platform: agent-config
+contract_version: "1.0"
+display_name: Agent config
+governs_addons: false
+
+# Agent-config is a meta platform pack: it reviews and validates the
+# skill-bill repository itself. It has no specialist areas because all review
+# concerns are covered by the single baseline file. The empty
+# `declared_code_review_areas` list is an intentional edge case that exercises
+# the contract for meta packs.
+
+routing_signals:
+  strong:
+    - "SKILL.md"
+    - "AGENTS.md"
+    - "CLAUDE.md"
+    - "install.sh"
+    - "uninstall.sh"
+    - "config.yaml"
+    - ".claude-plugin/plugin.json"
+    - "orchestration/"
+    - "skills/"
+    - "platform-packs/"
+    - "scripts/validate_agent_configs.py"
+    - "scripts/skill_repo_contracts.py"
+  tie_breakers:
+    - "If skill/agent-config repository markers dominate the scope, prefer this pack."
+  addon_signals: []
+
+declared_code_review_areas: []
+
+declared_files:
+  baseline: code-review/bill-agent-config-code-review/SKILL.md
+  areas: {}

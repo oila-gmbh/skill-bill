@@ -7,7 +7,7 @@ name = "skill-bill"
 version = "0.1.0"
 description = "Local-first review telemetry CLI for Skill Bill."
 requires-python = ">=3.10"
-dependencies = ["mcp"]
+dependencies = ["mcp", "pyyaml>=6"]
 
 [tool.setuptools.packages.find]
 include = ["skill_bill*"]

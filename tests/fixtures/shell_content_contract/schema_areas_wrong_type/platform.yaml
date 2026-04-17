@@ -1,0 +1,12 @@
+platform: schema_areas_wrong_type
+contract_version: "1.0"
+display_name: Schema Areas Wrong Type Fixture Pack
+routing_signals:
+  strong:
+    - ".fixture"
+  tie_breakers: []
+  addon_signals: []
+declared_code_review_areas: "architecture"
+declared_files:
+  baseline: code-review/SKILL.md
+  areas: {}

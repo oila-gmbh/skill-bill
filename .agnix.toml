@@ -1,0 +1,14 @@
+# Agnix (governance linter) configuration for skill-bill.
+#
+# The defaults walk every SKILL.md under the repo, which catches live
+# skills correctly but flags intentional negative-test fixtures as if
+# they were real skills. Excluding the test fixture tree keeps the
+# lint pass aligned with what ships to users.
+
+exclude = [
+  "node_modules/**",
+  ".git/**",
+  "target/**",
+  ".venv/**",
+  "tests/fixtures/**",
+]

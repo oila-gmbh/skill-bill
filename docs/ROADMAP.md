@@ -47,6 +47,11 @@ Skill Bill is succeeding when most of the following are true:
 6. New skills and edits are constrained by tests and validators, not only maintainer judgment.
 7. Teams start treating Skill Bill as part of engineering process, not as an experimental side tool.
 
+## Recent milestones
+
+- **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/base/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
+- **SKILL-14 follow-up:** Apply the same shell + content split to `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` so every stable command benefits from the same governance.
+
 ## Current position
 
 Today, Skill Bill is strongest in these areas:

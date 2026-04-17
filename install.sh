@@ -3,6 +3,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
+PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
 
 RED='\033[0;31m'
@@ -319,6 +320,17 @@ build_platform_packages() {
     discovered+=("$package")
   done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
 
+  # Platform packs contribute package names as well. With SKILL-14, most
+  # platform code-review content lives under platform-packs/<slug>/. These
+  # slugs may or may not overlap with skills/<package>/ entries; union both.
+  if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
+    while IFS= read -r package; do
+      if ! array_contains "$package" "${discovered[@]:-}"; then
+        discovered+=("$package")
+      fi
+    done < <(find "$PLATFORM_PACKS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+  fi
+
   PLATFORM_PACKAGES=()
   for package in backend-kotlin kotlin kmp go; do
     if array_contains "$package" "${discovered[@]:-}"; then
@@ -561,7 +573,34 @@ build_skill_names() {
 
     SKILL_NAMES+=("$skill_name")
     SKILL_PATHS+=("$skill_dir")
-  done < <(find "$SKILLS_DIR" -type f -name 'SKILL.md' | sort)
+  done < <(
+    {
+      find "$SKILLS_DIR" -type f -name 'SKILL.md'
+      if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
+        find "$PLATFORM_PACKS_DIR" -type f -name 'SKILL.md'
+      fi
+    } | sort
+  )
+}
+
+resolve_package_name_for_skill_path() {
+  # Map a skill directory to its owning package name.
+  # - skills/<pkg>/<skill>/SKILL.md        -> <pkg>
+  # - platform-packs/<slug>/code-review/<skill>/SKILL.md -> <slug>
+  # Falls back to the immediate parent directory name for any other shape.
+  local skill_dir="$1"
+  local parent parent_parent grand
+  parent="$(dirname "$skill_dir")"
+  parent_parent="$(dirname "$parent")"
+  grand="$(basename "$parent_parent")"
+
+  if [[ "$(basename "$parent")" == "code-review" && -d "$parent_parent" ]]; then
+    # platform-packs/<slug>/code-review/<skill>
+    printf '%s' "$grand"
+    return 0
+  fi
+
+  printf '%s' "$(basename "$parent")"
 }
 
 build_install_skill_names() {
@@ -575,7 +614,7 @@ build_install_skill_names() {
 
   for idx in "${!SKILL_NAMES[@]}"; do
     skill_dir="${SKILL_PATHS[$idx]}"
-    package_name="$(basename "$(dirname "$skill_dir")")"
+    package_name="$(resolve_package_name_for_skill_path "$skill_dir")"
     canonical_name="${SKILL_NAMES[$idx]}"
 
     if [[ "$package_name" == "base" ]] || array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then

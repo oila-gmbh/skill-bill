@@ -347,9 +347,111 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn("must not contain inline telemetry contract text", result.stdout)
 
+  def test_accepts_valid_platform_pack_in_fixture(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      self.write_platform_pack(
+        repo_root,
+        slug="fixture_pack",
+        contract_version="1.0",
+        areas=["architecture"],
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+      self.assertIn("1 platform packs", result.stdout)
+
+  def test_rejects_platform_pack_with_contract_version_mismatch(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      self.write_platform_pack(
+        repo_root,
+        slug="mismatch_pack",
+        contract_version="9.99",
+        areas=[],
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("mismatch_pack", result.stdout)
+      self.assertIn("contract_version", result.stdout)
+
+  def test_rejects_platform_pack_missing_required_section(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      self.write_platform_pack(
+        repo_root,
+        slug="broken_pack",
+        contract_version="1.0",
+        areas=[],
+        skip_section="Telemetry Ceremony Hooks",
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("broken_pack", result.stdout)
+      self.assertIn("Telemetry Ceremony Hooks", result.stdout)
+
+  def write_platform_pack(
+    self,
+    repo_root: Path,
+    *,
+    slug: str,
+    contract_version: str,
+    areas: list[str],
+    skip_section: str | None = None,
+  ) -> None:
+    """Write a platform pack under ``platform-packs/<slug>/``."""
+
+    import yaml
+
+    pack_dir = repo_root / "platform-packs" / slug
+    pack_dir.mkdir(parents=True, exist_ok=True)
+
+    baseline_rel = "code-review/SKILL.md"
+    baseline_path = pack_dir / baseline_rel
+    baseline_path.parent.mkdir(parents=True, exist_ok=True)
+    sections = [
+      "Description",
+      "Specialist Scope",
+      "Inputs",
+      "Outputs Contract",
+      "Execution Mode Reporting",
+      "Telemetry Ceremony Hooks",
+    ]
+    body = [f"---\nname: {slug}-code-review\ndescription: Fixture platform pack content.\n---\n"]
+    body.append(f"# {slug} baseline\n")
+    for section in sections:
+      if skip_section is not None and section == skip_section:
+        continue
+      body.append(f"## {section}\nFixture {section.lower()}.\n")
+    baseline_path.write_text("\n".join(body), encoding="utf-8")
+
+    declared_files: dict[str, object] = {
+      "baseline": baseline_rel,
+      "areas": {},
+    }
+    for area in areas:
+      area_rel = f"code-review/{area}.md"
+      area_path = pack_dir / area_rel
+      area_path.write_text(
+        "---\nname: fixture-area\ndescription: fixture.\n---\n\n" + "\n".join(
+          f"## {section}\nFixture {section.lower()}.\n" for section in sections
+        ),
+        encoding="utf-8",
+      )
+      declared_files["areas"][area] = area_rel
+
+    manifest = {
+      "platform": slug,
+      "contract_version": contract_version,
+      "routing_signals": {
+        "strong": [f".{slug}"],
+        "tie_breakers": [],
+        "addon_signals": [],
+      },
+      "declared_code_review_areas": areas,
+      "declared_files": declared_files,
+    }
+    (pack_dir / "platform.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-      ["python3", str(VALIDATOR_PATH), str(repo_root)],
+      [sys.executable, str(VALIDATOR_PATH), str(repo_root)],
       capture_output=True,
       text=True,
       check=False,
@@ -379,6 +481,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       )
       self.write_review_delegation_playbook(repo_root)
       self.write_telemetry_contract_playbook(repo_root)
+      self.write_shell_content_contract_playbook(repo_root)
       self.write_governed_addons(repo_root)
 
       for package_name, skill_name in skills:
@@ -562,6 +665,25 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         {PARENT_TRIAGE_RULE}
         {CHILD_NO_TRIAGE_RULE}
         {NO_FINDINGS_TRIAGE_RULE}
+        """
+      ),
+      encoding="utf-8",
+    )
+
+  def write_shell_content_contract_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "shell-content-contract" / "PLAYBOOK.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        """\
+        ---
+        name: shell-content-contract
+        description: Fixture shell+content contract used for validator e2e coverage.
+        ---
+
+        # Shared Shell Content Contract
+
+        Fixture contract playbook.
         """
       ),
       encoding="utf-8",

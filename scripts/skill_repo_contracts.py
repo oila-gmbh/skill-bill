@@ -8,12 +8,21 @@ ORCHESTRATION_PLAYBOOKS: dict[str, str] = {
   "review-orchestrator": "orchestration/review-orchestrator/PLAYBOOK.md",
   "review-delegation": "orchestration/review-delegation/PLAYBOOK.md",
   "telemetry-contract": "orchestration/telemetry-contract/PLAYBOOK.md",
+  "shell-content-contract": "orchestration/shell-content-contract/PLAYBOOK.md",
 }
 
 ADDON_DIRECTORY_NAME = "addons"
 ADDON_IMPLEMENTATION_SUFFIX = "-implementation.md"
 ADDON_REVIEW_SUFFIX = "-review.md"
 ADDON_REPORTING_LINE = "Selected add-ons: none | <add-on slugs>"
+# TODO(SKILL-14 follow-up): migrate GOVERNED_STACK_ADDONS to discovery from
+# platform-packs/<slug>/platform.yaml (using the `governs_addons: true` flag
+# and the declared `addon_signals`). The SKILL-14 pilot intentionally scopes
+# add-on discovery out: AC9 (manifest-driven routing) covers **routing
+# playbooks and the validator**, and `GOVERNED_STACK_ADDONS` is an internal
+# implementation detail of add-on sidecar wiring. Promoting it to discovery
+# is mechanical but touches every skill sidecar graph, which is bigger than
+# this pilot. Tracking in SKILL-15.
 GOVERNED_STACK_ADDONS: dict[str, tuple[str, ...]] = {
   "kmp": (
     "android-compose",
@@ -51,11 +60,17 @@ SUPPORTING_FILE_TARGETS: dict[str, str] = {
   "review-orchestrator.md": ORCHESTRATION_PLAYBOOKS["review-orchestrator"],
   "review-delegation.md": ORCHESTRATION_PLAYBOOKS["review-delegation"],
   "telemetry-contract.md": ORCHESTRATION_PLAYBOOKS["telemetry-contract"],
+  "shell-content-contract.md": ORCHESTRATION_PLAYBOOKS["shell-content-contract"],
   **ADDON_SUPPORTING_FILE_TARGETS,
 }
 
 RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
-  "bill-code-review": ("stack-routing.md", "review-delegation.md", "telemetry-contract.md"),
+  "bill-code-review": (
+    "stack-routing.md",
+    "review-delegation.md",
+    "telemetry-contract.md",
+    "shell-content-contract.md",
+  ),
   "bill-quality-check": ("stack-routing.md", "telemetry-contract.md"),
   "bill-agent-config-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),
   "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),

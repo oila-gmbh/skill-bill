@@ -4,6 +4,8 @@ Treat your AI skills like software — with stable interfaces, platform override
 
 sKill Bill is a portable collection of 38 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Platform depth varies — see [platform coverage tiers](#platform-coverage-tiers) for what each stack gets today.
 
+Under the hood the repo is a governed *shell + content* split: the `/bill-code-review` shell owns routing, telemetry, output structure, and contract enforcement, while each `platform-packs/<platform>/` declares its own routing signals, code-review areas, and reviewer content. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
+
 Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs verify review output.
 
 ## Why this exists
@@ -218,25 +220,60 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 
 ## Skills Included
 
-### Code Review (24 skills)
+### Code Review (1 skills)
 
 | Skill | Purpose |
 |-------|---------|
-| `/bill-code-review` | Shared review router |
+| `/bill-code-review` | Shell-owned code-review router; routes to the matching platform pack based on manifest-declared signals |
+
+### Platform Packs — Agent config (1 skills)
+
+Shipped example pack at `platform-packs/agent-config/`. Reviews and validates skill/agent-config repositories (self-referential meta pack).
+
+| Skill | Purpose |
+|-------|---------|
 | `/bill-agent-config-code-review` | Review skill/agent-config repositories |
+
+### Platform Packs — Kotlin (6 skills)
+
+Shipped example pack at `platform-packs/kotlin/`. Covers shared Kotlin code and acts as the baseline layer for KMP and backend-Kotlin packs.
+
+| Skill | Purpose |
+|-------|---------|
 | `/bill-kotlin-code-review` | Kotlin baseline review orchestrator |
-| `/bill-backend-kotlin-code-review` | Backend Kotlin review override |
-| `/bill-kmp-code-review` | Android/KMP review override |
 | `/bill-kotlin-code-review-architecture` | Kotlin architecture and boundaries review |
 | `/bill-kotlin-code-review-platform-correctness` | Kotlin lifecycle, coroutine, threading, and logic review |
 | `/bill-kotlin-code-review-performance` | Kotlin performance review |
 | `/bill-kotlin-code-review-security` | Kotlin security review |
 | `/bill-kotlin-code-review-testing` | Kotlin test quality review |
+
+### Platform Packs — KMP (3 skills)
+
+Shipped example pack at `platform-packs/kmp/`. Layers Android/KMP-specific reviewers on the Kotlin baseline. Also owns governed Android add-ons.
+
+| Skill | Purpose |
+|-------|---------|
+| `/bill-kmp-code-review` | Android/KMP review override |
 | `/bill-kmp-code-review-ui` | KMP UI review |
 | `/bill-kmp-code-review-ux-accessibility` | KMP UX and accessibility review |
+
+### Platform Packs — Backend Kotlin (4 skills)
+
+Shipped example pack at `platform-packs/backend-kotlin/`. Layers backend-specific reviewers on the Kotlin baseline.
+
+| Skill | Purpose |
+|-------|---------|
+| `/bill-backend-kotlin-code-review` | Backend Kotlin review override |
 | `/bill-backend-kotlin-code-review-api-contracts` | Backend API contract review |
 | `/bill-backend-kotlin-code-review-persistence` | Backend persistence and migration review |
 | `/bill-backend-kotlin-code-review-reliability` | Backend reliability and observability review |
+
+### Platform Packs — Go (9 skills)
+
+Shipped example pack at `platform-packs/go/`. Covers the Go ecosystem end-to-end.
+
+| Skill | Purpose |
+|-------|---------|
 | `/bill-go-code-review` | Go backend/service review orchestrator |
 | `/bill-go-code-review-architecture` | Go architecture and package-boundary review |
 | `/bill-go-code-review-platform-correctness` | Go correctness, goroutine safety, and context review |
@@ -304,11 +341,12 @@ Example:
 
 ### Core model
 
-The repo is organized around a strict three-layer model:
+The repo is organized around a strict four-layer model:
 
-- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review`, `bill-quality-check`, and `bill-feature-implement`
-- `skills/<platform>/` — platform-specific overrides and approved subskills
-- `orchestration/` — single source of truth for shared routing, review, delegation, and telemetry contracts
+- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review` (a governed shell), `bill-quality-check`, and `bill-feature-implement`
+- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (e.g. quality-check)
+- `platform-packs/<platform>/` — user-owned platform packs consumed by the `bill-code-review` shell via the shell+content contract. Each pack ships a `platform.yaml` manifest plus per-area reviewer content
+- `orchestration/` — single source of truth for shared routing, review, delegation, telemetry, and shell+content contracts
 
 Think of it as markdown with inheritance:
 
@@ -332,13 +370,13 @@ That last file is the canonical map for:
 - which runtime-facing skills require which sidecars
 - which review skills are governed by the shared review/delegation contract
 
-Current platform packages:
+Current shipped platform packs (under `platform-packs/`) plus the non-code-review platform skills still shipping under `skills/<platform>/`:
 
-- `kotlin` — Deep (7 skills, baseline for KMP and backend-kotlin)
-- `kmp` — Deep (3 skills + 12 governed add-ons, layers on kotlin)
-- `backend-kotlin` — Deep (4 skills, layers on kotlin)
-- `go` — Solid (10 skills, no add-ons)
-- `agent-config` — Meta (2 skills)
+- `kotlin` — Deep (6 code-review skills in the pack, baseline for KMP and backend-kotlin) + `bill-kotlin-quality-check`
+- `kmp` — Deep (3 code-review skills in the pack + 12 governed add-ons, layers on kotlin)
+- `backend-kotlin` — Deep (4 code-review skills in the pack, layers on kotlin)
+- `go` — Solid (9 code-review skills in the pack, no add-ons) + `bill-go-quality-check`
+- `agent-config` — Meta (1 code-review skill in the pack) + `bill-agent-config-quality-check`
 
 ### Naming and enforcement
 

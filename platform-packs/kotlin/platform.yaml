@@ -1,0 +1,31 @@
+platform: kotlin
+contract_version: "1.0"
+display_name: Kotlin
+governs_addons: false
+
+routing_signals:
+  strong:
+    - ".kt"
+    - "build.gradle.kts"
+    - "kotlin/"
+  tie_breakers:
+    - "If Android/KMP markers (androidMain, iosMain, AndroidManifest.xml, expect/actual) are present, prefer the KMP pack."
+    - "If backend/server markers (io.ktor.server, Spring, Micronaut, Exposed, application.yml) are present, prefer the backend-kotlin pack."
+    - "Otherwise route generic Kotlin/JVM libraries, CLIs, and shared utilities to this pack."
+  addon_signals: []
+
+declared_code_review_areas:
+  - architecture
+  - performance
+  - platform-correctness
+  - security
+  - testing
+
+declared_files:
+  baseline: code-review/bill-kotlin-code-review/SKILL.md
+  areas:
+    architecture: code-review/bill-kotlin-code-review-architecture/SKILL.md
+    performance: code-review/bill-kotlin-code-review-performance/SKILL.md
+    platform-correctness: code-review/bill-kotlin-code-review-platform-correctness/SKILL.md
+    security: code-review/bill-kotlin-code-review-security/SKILL.md
+    testing: code-review/bill-kotlin-code-review-testing/SKILL.md
