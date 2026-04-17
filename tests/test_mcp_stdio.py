@@ -36,6 +36,7 @@ EXPECTED_TOOLS = {
   "feature_verify_finished",
   "feature_verify_started",
   "import_review",
+  "new_skill_scaffold",
   "pr_description_generated",
   "quality_check_finished",
   "quality_check_started",

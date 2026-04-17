@@ -1,12 +1,12 @@
 # sKill Bill
 
-Treat your AI skills like software — with stable interfaces, platform overrides, and validation that prevents the repo from rotting.
+A framework for governed, portable AI-agent behavior across every major coding agent — stable user-facing commands, platform depth behind a router, and validator-backed contracts that keep things from drifting as the repo grows.
 
-sKill Bill is a portable collection of 38 AI skills for code review, feature implementation, and developer tooling. One repo, synced to every supported agent. Platform depth varies — see [platform coverage tiers](#platform-coverage-tiers) for what each stack gets today.
+sKill Bill is a framework, not a prompt library. It ships a governed *shell + content* architecture, a scaffolder for authoring new skills, and a cross-agent installer that syncs one source of truth to Claude Code, Copilot, Codex, OpenCode, and GLM. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
 
-Under the hood the repo is a governed *shell + content* split: the `/bill-code-review` shell owns routing, telemetry, output structure, and contract enforcement, while each `platform-packs/<platform>/` declares its own routing signals, code-review areas, and reviewer content. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
+The repository also ships with a reference collection of 38 AI skills — code review, quality check, feature implementation, PR description — across Kotlin, KMP, backend-Kotlin, Go, and agent-config. Use them as-is, fork them, or ignore them and author your own. The governance model is the product; the packs are examples. Platform depth varies — see [reference platform packs](#reference-platform-packs) for what each stack gets today.
 
-Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs verify review output.
+Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs. verify output.
 
 ## Why this exists
 
@@ -125,9 +125,9 @@ Base entry points stay stable for users:
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
 
-## Platform coverage tiers
+## Reference platform packs
 
-Not all platforms are at the same depth. The table below shows what each stack gets today so you know what to expect — and where to contribute.
+sKill Bill ships with reference packs under `platform-packs/<slug>/`. These are examples — real, validated, ready to install, and meant to be forked or replaced. Not all packs are at the same depth. The table below shows what each stack gets today so you know what to expect — and where to contribute.
 
 | Tier | Platforms | What you get | Skill count |
 |------|-----------|-------------|-------------|
@@ -218,7 +218,9 @@ chmod +x uninstall.sh
 
 The uninstaller is idempotent. It removes current Skill Bill installs, generated alias installs, and known legacy install names when they are present, and skips unrelated non-symlink paths.
 
-## Skills Included
+## Reference skill catalog
+
+The skills below ship in this repo as reference examples. Install them via `./install.sh`, extend them in your fork, or author your own via `/bill-new-skill-all-agents`. These are not the product — the governance framework is. They are what a team starts from.
 
 ### Code Review (1 skills)
 
@@ -439,9 +441,14 @@ The validator enforces:
 
 Preferred path:
 
-- run `/bill-new-skill-all-agents`
+- from inside an AI agent, run `/bill-new-skill-all-agents`. The skill collects intent with a decision tree over the four supported kinds (horizontal, platform-override-piloted, code-review-area, add-on), previews the scaffolded output with synthesized markers, and subprocess-calls `skill-bill new-skill --payload <tempfile>` to materialize the skill.
+- outside an agent (scripts, CI, teams piloting a new platform), run `skill-bill new-skill --interactive` for a four-prompt no-LLM flow, or pass a JSON payload file with `skill-bill new-skill --payload ./payload.json`.
 
-Manual path:
+The payload schema, the loud-fail exception catalog, and one worked example per kind live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+
+The scaffolder is atomic: it creates files, edits manifests with best-effort comment preservation, wires sibling supporting-file symlinks, runs `scripts/validate_agent_configs.py`, and auto-installs into detected agents. Any failure rolls back every staged change and prints the validator's error verbatim.
+
+Manual path (discouraged — prefer the scaffolder):
 
 1. create `skills/<package>/<skill-name>/SKILL.md`
 2. follow the naming rules above

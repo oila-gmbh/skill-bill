@@ -40,6 +40,18 @@ parse_args() {
 }
 
 get_agent_path() {
+  # Source of truth is skill_bill/install.py::agent_paths. We shell out to
+  # the Python module so the bash installer and the new-skill scaffolder
+  # agree on every supported-agent path without duplicating the table.
+  # Falls back to the inline case block when python3 is missing, so a
+  # first-run install on a fresh machine still bootstraps correctly.
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if output="$("$python_cmd" -m skill_bill install agent-path "$1" 2>/dev/null)"; then
+      echo "$output"
+      return 0
+    fi
+  fi
   case "$1" in
     copilot) echo "$HOME/.copilot/skills" ;;
     claude)  echo "$HOME/.claude/commands" ;;
@@ -699,7 +711,14 @@ install_skill() {
     remove_if_allowed "$target"
   fi
 
-  ln -s "$source" "$target"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -m skill_bill install link-skill \
+      --source "$source" \
+      --target-dir "$(dirname "$target")" \
+      --agent manual
+  else
+    ln -s "$source" "$target"
+  fi
   ok "  $label"
 }
 

@@ -13,7 +13,7 @@ Follow the [Installation section of README.md](../README.md#installation). The s
 1. Clone the repo somewhere stable (e.g. `~/Development/skill-bill`).
 2. Run `./install.sh`.
 3. Select your agents (Claude Code / Copilot / Codex / OpenCode / GLM).
-4. Select your platform packages — check the [platform coverage tiers](../README.md#platform-coverage-tiers) first so you know what each stack actually gets.
+4. Select your platform packages — check the [reference platform packs](../README.md#reference-platform-packs) first so you know what each stack actually gets.
 
 Installed skills are symlinks back to the repo, so `git pull` updates everything without re-running install.
 
@@ -94,6 +94,36 @@ Strict structure, enforced by the validator:
 4. Point your local install at the forked pack and re-run `./install.sh`.
 
 The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
+
+### Scaffolding an area in an existing pack
+
+Once a pack exists, use the scaffolder to add new code-review areas and their sibling supporting files in one step. For example, to add an `api-contracts` area to a forked `kotlin` pack:
+
+```bash
+cat > /tmp/payload.json <<'JSON'
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "code-review-area",
+  "name": "bill-kotlin-code-review-api-contracts",
+  "platform": "kotlin",
+  "area": "api-contracts",
+  "description": "Kotlin API-contracts reviewer."
+}
+JSON
+skill-bill new-skill --payload /tmp/payload.json
+```
+
+The scaffolder:
+
+- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` with the six required H2 sections (two scaffolder-owned ceremony sections are identical across every specialist in the family; the other four are stubbed for authoring).
+- appends `api-contracts` to `declared_code_review_areas` and to `declared_files.areas` in `platform-packs/kotlin/platform.yaml`, preserving key order and best-effort comments.
+- wires sibling supporting-file symlinks for the skill (stack-routing, review-orchestrator, review-delegation, telemetry-contract) from `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`.
+- runs `scripts/validate_agent_configs.py`. If validation fails, every change is rolled back and the validator error is surfaced verbatim.
+- installs the new skill into every detected agent. If none is detected, the scaffolder notes that you should run `./install.sh` to bootstrap agent paths.
+
+Edit the four authored sections (`## Description`, `## Specialist Scope`, `## Inputs`, `## Outputs Contract`) afterwards. Do not edit the scaffolder-owned sections — the contract treats them as identical across the family.
+
+The full payload schema, including worked examples for the other three kinds (horizontal, platform-override-piloted, add-on), lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
 ## What to expect from review output
 

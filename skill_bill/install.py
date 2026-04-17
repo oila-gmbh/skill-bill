@@ -1,0 +1,230 @@
+"""Agent-detection and skill-install primitives (SKILL-15).
+
+Shared install logic so both ``install.sh`` and the new-skill scaffolder can
+symlink skills into detected local AI agents without duplicating path rules.
+
+The agent paths here are the canonical source of truth — ``install.sh`` shells
+out to this module via ``python3 -m skill_bill install ...`` rather than
+redefining them inline. Keeping one owner for the path table prevents drift.
+
+Supported agents (mirrors ``install.sh::get_agent_path``):
+
+- ``copilot``  -> ``~/.copilot/skills``
+- ``claude``   -> ``~/.claude/commands``
+- ``glm``      -> ``~/.glm/commands``
+- ``opencode`` -> ``~/.config/opencode/skills``
+- ``codex``    -> ``~/.codex/skills`` with ``~/.agents/skills`` fallback
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable
+
+
+SUPPORTED_AGENTS: tuple[str, ...] = (
+  "copilot",
+  "claude",
+  "glm",
+  "codex",
+  "opencode",
+)
+
+
+@dataclass(frozen=True)
+class AgentTarget:
+  """A detected agent's canonical install directory.
+
+  Attributes:
+    name: canonical agent name (``claude``, ``copilot``, ...).
+    path: directory that holds skill symlinks for that agent.
+  """
+
+  name: str
+  path: Path
+
+
+@dataclass
+class InstallTransaction:
+  """Rollback bookkeeping for :func:`install_skill`.
+
+  The scaffolder threads an :class:`InstallTransaction` through
+  :func:`install_skill` so a validator failure downstream can cleanly
+  reverse every symlink the installer created. Standalone callers (like
+  ``install.sh``) may omit the transaction; they only use the module for
+  agent detection.
+  """
+
+  created_symlinks: list[Path] = field(default_factory=list)
+
+
+def _codex_path(home: Path) -> Path:
+  """Mirror ``install.sh::get_agent_path`` for codex.
+
+  Prefers ``~/.codex/skills`` when ``~/.codex`` or ``~/.codex/skills``
+  exists; otherwise falls back to ``~/.agents/skills``. The fallback keeps
+  the module honest for older codex installations that still use the
+  ``~/.agents`` layout.
+  """
+  codex_root = home / ".codex"
+  codex_skills = codex_root / "skills"
+  if codex_root.exists() or codex_skills.exists():
+    return codex_skills
+  return home / ".agents" / "skills"
+
+
+def agent_paths(home: Path | None = None) -> dict[str, Path]:
+  """Return the canonical agent -> install-directory mapping.
+
+  Args:
+    home: optional override for ``$HOME``. Tests monkeypatch this via the
+      ``HOME`` env var or by calling with a fixture directory.
+
+  Returns:
+    Mapping from agent name to absolute install path.
+  """
+  resolved_home = home if home is not None else Path.home()
+  return {
+    "copilot": resolved_home / ".copilot" / "skills",
+    "claude": resolved_home / ".claude" / "commands",
+    "glm": resolved_home / ".glm" / "commands",
+    "opencode": resolved_home / ".config" / "opencode" / "skills",
+    "codex": _codex_path(resolved_home),
+  }
+
+
+def detect_agents(home: Path | None = None) -> list[AgentTarget]:
+  """Return the list of agents whose parent directories already exist.
+
+  An agent is considered "detected" when any ancestor on its canonical
+  install path already exists on disk. This mirrors ``install.sh``'s
+  existing UX: we don't create agent homes as a side effect of scaffolding
+  a skill — operators run ``./install.sh`` for that. We just install into
+  agents that the operator has already set up.
+  """
+  resolved_home = home if home is not None else Path.home()
+  detected: list[AgentTarget] = []
+  for agent in SUPPORTED_AGENTS:
+    path = agent_paths(resolved_home)[agent]
+    if _agent_is_present(resolved_home, agent, path):
+      detected.append(AgentTarget(name=agent, path=path))
+  return detected
+
+
+def _agent_is_present(home: Path, agent: str, install_path: Path) -> bool:
+  """Return True when the agent's root directory exists on disk.
+
+  We look at the agent's top-level root (e.g. ``~/.claude``, ``~/.copilot``)
+  rather than the exact install subdirectory so the installer can create
+  the skills/commands subdir on first run without requiring the operator
+  to pre-create it.
+  """
+  if install_path.exists():
+    return True
+  roots_by_agent: dict[str, tuple[Path, ...]] = {
+    "copilot": (home / ".copilot",),
+    "claude": (home / ".claude",),
+    "glm": (home / ".glm",),
+    "opencode": (home / ".config" / "opencode",),
+    "codex": (home / ".codex", home / ".agents"),
+  }
+  for root in roots_by_agent.get(agent, ()):
+    if root.exists():
+      return True
+  return False
+
+
+def install_skill(
+  skill_path: Path,
+  agent_targets: Iterable[AgentTarget],
+  *,
+  transaction: InstallTransaction | None = None,
+) -> list[Path]:
+  """Symlink ``skill_path`` into each detected agent directory.
+
+  ``skill_path`` MUST be a directory containing ``SKILL.md``. Standalone
+  markdown files (for example add-on ``*.md`` assets under
+  ``skills/<platform>/addons/``) are NOT installed via this function — they
+  ship with their owning platform package as supporting assets and are
+  resolved through sibling-file lookup at runtime rather than by symlinking
+  each file into every agent's install directory. The scaffolder's
+  ``_perform_install`` short-circuits the add-on kind for exactly this
+  reason; passing a file here raises :class:`FileNotFoundError`.
+
+  Args:
+    skill_path: absolute path to the skill directory (must contain
+      ``SKILL.md``).
+    agent_targets: iterable of detected agents (as returned by
+      :func:`detect_agents`).
+    transaction: optional rollback recorder. Every symlink created is
+      appended so the caller can reverse them on failure.
+
+  Returns:
+    List of absolute symlink paths that were created. Pre-existing symlinks
+    pointing at the same source are skipped and not returned.
+  """
+  skill_path = Path(skill_path).resolve()
+  if not skill_path.is_dir():
+    raise FileNotFoundError(f"Skill directory '{skill_path}' does not exist.")
+
+  created: list[Path] = []
+  for target in agent_targets:
+    target.path.mkdir(parents=True, exist_ok=True)
+    link_path = target.path / skill_path.name
+    if link_path.is_symlink() and link_path.resolve(strict=False) == skill_path:
+      continue
+    if link_path.is_symlink() or link_path.exists():
+      link_path.unlink()
+    link_path.symlink_to(skill_path)
+    created.append(link_path)
+    if transaction is not None:
+      transaction.created_symlinks.append(link_path)
+  return created
+
+
+def uninstall_skill(skill_path: Path, agent_targets: Iterable[AgentTarget]) -> list[Path]:
+  """Remove symlinks to ``skill_path`` from each detected agent directory.
+
+  Returns the list of paths that were actually removed. Paths that do not
+  exist or point elsewhere are silently skipped — uninstall is idempotent.
+  """
+  skill_path = Path(skill_path).resolve()
+  removed: list[Path] = []
+  for target in agent_targets:
+    link_path = target.path / skill_path.name
+    if not link_path.is_symlink():
+      continue
+    if link_path.resolve(strict=False) != skill_path:
+      continue
+    link_path.unlink()
+    removed.append(link_path)
+  return removed
+
+
+def uninstall_targets(created_symlinks: Iterable[Path]) -> list[Path]:
+  """Remove the exact symlinks recorded in an :class:`InstallTransaction`.
+
+  Used by scaffold rollback. We remove by exact path rather than by agent
+  so the rollback can never accidentally unlink a pre-existing symlink that
+  the installer didn't create.
+  """
+  removed: list[Path] = []
+  for link_path in created_symlinks:
+    path = Path(link_path)
+    if path.is_symlink():
+      path.unlink()
+      removed.append(path)
+  return removed
+
+
+__all__ = [
+  "AgentTarget",
+  "InstallTransaction",
+  "SUPPORTED_AGENTS",
+  "agent_paths",
+  "detect_agents",
+  "install_skill",
+  "uninstall_skill",
+  "uninstall_targets",
+]

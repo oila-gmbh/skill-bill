@@ -2,9 +2,11 @@
 
 ## Why this document exists
 
-Skill Bill can look deceptively simple because most of the repository is Markdown rather than application code. But the project is not just a prompt collection. It is a governed behavior system: a portable layer of routing, orchestration, review depth, safety rules, and team-facing contracts for AI-assisted engineering.
+Skill Bill can look deceptively simple because most of the repository is Markdown rather than application code. But the project is not just a prompt collection. It is a framework for governed AI-agent behavior: a portable layer of routing, orchestration, review depth, safety rules, authoring contracts, and cross-agent installation for AI-assisted engineering.
 
-That means the project needs a clear long-term direction. Without one, it risks drifting into "more skills, more stacks, more prompts" without becoming meaningfully more reliable or more useful to teams.
+The product is that framework. The skills and platform packs shipped in this repo are reference examples — real, validated, ready to use, and meant to be forked or replaced. The governance model is what a team adopts; the packs are what they start from.
+
+Without that distinction, the project drifts into "more skills, more stacks, more prompts" instead of becoming meaningfully more reliable or more useful to teams.
 
 This roadmap exists to keep the bigger picture visible while the repository grows.
 
@@ -24,7 +26,9 @@ The long-term goal is not only broader stack coverage. The goal is to become the
 
 ## Product thesis
 
-Skill Bill is most valuable when it behaves like infrastructure rather than a prompt dump.
+Skill Bill is most valuable when it behaves like infrastructure rather than a prompt dump. The framework is the product — the shell+content contract, the scaffolder, the validator, the cross-agent installer, the manifest-driven discovery. Shipped skills are reference examples that prove the framework works; they are not the thing being adopted.
+
+The clearest structural moat is **cross-agent portability**. Individual pieces of Skill Bill — governed taxonomy, validator-backed rules, skill scaffolders — exist in adjacent projects or could plausibly be bundled by a first-party agent vendor. The piece a first-party vendor structurally cannot bundle is one source of truth synced across competing coding agents. That is the piece to protect.
 
 The repository should continue to optimize for:
 
@@ -34,6 +38,7 @@ The repository should continue to optimize for:
 - **portable behavior across agents** instead of one runtime getting all the quality
 - **explicit contracts** instead of implicit prompt folklore
 - **predictable failure handling** instead of silent fallback or "best effort" ambiguity
+- **framework separable from examples** so teams can fork, replace, or ignore shipped packs without touching governance
 
 ## What success looks like
 
@@ -46,11 +51,15 @@ Skill Bill is succeeding when most of the following are true:
 5. Project-specific customization is possible without degrading the shared taxonomy.
 6. New skills and edits are constrained by tests and validators, not only maintainer judgment.
 7. Teams start treating Skill Bill as part of engineering process, not as an experimental side tool.
+8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External authorship is the real test of whether the framework is complete.
+9. **At least one lighthouse team uses it in production.** One concrete before/after from a real engineering org does more to validate the project than any amount of internal polish.
 
 ## Recent milestones
 
 - **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/base/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
+- **SKILL-15 (in progress):** New-skill scaffolder + auto-installer. Turns the shell+content contract into a one-shot authoring flow so first-time authors — including forks — succeed without hand-wiring directories, sidecars, and manifests. Treated as a core product feature, not tooling; external authoring is a success metric the project needs to validate.
 - **SKILL-14 follow-up:** Apply the same shell + content split to `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` so every stable command benefits from the same governance.
+- **Upcoming — examples extraction:** Separate framework from reference packs. Today both live in one repo, which makes the framework look like the skills and forces every fork to inherit Kotlin/KMP/Go packs as if they were core. A dedicated `skill-bill-examples` repo (or equivalent separation) is the defining architectural move that clarifies what is adopted vs. what is forked.
 
 ## Current position
 
@@ -151,22 +160,22 @@ Key outcome:
 
 ### 5. Add measurement and feedback loops
 
-A governed behavior system needs evidence, not only intuition.
+A governed framework needs evidence, not only intuition. Because the shipped skills are reference examples rather than the product, measurement should favor framework-level signals over per-skill output quality.
 
-Over time, Skill Bill should develop lightweight ways to evaluate:
+The signals that most influence where to invest:
 
-- review usefulness
-- false-positive rate
-- missed-issue rate
-- scope-faithfulness
-- workflow completion quality
-- team adoption and repeated use
+- **authoring success rate** — can someone land a new pack using only the scaffolder and the validator, without reading maintainer source?
+- **fork health** — do external forks diverge in breaking ways, or extend cleanly?
+- **contract drift** — how often does a validator catch something vs. let drift through?
+- **cross-agent parity** — do the same commands produce comparable output on each supported agent?
+- **team adoption and repeated use** — once installed, does it stick or get abandoned?
+- **review usefulness on the reference packs** — kept as a secondary signal, not the primary one, because the shipped packs are demos, not the product.
 
-This does not need to begin as heavy analytics. Even structured manual evaluation can create a much stronger improvement loop than anecdotal memory alone.
+This does not need to begin as heavy analytics. Even structured manual evaluation of one external fork's first week is more informative than any amount of internal intuition.
 
 Key outcome:
 
-**The project should learn from real usage patterns and improve on purpose.**
+**The project should learn from real authoring and adoption patterns, not only from its maintainer's instincts.**
 
 ### 6. Expand from stack routing to process routing
 

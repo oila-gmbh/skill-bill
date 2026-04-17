@@ -58,6 +58,20 @@ For code review: create a new platform-packs/`<slug>`/ directory with a conformi
 
 For non-code-review platform skills (e.g. quality-check): place them under skills/`<platform>`/ using the historic naming rules — the shell+content pilot is currently scoped to bill-code-review only.
 
+## New-skill authoring
+
+- All new skills go through the scaffolder: `skill-bill new-skill --payload <file>` (or `--interactive`, or invoke `/bill-new-skill-all-agents` inside an agent). The scaffolder is the only supported path; hand-authoring is discouraged.
+- Four supported `kind` values and their destinations:
+  - `horizontal` → `skills/base/<name>/SKILL.md`.
+  - `platform-override-piloted` (shelled family `code-review`) → `platform-packs/<slug>/code-review/<name>/SKILL.md` + `platform.yaml` edit.
+  - `platform-override-piloted` (pre-shell families `quality-check`, `feature-implement`, `feature-verify`) → `skills/<platform>/<name>/SKILL.md`, annotated with an interim-location note ("will move when piloted").
+  - `code-review-area` → `platform-packs/<slug>/code-review/<name>/SKILL.md` + manifest area registration.
+  - `add-on` → `skills/<platform>/addons/<name>.md` (flat).
+- Pre-shell families are defined in `skill_bill/constants.py::PRE_SHELL_FAMILIES`. Adding one requires updating that tuple and `skill_bill/scaffold.py::FAMILY_REGISTRY` in the same change.
+- Scaffolder entry point: `skill_bill/scaffold.py`. Payload schema and exception catalog: `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+- The scaffolder is atomic. Validator failure, manifest-write failure, and symlink-creation failure all trigger a full rollback and raise a named exception; the repo tree is byte-identical to its pre-run state.
+- The two scaffolder-owned sections (`## Execution Mode Reporting`, `## Telemetry Ceremony Hooks`) are emitted from a stored template and must be byte-identical across every specialist in a family. Do not hand-edit them.
+
 ## Quality-check guidance
 
 Prefer routing through `bill-quality-check`. If a platform-specific checker does not exist yet, document the fallback explicitly instead of implying dedicated coverage exists.

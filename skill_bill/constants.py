@@ -41,11 +41,26 @@ EVENT_QUALITY_CHECK_FINISHED = "skillbill_quality_check_finished"
 EVENT_FEATURE_VERIFY_STARTED = "skillbill_feature_verify_started"
 EVENT_FEATURE_VERIFY_FINISHED = "skillbill_feature_verify_finished"
 EVENT_PR_DESCRIPTION_GENERATED = "skillbill_pr_description_generated"
+EVENT_NEW_SKILL_SCAFFOLD_STARTED = "skillbill_new_skill_scaffold_started"
+EVENT_NEW_SKILL_SCAFFOLD_FINISHED = "skillbill_new_skill_scaffold_finished"
 
 FEATURE_IMPLEMENT_SESSION_PREFIX = "fis"
 QUALITY_CHECK_SESSION_PREFIX = "qck"
 FEATURE_VERIFY_SESSION_PREFIX = "fvr"
 PR_DESCRIPTION_SESSION_PREFIX = "prd"
+NEW_SKILL_SCAFFOLD_SESSION_PREFIX = "nss"
+
+# New-skill scaffolder constants (SKILL-15).
+SCAFFOLD_PAYLOAD_VERSION: str = "1.0"
+# Pre-shell capability families. These families have not been piloted onto the
+# shell+content contract yet; the scaffolder places their platform overrides
+# under the historic skills/<platform>/bill-<platform>-<capability>/ layout
+# and annotates them with a migration-awareness note.
+PRE_SHELL_FAMILIES: tuple[str, ...] = (
+  "quality-check",
+  "feature-implement",
+  "feature-verify",
+)
 
 QUALITY_CHECK_RESULTS = ("pass", "fail", "skipped", "unsupported_stack")
 QUALITY_CHECK_SCOPE_TYPES = ("files", "working_tree", "branch_diff", "repo")

@@ -8,6 +8,8 @@ from skill_bill import __version__
 from skill_bill import feature_verify as _fv
 from skill_bill import pr_description as _prd
 from skill_bill import quality_check as _qc
+from skill_bill import scaffold as _scaffold
+from skill_bill import scaffold_domain as _scaffold_domain
 from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import LEARNING_SCOPE_PRECEDENCE
 from skill_bill.db import open_db, resolve_db_path
@@ -685,6 +687,114 @@ def pr_description_generated(
   with open_db() as (connection, _db_path):
     _prd.emit_event(connection, payload=payload, enabled=True)
   return {"status": "ok", "session_id": session_id}
+
+
+@mcp.tool()
+def new_skill_scaffold(
+  payload: dict,
+  dry_run: bool = False,
+  orchestrated: bool = False,
+) -> dict:
+  """Scaffold a new skill from a validated payload.
+
+  Standalone (orchestrated=False): invoke the scaffolder, run the validator,
+  install into detected agents, and emit skillbill_new_skill_scaffold_started
+  and skillbill_new_skill_scaffold_finished events.
+
+  Orchestrated (orchestrated=True): the scaffold still runs, but the finished
+  event is returned as ``telemetry_payload`` so the parent ceremony can embed
+  it in its own ``child_steps`` array. Started events are skipped in this
+  mode (parents own the lifecycle).
+  """
+  validation_error = _scaffold_domain.validate_scaffold_params(
+    kind=str(payload.get("kind", ""))
+  )
+  session_id = _scaffold_domain.generate_new_skill_session_id()
+  if validation_error:
+    return {"status": "error", "session_id": session_id, "error": validation_error}
+
+  level = "anonymous"
+  try:
+    settings = load_telemetry_settings()
+    level = settings.level
+  except ValueError:
+    level = "anonymous"
+
+  started_payload = _scaffold_domain.build_started_payload_from_fields(
+    session_id=session_id,
+    kind=str(payload.get("kind", "")),
+    skill_name=str(payload.get("name", "")),
+    platform=str(payload.get("platform", "")),
+    family=str(payload.get("family", "")),
+    area=str(payload.get("area", "")),
+    level=level,
+  )
+
+  try:
+    result = _scaffold.scaffold(payload, dry_run=dry_run)
+    outcome = "dry-run" if dry_run else "success"
+  except Exception as error:  # noqa: BLE001 — surface to caller
+    outcome = "failed"
+    if orchestrated:
+      payload_out = dict(started_payload)
+      payload_out.update({"result": outcome, "error": str(error), "skill": "bill-new-skill-all-agents"})
+      payload_out.pop("session_id", None)
+      return {"mode": "orchestrated", "telemetry_payload": payload_out, "error": str(error)}
+    return {"status": "error", "session_id": session_id, "error": str(error)}
+
+  finished_payload = _scaffold_domain.build_finished_payload_from_fields(
+    session_id=session_id,
+    kind=result.kind,
+    skill_name=result.skill_name,
+    platform=str(payload.get("platform", "")),
+    family=str(payload.get("family", "")),
+    area=str(payload.get("area", "")),
+    result=outcome,
+    duration_seconds=0,
+    level=level,
+  )
+
+  if orchestrated:
+    finished_payload.pop("session_id", None)
+    finished_payload["skill"] = "bill-new-skill-all-agents"
+    return {
+      "mode": "orchestrated",
+      "telemetry_payload": finished_payload,
+      "skill_path": str(result.skill_path),
+      "notes": result.notes,
+    }
+
+  if not telemetry_is_enabled():
+    return {
+      "status": "ok",
+      "session_id": session_id,
+      "skill_path": str(result.skill_path),
+      "notes": result.notes,
+    }
+
+  with open_db() as (connection, _db_path):
+    _scaffold_domain.save_scaffold_record(
+      connection,
+      session_id=session_id,
+      kind=result.kind,
+      skill_name=result.skill_name,
+      platform=str(payload.get("platform", "")),
+      family=str(payload.get("family", "")),
+      area=str(payload.get("area", "")),
+      result=outcome,
+    )
+    _scaffold_domain.emit_new_skill_scaffold_started(
+      connection, payload=started_payload, enabled=True
+    )
+    _scaffold_domain.emit_new_skill_scaffold_finished(
+      connection, payload=finished_payload, enabled=True
+    )
+  return {
+    "status": "ok",
+    "session_id": session_id,
+    "skill_path": str(result.skill_path),
+    "notes": result.notes,
+  }
 
 
 def main() -> None:

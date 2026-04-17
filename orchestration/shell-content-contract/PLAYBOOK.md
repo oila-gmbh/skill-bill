@@ -129,6 +129,14 @@ Discovery must not hardcode platform names. Any routing decision that cares
 about ordering must read priority from each pack's manifest, not from an
 enumerated list.
 
+## New-skill Scaffolding
+
+The payload contract that drives the new-skill scaffolder lives in the
+sibling `SCAFFOLD_PAYLOAD.md`. It specifies the required JSON shape, the
+version handshake, the supported `kind` values, the pre-shell family list,
+and the loud-fail exception catalog. The scaffolder refuses to run when the
+payload does not conform to that contract.
+
 ## Relationship To Stack Routing
 
 `orchestration/stack-routing/PLAYBOOK.md` is the user-facing routing

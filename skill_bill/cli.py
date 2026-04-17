@@ -354,6 +354,192 @@ def version_command(args: argparse.Namespace) -> int:
   return 0
 
 
+def new_skill_command(args: argparse.Namespace) -> int:
+  from skill_bill import scaffold as _scaffold
+  from skill_bill import scaffold_domain as _scaffold_domain
+  from skill_bill.config import load_telemetry_settings
+  from skill_bill.scaffold_exceptions import (
+    InvalidScaffoldPayloadError,
+    MissingPlatformPackError,
+    MissingSupportingFileTargetError,
+    ScaffoldError,
+    ScaffoldPayloadVersionMismatchError,
+    ScaffoldRollbackError,
+    ScaffoldValidatorError,
+    SkillAlreadyExistsError,
+    UnknownPreShellFamilyError,
+    UnknownSkillKindError,
+  )
+
+  # Stable exit codes per concrete ScaffoldError subclass so callers (CI,
+  # install.sh, MCP wrappers) can branch on typed failure modes instead of
+  # scraping stderr. Unknown ScaffoldError subclasses fall back to 1.
+  exit_code_map: dict[type, int] = {
+    ScaffoldPayloadVersionMismatchError: 3,
+    InvalidScaffoldPayloadError: 2,
+    UnknownSkillKindError: 2,
+    UnknownPreShellFamilyError: 2,
+    MissingPlatformPackError: 2,
+    SkillAlreadyExistsError: 4,
+    ScaffoldValidatorError: 5,
+    MissingSupportingFileTargetError: 5,
+    ScaffoldRollbackError: 6,
+  }
+
+  if args.payload and args.interactive:
+    raise ValueError("--payload and --interactive are mutually exclusive.")
+
+  if args.payload:
+    payload_path = args.payload
+    if payload_path == "-":
+      payload_text = sys.stdin.read()
+    else:
+      with open(payload_path, encoding="utf-8") as stream:
+        payload_text = stream.read()
+    try:
+      payload = json.loads(payload_text)
+    except json.JSONDecodeError as error:
+      raise ValueError(f"Invalid JSON payload: {error}") from error
+  elif args.interactive:
+    payload = _prompt_new_skill_interactively()
+  else:
+    raise ValueError("Either --payload or --interactive is required.")
+
+  session_id = _scaffold_domain.generate_new_skill_session_id()
+
+  try:
+    level = load_telemetry_settings().level
+  except ValueError:
+    level = "anonymous"
+
+  started_payload = _scaffold_domain.build_started_payload_from_fields(
+    session_id=session_id,
+    kind=str(payload.get("kind", "")),
+    skill_name=str(payload.get("name", "")),
+    platform=str(payload.get("platform", "")),
+    family=str(payload.get("family", "")),
+    area=str(payload.get("area", "")),
+    level=level,
+  )
+
+  try:
+    result = _scaffold.scaffold(payload, dry_run=args.dry_run)
+  except ScaffoldError as error:
+    # Print the scaffolder's message to stderr and return a typed exit code.
+    # We intentionally do NOT wrap this in ValueError — that would collapse
+    # every failure mode into exit code 1 and throw away the typed contract
+    # the exit_code_map exposes to callers.
+    print(str(error), file=sys.stderr)
+    return exit_code_map.get(type(error), 1)
+  # Non-ScaffoldError exceptions (real bugs) propagate so the user gets a
+  # traceback instead of a silently-collapsed "user error".
+
+  finished_payload = _scaffold_domain.build_finished_payload_from_fields(
+    session_id=session_id,
+    kind=result.kind,
+    skill_name=result.skill_name,
+    platform=str(payload.get("platform", "")),
+    family=str(payload.get("family", "")),
+    area=str(payload.get("area", "")),
+    result="dry-run" if args.dry_run else "success",
+    duration_seconds=0,
+    level=level,
+  )
+
+  emit(
+    {
+      "session_id": session_id,
+      "kind": result.kind,
+      "skill_name": result.skill_name,
+      "skill_path": str(result.skill_path),
+      "created_files": [str(path) for path in result.created_files],
+      "manifest_edits": [str(path) for path in result.manifest_edits],
+      "symlinks": [str(path) for path in result.symlinks],
+      "install_targets": [str(path) for path in result.install_targets],
+      "notes": result.notes,
+      "dry_run": args.dry_run,
+      "started_payload": started_payload,
+      "finished_payload": finished_payload,
+    },
+    args.format,
+  )
+  return 0
+
+
+def _prompt_new_skill_interactively() -> dict:
+  """Collect the four-prompt interactive payload (no LLM).
+
+  Mirrors the decision tree in ``skills/base/bill-new-skill-all-agents/SKILL.md``
+  so operators can bypass the LLM wrapper when they know exactly what they
+  want to create.
+  """
+  kind = input("Kind (horizontal/platform-override-piloted/code-review-area/add-on): ").strip()
+  name = input("Skill name (bill-...): ").strip()
+  platform = input("Platform slug (blank for horizontal): ").strip()
+  area = input("Area slug (blank unless code-review-area): ").strip()
+  payload: dict = {
+    "scaffold_payload_version": "1.0",
+    "kind": kind,
+    "name": name,
+  }
+  if platform:
+    payload["platform"] = platform
+  if area:
+    payload["area"] = area
+  if kind == "platform-override-piloted":
+    family = input("Family (code-review/quality-check/feature-implement/feature-verify): ").strip()
+    if family:
+      payload["family"] = family
+  return payload
+
+
+def install_agent_path_command(args: argparse.Namespace) -> int:
+  """Print the canonical install directory for a given agent.
+
+  Exposed so ``install.sh`` can shell out to Python for the agent-path
+  table rather than redefining it inline. Exits non-zero when the agent
+  name is unknown so the shell caller can fall back cleanly.
+  """
+  from skill_bill.install import SUPPORTED_AGENTS, agent_paths
+  if args.agent not in SUPPORTED_AGENTS:
+    raise ValueError(f"Unknown agent '{args.agent}'. Supported: {list(SUPPORTED_AGENTS)}.")
+  path = agent_paths()[args.agent]
+  print(str(path))
+  return 0
+
+
+def install_detect_agents_command(args: argparse.Namespace) -> int:
+  """List detected agents (one ``name\\tpath`` per line) for install.sh."""
+  from skill_bill.install import detect_agents
+  for target in detect_agents():
+    print(f"{target.name}\t{target.path}")
+  _ = args
+  return 0
+
+
+def install_link_skill_command(args: argparse.Namespace) -> int:
+  """Symlink a skill DIRECTORY into an agent's install directory.
+
+  Files (e.g. add-on markdown) are shipped with their owning package and
+  must not be linked here — they are resolved via sibling-file lookup at
+  runtime, not by per-file symlinks into each agent's install root. Passing
+  a file path as ``--source`` will raise :class:`FileNotFoundError` from
+  :func:`skill_bill.install.install_skill`.
+
+  Mirrors the behavior of ``install.sh::install_skill`` so the shell
+  installer can shell out to Python instead of maintaining its own
+  ``ln -s`` plumbing.
+  """
+  from skill_bill.install import AgentTarget, install_skill
+  from pathlib import Path as _Path
+
+  source = _Path(args.source).resolve()
+  target_dir = _Path(args.target_dir).resolve()
+  target_dir.mkdir(parents=True, exist_ok=True)
+  install_skill(source, [AgentTarget(name=args.agent or "manual", path=target_dir)])
+  return 0
+
+
 def doctor_command(args: argparse.Namespace) -> int:
   db_path = resolve_db_path(args.db)
   try:
@@ -551,6 +737,59 @@ def build_parser() -> argparse.ArgumentParser:
   doctor_parser = subparsers.add_parser("doctor", help="Check skill-bill installation health.")
   doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
   doctor_parser.set_defaults(handler=doctor_command)
+
+  new_skill_parser = subparsers.add_parser(
+    "new-skill",
+    help="Scaffold a new skill from a payload file or interactive prompts.",
+  )
+  new_skill_parser.add_argument(
+    "--payload",
+    help="Path to a JSON payload file (or '-' for stdin).",
+  )
+  new_skill_parser.add_argument(
+    "--interactive",
+    action="store_true",
+    help="Collect the payload via four no-LLM prompts (kind, name, platform, area).",
+  )
+  new_skill_parser.add_argument(
+    "--dry-run",
+    action="store_true",
+    help="Plan the scaffold and report the operations without touching disk.",
+  )
+  new_skill_parser.add_argument("--format", choices=("text", "json"), default="text")
+  new_skill_parser.set_defaults(handler=new_skill_command)
+
+  install_parser = subparsers.add_parser(
+    "install",
+    help="Install-side primitives (agent-path lookup, agent detection, skill symlinking).",
+  )
+  install_subparsers = install_parser.add_subparsers(dest="install_command", required=True)
+
+  agent_path_parser = install_subparsers.add_parser(
+    "agent-path",
+    help="Print the canonical install directory for a given agent.",
+  )
+  agent_path_parser.add_argument("agent")
+  agent_path_parser.set_defaults(handler=install_agent_path_command)
+
+  detect_parser = install_subparsers.add_parser(
+    "detect-agents",
+    help="List detected agents as 'name\\tpath' lines.",
+  )
+  detect_parser.set_defaults(handler=install_detect_agents_command)
+
+  link_parser = install_subparsers.add_parser(
+    "link-skill",
+    help=(
+      "Symlink a skill DIRECTORY into an agent's install directory. Files "
+      "(e.g. add-on markdown) are shipped with their owning package and "
+      "must not be linked here."
+    ),
+  )
+  link_parser.add_argument("--source", required=True)
+  link_parser.add_argument("--target-dir", required=True)
+  link_parser.add_argument("--agent", default="")
+  link_parser.set_defaults(handler=install_link_skill_command)
 
   return parser
 

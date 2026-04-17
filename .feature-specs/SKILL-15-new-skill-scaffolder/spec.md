@@ -2,7 +2,7 @@
 issue_key: SKILL-15
 feature_name: new-skill-scaffolder
 feature_size: LARGE
-status: Not Started
+status: Complete
 created: 2026-04-17
 depends_on: SKILL-14 (code-review shell+content pilot — shipped)
 ---
