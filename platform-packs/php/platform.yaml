@@ -41,3 +41,5 @@ declared_files:
     security: code-review/bill-php-code-review-security/SKILL.md
     performance: code-review/bill-php-code-review-performance/SKILL.md
     testing: code-review/bill-php-code-review-testing/SKILL.md
+
+declared_quality_check_file: quality-check/bill-php-quality-check/SKILL.md

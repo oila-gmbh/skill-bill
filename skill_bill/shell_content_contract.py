@@ -67,6 +67,17 @@ REQUIRED_CONTENT_SECTIONS: tuple[str, ...] = (
   "## Telemetry Ceremony Hooks",
 )
 
+# Required H2 sections for per-platform quality-check content files. The
+# bill-quality-check shell is horizontal and does not require the three
+# code-review-specific sections (Specialist Scope, Inputs, Outputs Contract).
+REQUIRED_QUALITY_CHECK_SECTIONS: tuple[str, ...] = (
+  "## Description",
+  "## Execution Steps",
+  "## Fix Strategy",
+  "## Execution Mode Reporting",
+  "## Telemetry Ceremony Hooks",
+)
+
 MANIFEST_FILENAME: str = "platform.yaml"
 
 _SECTION_HEADING_PATTERN = re.compile(r"^##\s+[^\n]+$")
@@ -142,6 +153,7 @@ class PlatformPack:
   governs_addons: bool = False
   display_name: str | None = None
   notes: str | None = None
+  declared_quality_check_file: Path | None = None
 
   @property
   def routed_skill_name(self) -> str:
@@ -373,6 +385,17 @@ def _build_pack(
       f"Platform pack '{slug}': 'notes' must be a string when provided."
     )
 
+  declared_quality_check_raw = raw.get("declared_quality_check_file")
+  declared_quality_check_path: Path | None
+  if declared_quality_check_raw is None:
+    declared_quality_check_path = None
+  elif isinstance(declared_quality_check_raw, str) and declared_quality_check_raw:
+    declared_quality_check_path = (pack_root / declared_quality_check_raw).resolve()
+  else:
+    raise InvalidManifestSchemaError(
+      f"Platform pack '{slug}': 'declared_quality_check_file' must be a non-empty path string when provided."
+    )
+
   return PlatformPack(
     slug=slug,
     pack_root=pack_root,
@@ -383,6 +406,7 @@ def _build_pack(
     governs_addons=governs_addons_raw,
     display_name=display_name_raw,
     notes=notes_raw,
+    declared_quality_check_file=declared_quality_check_path,
   )
 
 
@@ -420,6 +444,46 @@ def _assert_content_file_ok(pack: PlatformPack, *, slot: str, file_path: Path) -
       )
 
 
+def load_quality_check_content(pack: PlatformPack) -> Path:
+  """Return the resolved path to a pack's declared quality-check content file.
+
+  Loud-fail rules:
+
+  - Raises :class:`MissingContentFileError` when ``declared_quality_check_file``
+    is ``None`` (callers must gate the call) or the referenced file does not
+    exist on disk.
+  - Raises :class:`MissingRequiredSectionError` when the content file is
+    missing one of the :data:`REQUIRED_QUALITY_CHECK_SECTIONS` H2 sections.
+
+  The function never silently falls back to another pack. The
+  ``bill-quality-check`` shell implements the explicit ``kmp`` /
+  ``backend-kotlin`` → ``kotlin`` routing fallback by selecting a
+  different pack before calling this loader.
+  """
+  if pack.declared_quality_check_file is None:
+    raise MissingContentFileError(
+      f"Platform pack '{pack.slug}': declared_quality_check_file not set "
+      "(call is only valid after checking pack.declared_quality_check_file is not None)."
+    )
+
+  file_path = pack.declared_quality_check_file
+  if not file_path.is_file():
+    raise MissingContentFileError(
+      f"Platform pack '{pack.slug}': declared quality-check content file "
+      f"is missing at '{file_path}'."
+    )
+
+  text = file_path.read_text(encoding="utf-8")
+  headings = _collect_top_level_h2_headings(text)
+  for required in REQUIRED_QUALITY_CHECK_SECTIONS:
+    if required not in headings:
+      raise MissingRequiredSectionError(
+        f"Platform pack '{pack.slug}': quality-check content file '{file_path}' "
+        f"is missing required section '{required}'."
+      )
+  return file_path
+
+
 def _collect_top_level_h2_headings(text: str) -> set[str]:
   """Return the set of real H2 headings outside fenced code blocks.
 
@@ -451,10 +515,12 @@ __all__ = [
   "PlatformPack",
   "PyYAMLMissingError",
   "REQUIRED_CONTENT_SECTIONS",
+  "REQUIRED_QUALITY_CHECK_SECTIONS",
   "RoutingSignals",
   "SHELL_CONTRACT_VERSION",
   "ShellContentContractError",
   "discover_platform_packs",
   "load_platform_pack",
+  "load_quality_check_content",
   "validate_platform_pack",
 ]

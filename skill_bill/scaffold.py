@@ -57,6 +57,7 @@ from skill_bill.scaffold_template import (
 from skill_bill.shell_content_contract import (
   APPROVED_CODE_REVIEW_AREAS,
   REQUIRED_CONTENT_SECTIONS,
+  REQUIRED_QUALITY_CHECK_SECTIONS,
 )
 
 
@@ -74,7 +75,7 @@ SUPPORTED_SKILL_KINDS: frozenset[str] = frozenset(
   }
 )
 
-SHELLED_FAMILIES: frozenset[str] = frozenset({"code-review"})
+SHELLED_FAMILIES: frozenset[str] = frozenset({"code-review", "quality-check"})
 
 # Family registry. The scaffolder consults this table to decide where to place
 # a new skill and how to phrase its migration note.
@@ -82,30 +83,39 @@ SHELLED_FAMILIES: frozenset[str] = frozenset({"code-review"})
 # - ``code-review`` is piloted on the shell+content contract (SKILL-14). New
 #   code-review platform overrides live inside the owning platform pack at
 #   ``platform-packs/<slug>/code-review/<name>/``.
-# - Pre-shell families (quality-check, feature-implement, feature-verify) are
-#   still placed under ``skills/<platform>/bill-<platform>-<capability>/`` and
-#   carry an interim-location note instructing authors to move them when those
+# - ``quality-check`` is piloted on the shell+content contract (SKILL-16)
+#   with the optional ``declared_quality_check_file`` manifest key. New
+#   platform quality-check overrides live inside the owning pack at
+#   ``platform-packs/<slug>/quality-check/<name>/`` and register a single
+#   content file (no areas map).
+# - Pre-shell families (feature-implement, feature-verify) are still placed
+#   under ``skills/<platform>/bill-<platform>-<capability>/`` and carry an
+#   interim-location note instructing authors to move them when those
 #   families get piloted onto the shell.
 FAMILY_REGISTRY: dict[str, dict[str, Any]] = {
   "code-review": {
     "layout_kind": "shelled",
     "base_path_template": "platform-packs/{platform}/code-review/{name}",
     "is_shelled": True,
+    "manifest_key": None,  # registered via declared_files.areas
   },
   "quality-check": {
-    "layout_kind": "pre-shell",
-    "base_path_template": "skills/{platform}/{name}",
-    "is_shelled": False,
+    "layout_kind": "shelled",
+    "base_path_template": "platform-packs/{platform}/quality-check/{name}",
+    "is_shelled": True,
+    "manifest_key": "declared_quality_check_file",
   },
   "feature-implement": {
     "layout_kind": "pre-shell",
     "base_path_template": "skills/{platform}/{name}",
     "is_shelled": False,
+    "manifest_key": None,
   },
   "feature-verify": {
     "layout_kind": "pre-shell",
     "base_path_template": "skills/{platform}/{name}",
     "is_shelled": False,
+    "manifest_key": None,
   },
 }
 
@@ -374,7 +384,12 @@ def _render_skill_body(plan: dict[str, Any], payload: dict) -> str:
   # to keep platform-pack skills lean.
   if not plan["is_shelled"] and plan["kind"] != SKILL_KIND_ADD_ON:
     sections.append(render_project_overrides(context))
-  sections.extend(render_default_section(heading, context) for heading in REQUIRED_CONTENT_SECTIONS)
+  required_sections = (
+    REQUIRED_QUALITY_CHECK_SECTIONS
+    if plan["family"] == "quality-check"
+    else REQUIRED_CONTENT_SECTIONS
+  )
+  sections.extend(render_default_section(heading, context) for heading in required_sections)
   body = "\n".join(sections)
   return f"{front_matter}\n{body}"
 
@@ -420,24 +435,49 @@ def _snapshot_manifest(txn: _ScaffoldTransaction, manifest_path: Path) -> None:
 
 
 def _apply_manifest_edits(txn: _ScaffoldTransaction, plan: dict[str, Any], repo_root: Path) -> list[Path]:
-  """Append new area entries to ``platform.yaml`` while preserving order."""
-  if plan["kind"] != SKILL_KIND_CODE_REVIEW_AREA:
-    return []
+  """Append platform-pack manifest entries for shelled kinds.
 
-  # Import lazily inside the function to avoid a hard dep on scaffold_manifest
-  # for callers that only use add-on/horizontal kinds.
-  from skill_bill.scaffold_manifest import append_code_review_area
+  - ``code-review-area`` appends a new area to both
+    ``declared_code_review_areas`` and ``declared_files.areas``.
+  - ``platform-override-piloted`` for a shelled ``quality-check`` override
+    registers ``declared_quality_check_file`` on the pack manifest.
+  """
+  if plan["kind"] == SKILL_KIND_CODE_REVIEW_AREA:
+    # Import lazily inside the function to avoid a hard dep on scaffold_manifest
+    # for callers that only use add-on/horizontal kinds.
+    from skill_bill.scaffold_manifest import append_code_review_area
 
-  manifest_path = repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
-  _snapshot_manifest(txn, manifest_path)
+    manifest_path = repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
+    _snapshot_manifest(txn, manifest_path)
 
-  declared_area_path = plan["skill_file"].relative_to(repo_root / "platform-packs" / plan["platform"]).as_posix()
-  append_code_review_area(
-    manifest_path=manifest_path,
-    area=plan["area"],
-    relative_content_path=declared_area_path,
-  )
-  return [manifest_path]
+    declared_area_path = plan["skill_file"].relative_to(repo_root / "platform-packs" / plan["platform"]).as_posix()
+    append_code_review_area(
+      manifest_path=manifest_path,
+      area=plan["area"],
+      relative_content_path=declared_area_path,
+    )
+    return [manifest_path]
+
+  if (
+    plan["kind"] == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+    and plan["is_shelled"]
+    and plan["family"] == "quality-check"
+  ):
+    from skill_bill.scaffold_manifest import set_declared_quality_check_file
+
+    manifest_path = repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
+    _snapshot_manifest(txn, manifest_path)
+
+    declared_path = plan["skill_file"].relative_to(
+      repo_root / "platform-packs" / plan["platform"]
+    ).as_posix()
+    set_declared_quality_check_file(
+      manifest_path=manifest_path,
+      relative_content_path=declared_path,
+    )
+    return [manifest_path]
+
+  return []
 
 
 def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], repo_root: Path) -> list[Path]:
@@ -597,16 +637,25 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
   plan = planner(payload, repo_root)
 
   if dry_run:
+    manifest_edits_preview: list[Path] = []
+    if plan["kind"] == SKILL_KIND_CODE_REVIEW_AREA:
+      manifest_edits_preview.append(
+        repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
+      )
+    elif (
+      plan["kind"] == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+      and plan["is_shelled"]
+      and plan["family"] == "quality-check"
+    ):
+      manifest_edits_preview.append(
+        repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
+      )
     result = ScaffoldResult(
       kind=plan["kind"],
       skill_name=plan["skill_name"],
       skill_path=plan["skill_path"],
       created_files=[plan["skill_file"]],
-      manifest_edits=(
-        [repo_root / "platform-packs" / plan["platform"] / "platform.yaml"]
-        if plan["kind"] == SKILL_KIND_CODE_REVIEW_AREA
-        else []
-      ),
+      manifest_edits=manifest_edits_preview,
       symlinks=[],
       install_targets=[],
       notes=list(plan["notes"])

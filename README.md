@@ -364,8 +364,8 @@ Example:
 
 The repo is organized around a strict four-layer model:
 
-- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review` (a governed shell), `bill-quality-check`, and `bill-feature-implement`
-- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (e.g. quality-check)
+- `skills/base/` — canonical, user-facing capabilities such as `bill-code-review` (a governed shell), `bill-quality-check` (also a governed shell), and `bill-feature-implement`
+- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (today: `bill-feature-implement` and `bill-feature-verify` only; code-review and quality-check are shelled)
 - `platform-packs/<platform>/` — user-owned platform packs consumed by the `bill-code-review` shell via the shell+content contract. Each pack ships a `platform.yaml` manifest plus per-area reviewer content
 - `orchestration/` — single source of truth for shared routing, review, delegation, telemetry, and shell+content contracts
 
@@ -391,14 +391,14 @@ That last file is the canonical map for:
 - which runtime-facing skills require which sidecars
 - which review skills are governed by the shared review/delegation contract
 
-Current shipped platform packs (under `platform-packs/`) plus the non-code-review platform skills still shipping under `skills/<platform>/`:
+Current shipped platform packs (under `platform-packs/`):
 
-- `kotlin` — Deep (6 code-review skills in the pack, baseline for KMP and backend-kotlin) + `bill-kotlin-quality-check`
-- `kmp` — Deep (3 code-review skills in the pack + 12 governed add-ons, layers on kotlin)
-- `backend-kotlin` — Deep (4 code-review skills in the pack, layers on kotlin)
-- `php` — Solid (9 code-review skills in the pack, no add-ons) + `bill-php-quality-check`
-- `go` — Solid (9 code-review skills in the pack, no add-ons) + `bill-go-quality-check`
-- `agent-config` — Meta (1 code-review skill in the pack) + `bill-agent-config-quality-check`
+- `kotlin` — Deep (6 code-review skills in the pack, baseline for KMP and backend-kotlin) + `bill-kotlin-quality-check` (in-pack under `quality-check/`)
+- `kmp` — Deep (3 code-review skills in the pack + 12 governed add-ons, layers on kotlin). Quality-check falls back to kotlin.
+- `backend-kotlin` — Deep (4 code-review skills in the pack, layers on kotlin). Quality-check falls back to kotlin.
+- `php` — Solid (9 code-review skills in the pack, no add-ons) + `bill-php-quality-check` (in-pack under `quality-check/`)
+- `go` — Solid (9 code-review skills in the pack, no add-ons) + `bill-go-quality-check` (in-pack under `quality-check/`)
+- `agent-config` — Meta (1 code-review skill in the pack) + `bill-agent-config-quality-check` (in-pack under `quality-check/`)
 
 ### Naming and enforcement
 

@@ -32,3 +32,5 @@ declared_code_review_areas: []
 declared_files:
   baseline: code-review/bill-agent-config-code-review/SKILL.md
   areas: {}
+
+declared_quality_check_file: quality-check/bill-agent-config-quality-check/SKILL.md

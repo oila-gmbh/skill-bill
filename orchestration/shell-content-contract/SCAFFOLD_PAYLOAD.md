@@ -48,9 +48,9 @@ Every payload MUST include:
   `backend-kotlin`, `php`, `go`, `agent-config`).
 - `family` — required for `platform-override-piloted`. One of the known
   families:
-  - Shelled: `code-review`.
+  - Shelled: `code-review`, `quality-check`.
   - Pre-shell (see :data:`skill_bill.constants.PRE_SHELL_FAMILIES`):
-    `quality-check`, `feature-implement`, `feature-verify`.
+    `feature-implement`, `feature-verify`.
 - `area` — required for `code-review-area`. Must be one of the approved
   areas in :data:`skill_bill.shell_content_contract.APPROVED_CODE_REVIEW_AREAS`:
   `architecture`, `performance`, `platform-correctness`, `security`,
@@ -89,7 +89,7 @@ Every payload MUST include:
 }
 ```
 
-### Platform-override (pre-shell, quality-check)
+### Platform-override (piloted, quality-check family)
 
 ```json
 {
@@ -101,10 +101,12 @@ Every payload MUST include:
 }
 ```
 
-This placement ships with an interim-location note because the
-`quality-check` family has not yet been piloted onto the shell+content
-contract. When it is, the scaffolder will change the destination and emit a
-migration-aware note.
+This lands the skill at
+`platform-packs/php/quality-check/bill-php-quality-check/SKILL.md` and edits
+the owning pack's `platform.yaml` to register
+`declared_quality_check_file: quality-check/bill-php-quality-check/SKILL.md`.
+The scaffolded skill links the sibling sidecars `stack-routing.md` and
+`telemetry-contract.md` just like the shelled code-review example above.
 
 ### Code-review area
 

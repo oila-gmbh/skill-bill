@@ -1,0 +1,16 @@
+platform: code_review_and_quality_check
+contract_version: "1.0"
+display_name: Code Review And Quality Check Fixture
+routing_signals:
+  strong:
+    - ".fixture"
+  tie_breakers:
+    - "Prefer code_review_and_quality_check when fixture markers dominate."
+  addon_signals: []
+declared_code_review_areas:
+  - architecture
+declared_files:
+  baseline: code-review/SKILL.md
+  areas:
+    architecture: code-review/architecture.md
+declared_quality_check_file: quality-check/SKILL.md

@@ -68,6 +68,14 @@ get_agent_path() {
   esac
 }
 
+# SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
+# same (for example, moving
+# skills/kotlin/bill-kotlin-quality-check/ to
+# platform-packs/kotlin/quality-check/bill-kotlin-quality-check/) do NOT need
+# RENAMED_SKILL_PAIRS entries. The installer's build_skill_names walks both
+# skills/ AND platform-packs/, and the uninstaller removes
+# $agent_dir/<skill_name> symlinks by name — so relocations are discovered
+# automatically. Only use this array when the skill's canonical name changes.
 declare -a RENAMED_SKILL_PAIRS=(
   'bill-module-history:bill-boundary-history'
   'bill-code-review-architecture:bill-kotlin-code-review-architecture'
@@ -452,7 +460,12 @@ append_required_platform_packages() {
   local package
 
   for package in "${REQUIRED_PLATFORM_PACKAGES[@]:-}"; do
-    if [[ -d "$SKILLS_DIR/$package" ]] && ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+    # A required package is present if it exists under skills/ OR under
+    # platform-packs/. SKILL-14 and SKILL-16 moved governed packages
+    # (agent-config code-review, quality-check) into platform-packs/, so the
+    # check must span both trees or required packages silently drop.
+    if { [[ -d "$SKILLS_DIR/$package" ]] || [[ -d "$PLATFORM_PACKS_DIR/$package" ]]; } \
+      && ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
       SELECTED_PLATFORM_PACKAGES+=("$package")
     fi
   done
@@ -602,22 +615,24 @@ build_skill_names() {
 
 resolve_package_name_for_skill_path() {
   # Map a skill directory to its owning package name.
-  # - skills/<pkg>/<skill>/SKILL.md        -> <pkg>
-  # - platform-packs/<slug>/code-review/<skill>/SKILL.md -> <slug>
+  # - skills/<pkg>/<skill>/SKILL.md                         -> <pkg>
+  # - platform-packs/<slug>/code-review/<skill>/SKILL.md    -> <slug>
+  # - platform-packs/<slug>/quality-check/<skill>/SKILL.md  -> <slug>
   # Falls back to the immediate parent directory name for any other shape.
   local skill_dir="$1"
-  local parent parent_parent grand
+  local parent parent_parent parent_name grand
   parent="$(dirname "$skill_dir")"
   parent_parent="$(dirname "$parent")"
+  parent_name="$(basename "$parent")"
   grand="$(basename "$parent_parent")"
 
-  if [[ "$(basename "$parent")" == "code-review" && -d "$parent_parent" ]]; then
-    # platform-packs/<slug>/code-review/<skill>
+  if [[ ( "$parent_name" == "code-review" || "$parent_name" == "quality-check" ) && -d "$parent_parent" ]]; then
+    # platform-packs/<slug>/{code-review,quality-check}/<skill>
     printf '%s' "$grand"
     return 0
   fi
 
-  printf '%s' "$(basename "$parent")"
+  printf '%s' "$parent_name"
 }
 
 build_install_skill_names() {

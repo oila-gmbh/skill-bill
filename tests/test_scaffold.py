@@ -232,16 +232,20 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertTrue(addon_md.is_file())
 
   def test_pre_shell_family_emits_interim_note(self) -> None:
+    # SKILL-16 promoted quality-check onto the shell+content contract, so the
+    # pre-shell acceptance case now exercises feature-implement (the other
+    # pre-shell family). feature-verify is similar and covered in
+    # test_pre_shell_override_passes_real_validate_skill_file.
     result = scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-php-quality-check",
+        name="bill-php-feature-implement",
         platform="php",
-        family="quality-check",
+        family="feature-implement",
       )
     )
     self.assertEqual(result.kind, "platform-override-piloted")
-    skill_md = self.repo / "skills" / "php" / "bill-php-quality-check" / "SKILL.md"
+    skill_md = self.repo / "skills" / "php" / "bill-php-feature-implement" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     self.assertTrue(any("will move when" in note for note in result.notes))
     # F-001: pre-shell platform overrides land under ``skills/`` and must
@@ -250,6 +254,76 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     body = skill_md.read_text(encoding="utf-8")
     self.assertIn("## Project Overrides", body)
     self.assertIn(".agents/skill-overrides.md", body)
+
+  def test_shelled_quality_check_family(self) -> None:
+    """SKILL-16: quality-check is shelled — scaffolder lands SKILL.md in the pack
+    and registers ``declared_quality_check_file`` on the manifest."""
+    result = scaffold(
+      self._payload(
+        kind="platform-override-piloted",
+        name="bill-kotlin-quality-check",
+        platform="kotlin",
+        family="quality-check",
+      )
+    )
+    self.assertEqual(result.kind, "platform-override-piloted")
+    skill_md = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "quality-check"
+      / "bill-kotlin-quality-check"
+      / "SKILL.md"
+    )
+    self.assertTrue(skill_md.is_file())
+
+    manifest = (self.repo / "platform-packs" / "kotlin" / "platform.yaml").read_text(
+      encoding="utf-8"
+    )
+    self.assertIn(
+      "declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md",
+      manifest,
+    )
+
+    body = skill_md.read_text(encoding="utf-8")
+    # Shelled quality-check content contract requires these five H2s; the
+    # three code-review-specific ones (Specialist Scope, Inputs, Outputs
+    # Contract) MUST NOT be required here.
+    self.assertIn("## Description", body)
+    self.assertIn("## Execution Steps", body)
+    self.assertIn("## Fix Strategy", body)
+    self.assertIn("## Execution Mode Reporting", body)
+    self.assertIn("## Telemetry Ceremony Hooks", body)
+    self.assertNotIn("## Specialist Scope", body)
+    self.assertNotIn("## Outputs Contract", body)
+    # Platform-pack skills go through the lighter validator and do not get
+    # Project Overrides boilerplate — keep them lean.
+    self.assertNotIn("## Project Overrides", body)
+
+  def test_shelled_quality_check_rollback_on_manifest_write_failure(self) -> None:
+    """SKILL-16: manifest-write failure for quality-check must roll back atomically."""
+    pre_snapshot = _snapshot_tree(self.repo)
+
+    def boom(**_kwargs: object) -> None:
+      raise OSError("simulated manifest write failure")
+
+    payload = self._payload(
+      kind="platform-override-piloted",
+      name="bill-kotlin-quality-check",
+      platform="kotlin",
+      family="quality-check",
+    )
+
+    with mock.patch.object(
+      scaffold_manifest_module,
+      "set_declared_quality_check_file",
+      side_effect=boom,
+    ):
+      with self.assertRaises((OSError, ScaffoldRollbackError)):
+        scaffold(payload)
+
+    post_snapshot = _snapshot_tree(self.repo)
+    self.assertEqual(pre_snapshot, post_snapshot)
 
   def test_horizontal_passes_real_validate_skill_file(self) -> None:
     """Invoke the actual validator on a horizontal scaffolded SKILL.md.

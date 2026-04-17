@@ -125,6 +125,8 @@ Edit the four authored sections (`## Description`, `## Specialist Scope`, `## In
 
 The full payload schema, including worked examples for the other three kinds (horizontal, platform-override-piloted, add-on), lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
+SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.0`). `bill-feature-implement` and `bill-feature-verify` remain pre-shell for now and still land under `skills/<platform>/` when scaffolded.
+
 ## What to expect from review output
 
 A typical `/bill-code-review` run produces four sections:

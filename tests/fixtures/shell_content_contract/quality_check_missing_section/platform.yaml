@@ -1,0 +1,14 @@
+platform: quality_check_missing_section
+contract_version: "1.0"
+display_name: Quality Check Missing Section Fixture
+routing_signals:
+  strong:
+    - ".fixture"
+  tie_breakers:
+    - "Prefer quality_check_missing_section when fixture markers dominate."
+  addon_signals: []
+declared_code_review_areas: []
+declared_files:
+  baseline: code-review/SKILL.md
+  areas: {}
+declared_quality_check_file: quality-check/SKILL.md

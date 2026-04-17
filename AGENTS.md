@@ -6,10 +6,10 @@ skill-bill is a governed suite of AI-agent skills for code review, quality check
 
 ## Core taxonomy
 
-- `skills/base/` — canonical, user-facing capabilities (the `bill-code-review` shell lives here)
-- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (quality-check today)
+- `skills/base/` — canonical, user-facing capabilities (both the `bill-code-review` shell and the `bill-quality-check` shell live here)
+- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (today: `bill-feature-implement` and `bill-feature-verify`)
 - `skills/<platform>/addons/` — governed stack-owned add-on assets that apply only after stack routing
-- `platform-packs/<platform>/` — user-owned platform packs for `bill-code-review` (manifest plus per-area reviewer content, discovered at runtime by the shell)
+- `platform-packs/<platform>/` — user-owned platform packs for `bill-code-review` and `bill-quality-check` (manifest plus per-area reviewer content and the optional `declared_quality_check_file`, discovered at runtime by each shell)
 - `orchestration/` — single source of truth for shared routing, review, delegation, telemetry, and shell+content contracts; skills consume these via sibling symlinks, so edits here change runtime behavior for every linked skill
 
 ## Naming rules
@@ -22,12 +22,12 @@ skill-bill is a governed suite of AI-agent skills for code review, quality check
 ## Governed platform packs
 
 - Platform packs live under `platform-packs/<slug>/` and are user-owned — teams are expected to fork or extend them.
-- Every pack ships a platform.yaml manifest declaring platform, contract_version, routing_signals, declared_code_review_areas, and declared_files. The manifest schema is owned by orchestration/shell-content-contract/PLAYBOOK.md.
-- The current shell contract version is 1.0. Packs that declare a different version fail loudly with a contract-version mismatch error; bump the shell constant and every pack together when the contract evolves.
-- Every declared content file must contain the six required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks.
+- Every pack ships a platform.yaml manifest declaring platform, contract_version, routing_signals, declared_code_review_areas, and declared_files. Packs may also declare the optional `declared_quality_check_file` (a single path string) to register a per-platform quality-check content file. The manifest schema is owned by orchestration/shell-content-contract/PLAYBOOK.md.
+- The current shell contract version is 1.0. Packs that declare a different version fail loudly with a contract-version mismatch error; bump the shell constant and every pack together when the contract evolves. The `declared_quality_check_file` key is an additive v1.0 extension: omitting it is valid and packs without the key remain contract-compliant.
+- Every declared code-review content file must contain the six required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks. Every declared quality-check content file must contain the five required H2 sections: Description, Execution Steps, Fix Strategy, Execution Mode Reporting, Telemetry Ceremony Hooks.
 - Loud-fail rules are authoritative: missing manifest, wrong version, missing content file, and missing required section all raise specific named exceptions. Never silently fall back.
-- Discovery is manifest-driven: `orchestration/stack-routing/PLAYBOOK.md`, the `bill-code-review` shell, and the validator all walk `platform-packs/` and read `routing_signals` from each pack. Do not enumerate platform names inline.
-- SKILL-14 piloted the split on `bill-code-review` only. `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` stay on the pre-shell model for now.
+- Discovery is manifest-driven: `orchestration/stack-routing/PLAYBOOK.md`, the `bill-code-review` shell, the `bill-quality-check` shell, and the validator all walk `platform-packs/` and read `routing_signals` from each pack. Do not enumerate platform names inline.
+- SKILL-14 piloted the split on `bill-code-review`; SKILL-16 piloted the split on `bill-quality-check` via the optional `declared_quality_check_file` manifest key, with an explicit `kmp`/`backend-kotlin` → `kotlin` quality-check fallback. `bill-feature-implement` and `bill-feature-verify` stay on the pre-shell model for now.
 
 ## Governed add-ons
 
@@ -56,7 +56,9 @@ skill-bill is a governed suite of AI-agent skills for code review, quality check
 
 For code review: create a new platform-packs/`<slug>`/ directory with a conforming platform.yaml and content files (six required H2 sections), wire orchestration sidecar symlinks, update the README catalog, extend platform-pack tests, and run the validation commands below.
 
-For non-code-review platform skills (e.g. quality-check): place them under skills/`<platform>`/ using the historic naming rules — the shell+content pilot is currently scoped to bill-code-review only.
+For quality-check: add `declared_quality_check_file: quality-check/<skill-name>/SKILL.md` to the owning pack's platform.yaml and ship the content file with the five required H2 sections. Wire the two sibling sidecars (`stack-routing.md`, `telemetry-contract.md`). `kmp` and `backend-kotlin` intentionally omit the key and route to `kotlin`'s quality-check today.
+
+For remaining non-shelled platform skills (`feature-implement`, `feature-verify`): place them under skills/`<platform>`/ using the historic naming rules — those families have not been piloted onto the shell+content contract yet.
 
 ## New-skill authoring
 
@@ -64,7 +66,8 @@ For non-code-review platform skills (e.g. quality-check): place them under skill
 - Four supported `kind` values and their destinations:
   - `horizontal` → `skills/base/<name>/SKILL.md`.
   - `platform-override-piloted` (shelled family `code-review`) → `platform-packs/<slug>/code-review/<name>/SKILL.md` + `platform.yaml` edit.
-  - `platform-override-piloted` (pre-shell families `quality-check`, `feature-implement`, `feature-verify`) → `skills/<platform>/<name>/SKILL.md`, annotated with an interim-location note ("will move when piloted").
+  - `platform-override-piloted` (shelled family `quality-check`) → `platform-packs/<slug>/quality-check/<name>/SKILL.md` + `platform.yaml` edit registering `declared_quality_check_file`.
+  - `platform-override-piloted` (pre-shell families `feature-implement`, `feature-verify`) → `skills/<platform>/<name>/SKILL.md`, annotated with an interim-location note ("will move when piloted").
   - `code-review-area` → `platform-packs/<slug>/code-review/<name>/SKILL.md` + manifest area registration.
   - `add-on` → `skills/<platform>/addons/<name>.md` (flat).
 - Pre-shell families are defined in `skill_bill/constants.py::PRE_SHELL_FAMILIES`. Adding one requires updating that tuple and `skill_bill/scaffold.py::FAMILY_REGISTRY` in the same change.

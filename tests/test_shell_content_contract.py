@@ -28,6 +28,7 @@ from skill_bill.shell_content_contract import (  # noqa: E402
   PyYAMLMissingError,
   SHELL_CONTRACT_VERSION,
   load_platform_pack,
+  load_quality_check_content,
 )
 
 
@@ -140,6 +141,55 @@ class ShellContentContractLoaderTest(unittest.TestCase):
     message = str(context.exception)
     self.assertIn("PyYAML", message)
     self.assertIn(".venv/bin/pip install pyyaml", message)
+
+
+class QualityCheckContentContractTest(unittest.TestCase):
+  """SKILL-16: optional declared_quality_check_file loader coverage."""
+
+  maxDiff = None
+
+  def test_loads_quality_check_only_fixture(self) -> None:
+    pack = load_platform_pack(FIXTURES_ROOT / "quality_check_only")
+    self.assertIsNotNone(pack.declared_quality_check_file)
+    resolved = load_quality_check_content(pack)
+    self.assertEqual(resolved, pack.declared_quality_check_file)
+    self.assertTrue(resolved.is_file())
+
+  def test_loads_code_review_and_quality_check_fixture(self) -> None:
+    pack = load_platform_pack(FIXTURES_ROOT / "code_review_and_quality_check")
+    self.assertIsNotNone(pack.declared_quality_check_file)
+    resolved = load_quality_check_content(pack)
+    self.assertTrue(resolved.is_file())
+    # Both code-review baseline and quality-check files must succeed.
+    self.assertEqual(pack.declared_code_review_areas, ("architecture",))
+
+  def test_rejects_quality_check_missing_file(self) -> None:
+    pack = load_platform_pack(FIXTURES_ROOT / "quality_check_missing_file")
+    with self.assertRaises(MissingContentFileError) as context:
+      load_quality_check_content(pack)
+    message = str(context.exception)
+    self.assertIn("quality_check_missing_file", message)
+    self.assertIn("does-not-exist.md", message)
+
+  def test_rejects_quality_check_missing_section(self) -> None:
+    pack = load_platform_pack(FIXTURES_ROOT / "quality_check_missing_section")
+    with self.assertRaises(MissingRequiredSectionError) as context:
+      load_quality_check_content(pack)
+    message = str(context.exception)
+    self.assertIn("quality_check_missing_section", message)
+    self.assertIn("## Fix Strategy", message)
+
+  def test_valid_pack_without_quality_check_key_is_none(self) -> None:
+    """A pack that does NOT declare the key has declared_quality_check_file=None.
+
+    Calling load_quality_check_content on such a pack raises
+    MissingContentFileError rather than silently returning nothing.
+    """
+    pack = load_platform_pack(FIXTURES_ROOT / "valid_pack")
+    self.assertIsNone(pack.declared_quality_check_file)
+    with self.assertRaises(MissingContentFileError) as context:
+      load_quality_check_content(pack)
+    self.assertIn("valid_pack", str(context.exception))
 
 
 if __name__ == "__main__":

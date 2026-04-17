@@ -55,9 +55,10 @@ SCAFFOLD_PAYLOAD_VERSION: str = "1.0"
 # Pre-shell capability families. These families have not been piloted onto the
 # shell+content contract yet; the scaffolder places their platform overrides
 # under the historic skills/<platform>/bill-<platform>-<capability>/ layout
-# and annotates them with a migration-awareness note.
+# and annotates them with a migration-awareness note. SKILL-16 piloted
+# ``quality-check`` onto the shell+content contract, so only
+# ``feature-implement`` and ``feature-verify`` remain pre-shell.
 PRE_SHELL_FAMILIES: tuple[str, ...] = (
-  "quality-check",
   "feature-implement",
   "feature-verify",
 )

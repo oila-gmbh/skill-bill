@@ -43,7 +43,7 @@ CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
 AGENT_CONFIG_CODE_REVIEW = read("platform-packs/agent-config/code-review/bill-agent-config-code-review/SKILL.md")
-AGENT_CONFIG_QUALITY_CHECK = read("skills/agent-config/bill-agent-config-quality-check/SKILL.md")
+AGENT_CONFIG_QUALITY_CHECK = read("platform-packs/agent-config/quality-check/bill-agent-config-quality-check/SKILL.md")
 KOTLIN_CODE_REVIEW = read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
 BACKEND_KOTLIN_CODE_REVIEW = read("platform-packs/backend-kotlin/code-review/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review/SKILL.md")
@@ -190,39 +190,34 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Always search for a repo-native PR template first", PR_DESCRIPTION)
 
   def test_kotlin_context_routes_to_kotlin_review_and_quality_check(self) -> None:
-    # SKILL-14 made `bill-code-review` manifest-driven. The shell no longer
-    # hardcodes per-platform routing lines; routing discovers packs from
-    # platform-packs/<slug>/platform.yaml. The quality-check router still
-    # enumerates platforms inline since SKILL-14 explicitly leaves it out of
-    # the pilot.
+    # SKILL-14 made `bill-code-review` manifest-driven. SKILL-16 made
+    # `bill-quality-check` manifest-driven too via the optional
+    # `declared_quality_check_file` key on each pack's manifest.
     self.assertIn("Generate a `routed_skill` value of `bill-<slug>-code-review`", CODE_REVIEW)
-    self.assertIn(
-      "- If `kotlin` signals dominate, delegate to the canonical `bill-kotlin-quality-check` skill when it exists.",
-      QUALITY_CHECK,
-    )
+    self.assertIn("manifest-driven", QUALITY_CHECK)
+    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
+    self.assertIn("load_quality_check_content", QUALITY_CHECK)
 
   def test_agent_config_context_routes_to_agent_config_review_and_quality_check(self) -> None:
-    # Manifest-driven routing: the shell owns discovery; the agent-config
-    # platform pack declares the routing signals and the routed skill.
+    # Manifest-driven routing: both shells own discovery; the agent-config
+    # platform pack declares the routing signals, the baseline code-review
+    # file, and the quality-check file via platform.yaml.
     self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn(
-      "- If `agent-config` signals dominate, delegate to the canonical `bill-agent-config-quality-check` skill when it exists.",
-      QUALITY_CHECK,
-    )
+    self.assertIn("manifest-driven", QUALITY_CHECK)
+    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
     self.assertIn("[stack-routing.md](stack-routing.md)", AGENT_CONFIG_CODE_REVIEW)
     self.assertIn("[review-orchestrator.md](review-orchestrator.md)", AGENT_CONFIG_CODE_REVIEW)
     self.assertIn("[review-delegation.md](review-delegation.md)", AGENT_CONFIG_CODE_REVIEW)
     self.assertIn("Typical Commands In This Repo Type:", AGENT_CONFIG_QUALITY_CHECK)
 
   def test_backend_kotlin_context_routes_to_backend_review_and_current_quality_check(self) -> None:
-    # Shell is manifest-driven (SKILL-14). Quality-check still enumerates.
+    # Shell is manifest-driven (SKILL-14 + SKILL-16). kmp/backend-kotlin
+    # intentionally omit the declared_quality_check_file manifest key; the
+    # shell routes them to the kotlin pack's quality-check.
     self.assertIn("manifest-driven", CODE_REVIEW)
+    self.assertIn("manifest-driven", QUALITY_CHECK)
     self.assertIn(
-      "- If `backend-kotlin` signals dominate, delegate to the canonical quality-check implementation for the `backend-kotlin` package when it exists.",
-      QUALITY_CHECK,
-    )
-    self.assertIn(
-      "- Today, until separate `kmp` and `backend-kotlin` quality-check implementations exist, route `kmp`, `backend-kotlin`, and `kotlin` work to `bill-kotlin-quality-check`.",
+      "`kmp` or `backend-kotlin`, route quality-check work to\n  the `kotlin` pack",
       QUALITY_CHECK,
     )
     self.assertIn(
@@ -231,14 +226,12 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     )
 
   def test_kmp_context_routes_to_kmp_review_and_current_quality_check(self) -> None:
-    # Shell is manifest-driven (SKILL-14). Quality-check still enumerates.
+    # Shell is manifest-driven (SKILL-14 + SKILL-16). kmp omits the
+    # declared_quality_check_file manifest key and falls back to kotlin.
     self.assertIn("manifest-driven", CODE_REVIEW)
+    self.assertIn("manifest-driven", QUALITY_CHECK)
     self.assertIn(
-      "- If `kmp` signals dominate, delegate to the canonical quality-check implementation for the `kmp` package when it exists.",
-      QUALITY_CHECK,
-    )
-    self.assertIn(
-      "- Today, until separate `kmp` and `backend-kotlin` quality-check implementations exist, route `kmp`, `backend-kotlin`, and `kotlin` work to `bill-kotlin-quality-check`.",
+      "`kmp` or `backend-kotlin`, route quality-check work to\n  the `kotlin` pack",
       QUALITY_CHECK,
     )
     self.assertIn(
@@ -399,24 +392,22 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Android shrinker risks", KMP_ANDROID_R8_REVIEW)
 
   def test_php_context_routes_to_php_review_and_quality_check(self) -> None:
-    # SKILL-14: shell is manifest-driven, quality-check still enumerates.
+    # SKILL-14 + SKILL-16: both shells are manifest-driven. The php pack
+    # declares declared_quality_check_file to opt into quality-check routing.
     self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn(
-      "- If `php` signals dominate, delegate to the canonical `bill-php-quality-check` skill when it exists.",
-      QUALITY_CHECK,
-    )
+    self.assertIn("manifest-driven", QUALITY_CHECK)
+    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
     self.assertIn(
       "[stack-routing.md](stack-routing.md)",
       PHP_CODE_REVIEW,
     )
 
   def test_go_context_routes_to_go_review_and_quality_check(self) -> None:
-    # SKILL-14: shell is manifest-driven, quality-check still enumerates.
+    # SKILL-14 + SKILL-16: both shells are manifest-driven. The go pack
+    # declares declared_quality_check_file to opt into quality-check routing.
     self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn(
-      "- If `go` signals dominate, delegate to the canonical `bill-go-quality-check` skill when it exists.",
-      QUALITY_CHECK,
-    )
+    self.assertIn("manifest-driven", QUALITY_CHECK)
+    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
     self.assertIn(
       "[stack-routing.md](stack-routing.md)",
       GO_CODE_REVIEW,
