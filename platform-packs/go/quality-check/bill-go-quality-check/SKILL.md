@@ -11,6 +11,15 @@ already know the repo should use the Go quality-check path.
 Execute the project's quality-check flow and systematically fix issues **only in files changed in the current unit of
 work**. Ignore pre-existing issues in untouched files unless the change clearly exposes them.
 
+## Description
+
+Run the Go project's canonical quality-check commands (`go test`, `go vet`, `golangci-lint`, `go mod tidy`, project wrappers, etc.) and systematically fix every issue touched by the current unit of work without suppressing or deferring them. This is the `go` leaf behind the shared `bill-quality-check` shell; the shell routes into this pack via the `declared_quality_check_file` manifest key on the `go` platform pack.
+
+## Additional Resources
+
+- For shared stack-routing signals and tie-breakers, see [stack-routing.md](stack-routing.md).
+- For the shared telemetry contract, see [telemetry-contract.md](telemetry-contract.md).
+
 ## Execution Steps
 
 1. **Determine changed files**: Use `git diff --name-only` (against the base branch or HEAD) to identify files changed in the current unit of work
@@ -96,3 +105,26 @@ Provide clear progress updates:
 - Display the final quality-check result
 - Summarize all changes made
 - If a required command could not be run, report that explicitly with the reason
+
+## Execution Mode Reporting
+
+When this quality-check skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
+
+## Telemetry Ceremony Hooks
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.

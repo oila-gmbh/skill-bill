@@ -15,6 +15,7 @@ from skill_bill.shell_content_contract import (  # noqa: E402
   SHELL_CONTRACT_VERSION,
   ShellContentContractError,
   discover_platform_packs,
+  load_quality_check_content,
 )
 
 from skill_repo_contracts import (  # noqa: E402
@@ -220,6 +221,18 @@ def validate_platform_packs(root: Path, issues: list[str]) -> list[str]:
         f"does not match shell '{SHELL_CONTRACT_VERSION}'"
       )
       continue
+
+    # Optional declared_quality_check_file: validate it through the
+    # dedicated loader so MissingContentFileError and
+    # MissingRequiredSectionError surface here verbatim. Discovery is
+    # manifest-driven — no platform slugs are enumerated in the check.
+    if pack.declared_quality_check_file is not None:
+      try:
+        load_quality_check_content(pack)
+      except ShellContentContractError as error:
+        issues.append(f"platform-packs/{entry.name}: {error}")
+        continue
+
     slugs.append(pack.slug)
   return slugs
 

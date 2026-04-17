@@ -29,3 +29,5 @@ declared_files:
     platform-correctness: code-review/bill-kotlin-code-review-platform-correctness/SKILL.md
     security: code-review/bill-kotlin-code-review-security/SKILL.md
     testing: code-review/bill-kotlin-code-review-testing/SKILL.md
+
+declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md

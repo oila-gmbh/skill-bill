@@ -109,6 +109,59 @@ def _detect_list_indent(list_body: str) -> str:
   return ""
 
 
+# Matches an existing ``declared_quality_check_file:`` top-level key. We
+# preserve whatever path the user already wrote (idempotent append).
+_QUALITY_CHECK_KEY_PATTERN = re.compile(
+  r"^declared_quality_check_file:\s*(.+)$",
+  re.MULTILINE,
+)
+
+# Matches the end of the ``declared_files:`` block — the block header plus
+# any nested indented lines. We append the new top-level key immediately
+# after this block (with a blank-line separator) to mirror the manifest
+# canon (see ``platform-packs/kotlin/platform.yaml``).
+_DECLARED_FILES_BLOCK_PATTERN = re.compile(
+  r"^(declared_files:\n(?:(?:[ \t]+[^\n]*\n)*))",
+  re.MULTILINE,
+)
+
+
+def set_declared_quality_check_file(
+  *,
+  manifest_path: Path,
+  relative_content_path: str,
+) -> None:
+  """Register ``declared_quality_check_file`` on a platform.yaml manifest.
+
+  The edit is additive and idempotent: if the key already exists, its value
+  is replaced with ``relative_content_path``. Otherwise the key is appended
+  as a new top-level entry immediately after the ``declared_files:`` block
+  with a blank-line separator, mirroring the manifest canon.
+  """
+  original_text = manifest_path.read_text(encoding="utf-8")
+  match = _QUALITY_CHECK_KEY_PATTERN.search(original_text)
+  if match is not None:
+    updated = (
+      original_text[: match.start()]
+      + f"declared_quality_check_file: {relative_content_path}"
+      + original_text[match.end():]
+    )
+  else:
+    block_match = _DECLARED_FILES_BLOCK_PATTERN.search(original_text)
+    if block_match is None:
+      raise ValueError(
+        "Manifest is missing 'declared_files:' block; refusing to edit "
+        "(declared_quality_check_file must be appended as a sibling)."
+      )
+    insertion = f"\ndeclared_quality_check_file: {relative_content_path}\n"
+    end = block_match.end()
+    updated = original_text[:end] + insertion + original_text[end:]
+
+  if updated != original_text:
+    manifest_path.write_text(updated, encoding="utf-8")
+
+
 __all__ = [
   "append_code_review_area",
+  "set_declared_quality_check_file",
 ]

@@ -67,6 +67,14 @@ Optional top-level fields:
 
 - `display_name` — human-readable label for installers and docs.
 - `notes` — free-form maintainer notes.
+- `declared_quality_check_file` — path (string) to a per-platform
+  quality-check SKILL.md file, relative to the platform pack root. When
+  present, the shell loader validates the referenced file against the
+  quality-check content contract (see below). Omitting the key is valid —
+  the shell contract version stays `1.0` and packs without the key remain
+  contract-compliant. Today the `kmp` and `backend-kotlin` packs intentionally
+  omit the key; the `bill-quality-check` shell falls back to the `kotlin`
+  pack for those two slugs.
 
 ## Required Content Files
 
@@ -87,6 +95,27 @@ Section order is not enforced, but each section heading must appear exactly as
 written (case-sensitive, H2 only).
 
 Content files may include additional H2 sections beyond the required set.
+
+## Required Content File (quality-check)
+
+When a platform pack declares the optional `declared_quality_check_file`
+top-level key, the referenced Markdown file must contain all of the
+following H2 sections:
+
+- `## Description`
+- `## Execution Steps`
+- `## Fix Strategy`
+- `## Execution Mode Reporting`
+- `## Telemetry Ceremony Hooks`
+
+The quality-check content contract is intentionally narrower than the
+code-review contract: the shared `bill-quality-check` shell is horizontal
+and does not require the `## Specialist Scope`, `## Inputs`, or
+`## Outputs Contract` sections.
+
+Section order is not enforced, but each section heading must appear
+exactly as written (case-sensitive, H2 only). Content files may include
+additional H2 sections beyond the required set.
 
 ## Loud-Fail Rules
 
@@ -111,6 +140,28 @@ is ever permitted.
 Every error message must name the specific artifact at fault (pack slug,
 file path, section heading, or version string) so operators can repair the
 issue without guessing.
+
+### Loud-Fail Rules (quality-check)
+
+The `bill-quality-check` shell resolves the per-platform quality-check file
+through a dedicated loader (`skill_bill.shell_content_contract.load_quality_check_content`).
+The loader enforces two additional loud-fail rules when a pack declares the
+optional `declared_quality_check_file` key:
+
+- The file referenced by `declared_quality_check_file` does not exist →
+  `MissingContentFileError`. The message must include the pack slug and the
+  resolved file path.
+- The declared quality-check content file is missing one of the required H2
+  sections listed above → `MissingRequiredSectionError`. The message must
+  include the missing section heading and the file path.
+
+Calling `load_quality_check_content` on a pack whose
+`declared_quality_check_file` is `None` also raises
+`MissingContentFileError` rather than silently returning nothing — callers
+must gate the call on `pack.declared_quality_check_file is not None`. The
+shell never silently substitutes a different pack's quality-check file
+except via the explicit `kmp`/`backend-kotlin` → `kotlin` fallback noted
+above.
 
 ## Discovery Semantics
 
