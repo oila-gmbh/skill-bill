@@ -39,7 +39,13 @@ Non-goals:
 Instructions:
 1. Read `CLAUDE.md`, `AGENTS.md`, and any `.agents/skill-overrides.md` section matching `bill-feature-implement`. Treat all standards as mandatory.
 2. For MEDIUM/LARGE, save the spec to `.feature-specs/{issue_key}-{feature_name}/spec.md` with status "In Progress", sources, acceptance criteria, and consolidated spec content. Preserve code blocks, schemas, and enums verbatim.
-3. Read `agent/history.md` in each boundary likely to be touched (newest first; stop when no longer relevant). Rate boundary-history value as: none | irrelevant | low | medium | high.
+3. Read `agent/history.md` in each boundary likely to be touched (newest first; stop when no longer relevant). Rate boundary-history value using one of the following anchored definitions:
+   - `none` — no `agent/history.md` file existed at pre-read time in any touched boundary (nothing was read because nothing was there).
+   - `irrelevant` — history existed and was read, but no entry concerned a boundary, pattern, or pitfall related to this feature.
+   - `low` — history existed and at least one entry grazed an adjacent area, but no entry materially shaped pre-planning or the plan.
+   - `medium` — history existed and at least one entry directly informed pre-planning: a reused pattern, a named pitfall avoided, or a concrete constraint carried into the plan.
+   - `high` — history existed and at least one entry was decisive: it changed the plan's shape, reused an established pattern verbatim, or prevented a known-bad approach that would otherwise have been taken.
+   If you report `medium` or `high`, `boundary_history_digest` MUST cite the specific past entry (issue key, date, or entry title) that drove the rating. Otherwise downgrade to `low`.
 4. Scan `agent/decisions.md` header lines in each likely boundary; open full entries only when titles look relevant.
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
    When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed stack own add-on detection and selection, then scan the matching stack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.

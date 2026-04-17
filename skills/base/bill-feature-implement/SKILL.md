@@ -168,7 +168,7 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `files_created`, `files_modified`, `tasks_completed`
 - `review_iterations`, `audit_result` (`all_pass`, `had_gaps`, or `skipped`), `audit_iterations`
 - `validation_result` (`pass`, `fail`, or `skipped`), `boundary_history_written`, `pr_created`
-- `boundary_history_value`: how useful the boundary history was during pre-planning (`none` if no history existed, `irrelevant`, `low`, `medium`, or `high`)
+- `boundary_history_value`: how useful the boundary history was during pre-planning — `none` means no history existed at pre-read time (so `boundary_history_written=true` paired with `value=none` is a legal combination, e.g. this run created the first entry); `irrelevant` means history was read but nothing applied; `low` means an adjacent entry was grazed but did not shape the plan; `medium` means an entry directly informed pre-planning; `high` means an entry was decisive in shaping the plan. Full anchored rubric lives in `reference.md`.
 - `plan_deviation_notes`: brief note if the plan changed during execution (empty if no deviations)
 - `child_steps`: list of `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session
 

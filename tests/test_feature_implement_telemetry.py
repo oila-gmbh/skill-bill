@@ -13,6 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from skill_bill.constants import BOUNDARY_HISTORY_VALUES
 from skill_bill.mcp_server import (
   feature_implement_finished,
   feature_implement_started,
@@ -290,6 +291,36 @@ class FeatureImplementEnabledTest(unittest.TestCase):
     self.assertEqual(payload["child_steps"][0]["total_findings"], 5)
     self.assertEqual(payload["child_steps"][1]["result"], "pass")
     self.assertTrue(payload["child_steps"][2]["pr_created"])
+
+  def test_boundary_history_value_round_trips_for_all_enum_values(self) -> None:
+    # Every value in BOUNDARY_HISTORY_VALUES must round-trip end-to-end:
+    # it lands in the feature_implement_sessions row AND in the emitted
+    # skillbill_feature_implement_finished outbox payload unchanged.
+    self.assertEqual(
+      BOUNDARY_HISTORY_VALUES,
+      ("none", "irrelevant", "low", "medium", "high"),
+    )
+    for value in BOUNDARY_HISTORY_VALUES:
+      with self.subTest(boundary_history_value=value):
+        started = feature_implement_started(**STARTED_PARAMS)
+        session_id = started["session_id"]
+        finished_params = dict(FINISHED_PARAMS)
+        finished_params["boundary_history_value"] = value
+        result = feature_implement_finished(session_id=session_id, **finished_params)
+        self.assertEqual(result["status"], "ok")
+
+        row = self._session_row(session_id)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["boundary_history_value"], value)
+
+        outbox_rows = self._outbox_rows("skillbill_feature_implement_finished")
+        matching = [
+          json.loads(r["payload_json"])
+          for r in outbox_rows
+          if json.loads(r["payload_json"]).get("session_id") == session_id
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["boundary_history_value"], value)
 
   def test_child_steps_respect_level_as_built_by_children(self) -> None:
     # The parent aggregates whatever the children returned. Anonymous-level
