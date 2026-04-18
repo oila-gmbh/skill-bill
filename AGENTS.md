@@ -2,90 +2,80 @@
 
 ## Project context
 
-skill-bill is a governed suite of AI-agent skills for code review, quality checking, feature implementation, feature verification, and PR description generation. It ships with a local-first SQLite telemetry CLI, an MCP server, and multi-agent installation (Claude Code, Copilot, Codex, OpenCode, GLM). Supported stacks: KMP, backend-Kotlin, Kotlin, PHP, Go, and agent-config.
+skill-bill is a governed skill suite for code review, quality checks, feature work, feature verification, and PR descriptions. It ships with a local-first SQLite telemetry CLI, an MCP server, and installers for Claude Code, Copilot, Codex, OpenCode, and GLM. Supported stacks: KMP, backend-Kotlin, Kotlin, PHP, Go, and agent-config.
 
 ## Core taxonomy
 
-- `skills/base/` — canonical, user-facing capabilities (both the `bill-code-review` shell and the `bill-quality-check` shell live here)
-- `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (today: `bill-feature-implement` and `bill-feature-verify`)
-- `skills/<platform>/addons/` — governed stack-owned add-on assets that apply only after stack routing
-- `platform-packs/<platform>/` — user-owned platform packs for `bill-code-review` and `bill-quality-check` (manifest plus per-area reviewer content and the optional `declared_quality_check_file`, discovered at runtime by each shell)
-- `orchestration/` — single source of truth for shared routing, review, delegation, telemetry, and shell+content contracts; skills consume these via sibling symlinks, so edits here change runtime behavior for every linked skill
+- `skills/base/` holds canonical user-facing skills, including the `bill-code-review` and `bill-quality-check` shells.
+- `skills/<platform>/` holds pre-shell platform overrides such as `bill-feature-implement` and `bill-feature-verify`.
+- `skills/<platform>/addons/` holds stack-owned add-ons applied only after routing.
+- `platform-packs/<platform>/` holds user-owned packs for code review and quality-check behavior.
+- `orchestration/` is the shared source of truth for routing, review, delegation, telemetry, and shell contracts.
 
 ## Naming rules
 
-- Base skills: `bill-<capability>` (e.g. `bill-code-review`, `bill-feature-implement`)
+- Base skills: `bill-<capability>`
 - Platform overrides: `bill-<platform>-<base-capability>`
-- Platform code-review specializations: `bill-<platform>-code-review-<area>`, shipped inside the owning pack at `platform-packs/<platform>/code-review/`
+- Platform code-review specializations: `bill-<platform>-code-review-<area>`
 - Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`
 
 ## Governed platform packs
 
-- Platform packs live under `platform-packs/<slug>/` and are user-owned — teams are expected to fork or extend them.
-- Every pack ships a platform.yaml manifest declaring platform, contract_version, routing_signals, declared_code_review_areas, and declared_files. Packs may also declare the optional `declared_quality_check_file` (a single path string) to register a per-platform quality-check content file. The manifest schema is owned by orchestration/shell-content-contract/PLAYBOOK.md.
-- The current shell contract version is 1.0. Packs that declare a different version fail loudly with a contract-version mismatch error; bump the shell constant and every pack together when the contract evolves. The `declared_quality_check_file` key is an additive v1.0 extension: omitting it is valid and packs without the key remain contract-compliant.
-- Every declared code-review content file must contain the six required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks. Every declared quality-check content file must contain the five required H2 sections: Description, Execution Steps, Fix Strategy, Execution Mode Reporting, Telemetry Ceremony Hooks.
-- Loud-fail rules are authoritative: missing manifest, wrong version, missing content file, and missing required section all raise specific named exceptions. Never silently fall back.
-- Discovery is manifest-driven: `orchestration/stack-routing/PLAYBOOK.md`, the `bill-code-review` shell, the `bill-quality-check` shell, and the validator all walk `platform-packs/` and read `routing_signals` from each pack. Do not enumerate platform names inline.
-- SKILL-14 piloted the split on `bill-code-review`; SKILL-16 piloted the split on `bill-quality-check` via the optional `declared_quality_check_file` manifest key, with an explicit `kmp`/`backend-kotlin` → `kotlin` quality-check fallback. `bill-feature-implement` and `bill-feature-verify` stay on the pre-shell model for now.
+- Packs live under `platform-packs/` and are user-owned.
+- Each pack ships a manifest. The schema lives in the shell-content-contract playbook under `orchestration/`.
+- The current shell contract version is 1.0. Keep it locked across the shell and every pack; version drift must loud-fail.
+- Code-review content needs six contract H2s: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks.
+- Quality-check content needs five contract H2s: Description, Execution Steps, Fix Strategy, Execution Mode Reporting, Telemetry Ceremony Hooks.
+- Missing manifest, wrong version, missing content file, or missing section must raise the named loud-fail exceptions. Do not add silent fallback.
+- Discovery is manifest-driven. The shells, routing playbook, and validator read `routing_signals` from pack manifests instead of hard-coding platform names.
+- `kmp` and `backend-kotlin` still route quality-check work to `kotlin`. `bill-feature-implement` and `bill-feature-verify` remain pre-shell.
 
 ## Governed add-ons
 
-- Add-ons are stack-owned supporting assets, not standalone skills.
-- Store only under `skills/<platform>/addons/`, flat (no nested directories).
-- File names: `<addon-slug>.md` or `<addon-slug>-<area>.md` (lowercase kebab-case).
-- Resolve add-ons only after dominant-stack routing selects the owning platform.
-- Runtime skills consume add-ons only through sibling supporting files, not repo-relative paths.
-- Report selected add-ons explicitly using `Selected add-ons: ...`.
-- Every add-on change ships with validator and routing-contract test coverage.
+- Add-ons are stack-owned support files, not standalone skills.
+- Keep them flat in the owning platform's `addons/` directory, use lowercase kebab-case names, and resolve them only after dominant-stack routing.
+- Runtime skills consume add-ons through sibling supporting files, report them as `Selected add-ons: ...`, and every add-on change needs validator plus routing-contract coverage.
 
 ## Non-negotiable rules
 
-- Add platform capabilities only as base-capability overrides or approved code-review-`<area>` specializations, declared in the owning pack's manifest.
-- Add a new platform pack under `platform-packs/<slug>/` only when behavior is materially different from existing packs.
-- Keep add-ons stack-owned under `skills/<platform>/addons/`; do not promote to top-level packages.
-- Use sibling supporting files for runtime-shared contracts instead of repo-relative paths.
-- Keep `orchestration/` contracts aligned with sibling supporting-file links.
-- Keep dominant-stack routing primary. Apply governed add-ons only after stack routing settles.
-- Keep the shell+content contract version (`SHELL_CONTRACT_VERSION`) in lockstep across the shell and every platform pack; bumping one without the others produces a loud-fail `ContractVersionMismatchError`.
-- The loud-fail loader is authoritative — do not add silent fallbacks when a platform pack is missing or invalid.
-- Keep README.md (user-facing only, do not read for agent context) skill counts and catalog entries accurate.
-- Update `install.sh` migration rules in the same change when renaming stack-bound skills.
+- Add platform behavior only as manifest-declared overrides or approved code-review areas.
+- Add a new pack only when behavior materially differs from an existing pack.
+- Keep add-ons stack-owned, use sibling supporting files for shared contracts, and keep `orchestration/` aligned with those links.
+- Route by dominant stack first, then apply governed add-ons.
+- Keep `SHELL_CONTRACT_VERSION` in lockstep across shell and packs, and treat the loud-fail loader as authoritative.
+- Keep `README.md` catalog data accurate and update `install.sh` migration rules when renaming stack-bound skills.
 
 ## Adding a new platform
 
-For code review: create a new platform-packs/`<slug>`/ directory with a conforming platform.yaml and content files (six required H2 sections), wire orchestration sidecar symlinks, update the README catalog, extend platform-pack tests, and run the validation commands below.
-
-For quality-check: add `declared_quality_check_file: quality-check/<skill-name>/SKILL.md` to the owning pack's platform.yaml and ship the content file with the five required H2 sections. Wire the two sibling sidecars (`stack-routing.md`, `telemetry-contract.md`). `kmp` and `backend-kotlin` intentionally omit the key and route to `kotlin`'s quality-check today.
-
-For remaining non-shelled platform skills (`feature-implement`, `feature-verify`): place them under skills/`<platform>`/ using the historic naming rules — those families have not been piloted onto the shell+content contract yet.
+1. For code review, create the new pack root, add a conforming manifest and content, wire the sidecars, update the README catalog, extend pack tests, and run validation.
+2. For quality-check, register the pack's quality-check skill in the manifest, ship the five contract H2 sections, and wire the routing plus telemetry sidecars. `kmp` and `backend-kotlin` still fall back to `kotlin`.
+3. For pre-shell families (`feature-implement`, `feature-verify`), keep using the historic `skills/<platform>/` layout until those families are piloted.
 
 ## New-skill authoring
 
-- All new skills go through the scaffolder: `skill-bill new-skill --payload <file>` (or `--interactive`, or invoke `/bill-new-skill-all-agents` inside an agent). The scaffolder is the only supported path; hand-authoring is discouraged.
-- Four supported `kind` values and their destinations:
-  - `horizontal` → `skills/base/<name>/SKILL.md`.
-  - `platform-override-piloted` (shelled family `code-review`) → `platform-packs/<slug>/code-review/<name>/SKILL.md` + `platform.yaml` edit.
-  - `platform-override-piloted` (shelled family `quality-check`) → `platform-packs/<slug>/quality-check/<name>/SKILL.md` + `platform.yaml` edit registering `declared_quality_check_file`.
-  - `platform-override-piloted` (pre-shell families `feature-implement`, `feature-verify`) → `skills/<platform>/<name>/SKILL.md`, annotated with an interim-location note ("will move when piloted").
-  - `code-review-area` → `platform-packs/<slug>/code-review/<name>/SKILL.md` + manifest area registration.
-  - `add-on` → `skills/<platform>/addons/<name>.md` (flat).
-- Pre-shell families are defined in `skill_bill/constants.py::PRE_SHELL_FAMILIES`. Adding one requires updating that tuple and `skill_bill/scaffold.py::FAMILY_REGISTRY` in the same change.
-- Scaffolder entry point: `skill_bill/scaffold.py`. Payload schema and exception catalog: `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
-- The scaffolder is atomic. Validator failure, manifest-write failure, and symlink-creation failure all trigger a full rollback and raise a named exception; the repo tree is byte-identical to its pre-run state.
-- The two scaffolder-owned sections (`## Execution Mode Reporting`, `## Telemetry Ceremony Hooks`) are emitted from a stored template and must be byte-identical across every specialist in a family. Do not hand-edit them.
+- Use the scaffolder for all new skills: `skill-bill new-skill --payload <file>`, `--interactive`, or `/bill-skill-scaffold`.
+- Supported `kind` values:
+  - `horizontal`: create a base skill under `skills/base/`.
+  - `platform-override-piloted`: create the skill in the selected pack, updating its manifest; for `quality-check`, register `declared_quality_check_file`.
+  - `platform-override-piloted` for pre-shell families: create the skill in the platform's legacy `skills/` location and note that it will move when piloted.
+  - `code-review-area`: create the specialist in the selected pack and register the area.
+  - `add-on`: create a flat add-on file in the selected platform's `addons/` directory.
+- Pre-shell families are defined in `skill_bill/constants.py`; add the family there and in `skill_bill/scaffold.py` together.
+- Entry point: `skill_bill/scaffold.py`. Payload schema and exception catalog live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+- The scaffolder is atomic. Validator, manifest-write, or symlink failures must roll the repo back byte-for-byte.
+- `## Execution Mode Reporting` and `## Telemetry Ceremony Hooks` come from a stored template and stay byte-identical within a family.
 
 ## Quality-check guidance
 
-Prefer routing through `bill-quality-check`. If a platform-specific checker does not exist yet, document the fallback explicitly instead of implying dedicated coverage exists.
+Prefer routing through `bill-quality-check`. If a platform-specific checker does not exist yet, document the fallback explicitly.
 
 ## Preferred design bias
 
-- stable base commands for users
+- stable base commands
 - platform depth behind the router
-- explicit overrides rather than clever implicit conventions
-- validator-backed rules instead of tribal knowledge
-- tests for both acceptance and rejection paths
+- explicit overrides
+- validator-backed rules
+- tests for acceptance and rejection paths
 
 ## Validation commands
 

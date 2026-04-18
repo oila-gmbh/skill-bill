@@ -4,7 +4,7 @@ Pure-Python scaffolder invoked by:
 
 - the ``skill-bill new-skill`` CLI subcommand
 - the ``new_skill_scaffold`` MCP tool
-- the ``bill-new-skill-all-agents`` skill (via subprocess)
+- the ``bill-skill-scaffold`` skill (via subprocess)
 
 The entry point is :func:`scaffold`. It takes a validated payload and returns
 a :class:`ScaffoldResult` describing every filesystem mutation. The scaffolder
@@ -16,6 +16,8 @@ Layout kinds supported today:
 - ``horizontal`` — ``skills/base/<name>/SKILL.md``
 - ``platform-override-piloted`` — ``platform-packs/<slug>/<family>/<name>/SKILL.md``
   plus a manifest edit in ``platform-packs/<slug>/platform.yaml``
+- ``platform-pack`` — ``platform-packs/<slug>/`` pack root with a generated
+  baseline code-review skill and quality-check skill
 - ``code-review-area`` — same placement as piloted, but also registers the new
   area under ``declared_code_review_areas`` and ``declared_files.areas`` in the
   manifest
@@ -63,6 +65,7 @@ from skill_bill.shell_content_contract import (
 
 SKILL_KIND_HORIZONTAL = "horizontal"
 SKILL_KIND_PLATFORM_OVERRIDE_PILOTED = "platform-override-piloted"
+SKILL_KIND_PLATFORM_PACK = "platform-pack"
 SKILL_KIND_CODE_REVIEW_AREA = "code-review-area"
 SKILL_KIND_ADD_ON = "add-on"
 
@@ -70,6 +73,7 @@ SUPPORTED_SKILL_KINDS: frozenset[str] = frozenset(
   {
     SKILL_KIND_HORIZONTAL,
     SKILL_KIND_PLATFORM_OVERRIDE_PILOTED,
+    SKILL_KIND_PLATFORM_PACK,
     SKILL_KIND_CODE_REVIEW_AREA,
     SKILL_KIND_ADD_ON,
   }
@@ -118,6 +122,28 @@ FAMILY_REGISTRY: dict[str, dict[str, Any]] = {
     "manifest_key": None,
   },
 }
+
+PLATFORM_PACK_PRESETS: dict[str, dict[str, Any]] = {
+  "java": {
+    "display_name": "Java",
+    "routing_signals": {
+      "strong": ["pom.xml", "build.gradle", "src/main/java"],
+      "tie_breakers": [
+        "Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."
+      ],
+      "addon_signals": [],
+    },
+  },
+}
+
+PLATFORM_PACK_SKELETON_STARTER = "starter"
+PLATFORM_PACK_SKELETON_FULL = "full"
+PLATFORM_PACK_SKELETON_MODES: frozenset[str] = frozenset(
+  {
+    PLATFORM_PACK_SKELETON_STARTER,
+    PLATFORM_PACK_SKELETON_FULL,
+  }
+)
 
 
 @dataclass
@@ -212,6 +238,152 @@ def _optional_string(payload: dict, key: str) -> str:
   return value
 
 
+def _optional_bool(payload: dict, key: str, default: bool = False) -> bool:
+  value = payload.get(key, default)
+  if isinstance(value, bool):
+    return value
+  if value is None:
+    return default
+  raise InvalidScaffoldPayloadError(
+    f"Scaffold payload field '{key}' must be a boolean when provided."
+  )
+
+
+def _require_string_list(value: object, *, field_name: str) -> list[str]:
+  if not isinstance(value, list):
+    raise InvalidScaffoldPayloadError(
+      f"Scaffold payload field '{field_name}' must be a list of strings."
+    )
+  result: list[str] = []
+  for entry in value:
+    if not isinstance(entry, str) or not entry:
+      raise InvalidScaffoldPayloadError(
+        f"Scaffold payload field '{field_name}' must contain only non-empty strings."
+      )
+    result.append(entry)
+  return result
+
+
+def _optional_string_list_from_mapping(mapping: object, key: str) -> list[str]:
+  if not isinstance(mapping, dict):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'routing_signals' must be a mapping when provided."
+    )
+  value = mapping.get(key, [])
+  if value is None:
+    return []
+  return _require_string_list(value, field_name=f"routing_signals.{key}")
+
+
+def _require_string_list_from_mapping(mapping: object, key: str) -> list[str]:
+  if not isinstance(mapping, dict):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'routing_signals' must be a mapping."
+    )
+  return _require_string_list(mapping.get(key), field_name=f"routing_signals.{key}")
+
+
+def _derive_display_name(platform: str) -> str:
+  return " ".join(part.capitalize() for part in platform.split("-"))
+
+
+def _optional_explicit_string_list_from_mapping(
+  mapping: object,
+  key: str,
+) -> list[str] | None:
+  if mapping is None:
+    return None
+  if not isinstance(mapping, dict):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'routing_signals' must be a mapping when provided."
+    )
+  if key not in mapping:
+    return None
+  return _require_string_list(mapping.get(key), field_name=f"routing_signals.{key}")
+
+
+def platform_pack_preset(platform: str) -> dict[str, Any] | None:
+  preset = PLATFORM_PACK_PRESETS.get(platform)
+  if preset is None:
+    return None
+  routing_signals = preset["routing_signals"]
+  return {
+    "display_name": str(preset.get("display_name", "")),
+    "routing_signals": {
+      "strong": list(routing_signals["strong"]),
+      "tie_breakers": list(routing_signals.get("tie_breakers", [])),
+      "addon_signals": list(routing_signals.get("addon_signals", [])),
+    },
+  }
+
+
+def _resolve_platform_pack_defaults(payload: dict, platform: str) -> dict[str, Any]:
+  preset = platform_pack_preset(platform)
+  routing_signals = payload.get("routing_signals")
+
+  strong_signals = _optional_explicit_string_list_from_mapping(routing_signals, "strong")
+  tie_breakers = _optional_explicit_string_list_from_mapping(routing_signals, "tie_breakers")
+  addon_signals = _optional_explicit_string_list_from_mapping(routing_signals, "addon_signals")
+
+  if strong_signals is None and preset is not None:
+    strong_signals = list(preset["routing_signals"]["strong"])
+  if tie_breakers is None and preset is not None:
+    tie_breakers = list(preset["routing_signals"]["tie_breakers"])
+  if addon_signals is None and preset is not None:
+    addon_signals = list(preset["routing_signals"]["addon_signals"])
+
+  if not strong_signals:
+    if preset is None:
+      raise InvalidScaffoldPayloadError(
+        "Scaffold payload field 'routing_signals.strong' must contain at least one routing signal "
+        f"when no built-in platform preset exists for '{platform}'."
+      )
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'routing_signals.strong' must contain at least one routing signal."
+    )
+
+  display_name = _optional_string(payload, "display_name")
+  if not display_name and preset is not None:
+    display_name = preset["display_name"]
+  if not display_name:
+    display_name = _derive_display_name(platform)
+
+  return {
+    "display_name": display_name,
+    "routing_signals": {
+      "strong": strong_signals,
+      "tie_breakers": tie_breakers or [],
+      "addon_signals": addon_signals or [],
+    },
+    "preset_used": preset is not None and routing_signals is None,
+  }
+
+
+def _platform_pack_skeleton_mode(payload: dict) -> str:
+  skeleton_mode = _optional_string(payload, "skeleton_mode") or PLATFORM_PACK_SKELETON_STARTER
+  if skeleton_mode not in PLATFORM_PACK_SKELETON_MODES:
+    raise InvalidScaffoldPayloadError(
+      f"Scaffold payload field 'skeleton_mode' must be one of "
+      f"{sorted(PLATFORM_PACK_SKELETON_MODES)} when provided."
+    )
+  return skeleton_mode
+
+
+def _ordered_approved_code_review_areas() -> tuple[str, ...]:
+  return tuple(sorted(APPROVED_CODE_REVIEW_AREAS))
+
+
+def _require_canonical_name(payload: dict, *, default_name: str) -> str:
+  provided = _optional_string(payload, "name")
+  if not provided:
+    return default_name
+  if provided != default_name:
+    raise InvalidScaffoldPayloadError(
+      f"Scaffold payload field 'name' must be '{default_name}' for this scaffold kind."
+    )
+  return provided
+
+
 def _detect_kind(payload: dict) -> str:
   kind = _require_string(payload, "kind")
   if kind not in SUPPORTED_SKILL_KINDS:
@@ -250,9 +422,9 @@ def _plan_horizontal(payload: dict, repo_root: Path) -> dict[str, Any]:
 
 
 def _plan_platform_override_piloted(payload: dict, repo_root: Path) -> dict[str, Any]:
-  name = _require_string(payload, "name")
   platform = _require_string(payload, "platform")
   family = _require_string(payload, "family")
+  name = _require_canonical_name(payload, default_name=f"bill-{platform}-{family}")
 
   if family not in FAMILY_REGISTRY:
     raise InvalidScaffoldPayloadError(
@@ -297,10 +469,110 @@ def _plan_platform_override_piloted(payload: dict, repo_root: Path) -> dict[str,
   }
 
 
+def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
+  platform = _require_string(payload, "platform")
+  defaults = _resolve_platform_pack_defaults(payload, platform)
+  skeleton_mode = _platform_pack_skeleton_mode(payload)
+  strong_signals = defaults["routing_signals"]["strong"]
+  tie_breakers = defaults["routing_signals"]["tie_breakers"]
+  addon_signals = defaults["routing_signals"]["addon_signals"]
+  display_name = defaults["display_name"]
+  description = _optional_string(payload, "description")
+  governs_addons = _optional_bool(payload, "governs_addons", default=False)
+
+  baseline_name = _require_canonical_name(
+    payload,
+    default_name=f"bill-{platform}-code-review",
+  )
+  quality_check_name = f"bill-{platform}-quality-check"
+  pack_root = repo_root / "platform-packs" / platform
+  if pack_root.exists():
+    raise SkillAlreadyExistsError(
+      f"Platform pack target '{pack_root}' already exists. Remove it or pick a new platform slug before retrying."
+    )
+
+  baseline_skill_path = pack_root / "code-review" / baseline_name
+  quality_check_skill_path = pack_root / "quality-check" / quality_check_name
+  manifest_path = pack_root / "platform.yaml"
+  specialist_areas = (
+    list(_ordered_approved_code_review_areas())
+    if skeleton_mode == PLATFORM_PACK_SKELETON_FULL
+    else []
+  )
+  specialist_skill_names = {
+    area: f"bill-{platform}-code-review-{area}"
+    for area in specialist_areas
+  }
+  specialist_skill_paths = {
+    area: pack_root / "code-review" / specialist_skill_names[area]
+    for area in specialist_areas
+  }
+
+  notes: list[str] = [
+    "Quality-check scaffolded by default.",
+    "Follow-on code-review-area scaffolds can extend the pack without manual manifest edits.",
+  ]
+  if defaults["preset_used"]:
+    notes.insert(
+      0,
+      f"Applied built-in platform preset for '{platform}'. Override 'routing_signals' only when the defaults need adjustment.",
+    )
+  if skeleton_mode == PLATFORM_PACK_SKELETON_FULL:
+    notes.insert(
+      1 if defaults["preset_used"] else 0,
+      f"Full skeleton scaffolded with {len(specialist_areas)} approved code-review area stubs.",
+    )
+
+  return {
+    "kind": SKILL_KIND_PLATFORM_PACK,
+    "skill_name": baseline_name,
+    "skill_path": pack_root,
+    "skill_file": baseline_skill_path / "SKILL.md",
+    "family": "code-review",
+    "platform": platform,
+    "area": "",
+    "is_shelled": True,
+    "notes": notes,
+    "display_name": display_name,
+    "description": description,
+    "skeleton_mode": skeleton_mode,
+    "routing_signals": {
+      "strong": strong_signals,
+      "tie_breakers": tie_breakers,
+      "addon_signals": addon_signals,
+    },
+    "governs_addons": governs_addons,
+    "manifest_path": manifest_path,
+    "baseline_skill_name": baseline_name,
+    "baseline_skill_path": baseline_skill_path,
+    "baseline_skill_file": baseline_skill_path / "SKILL.md",
+    "quality_check_skill_name": quality_check_name,
+    "quality_check_skill_path": quality_check_skill_path,
+    "quality_check_skill_file": quality_check_skill_path / "SKILL.md",
+    "specialist_areas": specialist_areas,
+    "specialist_skill_names": specialist_skill_names,
+    "specialist_skill_paths": specialist_skill_paths,
+    "install_paths": [
+      baseline_skill_path,
+      quality_check_skill_path,
+      *specialist_skill_paths.values(),
+    ],
+    "created_files": [
+      manifest_path,
+      baseline_skill_path / "SKILL.md",
+      quality_check_skill_path / "SKILL.md",
+      *(path / "SKILL.md" for path in specialist_skill_paths.values()),
+    ],
+  }
+
+
 def _plan_code_review_area(payload: dict, repo_root: Path) -> dict[str, Any]:
-  name = _require_string(payload, "name")
   platform = _require_string(payload, "platform")
   area = _require_string(payload, "area")
+  name = _require_canonical_name(
+    payload,
+    default_name=f"bill-{platform}-code-review-{area}",
+  )
 
   if area not in APPROVED_CODE_REVIEW_AREAS:
     raise InvalidScaffoldPayloadError(
@@ -351,6 +623,7 @@ def _plan_add_on(payload: dict, repo_root: Path) -> dict[str, Any]:
 _PLANNERS: dict[str, Any] = {
   SKILL_KIND_HORIZONTAL: _plan_horizontal,
   SKILL_KIND_PLATFORM_OVERRIDE_PILOTED: _plan_platform_override_piloted,
+  SKILL_KIND_PLATFORM_PACK: _plan_platform_pack,
   SKILL_KIND_CODE_REVIEW_AREA: _plan_code_review_area,
   SKILL_KIND_ADD_ON: _plan_add_on,
 }
@@ -405,6 +678,15 @@ def _render_addon_body(plan: dict[str, Any], payload: dict) -> str:
     "\n"
     "TODO: author the add-on body.\n"
   )
+
+
+def _append_supporting_file_links(body: str, file_names: list[str]) -> str:
+  if not file_names:
+    return body
+
+  lines = [body.rstrip(), "", "## Additional Resources", ""]
+  lines.extend(f"- [{file_name}]({file_name})" for file_name in file_names)
+  return "\n".join(lines) + "\n"
 
 
 def _stage_file(txn: _ScaffoldTransaction, path: Path, content: str) -> None:
@@ -480,12 +762,167 @@ def _apply_manifest_edits(txn: _ScaffoldTransaction, plan: dict[str, Any], repo_
   return []
 
 
-def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], repo_root: Path) -> list[Path]:
-  """Wire sibling supporting-file symlinks per ``RUNTIME_SUPPORTING_FILES``."""
-  from scripts.skill_repo_contracts import RUNTIME_SUPPORTING_FILES, supporting_file_targets
+def _create_platform_pack(
+  txn: _ScaffoldTransaction,
+  plan: dict[str, Any],
+  repo_root: Path,
+) -> tuple[list[Path], list[Path]]:
+  """Materialize a new platform pack root with baseline and quality-check."""
+  from scripts.skill_repo_contracts import required_supporting_files_for_skill
+  from skill_bill.scaffold_manifest import render_platform_pack_manifest
 
-  skill_name = plan["skill_name"]
-  required = RUNTIME_SUPPORTING_FILES.get(skill_name)
+  pack_root = plan["skill_path"]
+  manifest_path = plan["manifest_path"]
+  baseline_skill_path = plan["baseline_skill_path"]
+  quality_check_skill_path = plan["quality_check_skill_path"]
+  baseline_name = plan["baseline_skill_name"]
+  quality_check_name = plan["quality_check_skill_name"]
+  baseline_description = plan["description"] or (
+    f"Use when reviewing changes in {plan['display_name']} codebases."
+  )
+  quality_check_description = (
+    f"Use when validating {plan['display_name']} changes with the shared quality-check contract."
+  )
+
+  manifest_content = render_platform_pack_manifest(
+    platform=plan["platform"],
+    display_name=plan["display_name"],
+    strong_signals=plan["routing_signals"]["strong"],
+    tie_breakers=plan["routing_signals"]["tie_breakers"],
+    addon_signals=plan["routing_signals"]["addon_signals"],
+    declared_code_review_areas=list(plan["specialist_areas"]),
+    baseline_content_path=baseline_skill_path.relative_to(pack_root).joinpath("SKILL.md").as_posix(),
+    declared_area_files={
+      area: path.relative_to(pack_root).joinpath("SKILL.md").as_posix()
+      for area, path in plan["specialist_skill_paths"].items()
+    },
+    declared_quality_check_file=quality_check_skill_path.relative_to(pack_root).joinpath("SKILL.md").as_posix(),
+    governs_addons=plan["governs_addons"],
+  )
+  _stage_file(txn, manifest_path, manifest_content)
+  baseline_supporting_files = list(required_supporting_files_for_skill(baseline_name))
+  quality_check_supporting_files = list(required_supporting_files_for_skill(quality_check_name))
+
+  baseline_plan = {
+    "kind": SKILL_KIND_PLATFORM_PACK,
+    "skill_name": baseline_name,
+    "skill_path": baseline_skill_path,
+    "skill_file": baseline_skill_path / "SKILL.md",
+    "family": "code-review",
+    "platform": plan["platform"],
+    "area": "",
+    "is_shelled": True,
+    "notes": [],
+  }
+  quality_check_plan = {
+    "kind": SKILL_KIND_PLATFORM_PACK,
+    "skill_name": quality_check_name,
+    "skill_path": quality_check_skill_path,
+    "skill_file": quality_check_skill_path / "SKILL.md",
+    "family": "quality-check",
+    "platform": plan["platform"],
+    "area": "",
+    "is_shelled": True,
+    "notes": [],
+  }
+  specialist_plans = [
+    {
+      "kind": SKILL_KIND_PLATFORM_PACK,
+      "skill_name": plan["specialist_skill_names"][area],
+      "skill_path": plan["specialist_skill_paths"][area],
+      "skill_file": plan["specialist_skill_paths"][area] / "SKILL.md",
+      "family": "code-review",
+      "platform": plan["platform"],
+      "area": area,
+      "is_shelled": True,
+      "notes": [],
+    }
+    for area in plan["specialist_areas"]
+  ]
+
+  _stage_file(
+    txn,
+    baseline_plan["skill_file"],
+    _append_supporting_file_links(
+      _render_skill_body(baseline_plan, {"description": baseline_description}),
+      baseline_supporting_files,
+    ),
+  )
+  created_symlinks: list[Path] = []
+  created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
+    txn,
+    skill_name=baseline_name,
+    skill_path=baseline_skill_path,
+    repo_root=repo_root,
+  ))
+
+  _stage_file(
+    txn,
+    quality_check_plan["skill_file"],
+    _append_supporting_file_links(
+      _render_skill_body(quality_check_plan, {"description": quality_check_description}),
+      quality_check_supporting_files,
+    ),
+  )
+  created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
+    txn,
+    skill_name=quality_check_name,
+    skill_path=quality_check_skill_path,
+    repo_root=repo_root,
+  ))
+
+  for specialist_plan in specialist_plans:
+    specialist_supporting_files = list(
+      required_supporting_files_for_skill(specialist_plan["skill_name"])
+    )
+    _stage_file(
+      txn,
+      specialist_plan["skill_file"],
+      _append_supporting_file_links(
+        _render_skill_body(
+          specialist_plan,
+          {
+            "description": (
+              f"Use when reviewing {plan['display_name']} changes for "
+              f"{specialist_plan['area']} risks."
+            )
+          },
+        ),
+        specialist_supporting_files,
+      ),
+    )
+    created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
+      txn,
+      skill_name=specialist_plan["skill_name"],
+      skill_path=specialist_plan["skill_path"],
+      repo_root=repo_root,
+    ))
+
+  return (
+    [
+      manifest_path,
+      baseline_plan["skill_file"],
+      quality_check_plan["skill_file"],
+      *(specialist_plan["skill_file"] for specialist_plan in specialist_plans),
+    ],
+    created_symlinks,
+  )
+
+
+def _stage_sidecar_symlinks_for_skill(
+  txn: _ScaffoldTransaction,
+  *,
+  skill_name: str,
+  skill_path: Path,
+  repo_root: Path,
+) -> list[Path]:
+  """Wire sibling supporting-file symlinks for a single scaffolded skill."""
+  from scripts.skill_repo_contracts import (
+    required_supporting_files_for_skill,
+    supporting_file_targets,
+  )
+
+  required = required_supporting_files_for_skill(skill_name)
   if not required:
     return []
 
@@ -499,13 +936,53 @@ def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], rep
         "SUPPORTING_FILE_TARGETS; add it or remove the reference from "
         "RUNTIME_SUPPORTING_FILES."
       )
-    link_path = plan["skill_path"] / file_name
+    link_path = skill_path / file_name
     if link_path.exists() or link_path.is_symlink():
       continue
     link_path.symlink_to(target)
     txn.created_symlinks.append(link_path)
     created.append(link_path)
   return created
+
+
+def _preview_sidecar_symlinks_for_skill(
+  *,
+  skill_name: str,
+  skill_path: Path,
+  repo_root: Path,
+) -> list[Path]:
+  """Preview the symlink targets a scaffolded skill would receive."""
+  from scripts.skill_repo_contracts import (
+    required_supporting_files_for_skill,
+    supporting_file_targets,
+  )
+
+  required = required_supporting_files_for_skill(skill_name)
+  if not required:
+    return []
+
+  targets_map = supporting_file_targets(repo_root)
+  preview: list[Path] = []
+  for file_name in required:
+    target = targets_map.get(file_name)
+    if target is None:
+      raise MissingSupportingFileTargetError(
+        f"Runtime supporting file '{file_name}' is not registered in "
+        "SUPPORTING_FILE_TARGETS; add it or remove the reference from "
+        "RUNTIME_SUPPORTING_FILES."
+      )
+    preview.append(skill_path / file_name)
+  return preview
+
+
+def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], repo_root: Path) -> list[Path]:
+  """Wire sibling supporting-file symlinks for single-skill scaffold kinds."""
+  return _stage_sidecar_symlinks_for_skill(
+    txn,
+    skill_name=plan["skill_name"],
+    skill_path=plan["skill_path"],
+    repo_root=repo_root,
+  )
 
 
 def _run_validator(repo_root: Path) -> None:
@@ -554,8 +1031,15 @@ def _perform_install(txn: _ScaffoldTransaction, plan: dict[str, Any]) -> tuple[l
     )
     return [], notes
 
-  targets = install_skill(plan["skill_path"], agents, transaction=install_txn)
+  install_paths = plan.get("install_paths") or [plan["skill_path"]]
+  targets: list[Path] = []
+  for install_path in install_paths:
+    targets.extend(install_skill(install_path, agents, transaction=install_txn))
   txn.install_targets.extend(targets)
+  if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+    notes.append(
+      "Auto-installed the generated platform-pack skills into detected local agents."
+    )
   return targets, notes
 
 
@@ -638,10 +1122,36 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
 
   if dry_run:
     manifest_edits_preview: list[Path] = []
-    if plan["kind"] == SKILL_KIND_CODE_REVIEW_AREA:
+    created_files_preview = list(plan.get("created_files", [plan["skill_file"]]))
+    if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+      symlinks_preview = []
+      symlinks_preview.extend(
+        _preview_sidecar_symlinks_for_skill(
+          skill_name=plan["baseline_skill_name"],
+          skill_path=plan["baseline_skill_path"],
+          repo_root=repo_root,
+        )
+      )
+      symlinks_preview.extend(
+        _preview_sidecar_symlinks_for_skill(
+          skill_name=plan["quality_check_skill_name"],
+          skill_path=plan["quality_check_skill_path"],
+          repo_root=repo_root,
+        )
+      )
+      for area in plan["specialist_areas"]:
+        symlinks_preview.extend(
+          _preview_sidecar_symlinks_for_skill(
+            skill_name=plan["specialist_skill_names"][area],
+            skill_path=plan["specialist_skill_paths"][area],
+            repo_root=repo_root,
+          )
+        )
+    elif plan["kind"] == SKILL_KIND_CODE_REVIEW_AREA:
       manifest_edits_preview.append(
         repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
       )
+      symlinks_preview = []
     elif (
       plan["kind"] == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
       and plan["is_shelled"]
@@ -650,13 +1160,16 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
       manifest_edits_preview.append(
         repo_root / "platform-packs" / plan["platform"] / "platform.yaml"
       )
+      symlinks_preview = []
+    else:
+      symlinks_preview = []
     result = ScaffoldResult(
       kind=plan["kind"],
       skill_name=plan["skill_name"],
       skill_path=plan["skill_path"],
-      created_files=[plan["skill_file"]],
+      created_files=created_files_preview,
       manifest_edits=manifest_edits_preview,
-      symlinks=[],
+      symlinks=symlinks_preview,
       install_targets=[],
       notes=list(plan["notes"])
       + ["Dry run — no filesystem changes applied."],
@@ -666,18 +1179,27 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
   txn = _ScaffoldTransaction()
 
   try:
-    if plan["kind"] == SKILL_KIND_ADD_ON:
-      body = _render_addon_body(plan, payload)
+    if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+      created_files = list(plan["created_files"])
+      manifest_edits = []
+      _created_files, symlinks = _create_platform_pack(txn, plan, repo_root)
+      created_files = _created_files
+      _run_validator(repo_root)
+      install_targets, install_notes = _perform_install(txn, plan)
     else:
-      body = _render_skill_body(plan, payload)
+      if plan["kind"] == SKILL_KIND_ADD_ON:
+        body = _render_addon_body(plan, payload)
+      else:
+        body = _render_skill_body(plan, payload)
 
-    _stage_file(txn, plan["skill_file"], body)
+      _stage_file(txn, plan["skill_file"], body)
 
-    manifest_edits = _apply_manifest_edits(txn, plan, repo_root)
-    symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)
+      manifest_edits = _apply_manifest_edits(txn, plan, repo_root)
+      symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)
+      created_files = list(txn.created_paths)
 
-    _run_validator(repo_root)
-    install_targets, install_notes = _perform_install(txn, plan)
+      _run_validator(repo_root)
+      install_targets, install_notes = _perform_install(txn, plan)
   except ScaffoldValidatorError:
     _rollback(txn)
     raise
@@ -689,7 +1211,7 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
     kind=plan["kind"],
     skill_name=plan["skill_name"],
     skill_path=plan["skill_path"],
-    created_files=list(txn.created_paths),
+    created_files=created_files,
     manifest_edits=manifest_edits,
     symlinks=symlinks,
     install_targets=install_targets,
@@ -704,6 +1226,7 @@ __all__ = [
   "SKILL_KIND_CODE_REVIEW_AREA",
   "SKILL_KIND_HORIZONTAL",
   "SKILL_KIND_PLATFORM_OVERRIDE_PILOTED",
+  "SKILL_KIND_PLATFORM_PACK",
   "SUPPORTED_SKILL_KINDS",
   "scaffold",
 ]

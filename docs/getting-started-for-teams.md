@@ -95,6 +95,48 @@ Strict structure, enforced by the validator:
 
 The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
 
+### Scaffolding a new platform
+
+If you are starting from scratch instead of forking an existing pack, use the scaffolder to create the new platform pack in one step. For known platforms such as `java`, the payload only needs the platform slug plus any optional display metadata; the scaffolder fills in routing defaults from a built-in preset and generates the manifest, the baseline code-review skill, and the default quality-check skill automatically.
+
+```bash
+cat > /tmp/payload.json <<'JSON'
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "platform-pack",
+  "platform": "java",
+  "skeleton_mode": "starter",
+  "display_name": "Java",
+  "description": "Use when reviewing Java server and library changes."
+}
+JSON
+skill-bill new-skill --payload /tmp/payload.json
+```
+
+The scaffolder:
+
+- creates `platform-packs/java/platform.yaml` plus baseline `code-review` and `quality-check` content files.
+- applies the built-in Java routing preset automatically, including the governed manifest fields and required H2 sections.
+- wires the sibling supporting files needed by the generated skills.
+- installs the new skills into every detected agent.
+- does not require a manual README platform catalog update.
+
+If you want a bare-bones Java skill set up front instead of just the starter pack, use:
+
+```bash
+cat > /tmp/payload.json <<'JSON'
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "platform-pack",
+  "platform": "java",
+  "skeleton_mode": "full"
+}
+JSON
+skill-bill new-skill --payload /tmp/payload.json
+```
+
+That generates the starter pack plus stubs for every approved code-review area so you can fill them in afterwards.
+
 ### Scaffolding an area in an existing pack
 
 Once a pack exists, use the scaffolder to add new code-review areas and their sibling supporting files in one step. For example, to add an `api-contracts` area to a forked `kotlin` pack:
@@ -123,7 +165,7 @@ The scaffolder:
 
 Edit the four authored sections (`## Description`, `## Specialist Scope`, `## Inputs`, `## Outputs Contract`) afterwards. Do not edit the scaffolder-owned sections — the contract treats them as identical across the family.
 
-The full payload schema, including worked examples for the other three kinds (horizontal, platform-override-piloted, add-on), lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+The full payload schema, including the new `platform-pack` kind, lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
 SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.0`). `bill-feature-implement` and `bill-feature-verify` remain pre-shell for now and still land under `skills/<platform>/` when scaffolded.
 

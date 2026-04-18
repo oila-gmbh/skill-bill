@@ -222,7 +222,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 
 ## Reference skill catalog
 
-The skills below ship in this repo as reference examples. Install them via `./install.sh`, extend them in your fork, or author your own via `/bill-new-skill-all-agents`. These are not the product — the governance framework is. They are what a team starts from.
+The skills below ship in this repo as reference examples. Install them via `./install.sh`, extend them in your fork, or author your own via `/bill-skill-scaffold`. These are not the product — the governance framework is. They are what a team starts from.
 
 ### Code Review (1 skills)
 
@@ -327,7 +327,7 @@ Shipped example pack at `platform-packs/go/`. Covers the Go ecosystem end-to-end
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps, preferring repo PR templates when present |
 | `/bill-grill-plan` | Stress-test a plan or design by walking every decision branch |
-| `/bill-new-skill-all-agents` | Create a new skill and sync it to all agents |
+| `/bill-skill-scaffold` | Scaffold a new skill or platform skill set and sync it to all agents |
 
 ## Project customization
 
@@ -461,8 +461,10 @@ The validator enforces:
 
 Preferred path:
 
-- from inside an AI agent, run `/bill-new-skill-all-agents`. The skill collects intent with a decision tree over the four supported kinds (horizontal, platform-override-piloted, code-review-area, add-on), previews the scaffolded output with synthesized markers, and subprocess-calls `skill-bill new-skill --payload <tempfile>` to materialize the skill.
-- outside an agent (scripts, CI, teams piloting a new platform), run `skill-bill new-skill --interactive` for a four-prompt no-LLM flow, or pass a JSON payload file with `skill-bill new-skill --payload ./payload.json`.
+- from inside an AI agent, run `/bill-skill-scaffold`. The skill collects intent with a decision tree over the five supported kinds (horizontal, platform-override-piloted, platform-pack, code-review-area, add-on), previews the scaffolded output with synthesized markers, and subprocess-calls `skill-bill new-skill --payload <tempfile>` to materialize the skill.
+- outside an agent (scripts, CI, teams piloting a new platform), run `skill-bill new-skill --interactive` for a kind-specific no-LLM flow, or pass a JSON payload file with `skill-bill new-skill --payload ./payload.json`.
+
+New platform packs are scaffolded as a pack root plus baseline quality-check content, so adding a fresh platform no longer requires manual manifest assembly or README platform catalog maintenance. Known platforms such as `java` use built-in routing presets; only unknown or custom platforms need manual `routing_signals`. `platform-pack` also supports `skeleton_mode=full` to generate a full bare-bones review-area skill set up front. Add specialist areas later with the `code-review-area` flow when you choose the lighter `starter` path.
 
 The payload schema, the loud-fail exception catalog, and one worked example per kind live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 

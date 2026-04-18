@@ -406,6 +406,7 @@ def new_skill_command(args: argparse.Namespace) -> int:
     raise ValueError("Either --payload or --interactive is required.")
 
   session_id = _scaffold_domain.generate_new_skill_session_id()
+  canonical_skill_name = _scaffold_identity(payload)
 
   try:
     level = load_telemetry_settings().level
@@ -415,7 +416,7 @@ def new_skill_command(args: argparse.Namespace) -> int:
   started_payload = _scaffold_domain.build_started_payload_from_fields(
     session_id=session_id,
     kind=str(payload.get("kind", "")),
-    skill_name=str(payload.get("name", "")),
+    skill_name=canonical_skill_name,
     platform=str(payload.get("platform", "")),
     family=str(payload.get("family", "")),
     area=str(payload.get("area", "")),
@@ -467,30 +468,89 @@ def new_skill_command(args: argparse.Namespace) -> int:
 
 
 def _prompt_new_skill_interactively() -> dict:
-  """Collect the four-prompt interactive payload (no LLM).
+  """Collect the interactive payload without an LLM.
 
-  Mirrors the decision tree in ``skills/base/bill-new-skill-all-agents/SKILL.md``
+  Mirrors the decision tree in ``skills/base/bill-skill-scaffold/SKILL.md``
   so operators can bypass the LLM wrapper when they know exactly what they
   want to create.
   """
-  kind = input("Kind (horizontal/platform-override-piloted/code-review-area/add-on): ").strip()
-  name = input("Skill name (bill-...): ").strip()
-  platform = input("Platform slug (blank for horizontal): ").strip()
-  area = input("Area slug (blank unless code-review-area): ").strip()
+  from skill_bill.scaffold import platform_pack_preset
+
+  kind = input(
+    "Kind (horizontal/platform-override-piloted/platform-pack/code-review-area/add-on): "
+  ).strip()
   payload: dict = {
     "scaffold_payload_version": "1.0",
     "kind": kind,
-    "name": name,
   }
+  if kind == "platform-pack":
+    platform = input("Platform slug: ").strip()
+    payload["platform"] = platform
+    skeleton_mode = input("Skeleton mode (starter/full) [starter]: ").strip()
+    if skeleton_mode:
+      payload["skeleton_mode"] = skeleton_mode
+    display_name = input("Display name (blank to derive from slug): ").strip()
+    if display_name:
+      payload["display_name"] = display_name
+    description = input("Baseline description (optional): ").strip()
+    if description:
+      payload["description"] = description
+    preset = platform_pack_preset(platform)
+    if preset is None:
+      strong_signals = input("Strong routing signals (comma-separated): ").strip()
+      payload["routing_signals"] = {
+        "strong": [item.strip() for item in strong_signals.split(",") if item.strip()],
+        "tie_breakers": [],
+        "addon_signals": [],
+      }
+      tie_breakers = input("Tie-breakers (comma-separated, optional): ").strip()
+      if tie_breakers:
+        payload["routing_signals"]["tie_breakers"] = [
+          item.strip() for item in tie_breakers.split(",") if item.strip()
+        ]
+    else:
+      print(
+        f"Using built-in routing preset for '{platform}' "
+        f"({', '.join(preset['routing_signals']['strong'])})."
+      )
+    governs_addons = input("Governs add-ons? (y/N): ").strip().lower()
+    payload["governs_addons"] = governs_addons in {"y", "yes", "1", "true"}
+    return payload
+
+  name = input("Skill name (blank to derive canonical name): ").strip()
+  if name:
+    payload["name"] = name
+  platform = input("Platform slug (blank for horizontal): ").strip()
   if platform:
     payload["platform"] = platform
+  area = input("Area slug (blank unless code-review-area): ").strip()
   if area:
     payload["area"] = area
   if kind == "platform-override-piloted":
-    family = input("Family (code-review/quality-check/feature-implement/feature-verify): ").strip()
+    family = input(
+      "Family (code-review/quality-check/feature-implement/feature-verify): "
+    ).strip()
     if family:
       payload["family"] = family
   return payload
+
+
+def _scaffold_identity(payload: dict) -> str:
+  kind = payload.get("kind", "")
+  platform = str(payload.get("platform", ""))
+  name = str(payload.get("name", ""))
+  area = str(payload.get("area", ""))
+  family = str(payload.get("family", ""))
+
+  if name:
+    return name
+  if kind == "platform-pack" and platform:
+    return f"bill-{platform}-code-review"
+  if kind == "code-review-area" and platform and area:
+    return f"bill-{platform}-code-review-{area}"
+  if kind == "platform-override-piloted" and platform and family:
+    return f"bill-{platform}-{family}"
+  return ""
 
 
 def install_agent_path_command(args: argparse.Namespace) -> int:

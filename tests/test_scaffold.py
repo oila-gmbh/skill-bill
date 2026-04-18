@@ -6,10 +6,10 @@ against a ``tmp_path`` scratch repo seeded from
 never write to ``$HOME``, and always monkeypatch the validator and the
 auto-install so a local test run is hermetic.
 
-Covered cases (SKILL-15 AC16):
+Covered cases (SKILL-15 AC16 + SKILL-19 follow-on):
 
-- Four happy paths: horizontal, platform-override-piloted code-review area,
-  add-on flat, pre-shell family override with interim-location note.
+- Happy paths: horizontal, first-class platform-pack creation, code-review
+  area, add-on flat, pre-shell family override with interim-location note.
 - Invalid payload → :class:`InvalidScaffoldPayloadError`.
 - Wrong ``scaffold_payload_version`` → :class:`ScaffoldPayloadVersionMismatchError`.
 - Rollback on validator failure — tree byte-identical to pre-run.
@@ -223,6 +223,106 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     body = skill_md.read_text(encoding="utf-8")
     self.assertNotIn("## Project Overrides", body)
 
+  def test_platform_pack(self) -> None:
+    result = scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        display_name="Java",
+        description="Use when reviewing Java server and library changes.",
+      )
+    )
+    self.assertEqual(result.kind, "platform-pack")
+
+    pack_root = self.repo / "platform-packs" / "java"
+    manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
+    self.assertIn('platform: "java"', manifest)
+    self.assertIn('display_name: "Java"', manifest)
+    self.assertIn('    - "pom.xml"', manifest)
+    self.assertIn('    - "build.gradle"', manifest)
+    self.assertIn('    - "src/main/java"', manifest)
+    self.assertIn(
+      'baseline: "code-review/bill-java-code-review/SKILL.md"',
+      manifest,
+    )
+    self.assertIn(
+      'declared_quality_check_file: "quality-check/bill-java-quality-check/SKILL.md"',
+      manifest,
+    )
+
+    review_skill = pack_root / "code-review" / "bill-java-code-review" / "SKILL.md"
+    quality_skill = pack_root / "quality-check" / "bill-java-quality-check" / "SKILL.md"
+    self.assertTrue(review_skill.is_file())
+    self.assertTrue(quality_skill.is_file())
+
+    review_body = review_skill.read_text(encoding="utf-8")
+    quality_body = quality_skill.read_text(encoding="utf-8")
+    self.assertIn("## Additional Resources", review_body)
+    self.assertIn("[stack-routing.md](stack-routing.md)", review_body)
+    self.assertIn("[review-orchestrator.md](review-orchestrator.md)", review_body)
+    self.assertIn("[review-delegation.md](review-delegation.md)", review_body)
+    self.assertIn("[telemetry-contract.md](telemetry-contract.md)", review_body)
+    self.assertNotIn("## Project Overrides", review_body)
+
+    self.assertIn("## Additional Resources", quality_body)
+    self.assertIn("[stack-routing.md](stack-routing.md)", quality_body)
+    self.assertIn("[telemetry-contract.md](telemetry-contract.md)", quality_body)
+    self.assertNotIn("## Specialist Scope", quality_body)
+    self.assertNotIn("## Outputs Contract", quality_body)
+    self.assertTrue(
+      any("Applied built-in platform preset for 'java'." in note for note in result.notes)
+    )
+
+    self.assertEqual(
+      sorted(path.name for path in result.symlinks),
+      sorted(
+        [
+          "review-delegation.md",
+          "review-orchestrator.md",
+          "stack-routing.md",
+          "telemetry-contract.md",
+          "stack-routing.md",
+          "telemetry-contract.md",
+        ]
+      ),
+    )
+    self.assertTrue(any("Quality-check scaffolded by default." in note for note in result.notes))
+
+  def test_platform_pack_full_skeleton(self) -> None:
+    result = scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        skeleton_mode="full",
+      )
+    )
+    self.assertEqual(result.kind, "platform-pack")
+
+    pack_root = self.repo / "platform-packs" / "java"
+    manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
+    for area in sorted(scaffold_module.APPROVED_CODE_REVIEW_AREAS):
+      self.assertIn(f'  - "{area}"', manifest)
+      self.assertIn(
+        f'    {area}: "code-review/bill-java-code-review-{area}/SKILL.md"',
+        manifest,
+      )
+      skill_md = (
+        pack_root
+        / "code-review"
+        / f"bill-java-code-review-{area}"
+        / "SKILL.md"
+      )
+      self.assertTrue(skill_md.is_file())
+      body = skill_md.read_text(encoding="utf-8")
+      self.assertIn("## Description", body)
+      self.assertNotIn("## Additional Resources", body)
+
+    self.assertTrue(
+      any("Full skeleton scaffolded with" in note for note in result.notes)
+    )
+    expected_created_files = 3 + len(scaffold_module.APPROVED_CODE_REVIEW_AREAS)
+    self.assertEqual(len(result.created_files), expected_created_files)
+
   def test_add_on_flat(self) -> None:
     result = scaffold(
       self._payload(kind="add-on", name="android-new-addon", platform="kmp")
@@ -405,6 +505,35 @@ class ScaffoldRejectionTest(unittest.TestCase):
     scaffold(payload)
     with self.assertRaises(SkillAlreadyExistsError):
       scaffold(payload)
+
+  def test_platform_pack_requires_routing_signals_when_no_preset_exists(self) -> None:
+    with self.assertRaisesRegex(
+      InvalidScaffoldPayloadError,
+      "when no built-in platform preset exists for 'custom-jvm'",
+    ):
+      scaffold(
+        {
+          "scaffold_payload_version": "1.0",
+          "kind": "platform-pack",
+          "platform": "custom-jvm",
+          "repo_root": str(self.repo),
+        }
+      )
+
+  def test_platform_pack_rejects_unknown_skeleton_mode(self) -> None:
+    with self.assertRaisesRegex(
+      InvalidScaffoldPayloadError,
+      "field 'skeleton_mode' must be one of",
+    ):
+      scaffold(
+        {
+          "scaffold_payload_version": "1.0",
+          "kind": "platform-pack",
+          "platform": "java",
+          "skeleton_mode": "maximal",
+          "repo_root": str(self.repo),
+        }
+      )
 
 
 class ScaffoldRollbackTest(unittest.TestCase):

@@ -57,7 +57,7 @@ def render_project_overrides(context: ScaffoldTemplateContext) -> str:
   ``scripts/validate_agent_configs.py``, which requires the literal
   ``## Project Overrides`` heading and a reference to
   ``.agents/skill-overrides.md``. The block here mirrors the wording used
-  by existing skills (see e.g. ``skills/base/bill-new-skill-all-agents``)
+  by existing skills (see e.g. ``skills/base/bill-skill-scaffold``)
   and encodes the precedence: a matching ``## <skill-name>`` section in
   ``.agents/skill-overrides.md`` beats ``AGENTS.md``, which beats the
   built-in defaults below.

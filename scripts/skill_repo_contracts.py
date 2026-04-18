@@ -55,6 +55,18 @@ ADDON_SUPPORTING_FILE_TARGETS.update({
   for file_name in file_names
 })
 
+_CODE_REVIEW_RUNTIME_SUPPORTING_FILES: tuple[str, ...] = (
+  "stack-routing.md",
+  "review-orchestrator.md",
+  "review-delegation.md",
+  "telemetry-contract.md",
+)
+
+_QUALITY_CHECK_RUNTIME_SUPPORTING_FILES: tuple[str, ...] = (
+  "stack-routing.md",
+  "telemetry-contract.md",
+)
+
 SUPPORTING_FILE_TARGETS: dict[str, str] = {
   "stack-routing.md": ORCHESTRATION_PLAYBOOKS["stack-routing"],
   "review-orchestrator.md": ORCHESTRATION_PLAYBOOKS["review-orchestrator"],
@@ -178,9 +190,23 @@ INLINE_TELEMETRY_CONTRACT_MARKERS: tuple[str, ...] = (
 def skills_requiring_supporting_file(file_name: str) -> tuple[str, ...]:
   return tuple(
     skill_name
-    for skill_name, supporting_files in RUNTIME_SUPPORTING_FILES.items()
-    if file_name in supporting_files
+    for skill_name in RUNTIME_SUPPORTING_FILES
+    if file_name in required_supporting_files_for_skill(skill_name)
   )
+
+
+def required_supporting_files_for_skill(skill_name: str) -> tuple[str, ...]:
+  supporting_files = RUNTIME_SUPPORTING_FILES.get(skill_name)
+  if supporting_files is not None:
+    return supporting_files
+
+  if skill_name.startswith("bill-") and skill_name.endswith("-code-review"):
+    return _CODE_REVIEW_RUNTIME_SUPPORTING_FILES
+
+  if skill_name.startswith("bill-") and skill_name.endswith("-quality-check"):
+    return _QUALITY_CHECK_RUNTIME_SUPPORTING_FILES
+
+  return ()
 
 
 def governed_addon_slugs_for_stack(stack: str) -> tuple[str, ...]:
