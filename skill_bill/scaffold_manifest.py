@@ -15,8 +15,10 @@ would drop every ``#`` line in existing packs.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import re
 
+from skill_bill.shell_content_contract import SHELL_CONTRACT_VERSION
 
 # Matches the top-level ``declared_code_review_areas:`` list. Capture groups:
 # 1. the existing list body (zero or more lines beginning with a ``-``)
@@ -30,6 +32,21 @@ _AREAS_LIST_PATTERN = re.compile(
 # two-space indentation so we match that literal shape.
 _AREAS_FILES_PATTERN = re.compile(
   r"^(declared_files:\n(?:(?:[ \t]+[^\n]*\n)*?))(  areas:\n)((?:    [^\n]+\n)*)",
+  re.MULTILINE,
+)
+
+# Matches a fresh manifest that still uses the inline empty-list form for
+# ``declared_code_review_areas``.
+_AREAS_EMPTY_INLINE_PATTERN = re.compile(
+  r"^declared_code_review_areas:\s*\[\s*\]\s*$",
+  re.MULTILINE,
+)
+
+# Matches a fresh manifest that still uses the inline empty-map form for
+# ``declared_files.areas``. The new-platform scaffolder emits this compact
+# form and the first specialist append rewrites it into the block form above.
+_DECLARED_FILES_EMPTY_INLINE_PATTERN = re.compile(
+  r"^(declared_files:\n(?:(?:[ \t]+[^\n]*\n)*?))(  areas:\s*\{\s*\}\s*)",
   re.MULTILINE,
 )
 
@@ -65,6 +82,16 @@ def append_code_review_area(
 
 
 def _append_area_to_list(text: str, area: str) -> str:
+  inline_empty_match = _AREAS_EMPTY_INLINE_PATTERN.search(text)
+  if inline_empty_match is not None:
+    return (
+      text[: inline_empty_match.start()]
+      + "declared_code_review_areas:\n  - "
+      + area
+      + "\n"
+      + text[inline_empty_match.end():]
+    )
+
   match = _AREAS_LIST_PATTERN.search(text)
   if match is None:
     raise ValueError(
@@ -80,6 +107,17 @@ def _append_area_to_list(text: str, area: str) -> str:
 
 
 def _append_area_to_declared_files(text: str, area: str, relative_path: str) -> str:
+  inline_empty_match = _DECLARED_FILES_EMPTY_INLINE_PATTERN.search(text)
+  if inline_empty_match is not None:
+    block_prefix = inline_empty_match.group(1)
+    start, end = inline_empty_match.span()
+    return (
+      text[:start]
+      + block_prefix
+      + f"  areas:\n    {area}: {relative_path}\n"
+      + text[end:]
+    )
+
   match = _AREAS_FILES_PATTERN.search(text)
   if match is None:
     raise ValueError(
@@ -161,7 +199,89 @@ def set_declared_quality_check_file(
     manifest_path.write_text(updated, encoding="utf-8")
 
 
+def render_platform_pack_manifest(
+  *,
+  platform: str,
+  display_name: str,
+  strong_signals: list[str],
+  tie_breakers: list[str] | None = None,
+  addon_signals: list[str] | None = None,
+  declared_code_review_areas: list[str] | None = None,
+  baseline_content_path: str,
+  declared_area_files: dict[str, str] | None = None,
+  declared_quality_check_file: str | None = None,
+  governs_addons: bool = False,
+  notes: str | None = None,
+) -> str:
+  """Render a canonical ``platform.yaml`` for a newly scaffolded pack.
+
+  The new-platform scaffolder uses this helper to emit a valid manifest from
+  a high-level payload. The output intentionally prefers compact YAML for the
+  empty lists/maps that future area appends will expand in-place.
+  """
+  declared_code_review_areas = declared_code_review_areas or []
+  declared_area_files = declared_area_files or {}
+  tie_breakers = tie_breakers or []
+  addon_signals = addon_signals or []
+
+  lines: list[str] = [
+    f"platform: {_yaml_scalar(platform)}",
+    f"contract_version: {_yaml_scalar(SHELL_CONTRACT_VERSION)}",
+    f"display_name: {_yaml_scalar(display_name)}",
+    f"governs_addons: {'true' if governs_addons else 'false'}",
+    "",
+    "routing_signals:",
+    "  strong:",
+  ]
+  lines.extend(f"    - {_yaml_scalar(signal)}" for signal in strong_signals)
+  lines.append(
+    "  tie_breakers: []" if not tie_breakers else "  tie_breakers:"
+  )
+  lines.extend(f"    - {_yaml_scalar(entry)}" for entry in tie_breakers)
+  lines.append("  addon_signals: []" if not addon_signals else "  addon_signals:")
+  lines.extend(f"    - {_yaml_scalar(entry)}" for entry in addon_signals)
+  lines.extend(
+    [
+      "",
+      "declared_code_review_areas: []" if not declared_code_review_areas else "declared_code_review_areas:",
+    ]
+  )
+  lines.extend(f"  - {_yaml_scalar(area)}" for area in declared_code_review_areas)
+  lines.extend(
+    [
+      "",
+      "declared_files:",
+      f"  baseline: {_yaml_scalar(baseline_content_path)}",
+    ]
+  )
+  if not declared_area_files:
+    lines.append("  areas: {}")
+  else:
+    lines.append("  areas:")
+    for area in declared_code_review_areas:
+      relative_path = declared_area_files.get(area)
+      if relative_path is None:
+        continue
+      lines.append(f"    {area}: {_yaml_scalar(relative_path)}")
+  if declared_quality_check_file is not None:
+    lines.extend(
+      [
+        "",
+        f"declared_quality_check_file: {_yaml_scalar(declared_quality_check_file)}",
+      ]
+    )
+  if notes is not None:
+    lines.extend(["", f"notes: {_yaml_scalar(notes)}"])
+
+  return "\n".join(lines) + "\n"
+
+
+def _yaml_scalar(value: str) -> str:
+  return json.dumps(value)
+
+
 __all__ = [
   "append_code_review_area",
+  "render_platform_pack_manifest",
   "set_declared_quality_check_file",
 ]

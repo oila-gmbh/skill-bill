@@ -72,10 +72,10 @@ class ScaffoldRollbackError(ScaffoldError):
 
 
 class UnknownSkillKindError(ScaffoldError):
-  """Raised when ``kind`` is not one of the four supported skill kinds.
+  """Raised when ``kind`` is not one of the supported skill kinds.
 
   Supported kinds: ``horizontal``, ``platform-override-piloted``,
-  ``code-review-area``, ``add-on``.
+  ``platform-pack``, ``code-review-area``, ``add-on``.
   """
 
 
@@ -105,9 +105,9 @@ class MissingPlatformPackError(ScaffoldError):
   """Raised when a platform pack referenced by the payload does not exist.
 
   Platform-override-piloted and code-review-area kinds require an existing
-  pack under ``platform-packs/<slug>/``. The scaffolder refuses to create
-  the pack root as a side effect; callers must author a conforming
-  ``platform.yaml`` before asking the scaffolder to add a skill into it.
+  pack under ``platform-packs/<slug>/``. The new platform-pack kind creates
+  the pack root explicitly; callers use that flow when they want the
+  scaffolder to generate the governing manifest and default content files.
   """
 
 

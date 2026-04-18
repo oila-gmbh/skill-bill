@@ -737,7 +737,7 @@ def new_skill_scaffold(
     outcome = "failed"
     if orchestrated:
       payload_out = dict(started_payload)
-      payload_out.update({"result": outcome, "error": str(error), "skill": "bill-new-skill-all-agents"})
+      payload_out.update({"result": outcome, "error": str(error), "skill": "bill-skill-scaffold"})
       payload_out.pop("session_id", None)
       return {"mode": "orchestrated", "telemetry_payload": payload_out, "error": str(error)}
     return {"status": "error", "session_id": session_id, "error": str(error)}
@@ -756,7 +756,7 @@ def new_skill_scaffold(
 
   if orchestrated:
     finished_payload.pop("session_id", None)
-    finished_payload["skill"] = "bill-new-skill-all-agents"
+    finished_payload["skill"] = "bill-skill-scaffold"
     return {
       "mode": "orchestrated",
       "telemetry_payload": finished_payload,

@@ -47,7 +47,7 @@ HORIZONTAL_SKILLS: tuple[str, ...] = (
   "bill-boundary-decisions",
   "bill-boundary-history",
   "bill-pr-description",
-  "bill-new-skill-all-agents",
+  "bill-skill-scaffold",
   "bill-feature-guard",
   "bill-feature-guard-cleanup",
   "bill-unit-test-value-check",

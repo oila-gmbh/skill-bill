@@ -27,10 +27,9 @@ from skill_repo_contracts import (  # noqa: E402
   REVIEW_SESSION_ID_FORMAT,
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
-  RUNTIME_SUPPORTING_FILES,
-  TELEMETERABLE_SKILLS,
   TELEMETRY_OWNERSHIP_HEADING,
   TRIAGE_OWNERSHIP_HEADING,
+  required_supporting_files_for_skill,
   supporting_file_targets,
 )
 
@@ -351,7 +350,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
       self.write_platform_pack(
         repo_root,
-        slug="fixture_pack",
+        slug="fixture-pack",
         contract_version="1.0",
         areas=["architecture"],
       )
@@ -363,28 +362,39 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
       self.write_platform_pack(
         repo_root,
-        slug="mismatch_pack",
+        slug="mismatch-pack",
         contract_version="9.99",
         areas=[],
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("mismatch_pack", result.stdout)
+      self.assertIn("mismatch-pack", result.stdout)
       self.assertIn("contract_version", result.stdout)
 
   def test_rejects_platform_pack_missing_required_section(self) -> None:
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
       self.write_platform_pack(
         repo_root,
-        slug="broken_pack",
+        slug="broken-pack",
         contract_version="1.0",
         areas=[],
         skip_section="Telemetry Ceremony Hooks",
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("broken_pack", result.stdout)
+      self.assertIn("broken-pack", result.stdout)
       self.assertIn("Telemetry Ceremony Hooks", result.stdout)
+
+  def test_accepts_platform_pack_skills_not_listed_in_readme_catalog(self) -> None:
+    with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
+      self.write_platform_pack(
+        repo_root,
+        slug="java",
+        contract_version="1.0",
+        areas=[],
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
 
   def write_platform_pack(
     self,
@@ -402,7 +412,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     pack_dir = repo_root / "platform-packs" / slug
     pack_dir.mkdir(parents=True, exist_ok=True)
 
-    baseline_rel = "code-review/SKILL.md"
+    baseline_name = f"bill-{slug}-code-review"
+    baseline_rel = f"code-review/{baseline_name}/SKILL.md"
     baseline_path = pack_dir / baseline_rel
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
     sections = [
@@ -413,13 +424,18 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       "Execution Mode Reporting",
       "Telemetry Ceremony Hooks",
     ]
-    body = [f"---\nname: {slug}-code-review\ndescription: Fixture platform pack content.\n---\n"]
+    body = [f"---\nname: {baseline_name}\ndescription: Fixture platform pack content.\n---\n"]
     body.append(f"# {slug} baseline\n")
     for section in sections:
       if skip_section is not None and section == skip_section:
         continue
       body.append(f"## {section}\nFixture {section.lower()}.\n")
+    for file_name in required_supporting_files_for_skill(baseline_name):
+      body.append(f"[{file_name}]({file_name})\n")
     baseline_path.write_text("\n".join(body), encoding="utf-8")
+    targets = supporting_file_targets(repo_root)
+    for file_name in required_supporting_files_for_skill(baseline_name):
+      (baseline_path.parent / file_name).symlink_to(targets[file_name])
 
     declared_files: dict[str, object] = {
       "baseline": baseline_rel,
@@ -757,7 +773,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     targets = supporting_file_targets(repo_root)
     skill_dir = repo_root / "skills" / package_name / skill_name
-    for file_name in RUNTIME_SUPPORTING_FILES.get(skill_name, ()):
+    for file_name in required_supporting_files_for_skill(skill_name):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
   def skill_markdown(self, skill_name: str) -> str:
@@ -775,7 +791,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       f"",
       f"Use this fixture skill for validator end-to-end coverage.",
     ]
-    if skill_name == "bill-code-review" or skill_name in RUNTIME_SUPPORTING_FILES:
+    if skill_name == "bill-code-review" or "telemetry-contract.md" in required_supporting_files_for_skill(skill_name):
       lines.extend([
         REVIEW_SESSION_ID_PLACEHOLDER,
         f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.",
@@ -783,7 +799,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
         APPLIED_LEARNINGS_PLACEHOLDER,
       ])
-    for sidecar in RUNTIME_SUPPORTING_FILES.get(skill_name, ()):
+    for sidecar in required_supporting_files_for_skill(skill_name):
       lines.append(f"[{sidecar}]({sidecar})")
     return "\n".join(lines) + "\n"
 

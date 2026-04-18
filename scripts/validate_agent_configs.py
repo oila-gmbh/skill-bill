@@ -37,14 +37,12 @@ from skill_repo_contracts import (  # noqa: E402
   REVIEW_SESSION_ID_FORMAT,
   REVIEW_SESSION_ID_PLACEHOLDER,
   RISK_REGISTER_FINDING_FORMAT,
-  RUNTIME_SUPPORTING_FILES,
-  TELEMETERABLE_SKILLS,
   TELEMETRY_OWNERSHIP_HEADING,
   TRIAGE_OWNERSHIP_HEADING,
+  required_supporting_files_for_skill,
 )
 
 
-README_TOTAL_PATTERN = re.compile(r"collection of (\d+) AI skills")
 README_SECTION_PATTERN = re.compile(r"^### (.+) \((\d+) skills\)$")
 README_SKILL_ROW_PATTERN = re.compile(r"^\| `/(bill-[a-z0-9-]+)` \|")
 SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])")
@@ -155,7 +153,12 @@ def main() -> int:
   for addon_file in addon_files:
     validate_addon_file(addon_file, root, issues)
 
-  validate_readme(root / "README.md", skill_names, issues)
+  validate_readme(
+    root / "README.md",
+    skill_names,
+    sorted(platform_pack_skill_files.keys()),
+    issues,
+  )
   validate_orchestration_playbooks(root, issues)
   validate_skill_references(root, skill_names, issues)
   validate_orchestrator_passthrough(root, issues)
@@ -377,24 +380,24 @@ def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -
   re-accumulation: a skill that references the sidecar but also contains
   forbidden marker text fails validation.
   """
-  for skill_name in TELEMETERABLE_SKILLS:
-    skill_dirs = list((root / "skills").rglob(skill_name))
-    packs_root = root / "platform-packs"
-    if packs_root.is_dir():
-      skill_dirs.extend(packs_root.rglob(skill_name))
-    # Only consider directories, not file matches.
-    skill_dirs = [p for p in skill_dirs if p.is_dir()]
-    if not skill_dirs:
+  files_to_scan = sorted((root / "skills").rglob("SKILL.md"))
+  platform_pack_files = sorted((root / "platform-packs").rglob("SKILL.md"))
+  files_to_scan.extend(platform_pack_files)
+
+  for skill_file in files_to_scan:
+    skill_dir = skill_file.parent
+    skill_name = skill_dir.name
+    if "telemetry-contract.md" not in required_supporting_files_for_skill(skill_name):
       continue
-    skill_dir = skill_dirs[0]
-    files_to_scan = ["SKILL.md"]
+
+    scan_paths = [skill_file]
     orchestrator_files = dict(ORCHESTRATOR_SKILLS)
     if str(skill_dir.relative_to(root)) in orchestrator_files:
       for f in orchestrator_files[str(skill_dir.relative_to(root))]:
-        if f not in files_to_scan:
-          files_to_scan.append(f)
-    for file_name in files_to_scan:
-      file_path = skill_dir / file_name
+        if f not in scan_paths:
+          scan_paths.append(skill_dir / f)
+
+    for file_path in scan_paths:
       if not file_path.exists():
         continue
       text = file_path.read_text(encoding="utf-8")
@@ -444,7 +447,7 @@ def validate_runtime_supporting_files(
   skill_file: Path,
   issues: list[str],
 ) -> None:
-  required_files = RUNTIME_SUPPORTING_FILES.get(skill_name)
+  required_files = required_supporting_files_for_skill(skill_name)
   if not required_files:
     return
 
@@ -739,18 +742,13 @@ def parse_frontmatter(block: str) -> dict[str, str]:
   return values
 
 
-def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]) -> None:
+def validate_readme(
+  readme_path: Path,
+  skill_names: list[str],
+  platform_pack_skill_names: list[str],
+  issues: list[str],
+) -> None:
   text = readme_path.read_text(encoding="utf-8")
-  total_match = README_TOTAL_PATTERN.search(text)
-  if not total_match:
-    issues.append("README.md: total skill count line is missing")
-  else:
-    declared_total = int(total_match.group(1))
-    actual_total = len(skill_names)
-    if declared_total != actual_total:
-      issues.append(
-        f"README.md: declares {declared_total} skills, but skills/ contains {actual_total}"
-      )
 
   documented_skills: list[str] = []
   lines = text.splitlines()
@@ -777,8 +775,10 @@ def validate_readme(readme_path: Path, skill_names: list[str], issues: list[str]
 
   documented_set = sorted(set(documented_skills))
   actual_set = sorted(skill_names)
+  platform_pack_set = set(platform_pack_skill_names)
+  core_skill_set = sorted(set(actual_set) - platform_pack_set)
 
-  missing_from_readme = sorted(set(actual_set) - set(documented_set))
+  missing_from_readme = sorted(set(core_skill_set) - set(documented_set))
   extra_in_readme = sorted(set(documented_set) - set(actual_set))
 
   if missing_from_readme:

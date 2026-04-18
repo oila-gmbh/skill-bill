@@ -43,7 +43,7 @@ SKILL-14 landed the shell+content contract with named exceptions and a loud-fail
 - **Manifest-driven discovery.** `orchestration/stack-routing/PLAYBOOK.md` and `scripts/validate_agent_configs.py` both walk `platform-packs/*/platform.yaml` at runtime. No enumerated platform names survive in orchestration playbooks or validator constants.
 - **Horizontal skills.** `skills/base/` holds 12 base skills (the shell + 11 horizontals including `bill-feature-implement`, `bill-quality-check`, `bill-pr-description`, etc.). Never touched by platform routing.
 - **Pre-shell leftovers.** `skills/<platform>/bill-<platform>-quality-check/` and `skills/kmp/addons/` still live under `skills/` because AC 13 of SKILL-14 explicitly scoped only `bill-code-review` into the pilot. Future tickets will migrate `bill-quality-check` et al. onto the contract.
-- **Install model.** `install.sh` presents selectable agents (Claude Code, Copilot, Codex, OpenCode, GLM) and selectable platform packs, then creates symlinks from agent command paths to repo files. Agent paths: `~/.claude/commands/`, `~/.copilot/skills/`, `~/.codex/skills/` or `~/.agents/skills/`, `~/.config/opencode/skills/`, `~/.glm/commands/`.
+- **Install model.** `install.sh` presents selectable agents (Claude Code, Copilot, Codex, OpenCode, GLM) and selectable platform packs, then creates symlinks from each detected agent command root to repo files. The concrete install roots live in the installer code and are resolved per agent at runtime.
 
 ### Contract bands (locked in during spec discussion)
 
@@ -123,13 +123,7 @@ Q5. Preview: LLM shows structured result with synthesized sections marked.
 
 8. **Validator runs after scaffolding.** The scaffolder invokes `scripts/validate_agent_configs.py` (or calls the underlying validation functions directly). If validation fails, the scaffolder rolls back every file and symlink it created and returns the validation error verbatim.
 
-9. **Auto-install to detected agents.** After validation passes, the scaffolder creates symlinks from detected agent command paths to the new skill files. Agent detection reads the known paths and checks for existing skill-bill symlinks:
-   - `~/.claude/commands/` — Claude Code
-   - `~/.copilot/skills/` — Copilot
-   - `~/.codex/skills/` or `~/.agents/skills/` — Codex
-   - `~/.config/opencode/skills/` — OpenCode
-   - `~/.glm/commands/` — GLM
-   If no agents are detected, the scaffolder skips installation and prints a note directing the user to `./install.sh`.
+9. **Auto-install to detected agents.** After validation passes, the scaffolder creates symlinks from detected agent command roots to the new skill files. Agent detection reads the known install-root registry for Claude Code, Copilot, Codex, OpenCode, and GLM, then checks for existing skill-bill symlinks. If no agents are detected, the scaffolder skips installation and prints a note directing the user to `./install.sh`.
 
 10. **Install primitive is reusable.** The per-skill install logic is extracted either into `skill_bill/install.py` (Python module) or exposed via an `install.sh --add <path>` non-interactive subcommand. Both `install.sh` and the scaffolder call into the same primitive so they stay in sync. Pick one approach in planning; justify the choice.
 
