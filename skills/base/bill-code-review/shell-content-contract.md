@@ -1,1 +1,0 @@
-../../../orchestration/shell-content-contract/PLAYBOOK.md

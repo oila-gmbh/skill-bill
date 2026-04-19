@@ -25,11 +25,16 @@ def skill_names(package_name: str) -> set[str]:
   accurate.
   """
   names: set[str] = set()
-  skills_package = SKILLS_DIR / package_name
-  if skills_package.is_dir():
+  if package_name == "base":
     names.update(
-      skill_file.parent.name for skill_file in skills_package.glob("*/SKILL.md")
+      skill_file.parent.name for skill_file in SKILLS_DIR.glob("bill-*/SKILL.md")
     )
+  else:
+    skills_package = SKILLS_DIR / package_name
+    if skills_package.is_dir():
+      names.update(
+        skill_file.parent.name for skill_file in skills_package.glob("*/SKILL.md")
+      )
   packs_package = PLATFORM_PACKS_DIR / package_name
   if packs_package.is_dir():
     names.update(
@@ -39,11 +44,8 @@ def skill_names(package_name: str) -> set[str]:
 
 
 BASE_SKILLS = skill_names("base")
-BACKEND_KOTLIN_SKILLS = skill_names("backend-kotlin")
 KOTLIN_SKILLS = skill_names("kotlin")
 KMP_SKILLS = skill_names("kmp")
-GO_SKILLS = skill_names("go")
-AGENT_CONFIG_SKILLS = skill_names("agent-config")
 
 
 class InstallScriptTest(unittest.TestCase):
@@ -52,7 +54,7 @@ class InstallScriptTest(unittest.TestCase):
   def test_accepts_multi_agent_selection_without_primary_prompt(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       self.prepare_agent_homes(temp_home)
-      result = self.run_installer(temp_home, "all\nGo\n")
+      result = self.run_installer(temp_home, "all\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
       self.assertIn("Available agents:", result.stdout)
       self.assertNotIn("Choose the primary agent:", result.stdout)
@@ -70,48 +72,39 @@ class InstallScriptTest(unittest.TestCase):
       ):
         path = Path(temp_home) / relative_path
         self.assertTrue(path.is_symlink(), relative_path)
-        self.assertEqual(path.resolve(), ROOT / "skills" / "base" / "bill-code-review")
+        self.assertEqual(path.resolve(), ROOT / "skills" / "bill-code-review")
 
   def test_installs_base_and_selected_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
       self.assertIn("Available optional platforms:", result.stdout)
-      self.assertIn("Base skills and Agent config skills are always installed.", result.stdout)
+      self.assertIn("Base skills are always installed.", result.stdout)
       self.assertIn("Choose one or more optional platform numbers (comma-separated).", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS)
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
-      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-go-code-review" / "review-orchestrator.md").exists())
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-kotlin-code-review" / "review-orchestrator.md").exists())
       self.assertIn("Installed agent: copilot", result.stdout)
       self.assertEqual(self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")["telemetry"]["level"], "anonymous")
 
-  def test_installs_base_and_selected_go_platform_only(self) -> None:
+  def test_installs_base_and_selected_kmp_platform_only(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n")
+      result = self.run_installer(temp_home, "copilot\nKMP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
-
-  def test_installs_agent_config_skills_automatically(self) -> None:
-    with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n")
-      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertNotIn("Agent config (agent-config)", result.stdout)
-
-      installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | KMP_SKILLS)
 
   def test_installs_opencode_skills_and_registers_mcp(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "opencode\nGo\n")
+      result = self.run_installer(temp_home, "opencode\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home, relative_dir=".config/opencode/skills")
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS)
       self.assertIn("Installed agent: opencode", result.stdout)
 
       config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
@@ -125,7 +118,7 @@ class InstallScriptTest(unittest.TestCase):
       config_path.parent.mkdir(parents=True, exist_ok=True)
       config_path.write_text('{\n  // keep this user setting\n  "theme": "opencode",\n}\n', encoding="utf-8")
 
-      result = self.run_installer(temp_home, "opencode\nGo\n")
+      result = self.run_installer(temp_home, "opencode\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -138,79 +131,87 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | AGENT_CONFIG_SKILLS)
-      self.assertTrue(GO_SKILLS.isdisjoint(installed))
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
 
   def test_accepts_human_friendly_multi_platform_selection(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nKotlin backend, Kotlin, KMP\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin, KMP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | AGENT_CONFIG_SKILLS)
-      self.assertTrue(GO_SKILLS.isdisjoint(installed))
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
 
   def test_shows_each_platform_option_and_supports_all(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nall\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertIn("Kotlin backend (backend-kotlin)", result.stdout)
       self.assertIn("Kotlin (kotlin)", result.stdout)
       self.assertIn("KMP (kmp)", result.stdout)
-      self.assertIn("Go (go)", result.stdout)
       self.assertIn("all (install every platform package)", result.stdout)
-      self.assertNotIn("Agent config (agent-config)", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(
-        installed,
-        BASE_SKILLS | BACKEND_KOTLIN_SKILLS | KOTLIN_SKILLS | KMP_SKILLS | GO_SKILLS | AGENT_CONFIG_SKILLS,
-      )
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
 
   def test_ignores_empty_platform_tokens(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo, , Kotlin backend\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin, , KMP\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | GO_SKILLS | BACKEND_KOTLIN_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
 
   def test_rerun_reinstalls_only_selected_platforms(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      first = self.run_installer(temp_home, "copilot\nGo\n")
+      first = self.run_installer(temp_home, "copilot\nKMP\n")
       self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
 
       second = self.run_installer(
         temp_home,
-        "copilot\nKotlin backend\n",
+        "copilot\nKotlin\n",
       )
       self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
       self.assertIn("Skill Bill Uninstaller", second.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | BACKEND_KOTLIN_SKILLS | AGENT_CONFIG_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS)
 
   def test_rerun_replaces_existing_skill_directory_and_restores_sidecars(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      first = self.run_installer(temp_home, "copilot\nGo\n")
+      first = self.run_installer(temp_home, "copilot\nKotlin\n")
       self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
 
       installed_skill = Path(temp_home) / ".copilot" / "skills" / "bill-code-review"
       self.assertTrue(installed_skill.is_symlink())
       installed_skill.unlink()
-      shutil.copytree(ROOT / "skills" / "base" / "bill-code-review", installed_skill, symlinks=False)
+      shutil.copytree(ROOT / "skills" / "bill-code-review", installed_skill, symlinks=False)
       (installed_skill / "stack-routing.md").write_text("stale sidecar", encoding="utf-8")
 
-      second = self.run_installer(temp_home, "copilot\nGo\n")
+      second = self.run_installer(temp_home, "copilot\nKotlin\n")
       self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
 
       self.assertTrue(installed_skill.is_symlink())
-      self.assertEqual(installed_skill.resolve(), ROOT / "skills" / "base" / "bill-code-review")
+      self.assertEqual(installed_skill.resolve(), ROOT / "skills" / "bill-code-review")
       self.assertTrue((installed_skill / "stack-routing.md").exists())
+
+  def test_install_removes_legacy_backend_kotlin_aliases(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      legacy_target = Path(temp_home) / "legacy-backend-skill"
+      legacy_target.write_text("legacy", encoding="utf-8")
+      legacy_symlink = Path(temp_home) / ".copilot" / "skills" / "bill-backend-kotlin-code-review-reliability"
+      legacy_symlink.parent.mkdir(parents=True, exist_ok=True)
+      legacy_symlink.symlink_to(legacy_target)
+
+      result = self.run_installer(temp_home, "copilot\nKotlin\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+      self.assertFalse(legacy_symlink.exists())
+      self.assertIn(
+        "removed bill-backend-kotlin-code-review-reliability",
+        result.stdout,
+      )
 
   def test_installer_writes_telemetry_config_with_default_anonymous(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
       self.assertIn("Choose a telemetry level", result.stdout)
 
@@ -227,7 +228,7 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installer_supports_telemetry_opt_out_without_creating_state(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n3\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin\n3\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       state_dir = Path(temp_home) / ".skill-bill"
@@ -242,7 +243,7 @@ class InstallScriptTest(unittest.TestCase):
 
       result = self.run_installer(
         temp_home,
-        "copilot\nGo\n",
+        "copilot\nKotlin\n",
         extra_env={
           "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
           "SKILL_BILL_REVIEW_DB": str(custom_db_path),
@@ -302,7 +303,7 @@ class InstallScriptTest(unittest.TestCase):
 
       result = self.run_installer(
         temp_home,
-        "copilot\nGo\n3\n",
+        "copilot\nKotlin\n3\n",
         extra_env={
           "SKILL_BILL_CONFIG_PATH": str(custom_config_path),
           "SKILL_BILL_REVIEW_DB": str(custom_db_path),
@@ -321,7 +322,7 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_installer_supports_full_telemetry_level(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nGo\n2\n")
+      result = self.run_installer(temp_home, "copilot\nKotlin\n2\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       config = self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")

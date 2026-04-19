@@ -11,7 +11,7 @@ Execute `./gradlew check` and systematically fix issues **only in files changed 
 
 ## Description
 
-Run `./gradlew check` (or the repo's equivalent wrapper) against the current Gradle/Kotlin project and systematically fix every structural, formatting, lint, deprecation, logic, or test failure touched by the current unit of work without suppressing or deferring issues. This is the `kotlin` leaf behind the shared `bill-quality-check` shell; the shell routes into this pack via the `declared_quality_check_file` manifest key on the `kotlin` platform pack, and is also the fallback route for `kmp` and `backend-kotlin` work today.
+Run `./gradlew check` (or the repo's equivalent wrapper) against the current Gradle/Kotlin project and systematically fix every structural, formatting, lint, deprecation, logic, or test failure touched by the current unit of work without suppressing or deferring issues. This is the `kotlin` leaf behind the shared `bill-quality-check` shell; the shell routes into this pack via the `declared_quality_check_file` manifest key on the `kotlin` platform pack, and it is also the fallback route for `kmp` work today.
 
 ## Additional Resources
 

@@ -15,14 +15,14 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 SAMPLE_REVIEW = """\
-Routed to: bill-agent-config-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-20260405-stdio
 Review run ID: rvw-20260405-stdio
 Detected review scope: unstaged changes
-Detected stack: agent-config
+Detected stack: kotlin
 Signals: README.md, install.sh
 Execution mode: inline
-Reason: agent-config signals dominate
+Reason: kotlin signals dominate
 
 ### 2. Risk Register
 - [F-001] Major | High | README.md:12 | README wording is stale after the routing change.

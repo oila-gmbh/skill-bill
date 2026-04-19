@@ -1,1 +1,1 @@
-../../../../skills/kmp/addons/android-design-system-review.md
+../../../../platform-packs/kmp/addons/android-design-system-review.md

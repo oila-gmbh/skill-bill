@@ -20,14 +20,14 @@ from skill_bill.mcp_server import (
 
 
 SAMPLE_REVIEW = """\
-Routed to: bill-agent-config-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-20260405-mcp
 Review run ID: rvw-20260405-mcp
 Detected review scope: unstaged changes
-Detected stack: agent-config
+Detected stack: kotlin
 Signals: README.md, install.sh
 Execution mode: inline
-Reason: agent-config signals dominate
+Reason: kotlin signals dominate
 
 ### 2. Risk Register
 - [F-001] Major | High | README.md:12 | README wording is stale after the routing change.
@@ -87,8 +87,8 @@ class McpServerEnabledTest(unittest.TestCase):
     self.assertEqual(result["review_run_id"], "rvw-20260405-mcp")
     self.assertEqual(result["review_session_id"], "rvs-20260405-mcp")
     self.assertEqual(result["finding_count"], 2)
-    self.assertEqual(result["routed_skill"], "bill-agent-config-code-review")
-    self.assertEqual(result["detected_stack"], "agent-config")
+    self.assertEqual(result["routed_skill"], "bill-kotlin-code-review")
+    self.assertEqual(result["detected_stack"], "kotlin")
 
   def test_triage_findings_records_decisions(self) -> None:
     import_review(review_text=SAMPLE_REVIEW)

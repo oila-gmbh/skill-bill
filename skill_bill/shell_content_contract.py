@@ -456,8 +456,8 @@ def load_quality_check_content(pack: PlatformPack) -> Path:
     missing one of the :data:`REQUIRED_QUALITY_CHECK_SECTIONS` H2 sections.
 
   The function never silently falls back to another pack. The
-  ``bill-quality-check`` shell implements the explicit ``kmp`` /
-  ``backend-kotlin`` → ``kotlin`` routing fallback by selecting a
+  ``bill-quality-check`` shell implements the explicit ``kmp`` → ``kotlin``
+  routing fallback by selecting a
   different pack before calling this loader.
   """
   if pack.declared_quality_check_file is None:

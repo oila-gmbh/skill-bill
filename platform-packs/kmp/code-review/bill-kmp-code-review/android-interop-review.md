@@ -1,1 +1,1 @@
-../../../../skills/kmp/addons/android-interop-review.md
+../../../../platform-packs/kmp/addons/android-interop-review.md

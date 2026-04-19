@@ -38,39 +38,32 @@ def read(relative_path: str) -> str:
   return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-FEATURE_IMPLEMENT = read("skills/base/bill-feature-implement/SKILL.md") + "\n" + read("skills/base/bill-feature-implement/reference.md")
-CODE_REVIEW = read("skills/base/bill-code-review/SKILL.md")
-QUALITY_CHECK = read("skills/base/bill-quality-check/SKILL.md")
-PR_DESCRIPTION = read("skills/base/bill-pr-description/SKILL.md")
-AGENT_CONFIG_CODE_REVIEW = read("platform-packs/agent-config/code-review/bill-agent-config-code-review/SKILL.md")
-AGENT_CONFIG_QUALITY_CHECK = read("platform-packs/agent-config/quality-check/bill-agent-config-quality-check/SKILL.md")
+FEATURE_IMPLEMENT = read("skills/bill-feature-implement/SKILL.md") + "\n" + read("skills/bill-feature-implement/reference.md")
+CODE_REVIEW = read("skills/bill-code-review/SKILL.md")
+QUALITY_CHECK = read("skills/bill-quality-check/SKILL.md")
+PR_DESCRIPTION = read("skills/bill-pr-description/SKILL.md")
 KOTLIN_CODE_REVIEW = read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
-BACKEND_KOTLIN_CODE_REVIEW = read("platform-packs/backend-kotlin/code-review/bill-backend-kotlin-code-review/SKILL.md")
 KMP_CODE_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review/SKILL.md")
-KMP_ANDROID_COMPOSE_EDGE_TO_EDGE = read("skills/kmp/addons/android-compose-edge-to-edge.md")
-KMP_ANDROID_COMPOSE_ADAPTIVE = read("skills/kmp/addons/android-compose-adaptive-layouts.md")
-KMP_ANDROID_COMPOSE_IMPLEMENTATION = read("skills/kmp/addons/android-compose-implementation.md")
-KMP_ANDROID_COMPOSE_REVIEW = read("skills/kmp/addons/android-compose-review.md")
-KMP_ANDROID_NAVIGATION_IMPLEMENTATION = read("skills/kmp/addons/android-navigation-implementation.md")
-KMP_ANDROID_NAVIGATION_REVIEW = read("skills/kmp/addons/android-navigation-review.md")
-KMP_ANDROID_INTEROP_IMPLEMENTATION = read("skills/kmp/addons/android-interop-implementation.md")
-KMP_ANDROID_INTEROP_REVIEW = read("skills/kmp/addons/android-interop-review.md")
-KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION = read("skills/kmp/addons/android-design-system-implementation.md")
-KMP_ANDROID_DESIGN_SYSTEM_REVIEW = read("skills/kmp/addons/android-design-system-review.md")
-KMP_ANDROID_R8_IMPLEMENTATION = read("skills/kmp/addons/android-r8-implementation.md")
-KMP_ANDROID_R8_REVIEW = read("skills/kmp/addons/android-r8-review.md")
+KMP_ANDROID_COMPOSE_EDGE_TO_EDGE = read("platform-packs/kmp/addons/android-compose-edge-to-edge.md")
+KMP_ANDROID_COMPOSE_ADAPTIVE = read("platform-packs/kmp/addons/android-compose-adaptive-layouts.md")
+KMP_ANDROID_COMPOSE_IMPLEMENTATION = read("platform-packs/kmp/addons/android-compose-implementation.md")
+KMP_ANDROID_COMPOSE_REVIEW = read("platform-packs/kmp/addons/android-compose-review.md")
+KMP_ANDROID_NAVIGATION_IMPLEMENTATION = read("platform-packs/kmp/addons/android-navigation-implementation.md")
+KMP_ANDROID_NAVIGATION_REVIEW = read("platform-packs/kmp/addons/android-navigation-review.md")
+KMP_ANDROID_INTEROP_IMPLEMENTATION = read("platform-packs/kmp/addons/android-interop-implementation.md")
+KMP_ANDROID_INTEROP_REVIEW = read("platform-packs/kmp/addons/android-interop-review.md")
+KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION = read("platform-packs/kmp/addons/android-design-system-implementation.md")
+KMP_ANDROID_DESIGN_SYSTEM_REVIEW = read("platform-packs/kmp/addons/android-design-system-review.md")
+KMP_ANDROID_R8_IMPLEMENTATION = read("platform-packs/kmp/addons/android-r8-implementation.md")
+KMP_ANDROID_R8_REVIEW = read("platform-packs/kmp/addons/android-r8-review.md")
 KMP_COMPOSE_UI_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review-ui/SKILL.md")
-GO_CODE_REVIEW = read("platform-packs/go/code-review/bill-go-code-review/SKILL.md")
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
 REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
 TELEMETRY_CONTRACT_PLAYBOOK = read("orchestration/telemetry-contract/PLAYBOOK.md")
 PORTABLE_REVIEW_SKILL_TEXTS = {
-  "bill-agent-config-code-review": AGENT_CONFIG_CODE_REVIEW,
   "bill-kotlin-code-review": KOTLIN_CODE_REVIEW,
-  "bill-backend-kotlin-code-review": BACKEND_KOTLIN_CODE_REVIEW,
   "bill-kmp-code-review": KMP_CODE_REVIEW,
-  "bill-go-code-review": GO_CODE_REVIEW,
 }
 
 
@@ -108,6 +101,12 @@ def read_specialist_contract(skill_name: str) -> str:
 
 
 class FeatureImplementRoutingContractTest(unittest.TestCase):
+  def test_portable_review_skill_inventory_is_built_in_only(self) -> None:
+    self.assertEqual(
+      PORTABLE_REVIEW_SKILLS,
+      ("bill-kotlin-code-review", "bill-kmp-code-review"),
+    )
+
   def test_shared_router_skills_reference_local_stack_routing_sidecars(self) -> None:
     self.assertIn("[stack-routing.md](stack-routing.md)", CODE_REVIEW)
     self.assertIn("[review-delegation.md](review-delegation.md)", CODE_REVIEW)
@@ -196,44 +195,17 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("declared_quality_check_file", QUALITY_CHECK)
     self.assertIn("load_quality_check_content", QUALITY_CHECK)
 
-  def test_agent_config_context_routes_to_agent_config_review_and_quality_check(self) -> None:
-    # Manifest-driven routing: both shells own discovery; the agent-config
-    # platform pack declares the routing signals, the baseline code-review
-    # file, and the quality-check file via platform.yaml.
-    self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn("manifest-driven", QUALITY_CHECK)
-    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
-    self.assertIn("[stack-routing.md](stack-routing.md)", AGENT_CONFIG_CODE_REVIEW)
-    self.assertIn("[review-orchestrator.md](review-orchestrator.md)", AGENT_CONFIG_CODE_REVIEW)
-    self.assertIn("[review-delegation.md](review-delegation.md)", AGENT_CONFIG_CODE_REVIEW)
-    self.assertIn("Typical Commands In This Repo Type:", AGENT_CONFIG_QUALITY_CHECK)
-
-  def test_backend_kotlin_context_routes_to_backend_review_and_current_quality_check(self) -> None:
-    # Shell is manifest-driven (SKILL-14 + SKILL-16). kmp/backend-kotlin
-    # intentionally omit the declared_quality_check_file manifest key; the
-    # shell routes them to the kotlin pack's quality-check.
-    self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn("manifest-driven", QUALITY_CHECK)
-    self.assertIn(
-      "`kmp` or `backend-kotlin`, route quality-check work to\n  the `kotlin` pack",
-      QUALITY_CHECK,
-    )
-    self.assertIn(
-      "Step 2: Run `bill-kotlin-code-review` as the baseline review",
-      BACKEND_KOTLIN_CODE_REVIEW,
-    )
-
   def test_kmp_context_routes_to_kmp_review_and_current_quality_check(self) -> None:
     # Shell is manifest-driven (SKILL-14 + SKILL-16). kmp omits the
     # declared_quality_check_file manifest key and falls back to kotlin.
     self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn("manifest-driven", QUALITY_CHECK)
     self.assertIn(
-      "`kmp` or `backend-kotlin`, route quality-check work to\n  the `kotlin` pack",
+      "dominant pack is `kmp`, route\n  quality-check work to the `kotlin` pack",
       QUALITY_CHECK,
     )
     self.assertIn(
-      "- Otherwise use `bill-kotlin-code-review`",
+      "- Use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
     )
 
@@ -256,11 +228,11 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       FEATURE_IMPLEMENT,
     )
     self.assertIn(
-      "Let the routed stack own add-on detection and selection",
+      "Let the routed pack own add-on detection and selection",
       FEATURE_IMPLEMENT,
     )
     self.assertIn(
-      "scan the matching stack-owned add-on supporting files' `## Section index` headings first",
+      "scan the matching pack-owned add-on supporting files' `## Section index` headings first",
       FEATURE_IMPLEMENT,
     )
     self.assertIn(
@@ -327,7 +299,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     for skill_name, sidecar_path in sidecar_paths("android-compose-review.md").items():
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
-        self.assertEqual(sidecar_path.resolve(), ROOT / "skills" / "kmp" / "addons" / "android-compose-review.md")
+        self.assertEqual(sidecar_path.resolve(), ROOT / "platform-packs" / "kmp" / "addons" / "android-compose-review.md")
     self.assertIn(
       "Selected add-ons: none | <add-on slugs>",
       KMP_CODE_REVIEW,
@@ -389,38 +361,35 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("Parcelable", KMP_ANDROID_R8_REVIEW)
     self.assertIn("Android shrinker risks", KMP_ANDROID_R8_REVIEW)
 
-  def test_go_context_routes_to_go_review_and_quality_check(self) -> None:
-    # SKILL-14 + SKILL-16: both shells are manifest-driven. The go pack
-    # declares declared_quality_check_file to opt into quality-check routing.
-    self.assertIn("manifest-driven", CODE_REVIEW)
-    self.assertIn("manifest-driven", QUALITY_CHECK)
-    self.assertIn("declared_quality_check_file", QUALITY_CHECK)
+  def test_kmp_mixed_backend_context_still_uses_kotlin_baseline_inside_kmp_review(self) -> None:
     self.assertIn(
-      "[stack-routing.md](stack-routing.md)",
-      GO_CODE_REVIEW,
-    )
-
-  def test_kmp_plus_backend_context_uses_backend_baseline_inside_kmp_review(self) -> None:
-    self.assertIn(
-      "- If backend/server files are also touched, choose `bill-backend-kotlin-code-review` as the baseline review layer so backend coverage is preserved before this skill adds mobile-specific specialists.",
+      "- If backend/server files are also touched, keep the `kmp` route and use `bill-kotlin-code-review` as the baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.",
       KMP_CODE_REVIEW,
     )
     self.assertIn(
-      "- Use `bill-backend-kotlin-code-review` when backend/server files or markers are meaningfully in scope",
-      KMP_CODE_REVIEW,
-    )
-    self.assertIn(
-      "- Otherwise use `bill-kotlin-code-review`",
+      "- Use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
     )
 
-  def test_kotlin_baseline_refuses_to_pretend_it_is_full_backend_or_kmp_review(self) -> None:
+  def test_kotlin_baseline_handles_backend_scope_without_a_separate_pack(self) -> None:
     self.assertIn(
       "- If strong Android/KMP markers are present and this skill is invoked standalone, clearly say that `bill-kmp-code-review` is required for full Android/KMP coverage.",
       KOTLIN_CODE_REVIEW,
     )
     self.assertIn(
-      "- If backend/server signals clearly dominate and this skill is invoked standalone, delegate to `bill-backend-kotlin-code-review` and stop instead of pretending this baseline layer is the full backend review.",
+      "- Backend/server markers stay on the `kotlin` route. Select backend-focused Kotlin specialists for API contracts, persistence, and reliability when backend/server signals are present.",
+      KOTLIN_CODE_REVIEW,
+    )
+    self.assertIn(
+      "`bill-kotlin-code-review-api-contracts`",
+      KOTLIN_CODE_REVIEW,
+    )
+    self.assertIn(
+      "`bill-kotlin-code-review-persistence`",
+      KOTLIN_CODE_REVIEW,
+    )
+    self.assertIn(
+      "`bill-kotlin-code-review-reliability`",
       KOTLIN_CODE_REVIEW,
     )
 

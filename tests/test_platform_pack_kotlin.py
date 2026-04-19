@@ -41,6 +41,9 @@ class KotlinPlatformPackTest(unittest.TestCase):
     self.assertTrue(declared.issubset(APPROVED_CODE_REVIEW_AREAS))
     self.assertIn("architecture", declared)
     self.assertIn("platform-correctness", declared)
+    self.assertIn("api-contracts", declared)
+    self.assertIn("persistence", declared)
+    self.assertIn("reliability", declared)
 
   def test_declared_files_exist(self) -> None:
     pack = load_platform_pack(KOTLIN_PACK_ROOT)

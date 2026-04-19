@@ -30,14 +30,14 @@ from skill_bill.constants import (  # noqa: E402
 
 
 SAMPLE_REVIEW = """\
-Routed to: bill-agent-config-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-20260402-001
 Review run ID: rvw-20260402-001
 Detected review scope: unstaged changes
-Detected stack: agent-config
+Detected stack: kotlin
 Signals: README.md, install.sh
 Execution mode: inline
-Reason: agent-config signals dominate
+Reason: kotlin signals dominate
 
 ### 2. Risk Register
 - [F-001] Major | High | README.md:12 | README wording is stale after the routing change.
@@ -45,14 +45,14 @@ Reason: agent-config signals dominate
 """
 
 ZERO_FINDING_REVIEW = """\
-Routed to: bill-agent-config-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-20260402-empty
 Review run ID: rvw-20260402-empty
 Detected review scope: unstaged changes
-Detected stack: agent-config
+Detected stack: kotlin
 Signals: README.md, install.sh
 Execution mode: inline
-Reason: agent-config signals dominate
+Reason: kotlin signals dominate
 
 ### 2. Risk Register
 No findings.
@@ -112,7 +112,7 @@ class ReviewMetricsTest(unittest.TestCase):
       self.assertEqual(payload["review_session_id"], "rvs-20260402-001")
       self.assertEqual(payload["review_run_id"], "rvw-20260402-001")
       self.assertEqual(payload["finding_count"], 2)
-      self.assertEqual(payload["routed_skill"], "bill-agent-config-code-review")
+      self.assertEqual(payload["routed_skill"], "bill-kotlin-code-review")
 
   def test_import_review_allows_zero_findings_and_stats_report_empty_run(self) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -323,14 +323,14 @@ class ReviewMetricsTest(unittest.TestCase):
 
   def test_reimport_review_replaces_changed_findings_and_detaches_prior_history(self) -> None:
     updated_review = """\
-Routed to: bill-agent-config-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-20260402-001
 Review run ID: rvw-20260402-001
 Detected review scope: unstaged changes
-Detected stack: agent-config
+Detected stack: kotlin
 Signals: README.md, install.sh
 Execution mode: inline
-Reason: agent-config signals dominate
+Reason: kotlin signals dominate
 
 ### 2. Risk Register
 - [F-001] Minor | Medium | install.sh:88 | Installer prompt wording is inconsistent with the new flow.
@@ -773,7 +773,7 @@ Reason: agent-config signals dominate
           "--db", str(db_path),
           "learnings", "add",
           "--scope", "skill",
-          "--scope-key", "bill-agent-config-code-review",
+          "--scope-key", "bill-kotlin-code-review",
           "--title", "Installer wording findings need validator evidence",
           "--rule", "Only flag installer wording when the validator or a contract test also fails — cosmetic wording changes are not actionable in this repo.",
           "--from-run", "rvw-20260402-001",
@@ -827,7 +827,7 @@ Reason: agent-config signals dominate
           "--repo",
           "Sermilion/skill-bill",
           "--skill",
-          "bill-agent-config-code-review",
+          "bill-kotlin-code-review",
           "--format",
           "json",
         ],
@@ -838,7 +838,7 @@ Reason: agent-config signals dominate
       payload = json.loads(resolved["stdout"])
       self.assertEqual(payload["scope_precedence"], ["skill", "repo", "global"])
       self.assertEqual(payload["repo_scope_key"], "Sermilion/skill-bill")
-      self.assertEqual(payload["skill_name"], "bill-agent-config-code-review")
+      self.assertEqual(payload["skill_name"], "bill-kotlin-code-review")
       self.assertEqual(
         [entry["scope"] for entry in payload["learnings"]],
         ["skill", "repo", "global"],
@@ -984,7 +984,7 @@ Reason: agent-config signals dominate
           "--db", str(db_path),
           "learnings", "add",
           "--scope", "skill",
-          "--scope-key", "bill-agent-config-code-review",
+          "--scope-key", "bill-kotlin-code-review",
           "--title", "README staleness after routing changes is expected",
           "--rule", "Do not flag README wording as stale after routing changes — it is updated in the next docs pass.",
           "--reason", "README wording is stale by design during routing changes",
@@ -1001,7 +1001,7 @@ Reason: agent-config signals dominate
           "--db", str(db_path),
           "learnings", "resolve",
           "--repo", "private/repo-name",
-          "--skill", "bill-agent-config-code-review",
+          "--skill", "bill-kotlin-code-review",
           "--review-session-id", "rvs-20260402-001",
           "--format", "json",
         ],

@@ -65,7 +65,7 @@ Classify the review as one of:
 
 - If the shared stack-routing playbook indicates Android/KMP signals are strong, keep the Android/KMP route.
 - If Android/KMP signals are weak or absent, delegate to `bill-kotlin-code-review` and stop instead of pretending mobile-specific coverage exists.
-- If backend/server files are also touched, choose `bill-backend-kotlin-code-review` as the baseline review layer so backend coverage is preserved before this skill adds mobile-specific specialists.
+- If backend/server files are also touched, keep the `kmp` route and use `bill-kotlin-code-review` as the baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
 - When uncertain, prefer the safer route that preserves Android/KMP review depth.
 
 ## Governed Add-On Resolution
@@ -99,12 +99,11 @@ Select `inline` or `delegated` using [review-orchestrator.md](review-orchestrato
 ### Step 2: Choose and run the baseline Kotlin-family review
 
 Use the same scope to run exactly one baseline review layer:
-- Use `bill-backend-kotlin-code-review` when backend/server files or markers are meaningfully in scope
-- Otherwise use `bill-kotlin-code-review`
+- Use `bill-kotlin-code-review`
 
 That baseline review layer owns:
 - shared Kotlin architecture, correctness, security, performance, and testing review
-- backend/server specialist selection when backend signals are present
+- backend/server risk coverage within the Kotlin specialist set when backend signals are present
 - the baseline Kotlin findings that every Android/KMP review should inherit
 
 When invoking the baseline review in either execution mode:
@@ -215,6 +214,40 @@ Summary, Risk Register with findings of the form
 `- [F-###] <Severity> | <Confidence> | <file:line> | <description>`,
 Action Items, and Verdict (`approve`, `approve-with-changes`, or
 `request-changes`). The output layer follows the shell's structured format.
+
+## Delegated Mode
+
+Requires the owning pack's `declared_code_review_areas` list to be non-empty.
+
+Applies when the diff is large, mobile or backend specialist risk is present,
+mixed scope is meaningfully involved, or the safest choice is unclear.
+
+- Run the selected baseline Kotlin review and the selected KMP specialists as
+  delegated subagents via [review-delegation.md](review-delegation.md).
+- Pass each subagent its scoped file list, applicable active learnings, and any
+  selected governed add-ons.
+- Aggregate findings from the baseline layer and the KMP specialists into the
+  final risk register.
+- Report `Execution mode: delegated`.
+
+## Inline Mode
+
+Applies in either of these cases:
+
+- **Specialists declared, small and low-risk scope** — run the baseline Kotlin
+  review and the selected KMP specialists sequentially in the current thread,
+  read each specialist skill file as the primary rubric, keep findings
+  attributed before merging.
+- **No specialists declared** — review the Android/KMP diff directly here.
+  Cover architecture, correctness, security, performance, testing, UI, and
+  UX/accessibility concerns in one pass.
+
+Common to both:
+
+- Apply the shared specialist contract in
+  [review-orchestrator.md](review-orchestrator.md).
+- Merge and deduplicate findings into the final risk register.
+- Report `Execution mode: inline`.
 
 ## Execution Mode Reporting
 Report `Execution mode: inline` or `Execution mode: delegated` explicitly,

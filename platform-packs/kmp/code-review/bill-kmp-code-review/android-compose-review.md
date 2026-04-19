@@ -1,1 +1,1 @@
-../../../../skills/kmp/addons/android-compose-review.md
+../../../../platform-packs/kmp/addons/android-compose-review.md

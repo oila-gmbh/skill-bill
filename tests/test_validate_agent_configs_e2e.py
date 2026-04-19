@@ -44,7 +44,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-ship-it"),
+        ("ruby", "bill-ruby-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
@@ -54,17 +54,17 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-code-review-security"),
+        ("java", "bill-java-code-review-security"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
-  def test_accepts_go_platform_override_of_dynamic_base_capability(self) -> None:
+  def test_accepts_external_platform_override_of_dynamic_base_capability(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-ship-it"),
+        ("java", "bill-java-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
@@ -84,13 +84,13 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-gin-ship-it"),
+        ("ruby", "bill-ruby-laravel-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "platform skill 'bill-go-gin-ship-it' must either override an approved base skill",
+        "platform skill 'bill-ruby-laravel-ship-it' must either override an approved base skill",
         result.stdout,
       )
 
@@ -98,37 +98,36 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-code-review-gin"),
+        ("java", "bill-java-code-review-laravel"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("code-review specialization 'gin' is not approved", result.stdout)
+      self.assertIn("code-review specialization 'laravel' is not approved", result.stdout)
 
-  def test_rejects_go_platform_only_capability_name(self) -> None:
+  def test_rejects_external_platform_only_capability_name(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("go", "bill-go-gin-ship-it"),
+        ("java", "bill-java-gin-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "platform skill 'bill-go-gin-ship-it' must either override an approved base skill",
+        "platform skill 'bill-java-gin-ship-it' must either override an approved base skill",
         result.stdout,
       )
 
-  def test_rejects_unknown_platform_package(self) -> None:
+  def test_accepts_scaffolded_platform_package_without_matching_pack_root(self) -> None:
     with self.fixture_repo(
       [
         ("base", "bill-ship-it"),
-        ("laravel", "bill-laravel-ship-it"),
+        ("ruby", "bill-ruby-ship-it"),
       ]
     ) as repo_root:
       result = self.run_validator(repo_root)
-      self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("package 'laravel' is not allowed", result.stdout)
+      self.assertEqual(result.returncode, 0, result.stdout)
 
   def test_accepts_governed_addon_files_under_stack_addons_dir(self) -> None:
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
@@ -138,8 +137,9 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
   def test_accepts_governed_addon_files_with_future_expansion_names(self) -> None:
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
-      bare_addon = repo_root / "skills" / "kmp" / "addons" / "eloquent.md"
-      area_scoped_addon = repo_root / "skills" / "kmp" / "addons" / "eloquent-persistence.md"
+      bare_addon = repo_root / "platform-packs" / "kmp" / "addons" / "eloquent.md"
+      area_scoped_addon = repo_root / "platform-packs" / "kmp" / "addons" / "eloquent-persistence.md"
+      bare_addon.parent.mkdir(parents=True, exist_ok=True)
       bare_addon.write_text("# valid\n", encoding="utf-8")
       area_scoped_addon.write_text("# valid\n", encoding="utf-8")
       result = self.run_validator(repo_root)
@@ -153,11 +153,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       path.write_text("# invalid\n", encoding="utf-8")
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("governed add-ons must be stack-owned", result.stdout)
+      self.assertIn("governed add-ons must be pack-owned", result.stdout)
 
   def test_rejects_governed_addon_with_invalid_filename_shape(self) -> None:
     with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
-      path = repo_root / "skills" / "kmp" / "addons" / "android-compose-Notes.md"
+      path = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose-Notes.md"
       path.parent.mkdir(parents=True, exist_ok=True)
       path.write_text("# invalid\n", encoding="utf-8")
       result = self.run_validator(repo_root)
@@ -166,12 +166,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
   def test_rejects_nested_governed_addon_path(self) -> None:
     with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
-      path = repo_root / "skills" / "kmp" / "addons" / "android-compose" / "review.md"
+      path = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose" / "review.md"
       path.parent.mkdir(parents=True, exist_ok=True)
       path.write_text("# invalid\n", encoding="utf-8")
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
-      self.assertIn("expected add-on path format skills/<package>/addons/<addon-file>.md", result.stdout)
+      self.assertIn("expected add-on path format platform-packs/<package>/addons/<addon-file>.md", result.stdout)
 
   def test_rejects_runtime_playbook_references(self) -> None:
     with self.fixture_repo(
@@ -190,11 +190,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kmp", "bill-kmp-code-review"),
       ],
       skill_contents={
-        "bill-go-code-review": self.portable_review_fixture_with_forbidden_wording(
-          "bill-go-code-review"
+        "bill-kmp-code-review": self.portable_review_fixture_with_forbidden_wording(
+          "bill-kmp-code-review"
         ),
       },
     ) as repo_root:
@@ -209,12 +209,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kotlin", "bill-kotlin-code-review"),
       ],
       skill_contents={
         "bill-code-review": self.router_fixture_without_review_run_id(),
-        "bill-go-code-review": self.portable_review_fixture_without_review_run_id(
-          "bill-go-code-review"
+        "bill-kotlin-code-review": self.portable_review_fixture_without_review_run_id(
+          "bill-kotlin-code-review"
         ),
       },
     ) as repo_root:
@@ -230,12 +230,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kmp", "bill-kmp-code-review"),
       ],
       skill_contents={
         "bill-code-review": self.router_fixture_without_applied_learnings(),
-        "bill-go-code-review": self.portable_review_fixture_without_applied_learnings(
-          "bill-go-code-review"
+        "bill-kmp-code-review": self.portable_review_fixture_without_applied_learnings(
+          "bill-kmp-code-review"
         ),
       },
       review_orchestrator_has_applied_learnings=False,
@@ -250,11 +250,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kotlin", "bill-kotlin-code-review"),
       ],
       skill_contents={
-        "bill-go-code-review": self.portable_review_fixture_without_inline_lifecycle_handoff(
-          "bill-go-code-review"
+        "bill-kotlin-code-review": self.portable_review_fixture_without_inline_lifecycle_handoff(
+          "bill-kotlin-code-review"
         ),
       },
     ) as repo_root:
@@ -285,7 +285,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
   def test_accepts_orchestrator_skill_with_orchestrated_passthrough(self) -> None:
     with self.fixture_repo([("base", "bill-feature-implement")]) as repo_root:
-      skill_md = repo_root / "skills" / "base" / "bill-feature-implement" / "SKILL.md"
+      skill_md = repo_root / "skills" / "bill-feature-implement" / "SKILL.md"
       skill_md.write_text(
         skill_md.read_text(encoding="utf-8")
         + "\n\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n",
@@ -308,7 +308,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kotlin", "bill-kotlin-code-review"),
       ],
     ) as repo_root:
       result = self.run_validator(repo_root)
@@ -318,11 +318,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kmp", "bill-kmp-code-review"),
       ],
       skill_contents={
-        "bill-go-code-review": self.portable_review_fixture_without_telemetry_sidecar_reference(
-          "bill-go-code-review"
+        "bill-kmp-code-review": self.portable_review_fixture_without_telemetry_sidecar_reference(
+          "bill-kmp-code-review"
         ),
       },
     ) as repo_root:
@@ -334,11 +334,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
-        ("go", "bill-go-code-review"),
+        ("kotlin", "bill-kotlin-code-review"),
       ],
       skill_contents={
-        "bill-go-code-review": self.portable_review_fixture_with_inline_telemetry_drift(
-          "bill-go-code-review"
+        "bill-kotlin-code-review": self.portable_review_fixture_with_inline_telemetry_drift(
+          "bill-kotlin-code-review"
         ),
       },
     ) as repo_root:
@@ -356,7 +356,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
-      self.assertIn("1 platform packs", result.stdout)
+      self.assertIn("2 platform packs", result.stdout)
 
   def test_rejects_platform_pack_with_contract_version_mismatch(self) -> None:
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
@@ -396,6 +396,28 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_accepts_pre_shell_platform_skills_not_listed_in_readme_catalog(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-feature-implement"),
+        ("base", "bill-feature-verify"),
+        ("java", "bill-java-feature-implement"),
+        ("java", "bill-java-feature-verify"),
+      ],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+        "bill-feature-verify": (
+          self.skill_markdown("bill-feature-verify")
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
   def write_platform_pack(
     self,
     repo_root: Path,
@@ -426,6 +448,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     ]
     body = [f"---\nname: {baseline_name}\ndescription: Fixture platform pack content.\n---\n"]
     body.append(f"# {slug} baseline\n")
+    if baseline_name in {"bill-kotlin-code-review", "bill-kmp-code-review"}:
+      body.append(f"{REVIEW_SESSION_ID_PLACEHOLDER}\n")
+      body.append(f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.\n")
+      body.append(f"{REVIEW_RUN_ID_PLACEHOLDER}\n")
+      body.append(f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.\n")
+      body.append(f"{APPLIED_LEARNINGS_PLACEHOLDER}\n")
     for section in sections:
       if skip_section is not None and section == skip_section:
         continue
@@ -498,6 +526,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_review_delegation_playbook(repo_root)
       self.write_telemetry_contract_playbook(repo_root)
       self.write_shell_content_contract_playbook(repo_root)
+      self.write_platform_pack(
+        repo_root,
+        slug="kmp",
+        contract_version="1.0",
+        areas=[],
+      )
       self.write_governed_addons(repo_root)
 
       for package_name, skill_name in skills:
@@ -706,7 +740,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     )
 
   def write_governed_addons(self, repo_root: Path) -> None:
-    implementation = repo_root / "skills" / "kmp" / "addons" / "android-compose-implementation.md"
+    implementation = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose-implementation.md"
     implementation.parent.mkdir(parents=True, exist_ok=True)
     implementation.write_text(
       textwrap.dedent(
@@ -722,7 +756,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       ),
       encoding="utf-8",
     )
-    review = repo_root / "skills" / "kmp" / "addons" / "android-compose-review.md"
+    review = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose-review.md"
     review.write_text(
       textwrap.dedent(
         """\
@@ -737,25 +771,25 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       ),
       encoding="utf-8",
     )
-    edge_to_edge = repo_root / "skills" / "kmp" / "addons" / "android-compose-edge-to-edge.md"
+    edge_to_edge = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose-edge-to-edge.md"
     edge_to_edge.write_text("# Edge-to-edge\n", encoding="utf-8")
-    adaptive = repo_root / "skills" / "kmp" / "addons" / "android-compose-adaptive-layouts.md"
+    adaptive = repo_root / "platform-packs" / "kmp" / "addons" / "android-compose-adaptive-layouts.md"
     adaptive.write_text("# Adaptive layouts\n", encoding="utf-8")
-    navigation_impl = repo_root / "skills" / "kmp" / "addons" / "android-navigation-implementation.md"
+    navigation_impl = repo_root / "platform-packs" / "kmp" / "addons" / "android-navigation-implementation.md"
     navigation_impl.write_text("# Navigation implementation\n", encoding="utf-8")
-    navigation_review = repo_root / "skills" / "kmp" / "addons" / "android-navigation-review.md"
+    navigation_review = repo_root / "platform-packs" / "kmp" / "addons" / "android-navigation-review.md"
     navigation_review.write_text("# Navigation review\n", encoding="utf-8")
-    interop_impl = repo_root / "skills" / "kmp" / "addons" / "android-interop-implementation.md"
+    interop_impl = repo_root / "platform-packs" / "kmp" / "addons" / "android-interop-implementation.md"
     interop_impl.write_text("# Interop implementation\n", encoding="utf-8")
-    interop_review = repo_root / "skills" / "kmp" / "addons" / "android-interop-review.md"
+    interop_review = repo_root / "platform-packs" / "kmp" / "addons" / "android-interop-review.md"
     interop_review.write_text("# Interop review\n", encoding="utf-8")
-    design_impl = repo_root / "skills" / "kmp" / "addons" / "android-design-system-implementation.md"
+    design_impl = repo_root / "platform-packs" / "kmp" / "addons" / "android-design-system-implementation.md"
     design_impl.write_text("# Design system implementation\n", encoding="utf-8")
-    design_review = repo_root / "skills" / "kmp" / "addons" / "android-design-system-review.md"
+    design_review = repo_root / "platform-packs" / "kmp" / "addons" / "android-design-system-review.md"
     design_review.write_text("# Design system review\n", encoding="utf-8")
-    r8_implementation = repo_root / "skills" / "kmp" / "addons" / "android-r8-implementation.md"
+    r8_implementation = repo_root / "platform-packs" / "kmp" / "addons" / "android-r8-implementation.md"
     r8_implementation.write_text("# R8 implementation\n", encoding="utf-8")
-    r8_review = repo_root / "skills" / "kmp" / "addons" / "android-r8-review.md"
+    r8_review = repo_root / "platform-packs" / "kmp" / "addons" / "android-r8-review.md"
     r8_review.write_text("# R8 review\n", encoding="utf-8")
 
   def write_skill(
@@ -766,13 +800,19 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     *,
     content: str | None = None,
   ) -> None:
-    path = repo_root / "skills" / package_name / skill_name / "SKILL.md"
+    if package_name == "base":
+      path = repo_root / "skills" / skill_name / "SKILL.md"
+    else:
+      path = repo_root / "skills" / package_name / skill_name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content or self.skill_markdown(skill_name), encoding="utf-8")
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     targets = supporting_file_targets(repo_root)
-    skill_dir = repo_root / "skills" / package_name / skill_name
+    if package_name == "base":
+      skill_dir = repo_root / "skills" / skill_name
+    else:
+      skill_dir = repo_root / "skills" / package_name / skill_name
     for file_name in required_supporting_files_for_skill(skill_name):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
@@ -844,11 +884,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       | Signal | Agent to spawn |
       | --- | --- |
-      | fixture | `bill-go-code-review-security` |
+      | fixture | `bill-kotlin-code-review-security` |
 
       Spawn all selected sub-agents simultaneously using the `task` tool.
 
-      Agents spawned: bill-go-code-review-security
+      Agents spawned: bill-kotlin-code-review-security
       """
     )
 

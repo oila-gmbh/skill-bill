@@ -126,20 +126,20 @@ object Users : Table("users") {
 
 
 # ---------------------------------------------------------------------------
-# Simulated review output — what bill-backend-kotlin-code-review would
+# Simulated review output — what bill-kotlin-code-review would
 # produce when reviewing the toy codebase. Findings reference real files.
 # ---------------------------------------------------------------------------
 
 TOY_REVIEW_OUTPUT = """\
-Routed to: bill-backend-kotlin-code-review
+Routed to: bill-kotlin-code-review
 Review session ID: rvs-smoke-001
 Review run ID: rvw-smoke-001
 Detected review scope: files
-Detected stack: backend-kotlin
+Detected stack: kotlin
 Signals: build.gradle.kts (spring-boot, exposed), src/main/kotlin
 Execution mode: inline
 Applied learnings: none
-Reason: backend-kotlin signals dominate — Spring Boot + Exposed with Kotlin source layout
+Reason: kotlin signals dominate — Spring Boot + Exposed with Kotlin source layout
 
 ### 1. Summary
 
@@ -187,9 +187,9 @@ class ReviewPipelineSmokeTest(unittest.TestCase):
 
         self.assertEqual(review.review_run_id, "rvw-smoke-001")
         self.assertEqual(review.review_session_id, "rvs-smoke-001")
-        self.assertEqual(review.routed_skill, "bill-backend-kotlin-code-review")
+        self.assertEqual(review.routed_skill, "bill-kotlin-code-review")
         self.assertEqual(review.detected_scope, "files")
-        self.assertEqual(review.detected_stack, "backend-kotlin")
+        self.assertEqual(review.detected_stack, "kotlin")
         self.assertEqual(review.execution_mode, "inline")
 
     def test_review_output_contains_all_four_sections(self) -> None:

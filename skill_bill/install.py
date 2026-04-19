@@ -145,7 +145,7 @@ def install_skill(
 
   ``skill_path`` MUST be a directory containing ``SKILL.md``. Standalone
   markdown files (for example add-on ``*.md`` assets under
-  ``skills/<platform>/addons/``) are NOT installed via this function — they
+  ``platform-packs/<platform>/addons/``) are NOT installed via this function — they
   ship with their owning platform package as supporting assets and are
   resolved through sibling-file lookup at runtime rather than by symlinking
   each file into every agent's install directory. The scaffolder's

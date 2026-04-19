@@ -1,3 +1,36 @@
+## [2026-04-18] flatten-canonical-skills-out-of-skills-base
+Areas: skills/, scripts/, skill_bill/, README.md, AGENTS.md, docs/, tests/
+- Moved canonical user-facing skills out of `skills/base/` and into `skills/<bill-skill>/`, leaving `skills/<platform>/...` only for legacy pre-shell platform overrides. reusable
+- Updated installer and validator topology rules so root-level `skills/bill-*` directories are treated as the canonical/base set, while `skills/base/...` now counts as a legacy-invalid layout instead of a second supported home. reusable
+- Retargeted moved skill sidecars, changed the scaffolder `horizontal` destination to `skills/<name>/`, and refreshed docs/tests so path assertions, fixture repos, and shell-contract references all match the flattened layout. reusable
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-04-18] move-governed-addons-into-platform-packs
+Areas: platform-packs/kmp/addons, scripts/, skill_bill/, README.md, AGENTS.md, tests/
+- Moved governed KMP add-ons from `skills/kmp/addons/` into `platform-packs/kmp/addons/` so pack-owned runtime content now lives entirely under the owning platform pack instead of being split across `skills/` and `platform-packs/`. reusable
+- Rewired KMP review and feature-implement sidecars to the new add-on targets, and updated `scripts/skill_repo_contracts.py`, the validator, and the scaffolder so `platform-packs/<platform>/addons/` is the canonical add-on topology while the old `skills/<platform>/addons/` layout now fails validation. reusable
+- Updated AGENTS/README/scaffold docs and contract tests to describe add-ons as pack-owned assets, and added fixture coverage so future topology changes must keep pack manifests, sidecars, scaffold output, and validator expectations aligned. reusable
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-04-18] restore-kotlin-backend-review-depth
+Areas: platform-packs/kotlin, README.md, tests/
+- Restored backend review depth inside the built-in `kotlin` pack instead of reviving a separate `backend-kotlin` pack: added `api-contracts`, `persistence`, and `reliability` specialist skills under `platform-packs/kotlin/code-review/`. reusable
+- Updated `platform-packs/kotlin/platform.yaml` and `bill-kotlin-code-review` so backend/server signals stay on the Kotlin route but now select the backend specialists explicitly, preserving the simpler two-pack repo story while bringing server review depth back. reusable
+- Expanded README and contract tests to pin the Kotlin pack at 9 code-review skills plus `bill-kotlin-quality-check`, and to assert the backend-specialist routing text so future pack simplifications do not silently drop server review coverage again. reusable
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-04-18] narrow-built-in-packs-to-kotlin-and-kmp
+Areas: README.md, AGENTS.md, CLAUDE.md, install.sh, platform-packs/{kotlin,kmp}, removed platform-pack roots, scripts/, skill_bill/, skills/base/bill-quality-check/, tests/, docs/
+- Reframed the repo as the governed skill-management system plus two built-in reference packs only: `kotlin` and `kmp`. Removed the other shipped pack roots, narrowed installer/catalog/help surfaces to the remaining built-ins, and kept `platform-packs/` as the pack home. reusable
+- Folded backend Kotlin coverage back into the Kotlin baseline instead of preserving a separate built-in backend pack: Kotlin now owns backend/server routing notes, KMP always uses the Kotlin baseline, and the quality-check fallback is now only `kmp` -> `kotlin`. reusable
+- Tightened shipped-surface validation to match the new product story: `scripts/skill_repo_contracts.py` only treats built-in Kotlin/KMP review skills as shipped portable-review inventory, while `scripts/validate_agent_configs.py` still discovers external scaffolded packages from live `skills/` and `platform-packs/` layouts so non-built-in stacks remain authorable. reusable
+- Kept `CLAUDE.md` as a symlink to `AGENTS.md`; trimmed the shared instruction text just enough for `npx --yes agnix --strict .` to return zero warnings instead of breaking the link relationship. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-04-17] boundary-history-value-rubric
 Areas: skills/base/bill-feature-implement/, tests/
 - Anchored the `boundary_history_value` telemetry field with a five-value rubric (`none` | `irrelevant` | `low` | `medium` | `high`) nested under step 3 of the pre-planning briefing's Instructions list in `reference.md`. Added a citation guardrail: `medium`/`high` ratings MUST cite a specific past entry in `boundary_history_digest`, otherwise downgrade to `low`. Enum, DB schema, validation, MCP signature, and platform-pack manifests all unchanged — the field is pass-through so this is a prompt-level fix, not a contract change. reusable

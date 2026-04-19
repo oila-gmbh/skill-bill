@@ -28,19 +28,20 @@ Every payload MUST include:
 - `scaffold_payload_version` — exact match for the scaffolder's expected
   version string.
 - `kind` — one of:
-  - `"horizontal"` — placed under `skills/base/<name>/SKILL.md`.
+  - `"horizontal"` — placed under `skills/<name>/SKILL.md`.
   - `"platform-override-piloted"` — placed under
     `platform-packs/<slug>/<family>/<name>/SKILL.md` plus a manifest edit
     for shelled families. Pre-shell families are placed under
     `skills/<platform>/<name>/SKILL.md` with an interim-location note.
   - `"platform-pack"` — creates a new `platform-packs/<slug>/` root with a
     generated baseline `code-review` skill, a default `quality-check` skill,
-    and a freshly rendered `platform.yaml`.
+    thin `feature-implement` / `feature-verify` platform stubs, and a freshly
+    rendered `platform.yaml`.
   - `"code-review-area"` — placed under
     `platform-packs/<slug>/code-review/<name>/SKILL.md` plus additions to
     `declared_code_review_areas` and `declared_files.areas` in the owning
     `platform.yaml`.
-  - `"add-on"` — placed at `skills/<platform>/addons/<name>.md` (flat; no
+  - `"add-on"` — placed at `platform-packs/<platform>/addons/<name>.md` (flat; no
     sub-directory).
 - `name` — the canonical `bill-...` slug for the new skill. For
   `platform-pack` and `code-review-area`, the scaffolder derives canonical
@@ -52,8 +53,7 @@ Every payload MUST include:
 - `platform` — required for `platform-override-piloted`, `code-review-area`,
   `platform-pack`, and `add-on`.
   - For `platform-override-piloted`, `code-review-area`, and `add-on`, it
-    must name an existing platform slug (e.g. `kotlin`, `kmp`,
-    `backend-kotlin`, `go`, `agent-config`).
+    must name an existing platform slug (e.g. `kotlin`, `kmp`).
   - For `platform-pack`, it is the new platform slug to create.
 - `family` — required for `platform-override-piloted`. One of the known
   families:
@@ -77,8 +77,8 @@ Every payload MUST include:
   title-cased version of `platform`.
 - `skeleton_mode` — `starter` or `full` for `platform-pack`. Defaults to
   `starter`.
-  - `starter` creates the pack root, baseline `code-review`, and default
-    `quality-check`.
+  - `starter` creates the pack root, baseline `code-review`, default
+    `quality-check`, and thin `feature-implement` / `feature-verify` stubs.
   - `full` also creates bare specialist stubs for every approved
     code-review area and registers them in the generated manifest.
 - `governs_addons` — optional boolean for `platform-pack`. Defaults to
@@ -118,16 +118,16 @@ Every payload MUST include:
 {
   "scaffold_payload_version": "1.0",
   "kind": "platform-override-piloted",
-  "name": "bill-go-quality-check",
-  "platform": "go",
+  "name": "bill-kotlin-quality-check",
+  "platform": "kotlin",
   "family": "quality-check"
 }
 ```
 
 This lands the skill at
-`platform-packs/go/quality-check/bill-go-quality-check/SKILL.md` and edits
+`platform-packs/kotlin/quality-check/bill-kotlin-quality-check/SKILL.md` and edits
 the owning pack's `platform.yaml` to register
-`declared_quality_check_file: quality-check/bill-go-quality-check/SKILL.md`.
+`declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md`.
 The scaffolded skill links the sibling sidecars `stack-routing.md` and
 `telemetry-contract.md` just like the shelled code-review example above.
 
@@ -145,10 +145,12 @@ The scaffolded skill links the sibling sidecars `stack-routing.md` and
 ```
 
 This creates `platform-packs/java/platform.yaml`,
-`platform-packs/java/code-review/bill-java-code-review/SKILL.md`, and
-`platform-packs/java/quality-check/bill-java-quality-check/SKILL.md`. The
-quality-check skill is scaffolded by default. The built-in `java` preset
-supplies the routing signals, and the follow-on
+`platform-packs/java/code-review/bill-java-code-review/SKILL.md`,
+`platform-packs/java/quality-check/bill-java-quality-check/SKILL.md`,
+`skills/java/bill-java-feature-implement/SKILL.md`, and
+`skills/java/bill-java-feature-verify/SKILL.md`. The quality-check skill
+and the thin pre-shell feature stubs are scaffolded by default. The built-in
+`java` preset supplies the routing signals, and the follow-on
 `code-review-area` flow can add specialists such as architecture or
 performance without manual manifest or README edits.
 

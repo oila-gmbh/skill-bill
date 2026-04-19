@@ -44,7 +44,7 @@ skill-bill triage --run-id rvw-20260402-001
 skill-bill triage --run-id rvw-20260402-001 --decision "1 fix - keep current terminology" --decision "2 skip - intentional"
 skill-bill triage --run-id rvw-20260402-001 --decision "fix=[1] reject=[2]"
 skill-bill triage --run-id rvw-20260402-001 --decision "all fix"
-skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-agent-config-code-review --review-session-id rvs-20260402-001
+skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001
 skill-bill stats --run-id rvw-20260402-001 --format json
 ```
 
@@ -90,7 +90,7 @@ Raw finding-outcome history and learnings are stored separately. That means you 
 When you want future reviews to use those learnings explicitly, resolve the active learnings for the current review context:
 
 ```bash
-skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-agent-config-code-review --review-session-id rvs-20260402-001 --format json
+skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001 --format json
 ```
 
 Resolution stays local-first and explicit:
@@ -176,7 +176,7 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
     },
     {
       "skill": "bill-quality-check",
-      "routed_skill": "bill-agent-config-quality-check",
+      "routed_skill": "bill-kotlin-quality-check",
       "result": "pass",
       "iterations": 2,
       ...
@@ -235,7 +235,7 @@ Both `anonymous` and `full`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
-| `routed_skill` | string | Concrete stack-specific skill delegated to (`bill-kotlin-quality-check`, `bill-agent-config-quality-check`, …) |
+| `routed_skill` | string | Concrete stack-specific skill delegated to (`bill-kotlin-quality-check`, `bill-kmp-code-review`, …) |
 | `detected_stack` | string | Dominant stack routed for |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |

@@ -19,8 +19,8 @@ from skill_bill.mcp_server import (
 
 
 STARTED_PARAMS = {
-  "routed_skill": "bill-agent-config-quality-check",
-  "detected_stack": "agent-config",
+  "routed_skill": "bill-kotlin-quality-check",
+  "detected_stack": "kotlin",
   "scope_type": "branch_diff",
   "initial_failure_count": 3,
 }
@@ -97,7 +97,7 @@ class QualityCheckEnabledTest(unittest.TestCase):
     rows = self._outbox_rows("skillbill_quality_check_started")
     self.assertEqual(len(rows), 1)
     payload = json.loads(rows[0]["payload_json"])
-    self.assertEqual(payload["routed_skill"], "bill-agent-config-quality-check")
+    self.assertEqual(payload["routed_skill"], "bill-kotlin-quality-check")
     self.assertEqual(payload["scope_type"], "branch_diff")
 
   def test_started_validates_scope_type(self) -> None:
@@ -161,8 +161,8 @@ class QualityCheckEnabledTest(unittest.TestCase):
   def test_orchestrated_finished_returns_payload_and_does_not_emit(self) -> None:
     result = quality_check_finished(
       orchestrated=True,
-      routed_skill="bill-agent-config-quality-check",
-      detected_stack="agent-config",
+      routed_skill="bill-kotlin-quality-check",
+      detected_stack="kotlin",
       scope_type="branch_diff",
       initial_failure_count=3,
       duration_seconds=41,
@@ -192,8 +192,8 @@ class QualityCheckEnabledTest(unittest.TestCase):
     try:
       result = quality_check_finished(
         orchestrated=True,
-        routed_skill="bill-agent-config-quality-check",
-        detected_stack="agent-config",
+        routed_skill="bill-kotlin-quality-check",
+        detected_stack="kotlin",
         scope_type="branch_diff",
         initial_failure_count=3,
         duration_seconds=10,

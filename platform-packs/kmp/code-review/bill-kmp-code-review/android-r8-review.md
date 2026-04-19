@@ -1,1 +1,1 @@
-../../../../skills/kmp/addons/android-r8-review.md
+../../../../platform-packs/kmp/addons/android-r8-review.md

@@ -6,7 +6,7 @@ description: Versioned schema contract between the governed code-review shell an
 # Shared Shell Content Contract
 
 This is the canonical shell+content contract. The governed code-review shell
-(`skills/base/bill-code-review/SKILL.md`) owns ceremony, orchestration, output
+(`skills/bill-code-review/SKILL.md`) owns ceremony, orchestration, output
 structure, telemetry, and contract enforcement. Platform packs under
 `platform-packs/<platform>/` own reviewer reasoning. This file specifies the
 boundary between the two.
@@ -72,9 +72,8 @@ Optional top-level fields:
   present, the shell loader validates the referenced file against the
   quality-check content contract (see below). Omitting the key is valid —
   the shell contract version stays `1.0` and packs without the key remain
-  contract-compliant. Today the `kmp` and `backend-kotlin` packs intentionally
-  omit the key; the `bill-quality-check` shell falls back to the `kotlin`
-  pack for those two slugs.
+  contract-compliant. Today the `kmp` pack intentionally omits the key; the
+  `bill-quality-check` shell falls back to the `kotlin` pack for that slug.
 
 ## Required Content Files
 
@@ -160,8 +159,7 @@ Calling `load_quality_check_content` on a pack whose
 `MissingContentFileError` rather than silently returning nothing — callers
 must gate the call on `pack.declared_quality_check_file is not None`. The
 shell never silently substitutes a different pack's quality-check file
-except via the explicit `kmp`/`backend-kotlin` → `kotlin` fallback noted
-above.
+except via the explicit `kmp` → `kotlin` fallback noted above.
 
 ## Discovery Semantics
 

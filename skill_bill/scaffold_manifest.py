@@ -136,7 +136,7 @@ def _append_area_to_declared_files(text: str, area: str, relative_path: str) -> 
 def _detect_list_indent(list_body: str) -> str:
   """Pick up the existing list indent so we append with the same prefix.
 
-  The kotlin/backend-kotlin/kmp packs all use two-space indentation, but
+  The kotlin and kmp packs both use two-space indentation, but
   we still detect it dynamically so a fork that uses four-space indents
   doesn't get a mixed-indent manifest after the scaffolder edits it.
   """

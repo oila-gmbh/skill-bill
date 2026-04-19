@@ -41,12 +41,80 @@ class ScaffoldTemplateContext:
     family: capability family (``code-review``, ``quality-check``, ...).
     platform: platform slug; empty string for horizontal skills.
     area: code-review area slug; empty string for non-area kinds.
+    display_name: human-friendly platform label (e.g. ``Java``); empty for
+      horizontal skills. Used to render readable default descriptions.
   """
 
   skill_name: str
   family: str
   platform: str = ""
   area: str = ""
+  display_name: str = ""
+
+
+_AREA_DESCRIPTION_PHRASES: dict[str, str] = {
+  "architecture": "architecture, boundaries, and dependency direction",
+  "performance": "performance risks on hot paths, blocking I/O, and resource usage",
+  "platform-correctness": "lifecycle, concurrency, threading, and logic correctness",
+  "security": "secrets handling, auth, and sensitive-data exposure",
+  "testing": "test coverage quality and regression protection",
+  "api-contracts": "API contracts, request validation, and serialization",
+  "persistence": "persistence, transactions, migrations, and data consistency",
+  "reliability": "timeouts, retries, background work, and observability",
+  "ui": "UI correctness and framework usage",
+  "ux-accessibility": "UX correctness and accessibility",
+}
+
+
+def infer_skill_description(context: ScaffoldTemplateContext) -> str:
+  """Synthesize a one-line description from the context signals.
+
+  The scaffolder calls this wherever a description has not been supplied by
+  the payload, so generated skills ship with readable defaults instead of a
+  `TODO` placeholder. The text is intentionally generic; callers who want
+  bespoke wording supply ``description`` in the payload.
+  """
+  label = context.display_name or context.platform
+  family = context.family
+  area = context.area
+
+  if family == "code-review":
+    if area:
+      phrase = _AREA_DESCRIPTION_PHRASES.get(area, f"{area.replace('-', ' ')} risks")
+      if label:
+        return f"Use when reviewing {label} changes for {phrase}."
+      return f"Use when reviewing changes for {phrase}."
+    if label:
+      return f"Use when reviewing {label} changes across code-review specialists."
+    return "Use when reviewing code changes across code-review specialists."
+
+  if family == "quality-check":
+    if label:
+      return f"Use when validating {label} changes with the shared quality-check contract."
+    return "Use when validating changes with the shared quality-check contract."
+
+  if family == "feature-implement":
+    if label:
+      return (
+        f"Use when implementing a feature end-to-end in {label} codebases, "
+        "from design doc to verified code."
+      )
+    return "Use when implementing a feature end-to-end from design doc to verified code."
+
+  if family == "feature-verify":
+    if label:
+      return f"Use when verifying a {label} PR against its task spec."
+    return "Use when verifying a PR against its task spec."
+
+  if family == "add-on":
+    if label:
+      return f"Pack-owned supporting asset for the {label} platform pack."
+    return "Pack-owned supporting asset."
+
+  if context.skill_name:
+    readable = context.skill_name.removeprefix("bill-").replace("-", " ")
+    return f"Use for {readable} work."
+  return "Use for cross-stack work."
 
 
 def render_project_overrides(context: ScaffoldTemplateContext) -> str:
@@ -57,7 +125,7 @@ def render_project_overrides(context: ScaffoldTemplateContext) -> str:
   ``scripts/validate_agent_configs.py``, which requires the literal
   ``## Project Overrides`` heading and a reference to
   ``.agents/skill-overrides.md``. The block here mirrors the wording used
-  by existing skills (see e.g. ``skills/base/bill-skill-scaffold``)
+  by existing skills (see e.g. ``skills/bill-skill-scaffold``)
   and encodes the precedence: a matching ``## <skill-name>`` section in
   ``.agents/skill-overrides.md`` beats ``AGENTS.md``, which beats the
   built-in defaults below.
@@ -131,7 +199,254 @@ def render_telemetry_ceremony_hooks(context: ScaffoldTemplateContext) -> str:
   )
 
 
+def render_description_section(context: ScaffoldTemplateContext) -> str:
+  """Render the ``## Description`` section with an inferred default body.
+
+  Unlike the two scaffolder-owned ceremony sections, the Description body
+  here is a *seed* — callers may freely edit it after scaffolding. Seeding
+  it beats a `TODO:` marker because every signal we need (family, platform,
+  area) is already on the context when the skill is created.
+  """
+  return (
+    "## Description\n"
+    "\n"
+    f"{infer_skill_description(context)}\n"
+  )
+
+
+def _todo_section(heading: str, skill_name: str) -> str:
+  humanized = heading.removeprefix("## ").strip().lower()
+  return f"{heading}\n\nTODO: author the {humanized} section for `{skill_name}`.\n"
+
+
+def render_specialist_scope_section(context: ScaffoldTemplateContext) -> str:
+  """Render a ``## Specialist Scope`` seed, family- and area-aware.
+
+  Seeds are preferred over ``TODO`` because they describe what the section
+  expects. They remain author-editable — callers who want a different
+  boundary replace the seed after scaffolding.
+  """
+  label = context.display_name or context.platform
+  family = context.family
+  area = context.area
+
+  if family == "code-review":
+    if area:
+      phrase = _AREA_DESCRIPTION_PHRASES.get(area, f"{area.replace('-', ' ')} risks")
+      subject = f"{label} changes" if label else "changes under review"
+      return (
+        "## Specialist Scope\n"
+        "\n"
+        f"This specialist covers {phrase} in {subject}.\n"
+        "\n"
+        "Out of scope: other code-review areas, which are delegated to their own "
+        "specialists declared under `declared_code_review_areas` in the owning "
+        "`platform.yaml`.\n"
+      )
+    subject = f"{label} changes" if label else "the diff"
+    return (
+      "## Specialist Scope\n"
+      "\n"
+      f"This skill reviews {subject} in one of two modes, chosen at runtime "
+      "based on the pack's `declared_code_review_areas` in `platform.yaml`:\n"
+      "\n"
+      "- **Delegated** — when areas are declared, route the diff to each "
+      "specialist and aggregate findings. See the Delegated Mode section below.\n"
+      "- **Inline** — when no areas are declared, do the full review here in a "
+      "single pass. See the Inline Mode section below.\n"
+      "\n"
+      "Out of scope: quality-check work (lint, format, tests) and platform "
+      "behavior governed by add-ons.\n"
+    )
+
+  if family == "feature-implement":
+    subject = f"a {label} feature" if label else "a feature"
+    return (
+      "## Specialist Scope\n"
+      "\n"
+      f"This skill drives end-to-end implementation of {subject}, from design doc "
+      "through planning, implementation, completeness audit, quality-check, and "
+      "PR description.\n"
+      "\n"
+      "Out of scope: verification of an existing PR against a spec — that is the "
+      "feature-verify skill.\n"
+    )
+
+  if family == "feature-verify":
+    subject = f"a {label} PR" if label else "a PR"
+    return (
+      "## Specialist Scope\n"
+      "\n"
+      f"This skill verifies {subject} against its task spec. It extracts "
+      "acceptance criteria, audits completeness, runs the platform code "
+      "review, and reports a pass/fail verdict.\n"
+      "\n"
+      "Out of scope: authoring the implementation — that is the "
+      "feature-implement skill.\n"
+    )
+
+  return _todo_section("## Specialist Scope", context.skill_name)
+
+
+def render_inputs_section(context: ScaffoldTemplateContext) -> str:
+  """Render an ``## Inputs`` seed, family-aware."""
+  family = context.family
+  area = context.area
+
+  if family == "code-review":
+    if area:
+      return (
+        "## Inputs\n"
+        "\n"
+        "- The slice of the diff relevant to this area.\n"
+        "- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, "
+        "`review-delegation.md`, `telemetry-contract.md`.\n"
+        "- Platform manifest `platform.yaml` for routing signals.\n"
+      )
+    return (
+      "## Inputs\n"
+      "\n"
+      "- PR branch and base branch, so the diff can be computed.\n"
+      "- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, "
+      "`review-delegation.md`, `telemetry-contract.md`.\n"
+      "- Platform manifest `platform.yaml` for routing signals and declared "
+      "specialists.\n"
+    )
+
+  if family == "feature-implement":
+    return (
+      "## Inputs\n"
+      "\n"
+      "- Design doc or feature spec describing what to build.\n"
+      "- Target branch and working directory.\n"
+      "- Any acceptance criteria or constraints called out in the spec.\n"
+    )
+
+  if family == "feature-verify":
+    return (
+      "## Inputs\n"
+      "\n"
+      "- The PR branch to verify.\n"
+      "- The design doc or task spec with acceptance criteria.\n"
+      "- Base branch so the diff can be computed.\n"
+    )
+
+  return _todo_section("## Inputs", context.skill_name)
+
+
+def render_outputs_contract_section(context: ScaffoldTemplateContext) -> str:
+  """Render an ``## Outputs Contract`` seed, family- and area-aware."""
+  family = context.family
+  area = context.area
+
+  if family == "code-review":
+    if area:
+      phrase = _AREA_DESCRIPTION_PHRASES.get(area, f"{area.replace('-', ' ')} risks")
+      return (
+        "## Outputs Contract\n"
+        "\n"
+        f"- Findings scoped to {phrase}, each with severity and `file:line` "
+        "location.\n"
+        "- No findings outside scope — unrelated issues belong in other "
+        "specialists' output.\n"
+        "- `Execution mode: inline | delegated` reported on its own line.\n"
+      )
+    return (
+      "## Outputs Contract\n"
+      "\n"
+      "- Structured review with a risk register (CRITICAL / HIGH / MEDIUM / LOW).\n"
+      "- Delegated mode: per-specialist findings aggregated under area headings.\n"
+      "- Inline mode: findings grouped by concern (architecture, correctness, "
+      "security, performance, testing).\n"
+      "- Prioritized action items.\n"
+      "- `Execution mode: inline | delegated` reported on its own line.\n"
+    )
+
+  if family == "feature-implement":
+    return (
+      "## Outputs Contract\n"
+      "\n"
+      "- Implementation plan aligned with the spec.\n"
+      "- Code changes that satisfy the acceptance criteria.\n"
+      "- Completeness audit results.\n"
+      "- Generated PR description with test plan.\n"
+      "- `Execution mode: inline | delegated` reported on its own line.\n"
+    )
+
+  if family == "feature-verify":
+    return (
+      "## Outputs Contract\n"
+      "\n"
+      "- Pass/fail verdict against the task spec.\n"
+      "- Gap list for any unmet acceptance criteria.\n"
+      "- Review summary aggregating specialist findings.\n"
+      "- `Execution mode: inline | delegated` reported on its own line.\n"
+    )
+
+  return _todo_section("## Outputs Contract", context.skill_name)
+
+
+def render_delegated_mode_section(context: ScaffoldTemplateContext) -> str:
+  """Render the ``## Delegated Mode`` seed for a code-review baseline skill.
+
+  This section is not part of the six-H2 content contract — it is an
+  optional runtime-mode seed that the scaffolder inserts for baseline
+  code-review skills so the dual-mode behavior is documented in one place.
+  """
+  del context
+  return (
+    "## Delegated Mode\n"
+    "\n"
+    "Requires the owning pack's `declared_code_review_areas` list to be "
+    "non-empty.\n"
+    "\n"
+    "Applies when the diff is large, the risk profile is high, multiple "
+    "areas are meaningfully involved, or the safest choice is unclear.\n"
+    "\n"
+    "- Route the diff to each area's specialist using the "
+    "`review-delegation.md` playbook.\n"
+    "- Pass each subagent its scoped file list, applicable active learnings, "
+    "and the shared specialist contract.\n"
+    "- Aggregate specialist findings into the final risk register.\n"
+    "- Report `Execution mode: delegated`.\n"
+  )
+
+
+def render_inline_mode_section(context: ScaffoldTemplateContext) -> str:
+  """Render the ``## Inline Mode`` seed for a code-review baseline skill.
+
+  Covers both sub-cases so the skill works regardless of whether the pack
+  has specialists yet:
+  - specialists declared + small/low-risk scope → run sequentially in-thread;
+  - no specialists declared → review the diff directly here.
+  """
+  label = context.display_name or context.platform or "the diff"
+  return (
+    "## Inline Mode\n"
+    "\n"
+    "Applies in either of these cases:\n"
+    "\n"
+    "- **Specialists declared, small and low-risk scope** — run each declared "
+    "specialist sequentially in the current thread, read the specialist skill "
+    "file as the primary rubric, keep findings attributed before merging.\n"
+    f"- **No specialists declared** — review {label} directly here. Cover "
+    "architecture, correctness, security, performance, and testing concerns "
+    "in one pass.\n"
+    "\n"
+    "Common to both:\n"
+    "\n"
+    "- Apply the shared specialist contract in "
+    "`review-orchestrator.md`.\n"
+    "- Merge and deduplicate findings into the final risk register.\n"
+    "- Report `Execution mode: inline`.\n"
+  )
+
+
 _DEFAULT_SECTION_RENDERERS: dict[str, object] = {
+  "## Description": render_description_section,
+  "## Specialist Scope": render_specialist_scope_section,
+  "## Inputs": render_inputs_section,
+  "## Outputs Contract": render_outputs_contract_section,
   "## Execution Mode Reporting": render_execution_mode_reporting,
   "## Telemetry Ceremony Hooks": render_telemetry_ceremony_hooks,
 }
@@ -186,8 +501,15 @@ def extract_scaffolder_owned(markdown_text: str) -> dict[str, str]:
 __all__ = [
   "ScaffoldTemplateContext",
   "extract_scaffolder_owned",
+  "infer_skill_description",
   "render_default_section",
+  "render_delegated_mode_section",
+  "render_description_section",
   "render_execution_mode_reporting",
+  "render_inline_mode_section",
+  "render_inputs_section",
+  "render_outputs_contract_section",
   "render_project_overrides",
+  "render_specialist_scope_section",
   "render_telemetry_ceremony_hooks",
 ]

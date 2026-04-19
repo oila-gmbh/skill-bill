@@ -40,17 +40,17 @@ GOVERNED_ADDON_SUPPORT_FILES: dict[str, tuple[str, ...]] = {
 }
 
 ADDON_SUPPORTING_FILE_TARGETS: dict[str, str] = {
-  f"{addon_slug}{ADDON_IMPLEMENTATION_SUFFIX}": f"skills/{stack}/addons/{addon_slug}{ADDON_IMPLEMENTATION_SUFFIX}"
+  f"{addon_slug}{ADDON_IMPLEMENTATION_SUFFIX}": f"platform-packs/{stack}/addons/{addon_slug}{ADDON_IMPLEMENTATION_SUFFIX}"
   for stack, addon_slugs in GOVERNED_STACK_ADDONS.items()
   for addon_slug in addon_slugs
 }
 ADDON_SUPPORTING_FILE_TARGETS.update({
-  f"{addon_slug}{ADDON_REVIEW_SUFFIX}": f"skills/{stack}/addons/{addon_slug}{ADDON_REVIEW_SUFFIX}"
+  f"{addon_slug}{ADDON_REVIEW_SUFFIX}": f"platform-packs/{stack}/addons/{addon_slug}{ADDON_REVIEW_SUFFIX}"
   for stack, addon_slugs in GOVERNED_STACK_ADDONS.items()
   for addon_slug in addon_slugs
 })
 ADDON_SUPPORTING_FILE_TARGETS.update({
-  file_name: f"skills/{stack}/addons/{file_name}"
+  file_name: f"platform-packs/{stack}/addons/{file_name}"
   for stack, file_names in GOVERNED_ADDON_SUPPORT_FILES.items()
   for file_name in file_names
 })
@@ -84,12 +84,8 @@ RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
     "shell-content-contract.md",
   ),
   "bill-quality-check": ("stack-routing.md", "telemetry-contract.md"),
-  "bill-agent-config-quality-check": ("stack-routing.md", "telemetry-contract.md"),
-  "bill-go-quality-check": ("stack-routing.md", "telemetry-contract.md"),
   "bill-kotlin-quality-check": ("stack-routing.md", "telemetry-contract.md"),
-  "bill-agent-config-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),
   "bill-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),
-  "bill-backend-kotlin-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),
   "bill-kmp-code-review": (
     "stack-routing.md",
     "review-orchestrator.md",
@@ -111,7 +107,6 @@ RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
     "android-compose-edge-to-edge.md",
     "android-compose-adaptive-layouts.md",
   ),
-  "bill-go-code-review": ("stack-routing.md", "review-orchestrator.md", "review-delegation.md", "telemetry-contract.md"),
   "bill-feature-implement": (
     "telemetry-contract.md",
     "android-compose-implementation.md",
@@ -134,11 +129,8 @@ REVIEW_DELEGATION_REQUIRED_SECTIONS = (
 )
 
 PORTABLE_REVIEW_SKILLS = (
-  "bill-agent-config-code-review",
   "bill-kotlin-code-review",
-  "bill-backend-kotlin-code-review",
   "bill-kmp-code-review",
-  "bill-go-code-review",
 )
 
 REVIEW_RUN_ID_PLACEHOLDER = "Review run ID: <review-run-id>"

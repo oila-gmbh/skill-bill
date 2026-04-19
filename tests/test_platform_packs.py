@@ -25,7 +25,7 @@ from skill_bill.shell_content_contract import (  # noqa: E402
 
 PLATFORM_PACKS_ROOT = ROOT / "platform-packs"
 EXPECTED_SLUGS: frozenset[str] = frozenset(
-  {"agent-config", "backend-kotlin", "go", "kmp", "kotlin"}
+  {"kmp", "kotlin"}
 )
 
 

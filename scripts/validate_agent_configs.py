@@ -54,20 +54,23 @@ SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
 SKILL_OVERRIDE_TITLE = "# Skill Overrides"
 SKILL_OVERRIDE_SECTION_PATTERN = re.compile(r"^## (bill-[a-z0-9-]+)$")
-# ALLOWED_PACKAGES is discovery-driven: "base" plus every non-hidden directory
-# under ``skills/`` and every non-hidden directory under ``platform-packs/``.
-# AC9 demands no enumerated platform names survive in the validator, so we
-# compute the set at module-import time from the live filesystem layout.
+# ALLOWED_PACKAGES is discovery-driven: the virtual ``base`` package plus every
+# non-hidden platform/package directory that already exists under ``skills/`` or
+# ``platform-packs/``.
+# Newly scaffolded pre-shell stacks live only under ``skills/<platform>/...``
+# until they are piloted, so the validator must not require a matching
+# ``platform-packs/<platform>/`` root for them.
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 def _discover_allowed_packages(root: Path) -> tuple[str, ...]:
   """Compute the set of package directory names the validator recognizes.
 
-  The rule: "base" is always allowed; every other package name is a live
-  directory under ``skills/`` or ``platform-packs/``. The validator keeps
-  this discovery-driven so adding a platform pack does not require editing
-  the validator (AC9).
+  The rule: ``base`` is always allowed as the virtual package for canonical
+  root-level skills under ``skills/bill-...``. Every other package name is a
+  live top-level platform directory under ``skills/`` or ``platform-packs/``.
+  This keeps validation aligned with the scaffolded filesystem layout and
+  avoids hard-coded legacy package lists.
   """
   discovered: set[str] = {"base"}
   for container_name in ("skills", "platform-packs"):
@@ -75,7 +78,11 @@ def _discover_allowed_packages(root: Path) -> tuple[str, ...]:
     if not container.is_dir():
       continue
     for entry in container.iterdir():
-      if not entry.is_dir() or entry.name.startswith("."):
+      if (
+        not entry.is_dir()
+        or entry.name.startswith(".")
+        or (container_name == "skills" and entry.name.startswith("bill-"))
+      ):
         continue
       discovered.add(entry.name)
   return tuple(sorted(discovered))
@@ -155,7 +162,7 @@ def main() -> int:
 
   validate_readme(
     root / "README.md",
-    skill_names,
+    skill_files,
     sorted(platform_pack_skill_files.keys()),
     issues,
   )
@@ -329,20 +336,23 @@ def validate_platform_pack_skill_file(skill_name: str, skill_file: Path, issues:
 
 
 def discover_addon_files(root: Path) -> list[Path]:
-  skills_dir = root / "skills"
-  if not skills_dir.is_dir():
-    return []
-  return sorted(
-    path
-    for path in skills_dir.rglob("*.md")
-    if ADDON_DIRECTORY_NAME in path.relative_to(skills_dir).parts
-  )
+  discovered: list[Path] = []
+  for container_name in ("skills", "platform-packs"):
+    container = root / container_name
+    if not container.is_dir():
+      continue
+    discovered.extend(
+      path
+      for path in container.rglob("*.md")
+      if ADDON_DIRECTORY_NAME in path.relative_to(container).parts
+    )
+  return sorted(discovered)
 
 
 ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
   # (skill_dir, files_to_scan_relative_to_skill_dir)
-  ("skills/base/bill-feature-implement", ("SKILL.md", "reference.md")),
-  ("skills/base/bill-feature-verify", ("SKILL.md",)),
+  ("skills/bill-feature-implement", ("SKILL.md", "reference.md")),
+  ("skills/bill-feature-verify", ("SKILL.md",)),
 )
 ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
 
@@ -462,9 +472,9 @@ def validate_runtime_supporting_files(
       skill_name == "bill-feature-implement"
       and file_name in ADDON_SUPPORTING_FILE_TARGETS
     ):
-      if file_name not in text and "matching stack-owned add-on supporting files" not in text:
+      if file_name not in text and "matching pack-owned add-on supporting files" not in text:
         issues.append(
-          f"{skill_file}: must reference local supporting file '{file_name}' or describe stack-owned add-on support-file selection"
+          f"{skill_file}: must reference local supporting file '{file_name}' or describe pack-owned add-on support-file selection"
         )
     elif file_name not in text:
       issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
@@ -589,32 +599,48 @@ def require_markdown_heading(text: str, heading: str, message: str, issues: list
 
 
 def validate_addon_file(addon_file: Path, root: Path, issues: list[str]) -> None:
-  skills_dir = root / "skills"
-  relative_path = addon_file.relative_to(skills_dir)
-  parts = relative_path.parts
+  allowed_packages = _discover_allowed_packages(root)
+  container_name = ""
+  relative_path: Path
+  if addon_file.is_relative_to(root / "platform-packs"):
+    container_name = "platform-packs"
+    relative_path = addon_file.relative_to(root / "platform-packs")
+  elif addon_file.is_relative_to(root / "skills"):
+    container_name = "skills"
+    relative_path = addon_file.relative_to(root / "skills")
+  else:
+    issues.append(f"{addon_file}: governed add-on is outside skills/ and platform-packs/")
+    return
 
+  parts = relative_path.parts
   if len(parts) != 3:
     issues.append(
-      f"{addon_file}: expected add-on path format skills/<package>/{ADDON_DIRECTORY_NAME}/<addon-file>.md, "
-      f"got skills/{relative_path}"
+      f"{addon_file}: expected add-on path format platform-packs/<package>/{ADDON_DIRECTORY_NAME}/<addon-file>.md, "
+      f"got {container_name}/{relative_path}"
     )
     return
 
   package_name, directory_name, file_name = parts
   if directory_name != ADDON_DIRECTORY_NAME:
     issues.append(
-      f"{addon_file}: governed add-ons must live under skills/<package>/{ADDON_DIRECTORY_NAME}/"
+      f"{addon_file}: governed add-ons must live under platform-packs/<package>/{ADDON_DIRECTORY_NAME}/"
     )
     return
 
-  if package_name == "base":
-    issues.append(f"{addon_file}: governed add-ons must be stack-owned, not placed under skills/base/")
+  if container_name == "skills":
+    if package_name == "base":
+      issues.append(f"{addon_file}: governed add-ons must be pack-owned, not placed under skills/base/")
+    else:
+      issues.append(
+        f"{addon_file}: governed add-ons must live under platform-packs/<package>/{ADDON_DIRECTORY_NAME}/, "
+        f"not skills/{package_name}/{ADDON_DIRECTORY_NAME}/"
+      )
     return
 
-  if package_name not in ALLOWED_PACKAGES:
+  if package_name not in allowed_packages:
     issues.append(
       f"{addon_file}: add-on package '{package_name}' is not allowed; use one of "
-      f"{', '.join(package for package in ALLOWED_PACKAGES if package != 'base')}"
+      f"{', '.join(package for package in allowed_packages if package != 'base')}"
     )
     return
 
@@ -630,17 +656,33 @@ def validate_addon_file(addon_file: Path, root: Path, issues: list[str]) -> None
 
 
 def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]) -> None:
-  skills_dir = skill_file.parents[2]
+  skills_dir = next((parent for parent in skill_file.parents if parent.name == "skills"), None)
+  if skills_dir is None:
+    issues.append(f"{skill_file}: could not resolve owning skills/ directory")
+    return
+  allowed_packages = _discover_allowed_packages(skills_dir.parent)
   relative_path = skill_file.relative_to(skills_dir)
   parts = relative_path.parts
 
-  if len(parts) != 3:
+  package_name = ""
+  directory_name = ""
+  file_name = ""
+  if len(parts) == 2:
+    directory_name, file_name = parts
+    package_name = "base"
+  elif len(parts) == 3:
+    package_name, directory_name, file_name = parts
+    if package_name == "base":
+      issues.append(
+        f"{skill_file}: canonical skills must live directly under skills/<skill>/SKILL.md, not skills/base/{directory_name}/SKILL.md"
+      )
+      return
+  else:
     issues.append(
-      f"{skill_file}: expected path format skills/<package>/<skill>/SKILL.md, got skills/{relative_path}"
+      f"{skill_file}: expected path format skills/<skill>/SKILL.md or skills/<package>/<skill>/SKILL.md, got skills/{relative_path}"
     )
     return
 
-  package_name, directory_name, file_name = parts
   if file_name != "SKILL.md":
     issues.append(f"{skill_file}: expected skill file to be named SKILL.md")
 
@@ -654,15 +696,20 @@ def validate_skill_location(skill_name: str, skill_file: Path, issues: list[str]
       f"{skill_file}: skill name '{skill_name}' must match an approved bill-* naming pattern"
     )
 
-  if package_name not in ALLOWED_PACKAGES:
+  if package_name not in allowed_packages:
     issues.append(
-      f"{skill_file}: package '{package_name}' is not allowed; use one of {', '.join(ALLOWED_PACKAGES)}"
+      f"{skill_file}: package '{package_name}' is not allowed; use one of {', '.join(allowed_packages)}"
     )
     return
 
   expected_prefixes = expected_prefixes_for_package(package_name)
   if package_name == "base":
-    if any(skill_name.startswith(prefix) for prefix in ("bill-agent-config-", "bill-kotlin-", "bill-kmp-", "bill-backend-kotlin-", "bill-go-", "bill-gradle-")):
+    platform_prefixes = tuple(
+      f"bill-{discovered_package}-"
+      for discovered_package in allowed_packages
+      if discovered_package != "base"
+    )
+    if any(skill_name.startswith(prefix) for prefix in platform_prefixes):
       issues.append(
         f"{skill_file}: base skills must use neutral names; move '{skill_name}' to the matching package"
       )
@@ -715,14 +762,16 @@ def validate_platform_skill_name(
 
 
 def base_capabilities_for_skills_dir(skills_dir: Path) -> set[str]:
-  base_dir = skills_dir / "base"
-  if not base_dir.is_dir():
-    return set()
-
   capabilities: set[str] = set()
-  for skill_dir in base_dir.iterdir():
+  for skill_dir in skills_dir.iterdir():
     if skill_dir.is_dir() and skill_dir.name.startswith("bill-"):
       capabilities.add(skill_dir.name.removeprefix("bill-"))
+
+  legacy_base_dir = skills_dir / "base"
+  if legacy_base_dir.is_dir():
+    for skill_dir in legacy_base_dir.iterdir():
+      if skill_dir.is_dir() and skill_dir.name.startswith("bill-"):
+        capabilities.add(skill_dir.name.removeprefix("bill-"))
   return capabilities
 
 
@@ -744,7 +793,7 @@ def parse_frontmatter(block: str) -> dict[str, str]:
 
 def validate_readme(
   readme_path: Path,
-  skill_names: list[str],
+  skill_files: dict[str, Path],
   platform_pack_skill_names: list[str],
   issues: list[str],
 ) -> None:
@@ -774,11 +823,16 @@ def validate_readme(
       section_count += 1
 
   documented_set = sorted(set(documented_skills))
-  actual_set = sorted(skill_names)
+  actual_set = sorted(set(skill_files) | set(platform_pack_skill_names))
   platform_pack_set = set(platform_pack_skill_names)
-  core_skill_set = sorted(set(actual_set) - platform_pack_set)
+  catalog_required_skill_set = sorted(
+    skill_name
+    for skill_name, skill_file in skill_files.items()
+    if len(skill_file.relative_to(readme_path.parent).parts) == 3
+    and skill_name not in platform_pack_set
+  )
 
-  missing_from_readme = sorted(set(core_skill_set) - set(documented_set))
+  missing_from_readme = sorted(set(catalog_required_skill_set) - set(documented_set))
   extra_in_readme = sorted(set(documented_set) - set(actual_set))
 
   if missing_from_readme:

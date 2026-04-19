@@ -88,6 +88,29 @@ declared_files:
     architecture: code-review/bill-kotlin-code-review-architecture/SKILL.md
 """
 
+_KMP_MANIFEST = """\
+platform: kmp
+contract_version: "1.0"
+display_name: KMP
+governs_addons: true
+
+routing_signals:
+  strong:
+    - "androidMain"
+  tie_breakers:
+    - "prefer KMP for multiplatform fixtures"
+  addon_signals:
+    - "android-compose"
+
+declared_code_review_areas:
+  - ui
+
+declared_files:
+  baseline: code-review/bill-kmp-code-review/SKILL.md
+  areas:
+    ui: code-review/bill-kmp-code-review-ui/SKILL.md
+"""
+
 
 def _seed_skill_file(path: Path) -> None:
   """Write a minimal six-section SKILL.md at ``path``."""
@@ -114,20 +137,26 @@ def _build_seed_repo(tmp_path: Path) -> Path:
   the main tree for correctness.
   """
   repo = tmp_path / "repo"
-  (repo / "skills" / "base").mkdir(parents=True)
+  (repo / "skills").mkdir(parents=True)
   # Seed a minimal base capability directory so the repo-level validator
   # (``validate_platform_skill_name``) can resolve pre-shell platform
-  # overrides like ``bill-go-feature-verify`` without tripping on missing
+  # overrides like ``bill-kotlin-feature-verify`` without tripping on missing
   # base capabilities.
-  (repo / "skills" / "base" / "bill-feature-verify").mkdir(parents=True)
-  (repo / "skills" / "kmp" / "addons").mkdir(parents=True)
-  (repo / "skills" / "go").mkdir(parents=True)
-  pack_root = repo / "platform-packs" / "kotlin"
-  pack_root.mkdir(parents=True)
-  (pack_root / "platform.yaml").write_text(_KOTLIN_MANIFEST, encoding="utf-8")
-  _seed_skill_file(pack_root / "code-review" / "bill-kotlin-code-review" / "SKILL.md")
+  (repo / "skills" / "bill-feature-verify").mkdir(parents=True)
+  (repo / "skills" / "kotlin").mkdir(parents=True)
+  kotlin_pack_root = repo / "platform-packs" / "kotlin"
+  kotlin_pack_root.mkdir(parents=True)
+  (kotlin_pack_root / "platform.yaml").write_text(_KOTLIN_MANIFEST, encoding="utf-8")
+  _seed_skill_file(kotlin_pack_root / "code-review" / "bill-kotlin-code-review" / "SKILL.md")
   _seed_skill_file(
-    pack_root / "code-review" / "bill-kotlin-code-review-architecture" / "SKILL.md"
+    kotlin_pack_root / "code-review" / "bill-kotlin-code-review-architecture" / "SKILL.md"
+  )
+  kmp_pack_root = repo / "platform-packs" / "kmp"
+  kmp_pack_root.mkdir(parents=True)
+  (kmp_pack_root / "platform.yaml").write_text(_KMP_MANIFEST, encoding="utf-8")
+  _seed_skill_file(kmp_pack_root / "code-review" / "bill-kmp-code-review" / "SKILL.md")
+  _seed_skill_file(
+    kmp_pack_root / "code-review" / "bill-kmp-code-review-ui" / "SKILL.md"
   )
   # No scripts/validate_agent_configs.py in the scratch repo; the scaffolder
   # skips the validator in that case. Tests that want to exercise validator
@@ -179,7 +208,7 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
   def test_horizontal(self) -> None:
     result = scaffold(self._payload(kind="horizontal", name="bill-horizontal-new"))
     self.assertEqual(result.kind, "horizontal")
-    skill_md = self.repo / "skills" / "base" / "bill-horizontal-new" / "SKILL.md"
+    skill_md = self.repo / "skills" / "bill-horizontal-new" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     body = skill_md.read_text(encoding="utf-8")
     self.assertIn("## Description", body)
@@ -252,11 +281,21 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
 
     review_skill = pack_root / "code-review" / "bill-java-code-review" / "SKILL.md"
     quality_skill = pack_root / "quality-check" / "bill-java-quality-check" / "SKILL.md"
+    feature_implement_skill = (
+      self.repo / "skills" / "java" / "bill-java-feature-implement" / "SKILL.md"
+    )
+    feature_verify_skill = (
+      self.repo / "skills" / "java" / "bill-java-feature-verify" / "SKILL.md"
+    )
     self.assertTrue(review_skill.is_file())
     self.assertTrue(quality_skill.is_file())
+    self.assertTrue(feature_implement_skill.is_file())
+    self.assertTrue(feature_verify_skill.is_file())
 
     review_body = review_skill.read_text(encoding="utf-8")
     quality_body = quality_skill.read_text(encoding="utf-8")
+    feature_implement_body = feature_implement_skill.read_text(encoding="utf-8")
+    feature_verify_body = feature_verify_skill.read_text(encoding="utf-8")
     self.assertIn("## Additional Resources", review_body)
     self.assertIn("[stack-routing.md](stack-routing.md)", review_body)
     self.assertIn("[review-orchestrator.md](review-orchestrator.md)", review_body)
@@ -269,8 +308,13 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertIn("[telemetry-contract.md](telemetry-contract.md)", quality_body)
     self.assertNotIn("## Specialist Scope", quality_body)
     self.assertNotIn("## Outputs Contract", quality_body)
+    self.assertIn("## Project Overrides", feature_implement_body)
+    self.assertIn("## Project Overrides", feature_verify_body)
     self.assertTrue(
       any("Applied built-in platform preset for 'java'." in note for note in result.notes)
+    )
+    self.assertTrue(
+      any("Thin feature-implement and feature-verify stubs" in note for note in result.notes)
     )
 
     self.assertEqual(
@@ -320,7 +364,7 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertTrue(
       any("Full skeleton scaffolded with" in note for note in result.notes)
     )
-    expected_created_files = 3 + len(scaffold_module.APPROVED_CODE_REVIEW_AREAS)
+    expected_created_files = 5 + len(scaffold_module.APPROVED_CODE_REVIEW_AREAS)
     self.assertEqual(len(result.created_files), expected_created_files)
 
   def test_add_on_flat(self) -> None:
@@ -328,8 +372,189 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       self._payload(kind="add-on", name="android-new-addon", platform="kmp")
     )
     self.assertEqual(result.kind, "add-on")
-    addon_md = self.repo / "skills" / "kmp" / "addons" / "android-new-addon.md"
+    addon_md = self.repo / "platform-packs" / "kmp" / "addons" / "android-new-addon.md"
     self.assertTrue(addon_md.is_file())
+
+  def test_description_section_inferred_no_todo(self) -> None:
+    """Default `## Description` bodies must be seeded from family/platform/area
+    rather than left as `TODO:` markers. Acceptance: the H2 body renders
+    plain-English text every kind and never contains a ``TODO`` placeholder.
+    """
+    code_review_area = scaffold(
+      self._payload(
+        kind="code-review-area",
+        name="bill-kotlin-code-review-performance",
+        platform="kotlin",
+        area="performance",
+      )
+    )
+    area_body = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review-performance"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertIn("## Description", area_body)
+    self.assertNotIn("TODO: author the description", area_body)
+    self.assertIn("Kotlin", area_body)
+    self.assertIn("performance risks", area_body)
+    self.assertEqual(code_review_area.kind, "code-review-area")
+
+    scaffold(
+      self._payload(
+        kind="platform-override-piloted",
+        name="bill-kotlin-feature-implement",
+        platform="kotlin",
+        family="feature-implement",
+      )
+    )
+    feature_body = (
+      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-implement" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("TODO: author the description", feature_body)
+    self.assertIn("Kotlin", feature_body)
+
+    scaffold(self._payload(kind="horizontal", name="bill-horizontal-new"))
+    horizontal_body = (
+      self.repo / "skills" / "bill-horizontal-new" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("TODO: author the description", horizontal_body)
+
+  def test_code_review_baseline_has_dual_mode_sections(self) -> None:
+    """A baseline code-review skill must ship with ``## Delegated Mode`` and
+    ``## Inline Mode`` seeds so the skill works regardless of whether the
+    pack has declared any specialists yet. Area specialists, quality-check,
+    and feature-implement/verify skills MUST NOT get these extra sections.
+    """
+    scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        skeleton_mode="starter",
+      )
+    )
+    baseline_body = (
+      self.repo
+      / "platform-packs"
+      / "java"
+      / "code-review"
+      / "bill-java-code-review"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertIn("## Delegated Mode", baseline_body)
+    self.assertIn("## Inline Mode", baseline_body)
+    self.assertIn("declared_code_review_areas", baseline_body)
+    # Specialist Scope must now mention both modes.
+    self.assertIn("Delegated", baseline_body)
+    self.assertIn("Inline", baseline_body)
+    # Dual-mode sections must sit between Outputs Contract and Execution
+    # Mode Reporting so the runtime-mode narrative flows naturally.
+    outputs_index = baseline_body.index("## Outputs Contract")
+    delegated_index = baseline_body.index("## Delegated Mode")
+    inline_index = baseline_body.index("## Inline Mode")
+    exec_mode_index = baseline_body.index("## Execution Mode Reporting")
+    self.assertLess(outputs_index, delegated_index)
+    self.assertLess(delegated_index, inline_index)
+    self.assertLess(inline_index, exec_mode_index)
+
+    quality_body = (
+      self.repo
+      / "platform-packs"
+      / "java"
+      / "quality-check"
+      / "bill-java-quality-check"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("## Delegated Mode", quality_body)
+    self.assertNotIn("## Inline Mode", quality_body)
+
+    scaffold(
+      self._payload(
+        kind="code-review-area",
+        name="bill-java-code-review-performance",
+        platform="java",
+        area="performance",
+      )
+    )
+    area_body = (
+      self.repo
+      / "platform-packs"
+      / "java"
+      / "code-review"
+      / "bill-java-code-review-performance"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("## Delegated Mode", area_body)
+    self.assertNotIn("## Inline Mode", area_body)
+
+  def test_code_review_sections_seeded_no_todo(self) -> None:
+    """`## Specialist Scope`, `## Inputs`, and `## Outputs Contract` must ship
+    with family/area-aware seeds instead of TODO placeholders for code-review
+    and feature families. Quality-check's ``## Execution Steps`` /
+    ``## Fix Strategy`` intentionally stay as TODOs because the platform
+    commands must be hand-authored.
+    """
+    scaffold(
+      self._payload(
+        kind="code-review-area",
+        name="bill-kotlin-code-review-security",
+        platform="kotlin",
+        area="security",
+      )
+    )
+    area_body = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review-security"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("TODO: author the specialist scope", area_body)
+    self.assertNotIn("TODO: author the inputs", area_body)
+    self.assertNotIn("TODO: author the outputs contract", area_body)
+    self.assertIn("secrets handling", area_body)
+    self.assertIn("stack-routing.md", area_body)
+    self.assertIn("Findings scoped to", area_body)
+
+    scaffold(
+      self._payload(
+        kind="platform-override-piloted",
+        name="bill-kotlin-feature-verify",
+        platform="kotlin",
+        family="feature-verify",
+      )
+    )
+    verify_body = (
+      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("TODO: author the specialist scope", verify_body)
+    self.assertNotIn("TODO: author the inputs", verify_body)
+    self.assertNotIn("TODO: author the outputs contract", verify_body)
+    self.assertIn("acceptance criteria", verify_body)
+    self.assertIn("Pass/fail verdict", verify_body)
+
+    quality_result = scaffold(
+      self._payload(
+        kind="platform-override-piloted",
+        name="bill-kmp-quality-check",
+        platform="kmp",
+        family="quality-check",
+      )
+    )
+    self.assertEqual(quality_result.kind, "platform-override-piloted")
+    quality_body = (
+      self.repo
+      / "platform-packs"
+      / "kmp"
+      / "quality-check"
+      / "bill-kmp-quality-check"
+      / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    self.assertIn("TODO: author the execution steps", quality_body)
+    self.assertIn("TODO: author the fix strategy", quality_body)
 
   def test_pre_shell_family_emits_interim_note(self) -> None:
     # SKILL-16 promoted quality-check onto the shell+content contract, so the
@@ -339,13 +564,13 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     result = scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-go-feature-implement",
-        platform="go",
+        name="bill-kotlin-feature-implement",
+        platform="kotlin",
         family="feature-implement",
       )
     )
     self.assertEqual(result.kind, "platform-override-piloted")
-    skill_md = self.repo / "skills" / "go" / "bill-go-feature-implement" / "SKILL.md"
+    skill_md = self.repo / "skills" / "kotlin" / "bill-kotlin-feature-implement" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     self.assertTrue(any("will move when" in note for note in result.notes))
     # F-001: pre-shell platform overrides land under ``skills/`` and must
@@ -435,9 +660,7 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     validator binary, to keep the test hermetic.
     """
     scaffold(self._payload(kind="horizontal", name="bill-horizontal-real-validate"))
-    skill_md = (
-      self.repo / "skills" / "base" / "bill-horizontal-real-validate" / "SKILL.md"
-    )
+    skill_md = self.repo / "skills" / "bill-horizontal-real-validate" / "SKILL.md"
 
     validate_skill_file = _load_validate_skill_file()
     issues: list[str] = []
@@ -449,18 +672,18 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-go-feature-verify",
-        platform="go",
+        name="bill-kotlin-feature-verify",
+        platform="kotlin",
         family="feature-verify",
       )
     )
     skill_md = (
-      self.repo / "skills" / "go" / "bill-go-feature-verify" / "SKILL.md"
+      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "SKILL.md"
     )
 
     validate_skill_file = _load_validate_skill_file()
     issues: list[str] = []
-    validate_skill_file("bill-go-feature-verify", skill_md, issues)
+    validate_skill_file("bill-kotlin-feature-verify", skill_md, issues)
     self.assertEqual(issues, [])
 
 
@@ -621,7 +844,7 @@ class ScaffoldRollbackTest(unittest.TestCase):
     post_snapshot = _snapshot_tree(self.repo)
     self.assertEqual(pre_snapshot, post_snapshot)
     # The skill directory should also be gone after rollback.
-    self.assertFalse((self.repo / "skills" / "base" / skill_name).exists())
+    self.assertFalse((self.repo / "skills" / skill_name).exists())
 
   def test_rollback_on_symlink_creation_failure(self) -> None:
     pre_snapshot = _snapshot_tree(self.repo)
@@ -688,7 +911,7 @@ class ScaffoldRollbackTest(unittest.TestCase):
 
     post_snapshot = _snapshot_tree(self.repo)
     self.assertEqual(pre_snapshot, post_snapshot)
-    self.assertFalse((self.repo / "skills" / "base" / skill_name).exists())
+    self.assertFalse((self.repo / "skills" / skill_name).exists())
 
 
 class ScaffolderOwnedSectionsIdenticalTest(unittest.TestCase):
@@ -778,6 +1001,56 @@ class NewSkillCliErrorMappingTest(unittest.TestCase):
     )
     code = new_skill_command(args)
     self.assertEqual(code, 2)
+
+
+class NewSkillInteractivePromptTest(unittest.TestCase):
+  def test_platform_pack_prompt_maps_baseline_only_to_starter(self) -> None:
+    from skill_bill.cli import _prompt_new_skill_interactively
+
+    with mock.patch(
+      "builtins.input",
+      side_effect=[
+        "1",      # new platform skill set
+        "java",   # platform
+        "n",      # include specialists?
+        "",       # display name
+        "",       # description
+        "n",      # governs add-ons?
+      ],
+    ):
+      payload = _prompt_new_skill_interactively()
+
+    self.assertEqual(payload["kind"], "platform-pack")
+    self.assertEqual(payload["platform"], "java")
+    self.assertEqual(payload["skeleton_mode"], "starter")
+    self.assertFalse(payload["governs_addons"])
+
+  def test_platform_pack_prompt_maps_specialists_to_full(self) -> None:
+    from skill_bill.cli import _prompt_new_skill_interactively
+
+    with mock.patch(
+      "builtins.input",
+      side_effect=[
+        "1",         # new platform skill set
+        "python",    # platform
+        "y",         # include specialists?
+        "Python",    # display name
+        "",          # description
+        "pyproject.toml,setup.py",  # strong signals
+        "",          # tie-breakers
+        "y",         # governs add-ons?
+      ],
+    ):
+      payload = _prompt_new_skill_interactively()
+
+    self.assertEqual(payload["kind"], "platform-pack")
+    self.assertEqual(payload["platform"], "python")
+    self.assertEqual(payload["skeleton_mode"], "full")
+    self.assertEqual(
+      payload["routing_signals"]["strong"],
+      ["pyproject.toml", "setup.py"],
+    )
+    self.assertTrue(payload["governs_addons"])
 
 
 class AgentDetectionTest(unittest.TestCase):

@@ -3,7 +3,7 @@
 End-to-end contract checks for the shell + content pilot. Exercises every
 major acceptance-criterion claim with one assertion per path:
 
-- the shell loads all five shipped packs and discovery returns exactly those
+- the shell loads all six shipped packs and discovery returns exactly those
   slugs
 - every loud-fail rejection surfaces the specific named exception
 - the routed-skill contract is preserved
@@ -39,7 +39,7 @@ from skill_bill.shell_content_contract import (  # noqa: E402
 PLATFORM_PACKS_ROOT = ROOT / "platform-packs"
 FIXTURES_ROOT = ROOT / "tests" / "fixtures" / "shell_content_contract"
 EXPECTED_SLUGS: frozenset[str] = frozenset(
-  {"agent-config", "backend-kotlin", "go", "kmp", "kotlin"}
+  {"kmp", "kotlin"}
 )
 
 HORIZONTAL_SKILLS: tuple[str, ...] = (
@@ -64,10 +64,10 @@ class ShellPilotIntegrationTest(unittest.TestCase):
     slugs = {pack.slug for pack in packs}
     self.assertEqual(slugs, set(EXPECTED_SLUGS))
 
-  def test_discovery_returns_exactly_five_slugs(self) -> None:
+  def test_discovery_returns_exactly_two_slugs(self) -> None:
     # AC 9 — manifest-driven discovery, no hardcoded enumeration.
     packs = discover_platform_packs(PLATFORM_PACKS_ROOT)
-    self.assertEqual(len(packs), 5)
+    self.assertEqual(len(packs), 2)
 
   def test_routed_skill_contract_preserved(self) -> None:
     # AC 13 — existing references to platform skill names must still work.
@@ -100,7 +100,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
   # --- Shell is platform-independent (AC 1, 2, 3) -----------------------
 
   def test_shell_declares_contract_and_sidecar(self) -> None:
-    shell_path = ROOT / "skills" / "base" / "bill-code-review" / "SKILL.md"
+    shell_path = ROOT / "skills" / "bill-code-review" / "SKILL.md"
     text = shell_path.read_text(encoding="utf-8")
     # The shell references the shell+content contract sidecar.
     self.assertIn("[shell-content-contract.md](shell-content-contract.md)", text)
@@ -115,7 +115,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
       )
 
   def test_shell_content_contract_sidecar_symlink_exists(self) -> None:
-    sidecar = ROOT / "skills" / "base" / "bill-code-review" / "shell-content-contract.md"
+    sidecar = ROOT / "skills" / "bill-code-review" / "shell-content-contract.md"
     self.assertTrue(sidecar.exists())
     self.assertTrue(sidecar.is_symlink())
 
@@ -144,8 +144,8 @@ class ShellPilotIntegrationTest(unittest.TestCase):
       # Match any markdown heading (##, ###, ####, ...) whose line body
       # contains the slug as a standalone token. Word-boundary-style
       # matching prevents false positives like "Algorithm" matching the
-      # "go" slug, while still catching accidental "### Kotlin routing"
-      # or "## backend-kotlin" headings.
+      # short slugs, while still catching accidental "### Kotlin routing"
+      # or "## kmp" headings.
       escaped = re.escape(slug)
       forbidden_heading = re.compile(
         rf"(?mi)^#{{2,6}}\s+.*(?<![A-Za-z0-9-]){escaped}(?![A-Za-z0-9-]).*$",
@@ -187,7 +187,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
         re.compile(r"current shell contract version is \*\*`([^`]+)`\*\*"),
       ),
       (
-        "skills/base/bill-code-review/SKILL.md",
+        "skills/bill-code-review/SKILL.md",
         re.compile(r"shell contract version \*\*`([^`]+)`\*\*"),
       ),
     )
@@ -217,10 +217,10 @@ class ShellPilotIntegrationTest(unittest.TestCase):
 
   # --- Horizontal skills untouched (AC 14) -------------------------------
 
-  def test_horizontal_skills_remain_unmodified_in_skills_base(self) -> None:
+  def test_horizontal_skills_remain_unmodified_in_skills_root(self) -> None:
     for skill in HORIZONTAL_SKILLS:
       with self.subTest(skill=skill):
-        skill_path = ROOT / "skills" / "base" / skill / "SKILL.md"
+        skill_path = ROOT / "skills" / skill / "SKILL.md"
         self.assertTrue(skill_path.is_file(), f"{skill} went missing")
 
 

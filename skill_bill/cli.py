@@ -467,37 +467,82 @@ def new_skill_command(args: argparse.Namespace) -> int:
   return 0
 
 
+def _prompt_nonempty(prompt: str) -> str:
+  while True:
+    value = input(prompt).strip()
+    if value:
+      return value
+    print("A value is required.")
+
+
+def _prompt_yes_no(prompt: str, *, default: bool = False) -> bool:
+  suffix = " [Y/n]: " if default else " [y/N]: "
+  while True:
+    raw = input(f"{prompt}{suffix}").strip().lower()
+    if not raw:
+      return default
+    if raw in {"y", "yes", "1", "true"}:
+      return True
+    if raw in {"n", "no", "0", "false"}:
+      return False
+    print("Enter yes or no.")
+
+
 def _prompt_new_skill_interactively() -> dict:
   """Collect the interactive payload without an LLM.
 
-  Mirrors the decision tree in ``skills/base/bill-skill-scaffold/SKILL.md``
-  so operators can bypass the LLM wrapper when they know exactly what they
-  want to create.
+  The CLI should still feel usable when no agent is involved, so it asks in
+  plain language first and maps the answers onto the internal scaffold kind.
   """
   from skill_bill.scaffold import platform_pack_preset
 
-  kind = input(
-    "Kind (horizontal/platform-override-piloted/platform-pack/code-review-area/add-on): "
-  ).strip()
+  print("What do you want to create?")
+  print("1. New platform skill set")
+  print("2. Cross-platform skill")
+  print("3. Platform-specific override")
+  print("4. Code-review specialist")
+  print("5. Platform add-on")
+
+  kind_choice = _prompt_nonempty("Choose 1-5: ")
+  kind_map = {
+    "1": "platform-pack",
+    "2": "horizontal",
+    "3": "platform-override-piloted",
+    "4": "code-review-area",
+    "5": "add-on",
+    "platform-pack": "platform-pack",
+    "horizontal": "horizontal",
+    "platform-override-piloted": "platform-override-piloted",
+    "code-review-area": "code-review-area",
+    "add-on": "add-on",
+  }
+  kind = kind_map.get(kind_choice.strip().lower(), kind_choice.strip())
+
   payload: dict = {
     "scaffold_payload_version": "1.0",
     "kind": kind,
   }
   if kind == "platform-pack":
-    platform = input("Platform slug: ").strip()
+    platform = _prompt_nonempty("New platform slug (example: java): ")
     payload["platform"] = platform
-    skeleton_mode = input("Skeleton mode (starter/full) [starter]: ").strip()
-    if skeleton_mode:
-      payload["skeleton_mode"] = skeleton_mode
+    include_specialists = _prompt_yes_no(
+      "Include code-review specialist stubs now?",
+      default=False,
+    )
+    payload["skeleton_mode"] = "full" if include_specialists else "starter"
     display_name = input("Display name (blank to derive from slug): ").strip()
     if display_name:
       payload["display_name"] = display_name
-    description = input("Baseline description (optional): ").strip()
+    description = input(
+      "Baseline review description (blank for default text): "
+    ).strip()
     if description:
       payload["description"] = description
     preset = platform_pack_preset(platform)
     if preset is None:
-      strong_signals = input("Strong routing signals (comma-separated): ").strip()
+      strong_signals = _prompt_nonempty(
+        "Strong routing signals (comma-separated): "
+      )
       payload["routing_signals"] = {
         "strong": [item.strip() for item in strong_signals.split(",") if item.strip()],
         "tie_breakers": [],
@@ -513,25 +558,55 @@ def _prompt_new_skill_interactively() -> dict:
         f"Using built-in routing preset for '{platform}' "
         f"({', '.join(preset['routing_signals']['strong'])})."
       )
-    governs_addons = input("Governs add-ons? (y/N): ").strip().lower()
-    payload["governs_addons"] = governs_addons in {"y", "yes", "1", "true"}
+    payload["governs_addons"] = _prompt_yes_no(
+      "Should this platform pack govern add-ons?",
+      default=False,
+    )
     return payload
 
-  name = input("Skill name (blank to derive canonical name): ").strip()
-  if name:
-    payload["name"] = name
-  platform = input("Platform slug (blank for horizontal): ").strip()
-  if platform:
-    payload["platform"] = platform
-  area = input("Area slug (blank unless code-review-area): ").strip()
-  if area:
-    payload["area"] = area
+  if kind == "horizontal":
+    payload["name"] = _prompt_nonempty("Skill name (bill-...): ")
+    description = input("One-line description (optional): ").strip()
+    if description:
+      payload["description"] = description
+    return payload
+
   if kind == "platform-override-piloted":
-    family = input(
-      "Family (code-review/quality-check/feature-implement/feature-verify): "
-    ).strip()
-    if family:
-      payload["family"] = family
+    platform = _prompt_nonempty("Existing platform slug: ")
+    payload["platform"] = platform
+    family = _prompt_nonempty(
+      "Family (code-review / quality-check / feature-implement / feature-verify): "
+    )
+    payload["family"] = family
+    name = input("Skill name (blank to derive canonical name): ").strip()
+    if name:
+      payload["name"] = name
+    description = input("One-line description (optional): ").strip()
+    if description:
+      payload["description"] = description
+    return payload
+
+  if kind == "code-review-area":
+    payload["platform"] = _prompt_nonempty("Existing platform slug: ")
+    payload["area"] = _prompt_nonempty(
+      "Area (architecture / performance / platform-correctness / security / testing / api-contracts / persistence / reliability / ui / ux-accessibility): "
+    )
+    name = input("Skill name (blank to derive canonical name): ").strip()
+    if name:
+      payload["name"] = name
+    description = input("One-line description (optional): ").strip()
+    if description:
+      payload["description"] = description
+    return payload
+
+  if kind == "add-on":
+    payload["platform"] = _prompt_nonempty("Existing platform slug: ")
+    payload["name"] = _prompt_nonempty("Add-on slug (no bill- prefix): ")
+    description = input("One-line description (optional): ").strip()
+    if description:
+      payload["description"] = description
+    return payload
+
   return payload
 
 

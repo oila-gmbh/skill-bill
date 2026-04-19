@@ -56,10 +56,10 @@ Skill Bill is succeeding when most of the following are true:
 
 ## Recent milestones
 
-- **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/base/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
+- **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
 - **SKILL-15 (in progress):** New-skill scaffolder + auto-installer. Turns the shell+content contract into a one-shot authoring flow so first-time authors — including forks — succeed without hand-wiring directories, sidecars, and manifests. Treated as a core product feature, not tooling; external authoring is a success metric the project needs to validate.
 - **SKILL-14 follow-up:** Apply the same shell + content split to `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` so every stable command benefits from the same governance.
-- **Upcoming — examples extraction:** Separate framework from reference packs. Today both live in one repo, which makes the framework look like the skills and forces every fork to inherit Kotlin/KMP/Go packs as if they were core. A dedicated `skill-bill-examples` repo (or equivalent separation) is the defining architectural move that clarifies what is adopted vs. what is forked.
+- **Upcoming — examples extraction:** Separate framework from reference packs even more aggressively. The current repo now keeps only the Kotlin and KMP first-party references, but the long-term architectural move is still to make example packs fully separable from the governance system so adoption and forking stay distinct.
 
 ## Current position
 

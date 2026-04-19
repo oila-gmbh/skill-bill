@@ -1,6 +1,6 @@
 ---
 name: bill-kotlin-code-review
-description: Use when conducting a thorough Kotlin PR code review across shared or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP and backend/server reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
+description: Use when conducting a thorough Kotlin PR code review across shared, backend/server, or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing, and add backend-focused specialists for API contracts, persistence, and reliability when server signals are present. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
 ---
 
 # Adaptive Kotlin PR Review
@@ -50,7 +50,6 @@ Before delegating specialist review passes, read only your current runtime's sec
 Classify the review as one of:
 - `kotlin`
 - `kmp-baseline`
-- `backend-kotlin-baseline`
 
 ### Additional Backend/Server Signals
 
@@ -64,9 +63,8 @@ Classify the review as one of:
 ### Decision Rules
 
 - If this skill is invoked from `bill-kmp-code-review`, accept Android/KMP scope and classify it as `kmp-baseline`. In that mode, review only shared Kotlin concerns and let `bill-kmp-code-review` add mobile-specific specialists.
-- If this skill is invoked from `bill-backend-kotlin-code-review`, accept backend/server scope and classify it as `backend-kotlin-baseline`. In that mode, review only shared Kotlin concerns and let `bill-backend-kotlin-code-review` add backend-specific specialists.
 - If strong Android/KMP markers are present and this skill is invoked standalone, clearly say that `bill-kmp-code-review` is required for full Android/KMP coverage. Continue only if the caller explicitly wants the baseline Kotlin layer.
-- If backend/server signals clearly dominate and this skill is invoked standalone, delegate to `bill-backend-kotlin-code-review` and stop instead of pretending this baseline layer is the full backend review.
+- Backend/server markers stay on the `kotlin` route. Select backend-focused Kotlin specialists for API contracts, persistence, and reliability when backend/server signals are present.
 - Otherwise use the `kotlin` route.
 
 ---
@@ -81,7 +79,6 @@ Architecture review is relevant for every non-trivial change.
 
 - `kotlin`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
 - `kmp-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
-- `backend-kotlin-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
 
 ### Step 3: Analyze the diff and select additional specialist reviews
 
@@ -91,13 +88,16 @@ Architecture review is relevant for every non-trivial change.
 | Auth, tokens, keys, passwords, encryption, HTTP clients, interceptors, sensitive data | `bill-kotlin-code-review-security` |
 | Heavy computation, blocking I/O, retry/polling loops, bulk data processing, redundant I/O | `bill-kotlin-code-review-performance` |
 | Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-kotlin-code-review-testing` |
+| Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `bill-kotlin-code-review-api-contracts` |
+| Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-kotlin-code-review-persistence` |
+| Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-kotlin-code-review-reliability` |
 
 ### Step 4: Apply minimum
 
 - Minimum 2 agents (architecture + at least one other)
 - If no additional triggers match, include `bill-kotlin-code-review-platform-correctness` as the default second specialist review
-- Maximum 5 agents
-- Do not run KMP-only specialists or backend-only specialists from this skill; leave those to the platform-specific override that owns them
+- Maximum 8 agents so backend-heavy Kotlin diffs can include the restored server specialists without dropping shared Kotlin coverage
+- Do not run KMP-only specialists from this skill; leave those to the platform-specific override that owns them
 
 ### Step 5: Choose execution mode
 
@@ -190,6 +190,39 @@ Summary, Risk Register with findings of the form
 `- [F-###] <Severity> | <Confidence> | <file:line> | <description>`,
 Action Items, and Verdict (`approve`, `approve-with-changes`, or
 `request-changes`). The output layer follows the shell's structured format.
+
+## Delegated Mode
+
+Requires the owning pack's `declared_code_review_areas` list to be non-empty.
+
+Applies when the diff is large, the risk profile is high, multiple areas are
+meaningfully involved, or the safest choice is unclear.
+
+- Select specialists using the logic in the Dynamic Specialist Selection section.
+- Launch one delegated subagent per selected specialist via
+  [review-delegation.md](review-delegation.md).
+- Pass each subagent its scoped file list, applicable active learnings, and the
+  shared specialist contract.
+- Aggregate specialist findings into the final risk register.
+- Report `Execution mode: delegated`.
+
+## Inline Mode
+
+Applies in either of these cases:
+
+- **Specialists declared, small and low-risk scope** — run each selected
+  specialist review pass sequentially in the current thread, read the specialist
+  skill file as the primary rubric, keep findings attributed before merging.
+- **No specialists declared** — review the Kotlin diff directly here. Cover
+  architecture, correctness, security, performance, and testing concerns in one
+  pass.
+
+Common to both:
+
+- Apply the shared specialist contract in
+  [review-orchestrator.md](review-orchestrator.md).
+- Merge and deduplicate findings into the final risk register.
+- Report `Execution mode: inline`.
 
 ## Execution Mode Reporting
 Report `Execution mode: inline` or `Execution mode: delegated` explicitly,
