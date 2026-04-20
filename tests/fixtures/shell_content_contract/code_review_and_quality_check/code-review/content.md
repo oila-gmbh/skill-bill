@@ -1,3 +1,3 @@
-# Fixture content
+# code_review_and_quality_check-code-review-architecture Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.

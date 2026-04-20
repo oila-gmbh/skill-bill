@@ -1,3 +1,7 @@
+# Architecture Review Specialist
+
+Review only high-signal architectural issues.
+
 ## Focus
 - Layer boundaries and dependency direction
 - Module ownership and source-of-truth consistency
@@ -13,7 +17,6 @@
 ## Applicability
 
 Use this specialist for shared Kotlin architectural concerns across libraries, app layers, and backend services. Favor findings that remain true regardless of runtime platform; let route-specific specialists own UI-framework concerns and backend transport or persistence-only details.
-
 ## Project-Specific Rules
 
 ### Shared Kotlin Architecture
@@ -28,8 +31,3 @@ Use this specialist for shared Kotlin architectural concerns across libraries, a
 - DI scopes must match object lifetime; avoid singleton or app-wide objects quietly owning request, screen, or task-local state
 - Background/async entry points should reuse the same business services as synchronous entry points instead of duplicating workflow logic
 - Avoid `kotlin.Result` and `Any` in core architecture contracts unless the project explicitly standardizes on them
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include a minimal, concrete fix.

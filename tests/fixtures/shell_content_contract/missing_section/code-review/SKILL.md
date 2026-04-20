@@ -1,26 +1,16 @@
 ---
-name: missing_section-code-review
+name: code-review
 description: Fixture content missing a required H2 section.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Missing Section Baseline
+## Descriptor
 
-## Description
-Fixture.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `missing_section` (missing_section)
+Description: Use when reviewing missing_section changes across code-review specialists.
 
-## Specialist Scope
-Fixture.
-
-## Inputs
-Fixture.
-
-## Outputs Contract
-Fixture.
-
-## Execution Mode Reporting
-Fixture.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+

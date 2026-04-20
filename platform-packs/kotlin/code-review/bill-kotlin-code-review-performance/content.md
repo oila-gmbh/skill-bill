@@ -1,3 +1,7 @@
+# Performance Review Specialist
+
+Review only high-impact performance issues.
+
 ## Focus
 - Main-thread or request-thread blocking
 - Expensive or repeated work in hot paths
@@ -19,7 +23,6 @@
 ## Applicability
 
 Use this specialist for shared Kotlin performance risks across libraries, app layers, and backend services. Favor findings that would matter regardless of platform; leave UI-framework-specific or backend-transport-specific concerns to route-specific specialists.
-
 ## Project-Specific Rules
 
 ### Shared Kotlin Performance
@@ -33,9 +36,4 @@ Use this specialist for shared Kotlin performance risks across libraries, app la
 - Large batch processing must avoid unbounded memory growth
 - Watch for duplicate serialization, repeated auth lookups, or repeated config parsing inside hot paths
 - Flag cache stampede or thundering-herd patterns only when they can realistically spike load or latency
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include an expected impact statement (latency/memory/battery/startup/throughput) per finding.
-- Include a minimal, concrete fix.
+- In findings, state the expected production impact such as latency, memory pressure, startup cost, throughput loss, or battery drain.

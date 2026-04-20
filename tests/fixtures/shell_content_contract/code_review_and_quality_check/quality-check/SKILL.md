@@ -1,26 +1,19 @@
 ---
-name: code_review_and_quality_check-quality-check
+name: quality-check
 description: Fixture quality-check content.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Fixture Quality Check
+## Descriptor
 
-## Description
-Fixture description.
+Governed skill: `quality-check`
+Family: `quality-check`
+Platform pack: `code_review_and_quality_check` (Code Review And Quality Check Fixture)
+Description: Use when validating Code Review And Quality Check Fixture changes with the shared quality-check contract.
 
-## Execution Steps
-Fixture execution steps.
-
-## Fix Strategy
-Fixture fix strategy.
-
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

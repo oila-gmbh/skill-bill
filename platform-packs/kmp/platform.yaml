@@ -1,7 +1,6 @@
 platform: kmp
 contract_version: "1.1"
 display_name: KMP
-governs_addons: true
 
 routing_signals:
   strong:
@@ -17,12 +16,6 @@ routing_signals:
     - "If KMP or Android markers are strong, prefer this pack over generic Kotlin."
     - "Treat Android-only scope as KMP."
     - "If mixed with generic Kotlin, prefer this pack because it layers the Kotlin baseline internally."
-  addon_signals:
-    - "android-compose"
-    - "android-navigation"
-    - "android-interop"
-    - "android-design-system"
-    - "android-r8"
 
 declared_code_review_areas:
   - ui
@@ -33,3 +26,9 @@ declared_files:
   areas:
     ui: code-review/bill-kmp-code-review-ui/SKILL.md
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/SKILL.md
+
+area_metadata:
+  ui:
+    focus: "UI correctness and framework usage"
+  ux-accessibility:
+    focus: "UX correctness and accessibility"

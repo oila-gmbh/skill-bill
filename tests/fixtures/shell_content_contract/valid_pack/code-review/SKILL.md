@@ -1,29 +1,19 @@
 ---
-name: valid_pack-code-review
+name: code-review
 description: Fixture baseline pack content used for shell contract coverage.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Valid Pack Baseline
+## Descriptor
 
-## Description
-Fixture baseline content.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `valid_pack` (Valid Fixture Pack)
+Description: Use when reviewing Valid Fixture Pack changes across code-review specialists.
 
-## Specialist Scope
-Fixture specialist scope.
-
-## Inputs
-Fixture inputs.
-
-## Outputs Contract
-Fixture outputs contract.
-
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

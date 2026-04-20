@@ -1,3 +1,7 @@
+# Backend Persistence Review Specialist
+
+Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
+
 ## Focus
 - Transaction boundaries and atomicity
 - Query correctness and tenant/filter scoping
@@ -12,7 +16,6 @@
 ## Applicability
 
 Use this specialist for backend/server persistence code routed through the built-in Kotlin pack: repositories, DAOs, SQL, migrations, jOOQ, Exposed, JDBC, Hibernate/JPA, R2DBC, or similar layers.
-
 ## Project-Specific Rules
 
 - Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
@@ -24,9 +27,4 @@ Use this specialist for backend/server persistence code routed through the built
 - Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
 - Do not hold persistence transactions open while waiting on remote I/O
 - Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include the data-loss or consistency consequence for each Major/Blocker.
-- Include a minimal, concrete fix.
+- For Major or Blocker findings, explain the data-loss, stale-write, or consistency consequence explicitly.

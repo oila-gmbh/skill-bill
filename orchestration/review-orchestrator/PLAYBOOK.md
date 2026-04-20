@@ -16,6 +16,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - Flag newly introduced deprecated APIs or patterns when a supported alternative exists, or when deprecated usage is broad and unjustified
 - Ignore style-only nits, formatting preferences, and naming bikeshedding
 - Evidence is mandatory: include `file:line` and a short description
+- Include the user-visible or externally observable consequence for each finding
 - Severity: `Blocker | Major | Minor`
 - Confidence: `High | Medium | Low`
 - Keep each specialist review pass to at most 7 findings
@@ -60,6 +61,11 @@ Do not reference this repo-relative path directly from installable skills — us
 - If a specialist review pass fails or returns no output, note it in the summary and continue with available results when the parent skill contract permits it
 - When multiple review passes produce overlapping findings, deduplicate by root cause and keep the highest severity/confidence version
 - Prioritize final findings as `Blocker > Major > Minor`, then by blast radius
+
+## Shared Caller Integration Notes
+
+- If a review is invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and the review is being run standalone.
 
 ## Shared Report Structure
 

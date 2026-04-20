@@ -1,3 +1,7 @@
+# Testing Review Specialist
+
+Review only test gaps that create real regression risk.
+
 ## Focus
 - Missing tests for changed behavior and failure paths
 - Brittle/flaky test patterns and false-confidence assertions
@@ -13,7 +17,6 @@
 ## Applicability
 
 Use this specialist for shared Kotlin test-risk concerns across libraries, app layers, and backend services. Favor findings about regression protection, contract coverage, and deterministic behavior that remain valid regardless of platform.
-
 ## Project-Specific Rules
 
 ### Shared Kotlin Testing
@@ -37,10 +40,6 @@ Use this specialist for shared Kotlin test-risk concerns across libraries, app l
 - Retry, timeout, scheduling, and other time-sensitive logic needs deterministic tests that control time and replay
 - Prefer real serializers/request objects at owned boundaries; mock downstream systems, not the contract itself
 - Verify negative-path coverage for malformed input, forbidden access, downstream failures, retries, and duplicate delivery where relevant
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include a minimal test plan for top uncovered risks.
+- Include a minimal test plan for the highest uncovered risks.
 - Report weak or useless tests only when they materially reduce regression confidence.
-- A minimal, concrete fix may be to rewrite or delete the test and replace it with a behavior-focused one.
+- The concrete fix may be to rewrite or delete the test and replace it with a behavior-focused one.

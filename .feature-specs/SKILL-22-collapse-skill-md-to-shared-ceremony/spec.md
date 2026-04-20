@@ -2,7 +2,7 @@
 issue_key: SKILL-22
 feature_name: collapse-skill-md-to-shared-ceremony
 feature_size: LARGE
-status: Planned
+status: In Progress
 created: 2026-04-19
 depends_on: SKILL-21 (shell+content split — open at PR #60)
 ---

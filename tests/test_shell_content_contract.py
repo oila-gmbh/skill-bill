@@ -9,7 +9,10 @@ error message.
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import shutil
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -19,19 +22,16 @@ sys.path.insert(0, str(ROOT))
 
 from skill_bill import shell_content_contract  # noqa: E402
 from skill_bill.shell_content_contract import (  # noqa: E402
-  CANONICAL_EXECUTION_BODY,
   ContractVersionMismatchError,
-  InvalidExecutionSectionError,
+  InvalidDescriptorSectionError,
   InvalidManifestSchemaError,
-  MissingContentBodyFileError,
   MissingContentFileError,
   MissingManifestError,
   MissingRequiredSectionError,
+  MissingShellCeremonyFileError,
   PlatformPack,
   PyYAMLMissingError,
   SHELL_CONTRACT_VERSION,
-  assert_execution_body_matches,
-  detect_template_drift,
   load_platform_pack,
   load_quality_check_content,
 )
@@ -79,7 +79,7 @@ class ShellContentContractLoaderTest(unittest.TestCase):
       load_platform_pack(FIXTURES_ROOT / "missing_section")
     message = str(context.exception)
     self.assertIn("missing_section", message)
-    self.assertIn("## Telemetry Ceremony Hooks", message)
+    self.assertIn("## Ceremony", message)
 
   def test_rejects_invalid_schema(self) -> None:
     with self.assertRaises(InvalidManifestSchemaError) as context:
@@ -105,12 +105,25 @@ class ShellContentContractLoaderTest(unittest.TestCase):
     self.assertIn("laravel", message)
     self.assertIn("declared area", message)
 
-  def test_rejects_non_boolean_governs_addons(self) -> None:
-    with self.assertRaises(InvalidManifestSchemaError) as context:
-      load_platform_pack(FIXTURES_ROOT / "schema_governs_addons_wrong_type")
+  def test_rejects_missing_area_metadata(self) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+      fixture_root = Path(tmpdir) / "valid_pack"
+      shutil.copytree(FIXTURES_ROOT / "valid_pack", fixture_root, symlinks=True)
+      manifest_path = fixture_root / "platform.yaml"
+      manifest_text = manifest_path.read_text(encoding="utf-8")
+      manifest_text = re.sub(
+        r"(?ms)^area_metadata:\n(?:  [^\n]+\n|    [^\n]+\n)*",
+        "",
+        manifest_text,
+      )
+      manifest_path.write_text(manifest_text, encoding="utf-8")
+
+      with self.assertRaises(InvalidManifestSchemaError) as context:
+        load_platform_pack(fixture_root)
+
     message = str(context.exception)
-    self.assertIn("schema_governs_addons_wrong_type", message)
-    self.assertIn("governs_addons", message)
+    self.assertIn("valid_pack", message)
+    self.assertIn("area_metadata", message)
 
   # --- Additional contract-error coverage (A-003, P-001) -----------------
 
@@ -127,7 +140,53 @@ class ShellContentContractLoaderTest(unittest.TestCase):
       load_platform_pack(FIXTURES_ROOT / "heading_in_fence")
     message = str(context.exception)
     self.assertIn("heading_in_fence", message)
-    self.assertIn("## Specialist Scope", message)
+    self.assertIn("## Descriptor", message)
+
+  def test_rejects_missing_shell_ceremony_sidecar(self) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+      fixture_root = Path(tmpdir) / "valid_pack"
+      shutil.copytree(FIXTURES_ROOT / "valid_pack", fixture_root, symlinks=True)
+      (fixture_root / "code-review" / "shell-ceremony.md").unlink()
+
+      with self.assertRaises(MissingShellCeremonyFileError) as context:
+        load_platform_pack(fixture_root)
+
+    message = str(context.exception)
+    self.assertIn("valid_pack", message)
+    self.assertIn("shell-ceremony.md", message)
+
+  def test_rejects_descriptor_drift(self) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+      fixture_root = Path(tmpdir) / "valid_pack"
+      shutil.copytree(FIXTURES_ROOT / "valid_pack", fixture_root, symlinks=True)
+      skill_path = fixture_root / "code-review" / "SKILL.md"
+      skill_text = skill_path.read_text(encoding="utf-8").replace(
+        "Governed skill: `code-review`",
+        "Governed skill: `code-review-drifted`",
+      )
+      skill_path.write_text(skill_text, encoding="utf-8")
+
+      with self.assertRaises(InvalidDescriptorSectionError) as context:
+        load_platform_pack(fixture_root)
+
+    message = str(context.exception)
+    self.assertIn("valid_pack", message)
+    self.assertIn("## Descriptor", message)
+
+  def test_missing_shell_ceremony_fails_before_descriptor_drift(self) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+      fixture_root = Path(tmpdir) / "valid_pack"
+      shutil.copytree(FIXTURES_ROOT / "valid_pack", fixture_root, symlinks=True)
+      skill_path = fixture_root / "code-review" / "SKILL.md"
+      skill_text = skill_path.read_text(encoding="utf-8").replace(
+        "Governed skill: `code-review`",
+        "Governed skill: `code-review-drifted`",
+      )
+      skill_path.write_text(skill_text, encoding="utf-8")
+      (fixture_root / "code-review" / "shell-ceremony.md").unlink()
+
+      with self.assertRaises(MissingShellCeremonyFileError):
+        load_platform_pack(fixture_root)
 
   # --- PyYAML missing coverage (P-002) -----------------------------------
 
@@ -157,7 +216,7 @@ class QualityCheckContentContractTest(unittest.TestCase):
     pack = load_platform_pack(FIXTURES_ROOT / "quality_check_only")
     self.assertIsNotNone(pack.declared_quality_check_file)
     resolved = load_quality_check_content(pack)
-    self.assertEqual(resolved, pack.declared_quality_check_file)
+    self.assertEqual(resolved, pack.declared_quality_check_file.with_name("content.md"))
     self.assertTrue(resolved.is_file())
 
   def test_loads_code_review_and_quality_check_fixture(self) -> None:
@@ -182,7 +241,7 @@ class QualityCheckContentContractTest(unittest.TestCase):
       load_quality_check_content(pack)
     message = str(context.exception)
     self.assertIn("quality_check_missing_section", message)
-    self.assertIn("## Fix Strategy", message)
+    self.assertIn("## Ceremony", message)
 
   def test_valid_pack_without_quality_check_key_is_none(self) -> None:
     """A pack that does NOT declare the key has declared_quality_check_file=None.
@@ -195,144 +254,6 @@ class QualityCheckContentContractTest(unittest.TestCase):
     with self.assertRaises(MissingContentFileError) as context:
       load_quality_check_content(pack)
     self.assertIn("valid_pack", str(context.exception))
-
-
-class SkillVersion11RulesTest(unittest.TestCase):
-  """SKILL-21 AC 15(b): new loud-fail cases and drift detection."""
-
-  maxDiff = None
-
-  def _seed_minimal_valid_pack(self, root: Path) -> Path:
-    pack_root = root / "pack"
-    code_review_dir = pack_root / "code-review"
-    code_review_dir.mkdir(parents=True)
-    skill_file = code_review_dir / "SKILL.md"
-    skill_file.write_text(
-      "---\n"
-      "name: pack-code-review\n"
-      "description: Fixture.\n"
-      "shell_contract_version: 1.1\n"
-      "template_version: 2026.04.19\n"
-      "---\n"
-      "\n"
-      "## Description\nFixture.\n\n"
-      "## Specialist Scope\nFixture.\n\n"
-      "## Inputs\nFixture.\n\n"
-      "## Outputs Contract\nFixture.\n\n"
-      "## Execution\n\nFollow the instructions in [content.md](content.md).\n\n"
-      "## Execution Mode Reporting\nFixture.\n\n"
-      "## Telemetry Ceremony Hooks\nFixture.\n",
-      encoding="utf-8",
-    )
-    (code_review_dir / "content.md").write_text("# pack body\n", encoding="utf-8")
-    (pack_root / "platform.yaml").write_text(
-      "platform: pack\n"
-      "contract_version: \"1.1\"\n"
-      "display_name: Pack\n"
-      "routing_signals:\n"
-      "  strong:\n"
-      "    - .fixture\n"
-      "  tie_breakers: []\n"
-      "  addon_signals: []\n"
-      "declared_code_review_areas: []\n"
-      "declared_files:\n"
-      "  baseline: code-review/SKILL.md\n"
-      "  areas: {}\n",
-      encoding="utf-8",
-    )
-    return pack_root
-
-  def test_contract_version_mismatch_on_v1_0_pack_points_at_migration_script(self) -> None:
-    with mock.patch.object(shell_content_contract, "SHELL_CONTRACT_VERSION", "1.1"):
-      with self.assertRaises(ContractVersionMismatchError) as ctx:
-        load_platform_pack(FIXTURES_ROOT / "bad_version")
-    self.assertIn("scripts/migrate_to_content_md.py", str(ctx.exception))
-
-  def test_missing_content_md_sibling_raises_named_error(self) -> None:
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      # Delete content.md to simulate the missing-sibling failure mode.
-      (pack_root / "code-review" / "content.md").unlink()
-      with self.assertRaises(MissingContentBodyFileError) as ctx:
-        load_platform_pack(pack_root)
-    self.assertIn("content.md", str(ctx.exception))
-
-  def test_invalid_execution_body_raises_named_error(self) -> None:
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      skill_file = pack_root / "code-review" / "SKILL.md"
-      text = skill_file.read_text(encoding="utf-8")
-      text = text.replace(
-        "Follow the instructions in [content.md](content.md).",
-        "Follow the instructions somewhere else.",
-      )
-      skill_file.write_text(text, encoding="utf-8")
-      with self.assertRaises(InvalidExecutionSectionError):
-        load_platform_pack(pack_root)
-
-  def test_failure_precedence_contract_version_beats_content(self) -> None:
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      # Delete content.md AND also downgrade the contract version. The
-      # contract-version error must fire first per the documented precedence.
-      (pack_root / "code-review" / "content.md").unlink()
-      manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
-      manifest = manifest.replace('contract_version: "1.1"', 'contract_version: "1.0"')
-      (pack_root / "platform.yaml").write_text(manifest, encoding="utf-8")
-      with self.assertRaises(ContractVersionMismatchError):
-        load_platform_pack(pack_root)
-
-  def test_failure_precedence_contract_version_beats_manifest_schema(self) -> None:
-    """F-002: v1.0 packs surface the migration hint even with schema errors.
-
-    A v1.0 pack combined with an unrelated schema error (e.g. an unapproved
-    code-review area) must raise ``ContractVersionMismatchError`` — not
-    ``InvalidManifestSchemaError`` — so the operator sees the migration
-    script guidance documented in AC 1.
-    """
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
-      manifest = manifest.replace('contract_version: "1.1"', 'contract_version: "1.0"')
-      manifest = manifest.replace(
-        "declared_code_review_areas: []\n",
-        "declared_code_review_areas:\n  - not-an-approved-area\n",
-      )
-      (pack_root / "platform.yaml").write_text(manifest, encoding="utf-8")
-      with self.assertRaises(ContractVersionMismatchError) as ctx:
-        load_platform_pack(pack_root)
-    self.assertIn("scripts/migrate_to_content_md.py", str(ctx.exception))
-
-  def test_template_version_drift_detection(self) -> None:
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      skill_file = pack_root / "code-review" / "SKILL.md"
-      self.assertFalse(
-        detect_template_drift(skill_file, current_template_version="2026.04.19"),
-      )
-      self.assertTrue(
-        detect_template_drift(skill_file, current_template_version="2099.01.01"),
-      )
-
-  def test_canonical_execution_body_matches_helper(self) -> None:
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-      pack_root = self._seed_minimal_valid_pack(Path(tmp))
-      skill_file = pack_root / "code-review" / "SKILL.md"
-      assert_execution_body_matches(skill_file, context_label="test")
-      # Confirm the canonical body is not empty and points at content.md.
-      self.assertIn("[content.md](content.md)", CANONICAL_EXECUTION_BODY)
 
 
 if __name__ == "__main__":

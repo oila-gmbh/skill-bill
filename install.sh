@@ -102,7 +102,8 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-feature-implement-agentic:bill-feature-implement'
   'bill-kotlin-feature-verify:bill-feature-verify'
   'bill-gcheck:bill-quality-check'
-  'bill-new-skill-all-agents:bill-skill-scaffold'
+  'bill-skill-scaffold:bill-create-skill'
+  'bill-new-skill-all-agents:bill-create-skill'
 )
 
 declare -a SUPPORTED_AGENTS=(copilot claude glm codex opencode)

@@ -86,7 +86,9 @@ class InstallScriptTest(unittest.TestCase):
       self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS)
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "stack-routing.md").exists())
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-code-review" / "shell-ceremony.md").exists())
       self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-kotlin-code-review" / "review-orchestrator.md").exists())
+      self.assertTrue((Path(temp_home) / ".copilot" / "skills" / "bill-kotlin-code-review" / "shell-ceremony.md").exists())
       self.assertIn("Installed agent: copilot", result.stdout)
       self.assertEqual(self.telemetry_config(Path(temp_home) / ".skill-bill" / "config.json")["telemetry"]["level"], "anonymous")
 

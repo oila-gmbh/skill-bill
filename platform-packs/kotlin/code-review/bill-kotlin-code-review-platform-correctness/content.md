@@ -1,3 +1,7 @@
+# Platform & Correctness Review Specialist
+
+Review only correctness and runtime-safety issues.
+
 ## Focus
 - Coroutine scoping, cancellation, and dispatcher/thread correctness
 - Race conditions, ordering bugs, and stale-state updates
@@ -13,7 +17,6 @@
 ## Applicability
 
 Use this specialist for shared Kotlin correctness risks across libraries, app layers, and backend services. Favor issues around ownership, concurrency, cancellation, and logic safety that remain meaningful regardless of platform.
-
 ## Project-Specific Rules
 
 ### Shared Kotlin Correctness
@@ -37,10 +40,5 @@ Use this specialist for shared Kotlin correctness risks across libraries, app la
 - Partial-success, optimistic update, and rollback paths must not report durable success before the contract's required effect actually happens
 - Retry, recollection, resubscription, or repeated lifecycle entry must not bypass one-time business checks or re-apply one-time user-visible effects unless the contract explicitly permits it
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include a reproducible failure scenario for Major/Blocker findings.
-- Potential edge-case findings must be grounded in a reachable code path or declared contract. Identify the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.
-- Include a minimal, concrete fix.
+- For Major or Blocker findings, include a reproducible failure scenario.
+- Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.

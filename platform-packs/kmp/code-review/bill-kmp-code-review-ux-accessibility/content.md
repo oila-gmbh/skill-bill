@@ -1,3 +1,7 @@
+# UX & Accessibility Review Specialist
+
+Review only user-impacting UX/accessibility issues.
+
 ## Focus
 - Broken/ambiguous UX states and recovery flows
 - Accessibility semantics, labels, focus order, and keyboard/talkback usability
@@ -10,7 +14,6 @@
 
 ## Ignore
 - Pure visual preference debates without usability impact
-
 ## Project-Specific Rules
 
 ### Localization
@@ -26,9 +29,4 @@
 ### Error States
 - Screens must handle loading, content, error, and empty states
 - Error messages come from UI (string resources), not ViewModel
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include a user-visible consequence for each finding.
-- Include a minimal, concrete fix.
+- In findings, make the user-visible accessibility or UX consequence explicit.

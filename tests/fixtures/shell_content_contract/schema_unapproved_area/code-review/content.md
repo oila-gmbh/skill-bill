@@ -1,3 +1,3 @@
-# Fixture content
+# schema_unapproved_area-laravel Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.

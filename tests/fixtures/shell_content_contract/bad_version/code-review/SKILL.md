@@ -1,29 +1,19 @@
 ---
-name: bad_version-code-review
+name: code-review
 description: Fixture content with all required sections but bad contract version.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Bad Version Baseline
+## Descriptor
 
-## Description
-Fixture.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `bad_version` (bad_version)
+Description: Use when reviewing bad_version changes across code-review specialists.
 
-## Specialist Scope
-Fixture.
-
-## Inputs
-Fixture.
-
-## Outputs Contract
-Fixture.
-
-## Execution Mode Reporting
-Fixture.
-
-## Telemetry Ceremony Hooks
-Fixture.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

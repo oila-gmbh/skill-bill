@@ -1,3 +1,7 @@
+# Backend Reliability Review Specialist
+
+Review only backend/service reliability issues that can cause outages, stuck work, runaway retries, or production incidents.
+
 ## Focus
 - Timeout, retry, and backoff correctness
 - Background jobs, consumers, schedulers, and replay safety
@@ -12,7 +16,6 @@
 ## Applicability
 
 Use this specialist for backend/server Kotlin code routed through the built-in Kotlin pack.
-
 ## Project-Specific Rules
 
 - Retries must be bounded and reserved for transient failures; include backoff and jitter where stampedes are possible
@@ -25,9 +28,4 @@ Use this specialist for backend/server Kotlin code routed through the built-in K
 - Degradation and fallback behavior should fail gracefully and make partial availability explicit where clients or operators need to know
 - Logging, metrics, and tracing should include enough contextual identifiers to debug failures without leaking secrets or PII
 - Startup and shutdown hooks must initialize and close long-lived resources predictably
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include a production failure scenario for each Major/Blocker.
-- Include a minimal, concrete fix.
+- For Major or Blocker findings, describe the production failure scenario clearly.

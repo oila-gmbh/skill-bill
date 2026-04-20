@@ -2,9 +2,11 @@
 
 A governed system for portable AI-agent behavior: stable base commands, shared orchestration, validator-backed contracts, cross-agent installers, scaffolding, and local-first telemetry that keep one source of truth from drifting as the repo grows.
 
-Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-skill-scaffold` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
+Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars; the shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
 
 The in-repo first-party reference packs are intentionally narrow: `kotlin` and `kmp` live under `platform-packs/` as the built-in examples of the governed pack model. If your team needs another stack, author or fork a separate platform pack with the scaffolder instead of treating this repo as the permanent home for every ecosystem.
+
+Skill Bill is platform-extensible, not "every platform goes in this repo" by default. Any team can author a conforming platform pack, but only a small first-party reference set should ship here.
 
 Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs. verify output.
 
@@ -100,7 +102,7 @@ A single `feature-implement` run chains 10-12 skill invocations:
 
 Small, low-risk review scopes may stay inline in one thread. Larger or higher-risk scopes use delegated review passes and report the chosen execution mode explicitly.
 
-After stack routing, a platform pack may apply governed add-ons from `platform-packs/<platform>/addons/`. These remain pack-owned metadata such as `Selected add-ons: android-compose, android-navigation, android-interop, android-design-system, android-r8` for KMP Android work. They are not extra slash commands and are not counted in the skill catalog.
+After stack routing, a platform pack may apply governed add-ons from `platform-packs/<platform>/addons/`. These are pack-owned supporting files, not standalone skills or extra slash commands. Routed platform skills in that same pack may reference them from their sibling `content.md` files to enrich the already-selected skill, and they continue to surface as metadata such as `Selected add-ons: android-compose, android-navigation, android-interop, android-design-system, android-r8` for KMP Android work.
 
 The current `kmp` pilot uses:
 - `android-compose-implementation.md`
@@ -129,6 +131,11 @@ Base entry points stay stable for users:
 ## Reference platform packs
 
 Skill Bill keeps its first-party reference surface intentionally small. The governed architecture lives in `platform-packs/<slug>/`; this repo ships only the `kotlin` and `kmp` packs as built-in examples, while other stacks are expected to be scaffolded or maintained separately.
+
+Policy:
+- Any platform is allowed by the architecture if it follows the governed pack contract.
+- New platforms should usually be authored as separate or forked packs.
+- Add a platform to this repo's shipped surface only when it is intentionally maintained here as a first-party reference pack.
 
 | Tier | Platforms | What you get | Skill count |
 |------|-----------|-------------|-------------|
@@ -218,7 +225,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 
 ## Reference skill catalog
 
-The skills below ship in this repo as the built-in governance system plus the two first-party reference packs. Install them via `./install.sh`, extend them in your fork, or author separate stacks via `/bill-skill-scaffold`.
+The skills below ship in this repo as the built-in governance system plus the two first-party reference packs. Install them via `./install.sh`, extend them in your fork, or author separate stacks via `/bill-create-skill`.
 
 ### Code Review (1 skills)
 
@@ -272,7 +279,7 @@ Built-in first-party reference pack at `platform-packs/kmp/`. Layers Android/KMP
 | `/bill-unit-test-value-check` | Audit unit tests for real value |
 | `/bill-pr-description` | Generate PR title, description, and QA steps, preferring repo PR templates when present |
 | `/bill-grill-plan` | Stress-test a plan or design by walking every decision branch |
-| `/bill-skill-scaffold` | Scaffold a new skill or platform skill set and sync it to all agents |
+| `/bill-create-skill` | Scaffold a new skill or platform skill set and sync it to all agents |
 | `/bill-skill-remove` | Remove an existing skill or platform skill set and clean up installs and wiring |
 
 ## Project customization
@@ -455,14 +462,16 @@ rewrite, rolls back per-skill on validator failure, and never commits.
 
 Preferred path:
 
-- from inside an AI agent, run `/bill-skill-scaffold`. The skill now starts with plain-language intake, especially for `platform-pack`: ask for the platform slug, ask whether to include code-review specialists, preview the generated baseline set, then subprocess-call `skill-bill new-skill --payload <tempfile>` to materialize it.
+- from inside an AI agent, run `/bill-create-skill`. The skill now starts with plain-language intake, especially for `platform-pack`: ask for the platform slug, ask whether to include code-review specialists, preview the generated baseline set, then subprocess-call `skill-bill new-skill --payload <tempfile>` to materialize it.
 - outside an agent (scripts, CI, teams piloting a new platform), run `skill-bill new-skill --interactive` for the same plain-language bootstrap flow, or pass a JSON payload file with `skill-bill new-skill --payload ./payload.json`.
 
-New platform packs are scaffolded as a bootstrap set: pack root, baseline `code-review`, baseline `quality-check`, and thin `feature-implement` / `feature-verify` stubs. Known platforms such as `java` use built-in routing presets; only unknown or custom platforms need manual `routing_signals`. `platform-pack` still supports `skeleton_mode=full` when you want the bare-bones review specialists created up front; choose `starter` when you want only the baseline path first.
+New platform packs are scaffolded as a bootstrap set: pack root, baseline `code-review`, and baseline `quality-check`. Known platforms such as `java` use built-in routing presets; only unknown or custom platforms need manual `routing_signals`. `platform-pack` still supports `skeleton_mode=full` when you want the bare-bones review specialists created up front; choose `starter` when you want only the baseline path first.
 
 The payload schema, the loud-fail exception catalog, and one worked example per kind live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
 The scaffolder is atomic: it creates files, edits manifests with best-effort comment preservation, wires sibling supporting-file symlinks, runs `scripts/validate_agent_configs.py`, and auto-installs into detected agents. Any failure rolls back every staged change and prints the validator's error verbatim.
+
+When the shared wrapper template changes, run `skill-bill upgrade` from the repo root. It regenerates scaffold-managed `SKILL.md` wrappers in place, then reruns `scripts/validate_agent_configs.py`. Authored `content.md` files and the shared `shell-ceremony.md` sidecar stay untouched.
 
 Manual path (discouraged — prefer the scaffolder):
 

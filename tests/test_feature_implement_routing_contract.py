@@ -35,25 +35,35 @@ from skill_repo_contracts import (  # noqa: E402
 
 
 def read(relative_path: str) -> str:
-  # SKILL-21: every governed SKILL.md now has a sibling ``content.md`` with
-  # the author prose. Tests that reason about skill behavior inspect the
-  # combined text so post-migration content still satisfies the assertions
-  # that were written against v1.0 single-file shells.
-  path = ROOT / relative_path
-  text = path.read_text(encoding="utf-8")
-  if path.name == "SKILL.md":
-    content_md = path.parent / "content.md"
-    if content_md.is_file():
-      text = text + "\n" + content_md.read_text(encoding="utf-8")
-  return text
+  return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
 FEATURE_IMPLEMENT = read("skills/bill-feature-implement/SKILL.md") + "\n" + read("skills/bill-feature-implement/reference.md")
 CODE_REVIEW = read("skills/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/bill-pr-description/SKILL.md")
-KOTLIN_CODE_REVIEW = read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
-KMP_CODE_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review/SKILL.md")
+KOTLIN_CODE_REVIEW = (
+  read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
+  + "\n"
+  + read("platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md")
+  + "\n"
+  + read("platform-packs/kotlin/code-review/bill-kotlin-code-review/shell-ceremony.md")
+  + "\n"
+  + read("platform-packs/kotlin/code-review/bill-kotlin-code-review/review-scope.md")
+  + "\n"
+  + read("platform-packs/kotlin/code-review/bill-kotlin-code-review/review-orchestrator.md")
+)
+KMP_CODE_REVIEW = (
+  read("platform-packs/kmp/code-review/bill-kmp-code-review/SKILL.md")
+  + "\n"
+  + read("platform-packs/kmp/code-review/bill-kmp-code-review/content.md")
+  + "\n"
+  + read("platform-packs/kmp/code-review/bill-kmp-code-review/shell-ceremony.md")
+  + "\n"
+  + read("platform-packs/kmp/code-review/bill-kmp-code-review/review-scope.md")
+  + "\n"
+  + read("platform-packs/kmp/code-review/bill-kmp-code-review/review-orchestrator.md")
+)
 KMP_ANDROID_COMPOSE_EDGE_TO_EDGE = read("platform-packs/kmp/addons/android-compose-edge-to-edge.md")
 KMP_ANDROID_COMPOSE_ADAPTIVE = read("platform-packs/kmp/addons/android-compose-adaptive-layouts.md")
 KMP_ANDROID_COMPOSE_IMPLEMENTATION = read("platform-packs/kmp/addons/android-compose-implementation.md")
@@ -66,7 +76,11 @@ KMP_ANDROID_DESIGN_SYSTEM_IMPLEMENTATION = read("platform-packs/kmp/addons/andro
 KMP_ANDROID_DESIGN_SYSTEM_REVIEW = read("platform-packs/kmp/addons/android-design-system-review.md")
 KMP_ANDROID_R8_IMPLEMENTATION = read("platform-packs/kmp/addons/android-r8-implementation.md")
 KMP_ANDROID_R8_REVIEW = read("platform-packs/kmp/addons/android-r8-review.md")
-KMP_COMPOSE_UI_REVIEW = read("platform-packs/kmp/code-review/bill-kmp-code-review-ui/SKILL.md")
+KMP_COMPOSE_UI_REVIEW = (
+  read("platform-packs/kmp/code-review/bill-kmp-code-review-ui/SKILL.md")
+  + "\n"
+  + read("platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md")
+)
 STACK_ROUTING_PLAYBOOK = read("orchestration/stack-routing/PLAYBOOK.md")
 REVIEW_ORCHESTRATOR_PLAYBOOK = read("orchestration/review-orchestrator/PLAYBOOK.md")
 REVIEW_DELEGATION_PLAYBOOK = read("orchestration/review-delegation/PLAYBOOK.md")
@@ -310,11 +324,8 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       with self.subTest(skill=skill_name):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "platform-packs" / "kmp" / "addons" / "android-compose-review.md")
-    # SKILL-21 pass-2: the full ``Selected add-ons: none | <add-on slugs>``
-    # output-template line was shell ceremony; the author-owned
-    # add-on selection rule still starts with ``Selected add-ons: none``.
     self.assertIn(
-      "`Selected add-ons: none`",
+      "Selected add-ons: none | <add-on slugs>",
       KMP_CODE_REVIEW,
     )
 
@@ -453,18 +464,23 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
       "Agents spawned",
     )
 
-    # SKILL-21 pass-2: shell ceremony (scope-determination bullets,
-    # output-format templates with session/run IDs + severity/confidence
-    # scales, sidecar pointers, telemetry/orchestrator references,
-    # learnings resolution) lives in SKILL.md, not content.md. Tests
-    # that used to look for those strings in the combined (SKILL.md +
-    # content.md) text now either target SKILL.md only via the
-    # Execution Mode Reporting body or target the telemetry sidecar
-    # playbook directly.
     for skill_name, skill_text in PORTABLE_REVIEW_SKILL_TEXTS.items():
       with self.subTest(skill=skill_name):
         self.assertIn("specialist review", skill_text)
-        # Telemetry ownership rules live in the telemetry-contract sidecar.
+        self.assertIn("[review-orchestrator.md](review-orchestrator.md)", skill_text)
+        self.assertIn("[review-delegation.md](review-delegation.md)", skill_text)
+        self.assertIn(
+          "Staged changes (`git diff --cached`; index only)",
+          skill_text,
+        )
+        self.assertIn(
+          "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff",
+          skill_text,
+        )
+        self.assertIn(REVIEW_RUN_ID_PLACEHOLDER, skill_text)
+        self.assertIn(APPLIED_LEARNINGS_PLACEHOLDER, skill_text)
+        # Telemetry ownership rules now live in the telemetry-contract sidecar, not inline.
+        self.assertIn("[telemetry-contract.md](telemetry-contract.md)", skill_text)
         self.assertRegex(TELEMETRY_CONTRACT_PLAYBOOK, markdown_heading_pattern(TELEMETRY_OWNERSHIP_HEADING))
         self.assertIn(PARENT_IMPORT_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
         self.assertIn(CHILD_NO_IMPORT_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
@@ -473,10 +489,13 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertIn(PARENT_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
         self.assertIn(CHILD_NO_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
         self.assertIn(NO_FINDINGS_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
-        # The scaffolder-emitted ``## Execution Mode Reporting`` section
-        # in SKILL.md carries the execution-mode line regardless of
-        # content.md shape.
         self.assertIn("Execution mode: inline | delegated", skill_text)
+        self.assertIn("Use `inline` only", skill_text)
+        self.assertIn("If execution mode is `delegated`", skill_text)
+        self.assertIn(
+          "delegated review is required for this scope but unavailable on the current runtime",
+          skill_text,
+        )
         self.assertNotIn(".bill-shared/orchestration/", skill_text)
         self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", skill_text)
         self.assertNotIn("orchestration/review-orchestrator/PLAYBOOK.md", skill_text)

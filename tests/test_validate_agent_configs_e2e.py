@@ -11,8 +11,16 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from skill_bill.scaffold_template import (  # noqa: E402
+  DescriptorMetadata,
+  ScaffoldTemplateContext,
+  render_ceremony_section,
+  render_descriptor_section,
+)
+from skill_bill.constants import SHELL_CONTRACT_VERSION  # noqa: E402
 from skill_repo_contracts import (  # noqa: E402
   APPLIED_LEARNINGS_PLACEHOLDER,
   CHILD_METADATA_HANDOFF_RULE,
@@ -351,7 +359,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="fixture-pack",
-        contract_version="1.1",
+        contract_version=SHELL_CONTRACT_VERSION,
         areas=["architecture"],
       )
       result = self.run_validator(repo_root)
@@ -376,21 +384,21 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="broken-pack",
-        contract_version="1.1",
+        contract_version=SHELL_CONTRACT_VERSION,
         areas=[],
-        skip_section="Telemetry Ceremony Hooks",
+        skip_section="Descriptor",
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn("broken-pack", result.stdout)
-      self.assertIn("Telemetry Ceremony Hooks", result.stdout)
+      self.assertIn("Descriptor", result.stdout)
 
   def test_accepts_platform_pack_skills_not_listed_in_readme_catalog(self) -> None:
     with self.fixture_repo([("base", "bill-code-review")]) as repo_root:
       self.write_platform_pack(
         repo_root,
         slug="java",
-        contract_version="1.1",
+        contract_version=SHELL_CONTRACT_VERSION,
         areas=[],
       )
       result = self.run_validator(repo_root)
@@ -436,67 +444,51 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
     baseline_name = f"bill-{slug}-code-review"
     baseline_rel = f"code-review/{baseline_name}/SKILL.md"
-    baseline_path = pack_dir / baseline_rel
-    baseline_path.parent.mkdir(parents=True, exist_ok=True)
-    sections = [
-      "Description",
-      "Specialist Scope",
-      "Inputs",
-      "Outputs Contract",
-      "Execution Mode Reporting",
-      "Telemetry Ceremony Hooks",
-    ]
-    body = [
-      (
-        f"---\nname: {baseline_name}\n"
-        f"description: Fixture platform pack content.\n"
-        f"shell_contract_version: 1.1\n"
-        f"template_version: 2026.04.19\n"
-        f"---\n"
-      )
-    ]
-    body.append(f"# {slug} baseline\n")
-    if baseline_name in {"bill-kotlin-code-review", "bill-kmp-code-review"}:
-      body.append(f"{REVIEW_SESSION_ID_PLACEHOLDER}\n")
-      body.append(f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.\n")
-      body.append(f"{REVIEW_RUN_ID_PLACEHOLDER}\n")
-      body.append(f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.\n")
-      body.append(f"{APPLIED_LEARNINGS_PLACEHOLDER}\n")
-    for section in sections:
-      if skip_section is not None and section == skip_section:
-        continue
-      body.append(f"## {section}\nFixture {section.lower()}.\n")
-      # v1.1: the canonical ## Execution body lives between Outputs Contract
-      # and Execution Mode Reporting so its body ends at the next H2 rather
-      # than at EOF. Keeping it here keeps the byte-match assertion stable.
-      if section == "Outputs Contract":
-        body.append("## Execution\n\nFollow the instructions in [content.md](content.md).\n")
-    for file_name in required_supporting_files_for_skill(baseline_name):
-      body.append(f"[{file_name}]({file_name})\n")
-    baseline_path.write_text("\n".join(body), encoding="utf-8")
-    # v1.1 sibling content.md: required for every governed SKILL.md.
-    (baseline_path.parent / "content.md").write_text(
-      f"# {baseline_name}\n\nFixture content body.\n",
-      encoding="utf-8",
+    baseline_dir = pack_dir / "code-review" / baseline_name
+    baseline_path = baseline_dir / "SKILL.md"
+    self.write_governed_skill(
+      repo_root,
+      skill_dir=baseline_dir,
+      skill_name=baseline_name,
+      platform=slug,
+      display_name=slug.replace("-", " ").title(),
+      area="",
+      area_focus="",
+      required_sidecars=required_supporting_files_for_skill(baseline_name),
+      skip_heading=skip_section,
     )
     targets = supporting_file_targets(repo_root)
     for file_name in required_supporting_files_for_skill(baseline_name):
-      (baseline_path.parent / file_name).symlink_to(targets[file_name])
+      supporting_path = baseline_path.parent / file_name
+      if not supporting_path.exists():
+        supporting_path.symlink_to(targets[file_name])
 
     declared_files: dict[str, object] = {
       "baseline": baseline_rel,
       "areas": {},
     }
+    area_metadata: dict[str, dict[str, str]] = {}
     for area in areas:
-      area_rel = f"code-review/{area}.md"
-      area_path = pack_dir / area_rel
-      area_path.write_text(
-        "---\nname: fixture-area\ndescription: fixture.\n---\n\n" + "\n".join(
-          f"## {section}\nFixture {section.lower()}.\n" for section in sections
-        ),
-        encoding="utf-8",
+      skill_name = f"bill-{slug}-code-review-{area}"
+      area_rel = f"code-review/{skill_name}/SKILL.md"
+      area_dir = pack_dir / "code-review" / skill_name
+      area_focus = area.replace("-", " ")
+      self.write_governed_skill(
+        repo_root,
+        skill_dir=area_dir,
+        skill_name=skill_name,
+        platform=slug,
+        display_name=slug.replace("-", " ").title(),
+        area=area,
+        area_focus=area_focus,
+        required_sidecars=required_supporting_files_for_skill(skill_name),
       )
+      for file_name in required_supporting_files_for_skill(skill_name):
+        supporting_path = area_dir / file_name
+        if not supporting_path.exists():
+          supporting_path.symlink_to(targets[file_name])
       declared_files["areas"][area] = area_rel
+      area_metadata[area] = {"focus": area_focus}
 
     manifest = {
       "platform": slug,
@@ -504,12 +496,82 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       "routing_signals": {
         "strong": [f".{slug}"],
         "tie_breakers": [],
-        "addon_signals": [],
       },
       "declared_code_review_areas": areas,
       "declared_files": declared_files,
+      "area_metadata": area_metadata,
     }
     (pack_dir / "platform.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+
+  def write_governed_skill(
+    self,
+    repo_root: Path,
+    *,
+    skill_dir: Path,
+    skill_name: str,
+    platform: str,
+    display_name: str,
+    area: str,
+    area_focus: str,
+    required_sidecars: tuple[str, ...],
+    skip_heading: str | None = None,
+  ) -> None:
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    descriptor = render_descriptor_section(
+      ScaffoldTemplateContext(
+        skill_name=skill_name,
+        family="code-review",
+        platform=platform,
+        area=area,
+        display_name=display_name,
+      ),
+      metadata=DescriptorMetadata(area_focus=area_focus),
+    )
+    shell_lines = [f"---\nname: {skill_name}\ndescription: Fixture platform pack content.\n---\n"]
+    if skip_heading != "Descriptor":
+      shell_lines.append(descriptor.rstrip())
+    if skip_heading != "Execution":
+      shell_lines.append("## Execution\n\nFollow the instructions in [content.md](content.md).\n")
+    if skip_heading != "Ceremony":
+      shell_lines.append(
+        render_ceremony_section(
+          ScaffoldTemplateContext(
+            skill_name=skill_name,
+            family="code-review",
+            platform=platform,
+            area=area,
+            display_name=display_name,
+          )
+        ).rstrip()
+      )
+    (skill_dir / "SKILL.md").write_text("\n\n".join(shell_lines) + "\n", encoding="utf-8")
+    content_sections = [
+      ("Description", "Fixture description."),
+      ("Specialist Scope", "Fixture specialist scope."),
+      ("Inputs", "Fixture inputs."),
+      ("Outputs Contract", "Fixture outputs contract."),
+      ("Execution Mode Reporting", "Fixture execution mode reporting."),
+      ("Telemetry Ceremony Hooks", "Fixture telemetry ceremony hooks."),
+    ]
+    content_lines = ["# Fixture Content", ""]
+    if skill_name in {"bill-kotlin-code-review", "bill-kmp-code-review"}:
+      content_lines.extend(
+        [
+          REVIEW_SESSION_ID_PLACEHOLDER,
+          f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.",
+          REVIEW_RUN_ID_PLACEHOLDER,
+          f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
+          APPLIED_LEARNINGS_PLACEHOLDER,
+          "",
+        ]
+      )
+    for heading, body in content_sections:
+      if skip_heading is not None and heading == skip_heading:
+        continue
+      content_lines.extend([f"## {heading}", body, ""])
+    for file_name in required_sidecars:
+      content_lines.append(f"[{file_name}]({file_name})")
+    (skill_dir / "content.md").write_text("\n".join(content_lines) + "\n", encoding="utf-8")
 
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -541,13 +603,15 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         include_applied_learnings=review_orchestrator_has_applied_learnings,
         use_heading_sections=review_orchestrator_uses_heading_sections,
       )
+      self.write_review_specialist_contract_playbook(repo_root)
       self.write_review_delegation_playbook(repo_root)
       self.write_telemetry_contract_playbook(repo_root)
       self.write_shell_content_contract_playbook(repo_root)
+      self.write_review_scope_playbook(repo_root)
       self.write_platform_pack(
         repo_root,
         slug="kmp",
-        contract_version="1.1",
+        contract_version=SHELL_CONTRACT_VERSION,
         areas=[],
       )
       self.write_governed_addons(repo_root)
@@ -706,6 +770,59 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       encoding="utf-8",
     )
 
+  def write_review_scope_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "review-scope" / "PLAYBOOK.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        """\
+        ---
+        name: review-scope
+        description: Single source of truth for shared review scope selection.
+        ---
+
+        # Shared Review Scope Contract
+
+        Supported review scopes:
+
+        - Specific files (list paths)
+        - Git commits (hashes/range)
+        - Staged changes (`git diff --cached`; index only)
+        - Unstaged changes (`git diff`; working tree only)
+        - Combined working tree (`git diff --cached` + `git diff`) only when the caller explicitly asks for all local changes
+        - Entire PR
+        """
+      ),
+      encoding="utf-8",
+    )
+
+  def write_review_specialist_contract_playbook(self, repo_root: Path) -> None:
+    path = repo_root / "orchestration" / "review-orchestrator" / "specialist-contract.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+      textwrap.dedent(
+        """\
+        ---
+        name: specialist-contract
+        description: Fixture shared contract for delegated specialist review output.
+        ---
+
+        # Shared Review Specialist Contract
+
+        Apply this shared contract to every specialist review output.
+
+        ## Output Rules
+        - Report at most 7 findings.
+        - Include the user-visible or externally observable consequence for each finding.
+        - Include `file:line` evidence for each finding.
+        - Severity: `Blocker | Major | Minor`
+        - Confidence: `High | Medium | Low`
+        - Include a minimal, concrete fix.
+        """
+      ),
+      encoding="utf-8",
+    )
+
   def write_telemetry_contract_playbook(self, repo_root: Path) -> None:
     path = repo_root / "orchestration" / "telemetry-contract" / "PLAYBOOK.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -752,6 +869,28 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         # Shared Shell Content Contract
 
         Fixture contract playbook.
+        """
+      ),
+      encoding="utf-8",
+    )
+    (path.parent / "shell-ceremony.md").write_text(
+      textwrap.dedent(
+        """\
+        ## Project Overrides
+
+        If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.
+
+        ## Inputs
+
+        Fixture shell ceremony inputs.
+
+        ## Execution Mode Reporting
+
+        Execution mode: inline | delegated
+
+        ## Telemetry Ceremony Hooks
+
+        Follow `telemetry-contract.md` when it is present.
         """
       ),
       encoding="utf-8",
@@ -845,7 +984,9 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       f"",
       f"## Project Overrides",
       f"",
-      f"If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.",
+      f"Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
+      f"",
+      f"If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.",
       f"",
       f"Use this fixture skill for validator end-to-end coverage.",
     ]
@@ -898,6 +1039,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
 
       | Signal | Agent to spawn |
@@ -944,6 +1086,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
@@ -989,6 +1132,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
@@ -1013,6 +1157,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       Specialist review fixture content.
@@ -1036,6 +1181,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       {TELEMETRY_OWNERSHIP_HEADING}
@@ -1075,6 +1221,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       [stack-routing.md](stack-routing.md)
@@ -1099,6 +1246,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       {REVIEW_SESSION_ID_PLACEHOLDER}
       {REVIEW_RUN_ID_PLACEHOLDER}
       {APPLIED_LEARNINGS_PLACEHOLDER}
+      [specialist-contract.md](specialist-contract.md)
       [review-orchestrator.md](review-orchestrator.md)
       [review-delegation.md](review-delegation.md)
       [stack-routing.md](stack-routing.md)

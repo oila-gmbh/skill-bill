@@ -1,24 +1,20 @@
 ---
-name: valid_pack-code-review-architecture
+name: code-review
 description: Fixture architecture area content.
 ---
 
-# Valid Pack Architecture
+## Descriptor
 
-## Description
-Fixture architecture description.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `valid_pack` (Valid Fixture Pack)
+Area: `architecture`
+Description: Use when reviewing Valid Fixture Pack changes for architecture, boundaries, and dependency direction.
 
-## Specialist Scope
-Fixture specialist scope.
+## Execution
 
-## Inputs
-Fixture inputs.
+Follow the instructions in [content.md](content.md).
 
-## Outputs Contract
-Fixture outputs contract.
+## Ceremony
 
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

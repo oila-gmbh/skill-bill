@@ -33,8 +33,6 @@ Every router, reviewer, and validator agrees on the following procedure:
      markers, dependency coordinates, language-level markers).
    - `routing_signals.tie_breakers` — list of prose rules that disambiguate
      this pack against overlapping packs.
-   - `routing_signals.addon_signals` — optional signals consumed by governed
-     add-ons after the dominant stack is chosen.
 4. Collect signals from the review scope: changed files, repo markers, and
    dependency manifests — in that order.
 5. Rank loaded packs by strong-signal presence in the scope.
@@ -72,9 +70,6 @@ When classifying stack or platform:
 - When no governed add-on applies, report `Selected add-ons: none`.
 - When one or more governed add-ons apply, report them as
   `Selected add-ons: <slug[, slug]>`.
-- Add-on signals are also declared in `platform.yaml` under
-  `routing_signals.addon_signals`. Packs that own governed add-ons set
-  `governs_addons: true` in their manifest.
 
 ## Relationship To The Shell+Content Contract
 
