@@ -388,7 +388,8 @@ def _resolve_platform_pack_defaults(payload: dict, platform: str) -> dict[str, A
 
 
 def _platform_pack_skeleton_mode(payload: dict) -> str:
-  skeleton_mode = _optional_string(payload, "skeleton_mode") or PLATFORM_PACK_SKELETON_STARTER
+  # New platform packs now default to the fully scaffolded review surface.
+  skeleton_mode = _optional_string(payload, "skeleton_mode") or PLATFORM_PACK_SKELETON_FULL
   if skeleton_mode not in PLATFORM_PACK_SKELETON_MODES:
     raise InvalidScaffoldPayloadError(
       f"Scaffold payload field 'skeleton_mode' must be one of "

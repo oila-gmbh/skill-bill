@@ -563,42 +563,26 @@ def _prompt_new_skill_interactively(*, repo_root: Path | None = None) -> dict:
   payload["platform"] = platform
   if _platform_pack_exists(platform, repo_root=repo_root):
     print("What should this platform get?")
-    print("1. Baseline")
-    print("2. Baseline + Code Review Specialists")
-    print("3. Code-Review Specialist")
-    print("4. Platform Override")
-    selection = _prompt_choice(
-      "Choose 1-4: ",
-      {
-        "1": "platform-pack-starter",
-        "2": "platform-pack-full",
-        "3": "code-review-area",
-        "4": "platform-override-piloted",
-      },
-    )
-  else:
-    print("New platform pack:")
-    print("1. Baseline")
-    print("2. Baseline + Code Review Specialists")
+    print("1. Code-Review Specialist")
+    print("2. Platform Override")
     selection = _prompt_choice(
       "Choose 1-2: ",
       {
-        "1": "platform-pack-starter",
-        "2": "platform-pack-full",
+        "1": "code-review-area",
+        "2": "platform-override-piloted",
       },
     )
+  else:
+    selection = "platform-pack-full"
 
   if selection.startswith("platform-pack"):
     payload["kind"] = "platform-pack"
     payload["platform"] = platform
-    payload["skeleton_mode"] = (
-      "full" if selection == "platform-pack-full" else "starter"
-    )
     display_name = input("Display name (blank to derive from slug): ").strip()
     if display_name:
       payload["display_name"] = display_name
     description = input(
-      "Baseline review description (blank for default text): "
+      "Code-review description (blank for default text): "
     ).strip()
     if description:
       payload["description"] = description
