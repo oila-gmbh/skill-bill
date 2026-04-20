@@ -355,8 +355,8 @@ build_platform_packages() {
   fi
 
   PLATFORM_PACKAGES=()
-  for package in kotlin kmp; do
-    if array_contains "$package" "${discovered[@]:-}"; then
+  for package in "${discovered[@]:-}"; do
+    if ! array_contains "$package" "${PLATFORM_PACKAGES[@]:-}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
   done
@@ -473,7 +473,7 @@ prompt_for_platform_selection() {
     option_number=$(( ${#PLATFORM_PACKAGES[@]} + 1 ))
     printf "  %s. all (install every platform package)\n" "$option_number"
     info "Base skills are always installed."
-    info "This repo ships only the Kotlin and KMP reference packs."
+    info "Optional platform packages are discovered from platform-packs/ at install time."
     info "Governed add-on assets under platform-packs/<platform>/addons/ ship with their owning platform package."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms (e.g. 1,3 or %s): " "$option_number"

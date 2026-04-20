@@ -34,7 +34,7 @@ Classify the review as one of:
 
 After the stack is already classified as `kmp`, resolve governed add-ons before selecting KMP-specific specialists.
 
-- Start with `Selected add-ons: none`.
+- If no add-on cues match, continue with the base KMP review without a governed add-on.
 - Select `android-compose` when the scoped diff contains Compose UI signals such as `@Composable`, Compose UI state, `Modifier` chains, previews, `remember*`, or Compose side effects.
 - Select `android-navigation` when the scoped diff changes route models, `NavHost`/`NavDisplay`, deep links, multi-back-stack behavior, scene destinations, or Android navigation ownership.
 - Select `android-interop` when the scoped diff mixes Compose with legacy Views, Fragments, `ComposeView`, `AndroidView`, `AndroidViewBinding`, or other Android host-boundary glue.
@@ -51,12 +51,10 @@ After the stack is already classified as `kmp`, resolve governed add-ons before 
 
 ## Layered Review Plan
 
-### Step 1: Choose execution mode
+### Step 1: Scale review depth
 
-Select `inline` or `delegated` using the shared execution-mode contract.
-
-- Use `inline` only when the Android/KMP review scope stays small and low-risk under the shared execution-mode contract
-- Use `delegated` when the diff is large, mobile or backend specialist risk is present, mixed scope is meaningfully involved, or the safest choice is unclear
+- For small, low-risk Android/KMP diffs, keep the review compact.
+- For larger, mixed, or higher-risk diffs, split the work into focused baseline and specialist passes.
 
 ### Step 2: Choose and run the baseline Kotlin-family review
 
@@ -68,14 +66,10 @@ That baseline review layer owns:
 - backend/server risk coverage within the Kotlin specialist set when backend signals are present
 - the baseline Kotlin findings that every Android/KMP review should inherit
 
-When invoking the baseline review in either execution mode:
+When invoking the baseline review:
 - tell it that Android/KMP scope is valid
 - tell it to keep KMP-only review concerns out of scope
 - pass the same diff source, changed files, and relevant override guidance
-
-If execution mode is `inline`, apply the selected baseline review inline in the current thread.
-
-If execution mode is `delegated`, run the selected baseline review as a delegated subagent and use the runtime-specific delegation contract linked from the wrapper.
 
 ### Step 3: Analyze the diff and select KMP-specific agents
 
@@ -92,9 +86,9 @@ Keep the mobile triggers focused on what the baseline review does not cover:
 | `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect`                         | `bill-kmp-code-review-ui`               |
 | User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
 
-### Step 3.5: Scope diff per KMP specialist (delegated mode only)
+### Step 3.5: Scope diff per KMP specialist when review depth increases
 
-When execution mode is `delegated`, build a per-specialist file list before launching KMP specialist subagents:
+When the review is split into focused KMP specialist passes, build a per-specialist file list first:
 
 1. Scan each changed file's name and imports for the KMP routing-table signals from Step 3
 2. Map each file to the KMP specialists whose signals it matches
@@ -104,16 +98,9 @@ This is a lightweight file-level classification (names + imports), not a full re
 
 ### Step 4: Run KMP specialist reviews
 
-If execution mode is `inline`:
-- run the selected KMP specialist review passes sequentially in the current thread
-- read each KMP specialist skill file as the primary rubric for that pass
-- apply the shared execution-mode and reporting contract from the wrapper-linked sidecars
-- keep findings attributed to each layer before merging and deduplicating them for the final report
-
-If execution mode is `delegated`:
-- run one delegated subagent per selected KMP specialist review pass
-- pass the specialist-scoped file list (from Step 3.5), applicable active learnings, instructions to read the KMP specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract from the wrapper-linked sidecars
-- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
+- Run each selected KMP specialist lane against its scoped files.
+- Read each KMP specialist skill file as the primary rubric for that lane.
+- Keep findings attributed to each layer before merging and deduplicating them into the final review.
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
 

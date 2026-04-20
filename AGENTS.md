@@ -2,7 +2,7 @@
 
 ## Project context
 
-skill-bill is a governed system for authoring, routing, validating, installing, and measuring AI-agent skills. It ships shared orchestration, validators, installers, scaffolding, telemetry, and stable base shells for review, quality checks, feature work, feature verification, and PR descriptions. This repo keeps only two built-in reference platform packs: `kotlin` and `kmp`. Other stacks should be authored as separate platform packs with the scaffolder.
+skill-bill is a governed system for authoring, routing, validating, installing, and measuring AI-agent skills. It ships shared orchestration, validators, installers, scaffolding, telemetry, and stable base shells for review, quality checks, feature work, feature verification, and PR descriptions. Platform packs live under `platform-packs/` and are discovered dynamically through their governed manifests.
 
 ## Core taxonomy
 
@@ -22,9 +22,8 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 ## Governed platform packs
 
 - Packs live under `platform-packs/` and are user-owned.
-- Skill Bill is platform-extensible: any team may author a new conforming pack.
-- That does **not** mean every new platform belongs in this repo's built-in surface. Keep the shipped first-party set intentionally narrow unless the platform is meant to be maintained here as a reference pack.
-- This repo ships `kotlin` and `kmp` as the first-party reference implementations for the governed pack model.
+- Skill Bill is platform-extensible: any team may author and ship a new conforming pack.
+- This repo may contain any maintained pack that follows the governed contract; routing and install flows must stay manifest-driven rather than relying on a hardcoded shortlist.
 - Each pack ships a manifest. The schema lives in the shell-content-contract playbook under `orchestration/`.
 - The current shell contract version is 1.1. Keep it locked across the shell and every pack; version drift must loud-fail.
 - Follow `orchestration/shell-content-contract/PLAYBOOK.md` for governed skill shape.
@@ -45,7 +44,7 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 - Keep add-ons pack-owned, use sibling supporting files for shared contracts, and keep `orchestration/` aligned with those links.
 - Route by dominant stack first, then apply governed add-ons.
 - Keep `SHELL_CONTRACT_VERSION` in lockstep across shell and packs, and treat the loud-fail loader as authoritative.
-- Keep `README.md` catalog data accurate and update `install.sh` migration rules when renaming stack-bound skills.
+- Keep `README.md` catalog data accurate and keep discovery/install flows dynamic when packs are added or removed.
 
 ## Adding a new platform
 

@@ -11,7 +11,7 @@ When the parent KMP review selects `android-interop`, scan [android-interop-revi
 
 When the parent KMP review selects `android-design-system`, scan [android-design-system-review.md](android-design-system-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
 
-When no governed add-on applies, keep `Selected add-ons: none` and use the base Compose review rubric by itself.
+When no governed add-on applies, use the base Compose review rubric by itself.
 
 For review enforcement, read [compose-guidelines.md](compose-guidelines.md) as the Compose review rubric covering:
 state hoisting, signature conventions, recomposition & performance, theming, string resources, composable structure, side effects, navigation, previews, error/loading states, UI element selection, modifier best practices, and ViewModel integration.

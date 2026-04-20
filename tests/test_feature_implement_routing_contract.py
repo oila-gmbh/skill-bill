@@ -490,8 +490,14 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertIn(CHILD_NO_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
         self.assertIn(NO_FINDINGS_TRIAGE_RULE, TELEMETRY_CONTRACT_PLAYBOOK)
         self.assertIn("Execution mode: inline | delegated", skill_text)
-        self.assertIn("Use `inline` only", skill_text)
-        self.assertIn("If execution mode is `delegated`", skill_text)
+        self.assertRegex(
+          skill_text,
+          r"keep the review compact|small, low-risk .* keep the review compact",
+        )
+        self.assertRegex(
+          skill_text,
+          r"split the work into focused .*passes|review depth increases",
+        )
         self.assertIn(
           "delegated review is required for this scope but unavailable on the current runtime",
           skill_text,

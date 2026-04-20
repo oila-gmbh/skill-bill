@@ -13,7 +13,7 @@ Follow the [Installation section of README.md](../README.md#installation). The s
 1. Clone the repo somewhere stable (e.g. `~/Development/skill-bill`).
 2. Run `./install.sh`.
 3. Select your agents (Claude Code / Copilot / Codex / OpenCode / GLM).
-4. Select the built-in reference packs you want — check the [reference platform packs](../README.md#reference-platform-packs) first so you know what the shipped Kotlin/KMP packs include.
+4. Select the platform packs you want — check the [reference platform packs](../README.md#reference-platform-packs) first so you know what the currently shipped packs include.
 
 Installed skills are symlinks back to the repo, so `git pull` updates everything without re-running install.
 
@@ -90,8 +90,8 @@ Strict structure, enforced by the validator:
 
 Important policy:
 - Skill Bill allows any platform that can be expressed as a conforming governed pack.
-- That does not mean every platform should be added to this repo's built-in inventory.
-- Treat the shipped `kotlin` and `kmp` packs as first-party references; create or fork other stacks separately unless you explicitly want to maintain them here.
+- Shipped packs are discovered from `platform-packs/`; the repo is not pinned to a hardcoded shortlist.
+- You can still fork an existing pack when that is the fastest way to start.
 
 1. Copy `platform-packs/<platform>/` (e.g. `platform-packs/kotlin/`) into your team's own checkout.
 2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.1"` in lockstep with the shell.

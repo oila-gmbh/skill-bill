@@ -78,5 +78,3 @@ These issues require file operations and should be fixed before other issues:
 - Extract related params into:
   - `data class` - for variables
   - `interface` - for navigation/action lambdas
-
-When reporting results, show issue count by category, report each fix with `file:line`, display the final `./gradlew check` result, and summarize all changes.

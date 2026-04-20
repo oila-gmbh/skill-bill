@@ -24,9 +24,14 @@ from skill_bill.shell_content_contract import (  # noqa: E402
 
 
 PLATFORM_PACKS_ROOT = ROOT / "platform-packs"
-EXPECTED_SLUGS: frozenset[str] = frozenset(
-  {"kmp", "kotlin"}
-)
+
+
+def expected_slugs() -> frozenset[str]:
+  return frozenset(
+    entry.name
+    for entry in PLATFORM_PACKS_ROOT.iterdir()
+    if entry.is_dir() and not entry.name.startswith(".")
+  )
 
 
 class PlatformPacksTest(unittest.TestCase):
@@ -35,7 +40,7 @@ class PlatformPacksTest(unittest.TestCase):
   def test_discovery_returns_every_shipped_pack(self) -> None:
     discovered = discover_platform_packs(PLATFORM_PACKS_ROOT)
     slugs = {pack.slug for pack in discovered}
-    self.assertEqual(slugs, set(EXPECTED_SLUGS))
+    self.assertEqual(slugs, set(expected_slugs()))
 
   def test_every_pack_matches_shell_contract_version(self) -> None:
     for pack in discover_platform_packs(PLATFORM_PACKS_ROOT):
@@ -67,7 +72,7 @@ class PlatformPacksTest(unittest.TestCase):
         self.assertEqual(pack.routed_skill_name, f"bill-{pack.slug}-code-review")
 
   def test_individual_pack_loaders(self) -> None:
-    for slug in EXPECTED_SLUGS:
+    for slug in expected_slugs():
       with self.subTest(pack=slug):
         pack = load_platform_pack(PLATFORM_PACKS_ROOT / slug)
         self.assertEqual(pack.slug, slug)

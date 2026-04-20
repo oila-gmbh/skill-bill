@@ -38,9 +38,14 @@ from skill_bill.shell_content_contract import (  # noqa: E402
 
 PLATFORM_PACKS_ROOT = ROOT / "platform-packs"
 FIXTURES_ROOT = ROOT / "tests" / "fixtures" / "shell_content_contract"
-EXPECTED_SLUGS: frozenset[str] = frozenset(
-  {"kmp", "kotlin"}
-)
+
+
+def expected_slugs() -> frozenset[str]:
+  return frozenset(
+    entry.name
+    for entry in PLATFORM_PACKS_ROOT.iterdir()
+    if entry.is_dir() and not entry.name.startswith(".")
+  )
 
 HORIZONTAL_SKILLS: tuple[str, ...] = (
   "bill-grill-plan",
@@ -62,12 +67,12 @@ class ShellPilotIntegrationTest(unittest.TestCase):
   def test_shell_loads_every_shipped_pack(self) -> None:
     packs = discover_platform_packs(PLATFORM_PACKS_ROOT)
     slugs = {pack.slug for pack in packs}
-    self.assertEqual(slugs, set(EXPECTED_SLUGS))
+    self.assertEqual(slugs, set(expected_slugs()))
 
-  def test_discovery_returns_exactly_two_slugs(self) -> None:
+  def test_discovery_returns_every_live_slug(self) -> None:
     # AC 9 — manifest-driven discovery, no hardcoded enumeration.
     packs = discover_platform_packs(PLATFORM_PACKS_ROOT)
-    self.assertEqual(len(packs), 2)
+    self.assertEqual({pack.slug for pack in packs}, set(expected_slugs()))
 
   def test_routed_skill_contract_preserved(self) -> None:
     # AC 13 — existing references to platform skill names must still work.
@@ -107,7 +112,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
     # The shell declares the current contract version.
     self.assertIn(f"`{SHELL_CONTRACT_VERSION}`", text)
     # The shell no longer hardcodes per-platform delegation lines.
-    for slug in EXPECTED_SLUGS:
+    for slug in expected_slugs():
       self.assertNotIn(
         f"signals dominate, delegate to `bill-{slug}-code-review`.",
         text,

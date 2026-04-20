@@ -61,16 +61,14 @@ Architecture review is relevant for every non-trivial change.
 - Maximum 8 agents so backend-heavy Kotlin diffs can include the restored server specialists without dropping shared Kotlin coverage
 - Do not run KMP-only specialists from this skill; leave those to the platform-specific override that owns them
 
-### Step 5: Choose execution mode
+### Step 5: Scale review depth
 
-Select `inline` or `delegated` using the shared execution-mode contract.
+- For small, low-risk Kotlin diffs, keep the review compact.
+- For larger or higher-risk diffs, split the work into focused specialist passes so each lane can inspect the files most relevant to it.
 
-- Use `inline` only when the Kotlin review scope stays small and low-risk under the shared execution-mode contract
-- Use `delegated` when the diff is large, the risk profile is high, multiple layers are meaningfully involved, or the safest choice is unclear
+### Step 5.5: Scope diff per specialist when review depth increases
 
-### Step 5.5: Scope diff per specialist (delegated mode only)
-
-When execution mode is `delegated`, build a per-specialist file list before launching subagents:
+When the review is split into focused specialist passes, build a per-specialist file list first:
 
 1. Scan each changed file's name and imports for the routing-table signals from Step 3
 2. Map each file to the specialists whose signals it matches
@@ -83,15 +81,8 @@ This is a lightweight file-level classification (names + imports), not a full re
 
 ### Step 6: Run selected specialist reviews
 
-If execution mode is `inline`:
-- run the selected specialist review passes sequentially in the current thread
-- read each specialist skill file as the primary rubric for that pass
-- apply the shared execution-mode and reporting contract from the wrapper-linked sidecars
-- keep findings attributed to each specialist before merging and deduplicating them for the final report
-
-If execution mode is `delegated`:
-- run one delegated subagent per selected specialist review pass
-- pass the specialist-scoped file list (from Step 5.5), applicable active learnings, instructions to read the specialist skill file, the parent thread's model when the runtime supports delegated-worker model inheritance, and the shared specialist contract from the wrapper-linked sidecars
-- if delegated review is required for this scope but the current runtime lacks a documented delegation path or cannot start the required subagent(s), stop and report that delegated review is required for this scope but unavailable on the current runtime
+- Run each selected specialist lane against its scoped files.
+- Read each specialist skill file as the primary rubric for that lane.
+- Keep findings attributed to each specialist before merging and deduplicating them into the final review.
 
 ---

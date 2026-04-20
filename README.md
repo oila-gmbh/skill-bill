@@ -2,11 +2,9 @@
 
 A governed system for portable AI-agent behavior: stable base commands, shared orchestration, validator-backed contracts, cross-agent installers, scaffolding, and local-first telemetry that keep one source of truth from drifting as the repo grows.
 
-Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars; the shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
+Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars. For humans, `content.md` is the real working surface where authored skill behavior lives; `SKILL.md` is scaffold-managed wiring that points the runtime at the right authored content and shared ceremony. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
 
-The in-repo first-party reference packs are intentionally narrow: `kotlin` and `kmp` live under `platform-packs/` as the built-in examples of the governed pack model. If your team needs another stack, author or fork a separate platform pack with the scaffolder instead of treating this repo as the permanent home for every ecosystem.
-
-Skill Bill is platform-extensible, not "every platform goes in this repo" by default. Any team can author a conforming platform pack, but only a small first-party reference set should ship here.
+Shipped platform packs live under `platform-packs/`. Routing, validation, and installation are manifest-driven, so any conforming platform pack can live here without changing the shell.
 
 Rolling out to a team? Start with [Getting Started for Teams](docs/getting-started-for-teams.md) — it covers customization, expectations, and when to trust vs. verify output.
 
@@ -124,24 +122,19 @@ The intent is for these pack-owned add-ons to be the apex Android reference laye
 
 Base entry points stay stable for users:
 
-- `/bill-code-review` routes to `bill-kotlin-code-review` or `bill-kmp-code-review` in the built-in first-party set
+- `/bill-code-review` routes to the matching `bill-<platform>-code-review` discovered from `platform-packs/`
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
 
 ## Reference platform packs
 
-Skill Bill keeps its first-party reference surface intentionally small. The governed architecture lives in `platform-packs/<slug>/`; this repo ships only the `kotlin` and `kmp` packs as built-in examples, while other stacks are expected to be scaffolded or maintained separately.
-
-Policy:
-- Any platform is allowed by the architecture if it follows the governed pack contract.
-- New platforms should usually be authored as separate or forked packs.
-- Add a platform to this repo's shipped surface only when it is intentionally maintained here as a first-party reference pack.
+Skill Bill's governed architecture lives in `platform-packs/<slug>/`. Any platform is allowed as long as it follows the governed pack contract.
 
 | Tier | Platforms | What you get | Skill count |
 |------|-----------|-------------|-------------|
 | **Deep** | Kotlin, KMP | Multi-layer specialist routing (KMP → Kotlin baseline), 12 governed Android add-ons (Compose, navigation, interop, design-system, R8), inline/delegated execution modes, quality-check | 13 skills + 12 add-ons |
 
-Teams can still create other platform packs. The point of the built-in inventory is to demonstrate the governance model, not to keep every stack in this repository forever.
+The point of the shipped inventory is to demonstrate the governance model with real maintained packs.
 
 **What "Deep" means here:**
 
@@ -189,9 +182,9 @@ The installer first asks which agent targets to install to. You can choose one o
 all
 ```
 
-It then shows the available built-in reference packs and asks which ones to install. Canonical skills in `skills/` are always installed; the optional pack choices in this repo are `kotlin` and `kmp`. Governed add-ons under `platform-packs/<platform>/addons/` ship with their owning platform pack and do not appear as separate install targets or slash commands. The primary input path is **comma-separated numbers**, though platform names still work too.
+It then shows the available platform packs discovered under `platform-packs/` and asks which ones to install. Canonical skills in `skills/` are always installed. Governed add-ons under `platform-packs/<platform>/addons/` ship with their owning platform pack and do not appear as separate install targets or slash commands. The primary input path is **comma-separated numbers**, though platform names still work too.
 
-Available options are shown as separate entries:
+Available options depend on the packs present in your checkout. For example, a checkout with the Kotlin and KMP reference packs shows:
 
 ```text
 1. Kotlin
@@ -225,7 +218,7 @@ The uninstaller is idempotent. It removes current Skill Bill installs, generated
 
 ## Reference skill catalog
 
-The skills below ship in this repo as the built-in governance system plus the two first-party reference packs. Install them via `./install.sh`, extend them in your fork, or author separate stacks via `/bill-create-skill`.
+The skills below ship in this repo as the built-in governance system plus the currently maintained platform packs. Install them via `./install.sh` or extend them via `/bill-create-skill`.
 
 ### Code Review (1 skills)
 
@@ -235,7 +228,7 @@ The skills below ship in this repo as the built-in governance system plus the tw
 
 ### Platform Packs — Kotlin (9 skills)
 
-Built-in first-party reference pack at `platform-packs/kotlin/`. Covers shared Kotlin plus backend/server Kotlin code and acts as the baseline layer for the KMP pack.
+Reference pack at `platform-packs/kotlin/`. Covers shared Kotlin plus backend/server Kotlin code and acts as the baseline layer for the KMP pack.
 
 | Skill | Purpose |
 |-------|---------|
@@ -251,7 +244,7 @@ Built-in first-party reference pack at `platform-packs/kotlin/`. Covers shared K
 
 ### Platform Packs — KMP (3 skills)
 
-Built-in first-party reference pack at `platform-packs/kmp/`. Layers Android/KMP-specific reviewers on the Kotlin baseline. Also owns governed Android add-ons.
+Reference pack at `platform-packs/kmp/`. Layers Android/KMP-specific reviewers on the Kotlin baseline. Also owns governed Android add-ons.
 
 | Skill | Purpose |
 |-------|---------|
@@ -346,10 +339,10 @@ That last file is the canonical map for:
 
 Current shipped platform packs (under `platform-packs/`):
 
-- `kotlin` — built-in first-party reference pack with 9 code-review skills plus `bill-kotlin-quality-check`
-- `kmp` — built-in first-party reference pack with 3 code-review skills and 12 governed Android add-ons; quality-check currently falls back to `kotlin`
+- `kotlin` — reference pack with 9 code-review skills plus `bill-kotlin-quality-check`
+- `kmp` — reference pack with 3 code-review skills and 12 governed Android add-ons; quality-check currently falls back to `kotlin`
 
-Other stacks belong in separately authored or forked platform packs created with the scaffolder, not in this repo's shipped surface.
+Additional stacks can be added as conforming platform packs under `platform-packs/`.
 
 ### Naming and enforcement
 
@@ -408,32 +401,47 @@ The validator enforces:
 - required routing playbook references
 - plugin metadata
 
+## Skill taxonomy
+
+The repo now has three distinct layers, and it helps to read them in that order:
+
+- `content.md` is the authored working surface for a governed skill. This is where maintainers put the actual execution guidance, rubrics, routing cues, add-on selection rules, and specialist-specific judgment.
+- `SKILL.md` is the scaffold-managed entry wrapper. Agents enter through it, but it is intentionally thin: descriptor metadata, a pointer to `content.md`, and pointers to governed sidecars such as `shell-ceremony.md`.
+- sibling supporting files such as `shell-ceremony.md`, `stack-routing.md`, `review-orchestrator.md`, and `telemetry-contract.md` provide shared behavior when that family needs it. These are contract surfaces, not the place for day-to-day authored skill logic.
+
+In practice: if you are changing what a skill tells an agent to do, you almost always want `content.md`. If you are changing shared runtime ceremony, reporting, routing, or telemetry behavior, you are usually in a governed sidecar or orchestration playbook instead.
+
 ## Authoring a skill
 
 Skill Bill v1.1 splits every governed skill into two sibling files:
 
-- **`SKILL.md`** — generated governance shell. Carries frontmatter
-  (`name`, `description`, `shell_contract_version`, `template_version`),
-  the required H2 set, a byte-identical `## Execution` body linking to
-  the sibling, and the `## Project Overrides` ceremony that records the
-  overrides precedence (`.agents/skill-overrides.md` > `AGENTS.md` >
-  built-in defaults). `## Project Overrides` is shell governance, not
-  author content — it lives in SKILL.md exclusively. Authors do not edit
-  this file directly.
-- **`content.md`** — user-owned, free-form skill body. Carries **only**
-  author-owned skill knowledge: signals, rubrics, routing tables,
-  project-specific rules, classification cues, add-on selection rules,
-  and per-specialist scope heuristics. No required H2s, no frontmatter
-  requirement, no minimum length, and no shell ceremony. The shell owns
-  output contracts (session/run IDs, severity/confidence scales,
-  risk-register format), orchestration (delegation/inline mode,
-  scope-determination bullet lists), telemetry and learnings pointers,
-  sidecar-file references, and `## Project Overrides` — none of that
-  belongs in `content.md`. See
-  `orchestration/shell-content-contract/PLAYBOOK.md` for the full
-  taxonomy and ceremony blacklist. Open it with
+- **`content.md`** — the actual authoring surface. Put the skill's real
+  behavior here: execution guidance, rubrics, routing cues,
+  project-specific rules, classification signals, add-on selection
+  rules, and specialist heuristics. When maintainers say "edit the
+  skill", this is usually the file they mean. Open it with
   `skill-bill edit <skill-name>`; it opens in `$VISUAL` → `$EDITOR`, or
   prints the path when neither is set.
+- **`SKILL.md`** — generated governance shell. Agents execute through
+  this file, but authors normally should not edit it directly. It carries
+  frontmatter (`name`, `description`, `shell_contract_version`,
+  `template_version`), the required H2 set, a byte-identical
+  `## Execution` pointer to the sibling `content.md`, and the shell-owned
+  ceremony such as overrides precedence (`.agents/skill-overrides.md` >
+  `AGENTS.md` > built-in defaults).
+- **shared sidecars** — files such as `shell-ceremony.md`,
+  `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`,
+  and `telemetry-contract.md`. These hold governed cross-skill behavior
+  when needed. They are part of the execution contract, but they are not
+  the normal authoring surface for skill-specific logic.
+
+The shell owns output contracts (session/run IDs, severity/confidence
+scales, risk-register format), orchestration (delegation/inline mode,
+scope-determination bullet lists), telemetry and learnings pointers,
+sidecar-file references, and `## Project Overrides` — none of that
+belongs in `content.md`. See
+`orchestration/shell-content-contract/PLAYBOOK.md` for the full taxonomy
+and ceremony blacklist.
 
 Example shape:
 
@@ -449,7 +457,8 @@ platform-packs/kotlin/code-review/bill-kotlin-code-review/
 
 After a template bump in `skill_bill/constants.py`, regenerate stale
 shells with `skill-bill upgrade` (supports `--dry-run`, `--skill <name>`,
-`--yes`). Shell regeneration never touches `content.md`. Running
+`--yes`). Shell regeneration updates scaffold-managed wrappers and leaves
+the authored `content.md` working surface alone. Running
 `skill-bill doctor` reports skills whose `template_version` has drifted
 along with the exact upgrade command to run.
 
@@ -475,10 +484,11 @@ When the shared wrapper template changes, run `skill-bill upgrade` from the repo
 
 Manual path (discouraged — prefer the scaffolder):
 
-1. create `skills/<skill-name>/SKILL.md` for canonical skills, or `skills/<package>/<skill-name>/SKILL.md` for pre-shell platform overrides
-2. follow the naming rules above
-3. run `./install.sh`
-4. update docs and validation if you intentionally add a new package or naming shape
+1. create the governed skill directory in the correct taxonomy location
+2. add the scaffold-managed `SKILL.md`, the authored `content.md`, and any required governed sidecars or symlinks
+3. follow the naming rules above
+4. run `./install.sh`
+5. update docs and validation if you intentionally add a new package or naming shape
 
 ## License
 

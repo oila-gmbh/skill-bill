@@ -43,9 +43,19 @@ def skill_names(package_name: str) -> set[str]:
   return names
 
 
+def platform_package_names() -> list[str]:
+  return sorted(
+    entry.name
+    for entry in PLATFORM_PACKS_DIR.iterdir()
+    if entry.is_dir() and not entry.name.startswith(".")
+  )
+
+
 BASE_SKILLS = skill_names("base")
 KOTLIN_SKILLS = skill_names("kotlin")
 KMP_SKILLS = skill_names("kmp")
+PLATFORM_PACKAGES = platform_package_names()
+ALL_PLATFORM_SKILLS = set().union(*(skill_names(package) for package in PLATFORM_PACKAGES))
 
 
 class InstallScriptTest(unittest.TestCase):
@@ -129,38 +139,41 @@ class InstallScriptTest(unittest.TestCase):
 
   def test_accepts_numeric_multi_platform_selection(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\n1,2,3\n")
+      all_option = str(len(PLATFORM_PACKAGES) + 1)
+      result = self.run_installer(temp_home, f"copilot\n{all_option}\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | ALL_PLATFORM_SKILLS)
 
   def test_accepts_human_friendly_multi_platform_selection(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nKotlin, KMP\n")
+      selection = ", ".join(PLATFORM_PACKAGES)
+      result = self.run_installer(temp_home, f"copilot\n{selection}\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | ALL_PLATFORM_SKILLS)
 
   def test_shows_each_platform_option_and_supports_all(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "copilot\nall\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-      self.assertIn("Kotlin (kotlin)", result.stdout)
-      self.assertIn("KMP (kmp)", result.stdout)
+      for package in PLATFORM_PACKAGES:
+        self.assertIn(f"({package})", result.stdout)
       self.assertIn("all (install every platform package)", result.stdout)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | ALL_PLATFORM_SKILLS)
 
   def test_ignores_empty_platform_tokens(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
-      result = self.run_installer(temp_home, "copilot\nKotlin, , KMP\n")
+      selection = ", , ".join(PLATFORM_PACKAGES)
+      result = self.run_installer(temp_home, f"copilot\n{selection}\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       installed = self.installed_skills(temp_home)
-      self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS | KMP_SKILLS)
+      self.assertEqual(installed, BASE_SKILLS | ALL_PLATFORM_SKILLS)
 
   def test_rerun_reinstalls_only_selected_platforms(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:

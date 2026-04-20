@@ -29,6 +29,19 @@ SYSTEM_OWNED_CONTENT_MARKERS = (
   "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.",
 )
 
+EXECUTION_AND_REPORTING_CEREMONY_MARKERS = (
+  "shared execution-mode contract",
+  "If execution mode is `inline`:",
+  "If execution mode is `delegated`:",
+  "delegated subagent",
+  "wrapper-linked sidecars",
+  "Selected add-ons: none",
+  "When reporting results:",
+  "show issue count by category",
+  "report each fix with `file:line`",
+  "display the final `./gradlew check` result",
+)
+
 
 class ContentMdHygieneTest(unittest.TestCase):
   def test_governed_content_files_do_not_reintroduce_ceremony_headings(self) -> None:
@@ -78,6 +91,17 @@ class ContentMdHygieneTest(unittest.TestCase):
             marker,
             text,
             f"{content_file} must not inline system-owned setup contract marker '{marker}'; keep it in SKILL.md.",
+          )
+
+  def test_governed_content_files_do_not_inline_execution_or_reporting_ceremony(self) -> None:
+    for content_file in sorted((ROOT / "platform-packs").rglob("content.md")):
+      text = content_file.read_text(encoding="utf-8")
+      for marker in EXECUTION_AND_REPORTING_CEREMONY_MARKERS:
+        with self.subTest(content_file=content_file, marker=marker):
+          self.assertNotIn(
+            marker,
+            text,
+            f"{content_file} must not inline shell-owned execution/reporting ceremony marker '{marker}'.",
           )
 
 
