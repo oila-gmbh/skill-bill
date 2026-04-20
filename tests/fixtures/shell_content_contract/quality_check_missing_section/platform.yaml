@@ -1,5 +1,5 @@
 platform: quality_check_missing_section
-contract_version: "1.0"
+contract_version: "1.1"
 display_name: Quality Check Missing Section Fixture
 routing_signals:
   strong:

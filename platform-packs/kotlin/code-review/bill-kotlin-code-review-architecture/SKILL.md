@@ -1,27 +1,9 @@
 ---
 name: bill-kotlin-code-review-architecture
 description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin code. Use when user mentions Kotlin architecture, DI scope, module boundaries, or dependency direction in Kotlin code.
+shell_contract_version: 1.1
+template_version: 2026.04.19.5
 ---
-
-# Architecture Review Specialist
-
-Review only high-signal architectural issues.
-
-## Focus
-- Layer boundaries and dependency direction
-- Module ownership and source-of-truth consistency
-- Sync/merge semantics, idempotency, and data ownership
-- DI scope correctness and lifecycle-safe wiring
-- Separation between transport, domain, and persistence concerns
-
-## Ignore
-- Formatting/style-only comments
-- Naming preferences without architectural impact
-- Localization and user-facing UX content issues (owned by the route-specific UX/accessibility reviewer)
-
-## Applicability
-
-Use this specialist for shared Kotlin architectural concerns across libraries, app layers, and backend services. Favor findings that remain true regardless of runtime platform; let route-specific specialists own UI-framework concerns and backend transport or persistence-only details.
 
 ## Project Overrides
 
@@ -31,61 +13,51 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Project-Specific Rules
-
-### Shared Kotlin Architecture
-- Keep domain/business logic independent from transport, storage, and framework adapters unless the project intentionally uses a simpler shape
-- Dependencies must point inward toward stable business rules, not outward toward frameworks or concrete infra details
-- Preserve a single source of truth for each piece of business state; avoid duplicated ownership across layers
-- Keep boundary translation explicit: entry points should validate/translate input and delegate business workflows to reusable services or use cases
-- Do not leak framework-specific or storage-specific models across boundaries when that couples unrelated layers
-- Keep API DTOs, domain models, and persistence models separate when their lifecycle, ownership, or shape meaningfully differs
-- External systems (network, database, messaging, file system) should be behind explicit adapters or repository/client boundaries
-- Prefer constructor injection and explicit dependencies over service locators or hidden globals
-- DI scopes must match object lifetime; avoid singleton or app-wide objects quietly owning request, screen, or task-local state
-- Background/async entry points should reuse the same business services as synchronous entry points instead of duplicating workflow logic
-- Avoid `kotlin.Result` and `Any` in core architecture contracts unless the project explicitly standardizes on them
-
-## Output Rules
-- Report at most 7 findings.
-- Include `file:line` evidence for each finding.
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Include a minimal, concrete fix.
-
-## Output Format
-
-Every finding must use this exact bullet format for downstream tooling:
-
-```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
-```
-
-Do NOT use markdown tables, numbered lists, or any other format for findings.
-
 ## Description
-This content file is a platform-pack specialist area review module for
-`bill-kotlin-code-review-architecture`. The baseline orchestrator delegates a single specialist area here.
-The sections above define the specialist playbook; the sections below satisfy
-the shell+content contract v1.0.
+
+Use when reviewing Kotlin changes for architecture, boundaries, and dependency direction.
 
 ## Specialist Scope
-Scoped to one approved code-review area. Does not cover other areas.
+
+This specialist covers architecture, boundaries, and dependency direction in Kotlin changes.
+
+Out of scope: other code-review areas, which are delegated to their own specialists declared under `declared_code_review_areas` in the owning `platform.yaml`.
 
 ## Inputs
-Review scope, changed files, detected stack signals, active learnings,
-`review_session_id`, `review_run_id`, and the `orchestrated` flag.
+
+- The slice of the diff relevant to this area.
+- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, `telemetry-contract.md`.
+- Platform manifest `platform.yaml` for routing signals.
 
 ## Outputs Contract
-Findings in the shared Risk Register format
-`- [F-###] <Severity> | <Confidence> | <file:line> | <description>`, plus
-specialist-specific action items consumed by the baseline orchestrator.
+
+- Findings scoped to architecture, boundaries, and dependency direction, each with severity and `file:line` location.
+- No findings outside scope — unrelated issues belong in other specialists' output.
+- `Execution mode: inline | delegated` reported on its own line.
+
+## Execution
+
+Follow the instructions in [content.md](content.md).
 
 ## Execution Mode Reporting
-Report `Execution mode: inline` or `Execution mode: delegated` per the
-shell's output contract.
+
+When this code-review skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
 
 ## Telemetry Ceremony Hooks
-Specialist reviews never call `import_review` or `triage_findings` directly;
-the baseline orchestrator owns lifecycle telemetry per
-`telemetry-contract.md`.
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.

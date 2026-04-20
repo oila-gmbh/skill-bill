@@ -246,11 +246,14 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       "performance: code-review/bill-kotlin-code-review-performance/SKILL.md",
       manifest,
     )
-    # F-001: platform-pack skills go through the lighter
-    # validate_platform_pack_skill_file and intentionally do NOT get the
-    # Project Overrides boilerplate — keep them lean.
+    # SKILL-21 follow-up: platform-pack SKILL.md files now render
+    # ``## Project Overrides`` as shell governance (previously the section
+    # leaked into ``content.md`` via the migration). It stays next to the
+    # shell so overrides precedence lives in SKILL.md, not in the
+    # author-owned content body.
     body = skill_md.read_text(encoding="utf-8")
-    self.assertNotIn("## Project Overrides", body)
+    self.assertIn("## Project Overrides", body)
+    self.assertIn(".agents/skill-overrides.md", body)
 
   def test_platform_pack(self) -> None:
     result = scaffold(
@@ -301,13 +304,17 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertIn("[review-orchestrator.md](review-orchestrator.md)", review_body)
     self.assertIn("[review-delegation.md](review-delegation.md)", review_body)
     self.assertIn("[telemetry-contract.md](telemetry-contract.md)", review_body)
-    self.assertNotIn("## Project Overrides", review_body)
+    # SKILL-21 follow-up: platform-pack shells now carry Project Overrides
+    # as governance ceremony instead of leaking it into content.md.
+    self.assertIn("## Project Overrides", review_body)
+    self.assertIn(".agents/skill-overrides.md", review_body)
 
     self.assertIn("## Additional Resources", quality_body)
     self.assertIn("[stack-routing.md](stack-routing.md)", quality_body)
     self.assertIn("[telemetry-contract.md](telemetry-contract.md)", quality_body)
     self.assertNotIn("## Specialist Scope", quality_body)
     self.assertNotIn("## Outputs Contract", quality_body)
+    self.assertIn("## Project Overrides", quality_body)
     self.assertIn("## Project Overrides", feature_implement_body)
     self.assertIn("## Project Overrides", feature_verify_body)
     self.assertTrue(
@@ -374,6 +381,50 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertEqual(result.kind, "add-on")
     addon_md = self.repo / "platform-packs" / "kmp" / "addons" / "android-new-addon.md"
     self.assertTrue(addon_md.is_file())
+    # Add-ons are supporting-file markdown, not governance shells; they must
+    # NOT receive the Project Overrides ceremony. The shell they plug into
+    # already carries it.
+    self.assertNotIn("## Project Overrides", addon_md.read_text(encoding="utf-8"))
+
+  def test_platform_pack_skills_carry_project_overrides(self) -> None:
+    """SKILL-21 follow-up: every scaffolded platform-pack SKILL.md renders
+    ``## Project Overrides`` as shell governance, keeping overrides
+    precedence in SKILL.md instead of leaking into content.md.
+
+    Covers: platform-pack (baseline code-review + shelled quality-check),
+    code-review-area specialists, and shelled quality-check overrides.
+    """
+    scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        skeleton_mode="full",
+      )
+    )
+    pack_root = self.repo / "platform-packs" / "java"
+
+    baseline_body = (pack_root / "code-review" / "bill-java-code-review" / "SKILL.md").read_text(
+      encoding="utf-8"
+    )
+    quality_body = (
+      pack_root / "quality-check" / "bill-java-quality-check" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    for body in (baseline_body, quality_body):
+      self.assertIn("## Project Overrides", body)
+      self.assertIn(".agents/skill-overrides.md", body)
+
+    for area in sorted(scaffold_module.APPROVED_CODE_REVIEW_AREAS):
+      specialist_body = (
+        pack_root / "code-review" / f"bill-java-code-review-{area}" / "SKILL.md"
+      ).read_text(encoding="utf-8")
+      self.assertIn("## Project Overrides", specialist_body)
+      self.assertIn(".agents/skill-overrides.md", specialist_body)
+      # Ceremony must NOT leak into the sibling content.md. content.md is
+      # author-owned and never carries overrides precedence.
+      specialist_content = (
+        pack_root / "code-review" / f"bill-java-code-review-{area}" / "content.md"
+      ).read_text(encoding="utf-8")
+      self.assertNotIn("## Project Overrides", specialist_content)
 
   def test_description_section_inferred_no_todo(self) -> None:
     """Default `## Description` bodies must be seeded from family/platform/area
@@ -553,8 +604,15 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       / "bill-kmp-quality-check"
       / "SKILL.md"
     ).read_text(encoding="utf-8")
-    self.assertIn("TODO: author the execution steps", quality_body)
-    self.assertIn("TODO: author the fix strategy", quality_body)
+    # SKILL-21 pass-2: quality-check Execution Steps + Fix Strategy default
+    # bodies now point at the sibling content.md (the pack owns the actual
+    # steps + fix strategy) and reference the stack-routing sidecar so the
+    # validator finds the required supporting-file mention in the SKILL.md
+    # shell itself.
+    self.assertNotIn("TODO: author the execution steps", quality_body)
+    self.assertNotIn("TODO: author the fix strategy", quality_body)
+    self.assertIn("stack-routing.md", quality_body)
+    self.assertIn("sibling `content.md`", quality_body)
 
   def test_pre_shell_family_emits_interim_note(self) -> None:
     # SKILL-16 promoted quality-check onto the shell+content contract, so the
@@ -621,9 +679,11 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertIn("## Telemetry Ceremony Hooks", body)
     self.assertNotIn("## Specialist Scope", body)
     self.assertNotIn("## Outputs Contract", body)
-    # Platform-pack skills go through the lighter validator and do not get
-    # Project Overrides boilerplate — keep them lean.
-    self.assertNotIn("## Project Overrides", body)
+    # SKILL-21 follow-up: shelled platform-pack skills now carry Project
+    # Overrides so overrides precedence lives in SKILL.md instead of
+    # leaking into content.md.
+    self.assertIn("## Project Overrides", body)
+    self.assertIn(".agents/skill-overrides.md", body)
 
   def test_shelled_quality_check_rollback_on_manifest_write_failure(self) -> None:
     """SKILL-16: manifest-write failure for quality-check must roll back atomically."""
@@ -950,7 +1010,10 @@ class ScaffolderOwnedSectionsIdenticalTest(unittest.TestCase):
     body_b = (specialist_b.skill_path / "SKILL.md").read_text(encoding="utf-8")
     owned_a = extract_scaffolder_owned(body_a)
     owned_b = extract_scaffolder_owned(body_b)
-    self.assertEqual(set(owned_a), {"## Execution Mode Reporting", "## Telemetry Ceremony Hooks"})
+    self.assertEqual(
+      set(owned_a),
+      {"## Execution", "## Execution Mode Reporting", "## Telemetry Ceremony Hooks"},
+    )
     self.assertEqual(owned_a, owned_b)
 
 
@@ -1078,6 +1141,180 @@ class AgentDetectionTest(unittest.TestCase):
       sorted(target.name for target in detected),
       sorted(install_module.SUPPORTED_AGENTS),
     )
+
+
+class ContentMdSiblingTest(unittest.TestCase):
+  """SKILL-21 AC 15(a): scaffolder writes both SKILL.md and content.md.
+
+  Every kind that produces a SKILL.md must also produce a sibling
+  ``content.md`` in the same directory. Add-on kind is exempt because it
+  writes a flat file.
+  """
+
+  def setUp(self) -> None:
+    self._tmpdir = tempfile.TemporaryDirectory()
+    self.addCleanup(self._tmpdir.cleanup)
+    self.tmp_path = Path(self._tmpdir.name)
+    self.repo = _build_seed_repo(self.tmp_path)
+    self._no_agents = _NoAgentsPatch()
+    self._no_agents.__enter__()
+    self.addCleanup(self._no_agents.__exit__, None, None, None)
+
+  def _payload(self, **overrides: object) -> dict:
+    payload: dict[str, object] = {
+      "scaffold_payload_version": "1.0",
+      "repo_root": str(self.repo),
+    }
+    payload.update(overrides)
+    return payload
+
+  def test_horizontal_writes_content_md_sibling(self) -> None:
+    scaffold(self._payload(kind="horizontal", name="bill-horizontal-content"))
+    skill_dir = self.repo / "skills" / "bill-horizontal-content"
+    self.assertTrue((skill_dir / "SKILL.md").is_file())
+    self.assertTrue((skill_dir / "content.md").is_file())
+
+  def test_code_review_area_writes_content_md_sibling(self) -> None:
+    scaffold(
+      self._payload(
+        kind="code-review-area",
+        name="bill-kotlin-code-review-performance",
+        platform="kotlin",
+        area="performance",
+      )
+    )
+    skill_dir = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review-performance"
+    )
+    self.assertTrue((skill_dir / "SKILL.md").is_file())
+    self.assertTrue((skill_dir / "content.md").is_file())
+
+  def test_platform_pack_writes_content_md_for_every_generated_skill(self) -> None:
+    scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        skeleton_mode="starter",
+      )
+    )
+    baseline_dir = (
+      self.repo / "platform-packs" / "java" / "code-review" / "bill-java-code-review"
+    )
+    quality_dir = (
+      self.repo / "platform-packs" / "java" / "quality-check" / "bill-java-quality-check"
+    )
+    feature_implement_dir = self.repo / "skills" / "java" / "bill-java-feature-implement"
+    feature_verify_dir = self.repo / "skills" / "java" / "bill-java-feature-verify"
+    for directory in [
+      baseline_dir,
+      quality_dir,
+      feature_implement_dir,
+      feature_verify_dir,
+    ]:
+      self.assertTrue((directory / "SKILL.md").is_file(), directory)
+      self.assertTrue((directory / "content.md").is_file(), directory)
+
+  def test_add_on_kind_does_not_get_content_md(self) -> None:
+    scaffold(
+      self._payload(kind="add-on", name="android-new-addon", platform="kmp")
+    )
+    addon_path = self.repo / "platform-packs" / "kmp" / "addons" / "android-new-addon.md"
+    self.assertTrue(addon_path.is_file())
+    self.assertFalse(addon_path.with_name("content.md").exists())
+
+  def test_content_body_present_written_verbatim(self) -> None:
+    body = (
+      "# My skill body\n"
+      "\n"
+      "Reviews a specific thing.\n"
+      "\n"
+      "- Step 1\n"
+      "- Step 2\n"
+    )
+    scaffold(
+      self._payload(
+        kind="horizontal",
+        name="bill-horizontal-verbatim",
+        content_body=body,
+      )
+    )
+    content_path = self.repo / "skills" / "bill-horizontal-verbatim" / "content.md"
+    self.assertEqual(content_path.read_text(encoding="utf-8"), body)
+
+  def test_content_body_absent_writes_placeholder(self) -> None:
+    scaffold(
+      self._payload(kind="horizontal", name="bill-horizontal-placeholder")
+    )
+    content_path = self.repo / "skills" / "bill-horizontal-placeholder" / "content.md"
+    text = content_path.read_text(encoding="utf-8")
+    self.assertIn("bill-horizontal-placeholder", text)
+    self.assertIn("TODO", text)
+
+  def test_scaffold_template_is_deterministic(self) -> None:
+    first = scaffold(
+      self._payload(kind="horizontal", name="bill-horizontal-deterministic-a")
+    )
+    second_repo = _build_seed_repo(self.tmp_path / "second")
+    second = scaffold(
+      {
+        "scaffold_payload_version": "1.0",
+        "kind": "horizontal",
+        "name": "bill-horizontal-deterministic-a",
+        "repo_root": str(second_repo),
+      }
+    )
+    first_body = (first.skill_path / "SKILL.md").read_bytes()
+    second_body = (second.skill_path / "SKILL.md").read_bytes()
+    self.assertEqual(first_body, second_body)
+
+
+class ContentMdRollbackTest(unittest.TestCase):
+  """SKILL-21 AC 15(a): rollback removes both siblings on validator failure."""
+
+  def setUp(self) -> None:
+    self._tmpdir = tempfile.TemporaryDirectory()
+    self.addCleanup(self._tmpdir.cleanup)
+    self.tmp_path = Path(self._tmpdir.name)
+    self.repo = _build_seed_repo(self.tmp_path)
+    self._no_agents = _NoAgentsPatch()
+    self._no_agents.__enter__()
+    self.addCleanup(self._no_agents.__exit__, None, None, None)
+
+  def test_rollback_removes_content_md_alongside_skill_md(self) -> None:
+    pre_snapshot = _snapshot_tree(self.repo)
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+      raise ScaffoldValidatorError("simulated validator failure")
+
+    payload = {
+      "scaffold_payload_version": "1.0",
+      "kind": "code-review-area",
+      "name": "bill-kotlin-code-review-performance",
+      "platform": "kotlin",
+      "area": "performance",
+      "repo_root": str(self.repo),
+    }
+
+    with mock.patch.object(scaffold_module, "_run_validator", side_effect=boom):
+      with self.assertRaises(ScaffoldValidatorError):
+        scaffold(payload)
+
+    post_snapshot = _snapshot_tree(self.repo)
+    self.assertEqual(pre_snapshot, post_snapshot)
+    # Explicitly confirm both files are gone:
+    skill_dir = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review-performance"
+    )
+    self.assertFalse((skill_dir / "SKILL.md").exists())
+    self.assertFalse((skill_dir / "content.md").exists())
 
 
 if __name__ == "__main__":

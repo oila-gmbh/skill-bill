@@ -1,0 +1,68 @@
+## Kotlin-Family Classification
+
+Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, `application.yml`, `application.conf`, source layout, module names, imports).
+
+Classify the review as one of:
+- `kotlin`
+- `kmp-baseline`
+
+### Additional Backend/Server Signals
+
+- `io.ktor.server`, `routing {}`, `Application.module`
+- `spring-boot`, `@RestController`, `@Controller`, `@Service`, `@Repository`, `@Transactional`
+- Micronaut, Quarkus, http4k, Javalin, gRPC server code
+- `application.yml`, `application.yaml`, `application.conf`
+- SQL/ORM/data-access layers: Exposed, jOOQ, Hibernate/JPA, JDBC, R2DBC, Flyway, Liquibase
+- Queues, schedulers, consumers, caches, metrics, tracing, server auth middleware
+
+### Decision Rules
+
+- If this skill is invoked from `bill-kmp-code-review`, accept Android/KMP scope and classify it as `kmp-baseline`. In that mode, review only shared Kotlin concerns and let `bill-kmp-code-review` add mobile-specific specialists.
+- If strong Android/KMP markers are present and this skill is invoked standalone, clearly say that `bill-kmp-code-review` is required for full Android/KMP coverage. Continue only if the caller explicitly wants the baseline Kotlin layer.
+- Backend/server markers stay on the `kotlin` route. Select backend-focused Kotlin specialists for API contracts, persistence, and reliability when backend/server signals are present.
+- Otherwise use the `kotlin` route.
+
+## Dynamic Specialist Selection
+
+### Always include `bill-kotlin-code-review-architecture`
+
+Architecture review is relevant for every non-trivial change.
+
+### Route baseline
+
+- `kotlin`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
+- `kmp-baseline`: baseline is `architecture` + `bill-kotlin-code-review-platform-correctness`
+
+### Specialist routing table
+
+Analyze the diff and select additional specialist reviews:
+
+| Signal in the diff | Specialist review to run |
+|---------------------|--------------------------|
+| `launch`, `Flow`, `StateFlow`, `viewModelScope`, `LifecycleOwner`, `DispatcherProvider`, `Mutex`, `Semaphore`, `suspend fun`, coroutine scopes, concurrent mutation | `bill-kotlin-code-review-platform-correctness` |
+| Auth, tokens, keys, passwords, encryption, HTTP clients, interceptors, sensitive data | `bill-kotlin-code-review-security` |
+| Heavy computation, blocking I/O, retry/polling loops, bulk data processing, redundant I/O | `bill-kotlin-code-review-performance` |
+| Test files modified (`*Test.kt`), new test classes, mock setup changes, coverage-padding or tautological tests | `bill-kotlin-code-review-testing` |
+| Routes/controllers, request/response DTOs, serializers, content negotiation, validation, status-code mapping, OpenAPI/schema changes | `bill-kotlin-code-review-api-contracts` |
+| Repositories/DAOs, SQL, ORM mappings, transactions, migrations, optimistic locking, upserts, bulk writes | `bill-kotlin-code-review-persistence` |
+| Timeouts, retries, circuit breakers, queues, schedulers, idempotency, caching, metrics, tracing, startup/shutdown lifecycle | `bill-kotlin-code-review-reliability` |
+
+### Minimum and maximum
+
+- Minimum 2 specialists (architecture + at least one other)
+- If no additional triggers match, include `bill-kotlin-code-review-platform-correctness` as the default second specialist review
+- Maximum 8 specialists so backend-heavy Kotlin diffs can include the restored server specialists without dropping shared Kotlin coverage
+- Do not run KMP-only specialists from this skill; leave those to the platform-specific override that owns them
+
+### Scope diff per specialist (delegated mode only)
+
+When execution mode is `delegated`, build a per-specialist file list before launching subagents:
+
+1. Scan each changed file's name and imports for the routing-table signals above
+2. Map each file to the specialists whose signals it matches
+3. `bill-kotlin-code-review-architecture` always receives all changed files
+4. Every other specialist receives only files matching its routing-table signals
+5. If a non-architecture specialist's scoped file list is empty, drop it from the selected set
+6. After scoping, re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-kotlin-code-review-platform-correctness` with all changed files as the default second
+
+This is a lightweight file-level classification (names + imports), not a full review.

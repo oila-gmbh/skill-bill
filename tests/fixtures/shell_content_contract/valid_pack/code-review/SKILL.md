@@ -1,6 +1,8 @@
 ---
 name: valid_pack-code-review
 description: Fixture baseline pack content used for shell contract coverage.
+shell_contract_version: 1.1
+template_version: 2026.04.19
 ---
 
 # Valid Pack Baseline
@@ -22,3 +24,6 @@ Fixture execution mode reporting.
 
 ## Telemetry Ceremony Hooks
 Fixture telemetry hooks.
+## Execution
+
+Follow the instructions in [content.md](content.md).

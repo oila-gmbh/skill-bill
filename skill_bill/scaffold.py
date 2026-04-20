@@ -55,13 +55,16 @@ from skill_bill.scaffold_exceptions import (
 from skill_bill.scaffold_template import (
   ScaffoldTemplateContext,
   infer_skill_description,
+  render_content_body,
   render_default_section,
   render_delegated_mode_section,
   render_inline_mode_section,
   render_project_overrides,
+  render_skill_frontmatter,
 )
 from skill_bill.shell_content_contract import (
   APPROVED_CODE_REVIEW_AREAS,
+  CONTENT_BODY_FILENAME,
   REQUIRED_CONTENT_SECTIONS,
   REQUIRED_QUALITY_CHECK_SECTIONS,
 )
@@ -673,21 +676,16 @@ def _render_skill_body(plan: dict[str, Any], payload: dict) -> str:
 
   description = _optional_string(payload, "description") or infer_skill_description(context)
 
-  front_matter = (
-    "---\n"
-    f"name: {plan['skill_name']}\n"
-    f"description: {description}\n"
-    "---\n"
-  )
+  front_matter = render_skill_frontmatter(context, description=description)
 
   sections: list[str] = []
-  # Skills that land under ``skills/`` (horizontal + pre-shell platform
-  # overrides) are validated by ``validate_skill_file``, which requires the
-  # ``## Project Overrides`` heading and a reference to
-  # ``.agents/skill-overrides.md``. Platform-pack skills go through the
-  # lighter ``validate_platform_pack_skill_file`` and intentionally skip it
-  # to keep platform-pack skills lean.
-  if not plan["is_shelled"] and plan["kind"] != SKILL_KIND_ADD_ON:
+  # ``## Project Overrides`` is shell governance, not author content.
+  # Every governed SKILL.md (under ``skills/`` or ``platform-packs/``) emits
+  # it so overrides precedence lives next to the shell and never leaks into
+  # the author-owned ``content.md``. Add-ons are raw markdown supporting
+  # files and do not receive the section — the shell they plug into already
+  # carries it.
+  if plan["kind"] != SKILL_KIND_ADD_ON:
     sections.append(render_project_overrides(context))
   required_sections = (
     REQUIRED_QUALITY_CHECK_SECTIONS
@@ -745,6 +743,117 @@ def _append_supporting_file_links(body: str, file_names: list[str]) -> str:
   lines = [body.rstrip(), "", "## Additional Resources", ""]
   lines.extend(f"- [{file_name}]({file_name})" for file_name in file_names)
   return "\n".join(lines) + "\n"
+
+
+def infer_plan_from_skill_file(skill_file: Path, frontmatter: dict[str, str]) -> dict[str, Any]:
+  """Reconstruct a plan dict from an on-disk SKILL.md + its frontmatter.
+
+  Used by ``skill-bill upgrade`` (and ``scripts/migrate_to_content_md.py``)
+  so a shell can be regenerated deterministically without a fresh payload.
+  The heuristic looks at the file's path under ``skills/`` or
+  ``platform-packs/`` to infer family/platform/area. Horizontal and
+  pre-shell skills fall back to ``family='horizontal'`` so the renderer
+  emits a minimal shell.
+  """
+  skill_dir = skill_file.parent
+  skill_name = frontmatter.get("name", skill_dir.name)
+  repo_root = Path(skill_file).resolve()
+  for parent in skill_file.resolve().parents:
+    if (parent / "skills").is_dir() or (parent / "platform-packs").is_dir():
+      repo_root = parent
+      break
+
+  platform = ""
+  family = "horizontal"
+  area = ""
+  is_shelled = False
+  kind = SKILL_KIND_HORIZONTAL
+
+  try:
+    relative = skill_dir.resolve().relative_to(repo_root.resolve())
+  except ValueError:
+    relative = Path(skill_dir.name)
+
+  parts = relative.parts
+  if parts and parts[0] == "platform-packs" and len(parts) >= 4:
+    platform = parts[1]
+    family = parts[2]
+    is_shelled = True
+    if family == "code-review" and skill_name.startswith(f"bill-{platform}-code-review-"):
+      area = skill_name.removeprefix(f"bill-{platform}-code-review-")
+      kind = SKILL_KIND_CODE_REVIEW_AREA
+    else:
+      kind = SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+  elif parts and parts[0] == "skills" and len(parts) == 3:
+    platform = parts[1]
+    remainder = skill_name.removeprefix(f"bill-{platform}-")
+    if remainder in PRE_SHELL_FAMILIES:
+      family = remainder
+      kind = SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+    is_shelled = False
+
+  display_name = _derive_display_name(platform) if platform else ""
+
+  return {
+    "kind": kind,
+    "skill_name": skill_name,
+    "skill_path": skill_dir,
+    "skill_file": skill_file,
+    "family": family,
+    "platform": platform,
+    "area": area,
+    "is_shelled": is_shelled,
+    "display_name": display_name,
+    "notes": [],
+  }
+
+
+def _render_skill_body_for_upgrade(
+  skill_file: Path,
+  frontmatter: dict[str, str],
+) -> str:
+  """Render the v1.1 SKILL.md body for an existing skill being upgraded.
+
+  Preserves the existing frontmatter ``description`` so the upgrade does
+  not overwrite hand-edited wording. Callers handle rollback.
+  """
+  plan = infer_plan_from_skill_file(skill_file, frontmatter)
+  description = frontmatter.get("description", "")
+  return _render_skill_body(plan, {"description": description})
+
+
+def _stage_content_md(txn: _ScaffoldTransaction, plan: dict[str, Any], payload: dict) -> None:
+  """Write the sibling ``content.md`` body for a scaffolded skill.
+
+  SKILL-21: every skill kind that produces a SKILL.md also produces a
+  sibling ``content.md``. Kinds that do not produce a SKILL.md (only
+  ``add-on`` today) are skipped by the caller and never reach this helper.
+  """
+  platform = plan["platform"]
+  display_name = plan.get("display_name") or (
+    _derive_display_name(platform) if platform else ""
+  )
+  context = ScaffoldTemplateContext(
+    skill_name=plan["skill_name"],
+    family=plan["family"],
+    platform=platform,
+    area=plan["area"],
+    display_name=display_name,
+  )
+  description = _optional_string(payload, "description") or infer_skill_description(context)
+  content_body_raw = payload.get("content_body")
+  content_body: str | None
+  if content_body_raw is None:
+    content_body = None
+  elif isinstance(content_body_raw, str):
+    content_body = content_body_raw
+  else:
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'content_body' must be a string when provided."
+    )
+  body = render_content_body(context, description=description, content_body=content_body)
+  content_path = plan["skill_file"].parent / CONTENT_BODY_FILENAME
+  _stage_file(txn, content_path, body)
 
 
 def _stage_file(txn: _ScaffoldTransaction, path: Path, content: str) -> None:
@@ -924,6 +1033,7 @@ def _create_platform_pack(
       baseline_supporting_files,
     ),
   )
+  _stage_content_md(txn, baseline_plan, {"description": baseline_description})
   created_symlinks: list[Path] = []
   created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
     txn,
@@ -940,6 +1050,7 @@ def _create_platform_pack(
       quality_check_supporting_files,
     ),
   )
+  _stage_content_md(txn, quality_check_plan, {"description": quality_check_description})
   created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
     txn,
     skill_name=quality_check_name,
@@ -949,40 +1060,38 @@ def _create_platform_pack(
 
   for pre_shell_plan in pre_shell_plans:
     family_label = pre_shell_plan["family"].replace("-", " ")
+    pre_shell_payload = {
+      "description": (
+        f"Use when handling {plan['display_name']} {family_label} work. "
+        "Thin scaffold; fill in the platform-specific workflow later."
+      )
+    }
     _stage_file(
       txn,
       pre_shell_plan["skill_file"],
-      _render_skill_body(
-        pre_shell_plan,
-        {
-          "description": (
-            f"Use when handling {plan['display_name']} {family_label} work. "
-            "Thin scaffold; fill in the platform-specific workflow later."
-          )
-        },
-      ),
+      _render_skill_body(pre_shell_plan, pre_shell_payload),
     )
+    _stage_content_md(txn, pre_shell_plan, pre_shell_payload)
 
   for specialist_plan in specialist_plans:
     specialist_supporting_files = list(
       required_supporting_files_for_skill(specialist_plan["skill_name"])
     )
+    specialist_payload = {
+      "description": (
+        f"Use when reviewing {plan['display_name']} changes for "
+        f"{specialist_plan['area']} risks."
+      )
+    }
     _stage_file(
       txn,
       specialist_plan["skill_file"],
       _append_supporting_file_links(
-        _render_skill_body(
-          specialist_plan,
-          {
-            "description": (
-              f"Use when reviewing {plan['display_name']} changes for "
-              f"{specialist_plan['area']} risks."
-            )
-          },
-        ),
+        _render_skill_body(specialist_plan, specialist_payload),
         specialist_supporting_files,
       ),
     )
+    _stage_content_md(txn, specialist_plan, specialist_payload)
     created_symlinks.extend(_stage_sidecar_symlinks_for_skill(
       txn,
       skill_name=specialist_plan["skill_name"],
@@ -1290,10 +1399,11 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
     else:
       if plan["kind"] == SKILL_KIND_ADD_ON:
         body = _render_addon_body(plan, payload)
+        _stage_file(txn, plan["skill_file"], body)
       else:
         body = _render_skill_body(plan, payload)
-
-      _stage_file(txn, plan["skill_file"], body)
+        _stage_file(txn, plan["skill_file"], body)
+        _stage_content_md(txn, plan, payload)
 
       manifest_edits = _apply_manifest_edits(txn, plan, repo_root)
       symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)
@@ -1301,9 +1411,6 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
 
       _run_validator(repo_root)
       install_targets, install_notes = _perform_install(txn, plan)
-  except ScaffoldValidatorError:
-    _rollback(txn)
-    raise
   except Exception:
     _rollback(txn)
     raise

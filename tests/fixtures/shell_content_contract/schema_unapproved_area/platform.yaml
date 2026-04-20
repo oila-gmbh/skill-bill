@@ -1,5 +1,5 @@
 platform: schema_unapproved_area
-contract_version: "1.0"
+contract_version: "1.1"
 display_name: Schema Unapproved Area Fixture Pack
 routing_signals:
   strong:

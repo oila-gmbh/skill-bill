@@ -710,6 +710,11 @@ install_skill() {
     remove_if_allowed "$target"
   fi
 
+  # SKILL-21: we symlink the entire skill directory, so every file inside it
+  # — SKILL.md, content.md, and sibling supporting files — is visible to
+  # every detected agent without per-file plumbing. Adding new files to a
+  # governed skill (e.g. the v1.1 content.md sibling) needs no installer
+  # changes.
   if command -v python3 >/dev/null 2>&1; then
     python3 -m skill_bill install link-skill \
       --source "$source" \

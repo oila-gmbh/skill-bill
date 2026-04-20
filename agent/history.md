@@ -1,3 +1,17 @@
+## [2026-04-19] split-shell-from-content
+Areas: skill_bill/, scripts/, orchestration/shell-content-contract/, platform-packs/{kotlin,kmp}/, skills/, tests/, docs/, README.md, AGENTS.md, install.sh, .agnix.toml
+- Bumped shell contract to `"1.1"`: governance lives in `SKILL.md`, author-owned skill body lives in a sibling `content.md`. `SHELL_CONTRACT_VERSION` relocated from `shell_content_contract.py` to `constants.py` alongside new `TEMPLATE_VERSION`. reusable
+- Added three named loud-fail exceptions — `MissingContentBodyFileError`, `InvalidExecutionSectionError`, and a `ContractVersionMismatchError` that now carries a migration-script hint. Failure precedence hoisted so `contract_version` checks run before schema validation, ensuring v1.0 packs see the migration message. reusable
+- Introduced new required H2 `## Execution` in both code-review and quality-check content contracts; body is rendered from a single stored constant (`CANONICAL_EXECUTION_BODY`) so it stays byte-identical across a family. SKILL.md frontmatter gains `shell_contract_version` + `template_version`; drift is upgrade-actionable (not runtime failure). reusable
+- Extended `_ScaffoldTransaction` so atomic rollback unwinds the sibling `content.md` too; scaffolder payload gains optional `content_body` (verbatim when present, placeholder when absent); add-ons stay exempt (flat file, no sibling). reusable
+- Added three CLI subcommands: `skill-bill edit` (opens `content.md` only; `$VISUAL` → `$EDITOR` → print path), `skill-bill upgrade` (regenerates drifted SKILL.md with `--dry-run` / `--skill` / `--yes`, rolls back on validator failure, never touches `content.md`), and extended `skill-bill doctor` with `content_md_missing` ERROR + `template_version_drift` WARNING that emits the actionable upgrade command. reusable
+- Shipped `scripts/migrate_to_content_md.py`: walks every governed SKILL.md, extracts free-form H2s + author-edited required sections (normalized compare with `--strict` byte-match flag), regenerates SKILL.md from the v1.1 template, per-skill rollback, `_migration_backup/<timestamp>/` pre-write snapshot, idempotent (skip unless `--force`). reusable
+- Ran the repo-wide migration in the same PR: 13 governed skills under `platform-packs/{kotlin,kmp}/` regenerated with v1.1 shells + new `content.md` siblings; horizontal shells and pre-shell families intentionally stay single-file.
+- install.sh directory-symlinks the skill directory, so `content.md` is auto-synced to every detected runtime (Claude, Copilot, Codex, OpenCode, GLM) without per-file install changes — verified, inline note added.
+- MCP tool surface and telemetry/learnings pipelines deliberately unchanged (AC 18). No backwards compatibility for v1.0 packs at runtime — they loud-fail with the migration message.
+Feature flag: N/A
+Acceptance criteria: 20/20 implemented (AC 20 pre/post kotlin-code-review parity smoke captured in PR description)
+
 ## [2026-04-18] flatten-canonical-skills-out-of-skills-base
 Areas: skills/, scripts/, skill_bill/, README.md, AGENTS.md, docs/, tests/
 - Moved canonical user-facing skills out of `skills/base/` and into `skills/<bill-skill>/`, leaving `skills/<platform>/...` only for legacy pre-shell platform overrides. reusable

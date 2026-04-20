@@ -83,6 +83,14 @@ Every payload MUST include:
     code-review area and registers them in the generated manifest.
 - `governs_addons` — optional boolean for `platform-pack`. Defaults to
   `false`.
+- `content_body` — optional free-form Markdown body written verbatim to the
+  sibling `content.md` file. When present, the scaffolder trims trailing
+  whitespace and writes the body plus a single trailing newline. When absent,
+  a minimal deterministic placeholder is written so the validator passes and
+  the author has a starting point. Only applies to kinds that produce a
+  `SKILL.md` (`horizontal`, `platform-override-piloted`, `platform-pack`,
+  `code-review-area`); the `add-on` kind is a flat file and does not get a
+  `content.md` sibling.
 - `repo_root` — absolute path override used by tests. Defaults to the
   current working directory.
 
@@ -217,3 +225,28 @@ All exceptions derive from `skill_bill.scaffold_exceptions.ScaffoldError`:
   staged changes are rolled back.
 - `ScaffoldRollbackError` — rollback itself failed (the only failure mode
   that may leave the repo partially mutated).
+
+## SKILL-21: Shell+content split (v1.1)
+
+SKILL-21 added sibling `content.md` authoring and bumped the shell contract
+to `1.1`. Callers of the scaffold payload do not need to change, but the
+output changes:
+
+- Every kind that produces a `SKILL.md` now also writes a sibling
+  `content.md` under the same skill directory.
+- The generated `SKILL.md` carries two additional frontmatter keys,
+  `shell_contract_version` and `template_version`.
+- The generated `SKILL.md` carries a new required `## Execution` H2 whose
+  body is byte-identical across every governed skill and links to
+  `content.md`.
+
+Loud-fail exceptions added to the shell contract catalog (raised by the
+loader and surfaced by the validator, not by the scaffolder itself):
+
+- `ContractVersionMismatchError` — pack declares an outdated
+  `contract_version`; the message points at
+  `scripts/migrate_to_content_md.py`.
+- `MissingContentBodyFileError` — sibling `content.md` is missing for a
+  governed skill.
+- `InvalidExecutionSectionError` — the `## Execution` section body is not
+  the canonical byte-identical form.

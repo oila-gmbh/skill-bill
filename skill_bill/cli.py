@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from skill_bill import __version__
 from skill_bill.config import (
@@ -666,16 +667,189 @@ def install_link_skill_command(args: argparse.Namespace) -> int:
   ``ln -s`` plumbing.
   """
   from skill_bill.install import AgentTarget, install_skill
-  from pathlib import Path as _Path
 
-  source = _Path(args.source).resolve()
-  target_dir = _Path(args.target_dir).resolve()
+  source = Path(args.source).resolve()
+  target_dir = Path(args.target_dir).resolve()
   target_dir.mkdir(parents=True, exist_ok=True)
   install_skill(source, [AgentTarget(name=args.agent or "manual", path=target_dir)])
   return 0
 
 
+def _discover_governed_skill_directories(repo_root: Path) -> list[Path]:
+  """Return every directory containing a SKILL.md under ``skills/`` and ``platform-packs/``.
+
+  Used by ``skill-bill edit``, ``skill-bill upgrade``, and the doctor
+  extensions. Excludes hidden directories. The caller decides which subset
+  (e.g. only skills with a content.md sibling) it cares about.
+  """
+  discovered: list[Path] = []
+  for container_name in ("skills", "platform-packs"):
+    container = repo_root / container_name
+    if not container.is_dir():
+      continue
+    for skill_md in sorted(container.rglob("SKILL.md")):
+      if any(part.startswith(".") for part in skill_md.relative_to(repo_root).parts):
+        continue
+      discovered.append(skill_md.parent)
+  return discovered
+
+
+def _resolve_repo_root_for_cli() -> Path:
+  """Resolve the repo root the CLI should operate on.
+
+  The CLI runs from an install or a clone; the repo-owned skills live
+  relative to the skill-bill package. Fall back to the current working
+  directory when the package is installed from PyPI/wheel so local edits
+  still find local skills.
+  """
+  from skill_bill.scaffold import _REPO_ROOT
+
+  if (_REPO_ROOT / "skills").is_dir() or (_REPO_ROOT / "platform-packs").is_dir():
+    return _REPO_ROOT
+  return Path.cwd().resolve()
+
+
+def _find_skill_directory_by_name(repo_root: Path, skill_name: str) -> Path | None:
+  """Return the skill directory whose basename matches ``skill_name``.
+
+  Resolves both ``skills/<name>/`` and ``platform-packs/<slug>/<family>/<name>/``
+  layouts. Returns ``None`` when no match is found so the caller can print
+  an actionable error.
+  """
+  for skill_dir in _discover_governed_skill_directories(repo_root):
+    if skill_dir.name == skill_name:
+      return skill_dir
+  return None
+
+
+def edit_skill_command(args: argparse.Namespace) -> int:
+  """Open ``content.md`` for ``<skill-name>`` in ``$VISUAL`` / ``$EDITOR``.
+
+  Selection order is POSIX: ``$VISUAL`` → ``$EDITOR`` → print the path and
+  exit cleanly. SKILL.md is generated and must not be opened by this
+  subcommand — the user-editable surface is ``content.md``.
+  """
+  import os
+  import shlex
+  import subprocess as _subprocess
+
+  repo_root = _resolve_repo_root_for_cli()
+  skill_dir = _find_skill_directory_by_name(repo_root, args.skill_name)
+  if skill_dir is None:
+    print(
+      f"Skill '{args.skill_name}' not found under 'skills/' or 'platform-packs/'.",
+      file=sys.stderr,
+    )
+    return 2
+
+  content_path = skill_dir / "content.md"
+  if not content_path.is_file():
+    print(
+      f"Skill '{args.skill_name}' has no 'content.md' sibling at '{content_path}'. "
+      "Run `.venv/bin/python3 scripts/migrate_to_content_md.py` to create it.",
+      file=sys.stderr,
+    )
+    return 3
+
+  editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or ""
+  if not editor.strip():
+    print(str(content_path))
+    return 0
+
+  command = shlex.split(editor) + [str(content_path)]
+  try:
+    completed = _subprocess.run(command)
+  except FileNotFoundError as error:
+    print(str(error), file=sys.stderr)
+    return 4
+  return completed.returncode
+
+
+def upgrade_skills_command(args: argparse.Namespace) -> int:
+  """Regenerate SKILL.md shells whose ``template_version`` has drifted.
+
+  Walks every governed skill, detects drift via
+  :func:`skill_bill.shell_content_contract.detect_template_drift`, and
+  regenerates ``SKILL.md`` only — ``content.md`` is never touched.
+  """
+  from skill_bill.constants import TEMPLATE_VERSION
+  from skill_bill.shell_content_contract import (
+    CONTENT_BODY_FILENAME,
+    detect_template_drift,
+    parse_skill_frontmatter,
+  )
+
+  repo_root = _resolve_repo_root_for_cli()
+  candidates: list[Path] = []
+  for skill_dir in _discover_governed_skill_directories(repo_root):
+    content_path = skill_dir / CONTENT_BODY_FILENAME
+    if not content_path.is_file():
+      continue
+    if args.skill and skill_dir.name != args.skill:
+      continue
+    skill_file = skill_dir / "SKILL.md"
+    if not detect_template_drift(skill_file, current_template_version=TEMPLATE_VERSION):
+      continue
+    candidates.append(skill_file)
+
+  if not candidates:
+    print("No skills with template_version drift detected.")
+    return 0
+
+  if args.dry_run:
+    print(f"Planned SKILL.md regenerations ({len(candidates)}):")
+    for skill_file in candidates:
+      print(f"  - {skill_file.relative_to(repo_root)}")
+    return 0
+
+  if not args.yes:
+    print(
+      f"About to regenerate {len(candidates)} SKILL.md files. Re-run with --yes to confirm."
+    )
+    return 0
+
+  from skill_bill.scaffold import _render_skill_body_for_upgrade
+  from skill_bill.shell_content_contract import (
+    assert_content_md_sibling,
+    assert_execution_body_matches,
+  )
+
+  regenerated: list[str] = []
+  for skill_file in candidates:
+    original_bytes = skill_file.read_bytes()
+    frontmatter = parse_skill_frontmatter(skill_file)
+    new_body = _render_skill_body_for_upgrade(skill_file, frontmatter)
+    try:
+      skill_file.write_bytes(new_body.encode("utf-8"))
+      assert_execution_body_matches(
+        skill_file,
+        context_label=f"upgrade for '{skill_file.parent.name}'",
+      )
+      assert_content_md_sibling(
+        skill_file,
+        context_label=f"upgrade for '{skill_file.parent.name}'",
+      )
+      regenerated.append(skill_file.parent.name)
+    except Exception as error:
+      skill_file.write_bytes(original_bytes)
+      print(
+        f"Rolled back upgrade for '{skill_file.parent.name}': {error}",
+        file=sys.stderr,
+      )
+      return 5
+  print(f"Regenerated {len(regenerated)} SKILL.md files:")
+  for name in regenerated:
+    print(f"  - {name}")
+  return 0
+
+
 def doctor_command(args: argparse.Namespace) -> int:
+  from skill_bill.constants import TEMPLATE_VERSION
+  from skill_bill.shell_content_contract import (
+    CONTENT_BODY_FILENAME,
+    detect_template_drift,
+  )
+
   db_path = resolve_db_path(args.db)
   try:
     settings = load_telemetry_settings()
@@ -684,15 +858,64 @@ def doctor_command(args: argparse.Namespace) -> int:
   except ValueError:
     telemetry_enabled = False
     telemetry_level = "off"
+
+  repo_root = _resolve_repo_root_for_cli()
+  content_md_missing: list[dict[str, str]] = []
+  template_drift: list[dict[str, str]] = []
+  for skill_dir in _discover_governed_skill_directories(repo_root):
+    content_path = skill_dir / CONTENT_BODY_FILENAME
+    skill_file = skill_dir / "SKILL.md"
+    if _is_shelled_governed_skill(skill_dir) and not content_path.is_file():
+      content_md_missing.append(
+        {
+          "skill_name": skill_dir.name,
+          "skill_file": str(skill_file),
+          "expected_content_path": str(content_path),
+          "severity": "error",
+        }
+      )
+    if skill_file.is_file() and detect_template_drift(
+      skill_file,
+      current_template_version=TEMPLATE_VERSION,
+    ):
+      if content_path.is_file():
+        template_drift.append(
+          {
+            "skill_name": skill_dir.name,
+            "skill_file": str(skill_file),
+            "severity": "warning",
+            "action": f"skill-bill upgrade --skill {skill_dir.name} --yes",
+          }
+        )
+
   payload: dict[str, object] = {
     "version": __version__,
     "db_path": str(db_path),
     "db_exists": db_path.exists(),
     "telemetry_enabled": telemetry_enabled,
     "telemetry_level": telemetry_level,
+    "current_template_version": TEMPLATE_VERSION,
+    "content_md_missing": content_md_missing,
+    "template_version_drift": template_drift,
   }
   emit(payload, args.format)
   return 0
+
+
+def _is_shelled_governed_skill(skill_dir: Path) -> bool:
+  """Return True when ``skill_dir`` is a shelled governed skill.
+
+  Pre-shell families and horizontal router shells do not have a content.md
+  sibling requirement; only skills inside a platform pack's ``code-review/``
+  or ``quality-check/`` subtree (or a shelled family placement) are
+  governed by v1.1.
+  """
+  parts = skill_dir.parts
+  if "platform-packs" in parts:
+    idx = parts.index("platform-packs")
+    if idx + 2 < len(parts) and parts[idx + 2] in {"code-review", "quality-check"}:
+      return True
+  return False
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -893,6 +1116,39 @@ def build_parser() -> argparse.ArgumentParser:
   )
   new_skill_parser.add_argument("--format", choices=("text", "json"), default="text")
   new_skill_parser.set_defaults(handler=new_skill_command)
+
+  edit_parser = subparsers.add_parser(
+    "edit",
+    help=(
+      "Open a skill's author-editable content.md in $VISUAL/$EDITOR. "
+      "SKILL.md is generated — never open it directly."
+    ),
+  )
+  edit_parser.add_argument("skill_name", help="The skill directory name (e.g. bill-kotlin-code-review).")
+  edit_parser.set_defaults(handler=edit_skill_command)
+
+  upgrade_parser = subparsers.add_parser(
+    "upgrade",
+    help=(
+      "Regenerate SKILL.md shells whose template_version drifted. "
+      "Never touches content.md."
+    ),
+  )
+  upgrade_parser.add_argument(
+    "--dry-run",
+    action="store_true",
+    help="Print which shells would be regenerated without writing.",
+  )
+  upgrade_parser.add_argument(
+    "--skill",
+    help="Restrict the upgrade to a single skill name.",
+  )
+  upgrade_parser.add_argument(
+    "--yes",
+    action="store_true",
+    help="Skip the confirmation prompt and write immediately.",
+  )
+  upgrade_parser.set_defaults(handler=upgrade_skills_command)
 
   install_parser = subparsers.add_parser(
     "install",

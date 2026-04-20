@@ -1,5 +1,5 @@
 platform: heading_in_fence
-contract_version: "1.0"
+contract_version: "1.1"
 display_name: Heading-In-Fence Fixture Pack
 routing_signals:
   strong:

@@ -1,5 +1,5 @@
 platform: schema_areas_wrong_type
-contract_version: "1.0"
+contract_version: "1.1"
 display_name: Schema Areas Wrong Type Fixture Pack
 routing_signals:
   strong:

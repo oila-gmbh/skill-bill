@@ -351,7 +351,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="fixture-pack",
-        contract_version="1.0",
+        contract_version="1.1",
         areas=["architecture"],
       )
       result = self.run_validator(repo_root)
@@ -376,7 +376,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="broken-pack",
-        contract_version="1.0",
+        contract_version="1.1",
         areas=[],
         skip_section="Telemetry Ceremony Hooks",
       )
@@ -390,7 +390,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="java",
-        contract_version="1.0",
+        contract_version="1.1",
         areas=[],
       )
       result = self.run_validator(repo_root)
@@ -446,7 +446,15 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       "Execution Mode Reporting",
       "Telemetry Ceremony Hooks",
     ]
-    body = [f"---\nname: {baseline_name}\ndescription: Fixture platform pack content.\n---\n"]
+    body = [
+      (
+        f"---\nname: {baseline_name}\n"
+        f"description: Fixture platform pack content.\n"
+        f"shell_contract_version: 1.1\n"
+        f"template_version: 2026.04.19\n"
+        f"---\n"
+      )
+    ]
     body.append(f"# {slug} baseline\n")
     if baseline_name in {"bill-kotlin-code-review", "bill-kmp-code-review"}:
       body.append(f"{REVIEW_SESSION_ID_PLACEHOLDER}\n")
@@ -458,9 +466,19 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       if skip_section is not None and section == skip_section:
         continue
       body.append(f"## {section}\nFixture {section.lower()}.\n")
+      # v1.1: the canonical ## Execution body lives between Outputs Contract
+      # and Execution Mode Reporting so its body ends at the next H2 rather
+      # than at EOF. Keeping it here keeps the byte-match assertion stable.
+      if section == "Outputs Contract":
+        body.append("## Execution\n\nFollow the instructions in [content.md](content.md).\n")
     for file_name in required_supporting_files_for_skill(baseline_name):
       body.append(f"[{file_name}]({file_name})\n")
     baseline_path.write_text("\n".join(body), encoding="utf-8")
+    # v1.1 sibling content.md: required for every governed SKILL.md.
+    (baseline_path.parent / "content.md").write_text(
+      f"# {baseline_name}\n\nFixture content body.\n",
+      encoding="utf-8",
+    )
     targets = supporting_file_targets(repo_root)
     for file_name in required_supporting_files_for_skill(baseline_name):
       (baseline_path.parent / file_name).symlink_to(targets[file_name])
@@ -529,7 +547,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.write_platform_pack(
         repo_root,
         slug="kmp",
-        contract_version="1.0",
+        contract_version="1.1",
         areas=[],
       )
       self.write_governed_addons(repo_root)

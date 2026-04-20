@@ -1,27 +1,9 @@
 ---
 name: bill-kotlin-code-review-platform-correctness
 description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code. Use when user mentions coroutine leak, race condition, dispatcher misuse, lifecycle-unsafe collection, or threading bug in Kotlin code.
+shell_contract_version: 1.1
+template_version: 2026.04.19.5
 ---
-
-# Platform & Correctness Review Specialist
-
-Review only correctness and runtime-safety issues.
-
-## Focus
-- Coroutine scoping, cancellation, and dispatcher/thread correctness
-- Race conditions, ordering bugs, and stale-state updates
-- Nullability/edge-case failures and crash paths
-- State-machine and contract handling correctness
-- Business-rule drift in conditionals, reducers, refactors, and retries
-- Violated invariants, missing guards, and wrong branch selection in changed logic
-- Resource ownership and lifecycle safety where relevant
-
-## Ignore
-- Style or readability feedback without correctness impact
-
-## Applicability
-
-Use this specialist for shared Kotlin correctness risks across libraries, app layers, and backend services. Favor issues around ownership, concurrency, cancellation, and logic safety that remain meaningful regardless of platform.
 
 ## Project Overrides
 
@@ -31,72 +13,51 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Project-Specific Rules
-
-### Shared Kotlin Correctness
-- Never use `GlobalScope`
-- Long-lived coroutine scopes must have an explicit owner and cancellation strategy
-- Shared mutable state must be synchronized, serialized, or replaced with immutable/message-driven flow
-- Cancellation and timeout behavior must be explicit around long-running or external operations
-- Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
-- Validate ordering guarantees where multiple async sources can race or overwrite each other
-- Do not introduce deprecated APIs, components, or patterns when a supported alternative exists; if usage is unavoidable, it must be narrowly scoped and explicitly justified
-- Work launched from callbacks, requests, or scheduled entry points must remain tied to an explicit owner or be delegated to a managed background component
-- Flow/state transformations should stay deterministic and make source priority explicit when multiple async inputs can race
-- Concurrent writes need atomic statements, locking, version checks, or another explicit consistency mechanism
-- Do not hold scarce resources (locks, transactions, open streams, file handles) across remote calls or long waits unless the contract explicitly requires it
-- Startup-owned or application-owned scopes must be cancelled cleanly during shutdown or cleanup
-
-### Business Logic / Invariant Checks
-- Guard ordering in `if`/`when`, reducers, and state transitions must preserve business-rule priority and reject invalid states before success paths
-- Refactors, extracted helpers, and shared transformation pipelines must not collapse distinct business cases into the same outcome unless the contract explicitly changed
-- Null, absent, empty, default, and sentinel values must preserve their business meaning across mapping, storage, transport, and UI state
-- Partial-success, optimistic update, and rollback paths must not report durable success before the contract's required effect actually happens
-- Retry, recollection, resubscription, or repeated lifecycle entry must not bypass one-time business checks or re-apply one-time user-visible effects unless the contract explicitly permits it
-- Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
-
-## Output Rules
-- Report at most 7 findings.
-- Include reproducible failure scenario for Major/Blocker findings.
-- Potential edge-case findings must be grounded in a reachable code path or declared contract. Identify the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.
-- Include `file:line` evidence for each finding.
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Include a minimal, concrete fix.
-
-## Output Format
-
-Every finding must use this exact bullet format for downstream tooling:
-
-```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
-```
-
-Do NOT use markdown tables, numbered lists, or any other format for findings.
-
 ## Description
-This content file is a platform-pack specialist area review module for
-`bill-kotlin-code-review-platform-correctness`. The baseline orchestrator delegates a single specialist area here.
-The sections above define the specialist playbook; the sections below satisfy
-the shell+content contract v1.0.
+
+Use when reviewing Kotlin changes for lifecycle, concurrency, threading, and logic correctness.
 
 ## Specialist Scope
-Scoped to one approved code-review area. Does not cover other areas.
+
+This specialist covers lifecycle, concurrency, threading, and logic correctness in Kotlin changes.
+
+Out of scope: other code-review areas, which are delegated to their own specialists declared under `declared_code_review_areas` in the owning `platform.yaml`.
 
 ## Inputs
-Review scope, changed files, detected stack signals, active learnings,
-`review_session_id`, `review_run_id`, and the `orchestrated` flag.
+
+- The slice of the diff relevant to this area.
+- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, `telemetry-contract.md`.
+- Platform manifest `platform.yaml` for routing signals.
 
 ## Outputs Contract
-Findings in the shared Risk Register format
-`- [F-###] <Severity> | <Confidence> | <file:line> | <description>`, plus
-specialist-specific action items consumed by the baseline orchestrator.
+
+- Findings scoped to lifecycle, concurrency, threading, and logic correctness, each with severity and `file:line` location.
+- No findings outside scope — unrelated issues belong in other specialists' output.
+- `Execution mode: inline | delegated` reported on its own line.
+
+## Execution
+
+Follow the instructions in [content.md](content.md).
 
 ## Execution Mode Reporting
-Report `Execution mode: inline` or `Execution mode: delegated` per the
-shell's output contract.
+
+When this code-review skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
 
 ## Telemetry Ceremony Hooks
-Specialist reviews never call `import_review` or `triage_findings` directly;
-the baseline orchestrator owns lifecycle telemetry per
-`telemetry-contract.md`.
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.

@@ -1,5 +1,5 @@
 platform: invalid_schema
-contract_version: "1.0"
+contract_version: "1.1"
 routing_signals: "this should be a mapping"
 declared_code_review_areas: []
 declared_files:

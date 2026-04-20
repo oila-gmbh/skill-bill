@@ -23,7 +23,7 @@ Keep this shell thin:
 - refuse to run when a routed pack declares a quality-check file that does
   not exist or is missing a required section — never silently fall back
 
-The shell targets shell contract version **`1.0`**. Packs that do not
+The shell targets shell contract version **`1.1`**. Packs that do not
 declare `declared_quality_check_file` are still contract-compliant;
 declaring the key opts the pack into quality-check routing.
 
