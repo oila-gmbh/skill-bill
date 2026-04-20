@@ -507,12 +507,11 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     )
     self.assertIn(GOVERNED_CONTENT_AUTHORING_NOTE, result.notes)
 
-  def test_platform_pack_full_skeleton(self) -> None:
+  def test_platform_pack_defaults_to_full_skeleton(self) -> None:
     result = scaffold(
       self._payload(
         kind="platform-pack",
         platform="java",
-        skeleton_mode="full",
       )
     )
     self.assertEqual(result.kind, "platform-pack")
@@ -1187,62 +1186,65 @@ class NewSkillCliErrorMappingTest(unittest.TestCase):
 
 
 class NewSkillInteractivePromptTest(unittest.TestCase):
-  def test_platform_pack_prompt_maps_baseline_only_to_starter(self) -> None:
+  def test_platform_pack_prompt_defaults_new_platform_to_full(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
 
-    with mock.patch(
-      "builtins.input",
-      side_effect=[
-        "java",   # platform
-        "1",      # baseline
-        "",       # display name
-        "",       # description
-      ],
-    ):
-      payload = _prompt_new_skill_interactively()
+    with tempfile.TemporaryDirectory() as tmpdir:
+      repo_root = Path(tmpdir)
+      with mock.patch(
+        "builtins.input",
+        side_effect=[
+          "java",   # platform
+          "",       # display name
+          "",       # description
+        ],
+      ):
+        payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
     self.assertEqual(payload["platform"], "java")
-    self.assertEqual(payload["skeleton_mode"], "starter")
+    self.assertNotIn("skeleton_mode", payload)
 
   def test_platform_pack_prompt_uses_php_preset_without_signal_prompt(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
 
-    with mock.patch(
-      "builtins.input",
-      side_effect=[
-        "php",    # platform
-        "1",      # baseline
-        "",       # display name
-        "",       # description
-      ],
-    ):
-      payload = _prompt_new_skill_interactively()
+    with tempfile.TemporaryDirectory() as tmpdir:
+      repo_root = Path(tmpdir)
+      with mock.patch(
+        "builtins.input",
+        side_effect=[
+          "php",    # platform
+          "",       # display name
+          "",       # description
+        ],
+      ):
+        payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
     self.assertEqual(payload["platform"], "php")
-    self.assertEqual(payload["skeleton_mode"], "starter")
+    self.assertNotIn("skeleton_mode", payload)
     self.assertNotIn("routing_signals", payload)
 
-  def test_platform_pack_prompt_maps_specialists_to_full(self) -> None:
+  def test_platform_pack_prompt_collects_custom_routing_for_unknown_platform(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
 
-    with mock.patch(
-      "builtins.input",
-      side_effect=[
-        "python",    # platform
-        "2",         # baseline + specialists
-        "Python",    # display name
-        "",          # description
-        "pyproject.toml,setup.py",  # strong signals
-        "",          # tie-breakers
-      ],
-    ):
-      payload = _prompt_new_skill_interactively()
+    with tempfile.TemporaryDirectory() as tmpdir:
+      repo_root = Path(tmpdir)
+      with mock.patch(
+        "builtins.input",
+        side_effect=[
+          "python",    # platform
+          "Python",    # display name
+          "",          # description
+          "pyproject.toml,setup.py",  # strong signals
+          "",          # tie-breakers
+        ],
+      ):
+        payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
     self.assertEqual(payload["platform"], "python")
-    self.assertEqual(payload["skeleton_mode"], "full")
+    self.assertNotIn("skeleton_mode", payload)
     self.assertEqual(
       payload["routing_signals"]["strong"],
       ["pyproject.toml", "setup.py"],
@@ -1262,7 +1264,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "builtins.input",
         side_effect=[
           "php",           # platform
-          "3",             # code-review specialist
+          "1",             # code-review specialist
           "security",      # area
           "",              # derived name
           "Review PHP security risks.",  # description
@@ -1289,7 +1291,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "builtins.input",
         side_effect=[
           "php",            # platform
-          "4",              # platform override
+          "2",              # platform override
           "quality-check",  # family
           "",               # derived name
           "Run PHP quality checks.",  # description

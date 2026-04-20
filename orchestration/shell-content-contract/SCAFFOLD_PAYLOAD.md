@@ -76,7 +76,7 @@ Every payload MUST include:
 - `display_name` — human-friendly label for `platform-pack`. Defaults to a
   title-cased version of `platform`.
 - `skeleton_mode` — `starter` or `full` for `platform-pack`. Defaults to
-  `starter`.
+  `full`.
   - `starter` creates the pack root, baseline `code-review`, and default
     `quality-check`.
   - `full` also creates bare specialist stubs for every approved
@@ -142,34 +142,31 @@ The scaffolded skill links the governed sibling sidecars
   "kind": "platform-pack",
   "platform": "java",
   "display_name": "Java",
-  "skeleton_mode": "starter",
   "description": "Use when reviewing Java server and library changes."
 }
 ```
 
 This creates `platform-packs/java/platform.yaml`,
 `platform-packs/java/code-review/bill-java-code-review/SKILL.md`, and
-`platform-packs/java/quality-check/bill-java-quality-check/SKILL.md`. The
-built-in `java` preset supplies the routing signals, and the follow-on
-`code-review-area` flow can add specialists such as architecture or
-performance without manual manifest or README edits.
+`platform-packs/java/quality-check/bill-java-quality-check/SKILL.md`, plus
+bare specialist stubs for every approved code-review area. The built-in
+`java` preset supplies the routing signals.
 
-### Full platform skeleton
+### Starter platform pack override
 
 ```json
 {
   "scaffold_payload_version": "1.0",
   "kind": "platform-pack",
   "platform": "java",
-  "skeleton_mode": "full"
+  "skeleton_mode": "starter"
 }
 ```
 
-This creates the starter Java pack plus bare specialist stubs for every
-approved code-review area (`architecture`, `performance`,
-`platform-correctness`, `security`, `testing`, `api-contracts`,
-`persistence`, `reliability`, `ui`, `ux-accessibility`). The generated
-files are intentionally minimal so the user can enrich the authored
+This creates only the baseline Java pack without the approved specialist
+stubs. Direct payload callers can still opt into `starter`, but the
+user-facing intake defaults to `full`. The generated files are intentionally
+minimal so the user can enrich the authored
 sidecars afterwards.
 
 ### Code-review area

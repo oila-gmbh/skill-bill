@@ -26,9 +26,8 @@ Internally, the scaffolder still maps skill requests to exactly one of these fou
    - Pre-shell families (`feature-implement`, `feature-verify`) → destination: `skills/<platform>/<name>/SKILL.md`; the scaffolder emits an interim-location note saying "will move when piloted."
 3. **platform-pack** — bootstrap a new platform with the baseline skill set.
    - Destination: `platform-packs/<slug>/platform.yaml` plus `platform-packs/<slug>/code-review/<bill-<slug>-code-review>/SKILL.md` and `platform-packs/<slug>/quality-check/<bill-<slug>-quality-check>/SKILL.md`.
-   - Ask for the platform slug and whether the user wants just the baseline review path or also the code-review specialists.
-   - `starter` → scaffold the pack root, baseline code-review, and default quality-check.
-   - `full` → scaffold the starter set plus bare specialist stubs for every approved code-review area.
+   - Default behavior: scaffold the pack root, baseline code-review, default quality-check, and bare specialist stubs for every approved code-review area.
+   - `starter` remains a payload-level escape hatch for direct callers, but the user-facing skill does not offer it as an intake choice.
    - For known platforms such as `java` and `php`, the scaffolder infers routing signals from a built-in preset; ask for manual routing signals only when no preset exists and you do not have a defensible inference.
 4. **code-review-area** — a specialist for one approved code-review area inside an existing platform pack.
    - Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
@@ -55,28 +54,22 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
      - If the answer is `cross-stack`, ask only for the horizontal skill details:
        - `Skill name:`
        - `What should it do?`
-     - If the platform does not exist yet or the user clearly wants a new platform pack, ask only:
-
-       ```text
-       1. Baseline
-       2. Baseline + Code Review Specialists
-       ```
+     - If the platform does not exist yet or the user clearly wants a new platform pack, infer `platform-pack` immediately and continue to the summary.
 
      - If the platform already exists and the request is still ambiguous, ask only for the relevant platform-scoped type:
 
        ```text
-       1. Baseline
-       2. Baseline + Code Review Specialists
-       3. Code-Review Specialist
-       4. Platform Override
+       1. Code-Review Specialist
+       2. Platform Override
        ```
 
    - Do not show the non-platform options after the user has already chosen a concrete platform unless they ask to switch to a cross-stack skill.
    - Do not restate the same menu in a second message. One question, then one follow-up question, then a summary.
-   - Translate the answers into the internal `kind`, `family`, `area`, and `skeleton_mode` yourself.
-   - For `platform-pack`, the baseline set means:
+   - Translate the answers into the internal `kind`, `family`, and `area` yourself.
+   - For `platform-pack`, the default set means:
      - baseline `bill-<platform>-code-review`
      - baseline `bill-<platform>-quality-check`
+     - all approved code-review specialist stubs
    - Only ask follow-ups that are still missing:
      - skill name for horizontal, specialist, or override scaffolds
      - family for platform overrides
@@ -84,10 +77,10 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
      - description or display name only when the user explicitly wants to customize them before scaffolding
      - routing signals only for a new platform with no built-in preset and no defensible repo-marker inference
 
-   If the user says “create a skill set for Java” or equivalent, interpret that as `platform-pack` immediately. Ask only the baseline/full follow-up and do not show the broader platform-scoped menu.
+   If the user says “create a skill set for Java” or equivalent, interpret that as `platform-pack` immediately. Do not show any baseline/full follow-up.
 
 2. **Summarize the inferred request.** Before rendering the preview, restate what you inferred in plain language:
-   - Keep it short: platform slug, baseline vs full, whether a built-in preset will be used, and the user-facing outcome.
+   - Keep it short: platform slug, whether a built-in preset will be used, and the user-facing outcome.
    - End with one confirmation prompt such as `Proceed? yes | redo`.
 
 3. **Preview at the right abstraction level.** Before calling the scaffolder, give a concise preview that covers:
@@ -114,7 +107,7 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
      "family": "...",
      "area": "...",
       "display_name": "...",
-     "skeleton_mode": "starter | full",
+     "skeleton_mode": "full",
      "routing_signals": {
        "strong": ["..."],
        "tie_breakers": ["..."],
@@ -144,7 +137,7 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
 - The scaffolder is atomic. If the validator fails, every staged change is rolled back and the error is surfaced verbatim; do not try to "keep partial work."
 - If no agents are detected, the scaffolder skips the install step and notes that the user should run `./install.sh` to set up agent paths. Do not synthesize agent paths by hand.
 - Default to conversational guidance. The raw field template and JSON payload are implementation details, not the primary UX.
-- Treat `platform-pack` as the one-shot bootstrap path for a new stack: platform slug plus specialist depth should be enough to get the initial set created.
+- Treat `platform-pack` as the one-shot bootstrap path for a new stack: create the baseline pair plus all approved specialists by default.
 - Default previews to a concise inventory of created paths and generated stubs. For governed skills, tell the user to put skill instructions only in sibling `content.md` files; do not imply they should edit scaffold-managed `SKILL.md` wrappers or `shell-ceremony.md`.
 - Do not repeat the same intake block, menu, confirmation prompt, or `Execution mode` line twice. The default interaction should feel like one short question, one contextual follow-up, one short summary, and one confirmation.
 - Do not front-load the full decision tree into the first reply. The user should not have to read the entire taxonomy before answering the first question.
