@@ -207,6 +207,15 @@ def validate_platform_packs(root: Path, issues: list[str]) -> list[str]:
   validator surfaces the error text verbatim so operators see the exact
   artifact at fault. Returns the list of slugs successfully loaded so
   subsequent validators can reason about them.
+
+  SKILL-21 failure precedence (documented here because the validator and the
+  loader share it): contract-version → manifest-schema → content-file →
+  content-section → execution-link → content-sibling. The loader's
+  ``validate_platform_pack`` asserts contract-version first; the rest is
+  enforced inside ``_assert_content_file_ok`` (per declared content file)
+  and ``load_quality_check_content`` (per declared quality-check file).
+  ``ContractVersionMismatchError`` messages now include the migration-script
+  hint pointing at ``scripts/migrate_to_content_md.py``.
   """
   packs_root = root / "platform-packs"
   if not packs_root.is_dir():
@@ -451,6 +460,21 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
   validate_portable_review_wording(skill_name, text, skill_file, issues)
 
 
+def _read_governed_authorable_text(skill_file: Path, text: str) -> str:
+  """Return SKILL.md text combined with sibling content.md (v1.1).
+
+  SKILL-21 split the governance shell from the skill body. References the
+  validator used to find in SKILL.md (supporting-file names, portable
+  review placeholders, etc.) now live in the sibling ``content.md``.
+  Concatenating both lets the existing text-match rules keep working
+  without duplicating the discovery logic per rule.
+  """
+  content_path = skill_file.parent / "content.md"
+  if content_path.is_file():
+    return text + "\n" + content_path.read_text(encoding="utf-8")
+  return text
+
+
 def validate_runtime_supporting_files(
   skill_name: str,
   text: str,
@@ -461,8 +485,10 @@ def validate_runtime_supporting_files(
   if not required_files:
     return
 
+  combined = _read_governed_authorable_text(skill_file, text)
+
   for pattern, message in EXTERNAL_PLAYBOOK_REFERENCE_PATTERNS:
-    match = pattern.search(text)
+    match = pattern.search(combined)
     if match:
       issues.append(f"{skill_file}: {message}; found '{match.group(0)}'")
 
@@ -472,11 +498,11 @@ def validate_runtime_supporting_files(
       skill_name == "bill-feature-implement"
       and file_name in ADDON_SUPPORTING_FILE_TARGETS
     ):
-      if file_name not in text and "matching pack-owned add-on supporting files" not in text:
+      if file_name not in combined and "matching pack-owned add-on supporting files" not in combined:
         issues.append(
           f"{skill_file}: must reference local supporting file '{file_name}' or describe pack-owned add-on support-file selection"
         )
-    elif file_name not in text:
+    elif file_name not in combined:
       issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
     if not supporting_file.exists():
       issues.append(f"{skill_file}: supporting file '{file_name}' is missing")
@@ -490,31 +516,33 @@ def validate_portable_review_wording(
   skill_file: Path,
   issues: list[str],
 ) -> None:
-  if skill_name == "bill-code-review" and REVIEW_SESSION_ID_PLACEHOLDER not in text:
+  combined = _read_governed_authorable_text(skill_file, text)
+
+  if skill_name == "bill-code-review" and REVIEW_SESSION_ID_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: shared code-review router must expose '{REVIEW_SESSION_ID_PLACEHOLDER}'")
-  if skill_name == "bill-code-review" and REVIEW_SESSION_ID_FORMAT not in text:
+  if skill_name == "bill-code-review" and REVIEW_SESSION_ID_FORMAT not in combined:
     issues.append(
       f"{skill_file}: shared code-review router must define the review session id format '{REVIEW_SESSION_ID_FORMAT}'"
     )
-  if skill_name == "bill-code-review" and REVIEW_RUN_ID_PLACEHOLDER not in text:
+  if skill_name == "bill-code-review" and REVIEW_RUN_ID_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: shared code-review router must expose '{REVIEW_RUN_ID_PLACEHOLDER}'")
-  if skill_name == "bill-code-review" and REVIEW_RUN_ID_FORMAT not in text:
+  if skill_name == "bill-code-review" and REVIEW_RUN_ID_FORMAT not in combined:
     issues.append(f"{skill_file}: shared code-review router must define the review run id format '{REVIEW_RUN_ID_FORMAT}'")
-  if skill_name == "bill-code-review" and APPLIED_LEARNINGS_PLACEHOLDER not in text:
+  if skill_name == "bill-code-review" and APPLIED_LEARNINGS_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: shared code-review router must expose '{APPLIED_LEARNINGS_PLACEHOLDER}'")
 
   if skill_name not in PORTABLE_REVIEW_SKILLS:
     return
 
-  if REVIEW_SESSION_ID_PLACEHOLDER not in text:
+  if REVIEW_SESSION_ID_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: portable review skills must expose '{REVIEW_SESSION_ID_PLACEHOLDER}'")
-  if REVIEW_RUN_ID_PLACEHOLDER not in text:
+  if REVIEW_RUN_ID_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: portable review skills must expose '{REVIEW_RUN_ID_PLACEHOLDER}'")
-  if APPLIED_LEARNINGS_PLACEHOLDER not in text:
+  if APPLIED_LEARNINGS_PLACEHOLDER not in combined:
     issues.append(f"{skill_file}: portable review skills must expose '{APPLIED_LEARNINGS_PLACEHOLDER}'")
 
   for pattern, message in NON_PORTABLE_REVIEW_PATTERNS:
-    match = pattern.search(text)
+    match = pattern.search(combined)
     if match:
       issues.append(f"{skill_file}: {message}; found '{match.group(0)}'")
 

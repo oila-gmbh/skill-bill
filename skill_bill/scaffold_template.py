@@ -21,10 +21,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from skill_bill.constants import (
+  SHELL_CONTRACT_VERSION,
+  TEMPLATE_VERSION,
+)
+from skill_bill.shell_content_contract import CANONICAL_EXECUTION_BODY
+
 
 # Compiled once at import-time because :func:`extract_scaffolder_owned`
 # is invoked from validator paths that may loop over hundreds of skill files.
 _SCAFFOLDER_OWNED_HEADINGS: tuple[str, ...] = (
+  "## Execution",
   "## Execution Mode Reporting",
   "## Telemetry Ceremony Hooks",
 )
@@ -90,8 +97,14 @@ def infer_skill_description(context: ScaffoldTemplateContext) -> str:
 
   if family == "quality-check":
     if label:
-      return f"Use when validating {label} changes with the shared quality-check contract."
-    return "Use when validating changes with the shared quality-check contract."
+      return (
+        f"Use when validating {label} changes with the shared quality-check "
+        "contract. Stack detection uses the sibling `stack-routing.md` playbook."
+      )
+    return (
+      "Use when validating changes with the shared quality-check contract. "
+      "Stack detection uses the sibling `stack-routing.md` playbook."
+    )
 
   if family == "feature-implement":
     if label:
@@ -120,20 +133,28 @@ def infer_skill_description(context: ScaffoldTemplateContext) -> str:
 def render_project_overrides(context: ScaffoldTemplateContext) -> str:
   """Render the ``## Project Overrides`` section body.
 
-  Skills that land under ``skills/`` (horizontal and pre-shell platform
-  overrides) are validated by :func:`validate_skill_file` in
-  ``scripts/validate_agent_configs.py``, which requires the literal
-  ``## Project Overrides`` heading and a reference to
-  ``.agents/skill-overrides.md``. The block here mirrors the wording used
-  by existing skills (see e.g. ``skills/bill-skill-scaffold``)
-  and encodes the precedence: a matching ``## <skill-name>`` section in
-  ``.agents/skill-overrides.md`` beats ``AGENTS.md``, which beats the
-  built-in defaults below.
+  ``## Project Overrides`` is shell governance, not author content. It
+  records the precedence rule for this skill — a matching
+  ``## <skill-name>`` section in ``.agents/skill-overrides.md`` beats
+  ``AGENTS.md``, which beats the built-in defaults below — and must stay
+  byte-identical across every skill in a family so callers can rely on
+  the rule being present.
 
-  Platform-pack skills (shelled overrides, code-review-area specialists)
-  are validated by the lighter :func:`validate_platform_pack_skill_file`
-  and intentionally do NOT receive this section, to keep platform-pack
-  skills lean.
+  Emission matrix:
+
+  - Skills under ``skills/`` (horizontal + pre-shell platform overrides)
+    are validated by :func:`validate_skill_file` in
+    ``scripts/validate_agent_configs.py``, which requires the literal
+    ``## Project Overrides`` heading and a reference to
+    ``.agents/skill-overrides.md``. They get this section.
+  - Shelled platform-pack skills (code-review baseline / area specialists,
+    quality-check overrides) go through the lighter
+    :func:`validate_platform_pack_skill_file` but still render this
+    ceremony section in their SKILL.md so overrides precedence is
+    explicit next to the governance shell rather than buried in the
+    author-owned ``content.md``. (SKILL-21 follow-up.)
+  - Add-ons are raw markdown supporting files and do NOT receive this
+    section; the shell they plug into already carries it.
   """
   skill_name = context.skill_name or "this skill"
   return (
@@ -148,6 +169,67 @@ def render_project_overrides(context: ScaffoldTemplateContext) -> str:
     "\n"
     f"Precedence for this skill: matching `.agents/skill-overrides.md` section > "
     "`AGENTS.md` > built-in defaults.\n"
+  )
+
+
+def render_execution_section(context: ScaffoldTemplateContext) -> str:
+  """Render the byte-identical ``## Execution`` section.
+
+  SKILL-21 added this required H2 whose body links every governed SKILL.md
+  to its sibling ``content.md``. The body is stored in
+  :data:`skill_bill.shell_content_contract.CANONICAL_EXECUTION_BODY` and is
+  byte-identical across every governed skill and family — the scaffolder,
+  the migration script, and the upgrade command all render this string
+  verbatim.
+  """
+  del context
+  return CANONICAL_EXECUTION_BODY
+
+
+def render_skill_frontmatter(
+  context: ScaffoldTemplateContext,
+  *,
+  description: str,
+) -> str:
+  """Render the v1.1 SKILL.md frontmatter block.
+
+  The frontmatter carries ``name``, ``description``, ``shell_contract_version``,
+  and ``template_version``. Keys are emitted in a stable order so rendered
+  shells are deterministic and diffable.
+  """
+  return (
+    "---\n"
+    f"name: {context.skill_name}\n"
+    f"description: {description}\n"
+    f"shell_contract_version: {SHELL_CONTRACT_VERSION}\n"
+    f"template_version: {TEMPLATE_VERSION}\n"
+    "---\n"
+  )
+
+
+def render_content_body(
+  context: ScaffoldTemplateContext,
+  *,
+  description: str,
+  content_body: str | None,
+) -> str:
+  """Render the sibling ``content.md`` body.
+
+  When the payload supplies ``content_body`` the scaffolder writes it
+  verbatim after trimming trailing whitespace and ensuring a single
+  trailing newline. When the payload omits it, a minimal deterministic
+  placeholder is emitted so the author has a starting point and the
+  validator still passes.
+  """
+  if content_body is not None and content_body.strip():
+    trimmed = content_body.rstrip()
+    return trimmed + "\n"
+  return (
+    f"# {context.skill_name}\n"
+    "\n"
+    f"{description}\n"
+    "\n"
+    f"TODO: author the skill body for `{context.skill_name}`.\n"
   )
 
 
@@ -181,7 +263,11 @@ def render_telemetry_ceremony_hooks(context: ScaffoldTemplateContext) -> str:
   The body points every specialist in the family at the same telemetry
   contract sidecar (``telemetry-contract.md``) rather than duplicating the
   protocol per skill. This is what lets the scaffolder guarantee that the
-  section is byte-identical across siblings in a family.
+  section is byte-identical across siblings in a family. The sidecar is
+  referenced in backticks rather than as a Markdown link because
+  specialist area skills do not carry a ``telemetry-contract.md`` symlink
+  — only the baseline skills do — and linking from a specialist would
+  create a broken cross-reference.
   """
   del context  # intentionally unused; all specialists share the same body
   return (
@@ -354,6 +440,16 @@ def render_outputs_contract_section(context: ScaffoldTemplateContext) -> str:
     return (
       "## Outputs Contract\n"
       "\n"
+      "Reports a Summary block followed by a Risk Register. The Summary "
+      "exposes the shell-owned output identifiers so downstream triage "
+      "and telemetry (owned by the shared router shell) can parse them:\n"
+      "\n"
+      "- `Review session ID: <review-session-id>`\n"
+      "- `Review run ID: <review-run-id>`\n"
+      "- `Detected review scope: <staged changes / unstaged changes / "
+      "working tree / commit range / PR diff / files>`\n"
+      "- `Applied learnings: none | <learning references>`\n"
+      "\n"
       "- Structured review with a risk register (CRITICAL / HIGH / MEDIUM / LOW).\n"
       "- Delegated mode: per-specialist findings aggregated under area headings.\n"
       "- Inline mode: findings grouped by concern (architecture, correctness, "
@@ -447,6 +543,7 @@ _DEFAULT_SECTION_RENDERERS: dict[str, object] = {
   "## Specialist Scope": render_specialist_scope_section,
   "## Inputs": render_inputs_section,
   "## Outputs Contract": render_outputs_contract_section,
+  "## Execution": render_execution_section,
   "## Execution Mode Reporting": render_execution_mode_reporting,
   "## Telemetry Ceremony Hooks": render_telemetry_ceremony_hooks,
 }
@@ -464,6 +561,21 @@ def render_default_section(section_name: str, context: ScaffoldTemplateContext) 
   if section_name in _DEFAULT_SECTION_RENDERERS:
     renderer = _DEFAULT_SECTION_RENDERERS[section_name]
     return renderer(context)  # type: ignore[operator]
+
+  if context.family == "quality-check" and section_name == "## Execution Steps":
+    return (
+      "## Execution Steps\n"
+      "\n"
+      "Stack detection uses the sibling `stack-routing.md` playbook. "
+      "The per-pack execution steps live in the sibling `content.md`.\n"
+    )
+  if context.family == "quality-check" and section_name == "## Fix Strategy":
+    return (
+      "## Fix Strategy\n"
+      "\n"
+      "Fix strategy is pack-owned. See the sibling `content.md` for the "
+      "pack's priority order, never-suppress rules, and code style guidelines.\n"
+    )
 
   humanized = section_name.removeprefix("## ").strip()
   return (
@@ -502,14 +614,17 @@ __all__ = [
   "ScaffoldTemplateContext",
   "extract_scaffolder_owned",
   "infer_skill_description",
+  "render_content_body",
   "render_default_section",
   "render_delegated_mode_section",
   "render_description_section",
   "render_execution_mode_reporting",
+  "render_execution_section",
   "render_inline_mode_section",
   "render_inputs_section",
   "render_outputs_contract_section",
   "render_project_overrides",
+  "render_skill_frontmatter",
   "render_specialist_scope_section",
   "render_telemetry_ceremony_hooks",
 ]

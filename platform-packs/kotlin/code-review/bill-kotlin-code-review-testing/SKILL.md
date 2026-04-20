@@ -1,27 +1,9 @@
 ---
 name: bill-kotlin-code-review-testing
 description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Kotlin code. Use when user mentions test quality, test coverage, mock setup, or test reliability in Kotlin code.
+shell_contract_version: 1.1
+template_version: 2026.04.19.5
 ---
-
-# Testing Review Specialist
-
-Review only test gaps that create real regression risk.
-
-## Focus
-- Missing tests for changed behavior and failure paths
-- Brittle/flaky test patterns and false-confidence assertions
-- Low-value, tautological, or coverage-padding tests that do not validate real behavior
-- Contract drift between implementation and tests
-- Inadequate negative-path coverage
-- Missing integration points where unit-only tests are insufficient
-
-## Ignore
-- Test style preferences without risk impact
-- Missing tests for trivial mappers (e.g., `toUiModel()` that only copy properties)
-
-## Applicability
-
-Use this specialist for shared Kotlin test-risk concerns across libraries, app layers, and backend services. Favor findings about regression protection, contract coverage, and deterministic behavior that remain valid regardless of platform.
 
 ## Project Overrides
 
@@ -31,72 +13,51 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Project-Specific Rules
-
-### Shared Kotlin Testing
-- Changed behavior and failure paths should be covered at the layer where regressions would surface first
-- A test only adds value if it would fail on a meaningful regression in business behavior
-- Prefer tests that validate real behavior over tests that only mirror implementation details
-- Treat tautological tests as test gaps when they create false confidence without exercising real logic
-- Mock only true external boundaries; over-mocking internal collaborators can hide regressions
-- Coroutine tests should control time/dispatchers deterministically where ordering or retry behavior matters
-
-### Unit Test Value Lens
-- Flag tests that only instantiate a DTO/model, assign values, and assert the same values without logic in between
-- Flag tests that only verify a stubbed return value or a mock interaction without asserting an externally meaningful outcome
-- Flag tests that duplicate the implementation step-for-step and compare against the duplicated result
-- Flag tests that only check `not null`, booleans, or collection size when those assertions are not tied to important behavior
-- Do not request tests for trivial mappers, accessors, or generated code unless they enforce business rules, compatibility, or invariants
-- Constructors, value objects, parsers, and serializers can still be worth testing when they validate, normalize, clamp, reject, or preserve a contract
-
-### Coverage & Boundary Expectations
-- Boundary or contract changes need integration or contract-level coverage when validation, serialization, persistence semantics, or auth behavior changed
-- Retry, timeout, scheduling, and other time-sensitive logic needs deterministic tests that control time and replay
-- Prefer real serializers/request objects at owned boundaries; mock downstream systems, not the contract itself
-- Verify negative-path coverage for malformed input, forbidden access, downstream failures, retries, and duplicate delivery where relevant
-
-## Output Rules
-- Report at most 7 findings.
-- Include a minimal test plan for top uncovered risks.
-- Report weak or useless tests only when they materially reduce regression confidence.
-- Include `file:line` evidence for each finding.
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Include a minimal, concrete fix, which may be to rewrite or delete the test and replace it with a behavior-focused one.
-
-## Output Format
-
-Every finding must use this exact bullet format for downstream tooling:
-
-```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
-```
-
-Do NOT use markdown tables, numbered lists, or any other format for findings.
-
 ## Description
-This content file is a platform-pack specialist area review module for
-`bill-kotlin-code-review-testing`. The baseline orchestrator delegates a single specialist area here.
-The sections above define the specialist playbook; the sections below satisfy
-the shell+content contract v1.0.
+
+Use when reviewing Kotlin changes for test coverage quality and regression protection.
 
 ## Specialist Scope
-Scoped to one approved code-review area. Does not cover other areas.
+
+This specialist covers test coverage quality and regression protection in Kotlin changes.
+
+Out of scope: other code-review areas, which are delegated to their own specialists declared under `declared_code_review_areas` in the owning `platform.yaml`.
 
 ## Inputs
-Review scope, changed files, detected stack signals, active learnings,
-`review_session_id`, `review_run_id`, and the `orchestrated` flag.
+
+- The slice of the diff relevant to this area.
+- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, `telemetry-contract.md`.
+- Platform manifest `platform.yaml` for routing signals.
 
 ## Outputs Contract
-Findings in the shared Risk Register format
-`- [F-###] <Severity> | <Confidence> | <file:line> | <description>`, plus
-specialist-specific action items consumed by the baseline orchestrator.
+
+- Findings scoped to test coverage quality and regression protection, each with severity and `file:line` location.
+- No findings outside scope — unrelated issues belong in other specialists' output.
+- `Execution mode: inline | delegated` reported on its own line.
+
+## Execution
+
+Follow the instructions in [content.md](content.md).
 
 ## Execution Mode Reporting
-Report `Execution mode: inline` or `Execution mode: delegated` per the
-shell's output contract.
+
+When this code-review skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
 
 ## Telemetry Ceremony Hooks
-Specialist reviews never call `import_review` or `triage_findings` directly;
-the baseline orchestrator owns lifecycle telemetry per
-`telemetry-contract.md`.
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.

@@ -1,26 +1,9 @@
 ---
 name: bill-kotlin-code-review-persistence
 description: Use when reviewing Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, transaction boundaries, migration safety, ORM mapping, or query correctness in Kotlin backend.
+shell_contract_version: 1.1
+template_version: 2026.04.19.5
 ---
-
-# Backend Persistence Review Specialist
-
-Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
-
-## Focus
-- Transaction boundaries and atomicity
-- Query correctness and tenant/filter scoping
-- Lost updates, race-prone write patterns, and idempotent persistence behavior
-- Migration/schema compatibility risks
-- ORM/SQL mapping mismatches that break reads or writes
-
-## Ignore
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or production impact
-
-## Applicability
-
-Use this specialist for backend/server persistence code routed through the built-in Kotlin pack: repositories, DAOs, SQL, migrations, jOOQ, Exposed, JDBC, Hibernate/JPA, R2DBC, or similar layers.
 
 ## Project Overrides
 
@@ -30,59 +13,51 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Project-Specific Rules
-
-- Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
-- Avoid load-modify-save patterns that can lose concurrent updates when atomic SQL or version checks are required
-- Repository methods must apply required tenant/account/ownership filters consistently
-- Upserts, deduplication, and unique-constraint behavior should match the intended idempotency contract
-- Migrations must account for existing data, nullability transitions, indexes, and rollout compatibility
-- Connection pools, database sessions, cursors, ResultSets, and Statements must be closed reliably; use `use {}` or the framework equivalent consistently
-- Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
-- Do not hold persistence transactions open while waiting on remote I/O
-- Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-
-## Output Rules
-- Report at most 7 findings.
-- Include data-loss or consistency consequence for each Major/Blocker.
-- Include `file:line` evidence for each finding.
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Include a minimal, concrete fix.
-
-## Output Format
-
-Every finding must use this exact bullet format for downstream tooling:
-
-```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
-```
-
-Do NOT use markdown tables, numbered lists, or any other format for findings.
-
 ## Description
-This content file is a platform-pack specialist area review module for
-`bill-kotlin-code-review-persistence`. The baseline orchestrator delegates a single specialist area here.
-The sections above define the specialist playbook; the sections below satisfy
-the shell+content contract v1.0.
+
+Use when reviewing Kotlin changes for persistence, transactions, migrations, and data consistency.
 
 ## Specialist Scope
-Scoped to one approved code-review area. Does not cover other areas.
+
+This specialist covers persistence, transactions, migrations, and data consistency in Kotlin changes.
+
+Out of scope: other code-review areas, which are delegated to their own specialists declared under `declared_code_review_areas` in the owning `platform.yaml`.
 
 ## Inputs
-Review scope, changed files, detected stack signals, active learnings,
-`review_session_id`, `review_run_id`, and the `orchestrated` flag.
+
+- The slice of the diff relevant to this area.
+- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, `telemetry-contract.md`.
+- Platform manifest `platform.yaml` for routing signals.
 
 ## Outputs Contract
-Findings in the shared Risk Register format
-`- [F-###] <Severity> | <Confidence> | <file:line> | <description>`, plus
-specialist-specific action items consumed by the baseline orchestrator.
+
+- Findings scoped to persistence, transactions, migrations, and data consistency, each with severity and `file:line` location.
+- No findings outside scope — unrelated issues belong in other specialists' output.
+- `Execution mode: inline | delegated` reported on its own line.
+
+## Execution
+
+Follow the instructions in [content.md](content.md).
 
 ## Execution Mode Reporting
-Report `Execution mode: inline` or `Execution mode: delegated` per the
-shell's output contract.
+
+When this code-review skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
 
 ## Telemetry Ceremony Hooks
-Specialist reviews never call `import_review` or `triage_findings` directly;
-the baseline orchestrator owns lifecycle telemetry per
-`telemetry-contract.md`.
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.

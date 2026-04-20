@@ -1,6 +1,8 @@
 ---
 name: heading_in_fence-code-review
 description: Fixture file with a required H2 buried inside a fenced code block to prove the loader refuses to accept that as a real heading.
+shell_contract_version: 1.1
+template_version: 2026.04.19
 ---
 
 # Heading In Fence Baseline
@@ -27,3 +29,6 @@ Fixture execution mode reporting.
 
 ## Telemetry Ceremony Hooks
 Fixture telemetry hooks.
+## Execution
+
+Follow the instructions in [content.md](content.md).

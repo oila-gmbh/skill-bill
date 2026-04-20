@@ -1,6 +1,8 @@
 ---
 name: extra_area-code-review
 description: Fixture baseline to exercise rejection of extra declared_files.areas entries.
+shell_contract_version: 1.1
+template_version: 2026.04.19
 ---
 
 # Extra Area Baseline
@@ -22,3 +24,6 @@ Fixture execution mode reporting.
 
 ## Telemetry Ceremony Hooks
 Fixture telemetry hooks.
+## Execution
+
+Follow the instructions in [content.md](content.md).

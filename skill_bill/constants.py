@@ -50,6 +50,19 @@ FEATURE_VERIFY_SESSION_PREFIX = "fvr"
 PR_DESCRIPTION_SESSION_PREFIX = "prd"
 NEW_SKILL_SCAFFOLD_SESSION_PREFIX = "nss"
 
+# Shell+content contract version. SKILL-21 moved this authority from
+# skill_bill/shell_content_contract.py so the constant is the single source of
+# truth for CLI, loader, scaffolder, and migration script. Bump in lockstep
+# across the shell, the packs, and the migration tooling — v1.0 packs must
+# loud-fail via ContractVersionMismatchError with a migration-script hint.
+SHELL_CONTRACT_VERSION: str = "1.1"
+
+# Scaffolder template version (SKILL-21). Bumped whenever the rendered SKILL.md
+# shape or body changes so existing skills surface drift through
+# ``skill-bill doctor`` and can be regenerated with ``skill-bill upgrade``.
+# Template drift is not a runtime failure — it is an upgrade-actionable state.
+TEMPLATE_VERSION: str = "2026.04.19.5"
+
 # New-skill scaffolder constants (SKILL-15).
 SCAFFOLD_PAYLOAD_VERSION: str = "1.0"
 # Pre-shell capability families. These families have not been piloted onto the

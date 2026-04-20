@@ -18,7 +18,7 @@ Keep this shell thin:
 - refuse to run when a platform pack is missing or out of contract — never
   silently fall back
 
-The shell targets shell contract version **`1.0`**. Platform packs must
+The shell targets shell contract version **`1.1`**. Platform packs must
 declare the same `contract_version` in their `platform.yaml`. Version
 mismatch is a hard failure — see the loud-fail rules below.
 

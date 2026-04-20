@@ -20,14 +20,96 @@ the sibling symlink instead.
 
 ## Contract Version
 
-The current shell contract version is **`1.0`**.
+The current shell contract version is **`1.1`**.
 
 - The shell pins its target version. Platform packs must declare the same version.
 - Any platform pack whose `contract_version` does not equal the shell's version
   must cause the shell loader to fail loudly with a migration message that
-  includes both versions and the offending pack slug.
+  includes both versions and the offending pack slug. Under v1.1 the message
+  must also point at `.venv/bin/python3 scripts/migrate_to_content_md.py`.
 - Contract versions follow `MAJOR.MINOR`. Major changes are breaking; minor
   changes are additive and do not break existing packs.
+- The `SHELL_CONTRACT_VERSION` and `TEMPLATE_VERSION` constants are the
+  single source of truth, declared in `skill_bill/constants.py`. Every
+  scaffolded SKILL.md carries both values as frontmatter stamps so
+  ``skill-bill upgrade`` and ``skill-bill doctor`` can detect drift.
+
+### v1.1 additions (SKILL-21)
+
+v1.1 splits the governance shell from the author-owned skill body:
+
+- Every governed skill directory must contain a sibling `content.md` file
+  next to `SKILL.md`. The author-editable prompt body lives in `content.md`;
+  `SKILL.md` remains the contract-enforced shell with the required H2 set.
+- Every SKILL.md carries a new required H2 `## Execution` whose body is
+  byte-identical across every governed skill:
+
+  ```
+  ## Execution
+
+  Follow the instructions in [content.md](content.md).
+  ```
+- Every SKILL.md carries `shell_contract_version` and `template_version`
+  frontmatter keys. Contract-version mismatches loud-fail; template-version
+  drift is upgrade-actionable only (not a runtime failure).
+- `content.md` has no H2 requirement, no frontmatter requirement, and no
+  minimum length. The loader validates only that it exists.
+- `content.md` carries **only** author-owned skill knowledge: signals,
+  rubrics, routing tables, project-specific rules, classification cues,
+  add-on selection rules, and per-specialist scope heuristics. See the
+  content.md taxonomy below for the split rule.
+- `## Project Overrides` is shell governance, not author content. The
+  section records the overrides precedence rule (per-skill overrides >
+  project-wide overrides > built-in defaults) and lives in SKILL.md for
+  every governed skill, including platform-pack baselines,
+  code-review-area specialists, and shelled quality-check overrides.
+  Authors must not copy the heading into `content.md`; the migration
+  script and scaffolder refuse to emit it there.
+
+### content.md taxonomy (pass 2)
+
+The split rule for `content.md` vs `SKILL.md` is mechanical:
+
+- **SKILL.md / shell owns** — anything the skill-bill framework
+  maintains: output contracts (session/run IDs, severity/confidence
+  scales, risk-register row format, verdict format), orchestration
+  (delegation/inline mode descriptions, scope-determination bullet
+  lists), telemetry sidecar pointers, learnings resolution, sidecar
+  file references (`stack-routing.md`, `review-orchestrator.md`,
+  `review-delegation.md`, `telemetry-contract.md`,
+  `specialist-contract.md`, `shell-content-contract.md`), and
+  `## Project Overrides` precedence.
+- **content.md / author owns** — skill-specific signal markers,
+  classification cues (`build.gradle*`, `@Composable`, etc.),
+  specialist routing tables, add-on selection rules, per-specialist
+  scope heuristics, review rubrics (Focus / Ignore / Applicability),
+  and `## Project-Specific Rules` blocks.
+
+The following H2 headings are free-form ceremony (not in the
+required-section set, but shell-owned by taxonomy). The migration
+script's blacklist drops them on the floor rather than copying them
+into `content.md`; the hygiene test walks every shipped `content.md`
+and fails if any reappears:
+
+- `## Setup` (generic scope-determination bullet list)
+- `## Additional Resources` (sidecar-file pointers)
+- `## Local Review Learnings`
+- `## Output Format` (generic risk-register row format)
+- `## Output Rules` (severity/confidence scale restatements)
+- `## Review Output` (session/run ID + telemetry pointers)
+- `## Delegated Mode` / `## Inline Mode` (shell shape descriptors)
+- `## Routing Rules`
+- `## Shared Stack Detection`
+- `## Execution Contract`
+- `## Overview` (when it duplicates SKILL.md `## Description`)
+
+`### Telemetry` and `### Implementation Mode Notes` are also shell
+ceremony and must not appear in `content.md`.
+
+The blacklist is canonicalized in
+`skill_bill.shell_content_contract.CEREMONY_FREE_FORM_H2S`. Add new
+ceremony headings there (not in ad-hoc string lists) so the migration
+script, the scaffolder, and the hygiene test stay in lockstep.
 
 ## Required Platform Manifest (`platform.yaml`)
 
@@ -87,8 +169,15 @@ block (`---` ... `---`) and must contain all of the following H2 sections:
 - `## Specialist Scope`
 - `## Inputs`
 - `## Outputs Contract`
+- `## Execution`
 - `## Execution Mode Reporting`
 - `## Telemetry Ceremony Hooks`
+
+Additionally, a sibling `content.md` file must exist in the same directory
+as every declared SKILL.md. The `## Execution` body MUST be byte-identical
+to the canonical form documented in the v1.1 contract version section
+above. Missing content.md or an edited Execution body loud-fails with
+`MissingContentBodyFileError` or `InvalidExecutionSectionError`.
 
 Section order is not enforced, but each section heading must appear exactly as
 written (case-sensitive, H2 only).
@@ -104,8 +193,12 @@ following H2 sections:
 - `## Description`
 - `## Execution Steps`
 - `## Fix Strategy`
+- `## Execution`
 - `## Execution Mode Reporting`
 - `## Telemetry Ceremony Hooks`
+
+`## Execution` is the SKILL-21 required link to the sibling `content.md`;
+the body is byte-identical to the canonical form described above.
 
 The quality-check content contract is intentionally narrower than the
 code-review contract: the shared `bill-quality-check` shell is horizontal
@@ -135,6 +228,24 @@ is ever permitted.
 - A declared content file is missing one of the required H2 sections →
   `MissingRequiredSectionError`. The message must include the missing
   section heading and the file path.
+- A governed skill directory has no `content.md` sibling →
+  `MissingContentBodyFileError`. The message points the operator at
+  `scripts/migrate_to_content_md.py`.
+- The `## Execution` body differs from the canonical byte-identical form →
+  `InvalidExecutionSectionError`. The message includes the file path and
+  the canonical body so the operator can restore it.
+
+### Failure precedence
+
+The loader and the validator enforce the same first-error order so the
+same pack fails identically through every entry point:
+
+1. Contract-version (`ContractVersionMismatchError`)
+2. Manifest-schema (`InvalidManifestSchemaError`, `MissingManifestError`)
+3. Content-file presence (`MissingContentFileError`)
+4. Content-section H2 set (`MissingRequiredSectionError`)
+5. Execution-link body (`InvalidExecutionSectionError`)
+6. Content-sibling presence (`MissingContentBodyFileError`)
 
 Every error message must name the specific artifact at fault (pack slug,
 file path, section heading, or version string) so operators can repair the
@@ -185,6 +296,27 @@ sibling `SCAFFOLD_PAYLOAD.md`. It specifies the required JSON shape, the
 version handshake, the supported `kind` values, the pre-shell family list,
 and the loud-fail exception catalog. The scaffolder refuses to run when the
 payload does not conform to that contract.
+
+## v1.0 → v1.1 migration
+
+`scripts/migrate_to_content_md.py` rewrites every governed SKILL.md under a
+shelled family (code-review or quality-check) to the v1.1 shape:
+
+1. Parse existing SKILL.md into frontmatter + H2 sections.
+2. Free-form H2s plus author-edited required sections flow into `content.md`.
+3. SKILL.md is regenerated from the current v1.1 template, preserving the
+   existing `name` and `description` frontmatter.
+4. Per-skill rollback on any validation failure keeps the tree byte-identical
+   for the failing skill; the rest of the tree continues.
+5. `_migration_backup/<timestamp>/` captures the pre-migration bytes before
+   the first rewrite. The script is idempotent — a second run on a
+   migrated tree is a no-op unless `--force` is passed.
+
+`skill-bill upgrade` regenerates SKILL.md shells whose `template_version`
+has drifted from the current template, without touching `content.md`.
+`skill-bill edit <name>` opens `content.md` in `$VISUAL` / `$EDITOR`.
+`skill-bill doctor` reports missing content.md (error) and template-version
+drift (warning with the exact upgrade command to run).
 
 ## Relationship To Stack Routing
 

@@ -89,11 +89,31 @@ Strict structure, enforced by the validator:
 `/bill-code-review` uses a shell + content split. The shell at `skills/bill-code-review/` is governed and shared; the reviewer reasoning lives in **platform packs** under `platform-packs/<platform>/`. Teams that need platform-specific customization beyond `.agents/skill-overrides.md` can fork a pack:
 
 1. Copy `platform-packs/<platform>/` (e.g. `platform-packs/kotlin/`) into your team's own checkout.
-2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.0"` in lockstep with the shell.
-3. Edit or add per-area content files. Each declared file must contain the six required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution Mode Reporting, Telemetry Ceremony Hooks. The shell refuses to run with a named error if any required piece is missing — no silent fallback.
+2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.1"` in lockstep with the shell.
+3. Edit or add per-area content files. Each declared `SKILL.md` must contain the seven required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution, Execution Mode Reporting, Telemetry Ceremony Hooks. `SKILL.md` is the governance shell — open the sibling `content.md` with `skill-bill edit <skill-name>` to change the actual skill prompt.
 4. Point your local install at the forked pack and re-run `./install.sh`.
 
 The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
+
+### v1.0 → v1.1 migration
+
+If you are upgrading a v1.0 fork to v1.1, run
+`.venv/bin/python3 scripts/migrate_to_content_md.py` once. The script:
+
+- walks every governed SKILL.md under shelled families (code-review and
+  quality-check)
+- captures free-form H2s plus author-edited required sections into a new
+  sibling `content.md`
+- regenerates each SKILL.md from the current v1.1 template
+- writes `_migration_backup/<timestamp>/` before the first rewrite and
+  rolls back per-skill on validator failure
+- is idempotent (`--force` to re-run, `--strict` to byte-match default
+  sections, `--yes` to bypass the dirty-repo guard)
+
+`skill-bill doctor` reports missing `content.md` siblings (error) and
+template drift (warning with the exact `skill-bill upgrade --skill <name>`
+command to run). `skill-bill upgrade` regenerates SKILL.md shells without
+touching `content.md`.
 
 ### Scaffolding a new platform
 

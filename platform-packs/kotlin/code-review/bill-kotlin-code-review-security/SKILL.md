@@ -1,25 +1,9 @@
 ---
 name: bill-kotlin-code-review-security
 description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Kotlin code. Use when user mentions secrets, auth tokens, encryption, sensitive data, or security review in Kotlin code.
+shell_contract_version: 1.1
+template_version: 2026.04.19.5
 ---
-
-# Security Review Specialist
-
-Review only exploitable or compliance-relevant issues.
-
-## Focus
-- Secret leakage (keys/tokens/credentials)
-- Auth/authz logic gaps and session/token misuse
-- Sensitive logging (PII/token leakage)
-- Insecure storage/transport assumptions
-- Security regressions from new code paths
-
-## Ignore
-- Non-security style comments
-
-## Applicability
-
-Use this specialist for shared security risks across Kotlin libraries, app layers, and backend services. Favor issues that stay security-relevant regardless of platform; leave transport- or UI-specific nuances to route-specific specialists.
 
 ## Project Overrides
 
@@ -29,60 +13,51 @@ If an `AGENTS.md` file exists in the project root, apply it as project-wide guid
 
 Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
 
-## Project-Specific Rules
-
-### Shared Kotlin Security
-- No secrets, tokens, passwords, or private keys in code, logs, tests, or repo config
-- Sensitive identifiers and personal data must not be logged or exposed without explicit need and protection
-- New code paths must preserve auth/authz guarantees and avoid bypassable feature-flag checks
-- Enforce authn/authz at trusted boundaries; do not trust caller-supplied role, tenant, or actor identifiers without verification
-- Secrets/config must come from env vars, vaults, or secure local config excluded from version control
-- Do not expose stack traces, internal exception messages, or other sensitive failure details to untrusted callers
-- Avoid logging raw auth headers, session cookies, full request bodies, or other high-risk payloads without explicit redaction
-- Verify authenticity and integrity checks for new external entry points, signed callbacks, or inter-service trust boundaries
-- Verify that sensitive stored data receives the protection level the contract or platform requires
-
-## Output Rules
-- Report at most 7 findings.
-- Include abuse scenario for each Major/Blocker.
-- Include `file:line` evidence for each finding.
-- Severity: `Blocker | Major | Minor`
-- Confidence: `High | Medium | Low`
-- Include a minimal, concrete fix.
-
-## Output Format
-
-Every finding must use this exact bullet format for downstream tooling:
-
-```text
-- [F-001] <Severity> | <Confidence> | <file:line> | <description>
-```
-
-Do NOT use markdown tables, numbered lists, or any other format for findings.
-
 ## Description
-This content file is a platform-pack specialist area review module for
-`bill-kotlin-code-review-security`. The baseline orchestrator delegates a single specialist area here.
-The sections above define the specialist playbook; the sections below satisfy
-the shell+content contract v1.0.
+
+Use when reviewing Kotlin changes for secrets handling, auth, and sensitive-data exposure.
 
 ## Specialist Scope
-Scoped to one approved code-review area. Does not cover other areas.
+
+This specialist covers secrets handling, auth, and sensitive-data exposure in Kotlin changes.
+
+Out of scope: other code-review areas, which are delegated to their own specialists declared under `declared_code_review_areas` in the owning `platform.yaml`.
 
 ## Inputs
-Review scope, changed files, detected stack signals, active learnings,
-`review_session_id`, `review_run_id`, and the `orchestrated` flag.
+
+- The slice of the diff relevant to this area.
+- Sibling supporting files: `stack-routing.md`, `review-orchestrator.md`, `review-delegation.md`, `telemetry-contract.md`.
+- Platform manifest `platform.yaml` for routing signals.
 
 ## Outputs Contract
-Findings in the shared Risk Register format
-`- [F-###] <Severity> | <Confidence> | <file:line> | <description>`, plus
-specialist-specific action items consumed by the baseline orchestrator.
+
+- Findings scoped to secrets handling, auth, and sensitive-data exposure, each with severity and `file:line` location.
+- No findings outside scope — unrelated issues belong in other specialists' output.
+- `Execution mode: inline | delegated` reported on its own line.
+
+## Execution
+
+Follow the instructions in [content.md](content.md).
 
 ## Execution Mode Reporting
-Report `Execution mode: inline` or `Execution mode: delegated` per the
-shell's output contract.
+
+When this code-review skill runs, report the execution mode on its own line:
+
+```
+Execution mode: inline | delegated
+```
+
+- `inline` — the current agent handled the work directly.
+- `delegated` — the current agent dispatched the work to a specialist subagent or a sibling skill.
 
 ## Telemetry Ceremony Hooks
-Specialist reviews never call `import_review` or `triage_findings` directly;
-the baseline orchestrator owns lifecycle telemetry per
-`telemetry-contract.md`.
+
+Follow the standalone-first telemetry contract documented in the sibling
+`telemetry-contract.md` file:
+
+- Emit a single `*_started` event at the top of the ceremony.
+- Emit a single `*_finished` event at the bottom of the ceremony.
+- Routers aggregate `child_steps` but never emit their own `*_started` or
+  `*_finished` events.
+- Degrade gracefully when telemetry is disabled: the skill must still run
+  to completion without an MCP connection.
