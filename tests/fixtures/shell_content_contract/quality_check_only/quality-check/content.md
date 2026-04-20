@@ -1,3 +1,3 @@
-# Fixture content
+# quality_check_only-quality-check Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.

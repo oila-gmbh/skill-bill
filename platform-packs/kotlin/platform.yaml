@@ -1,7 +1,6 @@
 platform: kotlin
 contract_version: "1.1"
 display_name: Kotlin
-governs_addons: false
 
 routing_signals:
   strong:
@@ -11,7 +10,6 @@ routing_signals:
   tie_breakers:
     - "If Android/KMP markers (androidMain, iosMain, AndroidManifest.xml, expect/actual) are present, prefer the KMP pack."
     - "Otherwise route generic Kotlin/JVM libraries, CLIs, shared utilities, and backend/server Kotlin work to this pack."
-  addon_signals: []
 
 declared_code_review_areas:
   - architecture
@@ -34,5 +32,23 @@ declared_files:
     api-contracts: code-review/bill-kotlin-code-review-api-contracts/SKILL.md
     persistence: code-review/bill-kotlin-code-review-persistence/SKILL.md
     reliability: code-review/bill-kotlin-code-review-reliability/SKILL.md
+
+area_metadata:
+  architecture:
+    focus: "architecture, boundaries, and dependency direction"
+  performance:
+    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+  platform-correctness:
+    focus: "lifecycle, concurrency, threading, and logic correctness"
+  security:
+    focus: "secrets handling, auth, and sensitive-data exposure"
+  testing:
+    focus: "test coverage quality and regression protection"
+  api-contracts:
+    focus: "API contracts, request validation, and serialization"
+  persistence:
+    focus: "persistence, transactions, migrations, and data consistency"
+  reliability:
+    focus: "timeouts, retries, background work, and observability"
 
 declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md

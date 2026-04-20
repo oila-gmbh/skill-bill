@@ -1,3 +1,3 @@
-# Fixture content
+# extra_area-performance Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.

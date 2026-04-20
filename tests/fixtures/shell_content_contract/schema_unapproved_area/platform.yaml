@@ -5,7 +5,6 @@ routing_signals:
   strong:
     - ".fixture"
   tie_breakers: []
-  addon_signals: []
 declared_code_review_areas:
   - laravel
 declared_files:

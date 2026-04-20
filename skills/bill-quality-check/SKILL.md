@@ -29,11 +29,9 @@ declaring the key opts the pack into quality-check routing.
 
 ## Project Overrides
 
-If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-quality-check` section, read that section and apply it as the highest-priority instruction for this skill. The matching section may refine or replace parts of the default workflow below.
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).
 
-If an `AGENTS.md` file exists in the project root, apply it as project-wide guidance.
-
-Precedence for this skill: matching `.agents/skill-overrides.md` section > `AGENTS.md` > built-in defaults.
+If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.
 
 ## Setup
 

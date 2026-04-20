@@ -1,24 +1,20 @@
 ---
-name: code_review_and_quality_check-code-review-architecture
+name: code-review
 description: Fixture architecture content.
 ---
 
-# Fixture Architecture
+## Descriptor
 
-## Description
-Fixture content.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `code_review_and_quality_check` (Code Review And Quality Check Fixture)
+Area: `architecture`
+Description: Use when reviewing Code Review And Quality Check Fixture changes for architecture, boundaries, and dependency direction.
 
-## Specialist Scope
-Fixture scope.
+## Execution
 
-## Inputs
-Fixture inputs.
+Follow the instructions in [content.md](content.md).
 
-## Outputs Contract
-Fixture outputs.
+## Ceremony
 
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

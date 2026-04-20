@@ -1,24 +1,20 @@
 ---
-name: extra_area-architecture
+name: code-review
 description: Fixture architecture area.
 ---
 
-# Extra Area Architecture
+## Descriptor
 
-## Description
-Fixture description.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `extra_area` (Extra-Area Fixture Pack)
+Area: `architecture`
+Description: Use when reviewing Extra-Area Fixture Pack changes for architecture, boundaries, and dependency direction.
 
-## Specialist Scope
-Fixture specialist scope.
+## Execution
 
-## Inputs
-Fixture inputs.
+Follow the instructions in [content.md](content.md).
 
-## Outputs Contract
-Fixture outputs contract.
+## Ceremony
 
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

@@ -50,12 +50,23 @@ _DECLARED_FILES_EMPTY_INLINE_PATTERN = re.compile(
   re.MULTILINE,
 )
 
+_AREA_METADATA_BLOCK_PATTERN = re.compile(
+  r"^(area_metadata:\n)((?:  [^\n]+\n|    [^\n]+\n)*)",
+  re.MULTILINE,
+)
+
+_AREA_METADATA_EMPTY_INLINE_PATTERN = re.compile(
+  r"^area_metadata:\s*\{\s*\}\s*$",
+  re.MULTILINE,
+)
+
 
 def append_code_review_area(
   *,
   manifest_path: Path,
   area: str,
   relative_content_path: str,
+  area_focus: str,
 ) -> None:
   """Append ``area`` to ``declared_code_review_areas`` and ``declared_files.areas``.
 
@@ -76,6 +87,7 @@ def append_code_review_area(
 
   updated = _append_area_to_list(updated, area)
   updated = _append_area_to_declared_files(updated, area, relative_content_path)
+  updated = _append_area_metadata(updated, area, area_focus)
 
   if updated != original_text:
     manifest_path.write_text(updated, encoding="utf-8")
@@ -131,6 +143,32 @@ def _append_area_to_declared_files(text: str, area: str, relative_path: str) -> 
   insertion = f"    {area}: {relative_path}\n"
   start, end = match.span()
   return text[:start] + block_prefix + areas_header + existing_body + insertion + text[end:]
+
+
+def _append_area_metadata(text: str, area: str, area_focus: str) -> str:
+  if re.search(rf"^  {re.escape(area)}:\s*$", text, re.MULTILINE):
+    return text
+
+  inline_empty_match = _AREA_METADATA_EMPTY_INLINE_PATTERN.search(text)
+  if inline_empty_match is not None:
+    return (
+      text[: inline_empty_match.start()]
+      + "area_metadata:\n"
+      + f"  {area}:\n"
+      + f"    focus: {json.dumps(area_focus)}\n"
+      + text[inline_empty_match.end():]
+    )
+
+  match = _AREA_METADATA_BLOCK_PATTERN.search(text)
+  if match is None:
+    raise ValueError(
+      "Manifest is missing 'area_metadata:' block; refusing to edit."
+    )
+  header = match.group(1)
+  existing_body = match.group(2)
+  insertion = f"  {area}:\n    focus: {json.dumps(area_focus)}\n"
+  start, end = match.span()
+  return text[:start] + header + existing_body + insertion + text[end:]
 
 
 def _detect_list_indent(list_body: str) -> str:
@@ -205,12 +243,11 @@ def render_platform_pack_manifest(
   display_name: str,
   strong_signals: list[str],
   tie_breakers: list[str] | None = None,
-  addon_signals: list[str] | None = None,
   declared_code_review_areas: list[str] | None = None,
   baseline_content_path: str,
   declared_area_files: dict[str, str] | None = None,
   declared_quality_check_file: str | None = None,
-  governs_addons: bool = False,
+  area_metadata: dict[str, str] | None = None,
   notes: str | None = None,
 ) -> str:
   """Render a canonical ``platform.yaml`` for a newly scaffolded pack.
@@ -221,14 +258,13 @@ def render_platform_pack_manifest(
   """
   declared_code_review_areas = declared_code_review_areas or []
   declared_area_files = declared_area_files or {}
+  area_metadata = area_metadata or {}
   tie_breakers = tie_breakers or []
-  addon_signals = addon_signals or []
 
   lines: list[str] = [
     f"platform: {_yaml_scalar(platform)}",
     f"contract_version: {_yaml_scalar(SHELL_CONTRACT_VERSION)}",
     f"display_name: {_yaml_scalar(display_name)}",
-    f"governs_addons: {'true' if governs_addons else 'false'}",
     "",
     "routing_signals:",
     "  strong:",
@@ -238,8 +274,6 @@ def render_platform_pack_manifest(
     "  tie_breakers: []" if not tie_breakers else "  tie_breakers:"
   )
   lines.extend(f"    - {_yaml_scalar(entry)}" for entry in tie_breakers)
-  lines.append("  addon_signals: []" if not addon_signals else "  addon_signals:")
-  lines.extend(f"    - {_yaml_scalar(entry)}" for entry in addon_signals)
   lines.extend(
     [
       "",
@@ -263,6 +297,16 @@ def render_platform_pack_manifest(
       if relative_path is None:
         continue
       lines.append(f"    {area}: {_yaml_scalar(relative_path)}")
+  if not area_metadata:
+    lines.append("area_metadata: {}")
+  else:
+    lines.append("area_metadata:")
+    for area in declared_code_review_areas:
+      focus = area_metadata.get(area)
+      if focus is None:
+        continue
+      lines.append(f"  {area}:")
+      lines.append(f"    focus: {_yaml_scalar(focus)}")
   if declared_quality_check_file is not None:
     lines.extend(
       [

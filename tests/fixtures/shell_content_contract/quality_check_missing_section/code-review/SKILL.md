@@ -1,29 +1,19 @@
 ---
-name: quality_check_missing_section-code-review
+name: code-review
 description: Fixture baseline content.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Fixture Baseline
+## Descriptor
 
-## Description
-Fixture baseline content.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `quality_check_missing_section` (Quality Check Missing Section Fixture)
+Description: Use when reviewing Quality Check Missing Section Fixture changes across code-review specialists.
 
-## Specialist Scope
-Fixture specialist scope.
-
-## Inputs
-Fixture inputs.
-
-## Outputs Contract
-Fixture outputs contract.
-
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

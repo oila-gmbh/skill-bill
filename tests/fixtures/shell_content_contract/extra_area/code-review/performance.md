@@ -1,24 +1,20 @@
 ---
-name: extra_area-performance
+name: code-review
 description: Fixture performance area file that is orphaned relative to declared_code_review_areas.
 ---
 
-# Extra Area Performance
+## Descriptor
 
-## Description
-Fixture description.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `extra_area` (Extra-Area Fixture Pack)
+Area: `performance`
+Description: Use when reviewing Extra-Area Fixture Pack changes for performance risks on hot paths, blocking I/O, and resource usage.
 
-## Specialist Scope
-Fixture specialist scope.
+## Execution
 
-## Inputs
-Fixture inputs.
+Follow the instructions in [content.md](content.md).
 
-## Outputs Contract
-Fixture outputs contract.
+## Ceremony
 
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

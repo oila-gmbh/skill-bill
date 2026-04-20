@@ -88,32 +88,17 @@ Strict structure, enforced by the validator:
 
 `/bill-code-review` uses a shell + content split. The shell at `skills/bill-code-review/` is governed and shared; the reviewer reasoning lives in **platform packs** under `platform-packs/<platform>/`. Teams that need platform-specific customization beyond `.agents/skill-overrides.md` can fork a pack:
 
+Important policy:
+- Skill Bill allows any platform that can be expressed as a conforming governed pack.
+- That does not mean every platform should be added to this repo's built-in inventory.
+- Treat the shipped `kotlin` and `kmp` packs as first-party references; create or fork other stacks separately unless you explicitly want to maintain them here.
+
 1. Copy `platform-packs/<platform>/` (e.g. `platform-packs/kotlin/`) into your team's own checkout.
 2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.1"` in lockstep with the shell.
-3. Edit or add per-area content files. Each declared `SKILL.md` must contain the seven required H2 sections: Description, Specialist Scope, Inputs, Outputs Contract, Execution, Execution Mode Reporting, Telemetry Ceremony Hooks. `SKILL.md` is the governance shell — open the sibling `content.md` with `skill-bill edit <skill-name>` to change the actual skill prompt.
+3. Edit or add per-area governed skill directories. Each declared `SKILL.md` must stay a thin wrapper with the three required H2 sections `Descriptor`, `Execution`, and `Ceremony`, and each governed directory must also contain sibling `content.md` and `shell-ceremony.md`. The shell refuses to run with a named error if any required piece is missing — no silent fallback.
 4. Point your local install at the forked pack and re-run `./install.sh`.
 
 The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
-
-### v1.0 → v1.1 migration
-
-If you are upgrading a v1.0 fork to v1.1, run
-`.venv/bin/python3 scripts/migrate_to_content_md.py` once. The script:
-
-- walks every governed SKILL.md under shelled families (code-review and
-  quality-check)
-- captures free-form H2s plus author-edited required sections into a new
-  sibling `content.md`
-- regenerates each SKILL.md from the current v1.1 template
-- writes `_migration_backup/<timestamp>/` before the first rewrite and
-  rolls back per-skill on validator failure
-- is idempotent (`--force` to re-run, `--strict` to byte-match default
-  sections, `--yes` to bypass the dirty-repo guard)
-
-`skill-bill doctor` reports missing `content.md` siblings (error) and
-template drift (warning with the exact `skill-bill upgrade --skill <name>`
-command to run). `skill-bill upgrade` regenerates SKILL.md shells without
-touching `content.md`.
 
 ### Scaffolding a new platform
 
@@ -135,7 +120,7 @@ skill-bill new-skill --payload /tmp/payload.json
 
 The scaffolder:
 
-- creates `platform-packs/java/platform.yaml` plus baseline `code-review` and `quality-check` content files, and thin `skills/java/bill-java-feature-implement/` / `skills/java/bill-java-feature-verify/` stubs.
+- creates `platform-packs/java/platform.yaml` plus governed baseline `code-review` and `quality-check` skill directories (`SKILL.md` + `content.md` + `shell-ceremony.md`), and thin `skills/java/bill-java-feature-implement/` / `skills/java/bill-java-feature-verify/` stubs.
 - applies the built-in Java routing preset automatically, including the governed manifest fields and required H2 sections.
 - wires the sibling supporting files needed by the generated skills.
 - installs the new skills into every detected agent.
@@ -177,17 +162,17 @@ skill-bill new-skill --payload /tmp/payload.json
 
 The scaffolder:
 
-- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` with the six required H2 sections (two scaffolder-owned ceremony sections are identical across every specialist in the family; the other four are stubbed for authoring).
+- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` as a governed three-section wrapper plus sibling `content.md` and `shell-ceremony.md`. The authored execution body is stubbed in `content.md`; the ceremony sidecar is shared.
 - appends `api-contracts` to `declared_code_review_areas` and to `declared_files.areas` in `platform-packs/kotlin/platform.yaml`, preserving key order and best-effort comments.
 - wires sibling supporting-file symlinks for the skill (stack-routing, review-orchestrator, review-delegation, telemetry-contract) from `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`.
 - runs `scripts/validate_agent_configs.py`. If validation fails, every change is rolled back and the validator error is surfaced verbatim.
 - installs the new skill into every detected agent. If none is detected, the scaffolder notes that you should run `./install.sh` to bootstrap agent paths.
 
-Edit the four authored sections (`## Description`, `## Specialist Scope`, `## Inputs`, `## Outputs Contract`) afterwards. Do not edit the scaffolder-owned sections — the contract treats them as identical across the family.
+Edit the authored execution sections in `content.md` afterwards. Keep the generated `SKILL.md` wrapper and `shell-ceremony.md` sidecar intact unless you are intentionally changing the shared contract.
 
 The full payload schema, including the new `platform-pack` kind, lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
-SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.0`). `bill-feature-implement` and `bill-feature-verify` remain pre-shell for now and still land under `skills/<platform>/` when scaffolded.
+SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.1`). `bill-feature-implement` and `bill-feature-verify` remain pre-shell for now and still land under `skills/<platform>/` when scaffolded.
 
 ## What to expect from review output
 

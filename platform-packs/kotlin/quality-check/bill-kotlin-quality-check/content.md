@@ -1,4 +1,10 @@
-## Procedure
+# Kotlin Quality Check
+
+This is the current Gradle/Kotlin implementation behind the shared `bill-quality-check` router. Invoke it directly only when you already know the repo should use the Gradle/Kotlin quality-check path.
+
+Execute `./gradlew check` and systematically fix issues **only in files changed in the current unit of work**. Ignore pre-existing issues in untouched files.
+
+## Execution Steps
 
 1. **Determine changed files**: Use `git diff --name-only` (against the base branch or HEAD) to identify files changed in the current unit of work
 2. **Run initial check**: Execute `./gradlew check` and capture complete output
@@ -12,15 +18,15 @@
 5. **Verify fixes**: Re-run `./gradlew check` after all fixes
 6. **Iterate if needed**: If new issues appear, repeat the process
 
-## How To Fix
+## Fix Strategy
 
 **Always Fix, Never Suppress:**
-- Never use `@Suppress`, `@SuppressWarnings`, or lint suppressions
-- Never add `// TODO` or `// FIXME` comments to defer issues
-- Never use `#pragma` or similar directives to hide issues
-- Implement proper solutions that address the root cause
-- Refactor code to eliminate warnings
-- Add missing tests or fix failing ones
+- ❌ Never use `@Suppress`, `@SuppressWarnings`, or lint suppressions
+- ❌ Never add `// TODO` or `// FIXME` comments to defer issues
+- ❌ Never use `#pragma` or similar directives to hide issues
+- ✅ Implement proper solutions that address the root cause
+- ✅ Refactor code to eliminate warnings
+- ✅ Add missing tests or fix failing ones
 
 **Priority Order:**
 0. Structural issues (package/file location, file naming) - **Fix these first**
@@ -72,3 +78,5 @@ These issues require file operations and should be fixed before other issues:
 - Extract related params into:
   - `data class` - for variables
   - `interface` - for navigation/action lambdas
+
+When reporting results, show issue count by category, report each fix with `file:line`, display the final `./gradlew check` result, and summarize all changes.

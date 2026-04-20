@@ -1,1 +1,3 @@
-AGENTS.md
+# CLAUDE.md
+
+@import AGENTS.md

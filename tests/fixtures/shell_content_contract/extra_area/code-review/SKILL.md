@@ -1,29 +1,19 @@
 ---
-name: extra_area-code-review
+name: code-review
 description: Fixture baseline to exercise rejection of extra declared_files.areas entries.
-shell_contract_version: 1.1
-template_version: 2026.04.19
 ---
 
-# Extra Area Baseline
+## Descriptor
 
-## Description
-Fixture baseline content.
+Governed skill: `code-review`
+Family: `code-review`
+Platform pack: `extra_area` (Extra-Area Fixture Pack)
+Description: Use when reviewing Extra-Area Fixture Pack changes across code-review specialists.
 
-## Specialist Scope
-Fixture specialist scope.
-
-## Inputs
-Fixture inputs.
-
-## Outputs Contract
-Fixture outputs contract.
-
-## Execution Mode Reporting
-Fixture execution mode reporting.
-
-## Telemetry Ceremony Hooks
-Fixture telemetry hooks.
 ## Execution
 
 Follow the instructions in [content.md](content.md).
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

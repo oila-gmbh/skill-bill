@@ -1,3 +1,3 @@
-# Fixture content
+# valid_pack-code-review-architecture Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.

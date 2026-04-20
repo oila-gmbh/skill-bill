@@ -1,12 +1,12 @@
 platform: heading_in_fence
-contract_version: "1.1"
+contract_version: '1.1'
 display_name: Heading-In-Fence Fixture Pack
 routing_signals:
   strong:
-    - ".fixture"
+  - .fixture
   tie_breakers: []
-  addon_signals: []
 declared_code_review_areas: []
 declared_files:
   baseline: code-review/SKILL.md
   areas: {}
+area_metadata: {}

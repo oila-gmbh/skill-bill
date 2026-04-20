@@ -1,3 +1,7 @@
+# Backend API & Contract Review Specialist
+
+Review only backend/service API contract issues that can break clients, allow invalid behavior, or create hard-to-debug production regressions.
+
 ## Focus
 - Request validation and boundary enforcement
 - Serialization/deserialization mismatches
@@ -12,7 +16,6 @@
 ## Applicability
 
 Use this specialist for backend/server Kotlin code routed through the built-in Kotlin pack. It is most relevant for Ktor, Spring, Micronaut, Quarkus, http4k, Javalin, gRPC, or similar transport layers.
-
 ## Project-Specific Rules
 
 - Validate untrusted input at the boundary before business logic depends on it
@@ -23,9 +26,4 @@ Use this specialist for backend/server Kotlin code routed through the built-in K
 - Mutating endpoints, commands, and webhook handlers should define idempotency behavior clearly when retries are plausible
 - Pagination and filtering should preserve deterministic ordering and bounded result sizes
 - Serialization defaults must match the compatibility expectations of existing clients
-
-## Finding Requirements
-
-- Report at most 7 findings.
-- Include the client-visible consequence for each finding.
-- Include a minimal, concrete fix.
+- In findings, explain the client-visible consequence of the contract break or boundary bug.

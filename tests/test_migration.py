@@ -306,8 +306,8 @@ class MigrationCoverageTest(unittest.TestCase):
       / "bill-kotlin-code-review"
       / "SKILL.md"
     ).read_text(encoding="utf-8")
-    self.assertIn("## Project Overrides", baseline_shell)
-    self.assertIn(".agents/skill-overrides.md", baseline_shell)
+    self.assertIn("## Descriptor", baseline_shell)
+    self.assertIn("[shell-ceremony.md](shell-ceremony.md)", baseline_shell)
 
   def test_migration_scrubs_ceremony_free_form_h2_blacklist(self) -> None:
     """Pass 2: free-form ceremony H2s never flow into content.md.

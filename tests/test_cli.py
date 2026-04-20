@@ -1,374 +1,345 @@
-"""SKILL-21 AC 15(d): CLI surface coverage.
-
-Exercises the new ``skill-bill edit``, ``skill-bill upgrade``, and the
-doctor extensions (content_md_missing, template_version_drift). The
-orchestrator (edit/upgrade/doctor) operates on an in-memory repo seeded
-from the scaffold test helpers so tests stay hermetic.
-"""
-
 from __future__ import annotations
 
-import argparse
+import contextlib
 import io
 import json
-import os
+from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
-from pathlib import Path
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from skill_bill.cli import main  # noqa: E402
+from skill_bill.shell_content_contract import PyYAMLMissingError  # noqa: E402
+from skill_bill.upgrade import upgrade_skill_wrappers  # noqa: E402
 
-from skill_bill import cli  # noqa: E402
-from skill_bill.constants import TEMPLATE_VERSION  # noqa: E402
-from skill_bill.shell_content_contract import CANONICAL_EXECUTION_BODY  # noqa: E402
+
+_GOVERNED_FRONTMATTER = """\
+---
+name: {name}
+description: Fixture content.
+---
+"""
+
+_OLD_PROJECT_OVERRIDES = """\
+## Project Overrides
+
+Legacy project override text that should be collapsed by upgrade.
+
+If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read it.
+"""
+
+_SETUP_SECTION = """\
+## Setup
+
+Fixture setup text.
+"""
+
+_SHELL_CEREMONY = """\
+## Project Overrides
+
+If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read it and apply it as the highest-priority instruction for this skill.
+
+## Inputs
+
+Fixture shell ceremony inputs.
+
+## Execution Mode Reporting
+
+Execution mode: inline | delegated
+
+## Telemetry Ceremony Hooks
+
+Follow `telemetry-contract.md` when it is present.
+"""
 
 
-def _seed_governed_skill(repo_root: Path) -> Path:
-  """Seed a single governed skill with v1.1 shape and return its directory."""
-  pack_root = repo_root / "platform-packs" / "fixture"
-  skill_dir = pack_root / "code-review" / "bill-fixture-code-review"
-  skill_dir.mkdir(parents=True)
-  (skill_dir / "SKILL.md").write_text(
-    "---\n"
-    "name: bill-fixture-code-review\n"
-    "description: Fixture.\n"
-    f"shell_contract_version: 1.1\n"
-    f"template_version: {TEMPLATE_VERSION}\n"
-    "---\n"
-    "\n"
-    "## Description\nFixture.\n\n"
-    "## Specialist Scope\nFixture.\n\n"
-    "## Inputs\nFixture.\n\n"
-    "## Outputs Contract\nFixture.\n\n"
-    + CANONICAL_EXECUTION_BODY
+def _governed_skill_body(
+  *,
+  name: str,
+  family: str,
+  description: str,
+  area: str = "",
+) -> str:
+  del family
+  area_scope = "Scoped to one approved code-review area." if area else "Baseline orchestrator for platform review."
+  return (
+    _GOVERNED_FRONTMATTER.format(name=name)
     + "\n"
-    "## Execution Mode Reporting\nFixture.\n\n"
-    "## Telemetry Ceremony Hooks\nFixture.\n",
+    + "# Legacy Governed Wrapper\n\n"
+    + _OLD_PROJECT_OVERRIDES
+    + "\n"
+    + f"## Description\n\n{description}\n\n"
+    + f"## Specialist Scope\n\n{area_scope}\n\n"
+    + "## Inputs\n\nLegacy inputs.\n\n"
+    + "## Outputs Contract\n\nLegacy outputs.\n\n"
+    + "## Execution Mode Reporting\n\nExecution mode: inline | delegated\n\n"
+    + "## Telemetry Ceremony Hooks\n\nFollow `telemetry-contract.md` when it is present.\n\n"
+    + "## Old Boilerplate\n\n"
+    + "This stale wrapper section should be removed by upgrade.\n"
+  )
+
+
+def _build_upgrade_repo(tmp_path: Path) -> Path:
+  repo = tmp_path / "repo"
+  shell_ceremony = repo / "orchestration" / "shell-content-contract" / "shell-ceremony.md"
+  shell_ceremony.parent.mkdir(parents=True, exist_ok=True)
+  shell_ceremony.write_text(_SHELL_CEREMONY, encoding="utf-8")
+
+  horizontal_skill = repo / "skills" / "bill-horizontal-test"
+  horizontal_skill.mkdir(parents=True, exist_ok=True)
+  (horizontal_skill / "shell-ceremony.md").symlink_to(shell_ceremony)
+  (horizontal_skill / "SKILL.md").write_text(
+    "---\n"
+    "name: bill-horizontal-test\n"
+    "description: Fixture horizontal skill.\n"
+    "---\n\n"
+    "# Fixture Horizontal Skill\n\n"
+    f"{_OLD_PROJECT_OVERRIDES}\n"
+    f"{_SETUP_SECTION}",
     encoding="utf-8",
   )
-  (skill_dir / "content.md").write_text(
-    "# bill-fixture-code-review\n\nFixture body.\n",
-    encoding="utf-8",
-  )
+
+  pack_root = repo / "platform-packs" / "kotlin"
+  pack_root.mkdir(parents=True, exist_ok=True)
   (pack_root / "platform.yaml").write_text(
-    "platform: fixture\n"
-    "contract_version: \"1.1\"\n"
-    "display_name: Fixture\n"
-    "routing_signals:\n"
-    "  strong:\n"
-    "    - .fixture\n"
-    "  tie_breakers: []\n"
-    "  addon_signals: []\n"
-    "declared_code_review_areas: []\n"
-    "declared_files:\n"
-    "  baseline: code-review/bill-fixture-code-review/SKILL.md\n"
-    "  areas: {}\n",
+    """\
+platform: kotlin
+contract_version: "1.1"
+display_name: Kotlin
+
+routing_signals:
+  strong:
+    - ".kt"
+  tie_breakers:
+    - "fixture tie-breaker"
+
+declared_code_review_areas:
+  - architecture
+
+declared_files:
+  baseline: code-review/bill-kotlin-code-review/SKILL.md
+  areas:
+    architecture: code-review/bill-kotlin-code-review-architecture/SKILL.md
+
+area_metadata:
+  architecture:
+    focus: "architecture, boundaries, and dependency direction"
+""",
     encoding="utf-8",
   )
-  return skill_dir
+
+  baseline_dir = pack_root / "code-review" / "bill-kotlin-code-review"
+  baseline_dir.mkdir(parents=True, exist_ok=True)
+  (baseline_dir / "SKILL.md").write_text(
+    _governed_skill_body(
+      name="bill-kotlin-code-review",
+      family="code-review",
+      description="Use when reviewing Kotlin changes across code-review specialists.",
+    ),
+    encoding="utf-8",
+  )
+  (baseline_dir / "content.md").write_text("# Content\n\nUnchanged baseline content.\n", encoding="utf-8")
+  (baseline_dir / "shell-ceremony.md").symlink_to(shell_ceremony)
+
+  area_dir = pack_root / "code-review" / "bill-kotlin-code-review-architecture"
+  area_dir.mkdir(parents=True, exist_ok=True)
+  (area_dir / "SKILL.md").write_text(
+    _governed_skill_body(
+      name="bill-kotlin-code-review-architecture",
+      family="code-review",
+      area="architecture",
+      description="Use when reviewing Kotlin changes for architecture, boundaries, and dependency direction.",
+    ),
+    encoding="utf-8",
+  )
+  (area_dir / "content.md").write_text("# Content\n\nUnchanged area content.\n", encoding="utf-8")
+  (area_dir / "shell-ceremony.md").symlink_to(shell_ceremony)
+  return repo
 
 
-class EditCommandTest(unittest.TestCase):
+def _top_level_h2_headings(text: str) -> list[str]:
+  return [line.strip() for line in text.splitlines() if line.startswith("## ")]
+
+
+class UpgradeCliTest(unittest.TestCase):
+  maxDiff = None
+
+  def setUp(self) -> None:
+    self._tmpdir = tempfile.TemporaryDirectory()
+    self.addCleanup(self._tmpdir.cleanup)
+    self.repo = _build_upgrade_repo(Path(self._tmpdir.name))
+
+  def test_upgrade_regenerates_wrappers_without_touching_sidecars(self) -> None:
+    baseline_skill = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review"
+      / "SKILL.md"
+    )
+    baseline_content = baseline_skill.with_name("content.md")
+    baseline_ceremony = baseline_skill.with_name("shell-ceremony.md")
+    content_before = baseline_content.read_bytes()
+    ceremony_before = baseline_ceremony.read_bytes()
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["upgrade", "--repo-root", str(self.repo), "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertGreaterEqual(payload["regenerated_count"], 2)
+    self.assertFalse(payload["content_md_touched"])
+    self.assertFalse(payload["shell_ceremony_touched"])
+
+    upgraded_body = baseline_skill.read_text(encoding="utf-8")
+    self.assertEqual(
+      _top_level_h2_headings(upgraded_body),
+      ["## Descriptor", "## Execution", "## Ceremony"],
+    )
+    self.assertNotIn("## Old Boilerplate", upgraded_body)
+    self.assertEqual(content_before, baseline_content.read_bytes())
+    self.assertEqual(ceremony_before, baseline_ceremony.read_bytes())
+
+    horizontal_skill = self.repo / "skills" / "bill-horizontal-test" / "SKILL.md"
+    horizontal_body = horizontal_skill.read_text(encoding="utf-8")
+    self.assertIn("Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).", horizontal_body)
+    self.assertNotIn("Legacy project override text", horizontal_body)
+
+  def test_upgrade_rolls_back_when_validator_fails(self) -> None:
+    baseline_skill = (
+      self.repo
+      / "platform-packs"
+      / "kotlin"
+      / "code-review"
+      / "bill-kotlin-code-review"
+      / "SKILL.md"
+    )
+    horizontal_skill = self.repo / "skills" / "bill-horizontal-test" / "SKILL.md"
+    baseline_before = baseline_skill.read_bytes()
+    horizontal_before = horizontal_skill.read_bytes()
+
+    with mock.patch("skill_bill.upgrade._run_validator", side_effect=RuntimeError("boom")):
+      with self.assertRaises(RuntimeError):
+        upgrade_skill_wrappers(self.repo)
+
+    self.assertEqual(baseline_before, baseline_skill.read_bytes())
+    self.assertEqual(horizontal_before, horizontal_skill.read_bytes())
+
+
+class NewAddonCliTest(unittest.TestCase):
   def setUp(self) -> None:
     self._tmpdir = tempfile.TemporaryDirectory()
     self.addCleanup(self._tmpdir.cleanup)
     self.repo = Path(self._tmpdir.name) / "repo"
-    self.repo.mkdir()
-    (self.repo / "skills").mkdir()
-    self.skill_dir = _seed_governed_skill(self.repo)
-    self._patcher = mock.patch.object(cli, "_resolve_repo_root_for_cli", return_value=self.repo)
-    self._patcher.start()
-    self.addCleanup(self._patcher.stop)
+    pack_root = self.repo / "platform-packs" / "kmp"
+    pack_root.mkdir(parents=True, exist_ok=True)
+    (pack_root / "platform.yaml").write_text(
+      """\
+platform: kmp
+contract_version: "1.1"
+display_name: KMP
 
-  def test_edit_uses_visual(self) -> None:
-    captured: dict[str, object] = {}
+routing_signals:
+  strong:
+    - "androidMain"
+  tie_breakers:
+    - "prefer KMP for multiplatform fixtures"
 
-    def fake_run(command, **_kwargs):
-      captured["command"] = command
-      class Result:
-        returncode = 0
-      return Result()
+declared_code_review_areas:
+  - ui
 
-    args = argparse.Namespace(skill_name="bill-fixture-code-review")
-    env = {"VISUAL": "vim-mock", "EDITOR": "emacs-mock"}
-    with mock.patch.dict(os.environ, env, clear=False):
-      with mock.patch("subprocess.run", side_effect=fake_run):
-        code = cli.edit_skill_command(args)
-    self.assertEqual(code, 0)
-    self.assertEqual(captured["command"][0], "vim-mock")
-    self.assertTrue(str(captured["command"][-1]).endswith("content.md"))
+declared_files:
+  baseline: code-review/bill-kmp-code-review/SKILL.md
+  areas:
+    ui: code-review/bill-kmp-code-review-ui/SKILL.md
 
-  def test_edit_falls_back_to_editor_when_visual_is_unset(self) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run(command, **_kwargs):
-      captured["command"] = command
-      class Result:
-        returncode = 0
-      return Result()
-
-    env = {"EDITOR": "emacs-mock"}
-    with mock.patch.dict(os.environ, env, clear=True):
-      with mock.patch("subprocess.run", side_effect=fake_run):
-        code = cli.edit_skill_command(argparse.Namespace(skill_name="bill-fixture-code-review"))
-    self.assertEqual(code, 0)
-    self.assertEqual(captured["command"][0], "emacs-mock")
-
-  def test_edit_prints_path_when_no_editor_configured(self) -> None:
-    env: dict[str, str] = {}
-    buf = io.StringIO()
-    with mock.patch.dict(os.environ, env, clear=True):
-      with redirect_stdout(buf):
-        code = cli.edit_skill_command(
-          argparse.Namespace(skill_name="bill-fixture-code-review")
-        )
-    self.assertEqual(code, 0)
-    self.assertIn("content.md", buf.getvalue())
-    # The printed path must resolve to content.md, never SKILL.md.
-    self.assertNotIn("SKILL.md", buf.getvalue())
-
-  def test_edit_rejects_unknown_skill(self) -> None:
-    buf = io.StringIO()
-    with redirect_stderr(buf):
-      code = cli.edit_skill_command(argparse.Namespace(skill_name="bill-does-not-exist"))
-    self.assertEqual(code, 2)
-    self.assertIn("not found", buf.getvalue())
-
-
-class UpgradeCommandTest(unittest.TestCase):
-  def setUp(self) -> None:
-    self._tmpdir = tempfile.TemporaryDirectory()
-    self.addCleanup(self._tmpdir.cleanup)
-    self.repo = Path(self._tmpdir.name) / "repo"
-    self.repo.mkdir()
-    (self.repo / "skills").mkdir()
-    self.skill_dir = _seed_governed_skill(self.repo)
-    self._patcher = mock.patch.object(cli, "_resolve_repo_root_for_cli", return_value=self.repo)
-    self._patcher.start()
-    self.addCleanup(self._patcher.stop)
-
-  def _mark_template_drift(self) -> None:
-    skill_file = self.skill_dir / "SKILL.md"
-    text = skill_file.read_text(encoding="utf-8")
-    text = text.replace(
-      f"template_version: {TEMPLATE_VERSION}\n",
-      "template_version: 2020.01.01\n",
+area_metadata:
+  ui:
+    focus: "UI correctness and framework usage"
+""",
+      encoding="utf-8",
     )
-    skill_file.write_text(text, encoding="utf-8")
 
-  def test_upgrade_dry_run_makes_no_writes(self) -> None:
-    self._mark_template_drift()
-    skill_file = self.skill_dir / "SKILL.md"
-    content_file = self.skill_dir / "content.md"
-    pre_skill = skill_file.read_bytes()
-    pre_content = content_file.read_bytes()
-
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-      code = cli.upgrade_skills_command(
-        argparse.Namespace(dry_run=True, skill=None, yes=False)
+  def test_new_addon_writes_markdown_body_to_pack_addons_dir(self) -> None:
+    stdout = io.StringIO()
+    with (
+      contextlib.redirect_stdout(stdout),
+      mock.patch("pathlib.Path.cwd", return_value=self.repo),
+      mock.patch("skill_bill.scaffold._run_validator", return_value=None),
+      mock.patch("skill_bill.scaffold._perform_install", return_value=([], [])),
+      mock.patch(
+        "skill_bill.config.load_telemetry_settings",
+        return_value=SimpleNamespace(level="anonymous"),
+      ),
+    ):
+      exit_code = main(
+        [
+          "new-addon",
+          "--platform",
+          "kmp",
+          "--name",
+          "android-compose",
+          "--body",
+          "# android-compose\n\nUse this add-on.\n",
+          "--format",
+          "json",
+        ]
       )
 
-    self.assertEqual(code, 0)
-    self.assertIn("Planned SKILL.md regenerations", buf.getvalue())
-    self.assertEqual(skill_file.read_bytes(), pre_skill)
-    self.assertEqual(content_file.read_bytes(), pre_content)
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["kind"], "add-on")
+    addon_path = self.repo / "platform-packs" / "kmp" / "addons" / "android-compose.md"
+    self.assertEqual(Path(payload["skill_path"]).resolve(), addon_path.parent.resolve())
+    self.assertEqual(
+      addon_path.read_text(encoding="utf-8"),
+      "# android-compose\n\nUse this add-on.\n",
+    )
 
-  def test_upgrade_respects_skill_flag(self) -> None:
-    self._mark_template_drift()
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-      code = cli.upgrade_skills_command(
-        argparse.Namespace(
-          dry_run=True,
-          skill="bill-does-not-exist",
-          yes=False,
-        )
+  def test_new_addon_requires_body_source_when_not_interactive(self) -> None:
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      exit_code = main(
+        [
+          "new-addon",
+          "--platform",
+          "kmp",
+          "--name",
+          "android-compose",
+        ]
       )
-    self.assertEqual(code, 0)
-    self.assertIn("No skills with template_version drift", buf.getvalue())
 
-  def test_upgrade_requires_yes_confirmation(self) -> None:
-    self._mark_template_drift()
-    skill_file = self.skill_dir / "SKILL.md"
-    pre_skill = skill_file.read_bytes()
+    self.assertEqual(exit_code, 1)
+    self.assertIn("Provide exactly one of --body or --body-file", stderr.getvalue())
 
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-      code = cli.upgrade_skills_command(
-        argparse.Namespace(dry_run=False, skill=None, yes=False)
+  def test_new_addon_surfaces_contract_errors_without_traceback(self) -> None:
+    stderr = io.StringIO()
+    with (
+      contextlib.redirect_stderr(stderr),
+      mock.patch(
+        "skill_bill.scaffold.scaffold",
+        side_effect=PyYAMLMissingError("PyYAML is required to load platform packs."),
+      ),
+    ):
+      exit_code = main(
+        [
+          "new-addon",
+          "--platform",
+          "kmp",
+          "--name",
+          "android-compose",
+          "--body",
+          "# android-compose\n\nUse this add-on.\n",
+        ]
       )
-    self.assertEqual(code, 0)
-    self.assertIn("Re-run with --yes", buf.getvalue())
-    self.assertEqual(skill_file.read_bytes(), pre_skill)
 
-  def test_upgrade_never_touches_content_md(self) -> None:
-    self._mark_template_drift()
-    content_file = self.skill_dir / "content.md"
-    original_content = content_file.read_bytes()
-
-    cli.upgrade_skills_command(
-      argparse.Namespace(dry_run=False, skill=None, yes=True)
-    )
-    self.assertEqual(content_file.read_bytes(), original_content)
-
-  def test_upgrade_adds_project_overrides_when_previously_missing(self) -> None:
-    """SKILL-21 follow-up: a platform-pack SKILL.md that pre-dates the
-    template bump is missing ``## Project Overrides`` in its body.
-    ``skill-bill upgrade`` regenerates it from the current template and
-    must now include the ceremony heading alongside a reference to
-    ``.agents/skill-overrides.md``.
-    """
-    skill_file = self.skill_dir / "SKILL.md"
-    pre_missing_body = (
-      "---\n"
-      "name: bill-fixture-code-review\n"
-      "description: Fixture.\n"
-      f"shell_contract_version: 1.1\n"
-      "template_version: 2020.01.01\n"
-      "---\n"
-      "\n"
-      "## Description\nFixture.\n\n"
-      "## Specialist Scope\nFixture.\n\n"
-      "## Inputs\nFixture.\n\n"
-      "## Outputs Contract\nFixture.\n\n"
-      + CANONICAL_EXECUTION_BODY
-      + "\n"
-      "## Execution Mode Reporting\nFixture.\n\n"
-      "## Telemetry Ceremony Hooks\nFixture.\n"
-    )
-    skill_file.write_text(pre_missing_body, encoding="utf-8")
-    self.assertNotIn("## Project Overrides", skill_file.read_text(encoding="utf-8"))
-
-    cli.upgrade_skills_command(
-      argparse.Namespace(dry_run=False, skill=None, yes=True)
-    )
-
-    upgraded = skill_file.read_text(encoding="utf-8")
-    self.assertIn("## Project Overrides", upgraded)
-    self.assertIn(".agents/skill-overrides.md", upgraded)
-
-  def test_upgrade_rolls_back_skill_md_on_validator_failure(self) -> None:
-    """AC 8: validator failure during upgrade rolls SKILL.md back byte-for-byte.
-
-    content.md must be untouched by ``skill-bill upgrade`` in every path,
-    including the rollback path.
-    """
-    from skill_bill import shell_content_contract
-    from skill_bill.shell_content_contract import InvalidExecutionSectionError
-
-    self._mark_template_drift()
-    skill_file = self.skill_dir / "SKILL.md"
-    content_file = self.skill_dir / "content.md"
-    pre_skill_bytes = skill_file.read_bytes()
-    pre_content_bytes = content_file.read_bytes()
-
-    def boom(*_args, **_kwargs) -> None:
-      raise InvalidExecutionSectionError("simulated validator failure")
-
-    buf = io.StringIO()
-    with mock.patch.object(shell_content_contract, "assert_execution_body_matches", side_effect=boom):
-      with redirect_stderr(buf):
-        code = cli.upgrade_skills_command(
-          argparse.Namespace(dry_run=False, skill=None, yes=True)
-        )
-
-    self.assertEqual(code, 5)
-    self.assertIn("Rolled back upgrade", buf.getvalue())
-    self.assertEqual(skill_file.read_bytes(), pre_skill_bytes)
-    self.assertEqual(content_file.read_bytes(), pre_content_bytes)
-
-
-class DoctorCommandTest(unittest.TestCase):
-  def setUp(self) -> None:
-    self._tmpdir = tempfile.TemporaryDirectory()
-    self.addCleanup(self._tmpdir.cleanup)
-    self.repo = Path(self._tmpdir.name) / "repo"
-    self.repo.mkdir()
-    (self.repo / "skills").mkdir()
-    self.skill_dir = _seed_governed_skill(self.repo)
-    self._patcher = mock.patch.object(cli, "_resolve_repo_root_for_cli", return_value=self.repo)
-    self._patcher.start()
-    self.addCleanup(self._patcher.stop)
-
-  def _invoke_doctor(self) -> dict:
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-      cli.doctor_command(argparse.Namespace(db=None, format="json"))
-    return json.loads(buf.getvalue())
-
-  def test_doctor_reports_missing_content_md_as_error(self) -> None:
-    (self.skill_dir / "content.md").unlink()
-    payload = self._invoke_doctor()
-    missing = payload["content_md_missing"]
-    self.assertEqual(len(missing), 1)
-    self.assertEqual(missing[0]["severity"], "error")
-    self.assertEqual(missing[0]["skill_name"], "bill-fixture-code-review")
-
-  def test_doctor_reports_template_drift_with_upgrade_command(self) -> None:
-    skill_file = self.skill_dir / "SKILL.md"
-    text = skill_file.read_text(encoding="utf-8")
-    text = text.replace(
-      f"template_version: {TEMPLATE_VERSION}\n",
-      "template_version: 2020.01.01\n",
-    )
-    skill_file.write_text(text, encoding="utf-8")
-
-    payload = self._invoke_doctor()
-    drift = payload["template_version_drift"]
-    self.assertEqual(len(drift), 1)
-    self.assertEqual(drift[0]["severity"], "warning")
-    self.assertEqual(drift[0]["skill_name"], "bill-fixture-code-review")
-    self.assertIn("skill-bill upgrade", drift[0]["action"])
-
-  def test_doctor_clean_state_reports_no_issues(self) -> None:
-    payload = self._invoke_doctor()
-    self.assertEqual(payload["content_md_missing"], [])
-    self.assertEqual(payload["template_version_drift"], [])
-
-
-class ResolveRepoRootFallbackTest(unittest.TestCase):
-  """F-001: verify the CWD fallback branch runs without NameError.
-
-  ``_resolve_repo_root_for_cli`` previously imported ``Path`` inside a nested
-  function scope, so the ``Path.cwd().resolve()`` fallback raised
-  ``NameError`` when reached. Tests that mocked the resolver masked this bug,
-  so this test exercises the real resolver with a CWD where neither
-  ``skills/`` nor ``platform-packs/`` exists under the package's
-  ``_REPO_ROOT``.
-  """
-
-  def test_doctor_command_falls_back_to_cwd_cleanly(self) -> None:
-    from skill_bill import scaffold
-
-    with tempfile.TemporaryDirectory() as repo_root_dir, tempfile.TemporaryDirectory() as cwd_dir:
-      repo_root = Path(repo_root_dir)
-      cwd = Path(cwd_dir)
-      _seed_governed_skill(cwd)
-
-      original_cwd = os.getcwd()
-      os.chdir(cwd)
-      try:
-        with mock.patch.object(scaffold, "_REPO_ROOT", repo_root):
-          resolved = cli._resolve_repo_root_for_cli()
-          self.assertEqual(resolved, cwd.resolve())
-
-          buf = io.StringIO()
-          with redirect_stdout(buf):
-            code = cli.doctor_command(argparse.Namespace(db=None, format="json"))
-          self.assertEqual(code, 0)
-          payload = json.loads(buf.getvalue())
-          self.assertIn("content_md_missing", payload)
-          self.assertIn("template_version_drift", payload)
-      finally:
-        os.chdir(original_cwd)
-
-
-if __name__ == "__main__":
-  unittest.main()
+    self.assertEqual(exit_code, 1)
+    self.assertEqual(stderr.getvalue().strip(), "PyYAML is required to load platform packs.")

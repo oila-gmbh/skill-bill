@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 
 from skill_bill import __version__
 from skill_bill.config import (
@@ -355,7 +355,7 @@ def version_command(args: argparse.Namespace) -> int:
   return 0
 
 
-def new_skill_command(args: argparse.Namespace) -> int:
+def _run_scaffold_command(payload: dict, args: argparse.Namespace) -> int:
   from skill_bill import scaffold as _scaffold
   from skill_bill import scaffold_domain as _scaffold_domain
   from skill_bill.config import load_telemetry_settings
@@ -386,25 +386,6 @@ def new_skill_command(args: argparse.Namespace) -> int:
     MissingSupportingFileTargetError: 5,
     ScaffoldRollbackError: 6,
   }
-
-  if args.payload and args.interactive:
-    raise ValueError("--payload and --interactive are mutually exclusive.")
-
-  if args.payload:
-    payload_path = args.payload
-    if payload_path == "-":
-      payload_text = sys.stdin.read()
-    else:
-      with open(payload_path, encoding="utf-8") as stream:
-        payload_text = stream.read()
-    try:
-      payload = json.loads(payload_text)
-    except json.JSONDecodeError as error:
-      raise ValueError(f"Invalid JSON payload: {error}") from error
-  elif args.interactive:
-    payload = _prompt_new_skill_interactively()
-  else:
-    raise ValueError("Either --payload or --interactive is required.")
 
   session_id = _scaffold_domain.generate_new_skill_session_id()
   canonical_skill_name = _scaffold_identity(payload)
@@ -468,6 +449,29 @@ def new_skill_command(args: argparse.Namespace) -> int:
   return 0
 
 
+def new_skill_command(args: argparse.Namespace) -> int:
+  if args.payload and args.interactive:
+    raise ValueError("--payload and --interactive are mutually exclusive.")
+
+  if args.payload:
+    payload_path = args.payload
+    if payload_path == "-":
+      payload_text = sys.stdin.read()
+    else:
+      with open(payload_path, encoding="utf-8") as stream:
+        payload_text = stream.read()
+    try:
+      payload = json.loads(payload_text)
+    except json.JSONDecodeError as error:
+      raise ValueError(f"Invalid JSON payload: {error}") from error
+  elif args.interactive:
+    payload = _prompt_new_skill_interactively()
+  else:
+    raise ValueError("Either --payload or --interactive is required.")
+
+  return _run_scaffold_command(payload, args)
+
+
 def _prompt_nonempty(prompt: str) -> str:
   while True:
     value = input(prompt).strip()
@@ -489,7 +493,54 @@ def _prompt_yes_no(prompt: str, *, default: bool = False) -> bool:
     print("Enter yes or no.")
 
 
-def _prompt_new_skill_interactively() -> dict:
+def _prompt_choice(prompt: str, choices: dict[str, str]) -> str:
+  while True:
+    raw = _prompt_nonempty(prompt).strip().lower()
+    if raw in choices:
+      return choices[raw]
+    print(f"Choose one of: {', '.join(choices)}")
+
+
+def _platform_pack_exists(platform: str, *, repo_root: Path | None = None) -> bool:
+  root = repo_root or Path.cwd()
+  return (root / "platform-packs" / platform / "platform.yaml").exists()
+
+
+def _normalize_addon_body(text: str) -> str:
+  if not text.strip():
+    raise ValueError("Add-on body must be non-empty.")
+  return text if text.endswith("\n") else f"{text}\n"
+
+
+def _read_text_input(path: str) -> str:
+  if path == "-":
+    return sys.stdin.read()
+  return Path(path).read_text(encoding="utf-8")
+
+
+def _prompt_multiline(prompt: str, *, terminator: str = "END") -> str:
+  while True:
+    print(prompt)
+    lines: list[str] = []
+    while True:
+      line = input()
+      if line == terminator:
+        break
+      lines.append(line)
+    if any(line.strip() for line in lines):
+      return "\n".join(lines)
+    print("Add-on body must include at least one non-empty line.")
+
+
+def _build_addon_markdown(name: str, description: str, body: str) -> str:
+  parts = [f"# {name}", ""]
+  if description:
+    parts.extend([description, ""])
+  parts.append(body.rstrip("\n"))
+  return _normalize_addon_body("\n".join(parts))
+
+
+def _prompt_new_skill_interactively(*, repo_root: Path | None = None) -> dict:
   """Collect the interactive payload without an LLM.
 
   The CLI should still feel usable when no agent is involved, so it asks in
@@ -497,40 +548,52 @@ def _prompt_new_skill_interactively() -> dict:
   """
   from skill_bill.scaffold import platform_pack_preset
 
-  print("What do you want to create?")
-  print("1. New platform skill set")
-  print("2. Cross-platform skill")
-  print("3. Platform-specific override")
-  print("4. Code-review specialist")
-  print("5. Platform add-on")
-
-  kind_choice = _prompt_nonempty("Choose 1-5: ")
-  kind_map = {
-    "1": "platform-pack",
-    "2": "horizontal",
-    "3": "platform-override-piloted",
-    "4": "code-review-area",
-    "5": "add-on",
-    "platform-pack": "platform-pack",
-    "horizontal": "horizontal",
-    "platform-override-piloted": "platform-override-piloted",
-    "code-review-area": "code-review-area",
-    "add-on": "add-on",
-  }
-  kind = kind_map.get(kind_choice.strip().lower(), kind_choice.strip())
-
   payload: dict = {
     "scaffold_payload_version": "1.0",
-    "kind": kind,
   }
-  if kind == "platform-pack":
-    platform = _prompt_nonempty("New platform slug (example: java): ")
-    payload["platform"] = platform
-    include_specialists = _prompt_yes_no(
-      "Include code-review specialist stubs now?",
-      default=False,
+  platform = _prompt_nonempty("Platform name: ").strip()
+  if platform.lower() == "cross-stack":
+    payload["kind"] = "horizontal"
+    payload["name"] = _prompt_nonempty("Skill name (bill-...): ")
+    description = input("What should it do? ").strip()
+    if description:
+      payload["description"] = description
+    return payload
+
+  payload["platform"] = platform
+  if _platform_pack_exists(platform, repo_root=repo_root):
+    print("What should this platform get?")
+    print("1. Baseline")
+    print("2. Baseline + Code Review Specialists")
+    print("3. Code-Review Specialist")
+    print("4. Platform Override")
+    selection = _prompt_choice(
+      "Choose 1-4: ",
+      {
+        "1": "platform-pack-starter",
+        "2": "platform-pack-full",
+        "3": "code-review-area",
+        "4": "platform-override-piloted",
+      },
     )
-    payload["skeleton_mode"] = "full" if include_specialists else "starter"
+  else:
+    print("New platform pack:")
+    print("1. Baseline")
+    print("2. Baseline + Code Review Specialists")
+    selection = _prompt_choice(
+      "Choose 1-2: ",
+      {
+        "1": "platform-pack-starter",
+        "2": "platform-pack-full",
+      },
+    )
+
+  if selection.startswith("platform-pack"):
+    payload["kind"] = "platform-pack"
+    payload["platform"] = platform
+    payload["skeleton_mode"] = (
+      "full" if selection == "platform-pack-full" else "starter"
+    )
     display_name = input("Display name (blank to derive from slug): ").strip()
     if display_name:
       payload["display_name"] = display_name
@@ -547,7 +610,6 @@ def _prompt_new_skill_interactively() -> dict:
       payload["routing_signals"] = {
         "strong": [item.strip() for item in strong_signals.split(",") if item.strip()],
         "tie_breakers": [],
-        "addon_signals": [],
       }
       tie_breakers = input("Tie-breakers (comma-separated, optional): ").strip()
       if tie_breakers:
@@ -559,22 +621,10 @@ def _prompt_new_skill_interactively() -> dict:
         f"Using built-in routing preset for '{platform}' "
         f"({', '.join(preset['routing_signals']['strong'])})."
       )
-    payload["governs_addons"] = _prompt_yes_no(
-      "Should this platform pack govern add-ons?",
-      default=False,
-    )
     return payload
 
-  if kind == "horizontal":
-    payload["name"] = _prompt_nonempty("Skill name (bill-...): ")
-    description = input("One-line description (optional): ").strip()
-    if description:
-      payload["description"] = description
-    return payload
-
-  if kind == "platform-override-piloted":
-    platform = _prompt_nonempty("Existing platform slug: ")
-    payload["platform"] = platform
+  if selection == "platform-override-piloted":
+    payload["kind"] = "platform-override-piloted"
     family = _prompt_nonempty(
       "Family (code-review / quality-check / feature-implement / feature-verify): "
     )
@@ -587,8 +637,8 @@ def _prompt_new_skill_interactively() -> dict:
       payload["description"] = description
     return payload
 
-  if kind == "code-review-area":
-    payload["platform"] = _prompt_nonempty("Existing platform slug: ")
+  if selection == "code-review-area":
+    payload["kind"] = "code-review-area"
     payload["area"] = _prompt_nonempty(
       "Area (architecture / performance / platform-correctness / security / testing / api-contracts / persistence / reliability / ui / ux-accessibility): "
     )
@@ -600,15 +650,52 @@ def _prompt_new_skill_interactively() -> dict:
       payload["description"] = description
     return payload
 
-  if kind == "add-on":
-    payload["platform"] = _prompt_nonempty("Existing platform slug: ")
-    payload["name"] = _prompt_nonempty("Add-on slug (no bill- prefix): ")
-    description = input("One-line description (optional): ").strip()
-    if description:
-      payload["description"] = description
-    return payload
-
   return payload
+
+
+def _prompt_new_addon_interactively(*, repo_root: Path | None = None) -> dict:
+  payload: dict = {
+    "scaffold_payload_version": "1.0",
+    "kind": "add-on",
+  }
+  platform = _prompt_nonempty("Platform name: ").strip()
+  if not _platform_pack_exists(platform, repo_root=repo_root):
+    raise ValueError(
+      f"Platform pack '{platform}' does not exist. Create the pack before adding governed add-ons."
+    )
+  name = _prompt_nonempty("Add-on slug (no bill- prefix): ").strip()
+  description = input("One-line description (optional): ").strip()
+  body = _prompt_multiline(
+    "Enter add-on markdown content. Finish with a line containing only END."
+  )
+  payload["platform"] = platform
+  payload["name"] = name
+  payload["body"] = _build_addon_markdown(name, description, body)
+  return payload
+
+
+def new_addon_command(args: argparse.Namespace) -> int:
+  if args.interactive:
+    if any(value is not None for value in (args.platform, args.name, args.body, args.body_file)):
+      raise ValueError("--interactive cannot be combined with --platform, --name, --body, or --body-file.")
+    payload = _prompt_new_addon_interactively()
+    return _run_scaffold_command(payload, args)
+
+  if not args.platform or not args.name:
+    raise ValueError("--platform and --name are required unless --interactive is used.")
+
+  if bool(args.body) == bool(args.body_file):
+    raise ValueError("Provide exactly one of --body or --body-file unless --interactive is used.")
+
+  body_source = args.body if args.body is not None else _read_text_input(args.body_file)
+  payload = {
+    "scaffold_payload_version": "1.0",
+    "kind": "add-on",
+    "platform": args.platform,
+    "name": args.name,
+    "body": _normalize_addon_body(body_source),
+  }
+  return _run_scaffold_command(payload, args)
 
 
 def _scaffold_identity(payload: dict) -> str:
@@ -667,189 +754,16 @@ def install_link_skill_command(args: argparse.Namespace) -> int:
   ``ln -s`` plumbing.
   """
   from skill_bill.install import AgentTarget, install_skill
+  from pathlib import Path as _Path
 
-  source = Path(args.source).resolve()
-  target_dir = Path(args.target_dir).resolve()
+  source = _Path(args.source).resolve()
+  target_dir = _Path(args.target_dir).resolve()
   target_dir.mkdir(parents=True, exist_ok=True)
   install_skill(source, [AgentTarget(name=args.agent or "manual", path=target_dir)])
   return 0
 
 
-def _discover_governed_skill_directories(repo_root: Path) -> list[Path]:
-  """Return every directory containing a SKILL.md under ``skills/`` and ``platform-packs/``.
-
-  Used by ``skill-bill edit``, ``skill-bill upgrade``, and the doctor
-  extensions. Excludes hidden directories. The caller decides which subset
-  (e.g. only skills with a content.md sibling) it cares about.
-  """
-  discovered: list[Path] = []
-  for container_name in ("skills", "platform-packs"):
-    container = repo_root / container_name
-    if not container.is_dir():
-      continue
-    for skill_md in sorted(container.rglob("SKILL.md")):
-      if any(part.startswith(".") for part in skill_md.relative_to(repo_root).parts):
-        continue
-      discovered.append(skill_md.parent)
-  return discovered
-
-
-def _resolve_repo_root_for_cli() -> Path:
-  """Resolve the repo root the CLI should operate on.
-
-  The CLI runs from an install or a clone; the repo-owned skills live
-  relative to the skill-bill package. Fall back to the current working
-  directory when the package is installed from PyPI/wheel so local edits
-  still find local skills.
-  """
-  from skill_bill.scaffold import _REPO_ROOT
-
-  if (_REPO_ROOT / "skills").is_dir() or (_REPO_ROOT / "platform-packs").is_dir():
-    return _REPO_ROOT
-  return Path.cwd().resolve()
-
-
-def _find_skill_directory_by_name(repo_root: Path, skill_name: str) -> Path | None:
-  """Return the skill directory whose basename matches ``skill_name``.
-
-  Resolves both ``skills/<name>/`` and ``platform-packs/<slug>/<family>/<name>/``
-  layouts. Returns ``None`` when no match is found so the caller can print
-  an actionable error.
-  """
-  for skill_dir in _discover_governed_skill_directories(repo_root):
-    if skill_dir.name == skill_name:
-      return skill_dir
-  return None
-
-
-def edit_skill_command(args: argparse.Namespace) -> int:
-  """Open ``content.md`` for ``<skill-name>`` in ``$VISUAL`` / ``$EDITOR``.
-
-  Selection order is POSIX: ``$VISUAL`` → ``$EDITOR`` → print the path and
-  exit cleanly. SKILL.md is generated and must not be opened by this
-  subcommand — the user-editable surface is ``content.md``.
-  """
-  import os
-  import shlex
-  import subprocess as _subprocess
-
-  repo_root = _resolve_repo_root_for_cli()
-  skill_dir = _find_skill_directory_by_name(repo_root, args.skill_name)
-  if skill_dir is None:
-    print(
-      f"Skill '{args.skill_name}' not found under 'skills/' or 'platform-packs/'.",
-      file=sys.stderr,
-    )
-    return 2
-
-  content_path = skill_dir / "content.md"
-  if not content_path.is_file():
-    print(
-      f"Skill '{args.skill_name}' has no 'content.md' sibling at '{content_path}'. "
-      "Run `.venv/bin/python3 scripts/migrate_to_content_md.py` to create it.",
-      file=sys.stderr,
-    )
-    return 3
-
-  editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or ""
-  if not editor.strip():
-    print(str(content_path))
-    return 0
-
-  command = shlex.split(editor) + [str(content_path)]
-  try:
-    completed = _subprocess.run(command)
-  except FileNotFoundError as error:
-    print(str(error), file=sys.stderr)
-    return 4
-  return completed.returncode
-
-
-def upgrade_skills_command(args: argparse.Namespace) -> int:
-  """Regenerate SKILL.md shells whose ``template_version`` has drifted.
-
-  Walks every governed skill, detects drift via
-  :func:`skill_bill.shell_content_contract.detect_template_drift`, and
-  regenerates ``SKILL.md`` only — ``content.md`` is never touched.
-  """
-  from skill_bill.constants import TEMPLATE_VERSION
-  from skill_bill.shell_content_contract import (
-    CONTENT_BODY_FILENAME,
-    detect_template_drift,
-    parse_skill_frontmatter,
-  )
-
-  repo_root = _resolve_repo_root_for_cli()
-  candidates: list[Path] = []
-  for skill_dir in _discover_governed_skill_directories(repo_root):
-    content_path = skill_dir / CONTENT_BODY_FILENAME
-    if not content_path.is_file():
-      continue
-    if args.skill and skill_dir.name != args.skill:
-      continue
-    skill_file = skill_dir / "SKILL.md"
-    if not detect_template_drift(skill_file, current_template_version=TEMPLATE_VERSION):
-      continue
-    candidates.append(skill_file)
-
-  if not candidates:
-    print("No skills with template_version drift detected.")
-    return 0
-
-  if args.dry_run:
-    print(f"Planned SKILL.md regenerations ({len(candidates)}):")
-    for skill_file in candidates:
-      print(f"  - {skill_file.relative_to(repo_root)}")
-    return 0
-
-  if not args.yes:
-    print(
-      f"About to regenerate {len(candidates)} SKILL.md files. Re-run with --yes to confirm."
-    )
-    return 0
-
-  from skill_bill.scaffold import _render_skill_body_for_upgrade
-  from skill_bill.shell_content_contract import (
-    assert_content_md_sibling,
-    assert_execution_body_matches,
-  )
-
-  regenerated: list[str] = []
-  for skill_file in candidates:
-    original_bytes = skill_file.read_bytes()
-    frontmatter = parse_skill_frontmatter(skill_file)
-    new_body = _render_skill_body_for_upgrade(skill_file, frontmatter)
-    try:
-      skill_file.write_bytes(new_body.encode("utf-8"))
-      assert_execution_body_matches(
-        skill_file,
-        context_label=f"upgrade for '{skill_file.parent.name}'",
-      )
-      assert_content_md_sibling(
-        skill_file,
-        context_label=f"upgrade for '{skill_file.parent.name}'",
-      )
-      regenerated.append(skill_file.parent.name)
-    except Exception as error:
-      skill_file.write_bytes(original_bytes)
-      print(
-        f"Rolled back upgrade for '{skill_file.parent.name}': {error}",
-        file=sys.stderr,
-      )
-      return 5
-  print(f"Regenerated {len(regenerated)} SKILL.md files:")
-  for name in regenerated:
-    print(f"  - {name}")
-  return 0
-
-
 def doctor_command(args: argparse.Namespace) -> int:
-  from skill_bill.constants import TEMPLATE_VERSION
-  from skill_bill.shell_content_contract import (
-    CONTENT_BODY_FILENAME,
-    detect_template_drift,
-  )
-
   db_path = resolve_db_path(args.db)
   try:
     settings = load_telemetry_settings()
@@ -858,64 +772,36 @@ def doctor_command(args: argparse.Namespace) -> int:
   except ValueError:
     telemetry_enabled = False
     telemetry_level = "off"
-
-  repo_root = _resolve_repo_root_for_cli()
-  content_md_missing: list[dict[str, str]] = []
-  template_drift: list[dict[str, str]] = []
-  for skill_dir in _discover_governed_skill_directories(repo_root):
-    content_path = skill_dir / CONTENT_BODY_FILENAME
-    skill_file = skill_dir / "SKILL.md"
-    if _is_shelled_governed_skill(skill_dir) and not content_path.is_file():
-      content_md_missing.append(
-        {
-          "skill_name": skill_dir.name,
-          "skill_file": str(skill_file),
-          "expected_content_path": str(content_path),
-          "severity": "error",
-        }
-      )
-    if skill_file.is_file() and detect_template_drift(
-      skill_file,
-      current_template_version=TEMPLATE_VERSION,
-    ):
-      if content_path.is_file():
-        template_drift.append(
-          {
-            "skill_name": skill_dir.name,
-            "skill_file": str(skill_file),
-            "severity": "warning",
-            "action": f"skill-bill upgrade --skill {skill_dir.name} --yes",
-          }
-        )
-
   payload: dict[str, object] = {
     "version": __version__,
     "db_path": str(db_path),
     "db_exists": db_path.exists(),
     "telemetry_enabled": telemetry_enabled,
     "telemetry_level": telemetry_level,
-    "current_template_version": TEMPLATE_VERSION,
-    "content_md_missing": content_md_missing,
-    "template_version_drift": template_drift,
   }
   emit(payload, args.format)
   return 0
 
 
-def _is_shelled_governed_skill(skill_dir: Path) -> bool:
-  """Return True when ``skill_dir`` is a shelled governed skill.
+def upgrade_command(args: argparse.Namespace) -> int:
+  from skill_bill.upgrade import upgrade_skill_wrappers
 
-  Pre-shell families and horizontal router shells do not have a content.md
-  sibling requirement; only skills inside a platform pack's ``code-review/``
-  or ``quality-check/`` subtree (or a shelled family placement) are
-  governed by v1.1.
-  """
-  parts = skill_dir.parts
-  if "platform-packs" in parts:
-    idx = parts.index("platform-packs")
-    if idx + 2 < len(parts) and parts[idx + 2] in {"code-review", "quality-check"}:
-      return True
-  return False
+  result = upgrade_skill_wrappers(
+    args.repo_root,
+    validate=not args.skip_validate,
+  )
+  emit(
+    {
+      "repo_root": str(result.repo_root),
+      "regenerated_count": len(result.regenerated_files),
+      "regenerated_files": [str(path) for path in result.regenerated_files],
+      "content_md_touched": False,
+      "shell_ceremony_touched": False,
+      "validator_ran": not args.skip_validate,
+    },
+    args.format,
+  )
+  return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1096,6 +982,23 @@ def build_parser() -> argparse.ArgumentParser:
   doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
   doctor_parser.set_defaults(handler=doctor_command)
 
+  upgrade_parser = subparsers.add_parser(
+    "upgrade",
+    help="Regenerate scaffold-managed SKILL.md wrappers without touching authored sidecars.",
+  )
+  upgrade_parser.add_argument(
+    "--repo-root",
+    default=".",
+    help="Repo root to upgrade. Defaults to the current working directory.",
+  )
+  upgrade_parser.add_argument(
+    "--skip-validate",
+    action="store_true",
+    help="Skip scripts/validate_agent_configs.py after wrapper regeneration.",
+  )
+  upgrade_parser.add_argument("--format", choices=("text", "json"), default="text")
+  upgrade_parser.set_defaults(handler=upgrade_command)
+
   new_skill_parser = subparsers.add_parser(
     "new-skill",
     help="Scaffold a new skill from a payload file or interactive prompts.",
@@ -1107,7 +1010,7 @@ def build_parser() -> argparse.ArgumentParser:
   new_skill_parser.add_argument(
     "--interactive",
     action="store_true",
-    help="Collect the payload via four no-LLM prompts (kind, name, platform, area).",
+    help="Collect a skill scaffold payload via interactive prompts.",
   )
   new_skill_parser.add_argument(
     "--dry-run",
@@ -1117,38 +1020,39 @@ def build_parser() -> argparse.ArgumentParser:
   new_skill_parser.add_argument("--format", choices=("text", "json"), default="text")
   new_skill_parser.set_defaults(handler=new_skill_command)
 
-  edit_parser = subparsers.add_parser(
-    "edit",
-    help=(
-      "Open a skill's author-editable content.md in $VISUAL/$EDITOR. "
-      "SKILL.md is generated — never open it directly."
-    ),
+  new_addon_parser = subparsers.add_parser(
+    "new-addon",
+    help="Create a governed add-on file inside an existing platform pack.",
   )
-  edit_parser.add_argument("skill_name", help="The skill directory name (e.g. bill-kotlin-code-review).")
-  edit_parser.set_defaults(handler=edit_skill_command)
-
-  upgrade_parser = subparsers.add_parser(
-    "upgrade",
-    help=(
-      "Regenerate SKILL.md shells whose template_version drifted. "
-      "Never touches content.md."
-    ),
+  new_addon_parser.add_argument(
+    "--platform",
+    help="Owning platform slug. Required unless --interactive is used.",
   )
-  upgrade_parser.add_argument(
+  new_addon_parser.add_argument(
+    "--name",
+    help="Add-on slug (without a bill- prefix). Required unless --interactive is used.",
+  )
+  body_group = new_addon_parser.add_mutually_exclusive_group()
+  body_group.add_argument(
+    "--body",
+    help="Complete markdown body to write to the add-on file.",
+  )
+  body_group.add_argument(
+    "--body-file",
+    help="Path to a markdown file to copy into the add-on (or '-' for stdin).",
+  )
+  new_addon_parser.add_argument(
+    "--interactive",
+    action="store_true",
+    help="Prompt for platform, add-on slug, and markdown content.",
+  )
+  new_addon_parser.add_argument(
     "--dry-run",
     action="store_true",
-    help="Print which shells would be regenerated without writing.",
+    help="Plan the scaffold and report the operations without touching disk.",
   )
-  upgrade_parser.add_argument(
-    "--skill",
-    help="Restrict the upgrade to a single skill name.",
-  )
-  upgrade_parser.add_argument(
-    "--yes",
-    action="store_true",
-    help="Skip the confirmation prompt and write immediately.",
-  )
-  upgrade_parser.set_defaults(handler=upgrade_skills_command)
+  new_addon_parser.add_argument("--format", choices=("text", "json"), default="text")
+  new_addon_parser.set_defaults(handler=new_addon_command)
 
   install_parser = subparsers.add_parser(
     "install",
@@ -1194,6 +1098,13 @@ def main(argv: list[str] | None = None) -> int:
   except ValueError as error:
     print(str(error), file=sys.stderr)
     return 1
+  except Exception as error:
+    from skill_bill.shell_content_contract import ShellContentContractError
+
+    if isinstance(error, ShellContentContractError):
+      print(str(error), file=sys.stderr)
+      return 1
+    raise
 
 
 if __name__ == "__main__":

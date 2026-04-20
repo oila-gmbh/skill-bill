@@ -1,3 +1,3 @@
-# Fixture content
+# quality_check_missing_file-code-review Content
 
-Fixture content body.
+Fixture authored content for shell-content-contract coverage.
