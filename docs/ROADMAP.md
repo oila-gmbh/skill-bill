@@ -56,6 +56,7 @@ Skill Bill is succeeding when most of the following are true:
 
 ## Recent milestones
 
+- **Workflow contract pilot (shipped):** Added `orchestration/workflow-contract/PLAYBOOK.md` to define when a top-level command becomes a workflow, what durable state and artifacts it owns, and how child telemetry rolls up into one parent lifecycle. `bill-feature-implement` is the first pilot; leaf skills remain standalone and reusable.
 - **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
 - **SKILL-15 (in progress):** New-skill scaffolder + auto-installer. Turns the shell+content contract into a one-shot authoring flow so first-time authors — including forks — succeed without hand-wiring directories, sidecars, and manifests. Treated as a core product feature, not tooling; external authoring is a success metric the project needs to validate.
 - **SKILL-14 follow-up:** Apply the same shell + content split to `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` so every stable command benefits from the same governance.
@@ -91,6 +92,7 @@ This means continuing to reduce:
 
 - scope drift between staged, unstaged, PR, and file-based review modes
 - orchestration noise such as background-agent bookkeeping failures
+- workflow-resume ambiguity when a long-running parent command loses step state
 - review-mode ambiguity such as unclear inline vs delegated behavior
 - false confidence caused by unsupported or partially supported execution paths
 - hidden fallbacks that make output look stronger than the actual guarantees

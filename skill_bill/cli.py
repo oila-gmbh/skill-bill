@@ -27,6 +27,14 @@ from skill_bill.constants import (
   TELEMETRY_LEVELS,
 )
 from skill_bill.db import open_db, resolve_db_path
+from skill_bill.feature_implement import (
+  build_workflow_payload,
+  build_workflow_resume_payload,
+  build_workflow_summary_payload,
+  continue_workflow,
+  fetch_latest_workflow,
+  list_workflows,
+)
 from skill_bill.learnings import (
   add_learning,
   delete_learning,
@@ -1459,6 +1467,137 @@ def doctor_command(args: argparse.Namespace) -> int:
   return 0
 
 
+def workflow_show_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_workflow_id(connection, args.workflow_id, args.latest)
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-implement workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = build_workflow_payload(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def workflow_resume_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_workflow_id(connection, args.workflow_id, args.latest)
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-implement workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = build_workflow_resume_payload(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def workflow_continue_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_workflow_id(connection, args.workflow_id, args.latest)
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-implement workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = continue_workflow(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["db_path"] = str(db_path)
+  if payload["continue_status"] == "blocked":
+    payload["status"] = "error"
+    missing_artifacts = payload.get("missing_artifacts", [])
+    assert isinstance(missing_artifacts, list)
+    payload["error"] = (
+      "Cannot continue workflow until the missing artifacts are restored: "
+      + ", ".join(str(value) for value in missing_artifacts)
+    )
+    emit(payload, args.format)
+    return 1
+  payload["status"] = "ok"
+  emit(payload, args.format)
+  return 0
+
+
+def workflow_list_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    rows = list_workflows(connection, limit=args.limit)
+  payload = {
+    "status": "ok",
+    "db_path": str(db_path),
+    "workflow_count": len(rows),
+    "workflows": [build_workflow_summary_payload(row) for row in rows],
+  }
+  emit(payload, args.format)
+  return 0
+
+
+def _resolve_requested_workflow_id(
+  connection,
+  workflow_id: str | None,
+  latest: bool,
+) -> str | None:
+  if workflow_id:
+    return workflow_id
+  if not latest:
+    raise ValueError("Provide a workflow_id or pass --latest.")
+  row = fetch_latest_workflow(connection)
+  if row is None:
+    return None
+  return str(row["workflow_id"])
+
+
 def list_command(args: argparse.Namespace) -> int:
   repo_root = Path(args.repo_root).resolve()
   targets = _discover_content_managed_skill_targets(repo_root)
@@ -2035,6 +2174,64 @@ def build_parser() -> argparse.ArgumentParser:
   )
   doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
   doctor_parser.set_defaults(handler=doctor_command)
+
+  workflow_parser = subparsers.add_parser(
+    "workflow",
+    help="Inspect or resume durable workflow-state pilots.",
+  )
+  workflow_subparsers = workflow_parser.add_subparsers(dest="workflow_command", required=True)
+
+  workflow_list_parser = workflow_subparsers.add_parser(
+    "list",
+    help="List recent persisted workflow runs.",
+  )
+  workflow_list_parser.add_argument(
+    "--limit",
+    type=int,
+    default=20,
+    help="Maximum number of workflows to return. Defaults to 20.",
+  )
+  workflow_list_parser.add_argument("--format", choices=("text", "json"), default="text")
+  workflow_list_parser.set_defaults(handler=workflow_list_command)
+
+  workflow_show_parser = workflow_subparsers.add_parser(
+    "show",
+    help="Show raw persisted state for a workflow run.",
+  )
+  workflow_show_parser.add_argument("workflow_id", nargs="?", help="Workflow id to inspect.")
+  workflow_show_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated workflow automatically.",
+  )
+  workflow_show_parser.add_argument("--format", choices=("text", "json"), default="text")
+  workflow_show_parser.set_defaults(handler=workflow_show_command)
+
+  workflow_resume_parser = workflow_subparsers.add_parser(
+    "resume",
+    help="Summarize how to resume or recover a workflow run.",
+  )
+  workflow_resume_parser.add_argument("workflow_id", nargs="?", help="Workflow id to resume or recover.")
+  workflow_resume_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated workflow automatically.",
+  )
+  workflow_resume_parser.add_argument("--format", choices=("text", "json"), default="text")
+  workflow_resume_parser.set_defaults(handler=workflow_resume_command)
+
+  workflow_continue_parser = workflow_subparsers.add_parser(
+    "continue",
+    help="Activate a resumable workflow and emit a recovered continuation brief.",
+  )
+  workflow_continue_parser.add_argument("workflow_id", nargs="?", help="Workflow id to continue.")
+  workflow_continue_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated workflow automatically.",
+  )
+  workflow_continue_parser.add_argument("--format", choices=("text", "json"), default="text")
+  workflow_continue_parser.set_defaults(handler=workflow_continue_command)
 
   list_parser = subparsers.add_parser(
     "list",

@@ -1,3 +1,11 @@
+## [2026-04-21] workflow-contract-pilot
+Areas: orchestration/, README.md, docs/, agent/
+- Added a governed `workflow-contract` playbook for top-level orchestrators so long-running parent commands now have one source of truth for step ids, artifact handoff, retry/resume rules, and parent-owned telemetry. reusable
+- Drew a hard boundary between reusable skills and workflows: leaf skills stay standalone, routed, and portable; only top-level orchestrators such as `bill-feature-implement` should adopt workflow state. reusable
+- Wired the new contract into README and roadmap language so the repo now describes workflows as a governance layer on top of existing skills instead of as implicit prompt choreography.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented
+
 ## [2026-04-20] skill-authoring-terminal-loop
 Areas: skill_bill/, README.md, tests/
 - Added a terminal-first authoring loop on top of the existing split-wrapper scaffold: `skill-bill new`, guided `skill-bill edit`, `skill-bill list`, scoped `skill-bill validate`, and `skill-bill render`/`upgrade` now form the concrete single-skill workflow instead of forcing repo navigation. reusable

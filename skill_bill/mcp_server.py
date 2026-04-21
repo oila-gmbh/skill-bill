@@ -14,13 +14,24 @@ from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import LEARNING_SCOPE_PRECEDENCE
 from skill_bill.db import open_db, resolve_db_path
 from skill_bill.feature_implement import (
+  continue_workflow,
+  build_workflow_resume_payload,
+  build_workflow_payload,
+  build_workflow_summary_payload,
   emit_finished,
   emit_started,
+  fetch_latest_workflow,
+  list_workflows,
   generate_feature_session_id,
+  generate_feature_workflow_id,
+  save_workflow_open,
+  save_workflow_state,
   save_finished,
   save_started,
   validate_finished_params,
   validate_started_params,
+  validate_workflow_open_params,
+  validate_workflow_state_params,
 )
 from skill_bill.learnings import (
   learning_payload,
@@ -66,7 +77,7 @@ def import_review(review_text: str, orchestrated: bool = False) -> dict:
       "review_run_id": review.review_run_id,
       "finding_count": len(review.findings),
     }
-  with open_db() as (connection, db_path):
+  with open_db(sync=False) as (connection, db_path):
     save_imported_review(connection, review, source_path=None)
     if orchestrated:
       with connection:
@@ -126,7 +137,7 @@ def triage_findings(
       "reason": "telemetry is disabled",
       "review_run_id": review_run_id,
     }
-  with open_db() as (connection, db_path):
+  with open_db(sync=False) as (connection, db_path):
     if orchestrated:
       with connection:
         connection.execute(
@@ -188,7 +199,7 @@ def resolve_learnings(
       "applied_learnings": "none",
       "learnings": [],
     }
-  with open_db() as (connection, db_path):
+  with open_db(sync=False) as (connection, db_path):
     with connection:
       repo_scope_key, skill_name, rows = _resolve_learnings(
         connection,
@@ -292,7 +303,7 @@ def feature_implement_started(
   if not telemetry_is_enabled():
     return {"status": "skipped", "session_id": session_id}
 
-  with open_db() as (connection, db_path):
+  with open_db(sync=False) as (connection, db_path):
     save_started(
       connection,
       session_id=session_id,
@@ -315,6 +326,158 @@ def feature_implement_started(
       level=settings.level,
     )
   return {"status": "ok", "session_id": session_id}
+
+
+@mcp.tool()
+def feature_implement_workflow_open(
+  session_id: str = "",
+  current_step_id: str = "assess",
+) -> dict:
+  """Open durable workflow state for bill-feature-implement."""
+  workflow_id = generate_feature_workflow_id()
+  validation_error = validate_workflow_open_params(current_step_id=current_step_id)
+  if validation_error:
+    return {"status": "error", "workflow_id": workflow_id, "error": validation_error}
+
+  with open_db(sync=False) as (connection, db_path):
+    save_workflow_open(
+      connection,
+      workflow_id=workflow_id,
+      session_id=session_id.strip(),
+      current_step_id=current_step_id,
+    )
+    payload = build_workflow_payload(connection, workflow_id)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_implement_workflow_update(
+  workflow_id: str,
+  workflow_status: str,
+  current_step_id: str = "",
+  step_updates: list[dict] | None = None,
+  artifacts_patch: dict | None = None,
+  session_id: str = "",
+) -> dict:
+  """Update durable workflow state for bill-feature-implement."""
+  validation_error = validate_workflow_state_params(
+    workflow_status=workflow_status,
+    current_step_id=current_step_id,
+    step_updates=step_updates,
+    artifacts_patch=artifacts_patch,
+  )
+  if validation_error:
+    return {"status": "error", "workflow_id": workflow_id, "error": validation_error}
+
+  with open_db(sync=False) as (connection, db_path):
+    updated = save_workflow_state(
+      connection,
+      workflow_id=workflow_id,
+      workflow_status=workflow_status,
+      current_step_id=current_step_id.strip(),
+      step_updates=step_updates,
+      artifacts_patch=artifacts_patch,
+      session_id=session_id.strip(),
+    )
+    if not updated:
+      return {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+      }
+    payload = build_workflow_payload(connection, workflow_id)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_implement_workflow_get(workflow_id: str) -> dict:
+  """Fetch durable workflow state for bill-feature-implement."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = build_workflow_payload(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_implement_workflow_list(limit: int = 20) -> dict:
+  """List recent persisted bill-feature-implement workflow runs."""
+  with open_db(sync=False) as (connection, db_path):
+    rows = list_workflows(connection, limit=limit)
+  return {
+    "status": "ok",
+    "db_path": str(db_path),
+    "workflow_count": len(rows),
+    "workflows": [build_workflow_summary_payload(row) for row in rows],
+  }
+
+
+@mcp.tool()
+def feature_implement_workflow_latest() -> dict:
+  """Fetch the most recently updated bill-feature-implement workflow run."""
+  with open_db(sync=False) as (connection, db_path):
+    row = fetch_latest_workflow(connection)
+  if row is None:
+    return {
+      "status": "error",
+      "error": "No feature-implement workflows found.",
+      "db_path": str(db_path),
+    }
+  payload = build_workflow_summary_payload(row)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_implement_workflow_resume(workflow_id: str) -> dict:
+  """Summarize how to resume or recover a bill-feature-implement workflow."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = build_workflow_resume_payload(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_implement_workflow_continue(workflow_id: str) -> dict:
+  """Reopen a resumable workflow and return a recovered continuation brief."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = continue_workflow(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["db_path"] = str(db_path)
+  if payload["continue_status"] == "blocked":
+    payload["status"] = "error"
+    missing_artifacts = payload.get("missing_artifacts", [])
+    assert isinstance(missing_artifacts, list)
+    payload["error"] = (
+      "Cannot continue workflow until the missing artifacts are restored: "
+      + ", ".join(str(value) for value in missing_artifacts)
+    )
+    return payload
+  payload["status"] = "ok"
+  return payload
 
 
 @mcp.tool()
