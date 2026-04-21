@@ -195,6 +195,7 @@ def main() -> int:
   validate_orchestration_playbooks(root, issues)
   validate_skill_references(root, skill_names, issues)
   validate_orchestrator_passthrough(root, issues)
+  validate_workflow_driven_skills(root, issues)
   validate_skill_override_markdown(
     root / SKILL_OVERRIDE_EXAMPLE_FILE,
     skill_names,
@@ -442,6 +443,40 @@ ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
   ("skills/bill-feature-verify", ("SKILL.md",)),
 )
 ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
+WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+  (
+    "skills/bill-feature-implement",
+    ("SKILL.md", "reference.md"),
+    (
+      "## Workflow State",
+      "## Continuation Mode",
+      "feature_implement_workflow_open",
+      "feature_implement_workflow_update",
+      "feature_implement_workflow_continue",
+      "`assessment`",
+      "`preplan_digest`",
+      "`implementation_summary`",
+      "`pr_result`",
+    ),
+  ),
+  (
+    "skills/bill-feature-verify",
+    ("SKILL.md",),
+    (
+      "## Workflow State",
+      "## Continuation Mode",
+      "feature_verify_workflow_open",
+      "feature_verify_workflow_update",
+      "feature_verify_workflow_continue",
+      "`input_context`",
+      "`criteria_summary`",
+      "`diff_summary`",
+      "`review_result`",
+      "`completeness_audit_result`",
+      "`verdict_result`",
+    ),
+  ),
+)
 
 
 def validate_orchestrator_passthrough(root: Path, issues: list[str]) -> None:
@@ -467,6 +502,26 @@ def validate_orchestrator_passthrough(root: Path, issues: list[str]) -> None:
         f"{skill_dir}: orchestrator skill must instruct the agent to pass "
         f"'{ORCHESTRATED_PASS_THROUGH_MARKER}' when invoking child telemeterable tools"
       )
+
+
+def validate_workflow_driven_skills(root: Path, issues: list[str]) -> None:
+  """Top-level workflow skills must retain their workflow-runtime contract."""
+  for skill_dir_rel, files, required_markers in WORKFLOW_DRIVEN_SKILLS:
+    skill_dir = root / skill_dir_rel
+    if not skill_dir.exists():
+      continue
+
+    combined_text = ""
+    for file_name in files:
+      file_path = skill_dir / file_name
+      if file_path.exists():
+        combined_text += file_path.read_text(encoding="utf-8") + "\n"
+
+    for marker in required_markers:
+      if marker not in combined_text:
+        issues.append(
+          f"{skill_dir}: workflow-driven skill must include '{marker}'"
+        )
 
 
 def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -> None:

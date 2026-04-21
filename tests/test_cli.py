@@ -19,6 +19,8 @@ from skill_bill.cli import main  # noqa: E402
 from skill_bill.mcp_server import (  # noqa: E402
   feature_implement_workflow_open,
   feature_implement_workflow_update,
+  feature_verify_workflow_open,
+  feature_verify_workflow_update,
 )
 from skill_bill.shell_content_contract import PyYAMLMissingError  # noqa: E402
 from skill_bill.upgrade import upgrade_skill_wrappers  # noqa: E402
@@ -948,6 +950,155 @@ class WorkflowCliTest(unittest.TestCase):
     stderr = io.StringIO()
     with contextlib.redirect_stderr(stderr):
       exit_code = main(["workflow", "show"])
+
+    self.assertEqual(exit_code, 1)
+    self.assertIn("Provide a workflow_id or pass --latest.", stderr.getvalue())
+
+  def test_verify_workflow_resume_reports_next_action(self) -> None:
+    opened = feature_verify_workflow_open(session_id="fvr-20260421-000001-test")
+    workflow_id = opened["workflow_id"]
+    feature_verify_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="running",
+      current_step_id="code_review",
+      step_updates=[
+        {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+        {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+        {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+        {"step_id": "feature_flag_audit", "status": "skipped", "attempt_count": 1},
+        {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "input_context": {"spec_source": "spec.md", "verify_target": "PR-12"},
+        "criteria_summary": {"acceptance_criteria_count": 4},
+        "diff_summary": {"changed_files_count": 3},
+        "feature_flag_audit_result": {"status": "skipped"},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["verify-workflow", "resume", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["resume_step_id"], "code_review")
+    self.assertTrue(payload["can_resume"])
+    self.assertIn("invoke bill-code-review", payload["next_action"])
+
+  def test_verify_workflow_list_reports_recent_runs(self) -> None:
+    first = feature_verify_workflow_open()
+    second = feature_verify_workflow_open(session_id="fvr-20260421-000002-test")
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["verify-workflow", "list", "--limit", "5", "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["status"], "ok")
+    self.assertGreaterEqual(payload["workflow_count"], 2)
+    workflow_ids = [entry["workflow_id"] for entry in payload["workflows"]]
+    self.assertIn(first["workflow_id"], workflow_ids)
+    self.assertIn(second["workflow_id"], workflow_ids)
+
+  def test_verify_workflow_resume_latest_uses_most_recent_workflow(self) -> None:
+    feature_verify_workflow_open(session_id="fvr-20260421-000003-test")
+    latest = feature_verify_workflow_open(session_id="fvr-20260421-000004-test")
+    feature_verify_workflow_update(
+      workflow_id=latest["workflow_id"],
+      workflow_status="running",
+      current_step_id="verdict",
+      step_updates=[
+        {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+        {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+        {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+        {"step_id": "feature_flag_audit", "status": "skipped", "attempt_count": 1},
+        {"step_id": "code_review", "status": "completed", "attempt_count": 1},
+        {"step_id": "completeness_audit", "status": "completed", "attempt_count": 1},
+        {"step_id": "verdict", "status": "running", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "input_context": {"verify_target": "PR-14"},
+        "criteria_summary": {"acceptance_criteria_count": 4},
+        "diff_summary": {"changed_files_count": 3},
+        "review_result": {"finding_count": 1},
+        "completeness_audit_result": {"pass": True},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["verify-workflow", "resume", "--latest", "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["workflow_id"], latest["workflow_id"])
+    self.assertEqual(payload["resume_step_id"], "verdict")
+
+  def test_verify_workflow_continue_reopens_workflow_and_returns_brief(self) -> None:
+    opened = feature_verify_workflow_open(session_id="fvr-20260421-000005-test")
+    workflow_id = opened["workflow_id"]
+    feature_verify_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="failed",
+      current_step_id="completeness_audit",
+      step_updates=[
+        {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+        {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+        {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+        {"step_id": "feature_flag_audit", "status": "skipped", "attempt_count": 1},
+        {"step_id": "code_review", "status": "completed", "attempt_count": 1},
+        {"step_id": "completeness_audit", "status": "failed", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "input_context": {"verify_target": "PR-15"},
+        "criteria_summary": {"acceptance_criteria_count": 4},
+        "diff_summary": {"changed_files_count": 3},
+        "review_result": {"finding_count": 2},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["verify-workflow", "continue", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["continue_status"], "reopened")
+    self.assertEqual(payload["workflow_status"], "running")
+    self.assertEqual(payload["continue_step_id"], "completeness_audit")
+    self.assertEqual(payload["skill_name"], "bill-feature-verify")
+    self.assertIn("SKILL.md :: Continuation Mode", payload["reference_sections"])
+    self.assertIn("continuation_brief", payload)
+    self.assertIn("continuation_entry_prompt", payload)
+
+  def test_verify_workflow_continue_errors_when_artifacts_are_missing(self) -> None:
+    opened = feature_verify_workflow_open()
+    workflow_id = opened["workflow_id"]
+    feature_verify_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="failed",
+      current_step_id="verdict",
+      step_updates=[
+        {"step_id": "verdict", "status": "failed", "attempt_count": 1},
+      ],
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["verify-workflow", "continue", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 1)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["status"], "error")
+    self.assertEqual(payload["continue_status"], "blocked")
+    self.assertIn("review_result", payload["missing_artifacts"])
+
+  def test_verify_workflow_show_requires_id_or_latest(self) -> None:
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      exit_code = main(["verify-workflow", "show"])
 
     self.assertEqual(exit_code, 1)
     self.assertIn("Provide a workflow_id or pass --latest.", stderr.getvalue())

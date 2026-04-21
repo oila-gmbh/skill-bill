@@ -85,6 +85,34 @@ FEATURE_VERIFY_COMPLETION_STATUSES = (
   "abandoned_at_audit",
   "error",
 )
+FEATURE_VERIFY_WORKFLOW_CONTRACT_VERSION = "0.1"
+FEATURE_VERIFY_WORKFLOW_PREFIX = "wfv"
+FEATURE_VERIFY_WORKFLOW_STATUSES = (
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "abandoned",
+)
+FEATURE_VERIFY_WORKFLOW_TERMINAL_STATUSES = ("completed", "failed", "abandoned")
+FEATURE_VERIFY_WORKFLOW_STEP_STATUSES = (
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "blocked",
+  "skipped",
+)
+FEATURE_VERIFY_WORKFLOW_STEP_IDS = (
+  "collect_inputs",
+  "extract_criteria",
+  "gather_diff",
+  "feature_flag_audit",
+  "code_review",
+  "completeness_audit",
+  "verdict",
+  "finish",
+)
 FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
 SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
 ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")

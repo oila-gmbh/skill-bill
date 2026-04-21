@@ -158,8 +158,9 @@ produce one authoritative completion event.
 
 ## Runtime Pilot Surface
 
-The first runtime-facing pilot uses dedicated MCP tools for
-`bill-feature-implement` workflow state:
+The runtime-facing pilot uses dedicated MCP tools per top-level workflow. The
+first adopter was `bill-feature-implement`; `bill-feature-verify` is the second
+adopter and follows the same model with its own state machine and storage:
 
 - `feature_implement_workflow_list`
 - `feature_implement_workflow_latest`
@@ -168,11 +169,18 @@ The first runtime-facing pilot uses dedicated MCP tools for
 - `feature_implement_workflow_get`
 - `feature_implement_workflow_resume`
 - `feature_implement_workflow_continue`
+- `feature_verify_workflow_list`
+- `feature_verify_workflow_latest`
+- `feature_verify_workflow_open`
+- `feature_verify_workflow_update`
+- `feature_verify_workflow_get`
+- `feature_verify_workflow_resume`
+- `feature_verify_workflow_continue`
 
 These tools persist workflow state independently of telemetry settings. The
-existing `feature_implement_started` and `feature_implement_finished` tools
-remain telemetry-owned; they are linked to workflow state via `session_id`
-rather than replaced by it.
+existing `feature_implement_started` / `_finished` and
+`feature_verify_started` / `_finished` tools remain telemetry-owned; they are
+linked to workflow state via `session_id` rather than replaced by it.
 
 `feature_implement_workflow_continue` is the first activation tool in the pilot:
 it does not execute the workflow itself, but it re-opens resumable state and
@@ -185,6 +193,9 @@ The CLI exposes the same recovery surface through:
 - `skill-bill workflow show <workflow-id>`
 - `skill-bill workflow resume <workflow-id>`
 - `skill-bill workflow continue <workflow-id>`
+- `skill-bill verify-workflow show <workflow-id>`
+- `skill-bill verify-workflow resume <workflow-id>`
+- `skill-bill verify-workflow continue <workflow-id>`
 
 ## Pilot: `bill-feature-implement`
 

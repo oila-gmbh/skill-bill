@@ -807,6 +807,158 @@ def feature_verify_finished(
 
 
 @mcp.tool()
+def feature_verify_workflow_open(
+  session_id: str = "",
+  current_step_id: str = "gather_diff",
+) -> dict:
+  """Open durable workflow state for bill-feature-verify."""
+  workflow_id = _fv.generate_feature_verify_workflow_id()
+  validation_error = _fv.validate_workflow_open_params(current_step_id=current_step_id)
+  if validation_error:
+    return {"status": "error", "workflow_id": workflow_id, "error": validation_error}
+
+  with open_db(sync=False) as (connection, db_path):
+    _fv.save_workflow_open(
+      connection,
+      workflow_id=workflow_id,
+      session_id=session_id.strip(),
+      current_step_id=current_step_id,
+    )
+    payload = _fv.build_workflow_payload(connection, workflow_id)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_workflow_update(
+  workflow_id: str,
+  workflow_status: str,
+  current_step_id: str = "",
+  step_updates: list[dict] | None = None,
+  artifacts_patch: dict | None = None,
+  session_id: str = "",
+) -> dict:
+  """Update durable workflow state for bill-feature-verify."""
+  validation_error = _fv.validate_workflow_state_params(
+    workflow_status=workflow_status,
+    current_step_id=current_step_id,
+    step_updates=step_updates,
+    artifacts_patch=artifacts_patch,
+  )
+  if validation_error:
+    return {"status": "error", "workflow_id": workflow_id, "error": validation_error}
+
+  with open_db(sync=False) as (connection, db_path):
+    updated = _fv.save_workflow_state(
+      connection,
+      workflow_id=workflow_id,
+      workflow_status=workflow_status,
+      current_step_id=current_step_id.strip(),
+      step_updates=step_updates,
+      artifacts_patch=artifacts_patch,
+      session_id=session_id.strip(),
+    )
+    if not updated:
+      return {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+      }
+    payload = _fv.build_workflow_payload(connection, workflow_id)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_workflow_get(workflow_id: str) -> dict:
+  """Fetch durable workflow state for bill-feature-verify."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = _fv.build_workflow_payload(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_workflow_list(limit: int = 20) -> dict:
+  """List recent persisted bill-feature-verify workflow runs."""
+  with open_db(sync=False) as (connection, db_path):
+    rows = _fv.list_workflows(connection, limit=limit)
+  return {
+    "status": "ok",
+    "db_path": str(db_path),
+    "workflow_count": len(rows),
+    "workflows": [_fv.build_workflow_summary_payload(row) for row in rows],
+  }
+
+
+@mcp.tool()
+def feature_verify_workflow_latest() -> dict:
+  """Fetch the most recently updated bill-feature-verify workflow run."""
+  with open_db(sync=False) as (connection, db_path):
+    row = _fv.fetch_latest_workflow(connection)
+  if row is None:
+    return {
+      "status": "error",
+      "error": "No feature-verify workflows found.",
+      "db_path": str(db_path),
+    }
+  payload = _fv.build_workflow_summary_payload(row)
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_workflow_resume(workflow_id: str) -> dict:
+  """Summarize how to resume or recover a bill-feature-verify workflow."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = _fv.build_workflow_resume_payload(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_workflow_continue(workflow_id: str) -> dict:
+  """Reopen a resumable workflow and return a recovered continuation brief."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = _fv.continue_workflow(connection, workflow_id)
+  if not payload:
+    return {
+      "status": "error",
+      "workflow_id": workflow_id,
+      "error": f"Unknown workflow_id '{workflow_id}'.",
+    }
+  payload["db_path"] = str(db_path)
+  if payload["continue_status"] == "blocked":
+    payload["status"] = "error"
+    missing_artifacts = payload.get("missing_artifacts", [])
+    assert isinstance(missing_artifacts, list)
+    payload["error"] = (
+      "Cannot continue workflow until the missing artifacts are restored: "
+      + ", ".join(str(value) for value in missing_artifacts)
+    )
+    return payload
+  payload["status"] = "ok"
+  return payload
+
+
+@mcp.tool()
 def pr_description_generated(
   commit_count: int,
   files_changed_count: int,

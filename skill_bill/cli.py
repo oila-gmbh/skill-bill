@@ -35,6 +35,14 @@ from skill_bill.feature_implement import (
   fetch_latest_workflow,
   list_workflows,
 )
+from skill_bill.feature_verify import (
+  build_workflow_payload as build_feature_verify_workflow_payload,
+  build_workflow_resume_payload as build_feature_verify_workflow_resume_payload,
+  build_workflow_summary_payload as build_feature_verify_workflow_summary_payload,
+  continue_workflow as continue_feature_verify_workflow,
+  fetch_latest_workflow as fetch_latest_feature_verify_workflow,
+  list_workflows as list_feature_verify_workflows,
+)
 from skill_bill.learnings import (
   add_learning,
   delete_learning,
@@ -1598,6 +1606,149 @@ def _resolve_requested_workflow_id(
   return str(row["workflow_id"])
 
 
+def verify_workflow_show_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_feature_verify_workflow_id(
+      connection,
+      args.workflow_id,
+      args.latest,
+    )
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-verify workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = build_feature_verify_workflow_payload(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def verify_workflow_resume_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_feature_verify_workflow_id(
+      connection,
+      args.workflow_id,
+      args.latest,
+    )
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-verify workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = build_feature_verify_workflow_resume_payload(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["status"] = "ok"
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def verify_workflow_continue_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    workflow_id = _resolve_requested_feature_verify_workflow_id(
+      connection,
+      args.workflow_id,
+      args.latest,
+    )
+    if workflow_id is None:
+      emit(
+        {
+          "status": "error",
+          "error": "No feature-verify workflows found.",
+          "db_path": str(db_path),
+        },
+        args.format,
+      )
+      return 1
+    payload = continue_feature_verify_workflow(connection, workflow_id)
+  if not payload:
+    emit(
+      {
+        "status": "error",
+        "workflow_id": workflow_id,
+        "error": f"Unknown workflow_id '{workflow_id}'.",
+        "db_path": str(db_path),
+      },
+      args.format,
+    )
+    return 1
+  payload["db_path"] = str(db_path)
+  if payload["continue_status"] == "blocked":
+    payload["status"] = "error"
+    missing_artifacts = payload.get("missing_artifacts", [])
+    assert isinstance(missing_artifacts, list)
+    payload["error"] = (
+      "Cannot continue workflow until the missing artifacts are restored: "
+      + ", ".join(str(value) for value in missing_artifacts)
+    )
+    emit(payload, args.format)
+    return 1
+  payload["status"] = "ok"
+  emit(payload, args.format)
+  return 0
+
+
+def verify_workflow_list_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    rows = list_feature_verify_workflows(connection, limit=args.limit)
+  payload = {
+    "status": "ok",
+    "db_path": str(db_path),
+    "workflow_count": len(rows),
+    "workflows": [build_feature_verify_workflow_summary_payload(row) for row in rows],
+  }
+  emit(payload, args.format)
+  return 0
+
+
+def _resolve_requested_feature_verify_workflow_id(
+  connection,
+  workflow_id: str | None,
+  latest: bool,
+) -> str | None:
+  if workflow_id:
+    return workflow_id
+  if not latest:
+    raise ValueError("Provide a workflow_id or pass --latest.")
+  row = fetch_latest_feature_verify_workflow(connection)
+  if row is None:
+    return None
+  return str(row["workflow_id"])
+
+
 def list_command(args: argparse.Namespace) -> int:
   repo_root = Path(args.repo_root).resolve()
   targets = _discover_content_managed_skill_targets(repo_root)
@@ -2232,6 +2383,75 @@ def build_parser() -> argparse.ArgumentParser:
   )
   workflow_continue_parser.add_argument("--format", choices=("text", "json"), default="text")
   workflow_continue_parser.set_defaults(handler=workflow_continue_command)
+
+  verify_workflow_parser = subparsers.add_parser(
+    "verify-workflow",
+    help="Inspect or resume durable bill-feature-verify workflow-state runs.",
+  )
+  verify_workflow_subparsers = verify_workflow_parser.add_subparsers(
+    dest="verify_workflow_command",
+    required=True,
+  )
+
+  verify_workflow_list_parser = verify_workflow_subparsers.add_parser(
+    "list",
+    help="List recent persisted feature-verify workflow runs.",
+  )
+  verify_workflow_list_parser.add_argument(
+    "--limit",
+    type=int,
+    default=20,
+    help="Maximum number of workflows to return. Defaults to 20.",
+  )
+  verify_workflow_list_parser.add_argument("--format", choices=("text", "json"), default="text")
+  verify_workflow_list_parser.set_defaults(handler=verify_workflow_list_command)
+
+  verify_workflow_show_parser = verify_workflow_subparsers.add_parser(
+    "show",
+    help="Show raw persisted state for a feature-verify workflow run.",
+  )
+  verify_workflow_show_parser.add_argument("workflow_id", nargs="?", help="Workflow id to inspect.")
+  verify_workflow_show_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated feature-verify workflow automatically.",
+  )
+  verify_workflow_show_parser.add_argument("--format", choices=("text", "json"), default="text")
+  verify_workflow_show_parser.set_defaults(handler=verify_workflow_show_command)
+
+  verify_workflow_resume_parser = verify_workflow_subparsers.add_parser(
+    "resume",
+    help="Summarize how to resume or recover a feature-verify workflow run.",
+  )
+  verify_workflow_resume_parser.add_argument(
+    "workflow_id",
+    nargs="?",
+    help="Workflow id to resume or recover.",
+  )
+  verify_workflow_resume_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated feature-verify workflow automatically.",
+  )
+  verify_workflow_resume_parser.add_argument("--format", choices=("text", "json"), default="text")
+  verify_workflow_resume_parser.set_defaults(handler=verify_workflow_resume_command)
+
+  verify_workflow_continue_parser = verify_workflow_subparsers.add_parser(
+    "continue",
+    help="Activate a resumable feature-verify workflow and emit a recovered continuation brief.",
+  )
+  verify_workflow_continue_parser.add_argument(
+    "workflow_id",
+    nargs="?",
+    help="Workflow id to continue.",
+  )
+  verify_workflow_continue_parser.add_argument(
+    "--latest",
+    action="store_true",
+    help="Resolve the most recently updated feature-verify workflow automatically.",
+  )
+  verify_workflow_continue_parser.add_argument("--format", choices=("text", "json"), default="text")
+  verify_workflow_continue_parser.set_defaults(handler=verify_workflow_continue_command)
 
   list_parser = subparsers.add_parser(
     "list",

@@ -10,6 +10,7 @@ from skill_bill.constants import (
   DB_ENVIRONMENT_KEY,
   DEFAULT_DB_PATH,
   FINDING_OUTCOME_TYPES,
+  FEATURE_VERIFY_WORKFLOW_CONTRACT_VERSION,
 )
 
 
@@ -201,7 +202,33 @@ def ensure_database(path: Path) -> sqlite3.Connection:
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       finished_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS feature_verify_workflows (
+      workflow_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL DEFAULT '',
+      workflow_name TEXT NOT NULL DEFAULT 'bill-feature-verify',
+      contract_version TEXT NOT NULL DEFAULT '0.1',
+      workflow_status TEXT NOT NULL DEFAULT 'pending',
+      current_step_id TEXT NOT NULL DEFAULT '',
+      steps_json TEXT NOT NULL DEFAULT '',
+      artifacts_json TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at TEXT
+    );
     """
+  )
+  ensure_column(
+    connection,
+    "feature_verify_workflows",
+    "workflow_name",
+    "TEXT NOT NULL DEFAULT 'bill-feature-verify'",
+  )
+  ensure_column(
+    connection,
+    "feature_verify_workflows",
+    "contract_version",
+    f"TEXT NOT NULL DEFAULT '{FEATURE_VERIFY_WORKFLOW_CONTRACT_VERSION}'",
   )
   ensure_column(connection, "review_runs", "review_session_id", "TEXT")
   ensure_column(connection, "review_runs", "review_finished_at", "TEXT")

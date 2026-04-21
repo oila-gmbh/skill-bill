@@ -313,6 +313,62 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         result.stdout,
       )
 
+  def test_accepts_workflow_driven_feature_skills_with_required_markers(self) -> None:
+    with self.fixture_repo(
+      [
+        ("base", "bill-feature-implement"),
+        ("base", "bill-feature-verify"),
+      ],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+        "bill-feature-verify": (
+          self.skill_markdown("bill-feature-verify")
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_rejects_feature_implement_without_workflow_state_contract(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-feature-implement")],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          .replace("## Workflow State\n\n", "", 1)
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "workflow-driven skill must include '## Workflow State'",
+        result.stdout,
+      )
+
+  def test_rejects_feature_verify_without_workflow_continue_marker(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-feature-verify")],
+      skill_contents={
+        "bill-feature-verify": (
+          self.skill_markdown("bill-feature-verify")
+          .replace("feature_verify_workflow_continue", "feature_verify_workflow_resume_only", 1)
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "workflow-driven skill must include 'feature_verify_workflow_continue'",
+        result.stdout,
+      )
+
   def test_accepts_telemeterable_skill_with_sidecar_reference(self) -> None:
     with self.fixture_repo(
       [
@@ -999,6 +1055,42 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         REVIEW_RUN_ID_PLACEHOLDER,
         f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
         APPLIED_LEARNINGS_PLACEHOLDER,
+      ])
+    if skill_name == "bill-feature-implement":
+      lines.extend([
+        "## Workflow State",
+        "",
+        "- `feature_implement_workflow_open`",
+        "- `feature_implement_workflow_update`",
+        "- `feature_implement_workflow_continue`",
+        "- `assessment`",
+        "- `preplan_digest`",
+        "- `implementation_summary`",
+        "- `pr_result`",
+        "",
+        "## Continuation Mode",
+        "",
+        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
+        "",
+      ])
+    if skill_name == "bill-feature-verify":
+      lines.extend([
+        "## Workflow State",
+        "",
+        "- `feature_verify_workflow_open`",
+        "- `feature_verify_workflow_update`",
+        "- `feature_verify_workflow_continue`",
+        "- `input_context`",
+        "- `criteria_summary`",
+        "- `diff_summary`",
+        "- `review_result`",
+        "- `completeness_audit_result`",
+        "- `verdict_result`",
+        "",
+        "## Continuation Mode",
+        "",
+        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
+        "",
       ])
     for sidecar in required_supporting_files_for_skill(skill_name):
       lines.append(f"[{sidecar}]({sidecar})")

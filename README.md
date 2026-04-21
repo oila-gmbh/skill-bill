@@ -133,14 +133,27 @@ Skill Bill keeps **skills** and **workflows** separate on purpose:
 - skills are the reusable user-facing units: routing, rubrics, stack depth, and standalone execution
 - workflows are the small set of top-level orchestrators that need durable step state, explicit artifact handoff, retry/resume rules, and parent-owned telemetry
 
-The first workflow-contract pilot is `bill-feature-implement`. It still presents as one stable command, but its internal step graph now has a governed home under `orchestration/workflow-contract/PLAYBOOK.md` instead of living only in skill prose. The pilot now exposes discovery, resume, and continue surfaces through `skill-bill workflow ...` and matching MCP tools, so interrupted runs can be reactivated from persisted state instead of being reconstructed from chat history. The `continue` surface now returns a step-specific continuation contract for `bill-feature-implement` itself rather than a generic recovery note.
+Current top-level workflow adopters:
+
+- `bill-feature-implement`
+- `bill-feature-verify`
+
+Both still present as stable user-facing skills, but their internal step graphs now have a governed home under `orchestration/workflow-contract/PLAYBOOK.md` instead of living only in skill prose.
+
+The workflow runtime now exposes discovery, resume, and continue surfaces through:
+
+- `skill-bill workflow ...` for `bill-feature-implement`
+- `skill-bill verify-workflow ...` for `bill-feature-verify`
+- matching MCP tools for each workflow family
+
+Interrupted runs can be reactivated from persisted state instead of being reconstructed from chat history, and each `continue` surface now returns a step-specific continuation contract for the owning top-level skill.
 
 ## Reference platform packs
 
 Skill Bill's governed architecture lives in `platform-packs/<slug>/`. Any platform is allowed as long as it follows the governed pack contract.
 
-| Tier | Platforms | What you get | Skill count |
-|------|-----------|-------------|-------------|
+| Tier     | Platforms   | What you get                                                                                                                                                                           | Skill count            |
+|----------|-------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
 | **Deep** | Kotlin, KMP | Multi-layer specialist routing (KMP → Kotlin baseline), 12 governed Android add-ons (Compose, navigation, interop, design-system, R8), inline/delegated execution modes, quality-check | 13 skills + 12 add-ons |
 
 The point of the shipped inventory is to demonstrate the governance model with real maintained packs.
@@ -157,13 +170,13 @@ Skill Bill records review acceptance metrics locally in SQLite and can optionall
 
 ## Supported agents
 
-| Agent | Install path |
-|-------|--------------|
-| GitHub Copilot | `~/.copilot/skills/` |
-| Claude Code | `~/.claude/commands/` |
-| GLM | `~/.glm/commands/` |
-| OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
-| OpenCode | `~/.config/opencode/skills/` |
+| Agent          | Install path                              |
+|----------------|-------------------------------------------|
+| GitHub Copilot | `~/.copilot/skills/`                      |
+| Claude Code    | `~/.claude/commands/`                     |
+| GLM            | `~/.glm/commands/`                        |
+| OpenAI Codex   | `~/.codex/skills/` or `~/.agents/skills/` |
+| OpenCode       | `~/.config/opencode/skills/`              |
 
 The installer links all selected agents to the same repo so updates stay in sync, and registers the local Skill Bill MCP server for agents with config-based MCP support.
 
@@ -266,7 +279,7 @@ Reference pack at `platform-packs/kmp/`. Layers Android/KMP-specific reviewers o
 | Skill | Purpose |
 |-------|---------|
 | `/bill-feature-implement` | Spec-to-verified implementation workflow — heavy phases run in subagents to keep the orchestrator context small |
-| `/bill-feature-verify` | Verify a PR against a task spec |
+| `/bill-feature-verify` | Spec-to-PR verification workflow with durable workflow-state support |
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
 
@@ -387,6 +400,32 @@ Local checks:
 .venv/bin/python3 -m unittest discover -s tests
 npx --yes agnix --strict .
 .venv/bin/python3 scripts/validate_agent_configs.py
+```
+
+## Test runs
+
+For everyday development, use the smallest test slice that proves the change:
+
+- full repo suite: `.venv/bin/python3 -m unittest discover -s tests`
+- focused workflow/runtime coverage: run the specific `tests.test_<area>` modules you touched
+- opt-in subprocess workflow E2E coverage: set `SKILL_BILL_RUN_WORKFLOW_E2E=1`
+
+Example focused run for the verify workflow runtime:
+
+```bash
+.venv/bin/python3 -m unittest \
+  tests.test_feature_verify_workflow_state \
+  tests.test_feature_verify_agent_resume \
+  tests.test_feature_verify_workflow_contract \
+  tests.test_feature_verify_telemetry \
+  tests.test_cli \
+  tests.test_mcp_stdio
+```
+
+Example opt-in workflow E2E run:
+
+```bash
+SKILL_BILL_RUN_WORKFLOW_E2E=1 .venv/bin/python3 -m unittest tests.test_feature_verify_workflow_e2e
 ```
 
 CI runs the same checks.
