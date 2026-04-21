@@ -1,3 +1,13 @@
+## [2026-04-21] feature-implement-workflow-runtime
+Areas: skill_bill/, skills/bill-feature-implement/, orchestration/workflow-contract/, tests/
+- Added a durable `bill-feature-implement` workflow runtime with persisted workflow ids, step state, attempt counts, named artifacts, and a dedicated `feature_implement_workflows` store behind CLI and MCP surfaces for open/get/update/list/latest/resume/continue. reusable
+- Wired `bill-feature-implement` itself to treat workflow state as authoritative for phase handoff and continuation, so interrupted runs can resume from persisted `assessment`, `plan`, `implementation_summary`, `review_result`, `audit_report`, and adjacent artifacts instead of reconstructing state from chat history. reusable
+- Standardized continuation as a governed contract: resume/continue now return step-specific directives, required/missing artifact checks, recovered session context, and a continuation entry prompt for re-entering the skill at `plan`, `implement`, `review`, `audit`, `validate`, or terminal cleanup. reusable
+- Added deterministic agent-resume tests plus opt-in subprocess E2E coverage across CLI and MCP, including `--latest`, latest-order parity, telemetry-linked sessions, blocked/missing-artifact cases, abandoned/completed terminal states, and review/audit loop recovery. reusable
+- Known limit: continuation is now operational and testable, but the highest-fidelity coverage still uses a governed harness rather than a live model in default CI.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-04-21] workflow-contract-pilot
 Areas: orchestration/, README.md, docs/, agent/
 - Added a governed `workflow-contract` playbook for top-level orchestrators so long-running parent commands now have one source of truth for step ids, artifact handoff, retry/resume rules, and parent-owned telemetry. reusable
