@@ -215,6 +215,15 @@ ids are:
 11. `pr_description`
 12. `finish`
 
+For this pilot, the workflow shell stays in `skills/bill-feature-implement/SKILL.md`
+and the authored execution body lives in sibling `content.md`.
+`SKILL.md` remains the source of truth for:
+
+- workflow-state and continuation sections
+- stable step headings used by continuation payloads
+- stable artifact names
+- telemetry ownership and final lifecycle fields
+
 Required workflow artifacts for the pilot:
 
 - `assessment` — accepted criteria, non-goals, open questions, feature size,
@@ -228,6 +237,8 @@ Required workflow artifacts for the pilot:
 - `audit_report` — per-criterion pass/fail evidence
 - `validation_result` — routed skill or repo-native validator result
 - `history_result` — written/skipped outcome for boundary history
+- `commit_push_result` — reserved shell-owned artifact name for Step 8; the
+  current pilot documents it but does not require runtime persistence yet
 - `pr_result` — PR url/title or terminal failure note
 
 Pilot-specific retry rules:

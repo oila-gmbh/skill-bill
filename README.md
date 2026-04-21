@@ -2,7 +2,7 @@
 
 A governed system for portable AI-agent behavior: stable base commands, shared orchestration, validator-backed contracts, cross-agent installers, scaffolding, and local-first telemetry that keep one source of truth from drifting as the repo grows.
 
-Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars. For humans, `content.md` is the real working surface where authored skill behavior lives; `SKILL.md` is scaffold-managed wiring that points the runtime at the right authored content and shared ceremony. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`, and top-level orchestrators can additionally adopt the workflow contract at `orchestration/workflow-contract/PLAYBOOK.md`.
+Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars. `bill-feature-implement` now follows the same split as a top-level workflow shell: the workflow contract and telemetry ownership stay in `skills/bill-feature-implement/SKILL.md`, while the detailed execution body lives in `skills/bill-feature-implement/content.md`. For humans, `content.md` is the real working surface where authored skill behavior lives; `SKILL.md` is scaffold-managed wiring that points the runtime at the right authored content and shared ceremony. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`, and top-level orchestrators can additionally adopt the workflow contract at `orchestration/workflow-contract/PLAYBOOK.md`.
 
 Shipped platform packs live under `platform-packs/`. Routing, validation, and installation are manifest-driven, so any conforming platform pack can live here without changing the shell.
 
@@ -278,7 +278,7 @@ Reference pack at `platform-packs/kmp/`. Layers Android/KMP-specific reviewers o
 
 | Skill | Purpose |
 |-------|---------|
-| `/bill-feature-implement` | Spec-to-verified implementation workflow — heavy phases run in subagents to keep the orchestrator context small |
+| `/bill-feature-implement` | Spec-to-verified implementation workflow shell - heavy phases run in subagents, with authored execution guidance in sibling `content.md` |
 | `/bill-feature-verify` | Spec-to-PR verification workflow with durable workflow-state support |
 | `/bill-feature-guard` | Add feature-flag rollout safety |
 | `/bill-feature-guard-cleanup` | Remove feature flags after rollout |
@@ -332,7 +332,7 @@ Example:
 
 The repo is organized around a strict four-layer model:
 
-- `skills/` — canonical, user-facing capabilities such as `bill-code-review` (a governed shell), `bill-quality-check` (also a governed shell), and `bill-feature-implement`
+- `skills/` — canonical, user-facing capabilities such as `bill-code-review` (a governed shell), `bill-quality-check` (also a governed shell), and `bill-feature-implement` (a top-level workflow shell with sibling `content.md`)
 - `skills/<platform>/` — platform-specific overrides for skills that have not been piloted onto the shell+content contract yet (today: `bill-feature-implement` and `bill-feature-verify` only; code-review and quality-check are shelled)
 - `platform-packs/<platform>/` — user-owned platform packs consumed by the `bill-code-review` shell via the shell+content contract. Each pack ships a `platform.yaml` manifest plus per-area reviewer content
 - `orchestration/` — single source of truth for shared routing, review, delegation, telemetry, and shell+content contracts
@@ -458,6 +458,8 @@ The repo now has three distinct layers, and it helps to read them in that order:
 - sibling supporting files such as `shell-ceremony.md`, `stack-routing.md`, `review-orchestrator.md`, and `telemetry-contract.md` provide shared behavior when that family needs it. These are contract surfaces, not the place for day-to-day authored skill logic.
 
 In practice: if you are changing what a skill tells an agent to do, you almost always want `content.md`. If you are changing shared runtime ceremony, reporting, routing, or telemetry behavior, you are usually in a governed sidecar or orchestration playbook instead.
+
+That now includes `skills/bill-feature-implement/`: keep workflow-state markers, continuation behavior, stable artifact names, and telemetry ownership in `SKILL.md`, but edit the detailed execution flow in sibling `content.md`.
 
 ## Authoring a skill
 

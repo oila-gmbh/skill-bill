@@ -333,6 +333,24 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_rejects_feature_implement_without_content_md(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-feature-implement")],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      (repo_root / "skills" / "bill-feature-implement" / "content.md").unlink()
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-implement must include sibling content.md",
+        result.stdout,
+      )
+
   def test_rejects_feature_implement_without_workflow_state_contract(self) -> None:
     with self.fixture_repo(
       [("base", "bill-feature-implement")],
@@ -347,7 +365,43 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "workflow-driven skill must include '## Workflow State'",
+        "bill-feature-implement shell must include '## Workflow State'",
+        result.stdout,
+      )
+
+  def test_rejects_feature_implement_without_continuation_mode_contract(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-feature-implement")],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          .replace("## Continuation Mode\n\n", "", 1)
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-implement shell must include '## Continuation Mode'",
+        result.stdout,
+      )
+
+  def test_rejects_feature_implement_without_execution_pointer(self) -> None:
+    with self.fixture_repo(
+      [("base", "bill-feature-implement")],
+      skill_contents={
+        "bill-feature-implement": (
+          self.skill_markdown("bill-feature-implement")
+          .replace("[content.md](content.md)", "[reference.md](reference.md)", 1)
+          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+        ),
+      },
+    ) as repo_root:
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-implement shell must include '[content.md](content.md)'",
         result.stdout,
       )
 
@@ -1021,6 +1075,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       path = repo_root / "skills" / package_name / skill_name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content or self.skill_markdown(skill_name), encoding="utf-8")
+    if skill_name == "bill-feature-implement":
+      (path.parent / "content.md").write_text(
+        self.feature_implement_content_markdown(),
+        encoding="utf-8",
+      )
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     targets = supporting_file_targets(repo_root)
@@ -1031,7 +1090,125 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     for file_name in required_supporting_files_for_skill(skill_name):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
+  def feature_implement_content_markdown(self) -> str:
+    return textwrap.dedent(
+      """\
+      # Feature Implement Content
+
+      ## Step 1: Collect Design Doc + Assess Size (orchestrator)
+
+      Fixture execution body for Step 1.
+
+      ## Step 5: Code Review (orchestrator)
+
+      Run `bill-code-review` inline and pass `orchestrated=true`.
+
+      ## Finalization sequence (Steps 6b -> 9)
+
+      Finish the workflow without changing runtime behavior.
+      """
+    )
+
   def skill_markdown(self, skill_name: str) -> str:
+    if skill_name == "bill-feature-implement":
+      lines = [
+        "---",
+        f"name: {skill_name}",
+        f"description: Use when validating fixture taxonomy behavior for {skill_name}.",
+        "---",
+        "",
+        "# bill-feature-implement",
+        "",
+        "## Project Overrides",
+        "",
+        "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
+        "",
+        "If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.",
+        "",
+        "## Execution",
+        "",
+        "Follow the instructions in [content.md](content.md).",
+        "",
+        "## Workflow State",
+        "",
+        "- `feature_implement_workflow_open`",
+        "- `feature_implement_workflow_update`",
+        "- `feature_implement_workflow_continue`",
+        "",
+        "### Stable Step Ids",
+        "",
+        "1. `assess`",
+        "2. `create_branch`",
+        "3. `preplan`",
+        "4. `plan`",
+        "5. `implement`",
+        "6. `review`",
+        "7. `audit`",
+        "8. `validate`",
+        "9. `write_history`",
+        "10. `commit_push`",
+        "11. `pr_description`",
+        "12. `finish`",
+        "",
+        "### Stable Artifact Names",
+        "",
+        "- `assessment`",
+        "- `branch`",
+        "- `preplan_digest`",
+        "- `plan`",
+        "- `implementation_summary`",
+        "- `review_result`",
+        "- `audit_report`",
+        "- `validation_result`",
+        "- `history_result`",
+        "- `commit_push_result`",
+        "- `pr_result`",
+        "",
+        "## Continuation Mode",
+        "",
+        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
+        "",
+        "## Step 1: Collect Design Doc + Assess Size (orchestrator)",
+        "",
+        "Persist `assessment` before advancing.",
+        "",
+        "## Step 1b: Create Feature Branch (orchestrator)",
+        "",
+        "Persist `branch` before advancing.",
+        "",
+        "## Step 2: Pre-Planning (subagent)",
+        "",
+        "Persist `preplan_digest` before advancing.",
+        "",
+        "## Step 3: Create Implementation Plan (subagent)",
+        "",
+        "Persist `plan` before advancing.",
+        "",
+        "## Step 4: Execute Plan (subagent)",
+        "",
+        "Persist `implementation_summary` before advancing.",
+        "",
+        "## Step 5: Code Review (orchestrator)",
+        "",
+        "Persist `review_result` before advancing.",
+        "",
+        "## Step 6: Completeness Audit (subagent)",
+        "",
+        "Persist `audit_report` before advancing.",
+        "",
+        "## Finalization sequence (Steps 6b -> 9)",
+        "",
+        "Persist `validation_result`, `history_result`, `commit_push_result`, and `pr_result` as the shell-owned artifact inventory allows.",
+        "",
+        "## Telemetry: Record Finished",
+        "",
+        "Record the parent-owned finished event after child telemetry collection is complete.",
+        "",
+      ]
+      for sidecar in required_supporting_files_for_skill(skill_name):
+        lines.append(f"[{sidecar}]({sidecar})")
+      return "\n".join(lines) + "\n"
+
     lines = [
       f"---",
       f"name: {skill_name}",

@@ -1,3 +1,12 @@
+## [2026-04-21] feature-implement-shell-pilot
+Areas: skills/bill-feature-implement/, scripts/, tests/, README.md, orchestration/workflow-contract/
+- Split `bill-feature-implement` into a workflow shell in `SKILL.md` and an author-owned `content.md`, keeping workflow-state, continuation, stable artifact names, and telemetry ownership in the shell while moving phase-by-phase execution guidance into the sibling content file. reusable
+- Keep `commit_push_result` as a reserved shell-owned artifact name until runtime persistence actually exists; document the name in the shell/reference contract but do not widen workflow storage just to satisfy the docs split. reusable
+- Add a dedicated validator hook for `bill-feature-implement` so missing `content.md`, missing shell workflow markers, or a missing execution pointer fail loudly even though this workflow pilot does not use the generic governed wrapper contract. reusable
+- Cover the split with both routing-contract assertions and validator fixture failures so future prompt edits cannot quietly collapse the shell back into a single authored file. reusable
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-21] feature-implement-workflow-runtime
 Areas: skill_bill/, skills/bill-feature-implement/, orchestration/workflow-contract/, tests/
 - Added a durable `bill-feature-implement` workflow runtime with persisted workflow ids, step state, attempt counts, named artifacts, and a dedicated `feature_implement_workflows` store behind CLI and MCP surfaces for open/get/update/list/latest/resume/continue. reusable

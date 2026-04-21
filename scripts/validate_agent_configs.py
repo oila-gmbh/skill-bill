@@ -196,6 +196,7 @@ def main() -> int:
   validate_skill_references(root, skill_names, issues)
   validate_orchestrator_passthrough(root, issues)
   validate_workflow_driven_skills(root, issues)
+  validate_feature_implement_shell_contract(root, issues)
   validate_skill_override_markdown(
     root / SKILL_OVERRIDE_EXAMPLE_FILE,
     skill_names,
@@ -477,6 +478,37 @@ WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
     ),
   ),
 )
+FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS: tuple[str, ...] = (
+  "## Execution",
+  "[content.md](content.md)",
+  "## Workflow State",
+  "### Stable Step Ids",
+  "### Stable Artifact Names",
+  "## Continuation Mode",
+  "## Step 1: Collect Design Doc + Assess Size (orchestrator)",
+  "## Step 1b: Create Feature Branch (orchestrator)",
+  "## Step 2: Pre-Planning (subagent)",
+  "## Step 3: Create Implementation Plan (subagent)",
+  "## Step 4: Execute Plan (subagent)",
+  "## Step 5: Code Review (orchestrator)",
+  "## Step 6: Completeness Audit (subagent)",
+  "## Finalization sequence (Steps 6b -> 9)",
+  "## Telemetry: Record Finished",
+  "feature_implement_workflow_open",
+  "feature_implement_workflow_update",
+  "feature_implement_workflow_continue",
+  "`assessment`",
+  "`branch`",
+  "`preplan_digest`",
+  "`plan`",
+  "`implementation_summary`",
+  "`review_result`",
+  "`audit_report`",
+  "`validation_result`",
+  "`history_result`",
+  "`commit_push_result`",
+  "`pr_result`",
+)
 
 
 def validate_orchestrator_passthrough(root: Path, issues: list[str]) -> None:
@@ -522,6 +554,31 @@ def validate_workflow_driven_skills(root: Path, issues: list[str]) -> None:
         issues.append(
           f"{skill_dir}: workflow-driven skill must include '{marker}'"
         )
+
+
+def validate_feature_implement_shell_contract(root: Path, issues: list[str]) -> None:
+  """`bill-feature-implement` is a shell/content split pilot with shell-owned
+  workflow markers that must remain in `SKILL.md`.
+  """
+  skill_dir = root / "skills" / "bill-feature-implement"
+  if not skill_dir.exists():
+    return
+
+  skill_file = skill_dir / "SKILL.md"
+  content_file = skill_dir / "content.md"
+  if not skill_file.is_file():
+    return
+
+  if not content_file.is_file():
+    issues.append(f"{skill_dir}: bill-feature-implement must include sibling content.md")
+    return
+
+  text = skill_file.read_text(encoding="utf-8")
+  for marker in FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS:
+    if marker not in text:
+      issues.append(
+        f"{skill_file}: bill-feature-implement shell must include '{marker}'"
+      )
 
 
 def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -> None:

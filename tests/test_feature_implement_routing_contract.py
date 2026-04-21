@@ -38,7 +38,15 @@ def read(relative_path: str) -> str:
   return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-FEATURE_IMPLEMENT = read("skills/bill-feature-implement/SKILL.md") + "\n" + read("skills/bill-feature-implement/reference.md")
+FEATURE_IMPLEMENT_SHELL = read("skills/bill-feature-implement/SKILL.md")
+FEATURE_IMPLEMENT_CONTENT = read("skills/bill-feature-implement/content.md")
+FEATURE_IMPLEMENT = (
+  FEATURE_IMPLEMENT_SHELL
+  + "\n"
+  + FEATURE_IMPLEMENT_CONTENT
+  + "\n"
+  + read("skills/bill-feature-implement/reference.md")
+)
 CODE_REVIEW = read("skills/bill-code-review/SKILL.md")
 QUALITY_CHECK = read("skills/bill-quality-check/SKILL.md")
 PR_DESCRIPTION = read("skills/bill-pr-description/SKILL.md")
@@ -198,14 +206,30 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
 
+  def test_feature_implement_shell_points_to_authored_content(self) -> None:
+    self.assertIn("## Execution", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("[content.md](content.md)", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("## Workflow State", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("## Step 1: Collect Design Doc + Assess Size (orchestrator)", FEATURE_IMPLEMENT_SHELL)
+    self.assertNotIn("## Workflow State", FEATURE_IMPLEMENT_CONTENT)
+    self.assertNotIn("## Continuation Mode", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("## Step 1: Collect Design Doc + Assess Size (orchestrator)", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("## Finalization sequence (Steps 6b -> 9)", FEATURE_IMPLEMENT_CONTENT)
+
   def test_feature_implement_uses_workflow_state_tools(self) -> None:
     self.assertIn("feature_implement_workflow_open", FEATURE_IMPLEMENT)
     self.assertIn("feature_implement_workflow_update", FEATURE_IMPLEMENT)
     self.assertIn("feature_implement_workflow_continue", FEATURE_IMPLEMENT)
     self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT)
+    self.assertIn("`branch`", FEATURE_IMPLEMENT_SHELL)
     self.assertIn("`assessment`", FEATURE_IMPLEMENT)
     self.assertIn("`preplan_digest`", FEATURE_IMPLEMENT)
     self.assertIn("`implementation_summary`", FEATURE_IMPLEMENT)
+    self.assertIn("`audit_report`", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("`validation_result`", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("`history_result`", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("`commit_push_result`", FEATURE_IMPLEMENT_SHELL)
     self.assertIn("`pr_result`", FEATURE_IMPLEMENT)
 
   def test_pr_description_prefers_repo_native_templates(self) -> None:

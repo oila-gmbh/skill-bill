@@ -59,7 +59,9 @@ Use these exact step ids when updating workflow state:
 
 ### Canonical artifacts
 
-Persist these named artifacts through `artifacts_patch`:
+The shell-owned source of truth for artifact names lives in [SKILL.md](SKILL.md#stable-artifact-names).
+
+Persist these named artifacts through `artifacts_patch` when the workflow runtime reaches the corresponding phase:
 
 - `assessment`
 - `branch`
@@ -70,6 +72,7 @@ Persist these named artifacts through `artifacts_patch`:
 - `audit_report`
 - `validation_result`
 - `history_result`
+- `commit_push_result` (reserved shell-owned name; Step 8 currently does not persist it)
 - `pr_result`
 
 ### Phase-to-artifact mapping
@@ -86,6 +89,7 @@ has in hand:
 - Step 6 → `audit_report`
 - Step 6b → `validation_result`
 - Step 7 → `history_result`
+- Step 8 → no persisted artifact today; `commit_push_result` remains a shell-documented reserved name until runtime support exists
 - Step 9 → `pr_result`
 
 ### Open sequence
