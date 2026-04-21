@@ -97,6 +97,12 @@ Each governed skill directory must also contain:
 - `shell-ceremony.md` — shared ceremony sidecar, usually a sibling symlink to
   `orchestration/shell-content-contract/shell-ceremony.md`.
 
+`content.md` is the author-owned surface. It must not re-state shell-owned
+output formats, telemetry mechanics, override precedence, execution-mode
+reporting, or required sidecar references. Those stay in the generated
+`SKILL.md` wrapper or shared sidecars so the runtime contract can be upgraded
+without rewriting authored business guidance.
+
 ## Governed Add-On Consumption
 
 Governed add-ons are pack-owned supporting files under
@@ -150,6 +156,10 @@ is ever permitted.
   `MissingContentFileError`.
 - A governed skill is missing its sibling `shell-ceremony.md` →
   `MissingShellCeremonyFileError`.
+- A governed skill's `## Execution` body drifts from the canonical wrapper
+  template → `InvalidExecutionSectionError`.
+- A governed skill's `## Ceremony` body drifts from the canonical wrapper
+  template → `InvalidCeremonySectionError`.
 - A governed skill's `## Descriptor` body drifts from the scaffolded render
   derived from skill context plus `area_metadata` →
   `InvalidDescriptorSectionError`.
@@ -169,7 +179,9 @@ Loader precedence is authoritative and must stay stable:
 5. Required governed H2 section presence.
 6. Sibling `content.md` presence.
 7. Sibling `shell-ceremony.md` presence.
-8. `## Descriptor` body drift.
+8. `## Execution` body drift.
+9. `## Ceremony` body drift.
+10. `## Descriptor` body drift.
 
 ### Loud-Fail Rules (quality-check)
 
@@ -188,6 +200,10 @@ optional `declared_quality_check_file` key:
   `MissingContentFileError`.
 - The governed quality-check skill is missing sibling `shell-ceremony.md` →
   `MissingShellCeremonyFileError`.
+- The governed quality-check skill's `## Execution` body drifts →
+  `InvalidExecutionSectionError`.
+- The governed quality-check skill's `## Ceremony` body drifts →
+  `InvalidCeremonySectionError`.
 - The governed quality-check skill's `## Descriptor` body drifts →
   `InvalidDescriptorSectionError`.
 

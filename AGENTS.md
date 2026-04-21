@@ -54,15 +54,25 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 
 ## New-skill authoring
 
-- Use the scaffolder for all new skills: `skill-bill new-skill --payload <file>`, `--interactive`, or `/bill-create-skill`.
+- Use the scaffolder for all new skills. Preferred entrypoints are `skill-bill new --interactive`, `skill-bill new --payload <file>`, or `/bill-create-skill`. `skill-bill new-skill` remains the lower-level command name behind `new`.
+- For ordinary skill authoring and refinement, use the `skill-bill` CLI instead of manually editing governed skill files.
+- Preferred loop: `skill-bill new --interactive` (or `create-and-fill` for one content-managed skill), `skill-bill show <skill-name>`, `skill-bill edit <skill-name>` or `fill <skill-name>`, `skill-bill doctor skill <skill-name>`, `skill-bill validate --skill-name <skill-name>`, then `skill-bill render --skill-name <skill-name>` when wrapper templates change.
+- `skill-bill fill <skill-name>` is the scripted/agent-safe write path for authored content. Feed it `--body` or `--body-file`; combine it with `--section <heading>` when only one authored H2 section should change.
+- `skill-bill edit <skill-name> --section <heading>` is the targeted interactive path when only one authored section needs refinement.
+- `skill-bill show <skill-name>` and `skill-bill explain [<skill-name>]` are the preferred stable read paths for agents; do not grep or hand-parse governed wrappers unless you are changing the scaffold system itself.
+- Treat `content.md` as the primary authored surface for governed skills. Do not manually edit generated `SKILL.md` files during normal authoring.
+- Direct `SKILL.md` edits are maintainer-only work and are allowed only when intentionally changing the shared wrapper, scaffold, render, or migration system itself.
 - The default intake is contextual, not a top-level taxonomy dump. Start with `Platform name:` and branch from there.
-- New platform packs scaffold only the pack root plus the baseline `bill-<platform>-code-review` and `bill-<platform>-quality-check` skills. They do not auto-create `feature-implement` or `feature-verify` overrides.
+- New platform packs always scaffold the pack root plus baseline `bill-<platform>-code-review` and `bill-<platform>-quality-check`. The interactive flow then lets the author choose `none`, `custom subset`, or `all` for approved code-review specialist stubs. It does not auto-create `feature-implement` or `feature-verify` overrides.
+- `create-and-fill` is only for one content-managed skill at a time. Do not use it for horizontal skills, pre-shell overrides, or platform-pack bootstrap flows.
 - Supported `kind` values:
   - `horizontal`: create a canonical skill under `skills/`.
+  - `platform-pack`: create a new `platform-packs/<slug>/` root with a rendered manifest, baseline `code-review`, default `quality-check`, and optional approved specialist stubs.
   - `platform-override-piloted`: create the skill in the selected pack, updating its manifest; for `quality-check`, register `declared_quality_check_file`.
   - `platform-override-piloted` for pre-shell families: create the skill in the platform's legacy `skills/` location and note that it will move when piloted.
   - `code-review-area`: create the specialist in the selected pack and register the area.
   - `add-on`: create a flat add-on file in the selected platform pack's `addons/` directory.
+- For `platform-pack`, payloads may either use `skeleton_mode=starter|full` or provide `specialist_areas=[...]` for a custom approved subset, but not both.
 - Pre-shell families are defined in `skill_bill/constants.py`; add the family there and in `skill_bill/scaffold.py` together.
 - Entry point: `skill_bill/scaffold.py`. Payload schema and exception catalog live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 - The scaffolder is atomic. Validator, manifest-write, or symlink failures must roll the repo back byte-for-byte.

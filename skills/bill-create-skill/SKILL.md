@@ -11,9 +11,15 @@ If `.agents/skill-overrides.md` exists in the project root and contains a matchi
 
 ## Overview
 
-This skill is the user-facing wrapper around `skill-bill new-skill`. You collect intent from the user, give a concise high-level preview of what will be created and where it will live, get approval, then call into the Python scaffolder to actually create files, edit manifests, wire sidecar symlinks, run the validator, and install into detected agents.
+This skill is the user-facing intake wrapper around the `skill-bill` CLI. Its job is to translate plain-language skill requests into the right CLI flow, show a concise preview, get approval, and then delegate the filesystem work to the CLI.
 
-All filesystem work happens in `skill_bill/scaffold.py`; this skill never edits `SKILL.md`, `platform.yaml`, or symlinks directly. If an agent path changes, the source of truth is `skill_bill/install.py` — not this skill.
+Use the CLI as the source of truth:
+
+- `skill-bill create-and-fill` for one new governed content-managed skill when the user wants to scaffold and immediately author the first `content.md` body.
+- `skill-bill new` for horizontal skills, pre-shell overrides, platform packs, and any case where `create-and-fill` is not supported.
+- `skill-bill show`, `edit`, `fill`, `doctor skill`, `validate`, and `render` when the user is refining or inspecting an existing governed skill.
+
+All filesystem work happens in the CLI/scaffolder implementation; this skill never edits `SKILL.md`, `content.md`, `platform.yaml`, or symlinks directly. If an agent path changes, the source of truth is `skill_bill/install.py` — not this skill.
 
 ## Decision Tree
 
@@ -26,8 +32,8 @@ Internally, the scaffolder still maps skill requests to exactly one of these fou
    - Pre-shell families (`feature-implement`, `feature-verify`) → destination: `skills/<platform>/<name>/SKILL.md`; the scaffolder emits an interim-location note saying "will move when piloted."
 3. **platform-pack** — bootstrap a new platform with the baseline skill set.
    - Destination: `platform-packs/<slug>/platform.yaml` plus `platform-packs/<slug>/code-review/<bill-<slug>-code-review>/SKILL.md` and `platform-packs/<slug>/quality-check/<bill-<slug>-quality-check>/SKILL.md`.
-   - Default behavior: scaffold the pack root, baseline code-review, default quality-check, and bare specialist stubs for every approved code-review area.
-   - `starter` remains a payload-level escape hatch for direct callers, but the user-facing skill does not offer it as an intake choice.
+   - User-facing intake asks whether to scaffold the approved code-review specialist stubs.
+   - `starter` remains available for direct payload callers and for users who only want the baseline pair first.
    - For known platforms such as `java` and `php`, the scaffolder infers routing signals from a built-in preset; ask for manual routing signals only when no preset exists and you do not have a defensible inference.
 4. **code-review-area** — a specialist for one approved code-review area inside an existing platform pack.
    - Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
@@ -69,34 +75,51 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
    - For `platform-pack`, the default set means:
      - baseline `bill-<platform>-code-review`
      - baseline `bill-<platform>-quality-check`
-     - all approved code-review specialist stubs
+     - all approved code-review specialist stubs when the user says yes to the specialist prompt
    - Only ask follow-ups that are still missing:
      - skill name for horizontal, specialist, or override scaffolds
      - family for platform overrides
      - area for code-review specialists
      - description or display name only when the user explicitly wants to customize them before scaffolding
+     - initial `content.md` body for governed skills when the user wants concrete behavior captured immediately
      - routing signals only for a new platform with no built-in preset and no defensible repo-marker inference
 
-   If the user says “create a skill set for Java” or equivalent, interpret that as `platform-pack` immediately. Do not show any baseline/full follow-up.
+   If the user says “create a skill set for Java” or equivalent, interpret that as `platform-pack` immediately. Ask whether to include the approved specialists, then continue.
 
 2. **Summarize the inferred request.** Before rendering the preview, restate what you inferred in plain language:
    - Keep it short: platform slug, whether a built-in preset will be used, and the user-facing outcome.
    - End with one confirmation prompt such as `Proceed? yes | redo`.
 
-3. **Preview at the right abstraction level.** Before calling the scaffolder, give a concise preview that covers:
+3. **Choose the CLI path.**
+   - Use `skill-bill create-and-fill` when all of the following are true:
+     - the request creates exactly one new content-managed skill
+     - the resulting skill is a governed `code-review-area` or shelled `platform-override-piloted` (`code-review` or `quality-check`)
+     - the user wants to capture initial authored behavior immediately
+   - Use `skill-bill new` for:
+     - `platform-pack`
+     - `horizontal`
+     - pre-shell platform overrides such as `feature-implement` / `feature-verify`
+     - any scaffold where immediate content authoring is not requested
+   - If the user wants to change an existing governed skill instead of creating one, do not scaffold anything. Route them to:
+     - `skill-bill show <skill-name>`
+     - `skill-bill edit <skill-name>` or `skill-bill fill <skill-name>`
+     - `skill-bill doctor skill <skill-name>`
+
+4. **Preview at the right abstraction level.** Before calling the CLI, give a concise preview that covers:
    - which baseline skills or specialist stubs will be created
+   - which CLI path will run (`create-and-fill`, `new`, or an edit/refinement path)
    - whether the scaffold uses a built-in routing preset
    - nothing else unless the user explicitly asks for file-level detail
 
-   Do **not** render the generated `SKILL.md` wrappers, `content.md` TODO bodies, sidecar file contents, `platform.yaml` path, or placeholder disclaimers unless the user explicitly asks to inspect them. The default UX is a high-level inventory, not a file-by-file contract dump.
+   Do **not** render the generated `SKILL.md` wrappers, starter `content.md` bodies, sidecar file contents, `platform.yaml` path, or placeholder disclaimers unless the user explicitly asks to inspect them. The default UX is a high-level inventory, not a file-by-file contract dump.
 
-4. **Confirm or restart.** Keep the interaction minimal:
+5. **Confirm or restart.** Keep the interaction minimal:
    - `yes` — accept the preview and proceed to scaffold.
    - `redo` — restart the intake from scratch.
 
    Do not offer an `edit <section>` menu by default. If the user wants to customize wording such as the description before scaffolding, handle that as a normal follow-up in plain language instead of exposing internal section-edit commands.
 
-5. **Emit JSON payload.** When the user accepts, build a payload shaped like:
+6. **Emit JSON payload.** When the user accepts, build a payload shaped like:
 
    ```json
    {
@@ -110,10 +133,10 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
      "skeleton_mode": "full",
      "routing_signals": {
        "strong": ["..."],
-       "tie_breakers": ["..."],
-       "addon_signals": ["..."]
+       "tie_breakers": ["..."]
      },
-     "description": "..."
+     "description": "...",
+     "content_body": "..."
    }
    ```
 
@@ -121,15 +144,18 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
 
    The full schema (required keys, worked examples per kind, the loud-fail exception catalog) lives in the repo at `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
-6. **Subprocess into the scaffolder.** Write the payload to a tempfile, then invoke:
+7. **Subprocess into the CLI.** Write the payload to a tempfile, then invoke exactly one of:
 
    ```bash
-   skill-bill new-skill --payload <tempfile>
+   skill-bill create-and-fill --payload <tempfile>
+   skill-bill new --payload <tempfile>
    ```
 
-   The scaffolder handles: file creation, manifest edits with best-effort comment preservation, sibling supporting-file symlinks (driven by `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`), the validator run, and auto-install to every detected agent under `~/.claude/commands`, `~/.copilot/skills`, `~/.codex/skills` (or `~/.agents/skills`), `~/.config/opencode/skills`, and `~/.glm/commands`.
+   Choose `create-and-fill` only for the supported single-skill governed path described above. Otherwise use `new`.
 
-7. **Report.** Surface the scaffolder output verbatim — it tells the user the final skill path, any manifest edits, sidecar symlinks, install targets, and any interim-location or skipped-agent notes. Never paraphrase the validator's loud-fail errors; copy them through.
+   The CLI/scaffolder handles: file creation, manifest edits with best-effort comment preservation, sibling supporting-file symlinks (driven by `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`), the validator run, and auto-install to every detected agent under `~/.claude/commands`, `~/.copilot/skills`, `~/.codex/skills` (or `~/.agents/skills`), `~/.config/opencode/skills`, and `~/.glm/commands`.
+
+8. **Report.** Surface the CLI output verbatim — it tells the user the final skill path, any manifest edits, sidecar symlinks, install targets, and any interim-location or skipped-agent notes. Never paraphrase the validator's loud-fail errors; copy them through.
 
 ## Rules
 
@@ -137,8 +163,10 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
 - The scaffolder is atomic. If the validator fails, every staged change is rolled back and the error is surfaced verbatim; do not try to "keep partial work."
 - If no agents are detected, the scaffolder skips the install step and notes that the user should run `./install.sh` to set up agent paths. Do not synthesize agent paths by hand.
 - Default to conversational guidance. The raw field template and JSON payload are implementation details, not the primary UX.
+- Default to the thinnest possible adapter behavior. This skill should gather intent, choose the right `skill-bill` command, and then get out of the way.
 - Treat `platform-pack` as the one-shot bootstrap path for a new stack: create the baseline pair plus all approved specialists by default.
 - Default previews to a concise inventory of created paths and generated stubs. For governed skills, tell the user to put skill instructions only in sibling `content.md` files; do not imply they should edit scaffold-managed `SKILL.md` wrappers or `shell-ceremony.md`.
+- When the user wants to change an existing governed skill, send them through `skill-bill show`, `edit`, `fill`, or `doctor skill` instead of describing direct wrapper edits. Bulk migration (`scripts/migrate_to_content_md.py`) and taxonomy changes are maintainer-only workflows.
 - Do not repeat the same intake block, menu, confirmation prompt, or `Execution mode` line twice. The default interaction should feel like one short question, one contextual follow-up, one short summary, and one confirmation.
 - Do not front-load the full decision tree into the first reply. The user should not have to read the entire taxonomy before answering the first question.
 - Governed review-family and quality-check skills use the same wrapper contract: `SKILL.md` must keep `## Descriptor`, `## Execution`, and `## Ceremony`, with sibling `content.md` and `shell-ceremony.md` beside it. The shared ceremony sidecar is not customizable per skill; it comes from the stored template and stays identical across governed skills in the family.

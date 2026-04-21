@@ -73,6 +73,10 @@ Every payload MUST include:
 ## Optional Keys
 
 - `description` — one-line description copied into the frontmatter.
+- `content_body` — authored markdown body for governed skills. When
+  provided for shelled families (`code-review`, `quality-check`), the
+  scaffolder writes it into the sibling `content.md` instead of the default
+  maintainer starter content.
 - `display_name` — human-friendly label for `platform-pack`. Defaults to a
   title-cased version of `platform`.
 - `skeleton_mode` — `starter` or `full` for `platform-pack`. Defaults to
@@ -169,6 +173,18 @@ user-facing intake defaults to `full`. The generated files are intentionally
 minimal so the user can enrich the authored
 sidecars afterwards.
 
+### Governed skill with concrete authored content
+
+```json
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "code-review-area",
+  "platform": "kotlin",
+  "area": "api-contracts",
+  "content_body": "## Focus\n\nReview API boundary regressions.\n\n## Review Guidance\n\n- Prefer client-visible contract issues.\n- Call out backward-compatibility breaks explicitly.\n"
+}
+```
+
 ### Code-review area
 
 ```json
@@ -218,16 +234,16 @@ All exceptions derive from `skill_bill.scaffold_exceptions.ScaffoldError`:
 ## SKILL-21: Shell+content split (v1.1)
 
 SKILL-21 added sibling `content.md` authoring and bumped the shell contract
-to `1.1`. Callers of the scaffold payload do not need to change, but the
-output changes:
+to `1.1`. The output changes:
 
 - Every kind that produces a `SKILL.md` now also writes a sibling
   `content.md` under the same skill directory.
-- The generated `SKILL.md` carries two additional frontmatter keys,
-  `shell_contract_version` and `template_version`.
 - The generated `SKILL.md` carries a new required `## Execution` H2 whose
   body is byte-identical across every governed skill and links to
   `content.md`.
+- End-user creation flows may also provide `content_body` so governed
+  skills are concrete at scaffold time instead of requiring later wrapper
+  edits.
 
 Loud-fail exceptions added to the shell contract catalog (raised by the
 loader and surfaced by the validator, not by the scaffolder itself):
@@ -235,7 +251,9 @@ loader and surfaced by the validator, not by the scaffolder itself):
 - `ContractVersionMismatchError` — pack declares an outdated
   `contract_version`; the message points at
   `scripts/migrate_to_content_md.py`.
-- `MissingContentBodyFileError` — sibling `content.md` is missing for a
+- `MissingContentFileError` — sibling `content.md` is missing for a
   governed skill.
 - `InvalidExecutionSectionError` — the `## Execution` section body is not
   the canonical byte-identical form.
+- `InvalidCeremonySectionError` — the `## Ceremony` section body drifted
+  from the wrapper template.

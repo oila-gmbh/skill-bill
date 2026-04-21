@@ -77,6 +77,17 @@ def _load_validate_skill_file():
   return validate_skill_file
 
 
+def _install_validator_fixture(repo: Path) -> None:
+  """Copy the repo validator scripts into a scratch scaffold repo."""
+  scripts_dir = repo / "scripts"
+  scripts_dir.mkdir(parents=True, exist_ok=True)
+  for script_name in ("validate_agent_configs.py", "skill_repo_contracts.py"):
+    (scripts_dir / script_name).write_text(
+      (ROOT / "scripts" / script_name).read_text(encoding="utf-8"),
+      encoding="utf-8",
+    )
+
+
 _KOTLIN_MANIFEST = """\
 platform: kotlin
 contract_version: "1.1"
@@ -237,6 +248,12 @@ def _build_seed_repo(tmp_path: Path) -> Path:
   review_delegation.parent.mkdir(parents=True, exist_ok=True)
   review_delegation.write_text(
     "# Review Delegation\n\nFixture delegation contract.\n",
+    encoding="utf-8",
+  )
+  review_scope = repo / "orchestration" / "review-scope" / "PLAYBOOK.md"
+  review_scope.parent.mkdir(parents=True, exist_ok=True)
+  review_scope.write_text(
+    "# Review Scope\n\nFixture scope contract.\n",
     encoding="utf-8",
   )
   stack_routing = repo / "orchestration" / "stack-routing" / "PLAYBOOK.md"
@@ -445,7 +462,9 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       "for repo markers needed for classification.",
       review_body,
     )
-    self.assertIn("TODO: author the governed content body.", review_content)
+    self.assertIn("## Review Focus", review_content)
+    self.assertIn("## Review Guidance", review_content)
+    self.assertNotIn("## Project Signals", review_content)
     self.assertIn("[specialist-contract.md](specialist-contract.md)", review_body)
     self.assertNotIn("review-scope.md", review_content)
     self.assertNotIn("specialist-contract.md", review_content)
@@ -507,6 +526,31 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     )
     self.assertIn(GOVERNED_CONTENT_AUTHORING_NOTE, result.notes)
 
+  def test_platform_pack_validation_ignores_unrelated_existing_pack_drift(self) -> None:
+    _install_validator_fixture(self.repo)
+    drifted_skill = (
+      self.repo
+      / "platform-packs"
+      / "kmp"
+      / "code-review"
+      / "bill-kmp-code-review"
+      / "SKILL.md"
+    )
+    drifted_skill.write_text(
+      drifted_skill.read_text(encoding="utf-8") + "\nDrift injected outside the new php pack.\n",
+      encoding="utf-8",
+    )
+
+    result = scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="php",
+      )
+    )
+
+    self.assertEqual(result.kind, "platform-pack")
+    self.assertTrue((self.repo / "platform-packs" / "php" / "platform.yaml").is_file())
+
   def test_platform_pack_defaults_to_full_skeleton(self) -> None:
     result = scaffold(
       self._payload(
@@ -542,6 +586,37 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     )
     expected_created_files = 5 + (2 * len(scaffold_module.APPROVED_CODE_REVIEW_AREAS))
     self.assertEqual(len(result.created_files), expected_created_files)
+
+  def test_platform_pack_can_scaffold_custom_specialist_subset(self) -> None:
+    result = scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="php",
+        specialist_areas=["architecture", "security", "testing"],
+      )
+    )
+    self.assertEqual(result.kind, "platform-pack")
+
+    pack_root = self.repo / "platform-packs" / "php"
+    manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
+    self.assertIn('  - "architecture"', manifest)
+    self.assertIn('  - "security"', manifest)
+    self.assertIn('  - "testing"', manifest)
+    self.assertNotIn('  - "ui"', manifest)
+    self.assertNotIn('  - "ux-accessibility"', manifest)
+    self.assertTrue(
+      (pack_root / "code-review" / "bill-php-code-review-architecture" / "SKILL.md").is_file()
+    )
+    self.assertTrue(
+      (pack_root / "code-review" / "bill-php-code-review-security" / "SKILL.md").is_file()
+    )
+    self.assertTrue(
+      (pack_root / "code-review" / "bill-php-code-review-testing" / "SKILL.md").is_file()
+    )
+    self.assertFalse((pack_root / "code-review" / "bill-php-code-review-ui").exists())
+    self.assertTrue(
+      any("Custom skeleton scaffolded with 3 approved code-review area stubs." in note for note in result.notes)
+    )
 
   def test_add_on_flat(self) -> None:
     result = scaffold(
@@ -629,7 +704,9 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertNotIn("## Inline Mode", baseline_body)
     self.assertNotIn("## Outputs Contract", baseline_body)
     self.assertNotIn("review-scope.md", baseline_body)
-    self.assertIn("TODO: author the governed content body.", baseline_body)
+    self.assertIn("## Review Focus", baseline_body)
+    self.assertIn("## Review Guidance", baseline_body)
+    self.assertNotIn("## Project Signals", baseline_body)
     self.assertNotIn("specialist-contract.md", baseline_body)
 
     quality_body = (
@@ -681,7 +758,9 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       / "bill-kotlin-code-review-security"
       / "content.md"
     ).read_text(encoding="utf-8")
-    self.assertIn("TODO: author the governed content body.", area_body)
+    self.assertIn("## Focus", area_body)
+    self.assertIn("## Review Triggers", area_body)
+    self.assertIn("## Review Guidance", area_body)
     self.assertNotIn("## Description", area_body)
     self.assertNotIn("## Specialist Scope", area_body)
     self.assertNotIn("## Inputs", area_body)
@@ -722,8 +801,9 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       / "bill-kmp-quality-check"
       / "content.md"
     ).read_text(encoding="utf-8")
-    self.assertIn("TODO: author the execution steps", quality_body)
-    self.assertIn("TODO: author the fix strategy", quality_body)
+    self.assertIn("## Purpose", quality_body)
+    self.assertIn("## Execution Steps", quality_body)
+    self.assertIn("## Fix Strategy", quality_body)
 
   def test_pre_shell_family_emits_interim_note(self) -> None:
     # SKILL-16 promoted quality-check onto the shell+content contract, so the
@@ -1195,6 +1275,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "builtins.input",
         side_effect=[
           "java",   # platform
+          "",       # specialist mode -> all
           "",       # display name
           "",       # description
         ],
@@ -1214,6 +1295,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "builtins.input",
         side_effect=[
           "php",    # platform
+          "",       # specialist mode -> all
           "",       # display name
           "",       # description
         ],
@@ -1234,6 +1316,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "builtins.input",
         side_effect=[
           "python",    # platform
+          "",          # specialist mode -> all
           "Python",    # display name
           "",          # description
           "pyproject.toml,setup.py",  # strong signals
@@ -1249,6 +1332,52 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
       payload["routing_signals"]["strong"],
       ["pyproject.toml", "setup.py"],
     )
+
+  def test_platform_pack_prompt_can_choose_custom_specialist_subset(self) -> None:
+    from skill_bill.cli import _prompt_new_skill_interactively
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+      repo_root = Path(tmpdir)
+      with mock.patch(
+        "builtins.input",
+        side_effect=[
+          "php",                  # platform
+          "2",                    # specialist mode -> custom
+          "architecture,security,testing,reliability",
+          "",                     # display name
+          "",                     # description
+        ],
+      ):
+        payload = _prompt_new_skill_interactively(repo_root=repo_root)
+
+    self.assertEqual(payload["kind"], "platform-pack")
+    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(
+      payload["specialist_areas"],
+      ["architecture", "reliability", "security", "testing"],
+    )
+    self.assertNotIn("skeleton_mode", payload)
+
+  def test_platform_pack_prompt_can_choose_no_specialists(self) -> None:
+    from skill_bill.cli import _prompt_new_skill_interactively
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+      repo_root = Path(tmpdir)
+      with mock.patch(
+        "builtins.input",
+        side_effect=[
+          "php",    # platform
+          "1",      # specialist mode -> none
+          "",       # display name
+          "",       # description
+        ],
+      ):
+        payload = _prompt_new_skill_interactively(repo_root=repo_root)
+
+    self.assertEqual(payload["kind"], "platform-pack")
+    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["skeleton_mode"], "starter")
+    self.assertNotIn("specialist_areas", payload)
 
   def test_existing_platform_prompt_branches_to_specialist(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
@@ -1268,6 +1397,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
           "security",      # area
           "",              # derived name
           "Review PHP security risks.",  # description
+          "END",           # optional content body
         ],
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
@@ -1295,6 +1425,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
           "quality-check",  # family
           "",               # derived name
           "Run PHP quality checks.",  # description
+          "END",            # optional content body
         ],
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)

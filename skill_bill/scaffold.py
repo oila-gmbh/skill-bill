@@ -30,7 +30,7 @@ an interim-location note.
 
 from __future__ import annotations
 
-import subprocess
+import importlib.util
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,14 +57,17 @@ from skill_bill.scaffold_template import (
   default_area_focus,
   infer_skill_description,
   render_default_section,
+  render_content_body,
   render_descriptor_section,
   render_skill_frontmatter,
   render_project_overrides,
 )
 from skill_bill.shell_content_contract import (
   APPROVED_CODE_REVIEW_AREAS,
+  ShellContentContractError,
   load_platform_manifest,
   load_platform_pack,
+  load_quality_check_content,
 )
 
 
@@ -402,6 +405,26 @@ def _ordered_approved_code_review_areas() -> tuple[str, ...]:
   return tuple(sorted(APPROVED_CODE_REVIEW_AREAS))
 
 
+def _platform_pack_specialist_areas(payload: dict) -> list[str] | None:
+  raw = payload.get("specialist_areas")
+  if raw is None:
+    return None
+  if not isinstance(raw, list) or not all(isinstance(item, str) and item for item in raw):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'specialist_areas' must be a list of non-empty strings when provided."
+    )
+
+  approved = set(_ordered_approved_code_review_areas())
+  requested = {item for item in raw}
+  unknown = sorted(requested - approved)
+  if unknown:
+    raise InvalidScaffoldPayloadError(
+      f"Scaffold payload field 'specialist_areas' contains unknown areas {unknown}; "
+      f"approved areas: {sorted(approved)}."
+    )
+  return [area for area in _ordered_approved_code_review_areas() if area in requested]
+
+
 def _require_canonical_name(payload: dict, *, default_name: str) -> str:
   provided = _optional_string(payload, "name")
   if not provided:
@@ -508,6 +531,11 @@ def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
   platform = _require_string(payload, "platform")
   defaults = _resolve_platform_pack_defaults(payload, platform)
   skeleton_mode = _platform_pack_skeleton_mode(payload)
+  selected_specialist_areas = _platform_pack_specialist_areas(payload)
+  if selected_specialist_areas is not None and "skeleton_mode" in payload:
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload may not provide both 'skeleton_mode' and 'specialist_areas'; choose one specialist selection mode."
+    )
   strong_signals = defaults["routing_signals"]["strong"]
   tie_breakers = defaults["routing_signals"]["tie_breakers"]
   display_name = defaults["display_name"]
@@ -528,9 +556,13 @@ def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
   quality_check_skill_path = pack_root / "quality-check" / quality_check_name
   manifest_path = pack_root / "platform.yaml"
   specialist_areas = (
-    list(_ordered_approved_code_review_areas())
-    if skeleton_mode == PLATFORM_PACK_SKELETON_FULL
-    else []
+    selected_specialist_areas
+    if selected_specialist_areas is not None
+    else (
+      list(_ordered_approved_code_review_areas())
+      if skeleton_mode == PLATFORM_PACK_SKELETON_FULL
+      else []
+    )
   )
   specialist_skill_names = {
     area: f"bill-{platform}-code-review-{area}"
@@ -554,7 +586,12 @@ def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
       0,
       f"Applied built-in platform preset for '{platform}'. Override 'routing_signals' only when the defaults need adjustment.",
     )
-  if skeleton_mode == PLATFORM_PACK_SKELETON_FULL:
+  if selected_specialist_areas is not None:
+    notes.insert(
+      1 if defaults["preset_used"] else 0,
+      f"Custom skeleton scaffolded with {len(specialist_areas)} approved code-review area stubs.",
+    )
+  elif skeleton_mode == PLATFORM_PACK_SKELETON_FULL:
     notes.insert(
       1 if defaults["preset_used"] else 0,
       f"Full skeleton scaffolded with {len(specialist_areas)} approved code-review area stubs.",
@@ -799,35 +836,24 @@ def _render_skill_body(plan: dict[str, Any], payload: dict) -> str:
 
 def _render_governed_content_body(plan: dict[str, Any], payload: dict) -> str:
   """Render the authored `content.md` body for governed platform-pack skills."""
-  sections: list[str] = []
-  if plan["family"] == "quality-check":
-    sections.extend(
-      [
-        "## Execution Steps\n\nTODO: author the execution steps for "
-        f"`{plan['skill_name']}`.\n",
-        "## Fix Strategy\n\nTODO: author the fix strategy for "
-        f"`{plan['skill_name']}`.\n",
-      ]
-    )
-  elif plan["family"] == "code-review" and not plan["area"]:
-    sections.append(
-      "TODO: author the governed content body. Keep shell metadata, telemetry rules, and "
-      "other shared ceremony in `SKILL.md` or shared sidecars, not here.\n"
-    )
-  else:
-    sections.append(
-      "TODO: author the governed content body. Keep shell metadata, telemetry rules, and "
-      "other shared ceremony in `SKILL.md` or shared sidecars, not here.\n"
-    )
-
-  title = "Content"
-  if plan["family"] == "quality-check":
-    title = "Quality-Check Content"
-  elif plan["family"] == "code-review" and plan["area"]:
-    title = f"{plan['area'].replace('-', ' ').title()} Content"
-  elif plan["family"] == "code-review":
-    title = "Review Content"
-  return f"# {title}\n\n" + "\n".join(sections)
+  platform = plan["platform"]
+  display_name = plan.get("display_name") or (
+    _derive_display_name(platform) if platform else ""
+  )
+  context = ScaffoldTemplateContext(
+    skill_name=plan["skill_name"],
+    family=plan["family"],
+    platform=platform,
+    area=plan["area"],
+    display_name=display_name,
+  )
+  description = _optional_string(payload, "description") or infer_skill_description(context)
+  content_body = _optional_string(payload, "content_body") or None
+  return render_content_body(
+    context,
+    description=description,
+    content_body=content_body,
+  )
 
 
 def _render_addon_body(plan: dict[str, Any], payload: dict) -> str:
@@ -1171,22 +1197,105 @@ def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], rep
   )
 
 
-def _run_validator(repo_root: Path) -> None:
-  """Invoke ``scripts/validate_agent_configs.py`` and raise on failure."""
+def _load_validator_module(repo_root: Path):
+  """Load ``scripts/validate_agent_configs.py`` as an importable module."""
   script_path = repo_root / "scripts" / "validate_agent_configs.py"
   if not script_path.is_file():
+    return None
+
+  scripts_dir = str(script_path.parent)
+  repo_root_str = str(repo_root)
+  sys.path.insert(0, scripts_dir)
+  sys.path.insert(0, repo_root_str)
+  try:
+    spec = importlib.util.spec_from_file_location(
+      "_skill_bill_scaffold_validator",
+      script_path,
+    )
+    if spec is None or spec.loader is None:
+      raise ScaffoldValidatorError(
+        f"Validator failed after scaffolding: could not load '{script_path}'."
+      )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+  finally:
+    for entry in (repo_root_str, scripts_dir):
+      if entry in sys.path:
+        sys.path.remove(entry)
+
+
+def _append_selected_skill_issues(
+  *,
+  repo_root: Path,
+  validator: Any,
+  skill_names: list[str],
+  issues: list[str],
+) -> None:
+  """Validate only the governed skills touched by the current scaffold."""
+  discovery_issues: list[str] = []
+  skill_files = validator.discover_skill_files(repo_root, discovery_issues)
+  platform_pack_skill_files = validator.discover_platform_pack_skill_files(repo_root)
+
+  for skill_name in skill_names:
+    if skill_name in skill_files:
+      validator.validate_skill_file(skill_name, skill_files[skill_name], issues)
+      continue
+    if skill_name in platform_pack_skill_files:
+      validator.validate_platform_pack_skill_file(
+        skill_name,
+        platform_pack_skill_files[skill_name],
+        issues,
+      )
+      continue
+    issues.append(f"Unknown skill '{skill_name}'.")
+
+
+def _run_validator(repo_root: Path, plan: dict[str, Any]) -> None:
+  """Validate only the artifacts touched by the current scaffold transaction."""
+  validator = _load_validator_module(repo_root)
+  if validator is None:
     return
 
-  result = subprocess.run(
-    [sys.executable, str(script_path)],
-    cwd=str(repo_root),
-    capture_output=True,
-    text=True,
-  )
-  if result.returncode != 0:
+  issues: list[str] = []
+  touched_skill_names: list[str] = []
+  touched_pack_roots: list[Path] = []
+
+  if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+    touched_skill_names.append(plan["baseline_skill_name"])
+    touched_skill_names.append(plan["quality_check_skill_name"])
+    touched_skill_names.extend(plan["specialist_skill_names"].values())
+    touched_pack_roots.append(repo_root / "platform-packs" / plan["platform"])
+  elif plan["kind"] == SKILL_KIND_ADD_ON:
+    validator.validate_addon_file(plan["skill_file"], repo_root, issues)
+    touched_pack_roots.append(repo_root / "platform-packs" / plan["platform"])
+  else:
+    touched_skill_names.append(plan["skill_name"])
+    if plan["is_shelled"]:
+      touched_pack_roots.append(repo_root / "platform-packs" / plan["platform"])
+
+  if touched_skill_names:
+    _append_selected_skill_issues(
+      repo_root=repo_root,
+      validator=validator,
+      skill_names=touched_skill_names,
+      issues=issues,
+    )
+
+  for pack_root in touched_pack_roots:
+    try:
+      pack = load_platform_pack(pack_root)
+      if pack.declared_quality_check_file is not None:
+        load_quality_check_content(pack)
+    except ShellContentContractError as error:
+      issues.append(f"{pack_root.relative_to(repo_root)}: {error}")
+
+  if issues:
+    rendered_issues = "\n".join(f"- {issue}" for issue in issues)
     raise ScaffoldValidatorError(
-      f"Validator failed after scaffolding (exit {result.returncode}):\n"
-      f"{result.stderr or result.stdout}"
+      "Validator failed after scaffolding (exit 1):\n"
+      "Agent-config validation failed:\n"
+      f"{rendered_issues}"
     )
 
 
@@ -1378,7 +1487,7 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
       manifest_edits = []
       _created_files, symlinks = _create_platform_pack(txn, plan, repo_root)
       created_files = _created_files
-      _run_validator(repo_root)
+      _run_validator(repo_root, plan)
       install_targets, install_notes = _perform_install(txn, plan)
     else:
       if plan["kind"] == SKILL_KIND_ADD_ON:
@@ -1398,7 +1507,7 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
       symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)
       created_files = list(txn.created_paths)
 
-      _run_validator(repo_root)
+      _run_validator(repo_root, plan)
       install_targets, install_notes = _perform_install(txn, plan)
   except ScaffoldValidatorError:
     _rollback(txn)

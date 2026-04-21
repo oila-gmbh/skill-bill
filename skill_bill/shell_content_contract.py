@@ -23,6 +23,7 @@ from skill_bill.scaffold_template import (
   DescriptorMetadata,
   ScaffoldTemplateContext,
   default_area_focus,
+  render_ceremony_section,
   render_descriptor_section,
 )
 
@@ -145,6 +146,10 @@ class InvalidDescriptorSectionError(ShellContentContractError):
 
 class InvalidExecutionSectionError(ShellContentContractError):
   """Raised when a governed skill's ``## Execution`` section drifts."""
+
+
+class InvalidCeremonySectionError(ShellContentContractError):
+  """Raised when a governed skill's ``## Ceremony`` section drifts."""
 
 
 class MissingShellCeremonyFileError(ShellContentContractError):
@@ -589,6 +594,23 @@ def _assert_governed_skill_ok(
     family=family,
     area=area,
   )
+  expected_context = _governed_context(
+    pack,
+    skill_name=skill_path.parent.name,
+    family=family,
+    area=area,
+  )
+  if sections["## Execution"] != CANONICAL_EXECUTION_BODY:
+    raise InvalidExecutionSectionError(
+      f"Platform pack '{pack.slug}': skill file '{skill_path}' has a drifted "
+      "## Execution section."
+    )
+  expected_ceremony = render_ceremony_section(expected_context)
+  if sections["## Ceremony"] != expected_ceremony:
+    raise InvalidCeremonySectionError(
+      f"Platform pack '{pack.slug}': skill file '{skill_path}' has a drifted "
+      "## Ceremony section."
+    )
   if sections["## Descriptor"] != expected_descriptor:
     raise InvalidDescriptorSectionError(
       f"Platform pack '{pack.slug}': skill file '{skill_path}' has a drifted "
@@ -693,15 +715,30 @@ def _render_expected_descriptor(
   family: str,
   area: str,
 ) -> str:
-  context = ScaffoldTemplateContext(
+  context = _governed_context(
+    pack,
+    skill_name=skill_name,
+    family=family,
+    area=area,
+  )
+  metadata = DescriptorMetadata(area_focus=pack.area_metadata.get(area, ""))
+  return render_descriptor_section(context, metadata=metadata)
+
+
+def _governed_context(
+  pack: PlatformPack,
+  *,
+  skill_name: str,
+  family: str,
+  area: str,
+) -> ScaffoldTemplateContext:
+  return ScaffoldTemplateContext(
     skill_name=skill_name,
     family=family,
     platform=pack.slug,
     area=area,
     display_name=pack.display_name or pack.slug.replace("-", " ").title(),
   )
-  metadata = DescriptorMetadata(area_focus=pack.area_metadata.get(area, ""))
-  return render_descriptor_section(context, metadata=metadata)
 
 
 __all__ = [
@@ -711,6 +748,7 @@ __all__ = [
   "ContractVersionMismatchError",
   "CEREMONY_FREE_FORM_H2S",
   "CONTENT_BODY_FILENAME",
+  "InvalidCeremonySectionError",
   "InvalidDescriptorSectionError",
   "InvalidExecutionSectionError",
   "InvalidManifestSchemaError",

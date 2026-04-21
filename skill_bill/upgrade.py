@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from typing import Iterable
 
 from skill_bill.scaffold_template import (
   CANONICAL_EXECUTION_SECTION,
@@ -28,18 +29,36 @@ class UpgradeResult:
   regenerated_files: tuple[Path, ...]
 
 
+def render_upgrade_targets(
+  repo_root: Path | str,
+  *,
+  skill_names: Iterable[str] | None = None,
+) -> dict[Path, str]:
+  """Return the canonical wrapper render for each selected skill file."""
+  repo_root = Path(repo_root).resolve()
+  return _render_upgrade_targets(
+    repo_root,
+    selected_skill_names=set(skill_names or []),
+  )
+
+
 def upgrade_skill_wrappers(
   repo_root: Path | str,
   *,
+  skill_names: Iterable[str] | None = None,
   validate: bool = True,
 ) -> UpgradeResult:
   """Regenerate scaffold-managed ``SKILL.md`` wrappers in one transaction."""
   repo_root = Path(repo_root).resolve()
   rewritten: dict[Path, bytes] = {}
   regenerated: list[Path] = []
+  selected_skill_names = set(skill_names or [])
 
   try:
-    for skill_file, rendered in _render_upgrade_targets(repo_root).items():
+    for skill_file, rendered in _render_upgrade_targets(
+      repo_root,
+      selected_skill_names=selected_skill_names,
+    ).items():
       rendered_bytes = rendered.encode("utf-8")
       current_bytes = skill_file.read_bytes()
       if current_bytes == rendered_bytes:
@@ -61,14 +80,32 @@ def upgrade_skill_wrappers(
   )
 
 
-def _render_upgrade_targets(repo_root: Path) -> dict[Path, str]:
+def _render_upgrade_targets(
+  repo_root: Path,
+  *,
+  selected_skill_names: set[str] | None = None,
+) -> dict[Path, str]:
   targets: dict[Path, str] = {}
-  targets.update(_render_horizontal_targets(repo_root))
-  targets.update(_render_governed_targets(repo_root))
+  targets.update(
+    _render_horizontal_targets(
+      repo_root,
+      selected_skill_names=selected_skill_names,
+    )
+  )
+  targets.update(
+    _render_governed_targets(
+      repo_root,
+      selected_skill_names=selected_skill_names,
+    )
+  )
   return targets
 
 
-def _render_horizontal_targets(repo_root: Path) -> dict[Path, str]:
+def _render_horizontal_targets(
+  repo_root: Path,
+  *,
+  selected_skill_names: set[str] | None = None,
+) -> dict[Path, str]:
   skills_root = repo_root / "skills"
   if not skills_root.is_dir():
     return {}
@@ -76,6 +113,8 @@ def _render_horizontal_targets(repo_root: Path) -> dict[Path, str]:
   rendered: dict[Path, str] = {}
   for skill_file in sorted(skills_root.rglob("SKILL.md")):
     skill_name = skill_file.parent.name
+    if selected_skill_names and skill_name not in selected_skill_names:
+      continue
     context = ScaffoldTemplateContext(skill_name=skill_name, family=_infer_family(skill_name))
     text = skill_file.read_text(encoding="utf-8")
     rendered[skill_file] = _replace_top_level_section(
@@ -86,21 +125,28 @@ def _render_horizontal_targets(repo_root: Path) -> dict[Path, str]:
   return rendered
 
 
-def _render_governed_targets(repo_root: Path) -> dict[Path, str]:
+def _render_governed_targets(
+  repo_root: Path,
+  *,
+  selected_skill_names: set[str] | None = None,
+) -> dict[Path, str]:
   rendered: dict[Path, str] = {}
   for pack in discover_platform_pack_manifests(repo_root / "platform-packs"):
     baseline_path = pack.declared_files["baseline"]
     if isinstance(baseline_path, Path):
-      rendered[baseline_path] = _render_governed_wrapper(
-        skill_file=baseline_path,
-        platform=pack.slug,
-        display_name=pack.display_name or pack.slug.replace("-", " ").title(),
-        family="code-review",
-      )
+      if not selected_skill_names or baseline_path.parent.name in selected_skill_names:
+        rendered[baseline_path] = _render_governed_wrapper(
+          skill_file=baseline_path,
+          platform=pack.slug,
+          display_name=pack.display_name or pack.slug.replace("-", " ").title(),
+          family="code-review",
+        )
 
     area_paths = pack.declared_files.get("areas", {})
     if isinstance(area_paths, dict):
       for area, skill_file in area_paths.items():
+        if selected_skill_names and skill_file.parent.name not in selected_skill_names:
+          continue
         rendered[skill_file] = _render_governed_wrapper(
           skill_file=skill_file,
           platform=pack.slug,
@@ -111,12 +157,16 @@ def _render_governed_targets(repo_root: Path) -> dict[Path, str]:
         )
 
     if pack.declared_quality_check_file is not None:
-      rendered[pack.declared_quality_check_file] = _render_governed_wrapper(
-        skill_file=pack.declared_quality_check_file,
-        platform=pack.slug,
-        display_name=pack.display_name or pack.slug.replace("-", " ").title(),
-        family="quality-check",
-      )
+      if (
+        not selected_skill_names
+        or pack.declared_quality_check_file.parent.name in selected_skill_names
+      ):
+        rendered[pack.declared_quality_check_file] = _render_governed_wrapper(
+          skill_file=pack.declared_quality_check_file,
+          platform=pack.slug,
+          display_name=pack.display_name or pack.slug.replace("-", " ").title(),
+          family="quality-check",
+        )
   return rendered
 
 

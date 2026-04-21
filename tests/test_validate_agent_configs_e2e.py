@@ -22,6 +22,7 @@ from skill_bill.scaffold_template import (  # noqa: E402
 )
 from skill_bill.constants import SHELL_CONTRACT_VERSION  # noqa: E402
 from skill_repo_contracts import (  # noqa: E402
+  ADDON_SUPPORTING_FILE_TARGETS,
   APPLIED_LEARNINGS_PLACEHOLDER,
   CHILD_METADATA_HANDOFF_RULE,
   CHILD_NO_IMPORT_RULE,
@@ -570,7 +571,8 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         continue
       content_lines.extend([f"## {heading}", body, ""])
     for file_name in required_sidecars:
-      content_lines.append(f"[{file_name}]({file_name})")
+      if file_name in ADDON_SUPPORTING_FILE_TARGETS:
+        content_lines.append(f"[{file_name}]({file_name})")
     (skill_dir / "content.md").write_text("\n".join(content_lines) + "\n", encoding="utf-8")
 
   def run_validator(self, repo_root: Path) -> subprocess.CompletedProcess[str]:

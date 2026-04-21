@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot migration from v1.0 single-file SKILL.md to v1.1 shell + content split.
+"""Maintainer-only bulk migration from v1.0 single-file SKILL.md to v1.1 shell + content split.
 
 SKILL-21: walks every governed SKILL.md under ``skills/`` and
 ``platform-packs/``, extracts author prose into a sibling ``content.md``,
@@ -22,6 +22,11 @@ Flags:
                 has uncommitted changes other than this migration itself.
   --repo-root   Absolute path to the repo under migration (default:
                 the script's parent directory).
+
+This script is intentionally *not* the normal end-user editing workflow.
+Use ``skill-bill edit <skill-name>`` for day-to-day skill changes. Use this
+script only when maintainers are bulk-migrating legacy single-file governed
+skills into the generated-wrapper + authored-content split.
 
 The script emits a summary table on exit. Any per-skill failure returns a
 non-zero exit code. No git operations are performed — commit manually.
@@ -439,12 +444,15 @@ def migrate(
 
 def main(argv: Iterable[str] | None = None) -> int:
   parser = argparse.ArgumentParser(
-    description="Migrate governed SKILL.md files to the v1.1 shell+content split.",
+    description=(
+      "Maintainer-only bulk migration for governed SKILL.md files to the v1.1 "
+      "shell+content split."
+    ),
   )
   parser.add_argument(
     "--force",
     action="store_true",
-    help="Re-run on skills that already have content.md.",
+    help="Re-run on skills that already have content.md (bulk-maintainer mode only).",
   )
   parser.add_argument(
     "--strict",
@@ -454,7 +462,7 @@ def main(argv: Iterable[str] | None = None) -> int:
   parser.add_argument(
     "--yes",
     action="store_true",
-    help="Bypass the dirty-repo guard.",
+    help="Bypass the dirty-repo guard for maintainer-run bulk migration.",
   )
   parser.add_argument(
     "--repo-root",
@@ -469,6 +477,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     force=args.force,
     strict=args.strict,
     yes=args.yes,
+  )
+  print(
+    "Maintainer workflow: bulk migration only. "
+    "For normal skill edits, use `skill-bill edit <skill-name>`."
   )
   print(_format_summary(report))
   print(

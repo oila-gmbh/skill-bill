@@ -162,13 +162,13 @@ skill-bill new-skill --payload /tmp/payload.json
 
 The scaffolder:
 
-- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` as a governed three-section wrapper plus sibling `content.md` and `shell-ceremony.md`. The authored execution body is stubbed in `content.md`; the ceremony sidecar is shared.
+- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` as a governed three-section wrapper plus sibling `content.md` and `shell-ceremony.md`. The authored execution body lives in `content.md`; the ceremony sidecar is shared.
 - appends `api-contracts` to `declared_code_review_areas` and to `declared_files.areas` in `platform-packs/kotlin/platform.yaml`, preserving key order and best-effort comments.
 - wires sibling supporting-file symlinks for the skill (stack-routing, review-orchestrator, review-delegation, telemetry-contract) from `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`.
 - runs `scripts/validate_agent_configs.py`. If validation fails, every change is rolled back and the validator error is surfaced verbatim.
 - installs the new skill into every detected agent. If none is detected, the scaffolder notes that you should run `./install.sh` to bootstrap agent paths.
 
-Edit the authored execution sections in `content.md` afterwards. Keep the generated `SKILL.md` wrapper and `shell-ceremony.md` sidecar intact unless you are intentionally changing the shared contract.
+Use `skill-bill edit bill-kotlin-code-review-api-contracts` for follow-up changes to the authored `content.md`. Keep the generated `SKILL.md` wrapper and `shell-ceremony.md` sidecar intact unless you are intentionally changing the shared contract. Bulk migration through `scripts/migrate_to_content_md.py` is maintainer-only.
 
 The full payload schema, including the new `platform-pack` kind, lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 

@@ -525,18 +525,14 @@ def render_content_body(
   description: str = "",
   content_body: str | None = None,
 ) -> str:
-  """Render a governed ``content.md`` body or placeholder."""
+  """Render a governed ``content.md`` body or a maintainer starter."""
   if content_body is not None:
     body = content_body.rstrip() + "\n"
   else:
-    sections: list[str] = []
-    if description:
-      sections.append(f"## Description\n\n{description}\n")
-    sections.append(
-      "TODO: author the governed content body. Keep shell metadata, telemetry rules, "
-      "and other shared ceremony in `SKILL.md` or shared sidecars, not here.\n"
+    body = _render_governed_content_starter(
+      context,
+      description=description,
     )
-    body = "\n".join(sections)
 
   title = "Content"
   if context.family == "quality-check":
@@ -546,6 +542,52 @@ def render_content_body(
   elif context.family == "code-review":
     title = "Review Content"
   return f"# {title}\n\n{body.rstrip()}\n"
+
+
+def _render_governed_content_starter(
+  context: ScaffoldTemplateContext,
+  *,
+  description: str,
+) -> str:
+  if context.family == "quality-check":
+    summary = description or infer_skill_description(context)
+    return (
+      f"## Purpose\n\n{summary}\n\n"
+      "## Execution Steps\n\n"
+      "1. Determine the files in scope for the current unit of work.\n"
+      "2. Run the platform's quality-check entrypoint and capture the failures.\n"
+      "3. Fix only the failures that belong to the scoped work unless the contract says otherwise.\n"
+      "4. Re-run the quality check until the scoped failures are resolved.\n\n"
+      "## Fix Strategy\n\n"
+      "- Prefer root-cause fixes over suppressions or TODO comments.\n"
+      "- Keep changes aligned with the project's existing conventions and build tooling.\n"
+      "- Call out any blocker that requires a maintainer decision instead of guessing.\n"
+    )
+
+  if context.family == "code-review" and context.area:
+    summary = description or infer_skill_description(context)
+    area_label = context.area.replace("-", " ")
+    return (
+      f"## Focus\n\n{summary}\n\n"
+      "## Review Triggers\n\n"
+      f"- Changes that primarily affect {area_label} concerns for this platform.\n"
+      "- Project-specific cues, modules, or file patterns that should route into this specialist.\n\n"
+      "## Review Guidance\n\n"
+      "- Record the concrete risks this specialist should prioritize.\n"
+      "- Note any repo-specific heuristics, invariants, or failure modes worth checking.\n"
+      "- Keep output format, telemetry, and runtime ceremony in the wrapper or shared sidecars.\n"
+    )
+
+  summary = description or infer_skill_description(context)
+  return (
+    f"## Review Focus\n\n{summary}\n\n"
+    "## Review Guidance\n\n"
+    "- Document the project-specific risks, heuristics, and judgment calls this skill should apply.\n"
+    "- Call out any local modules, file patterns, frameworks, or product areas that should bias review.\n"
+    "- Capture repo-specific routing cues here only when they matter to review behavior after selection.\n"
+    "- Keep shell ceremony, output formatting rules, and telemetry mechanics out of this file.\n"
+    "- Reference governed add-ons here only when they enrich an already-routed platform skill.\n"
+  )
 
 
 _DEFAULT_SECTION_RENDERERS: dict[str, object] = {

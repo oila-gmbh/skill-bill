@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from skill_bill.shell_content_contract import (  # noqa: E402
   APPROVED_CODE_REVIEW_AREAS as SHELL_APPROVED_CODE_REVIEW_AREAS,
+  CEREMONY_FREE_FORM_H2S,
   SHELL_CONTRACT_VERSION,
   ShellContentContractError,
   discover_platform_packs,
@@ -142,6 +143,31 @@ REVIEW_ORCHESTRATOR_TELEMETRY_REQUIREMENTS: tuple[tuple[str, str], ...] = (
   (CHILD_NO_TRIAGE_RULE, "review orchestration contract must forbid delegated child reviews from calling triage_findings"),
   (NO_FINDINGS_TRIAGE_RULE, "review orchestration contract must define the final parent-owned no-findings triage rule"),
 )
+FRAMEWORK_DUPLICATION_LINES: tuple[str, ...] = (
+  "## Additional Resources",
+  "## Output Rules",
+  "## Review Output",
+  "## Output Format",
+  "### Telemetry",
+  "### Implementation Mode Notes",
+)
+SYSTEM_OWNED_CONTENT_MARKERS: tuple[str, ...] = (
+  "## Setup",
+  "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.",
+)
+EXECUTION_AND_REPORTING_CEREMONY_MARKERS: tuple[str, ...] = (
+  "shared execution-mode contract",
+  "If execution mode is `inline`:",
+  "If execution mode is `delegated`:",
+  "delegated subagent",
+  "wrapper-linked sidecars",
+  "Selected add-ons: none",
+  "When reporting results:",
+  "show issue count by category",
+  "report each fix with `file:line`",
+  "display the final `./gradlew check` result",
+)
+UNRESOLVED_PLACEHOLDER_PATTERN = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b")
 
 
 def main() -> int:
@@ -333,6 +359,67 @@ def validate_platform_pack_skill_file(skill_name: str, skill_file: Path, issues:
     )
   validate_runtime_supporting_files(skill_name, text, skill_file, issues)
   validate_portable_review_wording(skill_name, text, skill_file, issues)
+  validate_governed_content_file(skill_name, skill_file, issues)
+
+
+def validate_governed_content_file(
+  skill_name: str,
+  skill_file: Path,
+  issues: list[str],
+) -> None:
+  content_file = skill_file.parent / "content.md"
+  if not content_file.is_file():
+    return
+
+  text = content_file.read_text(encoding="utf-8")
+  stripped = text.strip()
+  if not stripped:
+    issues.append(f"{content_file}: content.md must not be empty")
+    return
+
+  visible_lines = [line.strip() for line in text.splitlines() if line.strip()]
+  if len(visible_lines) <= 1:
+    issues.append(
+      f"{content_file}: content.md must include authored guidance beyond the title heading"
+    )
+
+  if UNRESOLVED_PLACEHOLDER_PATTERN.search(text):
+    issues.append(
+      f"{content_file}: content.md contains an unresolved TODO/FIXME placeholder"
+    )
+
+  for heading in CEREMONY_FREE_FORM_H2S:
+    if heading in text.splitlines():
+      issues.append(
+        f"{content_file}: content.md must not reintroduce shell-owned heading '{heading}'"
+      )
+
+  for marker in FRAMEWORK_DUPLICATION_LINES:
+    if marker in text.splitlines():
+      issues.append(
+        f"{content_file}: content.md must not inline shared review-contract block '{marker}'"
+      )
+
+  for marker in SYSTEM_OWNED_CONTENT_MARKERS:
+    if marker in text:
+      issues.append(
+        f"{content_file}: content.md must not inline system-owned setup contract marker '{marker}'"
+      )
+
+  for marker in EXECUTION_AND_REPORTING_CEREMONY_MARKERS:
+    if marker in text:
+      issues.append(
+        f"{content_file}: content.md must not inline shell-owned execution/reporting marker '{marker}'"
+      )
+
+  required_files = required_supporting_files_for_skill(skill_name)
+  for file_name in required_files:
+    if file_name in ADDON_SUPPORTING_FILE_TARGETS:
+      continue
+    if file_name in text:
+      issues.append(
+        f"{content_file}: content.md must not carry system-required supporting file reference '{file_name}'"
+      )
 
 
 def discover_addon_files(root: Path) -> list[Path]:

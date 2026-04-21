@@ -1,3 +1,12 @@
+## [2026-04-20] skill-authoring-terminal-loop
+Areas: skill_bill/, README.md, tests/
+- Added a terminal-first authoring loop on top of the existing split-wrapper scaffold: `skill-bill new`, guided `skill-bill edit`, `skill-bill list`, scoped `skill-bill validate`, and `skill-bill render`/`upgrade` now form the concrete single-skill workflow instead of forcing repo navigation. reusable
+- The guided editor treats `content.md` as the only editable surface, preserves authored H2 order, supports replace / append / clear / skip actions per section, and regenerates only the targeted wrapper before re-running validation. reusable
+- Added completion and drift inspection for content-managed skills plus targeted wrapper regeneration/validation helpers so maintainers can audit one skill at a time without running the entire repo workflow. reusable
+- Maintainer-only bulk workflows remain separate: the migration script is still the path for legacy one-shot conversion, while end users stay on the single-skill terminal loop.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-04-19] collapse-skill-md-to-shared-ceremony
 Areas: orchestration/shell-content-contract/, skill_bill/, scripts/, skills/, platform-packs/, docs/, tests/
 - Collapsed the governed shell contract to `Descriptor` / `Execution` / `Ceremony`, with `SKILL.md` reduced to a thin wrapper and authored execution moved into sibling `content.md`. reusable
