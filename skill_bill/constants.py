@@ -45,6 +45,7 @@ EVENT_NEW_SKILL_SCAFFOLD_STARTED = "skillbill_new_skill_scaffold_started"
 EVENT_NEW_SKILL_SCAFFOLD_FINISHED = "skillbill_new_skill_scaffold_finished"
 
 FEATURE_IMPLEMENT_SESSION_PREFIX = "fis"
+FEATURE_IMPLEMENT_WORKFLOW_PREFIX = "wfl"
 QUALITY_CHECK_SESSION_PREFIX = "qck"
 FEATURE_VERIFY_SESSION_PREFIX = "fvr"
 PR_DESCRIPTION_SESSION_PREFIX = "prd"
@@ -97,6 +98,38 @@ COMPLETION_STATUSES = (
   "abandoned_at_implementation",
   "abandoned_at_review",
   "error",
+)
+FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION = "0.1"
+FEATURE_IMPLEMENT_WORKFLOW_STATUSES = (
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "abandoned",
+  "blocked",
+)
+FEATURE_IMPLEMENT_WORKFLOW_TERMINAL_STATUSES = ("completed", "failed", "abandoned")
+FEATURE_IMPLEMENT_WORKFLOW_STEP_STATUSES = (
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "blocked",
+  "skipped",
+)
+FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS = (
+  "assess",
+  "create_branch",
+  "preplan",
+  "plan",
+  "implement",
+  "review",
+  "audit",
+  "validate",
+  "write_history",
+  "commit_push",
+  "pr_description",
+  "finish",
 )
 MEANINGFUL_NOTE_PATTERN = re.compile(r"[A-Za-z0-9]")
 

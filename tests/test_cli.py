@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -15,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from skill_bill.cli import main  # noqa: E402
+from skill_bill.mcp_server import (  # noqa: E402
+  feature_implement_workflow_open,
+  feature_implement_workflow_update,
+)
 from skill_bill.shell_content_contract import PyYAMLMissingError  # noqa: E402
 from skill_bill.upgrade import upgrade_skill_wrappers  # noqa: E402
 
@@ -734,3 +739,215 @@ area_metadata:
 
     self.assertEqual(exit_code, 1)
     self.assertEqual(stderr.getvalue().strip(), "PyYAML is required to load platform packs.")
+
+
+class WorkflowCliTest(unittest.TestCase):
+  def setUp(self) -> None:
+    self._tmpdir = tempfile.TemporaryDirectory()
+    self.addCleanup(self._tmpdir.cleanup)
+    self.db_path = str(Path(self._tmpdir.name) / "metrics.db")
+    self.config_path = str(Path(self._tmpdir.name) / "config.json")
+    Path(self.config_path).write_text(
+      json.dumps({
+        "install_id": "test-install-id",
+        "telemetry": {"enabled": False, "proxy_url": "", "batch_size": 50},
+      }),
+      encoding="utf-8",
+    )
+    self._original_env: dict[str, str | None] = {}
+    env_overrides = {
+      "SKILL_BILL_REVIEW_DB": self.db_path,
+      "SKILL_BILL_CONFIG_PATH": self.config_path,
+      "SKILL_BILL_TELEMETRY_ENABLED": "false",
+      "SKILL_BILL_TELEMETRY_PROXY_URL": "http://127.0.0.1:0",
+    }
+    for key, value in env_overrides.items():
+      self._original_env[key] = os.environ.get(key)
+      os.environ[key] = value
+
+  def tearDown(self) -> None:
+    for key, value in self._original_env.items():
+      if value is None:
+        os.environ.pop(key, None)
+      else:
+        os.environ[key] = value
+
+  def test_workflow_resume_reports_next_action(self) -> None:
+    opened = feature_implement_workflow_open()
+    workflow_id = opened["workflow_id"]
+    feature_implement_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="running",
+      current_step_id="implement",
+      step_updates=[
+        {"step_id": "assess", "status": "completed", "attempt_count": 1},
+        {"step_id": "create_branch", "status": "completed", "attempt_count": 1},
+        {"step_id": "preplan", "status": "completed", "attempt_count": 1},
+        {"step_id": "plan", "status": "completed", "attempt_count": 1},
+        {"step_id": "implement", "status": "running", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "assessment": {"feature_name": "workflow pilot"},
+        "branch": {"branch_name": "feat/SKILL-1-workflow-pilot"},
+        "preplan_digest": {"validation_strategy": "bill-quality-check"},
+        "plan": {"task_count": 4},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "resume", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["resume_step_id"], "implement")
+    self.assertTrue(payload["can_resume"])
+    self.assertIn("Resume implementation", payload["next_action"])
+
+  def test_workflow_list_reports_recent_runs(self) -> None:
+    first = feature_implement_workflow_open()
+    second = feature_implement_workflow_open(session_id="fis-20260421-000002-test")
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "list", "--limit", "5", "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["status"], "ok")
+    self.assertGreaterEqual(payload["workflow_count"], 2)
+    workflow_ids = [entry["workflow_id"] for entry in payload["workflows"]]
+    self.assertIn(first["workflow_id"], workflow_ids)
+    self.assertIn(second["workflow_id"], workflow_ids)
+
+  def test_workflow_resume_latest_uses_most_recent_workflow(self) -> None:
+    feature_implement_workflow_open(session_id="fis-20260421-000001-test")
+    latest = feature_implement_workflow_open(session_id="fis-20260421-000002-test")
+    feature_implement_workflow_update(
+      workflow_id=latest["workflow_id"],
+      workflow_status="running",
+      current_step_id="preplan",
+      step_updates=[
+        {"step_id": "assess", "status": "completed", "attempt_count": 1},
+        {"step_id": "create_branch", "status": "completed", "attempt_count": 1},
+        {"step_id": "preplan", "status": "running", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "assessment": {"feature_name": "workflow pilot"},
+        "branch": {"branch_name": "feat/SKILL-1-workflow-pilot"},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "resume", "--latest", "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["workflow_id"], latest["workflow_id"])
+    self.assertEqual(payload["resume_step_id"], "preplan")
+
+  def test_workflow_continue_reopens_workflow_and_returns_brief(self) -> None:
+    opened = feature_implement_workflow_open(session_id="fis-20260421-000006-test")
+    workflow_id = opened["workflow_id"]
+    feature_implement_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="failed",
+      current_step_id="audit",
+      step_updates=[
+        {"step_id": "assess", "status": "completed", "attempt_count": 1},
+        {"step_id": "create_branch", "status": "completed", "attempt_count": 1},
+        {"step_id": "preplan", "status": "completed", "attempt_count": 1},
+        {"step_id": "plan", "status": "completed", "attempt_count": 1},
+        {"step_id": "implement", "status": "completed", "attempt_count": 1},
+        {"step_id": "review", "status": "completed", "attempt_count": 1},
+        {"step_id": "audit", "status": "failed", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "assessment": {"feature_name": "workflow pilot", "feature_size": "MEDIUM"},
+        "branch": {"branch_name": "feat/SKILL-1-workflow-pilot"},
+        "implementation_summary": {"files_modified": 3},
+        "review_result": {"iteration": 1},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "continue", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["continue_status"], "reopened")
+    self.assertEqual(payload["workflow_status"], "running")
+    self.assertEqual(payload["continue_step_id"], "audit")
+    self.assertEqual(payload["skill_name"], "bill-feature-implement")
+    self.assertIn("SKILL.md :: Continuation Mode", payload["reference_sections"])
+    self.assertIn("continuation_brief", payload)
+    self.assertIn("continuation_entry_prompt", payload)
+
+  def test_workflow_continue_errors_when_artifacts_are_missing(self) -> None:
+    opened = feature_implement_workflow_open()
+    workflow_id = opened["workflow_id"]
+    feature_implement_workflow_update(
+      workflow_id=workflow_id,
+      workflow_status="failed",
+      current_step_id="validate",
+      step_updates=[
+        {"step_id": "validate", "status": "failed", "attempt_count": 1},
+      ],
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "continue", workflow_id, "--format", "json"])
+
+    self.assertEqual(exit_code, 1)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["status"], "error")
+    self.assertEqual(payload["continue_status"], "blocked")
+    self.assertIn("audit_report", payload["missing_artifacts"])
+
+  def test_workflow_continue_latest_uses_most_recent_workflow(self) -> None:
+    feature_implement_workflow_open(session_id="fis-20260421-000007-test")
+    latest = feature_implement_workflow_open(session_id="fis-20260421-000008-test")
+    feature_implement_workflow_update(
+      workflow_id=latest["workflow_id"],
+      workflow_status="failed",
+      current_step_id="preplan",
+      step_updates=[
+        {"step_id": "assess", "status": "completed", "attempt_count": 1},
+        {"step_id": "create_branch", "status": "completed", "attempt_count": 1},
+        {"step_id": "preplan", "status": "failed", "attempt_count": 1},
+      ],
+      artifacts_patch={
+        "assessment": {"feature_name": "workflow pilot"},
+        "branch": {"branch_name": "feat/SKILL-1-workflow-pilot"},
+      },
+    )
+
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "continue", "--latest", "--format", "json"])
+
+    self.assertEqual(exit_code, 0)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["workflow_id"], latest["workflow_id"])
+    self.assertEqual(payload["continue_step_id"], "preplan")
+
+  def test_workflow_show_errors_for_unknown_id(self) -> None:
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      exit_code = main(["workflow", "show", "wfl-unknown", "--format", "json"])
+
+    self.assertEqual(exit_code, 1)
+    payload = json.loads(stdout.getvalue())
+    self.assertEqual(payload["status"], "error")
+    self.assertIn("Unknown workflow_id", payload["error"])
+
+  def test_workflow_show_requires_id_or_latest(self) -> None:
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      exit_code = main(["workflow", "show"])
+
+    self.assertEqual(exit_code, 1)
+    self.assertIn("Provide a workflow_id or pass --latest.", stderr.getvalue())

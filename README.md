@@ -2,7 +2,7 @@
 
 A governed system for portable AI-agent behavior: stable base commands, shared orchestration, validator-backed contracts, cross-agent installers, scaffolding, and local-first telemetry that keep one source of truth from drifting as the repo grows.
 
-Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars. For humans, `content.md` is the real working surface where authored skill behavior lives; `SKILL.md` is scaffold-managed wiring that points the runtime at the right authored content and shared ceremony. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`.
+Skill Bill is a governance product, not a prompt dump. This repo ships the shared orchestration playbooks under `orchestration/`, validators and CLI/MCP runtime under `skill_bill/` and `scripts/`, cross-agent installers, the `bill-create-skill` authoring path, SQLite-backed telemetry, and stable base shells such as `bill-code-review` and `bill-quality-check`. Governed pack skills now use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md` sidecars. For humans, `content.md` is the real working surface where authored skill behavior lives; `SKILL.md` is scaffold-managed wiring that points the runtime at the right authored content and shared ceremony. The shell+content contract is versioned at `orchestration/shell-content-contract/PLAYBOOK.md`, and top-level orchestrators can additionally adopt the workflow contract at `orchestration/workflow-contract/PLAYBOOK.md`.
 
 Shipped platform packs live under `platform-packs/`. Routing, validation, and installation are manifest-driven, so any conforming platform pack can live here without changing the shell.
 
@@ -125,6 +125,15 @@ Base entry points stay stable for users:
 - `/bill-code-review` routes to the matching `bill-<platform>-code-review` discovered from `platform-packs/`
 - `/bill-quality-check` routes to the matching stack-specific quality checker
 - `/bill-feature-implement` orchestrates the full workflow
+
+## Skills vs workflows
+
+Skill Bill keeps **skills** and **workflows** separate on purpose:
+
+- skills are the reusable user-facing units: routing, rubrics, stack depth, and standalone execution
+- workflows are the small set of top-level orchestrators that need durable step state, explicit artifact handoff, retry/resume rules, and parent-owned telemetry
+
+The first workflow-contract pilot is `bill-feature-implement`. It still presents as one stable command, but its internal step graph now has a governed home under `orchestration/workflow-contract/PLAYBOOK.md` instead of living only in skill prose. The pilot now exposes discovery, resume, and continue surfaces through `skill-bill workflow ...` and matching MCP tools, so interrupted runs can be reactivated from persisted state instead of being reconstructed from chat history. The `continue` surface now returns a step-specific continuation contract for `bill-feature-implement` itself rather than a generic recovery note.
 
 ## Reference platform packs
 

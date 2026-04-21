@@ -198,6 +198,16 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`bill-code-review`", FEATURE_IMPLEMENT)
     self.assertIn("`bill-quality-check`", FEATURE_IMPLEMENT)
 
+  def test_feature_implement_uses_workflow_state_tools(self) -> None:
+    self.assertIn("feature_implement_workflow_open", FEATURE_IMPLEMENT)
+    self.assertIn("feature_implement_workflow_update", FEATURE_IMPLEMENT)
+    self.assertIn("feature_implement_workflow_continue", FEATURE_IMPLEMENT)
+    self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT)
+    self.assertIn("`assessment`", FEATURE_IMPLEMENT)
+    self.assertIn("`preplan_digest`", FEATURE_IMPLEMENT)
+    self.assertIn("`implementation_summary`", FEATURE_IMPLEMENT)
+    self.assertIn("`pr_result`", FEATURE_IMPLEMENT)
+
   def test_pr_description_prefers_repo_native_templates(self) -> None:
     self.assertIn("## Repo-Native PR Template Search (mandatory)", PR_DESCRIPTION)
     self.assertIn("`.github/pull_request_template.md`", PR_DESCRIPTION)

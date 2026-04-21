@@ -187,6 +187,20 @@ def ensure_database(path: Path) -> sqlite3.Connection:
       finished_at TEXT,
       finished_event_emitted_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS feature_implement_workflows (
+      workflow_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL DEFAULT '',
+      workflow_name TEXT NOT NULL DEFAULT 'bill-feature-implement',
+      contract_version TEXT NOT NULL DEFAULT '0.1',
+      workflow_status TEXT NOT NULL DEFAULT 'pending',
+      current_step_id TEXT NOT NULL DEFAULT '',
+      steps_json TEXT NOT NULL DEFAULT '',
+      artifacts_json TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at TEXT
+    );
     """
   )
   ensure_column(connection, "review_runs", "review_session_id", "TEXT")
