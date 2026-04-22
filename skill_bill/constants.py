@@ -12,11 +12,13 @@ CONFIG_ENVIRONMENT_KEY = "SKILL_BILL_CONFIG_PATH"
 TELEMETRY_ENABLED_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_ENABLED"
 TELEMETRY_LEVEL_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_LEVEL"
 TELEMETRY_PROXY_URL_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_PROXY_URL"
+TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN"
 INSTALL_ID_ENVIRONMENT_KEY = "SKILL_BILL_INSTALL_ID"
 TELEMETRY_BATCH_SIZE_ENVIRONMENT_KEY = "SKILL_BILL_TELEMETRY_BATCH_SIZE"
 TELEMETRY_LEVELS = ("off", "anonymous", "full")
 DEFAULT_TELEMETRY_PROXY_URL = "https://skill-bill-telemetry-proxy.skillbill.workers.dev"
 DEFAULT_TELEMETRY_BATCH_SIZE = 50
+TELEMETRY_PROXY_CONTRACT_VERSION = "1"
 FINDING_OUTCOME_TYPES = (
   "finding_accepted",
   "fix_applied",
@@ -43,6 +45,7 @@ EVENT_FEATURE_VERIFY_FINISHED = "skillbill_feature_verify_finished"
 EVENT_PR_DESCRIPTION_GENERATED = "skillbill_pr_description_generated"
 EVENT_NEW_SKILL_SCAFFOLD_STARTED = "skillbill_new_skill_scaffold_started"
 EVENT_NEW_SKILL_SCAFFOLD_FINISHED = "skillbill_new_skill_scaffold_finished"
+REMOTE_STATS_WORKFLOWS = ("bill-feature-implement", "bill-feature-verify")
 
 FEATURE_IMPLEMENT_SESSION_PREFIX = "fis"
 FEATURE_IMPLEMENT_WORKFLOW_PREFIX = "wfl"
@@ -117,7 +120,8 @@ FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
 SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
 ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")
 FEATURE_FLAG_PATTERNS = ("simple_conditional", "di_switch", "legacy", "none")
-BOUNDARY_HISTORY_VALUES = ("none", "irrelevant", "low", "medium", "high")
+HISTORY_SIGNAL_VALUES = ("none", "irrelevant", "low", "medium", "high")
+BOUNDARY_HISTORY_VALUES = HISTORY_SIGNAL_VALUES
 AUDIT_RESULTS = ("all_pass", "had_gaps", "skipped")
 VALIDATION_RESULTS = ("pass", "fail", "skipped")
 COMPLETION_STATUSES = (

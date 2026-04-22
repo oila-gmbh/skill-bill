@@ -32,6 +32,7 @@ Reason: kotlin signals dominate
 EXPECTED_TOOLS = {
   "doctor",
   "feature_implement_finished",
+  "feature_implement_stats",
   "feature_implement_started",
   "feature_implement_workflow_get",
   "feature_implement_workflow_latest",
@@ -41,6 +42,7 @@ EXPECTED_TOOLS = {
   "feature_implement_workflow_resume",
   "feature_implement_workflow_update",
   "feature_verify_finished",
+  "feature_verify_stats",
   "feature_verify_started",
   "feature_verify_workflow_get",
   "feature_verify_workflow_latest",
@@ -56,6 +58,8 @@ EXPECTED_TOOLS = {
   "quality_check_started",
   "resolve_learnings",
   "review_stats",
+  "telemetry_proxy_capabilities",
+  "telemetry_remote_stats",
   "triage_findings",
 }
 

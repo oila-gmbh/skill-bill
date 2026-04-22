@@ -505,24 +505,24 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     result = scaffold(
       self._payload(
         kind="platform-pack",
-        platform="php",
+        platform="java",
       )
     )
     self.assertEqual(result.kind, "platform-pack")
 
-    pack_root = self.repo / "platform-packs" / "php"
+    pack_root = self.repo / "platform-packs" / "java"
     manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
-    self.assertIn('platform: "php"', manifest)
-    self.assertIn('display_name: "PHP"', manifest)
+    self.assertIn('platform: "java"', manifest)
+    self.assertIn('display_name: "Java"', manifest)
     self.assertIn('    - "composer.json"', manifest)
-    self.assertIn('    - ".php"', manifest)
+    self.assertIn('    - ".java"', manifest)
     self.assertIn('    - "phpunit.xml"', manifest)
     self.assertIn(
-      "Prefer PHP when Composer metadata or .php source files dominate mixed backend signals.",
+      "Prefer Java when Maven metadata or Java source markers dominate generic JVM signals.",
       manifest,
     )
     self.assertTrue(
-      any("Applied built-in platform preset for 'php'." in note for note in result.notes)
+      any("Applied built-in platform preset for 'java'." in note for note in result.notes)
     )
     self.assertIn(GOVERNED_CONTENT_AUTHORING_NOTE, result.notes)
 
@@ -537,19 +537,19 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
       / "SKILL.md"
     )
     drifted_skill.write_text(
-      drifted_skill.read_text(encoding="utf-8") + "\nDrift injected outside the new php pack.\n",
+      drifted_skill.read_text(encoding="utf-8") + "\nDrift injected outside the new java pack.\n",
       encoding="utf-8",
     )
 
     result = scaffold(
       self._payload(
         kind="platform-pack",
-        platform="php",
+        platform="java",
       )
     )
 
     self.assertEqual(result.kind, "platform-pack")
-    self.assertTrue((self.repo / "platform-packs" / "php" / "platform.yaml").is_file())
+    self.assertTrue((self.repo / "platform-packs" / "java" / "platform.yaml").is_file())
 
   def test_platform_pack_defaults_to_full_skeleton(self) -> None:
     result = scaffold(
@@ -591,13 +591,13 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     result = scaffold(
       self._payload(
         kind="platform-pack",
-        platform="php",
+        platform="java",
         specialist_areas=["architecture", "security", "testing"],
       )
     )
     self.assertEqual(result.kind, "platform-pack")
 
-    pack_root = self.repo / "platform-packs" / "php"
+    pack_root = self.repo / "platform-packs" / "java"
     manifest = (pack_root / "platform.yaml").read_text(encoding="utf-8")
     self.assertIn('  - "architecture"', manifest)
     self.assertIn('  - "security"', manifest)
@@ -605,15 +605,15 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertNotIn('  - "ui"', manifest)
     self.assertNotIn('  - "ux-accessibility"', manifest)
     self.assertTrue(
-      (pack_root / "code-review" / "bill-php-code-review-architecture" / "SKILL.md").is_file()
+      (pack_root / "code-review" / "bill-java-code-review-architecture" / "SKILL.md").is_file()
     )
     self.assertTrue(
-      (pack_root / "code-review" / "bill-php-code-review-security" / "SKILL.md").is_file()
+      (pack_root / "code-review" / "bill-java-code-review-security" / "SKILL.md").is_file()
     )
     self.assertTrue(
-      (pack_root / "code-review" / "bill-php-code-review-testing" / "SKILL.md").is_file()
+      (pack_root / "code-review" / "bill-java-code-review-testing" / "SKILL.md").is_file()
     )
-    self.assertFalse((pack_root / "code-review" / "bill-php-code-review-ui").exists())
+    self.assertFalse((pack_root / "code-review" / "bill-java-code-review-ui").exists())
     self.assertTrue(
       any("Custom skeleton scaffolded with 3 approved code-review area stubs." in note for note in result.notes)
     )
@@ -1294,7 +1294,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
       with mock.patch(
         "builtins.input",
         side_effect=[
-          "php",    # platform
+          "java",    # platform
           "",       # specialist mode -> all
           "",       # display name
           "",       # description
@@ -1303,7 +1303,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["platform"], "java")
     self.assertNotIn("skeleton_mode", payload)
     self.assertNotIn("routing_signals", payload)
 
@@ -1341,7 +1341,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
       with mock.patch(
         "builtins.input",
         side_effect=[
-          "php",                  # platform
+          "java",                  # platform
           "2",                    # specialist mode -> custom
           "architecture,security,testing,reliability",
           "",                     # display name
@@ -1351,7 +1351,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["platform"], "java")
     self.assertEqual(
       payload["specialist_areas"],
       ["architecture", "reliability", "security", "testing"],
@@ -1366,7 +1366,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
       with mock.patch(
         "builtins.input",
         side_effect=[
-          "php",    # platform
+          "java",    # platform
           "1",      # specialist mode -> none
           "",       # display name
           "",       # description
@@ -1375,7 +1375,7 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["platform"], "java")
     self.assertEqual(payload["skeleton_mode"], "starter")
     self.assertNotIn("specialist_areas", payload)
 
@@ -1384,56 +1384,56 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "php").mkdir(parents=True)
-      (repo_root / "platform-packs" / "php" / "platform.yaml").write_text(
+      (repo_root / "platform-packs" / "java").mkdir(parents=True)
+      (repo_root / "platform-packs" / "java" / "platform.yaml").write_text(
         "shell_contract_version: '1.0'\n",
         encoding="utf-8",
       )
       with mock.patch(
         "builtins.input",
         side_effect=[
-          "php",           # platform
+          "java",           # platform
           "1",             # code-review specialist
           "security",      # area
           "",              # derived name
-          "Review PHP security risks.",  # description
+          "Review Java security risks.",  # description
           "END",           # optional content body
         ],
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "code-review-area")
-    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["platform"], "java")
     self.assertEqual(payload["area"], "security")
-    self.assertEqual(payload["description"], "Review PHP security risks.")
+    self.assertEqual(payload["description"], "Review Java security risks.")
 
   def test_existing_platform_prompt_branches_to_platform_override(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "php").mkdir(parents=True)
-      (repo_root / "platform-packs" / "php" / "platform.yaml").write_text(
+      (repo_root / "platform-packs" / "java").mkdir(parents=True)
+      (repo_root / "platform-packs" / "java" / "platform.yaml").write_text(
         "shell_contract_version: '1.0'\n",
         encoding="utf-8",
       )
       with mock.patch(
         "builtins.input",
         side_effect=[
-          "php",            # platform
+          "java",            # platform
           "2",              # platform override
           "quality-check",  # family
           "",               # derived name
-          "Run PHP quality checks.",  # description
+          "Run Java quality checks.",  # description
           "END",            # optional content body
         ],
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
     self.assertEqual(payload["kind"], "platform-override-piloted")
-    self.assertEqual(payload["platform"], "php")
+    self.assertEqual(payload["platform"], "java")
     self.assertEqual(payload["family"], "quality-check")
-    self.assertEqual(payload["description"], "Run PHP quality checks.")
+    self.assertEqual(payload["description"], "Run Java quality checks.")
 
   def test_new_addon_prompt_builds_markdown_body(self) -> None:
     from skill_bill.cli import _prompt_new_addon_interactively

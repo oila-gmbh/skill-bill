@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import json
+import os
 import sqlite3
 import sys
 import urllib.error
 import urllib.request
 
 from skill_bill.config import load_telemetry_settings
-from skill_bill.constants import SyncResult, TelemetrySettings
+from skill_bill.constants import (
+  REMOTE_STATS_WORKFLOWS,
+  SyncResult,
+  TELEMETRY_PROXY_CONTRACT_VERSION,
+  TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY,
+  TelemetrySettings,
+)
 from skill_bill.db import ensure_database
 from skill_bill.stats import (
   fetch_pending_telemetry_events,
@@ -45,6 +53,93 @@ def build_telemetry_batch(settings: TelemetrySettings, rows: list[sqlite3.Row]) 
   return batch
 
 
+def _json_request(
+  url: str,
+  payload: dict[str, object],
+  *,
+  error_context: str,
+  headers: dict[str, str] | None = None,
+) -> dict[str, object]:
+  request_headers = {
+    "Content-Type": "application/json",
+    "User-Agent": "skill-bill-telemetry/1.0",
+  }
+  if headers:
+    request_headers.update(headers)
+  request = urllib.request.Request(
+    url=url,
+    data=json.dumps(payload).encode("utf-8"),
+    headers=request_headers,
+    method="POST",
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+      status_code = getattr(response, "status", response.getcode())
+      body = response.read().decode("utf-8", errors="replace").strip()
+      if status_code < 200 or status_code >= 300:
+        raise ValueError(f"{error_context} failed with HTTP {status_code}.")
+  except urllib.error.HTTPError as error:
+    response_body = error.read().decode("utf-8", errors="replace").strip()
+    message = f"{error_context} failed with HTTP {error.code}."
+    if response_body:
+      message = f"{message} {response_body}"
+    raise ValueError(message) from error
+  except urllib.error.URLError as error:
+    raise
+
+  if not body:
+    return {}
+  try:
+    decoded = json.loads(body)
+  except json.JSONDecodeError as error:
+    raise ValueError(f"{error_context} returned invalid JSON.") from error
+  if not isinstance(decoded, dict):
+    raise ValueError(f"{error_context} returned a non-object JSON payload.")
+  return decoded
+
+
+def _json_get(
+  url: str,
+  *,
+  error_context: str,
+  headers: dict[str, str] | None = None,
+) -> dict[str, object]:
+  request_headers = {
+    "User-Agent": "skill-bill-telemetry/1.0",
+  }
+  if headers:
+    request_headers.update(headers)
+  request = urllib.request.Request(
+    url=url,
+    headers=request_headers,
+    method="GET",
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+      status_code = getattr(response, "status", response.getcode())
+      body = response.read().decode("utf-8", errors="replace").strip()
+      if status_code < 200 or status_code >= 300:
+        raise ValueError(f"{error_context} failed with HTTP {status_code}.")
+  except urllib.error.HTTPError as error:
+    response_body = error.read().decode("utf-8", errors="replace").strip()
+    message = f"{error_context} failed with HTTP {error.code}."
+    if response_body:
+      message = f"{message} {response_body}"
+    raise ValueError(message) from error
+  except urllib.error.URLError:
+    raise
+
+  if not body:
+    return {}
+  try:
+    decoded = json.loads(body)
+  except json.JSONDecodeError as error:
+    raise ValueError(f"{error_context} returned invalid JSON.") from error
+  if not isinstance(decoded, dict):
+    raise ValueError(f"{error_context} returned a non-object JSON payload.")
+  return decoded
+
+
 def post_json(url: str, payload: dict[str, object], *, error_context: str) -> None:
   request = urllib.request.Request(
     url=url,
@@ -68,6 +163,54 @@ def post_json(url: str, payload: dict[str, object], *, error_context: str) -> No
     raise ValueError(message) from error
 
 
+def _proxy_auth_headers() -> dict[str, str]:
+  stats_token = os.environ.get(TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY, "").strip()
+  headers: dict[str, str] = {}
+  if stats_token:
+    headers["Authorization"] = f"Bearer {stats_token}"
+  return headers
+
+
+def _default_proxy_capabilities(proxy_url: str, capabilities_url: str) -> dict[str, object]:
+  return {
+    "contract_version": "0",
+    "source": "remote_proxy",
+    "proxy_url": proxy_url,
+    "capabilities_url": capabilities_url,
+    "supports_ingest": True,
+    "supports_stats": False,
+    "supported_workflows": [],
+  }
+
+
+def fetch_proxy_capabilities() -> dict[str, object]:
+  settings = load_telemetry_settings()
+  if not settings.proxy_url:
+    raise ValueError("Telemetry relay URL is not configured.")
+
+  capabilities_url = settings.proxy_url.rstrip("/") + "/capabilities"
+  headers = _proxy_auth_headers()
+  try:
+    payload = _json_get(
+      capabilities_url,
+      error_context="Telemetry proxy capabilities request",
+      headers=headers,
+    )
+  except ValueError as error:
+    if "HTTP 404" in str(error) or "HTTP 405" in str(error):
+      return _default_proxy_capabilities(settings.proxy_url, capabilities_url)
+    raise
+
+  payload.setdefault("contract_version", TELEMETRY_PROXY_CONTRACT_VERSION)
+  payload.setdefault("source", "remote_proxy")
+  payload.setdefault("proxy_url", settings.proxy_url)
+  payload.setdefault("capabilities_url", capabilities_url)
+  payload.setdefault("supports_ingest", True)
+  payload.setdefault("supports_stats", False)
+  payload.setdefault("supported_workflows", [])
+  return payload
+
+
 def send_proxy_batch(settings: TelemetrySettings, rows: list[sqlite3.Row]) -> str | None:
   if not settings.proxy_url:
     raise ValueError("Telemetry relay URL is not configured.")
@@ -79,6 +222,114 @@ def send_proxy_batch(settings: TelemetrySettings, rows: list[sqlite3.Row]) -> st
     error_context=error_context,
   )
   return None
+
+
+def parse_remote_stats_window(
+  *,
+  since: str = "",
+  date_from: str = "",
+  date_to: str = "",
+  today: date | None = None,
+) -> tuple[str, str]:
+  if date_from and since:
+    raise ValueError("Use either since or date_from/date_to, not both.")
+
+  today_value = today or datetime.now(timezone.utc).date()
+  if date_to:
+    try:
+      end_date = date.fromisoformat(date_to)
+    except ValueError as error:
+      raise ValueError("date_to must use YYYY-MM-DD format.") from error
+  else:
+    end_date = today_value
+
+  if date_from:
+    try:
+      start_date = date.fromisoformat(date_from)
+    except ValueError as error:
+      raise ValueError("date_from must use YYYY-MM-DD format.") from error
+  else:
+    normalized = (since or "30d").strip().lower()
+    if not normalized.endswith("d"):
+      raise ValueError("since must use <days>d format, for example 7d or 30d.")
+    try:
+      days = int(normalized[:-1])
+    except ValueError as error:
+      raise ValueError("since must use <days>d format, for example 7d or 30d.") from error
+    if days <= 0:
+      raise ValueError("since must be greater than zero days.")
+    start_date = end_date - timedelta(days=days - 1)
+
+  if start_date > end_date:
+    raise ValueError("date_from must be on or before date_to.")
+  return (start_date.isoformat(), end_date.isoformat())
+
+
+def fetch_remote_stats(
+  *,
+  workflow: str,
+  since: str = "",
+  date_from: str = "",
+  date_to: str = "",
+  group_by: str = "",
+) -> dict[str, object]:
+  if workflow not in REMOTE_STATS_WORKFLOWS:
+    raise ValueError(
+      f"workflow must be one of: {', '.join(REMOTE_STATS_WORKFLOWS)}."
+    )
+  if group_by and group_by not in ("day", "week"):
+    raise ValueError("group_by must be one of: day, week.")
+  settings = load_telemetry_settings()
+  if not settings.proxy_url:
+    raise ValueError("Telemetry relay URL is not configured.")
+
+  resolved_date_from, resolved_date_to = parse_remote_stats_window(
+    since=since,
+    date_from=date_from,
+    date_to=date_to,
+  )
+  capabilities = fetch_proxy_capabilities()
+  supports_stats = bool(capabilities.get("supports_stats"))
+  supported_workflows_raw = capabilities.get("supported_workflows", [])
+  supported_workflows = [
+    str(value)
+    for value in supported_workflows_raw
+    if isinstance(value, str) and value
+  ]
+  if not supports_stats:
+    raise ValueError(
+      "Configured telemetry proxy does not support remote stats yet. "
+      f"Capabilities URL: {capabilities.get('capabilities_url', settings.proxy_url.rstrip('/') + '/capabilities')}"
+    )
+  if supported_workflows and workflow not in supported_workflows:
+    raise ValueError(
+      f"Configured telemetry proxy does not support workflow '{workflow}'. "
+      f"Supported workflows: {', '.join(supported_workflows)}."
+    )
+  stats_url = settings.proxy_url.rstrip("/") + "/stats"
+  headers = _proxy_auth_headers()
+  request_payload: dict[str, object] = {
+    "workflow": workflow,
+    "date_from": resolved_date_from,
+    "date_to": resolved_date_to,
+  }
+  if group_by:
+    request_payload["group_by"] = group_by
+  payload = _json_request(
+    stats_url,
+    request_payload,
+    error_context="Remote telemetry stats request",
+    headers=headers,
+  )
+  payload.setdefault("workflow", workflow)
+  payload.setdefault("date_from", resolved_date_from)
+  payload.setdefault("date_to", resolved_date_to)
+  payload.setdefault("source", "remote_proxy")
+  payload.setdefault("stats_url", stats_url)
+  payload.setdefault("capabilities", capabilities)
+  if group_by:
+    payload.setdefault("group_by", group_by)
+  return payload
 
 
 def sync_telemetry(db_path: Path) -> SyncResult:

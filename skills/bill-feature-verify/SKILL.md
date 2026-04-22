@@ -191,7 +191,7 @@ For the shared telemetry contract including the `orchestrated` flag semantics, f
 
 **Standalone invocation:**
 1. Call `feature_verify_started` after Step 2 (criteria confirmed) with `acceptance_criteria_count`, `rollout_relevant`, and `spec_summary`. Save the returned `session_id`.
-2. Call `feature_verify_finished` after Step 7 (verdict delivered) with `session_id`, `feature_flag_audit_performed`, `review_iterations`, `audit_result` (`all_pass` / `had_gaps` / `skipped`), `completion_status` (`completed` / `abandoned_at_review` / `abandoned_at_audit` / `error`), and optional `gaps_found` list.
+2. Call `feature_verify_finished` after Step 7 (verdict delivered) with `session_id`, `feature_flag_audit_performed`, `review_iterations`, `audit_result` (`all_pass` / `had_gaps` / `skipped`), `completion_status` (`completed` / `abandoned_at_review` / `abandoned_at_audit` / `error`), `history_relevance` (`none` / `irrelevant` / `low` / `medium` / `high`), `history_helpfulness` (`none` / `irrelevant` / `low` / `medium` / `high`), and optional `gaps_found` list.
 
 **Orchestrated invocation** (when called from another workflow that passes `orchestrated=true`):
 1. Skip `feature_verify_started`.

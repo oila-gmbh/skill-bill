@@ -146,15 +146,6 @@ PLATFORM_PACK_PRESETS: dict[str, dict[str, Any]] = {
       ],
     },
   },
-  "php": {
-    "display_name": "PHP",
-    "routing_signals": {
-      "strong": ["composer.json", ".php", "phpunit.xml"],
-      "tie_breakers": [
-        "Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."
-      ],
-    },
-  },
 }
 
 PLATFORM_PACK_SKELETON_STARTER = "starter"

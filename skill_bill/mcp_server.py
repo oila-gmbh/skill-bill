@@ -46,7 +46,13 @@ from skill_bill.review import (
   parse_review,
   save_imported_review,
 )
-from skill_bill.stats import stats_payload, update_review_finished_telemetry_state
+from skill_bill.stats import (
+  feature_implement_stats_payload,
+  feature_verify_stats_payload,
+  stats_payload,
+  update_review_finished_telemetry_state,
+)
+from skill_bill.sync import fetch_proxy_capabilities, fetch_remote_stats
 from skill_bill.triage import (
   parse_triage_decisions,
   record_feedback,
@@ -245,6 +251,48 @@ def review_stats(review_run_id: str | None = None) -> dict:
     payload = stats_payload(connection, review_run_id)
   payload["db_path"] = str(db_path)
   return payload
+
+
+@mcp.tool()
+def feature_implement_stats() -> dict:
+  """Show aggregate bill-feature-implement metrics from the local SQLite store."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = feature_implement_stats_payload(connection)
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def feature_verify_stats() -> dict:
+  """Show aggregate bill-feature-verify metrics from the local SQLite store."""
+  with open_db(sync=False) as (connection, db_path):
+    payload = feature_verify_stats_payload(connection)
+  payload["db_path"] = str(db_path)
+  return payload
+
+
+@mcp.tool()
+def telemetry_remote_stats(
+  workflow: str,
+  since: str = "",
+  date_from: str = "",
+  date_to: str = "",
+  group_by: str = "",
+) -> dict:
+  """Fetch aggregate org-wide workflow metrics from the configured telemetry proxy."""
+  return fetch_remote_stats(
+    workflow=workflow,
+    since=since,
+    date_from=date_from,
+    date_to=date_to,
+    group_by=group_by,
+  )
+
+
+@mcp.tool()
+def telemetry_proxy_capabilities() -> dict:
+  """Show which relay/proxy telemetry operations the configured endpoint supports."""
+  return fetch_proxy_capabilities()
 
 
 @mcp.tool()
@@ -735,6 +783,8 @@ def feature_verify_finished(
   review_iterations: int,
   audit_result: str,
   completion_status: str,
+  history_relevance: str = "none",
+  history_helpfulness: str = "none",
   session_id: str = "",
   gaps_found: list[str] | None = None,
   orchestrated: bool = False,
@@ -755,6 +805,8 @@ def feature_verify_finished(
   validation_error = _fv.validate_finished_params(
     audit_result=audit_result,
     completion_status=completion_status,
+    history_relevance=history_relevance,
+    history_helpfulness=history_helpfulness,
   )
   if validation_error:
     return {"status": "error", "session_id": session_id, "error": validation_error}
@@ -775,6 +827,8 @@ def feature_verify_finished(
       review_iterations=review_iterations,
       audit_result=audit_result,
       completion_status=completion_status,
+      history_relevance=history_relevance,
+      history_helpfulness=history_helpfulness,
       gaps_found=gaps_found_list,
       duration_seconds=duration_seconds,
       level=level,
@@ -794,6 +848,8 @@ def feature_verify_finished(
       review_iterations=review_iterations,
       audit_result=audit_result,
       completion_status=completion_status,
+      history_relevance=history_relevance,
+      history_helpfulness=history_helpfulness,
       gaps_found=gaps_found_list,
     )
     settings = load_telemetry_settings()

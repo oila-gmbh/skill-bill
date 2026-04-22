@@ -29,6 +29,8 @@ FINISHED_PARAMS = {
   "review_iterations": 2,
   "audit_result": "had_gaps",
   "completion_status": "completed",
+  "history_relevance": "high",
+  "history_helpfulness": "medium",
   "gaps_found": ["rollout toggle missing in admin UI"],
 }
 
@@ -105,6 +107,8 @@ class FeatureVerifyEnabledTest(unittest.TestCase):
     payload = json.loads(rows[0]["payload_json"])
     self.assertEqual(payload["completion_status"], "completed")
     self.assertEqual(payload["audit_result"], "had_gaps")
+    self.assertEqual(payload["history_relevance"], "high")
+    self.assertEqual(payload["history_helpfulness"], "medium")
     self.assertNotIn("gaps_found", payload)  # full-only
     self.assertNotIn("spec_summary", payload)
 
@@ -115,6 +119,14 @@ class FeatureVerifyEnabledTest(unittest.TestCase):
     result = feature_verify_finished(session_id=started["session_id"], **params)
     self.assertEqual(result["status"], "error")
     self.assertIn("completion_status", result["error"])
+
+  def test_finished_validates_history_signal_values(self) -> None:
+    started = feature_verify_started(**STARTED_PARAMS)
+    params = dict(FINISHED_PARAMS)
+    params["history_helpfulness"] = "wildly"
+    result = feature_verify_finished(session_id=started["session_id"], **params)
+    self.assertEqual(result["status"], "error")
+    self.assertIn("history_helpfulness", result["error"])
 
   def test_full_level_includes_redacted_fields(self) -> None:
     Path(self.config_path).write_text(
@@ -159,6 +171,8 @@ class FeatureVerifyEnabledTest(unittest.TestCase):
     self.assertEqual(payload["skill"], "bill-feature-verify")
     self.assertEqual(payload["audit_result"], "had_gaps")
     self.assertEqual(payload["duration_seconds"], 300)
+    self.assertEqual(payload["history_relevance"], "high")
+    self.assertEqual(payload["history_helpfulness"], "medium")
     self.assertNotIn("session_id", payload)
     started_rows = self._outbox_rows("skillbill_feature_verify_started")
     finished_rows = self._outbox_rows("skillbill_feature_verify_finished")

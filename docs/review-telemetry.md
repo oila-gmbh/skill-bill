@@ -7,7 +7,7 @@ Skill Bill can record a measurement loop for code-review usefulness. Telemetry u
 - each finding in `### 2. Risk Register` should use `- [F-001] Severity | Confidence | file:line | description`
 - feedback history and learnings stay local in SQLite regardless of telemetry state
 
-The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`, and `doctor` as native agent tools. The CLI provides the same functionality plus learnings CRUD and telemetry management.
+The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`, `feature_implement_stats`, `feature_verify_stats`, and `doctor` as native agent tools. The CLI provides the same functionality plus learnings CRUD and telemetry management.
 
 ```bash
 skill-bill --help
@@ -46,6 +46,8 @@ skill-bill triage --run-id rvw-20260402-001 --decision "fix=[1] reject=[2]"
 skill-bill triage --run-id rvw-20260402-001 --decision "all fix"
 skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001
 skill-bill stats --run-id rvw-20260402-001 --format json
+skill-bill implement-stats --format json
+skill-bill verify-stats --format json
 ```
 
 The `triage` command maps the visible numbers back to the stable `F-001` ids internally. For agent-driven flows, prefer a structured selection string like `fix=[1,3] reject=[2]` so every finding is resolved deterministically in one step. Use `all <action>` to apply the same action to every finding. Supported triage actions are:
@@ -283,6 +285,8 @@ Both levels:
 | `review_iterations` | integer | Code-review iteration count |
 | `audit_result` | string | `all_pass`, `had_gaps`, or `skipped` |
 | `completion_status` | string | `completed`, `abandoned_at_review`, `abandoned_at_audit`, or `error` |
+| `history_relevance` | string | How relevant history-entry reading was: `none`, `irrelevant`, `low`, `medium`, or `high` |
+| `history_helpfulness` | string | How helpful history-entry reading was: `none`, `irrelevant`, `low`, `medium`, or `high` |
 | `duration_seconds` | integer | Wall-clock seconds from started to finished |
 
 `full` adds:
@@ -391,6 +395,193 @@ Both levels also include:
 
 Fields always excluded (both levels): repo name, branch name, raw spec content, raw plan content, file paths, acceptance criteria text.
 
+## PostHog dashboard spec
+
+The local `skill-bill implement-stats` and `skill-bill verify-stats` commands are the source of truth for workflow-summary semantics. PostHog dashboards should mirror those summaries instead of inventing a separate analytics vocabulary.
+
+Recommended global filters:
+
+- date ranges: last 7 days, last 30 days, and rolling quarter
+- use started events for intake/adoption charts
+- use finished events for completion, iteration, and duration charts
+- do not mix started and finished denominators in one chart unless the chart explicitly describes funnel dropoff
+
+### Feature-verify dashboard
+
+Use `skillbill_feature_verify_started` for intake metrics and `skillbill_feature_verify_finished` for outcome metrics.
+
+Recommended tiles:
+
+- `Verify runs started`: count of `skillbill_feature_verify_started`
+- `Verify runs finished`: count of `skillbill_feature_verify_finished`
+- `Verify completion rate`: `completion_status = completed` on finished events divided by all finished events
+- `Verify abandonment rate`: `completion_status != completed` on finished events divided by all finished events
+- `Rollout-relevant rate`: `rollout_relevant = true` on started events divided by all started events
+- `Audit gaps rate`: `audit_result = had_gaps` on finished events divided by all finished events
+- `History read rate`: finished events where history telemetry is not `none` divided by all finished events
+- `History relevant rate`: finished events where `history_relevance in (medium, high)` divided by all finished events
+- `History helpful rate`: finished events where `history_helpfulness in (medium, high)` divided by all finished events
+- `Average review iterations`: average `review_iterations` on finished events
+- `Average verify duration`: average `duration_seconds` on finished events
+- `Acceptance criteria distribution`: histogram or average of `acceptance_criteria_count` on started events
+
+Recommended breakdowns:
+
+- `completion_status`
+- `audit_result`
+- `rollout_relevant`
+- `history_relevance`
+- `history_helpfulness`
+
+Mirror to local stats:
+
+- `total_runs` ~= count of started events
+- `completion_status_counts` = finished breakdown by `completion_status`
+- `audit_result_counts` = finished breakdown by `audit_result`
+- `rollout_relevant_rate` = started filter on `rollout_relevant = true`
+- `history_read_rate` = finished runs where `history_relevance != none` or `history_helpfulness != none`
+- `history_relevant_rate` = finished runs where `history_relevance in (medium, high)`
+- `history_helpful_rate` = finished runs where `history_helpfulness in (medium, high)`
+- `average_review_iterations` = average on finished `review_iterations`
+- `average_duration_seconds` = average on finished `duration_seconds`
+
+### Feature-implement dashboard
+
+Use `skillbill_feature_implement_started` for intake/sizing and `skillbill_feature_implement_finished` for outcome metrics.
+
+Recommended tiles:
+
+- `Implement runs started`: count of `skillbill_feature_implement_started`
+- `Implement runs finished`: count of `skillbill_feature_implement_finished`
+- `Implement completion rate`: `completion_status = completed` on finished events divided by all finished events
+- `Feature size mix`: breakdown of started events by `feature_size`
+- `Rollout-needed rate`: `rollout_needed = true` on started events divided by all started events
+- `Feature-flag usage rate`: `feature_flag_used = true` on finished events divided by all finished events
+- `PR-created rate`: `pr_created = true` on finished events divided by all finished events
+- `Average review iterations`: average `review_iterations` on finished events
+- `Average audit iterations`: average `audit_iterations` on finished events
+- `Average implementation duration`: average `duration_seconds` on finished events
+- `Validation result mix`: breakdown of finished events by `validation_result`
+- `Audit result mix`: breakdown of finished events by `audit_result`
+
+Recommended breakdowns:
+
+- `feature_size`
+- `completion_status`
+- `validation_result`
+- `audit_result`
+- `feature_flag_pattern`
+
+Mirror to local stats:
+
+- `total_runs` ~= count of started events
+- `feature_size_counts` = started breakdown by `feature_size`
+- `completion_status_counts` = finished breakdown by `completion_status`
+- `validation_result_counts` = finished breakdown by `validation_result`
+- `audit_result_counts` = finished breakdown by `audit_result`
+- `rollout_needed_rate` = started filter on `rollout_needed = true`
+- `feature_flag_used_rate` = finished filter on `feature_flag_used = true`
+- `pr_created_rate` = finished filter on `pr_created = true`
+- `average_review_iterations` = average on finished `review_iterations`
+- `average_audit_iterations` = average on finished `audit_iterations`
+- `average_duration_seconds` = average on finished `duration_seconds`
+
+### Alignment rule
+
+If a PostHog chart disagrees with local CLI/MCP stats for the same date range, treat the local stats command as the contract and fix the chart definition first.
+
+## Remote stats contract
+
+For org-wide analysis, Skill Bill can query aggregate workflow metrics through the configured telemetry proxy instead of reading one install's local SQLite database.
+
+CLI:
+
+```bash
+skill-bill telemetry capabilities
+skill-bill telemetry stats verify --since 30d
+skill-bill telemetry stats implement --date-from 2026-04-01 --date-to 2026-04-22
+skill-bill telemetry stats verify --since 30d --group-by day
+skill-bill telemetry stats implement --since 30d --group-by week
+```
+
+MCP:
+
+- `telemetry_proxy_capabilities`
+- `telemetry_remote_stats`
+
+Client capability contract:
+
+```json
+{
+  "contract_version": "1",
+  "supports_ingest": true,
+  "supports_stats": true,
+  "supported_workflows": [
+    "bill-feature-verify",
+    "bill-feature-implement"
+  ]
+}
+```
+
+Client request contract:
+
+```json
+{
+  "workflow": "bill-feature-verify",
+  "date_from": "2026-04-01",
+  "date_to": "2026-04-22",
+  "group_by": "day"
+}
+```
+
+The client sends that payload to:
+
+- `<configured telemetry proxy url>/capabilities`
+- `<configured telemetry proxy url>/stats`
+
+The proxy owns backend-specific query logic. It may answer from PostHog, ClickHouse, BigQuery, or any other analytics store.
+
+Normalized remote stats payloads now include:
+
+- `started_runs`
+- `finished_runs`
+- `in_progress_runs`
+- `in_progress_rate`
+- optional `group_by`
+- optional `series`
+
+For `bill-feature-implement`, normalized remote stats also include:
+
+- `boundary_history_written_runs`
+- `boundary_history_written_rate`
+- `boundary_history_useful_runs`
+- `boundary_history_useful_rate`
+- `boundary_history_value_counts`
+
+For `bill-feature-verify`, normalized remote stats also include:
+
+- `history_read_runs`
+- `history_read_rate`
+- `history_relevant_runs`
+- `history_relevant_rate`
+- `history_helpful_runs`
+- `history_helpful_rate`
+- `history_relevance_counts`
+- `history_helpfulness_counts`
+
+For the proxy contract, `in_progress_runs` is a range-scoped estimate derived from event counts in the selected window: `max(started_runs - finished_runs, 0)`. It is useful for top-level workflow monitoring, but it is not a durable workflow-state query.
+`boundary_history_useful_runs` is defined as `boundary_history_value in ('medium', 'high')`.
+`history_relevant_runs` is defined as `history_relevance in ('medium', 'high')`.
+`history_helpful_runs` is defined as `history_helpfulness in ('medium', 'high')`.
+
+When `group_by` is provided, the proxy returns a `series` array with day or week buckets. Those buckets use the same event-window math as the top-level summary, so they are trend-oriented monitoring data, not cohort/session-complete analytics.
+
+Recommended auth model:
+
+- set `SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN` on the client machine
+- have the proxy require `Authorization: Bearer <token>` for `/stats` and optionally `/capabilities`
+- keep ingest and stats authorization concerns separate if you want public ingest but private aggregate reads
+
 ## Remote sync defaults
 
 Fresh installs default telemetry to `anonymous`, with a level prompt during `./install.sh`. When telemetry level is not `off`, Skill Bill generates an install id, writes telemetry config to `~/.skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.
@@ -429,6 +620,7 @@ Proxy configuration:
 
 ```bash
 export SKILL_BILL_TELEMETRY_PROXY_URL="https://your-worker.your-subdomain.workers.dev"
+export SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN="replace-with-your-stats-token"
 export SKILL_BILL_TELEMETRY_LEVEL="full"                   # optional override (off, anonymous, full)
 export SKILL_BILL_TELEMETRY_ENABLED="true"                 # legacy override (maps true→anonymous, false→off)
 export SKILL_BILL_TELEMETRY_BATCH_SIZE="50"                # optional override

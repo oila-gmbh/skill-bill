@@ -248,6 +248,18 @@ def ensure_database(path: Path) -> sqlite3.Connection:
     "child_steps_json",
     "TEXT NOT NULL DEFAULT ''",
   )
+  ensure_column(
+    connection,
+    "feature_verify_sessions",
+    "history_relevance",
+    "TEXT NOT NULL DEFAULT 'none'",
+  )
+  ensure_column(
+    connection,
+    "feature_verify_sessions",
+    "history_helpfulness",
+    "TEXT NOT NULL DEFAULT 'none'",
+  )
   migrate_feedback_events_schema(connection)
   return connection
 

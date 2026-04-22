@@ -70,8 +70,14 @@ from skill_bill.review import (
   read_input,
   save_imported_review,
 )
-from skill_bill.stats import stats_payload
+from skill_bill.stats import (
+  feature_implement_stats_payload,
+  feature_verify_stats_payload,
+  stats_payload,
+)
 from skill_bill.sync import (
+  fetch_proxy_capabilities,
+  fetch_remote_stats,
   sync_result_payload,
   sync_telemetry,
   telemetry_status_payload,
@@ -200,6 +206,22 @@ def triage_command(args: argparse.Namespace) -> int:
 def stats_command(args: argparse.Namespace) -> int:
   with open_db(args.db, sync=False) as (connection, db_path):
     payload = stats_payload(connection, args.run_id)
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def feature_implement_stats_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    payload = feature_implement_stats_payload(connection)
+  payload["db_path"] = str(db_path)
+  emit(payload, args.format)
+  return 0
+
+
+def feature_verify_stats_command(args: argparse.Namespace) -> int:
+  with open_db(args.db, sync=False) as (connection, db_path):
+    payload = feature_verify_stats_payload(connection)
   payload["db_path"] = str(db_path)
   emit(payload, args.format)
   return 0
@@ -342,6 +364,28 @@ def telemetry_sync_command(args: argparse.Namespace) -> int:
   result = sync_telemetry(resolve_db_path(args.db))
   emit(sync_result_payload(result), args.format)
   return 1 if result.status == "failed" else 0
+
+
+def telemetry_capabilities_command(args: argparse.Namespace) -> int:
+  payload = fetch_proxy_capabilities()
+  emit(payload, args.format)
+  return 0
+
+
+def telemetry_remote_stats_command(args: argparse.Namespace) -> int:
+  workflow = {
+    "verify": "bill-feature-verify",
+    "implement": "bill-feature-implement",
+  }[args.workflow]
+  payload = fetch_remote_stats(
+    workflow=workflow,
+    since=args.since,
+    date_from=args.date_from,
+    date_to=args.date_to,
+    group_by=args.group_by,
+  )
+  emit(payload, args.format)
+  return 0
 
 
 def telemetry_toggle_command(args: argparse.Namespace) -> int:
@@ -2187,6 +2231,30 @@ def build_parser() -> argparse.ArgumentParser:
   stats_parser.add_argument("--format", choices=("text", "json"), default="text")
   stats_parser.set_defaults(handler=stats_command)
 
+  feature_implement_stats_parser = subparsers.add_parser(
+    "implement-stats",
+    aliases=["feature-implement-stats"],
+    help="Show aggregate bill-feature-implement metrics from the local SQLite store.",
+  )
+  feature_implement_stats_parser.add_argument(
+    "--format",
+    choices=("text", "json"),
+    default="text",
+  )
+  feature_implement_stats_parser.set_defaults(handler=feature_implement_stats_command)
+
+  feature_verify_stats_parser = subparsers.add_parser(
+    "verify-stats",
+    aliases=["feature-verify-stats"],
+    help="Show aggregate bill-feature-verify metrics from the local SQLite store.",
+  )
+  feature_verify_stats_parser.add_argument(
+    "--format",
+    choices=("text", "json"),
+    default="text",
+  )
+  feature_verify_stats_parser.set_defaults(handler=feature_verify_stats_command)
+
   learnings_parser = subparsers.add_parser(
     "learnings",
     help="Manage local review learnings derived from rejected review findings.",
@@ -2268,6 +2336,47 @@ def build_parser() -> argparse.ArgumentParser:
   telemetry_sync_parser = telemetry_subparsers.add_parser("sync", help="Flush pending telemetry events to the active proxy target.")
   telemetry_sync_parser.add_argument("--format", choices=("text", "json"), default="text")
   telemetry_sync_parser.set_defaults(handler=telemetry_sync_command)
+
+  telemetry_capabilities_parser = telemetry_subparsers.add_parser(
+    "capabilities",
+    help="Show which relay/proxy telemetry operations the configured endpoint supports.",
+  )
+  telemetry_capabilities_parser.add_argument("--format", choices=("text", "json"), default="text")
+  telemetry_capabilities_parser.set_defaults(handler=telemetry_capabilities_command)
+
+  telemetry_remote_stats_parser = telemetry_subparsers.add_parser(
+    "stats",
+    help="Fetch aggregate org-wide workflow metrics from the configured telemetry proxy.",
+  )
+  telemetry_remote_stats_parser.add_argument(
+    "workflow",
+    choices=("verify", "implement"),
+    help="Workflow family to query through the remote telemetry proxy.",
+  )
+  telemetry_remote_stats_window = telemetry_remote_stats_parser.add_mutually_exclusive_group()
+  telemetry_remote_stats_window.add_argument(
+    "--since",
+    default="",
+    help="Relative lookback window in <days>d format. Defaults to 30d.",
+  )
+  telemetry_remote_stats_window.add_argument(
+    "--date-from",
+    default="",
+    help="Inclusive start date in YYYY-MM-DD format.",
+  )
+  telemetry_remote_stats_parser.add_argument(
+    "--date-to",
+    default="",
+    help="Inclusive end date in YYYY-MM-DD format. Defaults to today (UTC).",
+  )
+  telemetry_remote_stats_parser.add_argument(
+    "--group-by",
+    choices=("day", "week"),
+    default="",
+    help="Optional time-bucket series to include alongside the summary.",
+  )
+  telemetry_remote_stats_parser.add_argument("--format", choices=("text", "json"), default="text")
+  telemetry_remote_stats_parser.set_defaults(handler=telemetry_remote_stats_command)
 
   telemetry_enable_parser = telemetry_subparsers.add_parser("enable", help="Enable remote telemetry sync.")
   telemetry_enable_parser.add_argument(

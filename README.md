@@ -144,6 +144,9 @@ The workflow runtime now exposes discovery, resume, and continue surfaces throug
 
 - `skill-bill workflow ...` for `bill-feature-implement`
 - `skill-bill verify-workflow ...` for `bill-feature-verify`
+- `skill-bill implement-stats` and `skill-bill verify-stats` for local workflow telemetry summaries
+- `skill-bill telemetry stats <verify|implement>` for org-wide workflow summaries, optionally with `--group-by day|week` trend series, through the configured telemetry proxy
+- `skill-bill telemetry capabilities` to discover relay read/write support before querying remote stats
 - matching MCP tools for each workflow family
 
 Interrupted runs can be reactivated from persisted state instead of being reconstructed from chat history, and each `continue` surface now returns a step-specific continuation contract for the owning top-level skill.
@@ -166,7 +169,7 @@ The point of the shipped inventory is to demonstrate the governance model with r
 
 ## Review telemetry
 
-Skill Bill records review acceptance metrics locally in SQLite and can optionally sync anonymized analytics to a hosted relay or custom proxy. The `skill-bill` MCP server exposes review import, triage, learnings, and stats as native agent tools — no bash commands needed. See [docs/review-telemetry.md](docs/review-telemetry.md) for the full workflow, CLI reference, learnings management, telemetry events, and proxy configuration.
+Skill Bill records review acceptance metrics locally in SQLite and can optionally sync anonymized analytics to a hosted relay or custom proxy. The `skill-bill` MCP server exposes review import, triage, learnings, review stats, local workflow stats, and proxy-backed remote workflow stats as native agent tools — no bash commands needed. See [docs/review-telemetry.md](docs/review-telemetry.md) for the full workflow, CLI reference, learnings management, telemetry events, remote-stats contract, and proxy configuration.
 
 ## Supported agents
 

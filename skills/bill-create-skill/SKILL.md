@@ -34,7 +34,7 @@ Internally, the scaffolder still maps skill requests to exactly one of these fou
    - Destination: `platform-packs/<slug>/platform.yaml` plus `platform-packs/<slug>/code-review/<bill-<slug>-code-review>/SKILL.md` and `platform-packs/<slug>/quality-check/<bill-<slug>-quality-check>/SKILL.md`.
    - User-facing intake asks whether to scaffold the approved code-review specialist stubs.
    - `starter` remains available for direct payload callers and for users who only want the baseline pair first.
-   - For known platforms such as `java` and `php`, the scaffolder infers routing signals from a built-in preset; ask for manual routing signals only when no preset exists and you do not have a defensible inference.
+   - For known platforms such as `java`, the scaffolder infers routing signals from a built-in preset; ask for manual routing signals only when no preset exists and you do not have a defensible inference.
 4. **code-review-area** — a specialist for one approved code-review area inside an existing platform pack.
    - Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
    - Destination: `platform-packs/<slug>/code-review/<name>/SKILL.md` + manifest edits.
@@ -53,7 +53,7 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
      ```
 
    - Accept:
-     - a real platform slug such as `java`, `php`, `kotlin`, `kmp`
+     - a real platform slug such as `java`, `kotlin`, `kmp`
      - `cross-stack` when the user wants a horizontal skill with no owning platform
 
    - After the platform answer, branch contextually:

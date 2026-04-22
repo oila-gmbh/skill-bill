@@ -18,6 +18,7 @@ from skill_bill.constants import (
   FEATURE_VERIFY_WORKFLOW_STEP_IDS,
   FEATURE_VERIFY_WORKFLOW_STEP_STATUSES,
   FEATURE_VERIFY_WORKFLOW_TERMINAL_STATUSES,
+  HISTORY_SIGNAL_VALUES,
 )
 from skill_bill.feature_implement import validate_enum
 from skill_bill.stats import enqueue_telemetry_event
@@ -33,15 +34,23 @@ def validate_finished_params(
   *,
   audit_result: str,
   completion_status: str,
+  history_relevance: str,
+  history_helpfulness: str,
 ) -> str | None:
   error = validate_enum(audit_result, AUDIT_RESULTS, "audit_result")
   if error:
     return error
-  return validate_enum(
+  error = validate_enum(
     completion_status,
     FEATURE_VERIFY_COMPLETION_STATUSES,
     "completion_status",
   )
+  if error:
+    return error
+  error = validate_enum(history_relevance, HISTORY_SIGNAL_VALUES, "history_relevance")
+  if error:
+    return error
+  return validate_enum(history_helpfulness, HISTORY_SIGNAL_VALUES, "history_helpfulness")
 
 
 def save_started(
@@ -76,6 +85,8 @@ def save_finished(
   review_iterations: int,
   audit_result: str,
   completion_status: str,
+  history_relevance: str,
+  history_helpfulness: str,
   gaps_found: list[str],
 ) -> None:
   exists = connection.execute(
@@ -92,6 +103,8 @@ def save_finished(
           review_iterations = ?,
           audit_result = ?,
           completion_status = ?,
+          history_relevance = ?,
+          history_helpfulness = ?,
           gaps_found = ?,
           finished_at = CURRENT_TIMESTAMP
         WHERE session_id = ?
@@ -101,6 +114,8 @@ def save_finished(
           review_iterations,
           audit_result,
           completion_status,
+          history_relevance,
+          history_helpfulness,
           json.dumps(gaps_found),
           session_id,
         ),
@@ -111,8 +126,9 @@ def save_finished(
         """
         INSERT INTO feature_verify_sessions (
           session_id, feature_flag_audit_performed, review_iterations,
-          audit_result, completion_status, gaps_found, finished_at
-        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          audit_result, completion_status, history_relevance,
+          history_helpfulness, gaps_found, finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
           session_id,
@@ -120,6 +136,8 @@ def save_finished(
           review_iterations,
           audit_result,
           completion_status,
+          history_relevance,
+          history_helpfulness,
           json.dumps(gaps_found),
         ),
       )
@@ -196,6 +214,8 @@ def build_finished_payload(
     "review_iterations": row["review_iterations"] or 0,
     "audit_result": row["audit_result"] or "skipped",
     "completion_status": row["completion_status"] or "",
+    "history_relevance": row["history_relevance"] or "none",
+    "history_helpfulness": row["history_helpfulness"] or "none",
     "duration_seconds": duration_seconds,
   })
 
@@ -215,6 +235,8 @@ def build_finished_payload_from_fields(
   review_iterations: int,
   audit_result: str,
   completion_status: str,
+  history_relevance: str,
+  history_helpfulness: str,
   gaps_found: list[str],
   duration_seconds: int,
   level: str,
@@ -231,6 +253,8 @@ def build_finished_payload_from_fields(
     "review_iterations": review_iterations,
     "audit_result": audit_result,
     "completion_status": completion_status,
+    "history_relevance": history_relevance,
+    "history_helpfulness": history_helpfulness,
     "duration_seconds": duration_seconds,
   })
   if level == "full":

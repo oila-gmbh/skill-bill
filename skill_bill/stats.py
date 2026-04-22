@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import sqlite3
 
 from skill_bill.config import load_telemetry_settings, telemetry_is_enabled
 from skill_bill.constants import (
   ACCEPTED_FINDING_OUTCOME_TYPES,
+  AUDIT_RESULTS,
+  BOUNDARY_HISTORY_VALUES,
+  COMPLETION_STATUSES,
+  FEATURE_FLAG_PATTERNS,
+  FEATURE_SIZES,
+  FEATURE_VERIFY_COMPLETION_STATUSES,
   FINDING_OUTCOME_TYPES,
+  HISTORY_SIGNAL_VALUES,
   REJECTED_FINDING_OUTCOME_TYPES,
+  VALIDATION_RESULTS,
 )
 from skill_bill.db import review_exists
 
@@ -20,6 +29,252 @@ def stats_payload(connection: sqlite3.Connection, review_run_id: str | None) -> 
   payload = summarize_finding_rows(finding_rows)
   payload["review_run_id"] = review_run_id
   return payload
+
+
+def _rate(count: int, total: int) -> float:
+  return round(count / total, 3) if total else 0.0
+
+
+def _average(values: list[int]) -> float:
+  return round(sum(values) / len(values), 2) if values else 0.0
+
+
+def _parse_json_list(raw_value: object) -> list[object]:
+  if not raw_value:
+    return []
+  try:
+    decoded = json.loads(str(raw_value))
+  except json.JSONDecodeError:
+    return []
+  return decoded if isinstance(decoded, list) else []
+
+
+def _duration_seconds(row: sqlite3.Row) -> int:
+  started_at = str(row["started_at"] or "")
+  finished_at = str(row["finished_at"] or "")
+  if not started_at or not finished_at:
+    return 0
+  try:
+    start_dt = datetime.fromisoformat(started_at)
+    end_dt = datetime.fromisoformat(finished_at)
+  except (ValueError, TypeError):
+    return 0
+  return max(0, int((end_dt - start_dt).total_seconds()))
+
+
+def _count_values(
+  rows: list[sqlite3.Row],
+  column_name: str,
+  expected_values: tuple[str, ...],
+) -> dict[str, int]:
+  counts = {value: 0 for value in expected_values}
+  for row in rows:
+    raw_value = str(row[column_name] or "")
+    if raw_value in counts:
+      counts[raw_value] += 1
+  return counts
+
+
+def feature_verify_stats_payload(connection: sqlite3.Connection) -> dict[str, object]:
+  rows = connection.execute(
+    """
+    SELECT *
+    FROM feature_verify_sessions
+    ORDER BY started_at, session_id
+    """
+  ).fetchall()
+  finished_rows = [row for row in rows if row["finished_at"]]
+
+  rollout_relevant_runs = sum(1 for row in rows if bool(row["rollout_relevant"]))
+  audit_performed_runs = sum(1 for row in finished_rows if bool(row["feature_flag_audit_performed"]))
+  history_read_runs = sum(
+    1
+    for row in finished_rows
+    if str(row["history_relevance"] or "none") != "none"
+    or str(row["history_helpfulness"] or "none") != "none"
+  )
+  history_relevant_runs = sum(
+    1 for row in finished_rows if str(row["history_relevance"] or "none") in ("medium", "high")
+  )
+  history_helpful_runs = sum(
+    1 for row in finished_rows if str(row["history_helpfulness"] or "none") in ("medium", "high")
+  )
+  runs_with_gaps_found = sum(
+    1 for row in finished_rows if len(_parse_json_list(row["gaps_found"])) > 0
+  )
+  review_iterations = [
+    int(row["review_iterations"])
+    for row in finished_rows
+    if row["review_iterations"] is not None
+  ]
+  durations = [
+    duration
+    for row in finished_rows
+    for duration in [_duration_seconds(row)]
+    if duration > 0
+  ]
+  acceptance_criteria_counts = [
+    int(row["acceptance_criteria_count"])
+    for row in rows
+    if row["acceptance_criteria_count"] is not None
+  ]
+
+  return {
+    "workflow": "bill-feature-verify",
+    "total_runs": len(rows),
+    "finished_runs": len(finished_rows),
+    "in_progress_runs": len(rows) - len(finished_rows),
+    "completion_status_counts": _count_values(
+      finished_rows,
+      "completion_status",
+      FEATURE_VERIFY_COMPLETION_STATUSES,
+    ),
+    "audit_result_counts": _count_values(
+      finished_rows,
+      "audit_result",
+      AUDIT_RESULTS,
+    ),
+    "rollout_relevant_runs": rollout_relevant_runs,
+    "rollout_relevant_rate": _rate(rollout_relevant_runs, len(rows)),
+    "feature_flag_audit_performed_runs": audit_performed_runs,
+    "feature_flag_audit_performed_rate": _rate(audit_performed_runs, len(finished_rows)),
+    "history_read_runs": history_read_runs,
+    "history_read_rate": _rate(history_read_runs, len(finished_rows)),
+    "history_relevant_runs": history_relevant_runs,
+    "history_relevant_rate": _rate(history_relevant_runs, len(finished_rows)),
+    "history_helpful_runs": history_helpful_runs,
+    "history_helpful_rate": _rate(history_helpful_runs, len(finished_rows)),
+    "history_relevance_counts": _count_values(
+      finished_rows,
+      "history_relevance",
+      HISTORY_SIGNAL_VALUES,
+    ),
+    "history_helpfulness_counts": _count_values(
+      finished_rows,
+      "history_helpfulness",
+      HISTORY_SIGNAL_VALUES,
+    ),
+    "runs_with_gaps_found": runs_with_gaps_found,
+    "average_acceptance_criteria_count": _average(acceptance_criteria_counts),
+    "average_review_iterations": _average(review_iterations),
+    "average_duration_seconds": _average(durations),
+  }
+
+
+def feature_implement_stats_payload(connection: sqlite3.Connection) -> dict[str, object]:
+  rows = connection.execute(
+    """
+    SELECT *
+    FROM feature_implement_sessions
+    ORDER BY started_at, session_id
+    """
+  ).fetchall()
+  finished_rows = [row for row in rows if row["finished_at"]]
+
+  rollout_needed_runs = sum(1 for row in rows if bool(row["rollout_needed"]))
+  feature_flag_used_runs = sum(1 for row in finished_rows if bool(row["feature_flag_used"]))
+  pr_created_runs = sum(1 for row in finished_rows if bool(row["pr_created"]))
+  boundary_history_written_runs = sum(
+    1 for row in finished_rows if bool(row["boundary_history_written"])
+  )
+
+  acceptance_criteria_counts = [
+    int(row["acceptance_criteria_count"])
+    for row in rows
+    if row["acceptance_criteria_count"] is not None
+  ]
+  spec_word_counts = [
+    int(row["spec_word_count"])
+    for row in rows
+    if row["spec_word_count"] is not None
+  ]
+  review_iterations = [
+    int(row["review_iterations"])
+    for row in finished_rows
+    if row["review_iterations"] is not None
+  ]
+  audit_iterations = [
+    int(row["audit_iterations"])
+    for row in finished_rows
+    if row["audit_iterations"] is not None
+  ]
+  files_created = [
+    int(row["files_created"])
+    for row in finished_rows
+    if row["files_created"] is not None
+  ]
+  files_modified = [
+    int(row["files_modified"])
+    for row in finished_rows
+    if row["files_modified"] is not None
+  ]
+  tasks_completed = [
+    int(row["tasks_completed"])
+    for row in finished_rows
+    if row["tasks_completed"] is not None
+  ]
+  durations = [
+    duration
+    for row in finished_rows
+    for duration in [_duration_seconds(row)]
+    if duration > 0
+  ]
+
+  return {
+    "workflow": "bill-feature-implement",
+    "total_runs": len(rows),
+    "finished_runs": len(finished_rows),
+    "in_progress_runs": len(rows) - len(finished_rows),
+    "feature_size_counts": _count_values(
+      rows,
+      "feature_size",
+      FEATURE_SIZES,
+    ),
+    "completion_status_counts": _count_values(
+      finished_rows,
+      "completion_status",
+      COMPLETION_STATUSES,
+    ),
+    "audit_result_counts": _count_values(
+      finished_rows,
+      "audit_result",
+      AUDIT_RESULTS,
+    ),
+    "validation_result_counts": _count_values(
+      finished_rows,
+      "validation_result",
+      VALIDATION_RESULTS,
+    ),
+    "feature_flag_pattern_counts": _count_values(
+      finished_rows,
+      "feature_flag_pattern",
+      FEATURE_FLAG_PATTERNS,
+    ),
+    "boundary_history_value_counts": _count_values(
+      finished_rows,
+      "boundary_history_value",
+      BOUNDARY_HISTORY_VALUES,
+    ),
+    "rollout_needed_runs": rollout_needed_runs,
+    "rollout_needed_rate": _rate(rollout_needed_runs, len(rows)),
+    "feature_flag_used_runs": feature_flag_used_runs,
+    "feature_flag_used_rate": _rate(feature_flag_used_runs, len(finished_rows)),
+    "pr_created_runs": pr_created_runs,
+    "pr_created_rate": _rate(pr_created_runs, len(finished_rows)),
+    "boundary_history_written_runs": boundary_history_written_runs,
+    "boundary_history_written_rate": _rate(
+      boundary_history_written_runs,
+      len(finished_rows),
+    ),
+    "average_acceptance_criteria_count": _average(acceptance_criteria_counts),
+    "average_spec_word_count": _average(spec_word_counts),
+    "average_review_iterations": _average(review_iterations),
+    "average_audit_iterations": _average(audit_iterations),
+    "average_files_created": _average(files_created),
+    "average_files_modified": _average(files_modified),
+    "average_tasks_completed": _average(tasks_completed),
+    "average_duration_seconds": _average(durations),
+  }
 
 
 def count_rows(

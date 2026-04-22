@@ -67,7 +67,7 @@ Every payload MUST include:
 - `routing_signals` — required for `platform-pack` only when the platform
   does not have a built-in preset. Must be a mapping with a non-empty
   `strong` list and optional `tie_breakers` list. For
-  known platforms such as `java` and `php`, the scaffolder can infer these
+  known platforms such as `java`, the scaffolder can infer these
   defaults.
 
 ## Optional Keys
