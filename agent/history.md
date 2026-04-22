@@ -1,3 +1,11 @@
+## [2026-04-21] feature-verify-shell-pilot
+Areas: skills/bill-feature-verify/, scripts/, tests/, README.md, docs/getting-started-for-teams.md
+- Split `bill-feature-verify` into a workflow shell in `SKILL.md` and an author-owned `content.md`, keeping workflow-state, continuation, stable artifact names, and telemetry ownership in the shell while moving phase-by-phase verify guidance into the sibling content file. reusable
+- Added a dedicated validator hook for `bill-feature-verify` so missing `content.md`, missing shell workflow markers, or a missing execution pointer fail loudly without widening the generic workflow-shell rules yet. reusable
+- Extended contract coverage and docs so fixture repos, acceptance/rejection tests, README, and team docs now treat `bill-feature-verify` like `bill-feature-implement`: shell-owned contract in `SKILL.md`, authored behavior in `content.md`. reusable
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-04-21] feature-implement-shell-pilot
 Areas: skills/bill-feature-implement/, scripts/, tests/, README.md, orchestration/workflow-contract/
 - Split `bill-feature-implement` into a workflow shell in `SKILL.md` and an author-owned `content.md`, keeping workflow-state, continuation, stable artifact names, and telemetry ownership in the shell while moving phase-by-phase execution guidance into the sibling content file. reusable

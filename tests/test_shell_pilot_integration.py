@@ -1,16 +1,10 @@
-"""SKILL-14 integration coverage.
+"""SKILL-14 integration coverage for shell-pilot-specific behavior.
 
-End-to-end contract checks for the shell + content pilot. Exercises every
-major acceptance-criterion claim with one assertion per path:
+This suite keeps only the checks that are unique to the shell pilot:
 
-- the shell loads all six shipped packs and discovery returns exactly those
-  slugs
-- every loud-fail rejection surfaces the specific named exception
-- the routed-skill contract is preserved
 - the shell is platform-independent and references the contract sidecar
-- horizontal skills listed in AC 14 remain authored and unmodified in
-  location (a presence check, not a content-equivalence check — their
-  content evolves independently)
+- stack-routing guidance stays discovery-driven
+- documented shell contract versions remain in lockstep
 """
 
 from __future__ import annotations
@@ -24,83 +18,14 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from skill_bill.shell_content_contract import (  # noqa: E402
-  ContractVersionMismatchError,
-  InvalidManifestSchemaError,
-  MissingContentFileError,
-  MissingManifestError,
-  MissingRequiredSectionError,
-  SHELL_CONTRACT_VERSION,
-  discover_platform_packs,
-  load_platform_pack,
-)
+from skill_bill.shell_content_contract import SHELL_CONTRACT_VERSION  # noqa: E402
 
 
 PLATFORM_PACKS_ROOT = ROOT / "platform-packs"
-FIXTURES_ROOT = ROOT / "tests" / "fixtures" / "shell_content_contract"
-
-
-def expected_slugs() -> frozenset[str]:
-  return frozenset(
-    entry.name
-    for entry in PLATFORM_PACKS_ROOT.iterdir()
-    if entry.is_dir() and not entry.name.startswith(".")
-  )
-
-HORIZONTAL_SKILLS: tuple[str, ...] = (
-  "bill-grill-plan",
-  "bill-boundary-decisions",
-  "bill-boundary-history",
-  "bill-pr-description",
-  "bill-create-skill",
-  "bill-feature-guard",
-  "bill-feature-guard-cleanup",
-  "bill-unit-test-value-check",
-)
 
 
 class ShellPilotIntegrationTest(unittest.TestCase):
   maxDiff = None
-
-  # --- Shell loads every shipped pack (AC 7, 8) --------------------------
-
-  def test_shell_loads_every_shipped_pack(self) -> None:
-    packs = discover_platform_packs(PLATFORM_PACKS_ROOT)
-    slugs = {pack.slug for pack in packs}
-    self.assertEqual(slugs, set(expected_slugs()))
-
-  def test_discovery_returns_every_live_slug(self) -> None:
-    # AC 9 — manifest-driven discovery, no hardcoded enumeration.
-    packs = discover_platform_packs(PLATFORM_PACKS_ROOT)
-    self.assertEqual({pack.slug for pack in packs}, set(expected_slugs()))
-
-  def test_routed_skill_contract_preserved(self) -> None:
-    # AC 13 — existing references to platform skill names must still work.
-    for pack in discover_platform_packs(PLATFORM_PACKS_ROOT):
-      with self.subTest(pack=pack.slug):
-        self.assertEqual(pack.routed_skill_name, f"bill-{pack.slug}-code-review")
-
-  # --- Loud-fail rejections name the offending artifact (AC 4, 12) -------
-
-  def test_missing_manifest_raises_specific_error(self) -> None:
-    with self.assertRaises(MissingManifestError):
-      load_platform_pack(FIXTURES_ROOT / "missing_manifest")
-
-  def test_missing_content_file_raises_specific_error(self) -> None:
-    with self.assertRaises(MissingContentFileError):
-      load_platform_pack(FIXTURES_ROOT / "missing_content_file")
-
-  def test_bad_version_raises_specific_error(self) -> None:
-    with self.assertRaises(ContractVersionMismatchError):
-      load_platform_pack(FIXTURES_ROOT / "bad_version")
-
-  def test_missing_section_raises_specific_error(self) -> None:
-    with self.assertRaises(MissingRequiredSectionError):
-      load_platform_pack(FIXTURES_ROOT / "missing_section")
-
-  def test_invalid_schema_raises_specific_error(self) -> None:
-    with self.assertRaises(InvalidManifestSchemaError):
-      load_platform_pack(FIXTURES_ROOT / "invalid_schema")
 
   # --- Shell is platform-independent (AC 1, 2, 3) -----------------------
 
@@ -112,7 +37,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
     # The shell declares the current contract version.
     self.assertIn(f"`{SHELL_CONTRACT_VERSION}`", text)
     # The shell no longer hardcodes per-platform delegation lines.
-    for slug in expected_slugs():
+    for slug in self._live_slugs():
       self.assertNotIn(
         f"signals dominate, delegate to `bill-{slug}-code-review`.",
         text,
@@ -135,11 +60,7 @@ class ShellPilotIntegrationTest(unittest.TestCase):
     # AC 9 — no platform slug may appear as a section heading. The slug
     # list is derived from the live ``platform-packs/`` directory so this
     # test does not pin a count and catches any new slug added later.
-    live_slugs = sorted(
-      entry.name
-      for entry in PLATFORM_PACKS_ROOT.iterdir()
-      if entry.is_dir() and not entry.name.startswith(".")
-    )
+    live_slugs = self._live_slugs()
     self.assertGreater(
       len(live_slugs),
       0,
@@ -220,13 +141,13 @@ class ShellPilotIntegrationTest(unittest.TestCase):
           f"'{SHELL_CONTRACT_VERSION}'. Update the doc to match the shell.",
         )
 
-  # --- Horizontal skills untouched (AC 14) -------------------------------
-
-  def test_horizontal_skills_remain_unmodified_in_skills_root(self) -> None:
-    for skill in HORIZONTAL_SKILLS:
-      with self.subTest(skill=skill):
-        skill_path = ROOT / "skills" / skill / "SKILL.md"
-        self.assertTrue(skill_path.is_file(), f"{skill} went missing")
+  @staticmethod
+  def _live_slugs() -> list[str]:
+    return sorted(
+      entry.name
+      for entry in PLATFORM_PACKS_ROOT.iterdir()
+      if entry.is_dir() and not entry.name.startswith(".")
+    )
 
 
 if __name__ == "__main__":

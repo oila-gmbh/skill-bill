@@ -333,6 +333,58 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 0, result.stdout)
 
+  def test_rejects_feature_verify_without_content_md(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
+      (repo_root / "skills" / "bill-feature-verify" / "content.md").unlink()
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-verify must include sibling content.md",
+        result.stdout,
+      )
+
+  def test_rejects_feature_verify_without_workflow_state_contract(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
+      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
+      skill_md.write_text(
+        skill_md.read_text(encoding="utf-8").replace("## Workflow State\n\n", "", 1),
+        encoding="utf-8",
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-verify shell must include '## Workflow State'",
+        result.stdout,
+      )
+
+  def test_rejects_feature_verify_without_continuation_mode_contract(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
+      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
+      skill_md.write_text(
+        skill_md.read_text(encoding="utf-8").replace("## Continuation Mode\n\n", "", 1),
+        encoding="utf-8",
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-verify shell must include '## Continuation Mode'",
+        result.stdout,
+      )
+
+  def test_rejects_feature_verify_without_execution_pointer(self) -> None:
+    with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
+      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
+      skill_md.write_text(
+        skill_md.read_text(encoding="utf-8").replace("[content.md](content.md)", "[reference.md](reference.md)", 1),
+        encoding="utf-8",
+      )
+      result = self.run_validator(repo_root)
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn(
+        "bill-feature-verify shell must include '[content.md](content.md)'",
+        result.stdout,
+      )
+
   def test_rejects_feature_implement_without_content_md(self) -> None:
     with self.fixture_repo(
       [("base", "bill-feature-implement")],
@@ -705,7 +757,12 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
   ):
     with tempfile.TemporaryDirectory() as temp_dir:
       repo_root = Path(temp_dir)
-      self.write_readme(repo_root, [skill_name for _, skill_name in skills])
+      skill_specs = list(skills)
+      if any(skill_name == "bill-feature-verify" for _, skill_name in skill_specs) and not any(
+        skill_name == "bill-code-review" for _, skill_name in skill_specs
+      ):
+        skill_specs.insert(0, ("base", "bill-code-review"))
+      self.write_readme(repo_root, [skill_name for _, skill_name in skill_specs])
       self.write_skill_overrides_example(repo_root, skills[0][1])
       self.write_plugin_manifest(repo_root)
       self.write_stack_routing_playbook(repo_root)
@@ -728,7 +785,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       )
       self.write_governed_addons(repo_root)
 
-      for package_name, skill_name in skills:
+      for package_name, skill_name in skill_specs:
         self.write_skill(
           repo_root,
           package_name,
@@ -1080,6 +1137,11 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         self.feature_implement_content_markdown(),
         encoding="utf-8",
       )
+    if skill_name == "bill-feature-verify":
+      (path.parent / "content.md").write_text(
+        self.feature_verify_content_markdown(),
+        encoding="utf-8",
+      )
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     targets = supporting_file_targets(repo_root)
@@ -1108,6 +1170,9 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       Finish the workflow without changing runtime behavior.
       """
     )
+
+  def feature_verify_content_markdown(self) -> str:
+    return (ROOT / "skills" / "bill-feature-verify" / "content.md").read_text(encoding="utf-8")
 
   def skill_markdown(self, skill_name: str) -> str:
     if skill_name == "bill-feature-implement":
@@ -1245,33 +1310,19 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         "- `implementation_summary`",
         "- `pr_result`",
         "",
-        "## Continuation Mode",
-        "",
-        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
-        "",
-      ])
+          "## Continuation Mode",
+          "",
+          "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
+          "",
+        ])
     if skill_name == "bill-feature-verify":
-      lines.extend([
-        "## Workflow State",
-        "",
-        "- `feature_verify_workflow_open`",
-        "- `feature_verify_workflow_update`",
-        "- `feature_verify_workflow_continue`",
-        "- `input_context`",
-        "- `criteria_summary`",
-        "- `diff_summary`",
-        "- `review_result`",
-        "- `completeness_audit_result`",
-        "- `verdict_result`",
-        "",
-        "## Continuation Mode",
-        "",
-        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
-        "",
-      ])
+      return self.feature_verify_shell_markdown()
     for sidecar in required_supporting_files_for_skill(skill_name):
       lines.append(f"[{sidecar}]({sidecar})")
     return "\n".join(lines) + "\n"
+
+  def feature_verify_shell_markdown(self) -> str:
+    return (ROOT / "skills" / "bill-feature-verify" / "SKILL.md").read_text(encoding="utf-8")
 
   def skill_with_runtime_playbook_reference(self, skill_name: str) -> str:
     return textwrap.dedent(
