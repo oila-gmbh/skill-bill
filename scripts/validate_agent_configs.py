@@ -197,6 +197,7 @@ def main() -> int:
   validate_orchestrator_passthrough(root, issues)
   validate_workflow_driven_skills(root, issues)
   validate_feature_implement_shell_contract(root, issues)
+  validate_feature_verify_shell_contract(root, issues)
   validate_skill_override_markdown(
     root / SKILL_OVERRIDE_EXAMPLE_FILE,
     skill_names,
@@ -468,6 +469,7 @@ WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
       "## Continuation Mode",
       "feature_verify_workflow_open",
       "feature_verify_workflow_update",
+      "feature_verify_workflow_get",
       "feature_verify_workflow_continue",
       "`input_context`",
       "`criteria_summary`",
@@ -578,6 +580,61 @@ def validate_feature_implement_shell_contract(root: Path, issues: list[str]) -> 
     if marker not in text:
       issues.append(
         f"{skill_file}: bill-feature-implement shell must include '{marker}'"
+      )
+
+
+def validate_feature_verify_shell_contract(root: Path, issues: list[str]) -> None:
+  """`bill-feature-verify` is a shell/content split pilot with shell-owned
+  workflow markers that must remain in `SKILL.md`.
+  """
+  skill_dir = root / "skills" / "bill-feature-verify"
+  if not skill_dir.exists():
+    return
+
+  skill_file = skill_dir / "SKILL.md"
+  content_file = skill_dir / "content.md"
+  if not skill_file.is_file():
+    return
+
+  if not content_file.is_file():
+    issues.append(f"{skill_dir}: bill-feature-verify must include sibling content.md")
+    return
+
+  text = skill_file.read_text(encoding="utf-8")
+  for marker in (
+    "## Execution",
+    "[content.md](content.md)",
+    "## Workflow State",
+    "### Stable Step Ids",
+    "### Stable Artifact Names",
+    "## Continuation Mode",
+    "## Step 1: Collect Inputs",
+    "## Step 2: Extract Acceptance Criteria",
+    "## Step 3: Gather PR Diff",
+    "## Step 4: Feature Flag Audit (conditional)",
+    "## Step 5: Code Review",
+    "## Step 6: Completeness Audit",
+    "## Step 7: Consolidated Verdict",
+    "## Telemetry",
+    "## Nested Child Tools",
+    "audit-rubrics.md",
+    "feature_verify_started",
+    "feature_verify_finished",
+    "feature_verify_workflow_open",
+    "feature_verify_workflow_update",
+    "feature_verify_workflow_get",
+    "feature_verify_workflow_continue",
+    "`input_context`",
+    "`criteria_summary`",
+    "`diff_summary`",
+    "`feature_flag_audit_result`",
+    "`review_result`",
+    "`completeness_audit_result`",
+    "`verdict_result`",
+  ):
+    if marker not in text:
+      issues.append(
+        f"{skill_file}: bill-feature-verify shell must include '{marker}'"
       )
 
 

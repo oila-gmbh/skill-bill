@@ -172,7 +172,7 @@ Use `skill-bill edit bill-kotlin-code-review-api-contracts` for follow-up change
 
 The full payload schema, including the new `platform-pack` kind, lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
-SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.1`). `bill-feature-implement` and `bill-feature-verify` remain pre-shell for now and still land under `skills/<platform>/` when scaffolded.
+SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.1`). `bill-feature-implement` already follows the split as a top-level workflow shell, and `bill-feature-verify` now follows the same shell/content split while platform-specific `feature-implement` and `feature-verify` overrides still land under `skills/<platform>/` when scaffolded.
 
 ## What to expect from review output
 
