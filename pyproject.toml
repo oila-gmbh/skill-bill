@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "skill-bill"
 version = "0.1.0"
-description = "Local-first review telemetry CLI for Skill Bill."
+description = "Governed cross-agent skills, workflows, validation, and telemetry for AI-assisted engineering."
 requires-python = ">=3.10"
 dependencies = ["mcp", "pyyaml>=6"]
 

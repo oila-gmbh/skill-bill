@@ -23,6 +23,8 @@ Covered cases (SKILL-15 AC16 + SKILL-19 follow-on):
 from __future__ import annotations
 
 from pathlib import Path
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -1261,24 +1263,35 @@ class NewSkillCliErrorMappingTest(unittest.TestCase):
       dry_run=False,
       format="json",
     )
-    code = new_skill_command(args)
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      code = new_skill_command(args)
     self.assertEqual(code, 2)
 
 
 class NewSkillInteractivePromptTest(unittest.TestCase):
+  @contextlib.contextmanager
+  def _quiet_prompt_output(self):
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+      yield
+
   def test_platform_pack_prompt_defaults_new_platform_to_full(self) -> None:
     from skill_bill.cli import _prompt_new_skill_interactively
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",   # platform
-          "",       # specialist mode -> all
-          "",       # display name
-          "",       # description
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",   # platform
+            "",       # specialist mode -> all
+            "",       # display name
+            "",       # description
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1291,14 +1304,17 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",    # platform
-          "",       # specialist mode -> all
-          "",       # display name
-          "",       # description
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",    # platform
+            "",       # specialist mode -> all
+            "",       # display name
+            "",       # description
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1312,16 +1328,19 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "python",    # platform
-          "",          # specialist mode -> all
-          "Python",    # display name
-          "",          # description
-          "pyproject.toml,setup.py",  # strong signals
-          "",          # tie-breakers
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "python",    # platform
+            "",          # specialist mode -> all
+            "Python",    # display name
+            "",          # description
+            "pyproject.toml,setup.py",  # strong signals
+            "",          # tie-breakers
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1338,15 +1357,18 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",                  # platform
-          "2",                    # specialist mode -> custom
-          "architecture,security,testing,reliability",
-          "",                     # display name
-          "",                     # description
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",                 # platform
+            "2",                    # specialist mode -> custom
+            "architecture,security,testing,reliability",
+            "",                     # display name
+            "",                     # description
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1363,14 +1385,17 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
 
     with tempfile.TemporaryDirectory() as tmpdir:
       repo_root = Path(tmpdir)
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",    # platform
-          "1",      # specialist mode -> none
-          "",       # display name
-          "",       # description
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",   # platform
+            "1",      # specialist mode -> none
+            "",       # display name
+            "",       # description
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1389,16 +1414,19 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "shell_contract_version: '1.0'\n",
         encoding="utf-8",
       )
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",           # platform
-          "1",             # code-review specialist
-          "security",      # area
-          "",              # derived name
-          "Review Java security risks.",  # description
-          "END",           # optional content body
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",          # platform
+            "1",             # code-review specialist
+            "security",      # area
+            "",              # derived name
+            "Review Java security risks.",  # description
+            "END",           # optional content body
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1417,16 +1445,19 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "shell_contract_version: '1.0'\n",
         encoding="utf-8",
       )
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "java",            # platform
-          "2",              # platform override
-          "quality-check",  # family
-          "",               # derived name
-          "Run Java quality checks.",  # description
-          "END",            # optional content body
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "java",           # platform
+            "2",              # platform override
+            "quality-check",  # family
+            "",               # derived name
+            "Run Java quality checks.",  # description
+            "END",            # optional content body
+          ],
+        ),
       ):
         payload = _prompt_new_skill_interactively(repo_root=repo_root)
 
@@ -1445,16 +1476,19 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "contract_version: '1.1'\n",
         encoding="utf-8",
       )
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "kmp",                 # platform
-          "android-compose",     # add-on slug
-          "Compose guidance.",   # description
-          "First body line.",    # body
-          "Second body line.",   # body
-          "END",                 # terminator
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "kmp",                 # platform
+            "android-compose",     # add-on slug
+            "Compose guidance.",   # description
+            "First body line.",    # body
+            "Second body line.",   # body
+            "END",                 # terminator
+          ],
+        ),
       ):
         payload = _prompt_new_addon_interactively(repo_root=repo_root)
 
@@ -1476,16 +1510,19 @@ class NewSkillInteractivePromptTest(unittest.TestCase):
         "contract_version: '1.1'\n",
         encoding="utf-8",
       )
-      with mock.patch(
-        "builtins.input",
-        side_effect=[
-          "kmp",              # platform
-          "android-compose",  # add-on slug
-          "",                 # description
-          "END",              # empty body attempt
-          "Real body line.",  # second body attempt
-          "END",              # terminator
-        ],
+      with (
+        self._quiet_prompt_output(),
+        mock.patch(
+          "builtins.input",
+          side_effect=[
+            "kmp",              # platform
+            "android-compose",  # add-on slug
+            "",                 # description
+            "END",              # empty body attempt
+            "Real body line.",  # second body attempt
+            "END",              # terminator
+          ],
+        ),
       ):
         payload = _prompt_new_addon_interactively(repo_root=repo_root)
 

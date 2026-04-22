@@ -10,6 +10,8 @@ codes.
 
 from __future__ import annotations
 
+import contextlib
+import io
 from pathlib import Path
 import shutil
 import sys
@@ -266,7 +268,9 @@ class MigrationCoverageTest(unittest.TestCase):
       "assert_execution_body_matches",
       side_effect=always_fail,
     ):
-      code = migrate_to_content_md.main(["--yes", "--repo-root", str(self.repo)])
+      stdout = io.StringIO()
+      with contextlib.redirect_stdout(stdout):
+        code = migrate_to_content_md.main(["--yes", "--repo-root", str(self.repo)])
     self.assertNotEqual(code, 0)
     _ = original
 

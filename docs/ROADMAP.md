@@ -58,9 +58,11 @@ Skill Bill is succeeding when most of the following are true:
 
 - **Workflow contract pilot (shipped):** Added `orchestration/workflow-contract/PLAYBOOK.md` to define when a top-level command becomes a workflow, what durable state and artifacts it owns, and how child telemetry rolls up into one parent lifecycle. `bill-feature-implement` is the first pilot; leaf skills remain standalone and reusable.
 - **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
-- **SKILL-15 (in progress):** New-skill scaffolder + auto-installer. Turns the shell+content contract into a one-shot authoring flow so first-time authors — including forks — succeed without hand-wiring directories, sidecars, and manifests. Treated as a core product feature, not tooling; external authoring is a success metric the project needs to validate.
-- **SKILL-14 follow-up:** Apply the same shell + content split to `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify` so every stable command benefits from the same governance.
-- **Upcoming — examples extraction:** Separate framework from reference packs even more aggressively. The long-term architectural move is to keep example packs cleanly separable from the governance system so adoption, forking, and adding new maintained packs stay distinct.
+- **SKILL-15 and follow-ons (shipped):** The new-skill scaffolder, auto-installer, and terminal-first authoring loop now exist as real product surface. Governed skill creation, editing, rendering, validation, add-on creation, and install primitives are available through `skill-bill`, with contract-backed tests and rollback behavior.
+- **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
+- **Workflow runtime and resume surfaces (shipped):** Durable workflow state, resume, continue, local stats, and matching MCP tools now exist for both `bill-feature-implement` and `bill-feature-verify`, so long-running orchestrators no longer depend only on chat history.
+- **Operator docs split (shipped):** The documentation surface is now split into a shorter `README.md`, a primary `docs/getting-started.md`, and a team-focused `docs/getting-started-for-teams.md`, which is a healthier structure for adoption than a single overloaded README.
+- **Next architectural move:** Separate framework from reference packs even more aggressively so adoption, forking, and adding maintained packs stay distinct from the governance system itself.
 
 ## Current position
 
@@ -71,14 +73,17 @@ Today, Skill Bill is strongest in these areas:
 - stack-aware routing for code review and quality-check flows
 - layered review orchestration with shared and platform-specific contracts
 - validation coverage that prevents many forms of repository drift
+- local operator surfaces: CLI, MCP, workflow state, telemetry, and governed authoring
+- documentation structure that now distinguishes landing-page, getting-started, and team-rollout concerns
 
 Today, Skill Bill is still relatively early in these areas:
 
-- reliability under real-world runtime behavior
-- organization-level rollout and override strategy
-- measurement of review quality and usefulness
+- reliability under real-world runtime behavior across different agents and repos
+- organization-level rollout and override strategy beyond maintainer intuition
+- measurement of review quality, repeat usage, and external usefulness
+- external authoring validation for new packs and governed extensions
 - deeper process routing beyond stack detection
-- broader team adoption patterns, documentation, and change management
+- broader team adoption patterns and lighthouse-team evidence
 
 ## Strategic priorities
 
@@ -160,7 +165,21 @@ Key outcome:
 
 **Teams should be able to operationalize Skill Bill without each team inventing its own model from scratch.**
 
-### 5. Add measurement and feedback loops
+### 5. Validate external authoring and adoption
+
+The framework is only complete if someone other than the maintainer can use it successfully.
+
+The highest-value validation now is:
+
+- can a non-maintainer author or extend a platform pack using the scaffolder, docs, and validator?
+- can a team install the system and keep using it for several weeks?
+- do the current stable entry points hold up under normal engineering usage rather than maintainer demos?
+
+Key outcome:
+
+**Skill Bill should prove itself with external authors and one lighthouse team before it spends much more energy on breadth.**
+
+### 6. Add measurement and feedback loops
 
 A governed framework needs evidence, not only intuition. Because the shipped skills are reference examples rather than the product, measurement should favor framework-level signals over per-skill output quality.
 
@@ -179,7 +198,7 @@ Key outcome:
 
 **The project should learn from real authoring and adoption patterns, not only from its maintainer's instincts.**
 
-### 6. Expand from stack routing to process routing
+### 7. Expand from stack routing to process routing
 
 Right now, Skill Bill is strong at answering:
 
@@ -207,7 +226,7 @@ Key outcome:
 
 **Routing should eventually reflect both technical stack and work type.**
 
-### 7. Build reusable organizational memory
+### 8. Build reusable organizational memory
 
 One of the most promising directions for Skill Bill is encoding engineering judgment once and reusing it everywhere.
 
@@ -291,7 +310,7 @@ Focus:
 
 Examples of work:
 
-- write team adoption docs and examples
+- pressure-test the new getting-started and team-rollout docs with real users
 - define recommended repo-local override strategy
 - document a minimal process integration model for reviews and PRs
 - make install/update flows friendlier for non-maintainers
@@ -339,7 +358,18 @@ Prioritize:
 
 This horizon is about turning the current stable commands into genuinely strong daily tools.
 
-### Horizon 3: Operationalize for teams
+### Horizon 3: Prove external adoption
+
+Prioritize:
+
+- external authoring of at least one new or forked pack
+- one lighthouse team using the core flows in normal work
+- measurement around repeat usage, trust, and usefulness
+- evidence-driven fixes from real rollout friction
+
+This horizon is about validating that the framework works outside the maintainer's own loop.
+
+### Horizon 4: Operationalize for teams
 
 Prioritize:
 
@@ -350,7 +380,7 @@ Prioritize:
 
 This horizon is about moving from "useful to an advanced individual" to "safe and valuable for a team."
 
-### Horizon 4: Expand carefully
+### Horizon 5: Expand carefully
 
 Prioritize:
 

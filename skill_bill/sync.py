@@ -481,12 +481,17 @@ def telemetry_status_payload(db_path: Path) -> dict[str, object]:
     connection.close()
 
 
-def auto_sync_telemetry(db_path: Path) -> SyncResult | None:
+def auto_sync_telemetry(
+  db_path: Path,
+  *,
+  report_failures: bool = False,
+) -> SyncResult | None:
   try:
     result = sync_telemetry(db_path)
   except ValueError as error:
-    print(f"Telemetry sync skipped: {error}", file=sys.stderr)
+    if report_failures:
+      print(f"Telemetry sync skipped: {error}", file=sys.stderr)
     return None
-  if result.status == "failed" and result.message:
+  if report_failures and result.status == "failed" and result.message:
     print(f"Telemetry sync failed: {result.message}", file=sys.stderr)
   return result

@@ -1,25 +1,40 @@
 # Getting Started for Teams
 
-A practical guide for teams evaluating or rolling out Skill Bill. For install mechanics and the full skill catalog, see the [README](../README.md).
+A practical guide for teams evaluating or rolling out Skill Bill.
+
+Use this document for:
+
+- rollout strategy
+- customization boundaries
+- trust-vs-verify guidance
+- adoption patterns and expectations
+
+Use [Getting Started](getting-started.md) for:
+
+- installation
+- supported agents
+- stable skill surfaces
+- full `skill-bill` CLI coverage
+- full MCP tool coverage
 
 ## Who this is for
 
 Engineers and tech leads deciding whether to adopt Skill Bill on a team. It focuses on **what to expect**, **how to customize**, and **when to trust the output** — the parts that matter once install is done.
 
-## Install in one minute
+## Before you roll it out
 
-Follow the [Installation section of README.md](../README.md#installation). The short version:
+Complete install and operator setup live in [Getting Started](getting-started.md).
 
-1. Clone the repo somewhere stable (e.g. `~/Development/skill-bill`).
-2. Run `./install.sh`.
-3. Select your agents (Claude Code / Copilot / Codex / OpenCode / GLM).
-4. Select the platform packs you want — check the [reference platform packs](../README.md#reference-platform-packs) first so you know what the currently shipped packs include.
+Before involving a team, one person should:
 
-Installed skills are symlinks back to the repo, so `git pull` updates everything without re-running install.
+1. Install Skill Bill locally.
+2. Run the stable commands on recent real work.
+3. Decide which shipped platform packs are relevant.
+4. Decide whether the team will start with defaults, override files, or a forked platform pack.
 
 ## The three commands that matter
 
-99% of daily use comes down to three base commands. They auto-detect your stack and route to the specialist skills.
+Most daily use still comes down to three base commands. They auto-detect your stack and route to specialist skills.
 
 | Command | Use it when | Expected output |
 |---------|-------------|-----------------|
@@ -124,7 +139,7 @@ The scaffolder:
 - applies the built-in Java routing preset automatically, including the governed manifest fields and required H2 sections.
 - wires the sibling supporting files needed by the generated skills.
 - installs the new skills into every detected agent.
-- does not require a manual README platform catalog update.
+- does not require a manual docs catalog update.
 
 If you want a bare-bones Java skill set up front instead of just the starter pack, use:
 
@@ -240,7 +255,7 @@ A suggested sequence:
 
 ## Getting unstuck
 
-- The skill catalog drifted from README? Run `.venv/bin/python3 scripts/validate_agent_configs.py` — it fails loudly on catalog drift.
+- Need to verify repo docs and governed metadata still line up? Run `.venv/bin/python3 scripts/validate_agent_configs.py` — it fails loudly on catalog and contract drift.
 - Review output won't parse into telemetry? See the exact required format in [review-telemetry.md](review-telemetry.md).
 - A skill routed to the wrong stack? Open an issue with the detected signals and scope; stack routing is the most commonly tuned part of the system.
 
