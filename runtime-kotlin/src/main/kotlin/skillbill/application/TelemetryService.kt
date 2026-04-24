@@ -2,7 +2,7 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext
-import skillbill.db.DatabaseRuntime
+import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.telemetry.RemoteStatsRequest
 import skillbill.telemetry.TelemetryConfigMutationRuntime
 import skillbill.telemetry.TelemetryHttpRuntime
@@ -10,16 +10,19 @@ import skillbill.telemetry.TelemetryRemoteStatsRuntime
 import skillbill.telemetry.TelemetrySyncRuntime
 
 @Inject
-class TelemetryService(private val context: RuntimeContext) {
+class TelemetryService(
+  private val context: RuntimeContext,
+  private val database: DatabaseSessionFactory,
+) {
   fun isEnabled(): Boolean = telemetrySettingsOrNull(context)?.enabled ?: false
 
   fun status(dbOverride: String?): Map<String, Any?> {
-    val dbPath = DatabaseRuntime.resolveDbPath(dbOverride, context.environment, context.userHome)
+    val dbPath = database.resolveDbPath(dbOverride)
     return TelemetrySyncRuntime.telemetryStatusPayload(dbPath, loadTelemetrySettings(context))
   }
 
   fun sync(dbOverride: String?): TelemetrySyncPayload {
-    val dbPath = DatabaseRuntime.resolveDbPath(dbOverride, context.environment, context.userHome)
+    val dbPath = database.resolveDbPath(dbOverride)
     val result = TelemetrySyncRuntime.syncTelemetry(dbPath, loadTelemetrySettings(context), context.requester)
     return TelemetrySyncPayload(
       exitCode = if (result.status == "failed") 1 else 0,
@@ -28,7 +31,7 @@ class TelemetryService(private val context: RuntimeContext) {
   }
 
   fun setLevel(level: String, dbOverride: String?): Map<String, Any?> {
-    val dbPath = DatabaseRuntime.resolveDbPath(dbOverride, context.environment, context.userHome)
+    val dbPath = database.resolveDbPath(dbOverride)
     val (settings, clearedEvents) =
       TelemetryConfigMutationRuntime.setTelemetryLevel(
         level = level,

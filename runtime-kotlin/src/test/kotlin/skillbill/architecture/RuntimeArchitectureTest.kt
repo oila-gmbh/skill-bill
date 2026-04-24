@@ -22,6 +22,7 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "Boundary Rules")
     assertContains(architecture, "MCP workflow calls must use application services")
     assertContains(architecture, "learning application use cases return typed results")
+    assertContains(architecture, "repository and unit-of-work ports")
   }
 
   @Test
@@ -35,9 +36,11 @@ class RuntimeArchitectureTest {
         "skillbill.di",
         "skillbill.error",
         "skillbill.install",
+        "skillbill.infrastructure",
         "skillbill.launcher",
         "skillbill.learnings",
         "skillbill.mcp",
+        "skillbill.ports",
         "skillbill.review",
         "skillbill.scaffold",
         "skillbill.telemetry",
@@ -57,6 +60,20 @@ class RuntimeArchitectureTest {
         "com.github.ajalt.clikt",
         "skillbill.cli",
         "skillbill.mcp",
+      ),
+    )
+  }
+
+  @Test
+  fun `application services use persistence ports instead of sqlite infrastructure`() {
+    assertNoBannedImports(
+      files = sourceFiles().filter { it.packageName.startsWith("skillbill.application") },
+      bannedImports =
+      listOf(
+        "java.sql",
+        "java.nio.file.Files",
+        "skillbill.db",
+        "skillbill.infrastructure",
       ),
     )
   }

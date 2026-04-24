@@ -1,24 +1,14 @@
 package skillbill.db
 
+import skillbill.ports.persistence.WorkflowStateRecord
+import skillbill.ports.persistence.WorkflowStateRepository
 import java.sql.Connection
 
-data class WorkflowStateRow(
-  val workflowId: String,
-  val sessionId: String,
-  val workflowName: String,
-  val contractVersion: String,
-  val workflowStatus: String,
-  val currentStepId: String,
-  val stepsJson: String,
-  val artifactsJson: String,
-  val startedAt: String?,
-  val updatedAt: String?,
-  val finishedAt: String?,
-)
+typealias WorkflowStateRow = WorkflowStateRecord
 
 class WorkflowStateStore(
   private val connection: Connection,
-) {
+) : WorkflowStateRepository {
   private companion object {
     const val WORKFLOW_ID_PARAMETER_INDEX: Int = 1
     const val SESSION_ID_PARAMETER_INDEX: Int = 2
@@ -31,7 +21,7 @@ class WorkflowStateStore(
     const val FINISHED_AT_PARAMETER_INDEX: Int = 9
   }
 
-  fun saveFeatureImplementWorkflow(row: WorkflowStateRow) {
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
     upsert(
       tableName = "feature_implement_workflows",
       row = row,
@@ -39,7 +29,7 @@ class WorkflowStateStore(
     )
   }
 
-  fun saveFeatureVerifyWorkflow(row: WorkflowStateRow) {
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) {
     upsert(
       tableName = "feature_verify_workflows",
       row = row,
@@ -47,14 +37,15 @@ class WorkflowStateStore(
     )
   }
 
-  fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRow? = get(
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = get(
     "feature_implement_workflows",
     workflowId,
   )
 
-  fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRow? = get("feature_verify_workflows", workflowId)
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? =
+    get("feature_verify_workflows", workflowId)
 
-  private fun upsert(tableName: String, row: WorkflowStateRow, defaultContractVersion: String) {
+  private fun upsert(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
     connection.prepareStatement(
       """
       INSERT INTO $tableName (
@@ -96,7 +87,7 @@ class WorkflowStateStore(
     }
   }
 
-  private fun get(tableName: String, workflowId: String): WorkflowStateRow? = connection.prepareStatement(
+  private fun get(tableName: String, workflowId: String): WorkflowStateRecord? = connection.prepareStatement(
     """
       SELECT
         workflow_id,
@@ -119,7 +110,7 @@ class WorkflowStateStore(
       if (!resultSet.next()) {
         return null
       }
-      WorkflowStateRow(
+      WorkflowStateRecord(
         workflowId = resultSet.getString("workflow_id"),
         sessionId = resultSet.getString("session_id"),
         workflowName = resultSet.getString("workflow_name"),

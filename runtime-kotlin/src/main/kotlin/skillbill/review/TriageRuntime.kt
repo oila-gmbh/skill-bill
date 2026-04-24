@@ -2,7 +2,6 @@ package skillbill.review
 
 import skillbill.telemetry.TelemetryConfigRuntime
 import java.sql.Connection
-import java.sql.SQLException
 
 data class FeedbackRequest(
   val reviewRunId: String,
@@ -96,31 +95,25 @@ object TriageRuntime {
     connection: Connection,
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions = FeedbackTelemetryOptions(),
+  ): Map<String, Any?>? = connection.inTransaction {
+    recordFeedbackWithoutTransaction(connection, request, telemetryOptions)
+  }
+
+  fun recordFeedbackWithoutTransaction(
+    connection: Connection,
+    request: FeedbackRequest,
+    telemetryOptions: FeedbackTelemetryOptions = FeedbackTelemetryOptions(),
   ): Map<String, Any?>? {
     validateFeedbackRequest(connection, request)
-    connection.autoCommit = false
-    try {
-      request.findingIds.forEach { findingId ->
-        insertFeedbackEvent(connection, request.reviewRunId, findingId, request.eventType, request.note)
-      }
-      val telemetryPayload =
-        ReviewStatsRuntime.updateReviewFinishedTelemetryState(
-          connection = connection,
-          reviewRunId = request.reviewRunId,
-          enabled = telemetryOptions.enabled ?: TelemetryConfigRuntime.telemetryIsEnabled(),
-          level = telemetryOptions.level,
-        )
-      connection.commit()
-      return telemetryPayload
-    } catch (error: SQLException) {
-      rollbackAndRethrow(connection, error)
-    } catch (error: IllegalArgumentException) {
-      rollbackAndRethrow(connection, error)
-    } catch (error: IllegalStateException) {
-      rollbackAndRethrow(connection, error)
-    } finally {
-      connection.autoCommit = true
+    request.findingIds.forEach { findingId ->
+      insertFeedbackEvent(connection, request.reviewRunId, findingId, request.eventType, request.note)
     }
+    return ReviewStatsRuntime.updateReviewFinishedTelemetryState(
+      connection = connection,
+      reviewRunId = request.reviewRunId,
+      enabled = telemetryOptions.enabled ?: TelemetryConfigRuntime.telemetryIsEnabled(),
+      level = telemetryOptions.level,
+    )
   }
 }
 
@@ -211,7 +204,18 @@ private fun insertFeedbackEvent(
   }
 }
 
-private fun rollbackAndRethrow(connection: Connection, error: Throwable): Nothing {
-  connection.rollback()
-  throw error
+private fun <T> Connection.inTransaction(block: () -> T): T {
+  val previousAutoCommit = autoCommit
+  autoCommit = false
+  try {
+    val outcome = runCatching(block)
+    if (outcome.isSuccess) {
+      commit()
+    } else {
+      rollback()
+    }
+    return outcome.getOrThrow()
+  } finally {
+    autoCommit = previousAutoCommit
+  }
 }

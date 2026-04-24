@@ -1,3 +1,13 @@
+## [2026-04-24] runtime-repository-unit-of-work
+Areas: skillbill.application, skillbill.ports.persistence, skillbill.infrastructure.sqlite, skillbill.db, architecture tests
+- Added persistence ports for database sessions, unit-of-work access, review repositories, learning repositories, telemetry outbox, and workflow state.
+- Added SQLite adapters that wrap existing JDBC review/learning/store helpers; application services now call `read` or `transaction` on `DatabaseSessionFactory`.
+- Reusable pattern: write use cases should own transaction choice in application services, while SQLite adapters call no-transaction repository helpers inside the active unit of work.
+- Reusable tests: application use cases can be tested with fake repositories via `ApplicationPersistencePortTest`; SQLite transaction behavior is covered in `SQLiteDatabaseSessionFactoryTest`.
+- Known limitation: review/learnings domain objects still contain JDBC-shaped helpers until the next domain-separation phase.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-04-24] runtime-typed-learning-results
 Areas: skillbill.application, skillbill.learnings, skillbill.cli, skillbill.mcp, architecture tests
 - Added typed learning result models for list, show, resolve, mutations, and delete; `LearningService` no longer returns map payloads for learning use cases.

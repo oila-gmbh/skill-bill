@@ -29,6 +29,10 @@ di
 - `skillbill.application`: reusable runtime use cases for CLI, MCP, and future
   entry points.
 - `skillbill.di`: Kotlin-Inject composition roots and providers.
+- `skillbill.ports`: internal port contracts for persistence sessions,
+  repositories, and later filesystem/HTTP/time abstractions.
+- `skillbill.infrastructure`: concrete adapters for port contracts. SQLite
+  adapters own JDBC connection/session behavior.
 - `skillbill.db`: SQLite schema, migrations, connection bootstrap, and current
   JDBC stores.
 - `skillbill.review`: review parsing, triage, review metrics, review telemetry
@@ -59,6 +63,9 @@ These are the stable dependency rules the runtime should converge toward.
    required to wire the graph.
 6. JSON maps and terminal strings are boundary concerns. Internal use cases
    should move toward typed input and output models.
+7. Application use cases must access SQLite through repository and unit-of-work
+   ports. Read use cases call a read session; write use cases call an explicit
+   transaction session.
 
 ## Architecture Guardrails
 
@@ -75,6 +82,10 @@ useful for the next refactors:
   stores
 - learning application use cases return typed results; CLI and MCP map those
   results to JSON-compatible payloads at their adapter boundaries
+- application services use persistence ports rather than opening SQLite
+  databases, importing JDBC, or checking database files directly
+- repository and unit-of-work ports are the required application persistence
+  boundary
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -82,9 +93,9 @@ useful for the next refactors:
 
 1. Continue replacing non-learning application-layer `Map<String, Any?>`
    results with typed results.
-2. Introduce repository and unit-of-work ports.
-3. Move pure domain models/rules away from JDBC-shaped runtime objects.
-4. Put telemetry config, HTTP, and filesystem behavior behind explicit ports.
-5. Add versioned database migrations.
-6. Add contract DTOs and golden output fixtures.
-7. Split Gradle modules only after package boundaries are proven.
+2. Move remaining pure domain models/rules away from JDBC-shaped runtime
+   objects.
+3. Put telemetry config, HTTP, and filesystem behavior behind explicit ports.
+4. Add versioned database migrations.
+5. Add contract DTOs and golden output fixtures.
+6. Split Gradle modules only after package boundaries are proven.

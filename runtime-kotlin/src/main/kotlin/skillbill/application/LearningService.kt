@@ -1,54 +1,44 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
-import skillbill.db.DatabaseRuntime
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningStore
-import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningEntry
 import skillbill.learnings.learningEntrySessionJson
+import skillbill.ports.persistence.DatabaseSessionFactory
 
 @Inject
-class LearningService(private val context: RuntimeContext) {
-  fun list(status: String, dbOverride: String?): LearningListResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      val entries = LearningStore.listLearnings(openDb.connection, status).map(::learningEntry)
-      return LearningListResult(openDb.dbPath.toString(), entries)
-    }
+class LearningService(private val database: DatabaseSessionFactory) {
+  fun list(status: String, dbOverride: String?): LearningListResult = database.read(dbOverride) { unitOfWork ->
+    val entries = unitOfWork.learnings.list(status).map(::learningEntry)
+    LearningListResult(unitOfWork.dbPath.toString(), entries)
   }
 
-  fun show(id: Int, dbOverride: String?): LearningRecordResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      val record = LearningStore.getLearning(openDb.connection, id)
-      return LearningRecordResult(openDb.dbPath.toString(), learningEntry(record))
-    }
+  fun show(id: Int, dbOverride: String?): LearningRecordResult = database.read(dbOverride) { unitOfWork ->
+    LearningRecordResult(unitOfWork.dbPath.toString(), learningEntry(unitOfWork.learnings.get(id)))
   }
 
-  fun resolve(repo: String?, skill: String?, reviewSessionId: String?, dbOverride: String?): LearningResolveResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      val (repoScopeKey, skillName, rows) = LearningsRuntime.resolveLearnings(openDb.connection, repo, skill)
-      val entries = rows.map(::learningEntry)
+  fun resolve(repo: String?, skill: String?, reviewSessionId: String?, dbOverride: String?): LearningResolveResult =
+    database.transaction(dbOverride) { unitOfWork ->
+      val resolution = unitOfWork.learnings.resolve(repo, skill)
+      val entries = resolution.records.map(::learningEntry)
       reviewSessionId?.takeIf(String::isNotBlank)?.let {
-        LearningsRuntime.saveSessionLearnings(openDb.connection, it, learningEntrySessionJson(skillName, entries))
+        unitOfWork.learnings.saveSessionLearnings(it, learningEntrySessionJson(resolution.skillName, entries))
       }
-      return LearningResolveResult(
-        dbPath = openDb.dbPath.toString(),
-        repoScopeKey = repoScopeKey,
-        skillName = skillName,
+      LearningResolveResult(
+        dbPath = unitOfWork.dbPath.toString(),
+        repoScopeKey = resolution.repoScopeKey,
+        skillName = resolution.skillName,
         reviewSessionId = reviewSessionId,
         scopePrecedence = LearningScope.precedence,
         learnings = entries,
       )
     }
-  }
 
-  fun add(request: AddLearningInput, dbOverride: String?): LearningRecordResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+  fun add(request: AddLearningInput, dbOverride: String?): LearningRecordResult =
+    database.transaction(dbOverride) { unitOfWork ->
       val learningId =
-        LearningStore.addLearning(
-          openDb.connection,
+        unitOfWork.learnings.add(
           CreateLearningRequest(
             request.scope,
             request.scopeKey,
@@ -59,18 +49,16 @@ class LearningService(private val context: RuntimeContext) {
             request.fromFinding,
           ),
         )
-      return LearningRecordResult(
-        openDb.dbPath.toString(),
-        learningEntry(LearningStore.getLearning(openDb.connection, learningId)),
+      LearningRecordResult(
+        unitOfWork.dbPath.toString(),
+        learningEntry(unitOfWork.learnings.get(learningId)),
       )
     }
-  }
 
-  fun edit(request: EditLearningInput, dbOverride: String?): LearningRecordResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+  fun edit(request: EditLearningInput, dbOverride: String?): LearningRecordResult =
+    database.transaction(dbOverride) { unitOfWork ->
       val record =
-        LearningStore.editLearning(
-          openDb.connection,
+        unitOfWork.learnings.edit(
           skillbill.learnings.UpdateLearningRequest(
             request.id,
             request.scope,
@@ -80,22 +68,18 @@ class LearningService(private val context: RuntimeContext) {
             request.reason,
           ),
         )
-      return LearningRecordResult(openDb.dbPath.toString(), learningEntry(record))
+      LearningRecordResult(unitOfWork.dbPath.toString(), learningEntry(record))
     }
-  }
 
-  fun setStatus(id: Int, status: String, dbOverride: String?): LearningRecordResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      val record = LearningStore.setLearningStatus(openDb.connection, id, status)
-      return LearningRecordResult(openDb.dbPath.toString(), learningEntry(record))
+  fun setStatus(id: Int, status: String, dbOverride: String?): LearningRecordResult =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = unitOfWork.learnings.setStatus(id, status)
+      LearningRecordResult(unitOfWork.dbPath.toString(), learningEntry(record))
     }
-  }
 
-  fun delete(id: Int, dbOverride: String?): LearningDeleteResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      LearningStore.deleteLearning(openDb.connection, id)
-      return LearningDeleteResult(openDb.dbPath.toString(), id)
-    }
+  fun delete(id: Int, dbOverride: String?): LearningDeleteResult = database.transaction(dbOverride) { unitOfWork ->
+    unitOfWork.learnings.delete(id)
+    LearningDeleteResult(unitOfWork.dbPath.toString(), id)
   }
 }
 

@@ -29,6 +29,8 @@ class RuntimeModuleSmokeTest {
         "skillbill.telemetry",
         "skillbill.review",
         "skillbill.learnings",
+        "skillbill.ports",
+        "skillbill.infrastructure",
         "skillbill.workflow.implement",
         "skillbill.workflow.verify",
         "skillbill.scaffold",
@@ -60,7 +62,14 @@ class RuntimeModuleSmokeTest {
     assertEquals(expectedSubsystemPackages, RuntimeModule.declaredSubsystemPackages.toSet())
     assertEquals(
       expectedSubsystemPackages -
-        setOf("skillbill.application", "skillbill.contracts", "skillbill.di", "skillbill.error"),
+        setOf(
+          "skillbill.application",
+          "skillbill.contracts",
+          "skillbill.di",
+          "skillbill.error",
+          "skillbill.infrastructure",
+          "skillbill.ports",
+        ),
       runtimeSurfacePackages,
     )
     assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })

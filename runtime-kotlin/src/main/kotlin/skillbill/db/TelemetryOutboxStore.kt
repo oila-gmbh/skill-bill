@@ -1,20 +1,15 @@
 package skillbill.db
 
+import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.persistence.TelemetryOutboxRepository
 import java.sql.Connection
 
-data class TelemetryOutboxRow(
-  val id: Long,
-  val eventName: String,
-  val payloadJson: String,
-  val createdAt: String,
-  val syncedAt: String?,
-  val lastError: String,
-)
+typealias TelemetryOutboxRow = TelemetryOutboxRecord
 
 class TelemetryOutboxStore(
   private val connection: Connection,
-) {
-  fun enqueue(eventName: String, payloadJson: String): Long {
+) : TelemetryOutboxRepository {
+  override fun enqueue(eventName: String, payloadJson: String): Long {
     connection.prepareStatement(
       """
       INSERT INTO telemetry_outbox (event_name, payload_json)
@@ -33,7 +28,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun listPending(limit: Int? = null): List<TelemetryOutboxRow> {
+  override fun listPending(limit: Int?): List<TelemetryOutboxRecord> {
     val sql =
       buildString {
         appendLine("SELECT id, event_name, payload_json, created_at, synced_at, last_error")
@@ -52,7 +47,7 @@ class TelemetryOutboxStore(
         buildList {
           while (resultSet.next()) {
             add(
-              TelemetryOutboxRow(
+              TelemetryOutboxRecord(
                 id = resultSet.getLong("id"),
                 eventName = resultSet.getString("event_name"),
                 payloadJson = resultSet.getString("payload_json"),
@@ -67,7 +62,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun pendingCount(): Int = connection.prepareStatement(
+  override fun pendingCount(): Int = connection.prepareStatement(
     """
       SELECT COUNT(*)
       FROM telemetry_outbox
@@ -80,7 +75,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun latestError(): String? = connection.prepareStatement(
+  override fun latestError(): String? = connection.prepareStatement(
     """
       SELECT last_error
       FROM telemetry_outbox
@@ -97,7 +92,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun markSynced(id: Long, syncedAt: String) {
+  override fun markSynced(id: Long, syncedAt: String) {
     connection.prepareStatement(
       """
       UPDATE telemetry_outbox
@@ -111,7 +106,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun markSynced(eventIds: List<Long>) {
+  override fun markSynced(eventIds: List<Long>) {
     if (eventIds.isEmpty()) {
       return
     }
@@ -130,7 +125,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun markFailed(id: Long, lastError: String) {
+  override fun markFailed(id: Long, lastError: String) {
     connection.prepareStatement(
       """
       UPDATE telemetry_outbox
@@ -144,7 +139,7 @@ class TelemetryOutboxStore(
     }
   }
 
-  fun markFailed(eventIds: List<Long>, lastError: String) {
+  override fun markFailed(eventIds: List<Long>, lastError: String) {
     if (eventIds.isEmpty()) {
       return
     }

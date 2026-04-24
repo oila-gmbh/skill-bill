@@ -2,16 +2,18 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext
-import skillbill.db.DatabaseRuntime
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewRepository
 import skillbill.review.FeedbackRequest
 import skillbill.review.NumberedFinding
 import skillbill.review.ReviewRuntime
-import skillbill.review.ReviewStatsRuntime
 import skillbill.review.TriageRuntime
-import java.sql.Connection
 
 @Inject
-class ReviewService(private val context: RuntimeContext) {
+class ReviewService(
+  private val context: RuntimeContext,
+  private val database: DatabaseSessionFactory,
+) {
   fun previewImport(input: String): Map<String, Any?> {
     val (text) = ReviewRuntime.readInput(input, context.stdinText)
     val review = ReviewRuntime.parseReview(text)
@@ -29,19 +31,18 @@ class ReviewService(private val context: RuntimeContext) {
   fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
     val (text, sourcePath) = ReviewRuntime.readInput(input, context.stdinText)
     val review = ReviewRuntime.parseReview(text)
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      ReviewRuntime.saveImportedReview(openDb.connection, review, sourcePath)
+    return database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
         val settings = telemetrySettingsOrNull(context)
-        ReviewStatsRuntime.updateReviewFinishedTelemetryState(
-          openDb.connection,
-          review.reviewRunId,
+        unitOfWork.reviews.updateReviewFinishedTelemetryState(
+          runId = review.reviewRunId,
           enabled = settings?.enabled ?: false,
           level = settings?.level ?: "off",
         )
       }
-      return linkedMapOf(
-        "db_path" to openDb.dbPath.toString(),
+      linkedMapOf(
+        "db_path" to unitOfWork.dbPath.toString(),
         "review_run_id" to review.reviewRunId,
         "review_session_id" to review.reviewSessionId,
         "finding_count" to review.findings.size,
@@ -54,27 +55,20 @@ class ReviewService(private val context: RuntimeContext) {
   }
 
   fun markOrchestrated(runId: String, dbOverride: String?) {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      openDb.connection.prepareStatement(
-        "UPDATE review_runs SET orchestrated_run = 1 WHERE review_run_id = ?",
-      ).use { statement ->
-        statement.setString(1, runId)
-        statement.executeUpdate()
-      }
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.reviews.markOrchestrated(runId)
     }
   }
 
-  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): Map<String, Any?>? {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): Map<String, Any?>? =
+    database.transaction(dbOverride) { unitOfWork ->
       val settings = telemetrySettingsOrNull(context)
-      return ReviewStatsRuntime.updateReviewFinishedTelemetryState(
-        openDb.connection,
-        runId,
+      unitOfWork.reviews.updateReviewFinishedTelemetryState(
+        runId = runId,
         enabled = settings?.enabled ?: false,
         level = settings?.level ?: "off",
       )
     }
-  }
 
   fun recordFeedback(
     runId: String,
@@ -82,20 +76,17 @@ class ReviewService(private val context: RuntimeContext) {
     findings: List<String>,
     note: String,
     dbOverride: String?,
-  ): Map<String, Any?> {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      TriageRuntime.recordFeedback(
-        openDb.connection,
-        FeedbackRequest(runId, findings, event, note),
-        feedbackTelemetryOptions(context),
-      )
-      return linkedMapOf(
-        "db_path" to openDb.dbPath.toString(),
-        "review_run_id" to runId,
-        "outcome_type" to event,
-        "recorded_findings" to findings.size,
-      )
-    }
+  ): Map<String, Any?> = database.transaction(dbOverride) { unitOfWork ->
+    unitOfWork.reviews.recordFeedback(
+      FeedbackRequest(runId, findings, event, note),
+      feedbackTelemetryOptions(context),
+    )
+    linkedMapOf(
+      "db_path" to unitOfWork.dbPath.toString(),
+      "review_run_id" to runId,
+      "outcome_type" to event,
+      "recorded_findings" to findings.size,
+    )
   }
 
   fun triage(
@@ -104,26 +95,28 @@ class ReviewService(private val context: RuntimeContext) {
     listOnly: Boolean,
     dbOverride: String?,
     listWhenNoDecisions: Boolean = true,
-  ): TriageResult {
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      val numberedFindings = ReviewRuntime.fetchNumberedFindings(openDb.connection, runId)
-      if (listOnly || (decisions.isEmpty() && listWhenNoDecisions)) {
-        val findings = numberedFindings.map(::findingPayload)
-        return TriageResult(
-          payload =
-          linkedMapOf(
-            "db_path" to openDb.dbPath.toString(),
-            "review_run_id" to runId,
-            "findings" to findings,
-          ),
-          findings = findings,
-        )
-      }
-      val applied = applyTriageDecisions(openDb.connection, runId, numberedFindings, decisions)
-      return TriageResult(
+  ): TriageResult = if (listOnly || (decisions.isEmpty() && listWhenNoDecisions)) {
+    database.read(dbOverride) { unitOfWork ->
+      val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
+      val findings = numberedFindings.map(::findingPayload)
+      TriageResult(
         payload =
         linkedMapOf(
-          "db_path" to openDb.dbPath.toString(),
+          "db_path" to unitOfWork.dbPath.toString(),
+          "review_run_id" to runId,
+          "findings" to findings,
+        ),
+        findings = findings,
+      )
+    }
+  } else {
+    database.transaction(dbOverride) { unitOfWork ->
+      val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
+      val applied = applyTriageDecisions(unitOfWork.reviews, runId, numberedFindings, decisions)
+      TriageResult(
+        payload =
+        linkedMapOf(
+          "db_path" to unitOfWork.dbPath.toString(),
           "review_run_id" to runId,
           "recorded" to applied.recorded,
         ),
@@ -134,16 +127,16 @@ class ReviewService(private val context: RuntimeContext) {
   }
 
   fun reviewStats(runId: String?, dbOverride: String?): Map<String, Any?> =
-    statsPayload(context, dbOverride) { connection -> ReviewStatsRuntime.statsPayload(connection, runId) }
+    statsPayload(database, dbOverride) { reviewRepository -> reviewRepository.reviewStatsPayload(runId) }
 
   fun featureImplementStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(context, dbOverride, ReviewStatsRuntime::featureImplementStatsPayload)
+    statsPayload(database, dbOverride, ReviewRepository::featureImplementStatsPayload)
 
   fun featureVerifyStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(context, dbOverride, ReviewStatsRuntime::featureVerifyStatsPayload)
+    statsPayload(database, dbOverride, ReviewRepository::featureVerifyStatsPayload)
 
   private fun applyTriageDecisions(
-    connection: Connection,
+    reviewRepository: ReviewRepository,
     runId: String,
     numberedFindings: List<NumberedFinding>,
     decisions: List<String>,
@@ -152,8 +145,7 @@ class ReviewService(private val context: RuntimeContext) {
     var telemetryPayload: Map<String, Any?>? = null
     parsedDecisions.forEach { decision ->
       val returnedPayload =
-        TriageRuntime.recordFeedback(
-          connection,
+        reviewRepository.recordFeedback(
           FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
           feedbackTelemetryOptions(context),
         )
@@ -177,13 +169,13 @@ class ReviewService(private val context: RuntimeContext) {
 }
 
 private fun statsPayload(
-  context: RuntimeContext,
+  database: DatabaseSessionFactory,
   dbOverride: String?,
-  payloadBuilder: (Connection) -> Map<String, Any?>,
-): Map<String, Any?> = DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+  payloadBuilder: (ReviewRepository) -> Map<String, Any?>,
+): Map<String, Any?> = database.read(dbOverride) { unitOfWork ->
   linkedMapOf<String, Any?>().apply {
-    putAll(payloadBuilder(openDb.connection))
-    put("db_path", openDb.dbPath.toString())
+    putAll(payloadBuilder(unitOfWork.reviews))
+    put("db_path", unitOfWork.dbPath.toString())
   }
 }
 

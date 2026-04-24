@@ -16,6 +16,8 @@ object RuntimeModule {
       "skillbill.telemetry",
       "skillbill.review",
       "skillbill.learnings",
+      "skillbill.ports",
+      "skillbill.infrastructure",
       "skillbill.workflow.implement",
       "skillbill.workflow.verify",
       "skillbill.scaffold",
