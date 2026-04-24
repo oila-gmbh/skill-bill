@@ -1,3 +1,12 @@
+## [2026-04-25] runtime-contract-dtos-presenters
+Areas: skillbill.contracts, skillbill.cli, skillbill.mcp, skillbill.application, architecture tests, golden fixtures
+- Added explicit JSON contract DTOs for learning, review, MCP adapter-only payloads, and shared system version/doctor payloads.
+- Moved CLI text rendering for learnings and review triage onto typed presenter models instead of rendering from raw map entries.
+- Reusable pattern: external payload fields should be assembled in `skillbill.contracts.*`; CLI adapters choose text presenters or JSON payloads at the boundary.
+- Golden coverage now pins representative CLI import-review JSON and MCP learning-resolution JSON while existing CLI/MCP behavior remains stable.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-04-25] runtime-versioned-db-migrations
 Areas: skillbill.db, runtime architecture tests, database migration tests
 - Added `schema_migrations` as the SQLite migration ledger and made `DatabaseMigrations` run ordered named migration objects only when their version is not recorded.

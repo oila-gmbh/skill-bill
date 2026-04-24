@@ -61,7 +61,7 @@ class LearningsListCommand(
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
     } else {
-      state.completeText(CliOutput.learnings(result.learnings), payload)
+      state.completeText(CliOutput.learnings(result.toCliPresentation()), payload)
     }
   }
 }
@@ -95,7 +95,7 @@ class LearningsResolveCommand(
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
     } else {
-      state.completeText(CliOutput.resolvedLearnings(result), payload)
+      state.completeText(CliOutput.resolvedLearnings(result.toCliPresentation()), payload)
     }
   }
 }

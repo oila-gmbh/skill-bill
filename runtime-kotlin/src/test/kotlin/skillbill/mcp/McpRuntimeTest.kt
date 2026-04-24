@@ -166,6 +166,15 @@ class McpRuntimeTest {
       )
 
     assertEquals("bill-kotlin-code-review", result["skill_name"])
+    assertEquals(
+      decodeJsonObject(
+        goldenJson(
+          "mcp-resolve-learnings.json",
+          "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+        ),
+      ),
+      result,
+    )
     assertEquals(listOf("skill", "repo", "global"), result["scope_precedence"])
     assertEquals("L-001", result["applied_learnings"])
     assertEquals("rvs-20260402-001", result["review_session_id"])
@@ -413,4 +422,12 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
+}
+
+private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
+  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName)).trim()
+  replacements.forEach { (placeholder, value) ->
+    expected = expected.replace(placeholder, value)
+  }
+  return expected
 }

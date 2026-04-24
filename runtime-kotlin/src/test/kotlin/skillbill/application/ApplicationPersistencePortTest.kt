@@ -130,7 +130,7 @@ class ApplicationPersistencePortTest {
 
     assertEquals(listOf("transaction"), database.calls)
     assertEquals(listOf("F-001", "F-002"), reviewRepository.feedbackRequests.map { it.findingIds.single() })
-    assertEquals(listOf("fix_applied", "fix_applied"), result.recorded.map { it["outcome_type"] })
+    assertEquals(listOf("fix_applied", "fix_applied"), result.recorded.map { it.outcomeType })
   }
 
   @Test
