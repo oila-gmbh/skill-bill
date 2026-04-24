@@ -108,6 +108,9 @@ useful for the next refactors:
   separate from sync orchestration
 - SQLite schema changes are represented as append-only versioned database migrations
   and recorded in `schema_migrations`
+- CLI and MCP JSON output should be produced through explicit contract DTOs and
+  mappers, while CLI text rendering should consume typed CLI presenter models
+  instead of raw maps
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 

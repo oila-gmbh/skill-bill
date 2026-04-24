@@ -1,0 +1,10 @@
+{
+  "db_path": "<DB_PATH>",
+  "detected_scope": "unstaged changes",
+  "detected_stack": "kotlin",
+  "execution_mode": "inline",
+  "finding_count": 2,
+  "review_run_id": "rvw-20260402-001",
+  "review_session_id": "rvs-20260402-001",
+  "routed_skill": "bill-kotlin-code-review"
+}

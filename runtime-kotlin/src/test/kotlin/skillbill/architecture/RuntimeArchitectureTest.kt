@@ -31,6 +31,8 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "telemetry proxy DTO/payload mappers")
     assertContains(architecture, "schema_migrations")
     assertContains(architecture, "versioned database migrations")
+    assertContains(architecture, "contract DTOs")
+    assertContains(architecture, "typed CLI presenter models")
   }
 
   @Test
@@ -248,6 +250,33 @@ class RuntimeArchitectureTest {
         "skillbill.infrastructure",
       ),
     )
+  }
+
+  @Test
+  fun `cli and mcp learning payloads use contract DTO mappers`() {
+    val cliPayloads = Files.readString(sourceRoot.resolve("skillbill/cli/LearningCliPayloads.kt"))
+    val mcpPayloads = Files.readString(sourceRoot.resolve("skillbill/mcp/McpLearningPayloads.kt"))
+    val learningContracts = sourceRoot.resolve("skillbill/contracts/learning/LearningContracts.kt")
+    val systemContracts = sourceRoot.resolve("skillbill/contracts/system/SystemContracts.kt")
+
+    assertTrue(Files.exists(learningContracts), "Missing learning contract DTOs")
+    assertTrue(Files.exists(systemContracts), "Missing system contract DTOs")
+    assertContains(cliPayloads, "skillbill.contracts.learning")
+    assertContains(mcpPayloads, "skillbill.contracts.learning")
+    assertTrue("learningEntryPayload" !in cliPayloads)
+    assertTrue("learningEntryPayload" !in mcpPayloads)
+  }
+
+  @Test
+  fun `cli text rendering consumes typed presenter models instead of raw maps`() {
+    val cliOutput = Files.readString(sourceRoot.resolve("skillbill/cli/CliOutput.kt"))
+    val cliPresenters = Files.readString(sourceRoot.resolve("skillbill/cli/CliPresenters.kt"))
+
+    assertTrue("List<Map<String, Any?>>" !in cliOutput)
+    assertContains(cliOutput, "CliNumberedFindingsPresentation")
+    assertContains(cliOutput, "CliResolvedLearningsPresentation")
+    assertContains(cliPresenters, "data class CliTriagePresentation")
+    assertContains(cliPresenters, "data class CliLearningListPresentation")
   }
 
   private fun assertNoBannedImports(files: List<SourceFile>, bannedImports: List<String>) {

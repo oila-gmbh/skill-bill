@@ -38,6 +38,10 @@ class CliRuntimeTest {
 
     val payload = decodeJsonObject(result.stdout)
     assertEquals(0, result.exitCode)
+    assertEquals(
+      goldenJson("cli-import-review.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
+      result.stdout,
+    )
     assertEquals(dbPath.toAbsolutePath().normalize().toString(), payload["db_path"])
     assertEquals("rvw-20260402-001", payload["review_run_id"])
     assertEquals("rvs-20260402-001", payload["review_session_id"])
@@ -354,6 +358,14 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
+}
+
+private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
+  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName)).trim()
+  replacements.forEach { (placeholder, value) ->
+    expected = expected.replace(placeholder, value)
+  }
+  return expected
 }
 
 private fun seedLearningScenario(dbPath: Path) {

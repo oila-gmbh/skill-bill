@@ -2,6 +2,13 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext
+import skillbill.contracts.review.ReviewFeedbackContract
+import skillbill.contracts.review.TriageListContract
+import skillbill.contracts.review.TriageRecordedContract
+import skillbill.contracts.review.toImportedReviewContract
+import skillbill.contracts.review.toNumberedFindingContract
+import skillbill.contracts.review.toReviewPreviewContract
+import skillbill.contracts.review.toTriageDecisionContract
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
@@ -9,6 +16,7 @@ import skillbill.review.FeedbackRequest
 import skillbill.review.NumberedFinding
 import skillbill.review.ReviewInputReader
 import skillbill.review.ReviewParser
+import skillbill.review.TriageDecision
 import skillbill.review.TriageDecisionParser
 
 @Inject
@@ -20,15 +28,7 @@ class ReviewService(
   fun previewImport(input: String): Map<String, Any?> {
     val (text) = ReviewInputReader.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text)
-    return linkedMapOf(
-      "review_run_id" to review.reviewRunId,
-      "review_session_id" to review.reviewSessionId,
-      "finding_count" to review.findings.size,
-      "routed_skill" to review.routedSkill,
-      "detected_scope" to review.detectedScope,
-      "detected_stack" to review.detectedStack,
-      "execution_mode" to review.executionMode,
-    )
+    return review.toReviewPreviewContract().toPayload()
   }
 
   fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
@@ -44,16 +44,7 @@ class ReviewService(
           level = settings?.level ?: "off",
         )
       }
-      linkedMapOf(
-        "db_path" to unitOfWork.dbPath.toString(),
-        "review_run_id" to review.reviewRunId,
-        "review_session_id" to review.reviewSessionId,
-        "finding_count" to review.findings.size,
-        "routed_skill" to review.routedSkill,
-        "detected_scope" to review.detectedScope,
-        "detected_stack" to review.detectedStack,
-        "execution_mode" to review.executionMode,
-      )
+      review.toImportedReviewContract(dbPath = unitOfWork.dbPath.toString()).toPayload()
     }
   }
 
@@ -84,12 +75,12 @@ class ReviewService(
       FeedbackRequest(runId, findings, event, note),
       feedbackTelemetryOptions(settingsProvider),
     )
-    linkedMapOf(
-      "db_path" to unitOfWork.dbPath.toString(),
-      "review_run_id" to runId,
-      "outcome_type" to event,
-      "recorded_findings" to findings.size,
-    )
+    ReviewFeedbackContract(
+      dbPath = unitOfWork.dbPath.toString(),
+      reviewRunId = runId,
+      outcomeType = event,
+      recordedFindings = findings.size,
+    ).toPayload()
   }
 
   fun triage(
@@ -101,15 +92,14 @@ class ReviewService(
   ): TriageResult = if (listOnly || (decisions.isEmpty() && listWhenNoDecisions)) {
     database.read(dbOverride) { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
-      val findings = numberedFindings.map(::findingPayload)
       TriageResult(
         payload =
-        linkedMapOf(
-          "db_path" to unitOfWork.dbPath.toString(),
-          "review_run_id" to runId,
-          "findings" to findings,
-        ),
-        findings = findings,
+        TriageListContract(
+          dbPath = unitOfWork.dbPath.toString(),
+          reviewRunId = runId,
+          findings = numberedFindings.map(NumberedFinding::toNumberedFindingContract),
+        ).toPayload(),
+        findings = numberedFindings,
       )
     }
   } else {
@@ -118,11 +108,11 @@ class ReviewService(
       val applied = applyTriageDecisions(unitOfWork.reviews, runId, numberedFindings, decisions)
       TriageResult(
         payload =
-        linkedMapOf(
-          "db_path" to unitOfWork.dbPath.toString(),
-          "review_run_id" to runId,
-          "recorded" to applied.recorded,
-        ),
+        TriageRecordedContract(
+          dbPath = unitOfWork.dbPath.toString(),
+          reviewRunId = runId,
+          recorded = applied.recorded.map(TriageDecision::toTriageDecisionContract),
+        ).toPayload(),
         recorded = applied.recorded,
         telemetryPayload = applied.telemetryPayload,
       )
@@ -159,11 +149,11 @@ class ReviewService(
     return AppliedTriageDecisions(
       recorded =
       parsedDecisions.map { decision ->
-        linkedMapOf(
-          "number" to decision.number,
-          "finding_id" to decision.findingId,
-          "outcome_type" to decision.outcomeType,
-          "note" to decision.note,
+        TriageDecision(
+          number = decision.number,
+          findingId = decision.findingId,
+          outcomeType = decision.outcomeType,
+          note = decision.note,
         )
       },
       telemetryPayload = telemetryPayload,
@@ -184,12 +174,12 @@ private fun statsPayload(
 
 data class TriageResult(
   val payload: Map<String, Any?>,
-  val findings: List<Map<String, Any?>> = emptyList(),
-  val recorded: List<Map<String, Any?>> = emptyList(),
+  val findings: List<NumberedFinding> = emptyList(),
+  val recorded: List<TriageDecision> = emptyList(),
   val telemetryPayload: Map<String, Any?>? = null,
 )
 
 private data class AppliedTriageDecisions(
-  val recorded: List<Map<String, Any?>>,
+  val recorded: List<TriageDecision>,
   val telemetryPayload: Map<String, Any?>?,
 )

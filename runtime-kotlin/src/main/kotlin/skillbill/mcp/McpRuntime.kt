@@ -1,6 +1,10 @@
 package skillbill.mcp
 
 import skillbill.RuntimeContext
+import skillbill.contracts.mcp.McpLearningsSkippedContract
+import skillbill.contracts.mcp.McpOrchestratedPayloadContract
+import skillbill.contracts.mcp.McpReviewImportSkippedContract
+import skillbill.contracts.mcp.McpTriageSkippedContract
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.infrastructure.http.JdkHttpRequester
@@ -30,18 +34,17 @@ object McpRuntime {
     val services = services(context, stdinText = reviewText)
     if (!services.telemetryService.isEnabled()) {
       val preview = services.reviewService.previewImport("-")
-      return linkedMapOf(
-        "status" to "skipped",
-        "reason" to "telemetry is disabled",
-        "review_run_id" to preview["review_run_id"],
-        "finding_count" to preview["finding_count"],
-      )
+      return McpReviewImportSkippedContract(
+        reason = "telemetry is disabled",
+        reviewRunId = preview["review_run_id"] as? String,
+        findingCount = preview["finding_count"],
+      ).toPayload()
     }
     val payload =
       services.reviewService
         .importReview("-", dbOverride = null, finishZeroFindingTelemetry = !orchestrated)
         .toMutableMap()
-    if (orchestrated) {
+    return if (orchestrated) {
       val reviewRunId = payload["review_run_id"] as String
       services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
       val telemetryPayload =
@@ -50,9 +53,10 @@ object McpRuntime {
         } else {
           null
         }
-      enrichOrchestratedPayload(payload, telemetryPayload, orchestrated)
+      McpOrchestratedPayloadContract(basePayload = payload, telemetryPayload = telemetryPayload).toPayload()
+    } else {
+      payload
     }
-    return payload
   }
 
   fun triageFindings(
@@ -63,11 +67,7 @@ object McpRuntime {
   ): Map<String, Any?> {
     val services = services(context)
     if (!services.telemetryService.isEnabled()) {
-      return linkedMapOf(
-        "status" to "skipped",
-        "reason" to "telemetry is disabled",
-        "review_run_id" to reviewRunId,
-      )
+      return McpTriageSkippedContract(reason = "telemetry is disabled", reviewRunId = reviewRunId).toPayload()
     }
     if (orchestrated) {
       services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
@@ -80,8 +80,13 @@ object McpRuntime {
         dbOverride = null,
         listWhenNoDecisions = false,
       )
-    return result.payload.toMutableMap().also { payload ->
-      enrichOrchestratedPayload(payload, result.telemetryPayload, orchestrated)
+    return if (orchestrated) {
+      McpOrchestratedPayloadContract(
+        basePayload = result.payload,
+        telemetryPayload = result.telemetryPayload,
+      ).toPayload()
+    } else {
+      result.payload
     }
   }
 
@@ -93,12 +98,7 @@ object McpRuntime {
   ): Map<String, Any?> {
     val services = services(context)
     if (!services.telemetryService.isEnabled()) {
-      return linkedMapOf(
-        "status" to "skipped",
-        "reason" to "telemetry is disabled",
-        "applied_learnings" to "none",
-        "learnings" to emptyList<Map<String, Any?>>(),
-      )
+      return McpLearningsSkippedContract(reason = "telemetry is disabled").toPayload()
     }
     return services.learningService.resolve(repo, skill, reviewSessionId, dbOverride = null).toMcpPayload()
   }
@@ -125,23 +125,6 @@ object McpRuntime {
 
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.doctor(dbOverride = null)
-}
-
-private fun enrichOrchestratedPayload(
-  payload: MutableMap<String, Any?>,
-  telemetryPayload: Map<String, Any?>?,
-  orchestrated: Boolean,
-) {
-  if (!orchestrated) {
-    return
-  }
-  payload["mode"] = "orchestrated"
-  if (telemetryPayload != null) {
-    payload["telemetry_payload"] = linkedMapOf<String, Any?>().apply {
-      putAll(telemetryPayload)
-      put("skill", "bill-code-review")
-    }
-  }
 }
 
 private fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {

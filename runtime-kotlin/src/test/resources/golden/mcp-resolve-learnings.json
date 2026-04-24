@@ -1,0 +1,25 @@
+{
+  "db_path": "<DB_PATH>",
+  "repo_scope_key": null,
+  "skill_name": "bill-kotlin-code-review",
+  "scope_precedence": [
+    "skill",
+    "repo",
+    "global"
+  ],
+  "applied_learnings": "L-001",
+  "learnings": [
+    {
+      "reference": "L-001",
+      "scope": "skill",
+      "scope_key": "bill-kotlin-code-review",
+      "status": "active",
+      "title": "Keep wording aligned",
+      "rule_text": "Update the installer prompt when routing text changes.",
+      "rationale": "intentional",
+      "source_review_run_id": "rvw-20260402-001",
+      "source_finding_id": "F-002"
+    }
+  ],
+  "review_session_id": "rvs-20260402-001"
+}

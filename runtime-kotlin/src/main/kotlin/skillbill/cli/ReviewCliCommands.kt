@@ -73,10 +73,10 @@ class TriageCommand(
     when {
       format == CliFormat.JSON -> state.complete(result.payload, format)
       result.findings.isNotEmpty() -> state.completeText(
-        CliOutput.numberedFindings(runId, result.findings),
+        CliOutput.numberedFindings(result.toCliNumberedFindingsPresentation(runId)),
         result.payload,
       )
-      else -> state.completeText(CliOutput.triageResult(runId, result.recorded), result.payload)
+      else -> state.completeText(CliOutput.triageResult(result.toCliTriagePresentation(runId)), result.payload)
     }
   }
 }
