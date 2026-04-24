@@ -78,6 +78,56 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `review commands cover list stats feedback and aliases`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-review")
+    val dbPath = tempDir.resolve("metrics.db")
+
+    importSampleReview(dbPath)
+
+    val listPayload =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "triage",
+        "--run-id",
+        "rvw-20260402-001",
+        "--list",
+        "--format",
+        "json",
+      )
+    assertEquals(2, (listPayload["findings"] as List<*>).size)
+
+    val feedbackPayload =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "record-feedback",
+        "--run-id",
+        "rvw-20260402-001",
+        "--event",
+        "fix_applied",
+        "--finding",
+        "F-001",
+        "--format",
+        "json",
+      )
+    assertEquals("fix_applied", feedbackPayload["outcome_type"])
+    assertEquals(1, feedbackPayload["recorded_findings"])
+
+    val statsPayload = runJson("--db", dbPath.toString(), "stats", "--run-id", "rvw-20260402-001", "--format", "json")
+    assertEquals(2, statsPayload["total_findings"])
+    assertEquals(1, statsPayload["accepted_findings"])
+    assertEquals(1, statsPayload["unresolved_findings"])
+
+    val implementAliasPayload =
+      runJson("--db", dbPath.toString(), "feature-implement-stats", "--format", "json")
+    val verifyAliasPayload =
+      runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json")
+    assertEquals("bill-feature-implement", implementAliasPayload["workflow"])
+    assertEquals("bill-feature-verify", verifyAliasPayload["workflow"])
+  }
+
+  @Test
   fun `learnings resolve text output preserves scope summary`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-learnings")
     val dbPath = tempDir.resolve("metrics.db")
@@ -108,6 +158,53 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `learnings commands cover lifecycle mutations and validation`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-learnings-lifecycle")
+    val dbPath = tempDir.resolve("metrics.db")
+    seedLearningScenario(dbPath)
+
+    val listPayload = runJson("--db", dbPath.toString(), "learnings", "list", "--format", "json")
+    assertEquals(1, (listPayload["learnings"] as List<*>).size)
+
+    val showPayload = runJson("--db", dbPath.toString(), "learnings", "show", "--id", "1", "--format", "json")
+    assertEquals("Keep wording aligned", showPayload["title"])
+    assertEquals("active", showPayload["status"])
+
+    val editPayload =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "learnings",
+        "edit",
+        "--id",
+        "1",
+        "--title",
+        "Keep installer wording aligned",
+        "--format",
+        "json",
+      )
+    assertEquals("Keep installer wording aligned", editPayload["title"])
+
+    val disabledPayload = runJson("--db", dbPath.toString(), "learnings", "disable", "--id", "1", "--format", "json")
+    assertEquals("disabled", disabledPayload["status"])
+
+    val enabledPayload = runJson("--db", dbPath.toString(), "learnings", "enable", "--id", "1", "--format", "json")
+    assertEquals("active", enabledPayload["status"])
+
+    val editWithoutFields =
+      CliRuntime.run(listOf("--db", dbPath.toString(), "learnings", "edit", "--id", "1", "--format", "json"))
+    assertEquals(1, editWithoutFields.exitCode)
+    assertContains(editWithoutFields.stdout, "Learning edit requires at least one field")
+
+    val deletePayload = runJson("--db", dbPath.toString(), "learnings", "delete", "--id", "1", "--format", "json")
+    assertEquals(1, deletePayload["deleted_learning_id"])
+
+    val emptyListResult = CliRuntime.run(listOf("--db", dbPath.toString(), "learnings", "list"))
+    assertEquals(0, emptyListResult.exitCode)
+    assertEquals("No learnings found.\n", emptyListResult.stdout)
+  }
+
+  @Test
   fun `telemetry status and remote stats preserve payload contract`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-telemetry")
     val dbPath = tempDir.resolve("metrics.db")
@@ -118,6 +215,57 @@ class CliRuntimeTest {
     assertEquals(14, statsPayload["started_runs"])
     assertTrue((statsPayload["capabilities"] as Map<*, *>)["supports_stats"] == true)
     assertEquals(expectedCliRemoteStatsRequests(), capturedRequests)
+  }
+
+  @Test
+  fun `telemetry local commands mutate config and sync disabled state`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-telemetry-local")
+    val dbPath = tempDir.resolve("metrics.db")
+    val configPath = writeTelemetryConfig(tempDir, "off")
+    val context = CliRuntimeContext(environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()))
+
+    val enablePayload =
+      runJson(
+        listOf("--db", dbPath.toString(), "telemetry", "enable", "--level", "full", "--format", "json"),
+        context,
+      )
+    assertEquals(true, enablePayload["telemetry_enabled"])
+    assertEquals("full", enablePayload["telemetry_level"])
+
+    val setLevelPayload =
+      runJson(listOf("--db", dbPath.toString(), "telemetry", "set-level", "anonymous", "--format", "json"), context)
+    assertEquals("anonymous", setLevelPayload["telemetry_level"])
+
+    val disablePayload = runJson(listOf("--db", dbPath.toString(), "telemetry", "disable", "--format", "json"), context)
+    assertEquals(false, disablePayload["telemetry_enabled"])
+    assertEquals("off", disablePayload["telemetry_level"])
+
+    val syncPayload = runJson(listOf("--db", dbPath.toString(), "telemetry", "sync", "--format", "json"), context)
+    assertEquals("disabled", syncPayload["sync_status"])
+    assertEquals("disabled", syncPayload["sync_target"])
+  }
+
+  @Test
+  fun `telemetry capabilities uses configured requester`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-telemetry-capabilities")
+    val configPath = writeTelemetryConfig(tempDir, "anonymous")
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val context =
+      CliRuntimeContext(
+        environment =
+        mapOf(
+          CONFIG_ENVIRONMENT_KEY to configPath.toString(),
+          TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
+          TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
+        ),
+        requester = statsRequester(capturedRequests),
+      )
+
+    val payload = runJson(listOf("telemetry", "capabilities", "--format", "json"), context)
+
+    assertEquals(true, payload["supports_ingest"])
+    assertEquals(true, payload["supports_stats"])
+    assertEquals(listOf(expectedCliRemoteStatsRequests().first()), capturedRequests)
   }
 
   @Test
@@ -159,6 +307,45 @@ class CliRuntimeTest {
     assertEquals(true, doctorPayload["telemetry_enabled"])
     assertEquals("anonymous", doctorPayload["telemetry_level"])
   }
+
+  @Test
+  fun `help output documents nested clikt commands`() {
+    val rootHelp = CliRuntime.run(listOf("--help"))
+    val telemetryHelp = CliRuntime.run(listOf("telemetry", "--help"))
+
+    assertEquals(0, rootHelp.exitCode)
+    assertContains(rootHelp.stdout, "--generate-completion=(bash|zsh|fish)")
+    assertContains(rootHelp.stdout, "learnings")
+    assertContains(rootHelp.stdout, "telemetry")
+    assertEquals(0, telemetryHelp.exitCode)
+    assertContains(telemetryHelp.stdout, "capabilities")
+    assertContains(telemetryHelp.stdout, "set-level")
+  }
+
+  @Test
+  fun `clikt validation reports command usage errors`() {
+    val missingRequiredOption = CliRuntime.run(listOf("record-feedback", "--run-id", "rvw-1"))
+    assertEquals(1, missingRequiredOption.exitCode)
+    assertContains(missingRequiredOption.stdout, "Error:")
+    assertContains(missingRequiredOption.stdout, "--event")
+
+    val invalidFormat = CliRuntime.run(listOf("version", "--format", "yaml"))
+    assertEquals(1, invalidFormat.exitCode)
+    assertContains(invalidFormat.stdout, "invalid choice")
+
+    val unknownCommand = CliRuntime.run(listOf("unknown"))
+    assertEquals(1, unknownCommand.exitCode)
+    assertContains(unknownCommand.stdout, "no such subcommand")
+  }
+}
+
+private fun runJson(vararg arguments: String, context: CliRuntimeContext = CliRuntimeContext()): Map<String, Any?> =
+  runJson(arguments.toList(), context)
+
+private fun runJson(arguments: List<String>, context: CliRuntimeContext = CliRuntimeContext()): Map<String, Any?> {
+  val result = CliRuntime.run(arguments, context)
+  assertEquals(0, result.exitCode, result.stdout)
+  return decodeJsonObject(result.stdout)
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
@@ -170,10 +357,7 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
 }
 
 private fun seedLearningScenario(dbPath: Path) {
-  CliRuntime.run(
-    listOf("--db", dbPath.toString(), "import-review", "-", "--format", "json"),
-    CliRuntimeContext(stdinText = SAMPLE_REVIEW.trimIndent()),
-  )
+  importSampleReview(dbPath)
   CliRuntime.run(
     listOf(
       "--db",
@@ -211,6 +395,15 @@ private fun seedLearningScenario(dbPath: Path) {
     ),
     CliRuntimeContext(),
   )
+}
+
+private fun importSampleReview(dbPath: Path) {
+  val result =
+    CliRuntime.run(
+      listOf("--db", dbPath.toString(), "import-review", "-", "--format", "json"),
+      CliRuntimeContext(stdinText = SAMPLE_REVIEW.trimIndent()),
+    )
+  assertEquals(0, result.exitCode, result.stdout)
 }
 
 private fun writeTelemetryConfig(tempDir: Path, level: String): Path {
