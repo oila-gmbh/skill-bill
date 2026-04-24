@@ -10,7 +10,7 @@ import kotlin.test.assertNull
 class ReviewRuntimeTest {
   @Test
   fun `parseReview extracts bullet findings and deduplicates specialist reviews`() {
-    val review = ReviewRuntime.parseReview(SAMPLE_REVIEW.trimIndent())
+    val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
 
     assertEquals("rvw-20260402-001", review.reviewRunId)
     assertEquals("rvs-20260402-001", review.reviewSessionId)
@@ -26,7 +26,7 @@ class ReviewRuntimeTest {
   fun `saveImportedReview persists table-format findings with normalized severities`() {
     val (_, connection) = tempDbConnection("review-runtime")
     connection.use {
-      val review = ReviewRuntime.parseReview(TABLE_REVIEW.trimIndent())
+      val review = ReviewParser.parseReview(TABLE_REVIEW.trimIndent())
 
       ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
 

@@ -3,8 +3,10 @@ package skillbill.infrastructure.sqlite
 import skillbill.db.TelemetryOutboxStore
 import skillbill.db.WorkflowStateStore
 import skillbill.learnings.CreateLearningRequest
-import skillbill.learnings.LearningStore
+import skillbill.learnings.LearningRecord
+import skillbill.learnings.LearningSourceValidation
 import skillbill.learnings.LearningsRuntime
+import skillbill.learnings.RejectedLearningSourceOutcome
 import skillbill.learnings.UpdateLearningRequest
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LearningResolution
@@ -15,7 +17,6 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.review.FeedbackRequest
 import skillbill.review.FeedbackTelemetryOptions
 import skillbill.review.ImportedReview
-import skillbill.review.LearningRecord
 import skillbill.review.NumberedFinding
 import skillbill.review.ReviewRuntime
 import skillbill.review.ReviewStatsRuntime
@@ -40,6 +41,10 @@ class SQLiteUnitOfWork(
 class SQLiteReviewRepository(
   private val connection: Connection,
 ) : ReviewRepository {
+  private companion object {
+    const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
+  }
+
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
     val existingFindings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
@@ -78,6 +83,38 @@ class SQLiteReviewRepository(
   override fun fetchNumberedFindings(runId: String): List<NumberedFinding> =
     ReviewRuntime.fetchNumberedFindings(connection, runId)
 
+  override fun findingExists(runId: String, findingId: String): Boolean =
+    ReviewRuntime.findingExists(connection, runId, findingId)
+
+  override fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome? {
+    val placeholders = LearningsRuntime.rejectedFindingOutcomeTypes.joinToString(", ") { "?" }
+    return connection.prepareStatement(
+      """
+      SELECT event_type, note
+      FROM feedback_events
+      WHERE review_run_id = ? AND finding_id = ? AND event_type IN ($placeholders)
+      ORDER BY id DESC
+      LIMIT 1
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, runId)
+      statement.setString(2, findingId)
+      LearningsRuntime.rejectedFindingOutcomeTypes.forEachIndexed { index, value ->
+        statement.setString(index + REJECTED_OUTCOME_FIRST_PARAM_INDEX, value)
+      }
+      statement.executeQuery().use { resultSet ->
+        if (resultSet.next()) {
+          RejectedLearningSourceOutcome(
+            eventType = resultSet.getString("event_type"),
+            note = resultSet.getString("note").orEmpty(),
+          )
+        } else {
+          null
+        }
+      }
+    }
+  }
+
   override fun reviewStatsPayload(runId: String?): Map<String, Any?> =
     ReviewStatsRuntime.statsPayload(connection, runId)
 
@@ -90,13 +127,13 @@ class SQLiteReviewRepository(
 class SQLiteLearningRepository(
   private val connection: Connection,
 ) : LearningRepository {
-  override fun list(status: String): List<LearningRecord> = LearningStore.listLearnings(connection, status)
+  override fun list(status: String): List<LearningRecord> = SQLiteLearningStore.listLearnings(connection, status)
 
-  override fun get(id: Int): LearningRecord = LearningStore.getLearning(connection, id)
+  override fun get(id: Int): LearningRecord = SQLiteLearningStore.getLearning(connection, id)
 
   override fun resolve(repoScopeKey: String?, skillName: String?): LearningResolution {
     val (resolvedRepoScopeKey, resolvedSkillName, rows) =
-      LearningsRuntime.resolveLearnings(connection, repoScopeKey, skillName)
+      SQLiteLearningStore.resolveLearnings(connection, repoScopeKey, skillName)
     return LearningResolution(
       repoScopeKey = resolvedRepoScopeKey,
       skillName = resolvedSkillName,
@@ -105,17 +142,19 @@ class SQLiteLearningRepository(
   }
 
   override fun saveSessionLearnings(reviewSessionId: String, learningsJson: String) {
-    LearningsRuntime.saveSessionLearnings(connection, reviewSessionId, learningsJson)
+    SQLiteLearningStore.saveSessionLearnings(connection, reviewSessionId, learningsJson)
   }
 
-  override fun add(request: CreateLearningRequest): Int = LearningStore.addLearning(connection, request)
+  override fun add(request: CreateLearningRequest, sourceValidation: LearningSourceValidation): Int =
+    SQLiteLearningStore.addLearning(connection, request, sourceValidation)
 
-  override fun edit(request: UpdateLearningRequest): LearningRecord = LearningStore.editLearning(connection, request)
+  override fun edit(request: UpdateLearningRequest): LearningRecord =
+    SQLiteLearningStore.editLearning(connection, request)
 
   override fun setStatus(id: Int, status: String): LearningRecord =
-    LearningStore.setLearningStatus(connection, id, status)
+    SQLiteLearningStore.setLearningStatus(connection, id, status)
 
   override fun delete(id: Int) {
-    LearningStore.deleteLearning(connection, id)
+    SQLiteLearningStore.deleteLearning(connection, id)
   }
 }

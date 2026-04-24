@@ -1,7 +1,7 @@
 package skillbill.review
 
+import skillbill.contracts.JsonSupport
 import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningsRuntime
 import java.sql.Connection
 
 fun reviewFinishedPayload(
@@ -50,7 +50,7 @@ fun buildLearningsSection(connection: Connection, reviewSessionId: String, level
     if (reviewSessionId.isEmpty()) {
       null
     } else {
-      LearningsRuntime.fetchSessionLearnings(connection, reviewSessionId)
+      fetchSessionLearnings(connection, reviewSessionId)
     }
   val learningsEntries =
     learningsEntries(
@@ -117,3 +117,28 @@ fun parseSpecialistReviews(rawValue: String?): List<String> =
   rawValue.orEmpty().split(",").map(String::trim).filter(String::isNotEmpty)
 
 fun normalizeReviewScope(detectedScope: String?): String = detectedScope.orEmpty().substringBefore("(").trim()
+
+private fun fetchSessionLearnings(connection: Connection, reviewSessionId: String): Map<String, Any?>? {
+  val rawJson =
+    connection.prepareStatement(
+      """
+    SELECT learnings_json
+    FROM session_learnings
+    WHERE review_session_id = ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, reviewSessionId)
+      statement.executeQuery().use { resultSet ->
+        if (resultSet.next()) {
+          resultSet.getString("learnings_json")
+        } else {
+          null
+        }
+      }
+    }
+  return rawJson?.let(::decodeSessionLearnings)
+}
+
+private fun decodeSessionLearnings(rawJson: String): Map<String, Any?>? = JsonSupport.parseObjectOrNull(rawJson)?.let {
+  JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+}

@@ -2,10 +2,11 @@ package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
+import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningStore
-import skillbill.learnings.LearningsRuntime
+import skillbill.learnings.LearningSourceValidation
+import skillbill.learnings.RejectedLearningSourceOutcome
 import skillbill.learnings.learningPayload
 import skillbill.learnings.learningSummaryPayload
 import skillbill.tempDbConnection
@@ -91,7 +92,7 @@ class ReviewStatsRuntimeTest {
 }
 
 private fun importReviewedSample(connection: java.sql.Connection): ImportedReview {
-  val review = ReviewRuntime.parseReview(SAMPLE_REVIEW.trimIndent())
+  val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
   ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
   recordFindingOutcome(connection, review.reviewRunId, "F-001", "finding_accepted", "")
   recordFindingOutcome(connection, review.reviewRunId, "F-002", "fix_rejected", "Intentional wording")
@@ -120,7 +121,7 @@ private fun recordFindingOutcome(
 
 private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: String, reviewSessionId: String) {
   val learningId =
-    LearningStore.addLearning(
+    SQLiteLearningStore.addLearning(
       connection = connection,
       request =
       CreateLearningRequest(
@@ -132,9 +133,15 @@ private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: Str
         sourceReviewRunId = reviewRunId,
         sourceFindingId = "F-002",
       ),
+      sourceValidation =
+      LearningSourceValidation(
+        reviewRunId = reviewRunId,
+        findingId = "F-002",
+        rejectedOutcome = RejectedLearningSourceOutcome("fix_rejected", "Intentional wording"),
+      ),
     )
-  val learningPayload = learningPayload(LearningStore.getLearning(connection, learningId))
-  LearningsRuntime.saveSessionLearnings(
+  val learningPayload = learningPayload(SQLiteLearningStore.getLearning(connection, learningId))
+  SQLiteLearningStore.saveSessionLearnings(
     connection = connection,
     reviewSessionId = reviewSessionId,
     learningsJson =

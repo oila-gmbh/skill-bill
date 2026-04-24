@@ -2,10 +2,11 @@ package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
+import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningStore
-import skillbill.learnings.LearningsRuntime
+import skillbill.learnings.LearningSourceValidation
+import skillbill.learnings.RejectedLearningSourceOutcome
 import skillbill.learnings.learningPayload
 import skillbill.learnings.learningSummaryPayload
 import skillbill.learnings.scopeCounts
@@ -19,7 +20,7 @@ class TriageAndLearningsRuntimeTest {
   @Test
   fun `parseTriageDecisions expands structured selections and normalizes actions`() {
     val decisions =
-      TriageRuntime.parseTriageDecisions(
+      TriageDecisionParser.parseTriageDecisions(
         rawDecisions = listOf("fix=[1] reject=[2]"),
         numberedFindings =
         listOf(
@@ -53,7 +54,7 @@ class TriageAndLearningsRuntimeTest {
         )
 
       val (_, _, resolved) =
-        LearningsRuntime.resolveLearnings(
+        SQLiteLearningStore.resolveLearnings(
           connection = connection,
           repoScopeKey = "skill-bill",
           skillName = "bill-kotlin-code-review",
@@ -65,7 +66,7 @@ class TriageAndLearningsRuntimeTest {
       val payloadEntries = resolved.map(::learningPayload)
       saveCachedLearnings(connection, review.reviewSessionId, payloadEntries)
 
-      val cached = LearningsRuntime.fetchSessionLearnings(connection, review.reviewSessionId)
+      val cached = SQLiteLearningStore.fetchSessionLearnings(connection, review.reviewSessionId)
       assertNotNull(cached)
       assertEquals(3, (cached["applied_learning_count"] as Number).toInt())
     }
@@ -73,7 +74,7 @@ class TriageAndLearningsRuntimeTest {
 }
 
 private fun importSampleReview(connection: java.sql.Connection): ImportedReview {
-  val review = ReviewRuntime.parseReview(SAMPLE_REVIEW.trimIndent())
+  val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
   ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
   return review
 }
@@ -101,7 +102,7 @@ private fun addLearning(
   scope: LearningScope,
   scopeKey: String,
   title: String,
-): Int = LearningStore.addLearning(
+): Int = SQLiteLearningStore.addLearning(
   connection = connection,
   request =
   CreateLearningRequest(
@@ -113,6 +114,12 @@ private fun addLearning(
     sourceReviewRunId = reviewRunId,
     sourceFindingId = "F-002",
   ),
+  sourceValidation =
+  LearningSourceValidation(
+    reviewRunId = reviewRunId,
+    findingId = "F-002",
+    rejectedOutcome = RejectedLearningSourceOutcome("fix_rejected", "Keep the current prompt wording."),
+  ),
 )
 
 private fun saveCachedLearnings(
@@ -120,7 +127,7 @@ private fun saveCachedLearnings(
   reviewSessionId: String,
   payloadEntries: List<Map<String, Any?>>,
 ) {
-  LearningsRuntime.saveSessionLearnings(
+  SQLiteLearningStore.saveSessionLearnings(
     connection = connection,
     reviewSessionId = reviewSessionId,
     learningsJson =

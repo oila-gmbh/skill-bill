@@ -6,8 +6,9 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.review.FeedbackRequest
 import skillbill.review.NumberedFinding
-import skillbill.review.ReviewRuntime
-import skillbill.review.TriageRuntime
+import skillbill.review.ReviewInputReader
+import skillbill.review.ReviewParser
+import skillbill.review.TriageDecisionParser
 
 @Inject
 class ReviewService(
@@ -15,8 +16,8 @@ class ReviewService(
   private val database: DatabaseSessionFactory,
 ) {
   fun previewImport(input: String): Map<String, Any?> {
-    val (text) = ReviewRuntime.readInput(input, context.stdinText)
-    val review = ReviewRuntime.parseReview(text)
+    val (text) = ReviewInputReader.readInput(input, context.stdinText)
+    val review = ReviewParser.parseReview(text)
     return linkedMapOf(
       "review_run_id" to review.reviewRunId,
       "review_session_id" to review.reviewSessionId,
@@ -29,8 +30,8 @@ class ReviewService(
   }
 
   fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
-    val (text, sourcePath) = ReviewRuntime.readInput(input, context.stdinText)
-    val review = ReviewRuntime.parseReview(text)
+    val (text, sourcePath) = ReviewInputReader.readInput(input, context.stdinText)
+    val review = ReviewParser.parseReview(text)
     return database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
@@ -141,7 +142,7 @@ class ReviewService(
     numberedFindings: List<NumberedFinding>,
     decisions: List<String>,
   ): AppliedTriageDecisions {
-    val parsedDecisions = TriageRuntime.parseTriageDecisions(decisions, numberedFindings)
+    val parsedDecisions = TriageDecisionParser.parseTriageDecisions(decisions, numberedFindings)
     var telemetryPayload: Map<String, Any?>? = null
     parsedDecisions.forEach { decision ->
       val returnedPayload =

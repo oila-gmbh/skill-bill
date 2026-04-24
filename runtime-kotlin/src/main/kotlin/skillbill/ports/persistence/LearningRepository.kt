@@ -1,8 +1,9 @@
 package skillbill.ports.persistence
 
 import skillbill.learnings.CreateLearningRequest
+import skillbill.learnings.LearningRecord
+import skillbill.learnings.LearningSourceValidation
 import skillbill.learnings.UpdateLearningRequest
-import skillbill.review.LearningRecord
 
 data class LearningResolution(
   val repoScopeKey: String?,
@@ -19,7 +20,7 @@ interface LearningRepository {
 
   fun saveSessionLearnings(reviewSessionId: String, learningsJson: String)
 
-  fun add(request: CreateLearningRequest): Int
+  fun add(request: CreateLearningRequest, sourceValidation: LearningSourceValidation): Int
 
   fun edit(request: UpdateLearningRequest): LearningRecord
 

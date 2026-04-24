@@ -32,13 +32,16 @@ di
 - `skillbill.ports`: internal port contracts for persistence sessions,
   repositories, and later filesystem/HTTP/time abstractions.
 - `skillbill.infrastructure`: concrete adapters for port contracts. SQLite
-  adapters own JDBC connection/session behavior.
+  adapters own JDBC connection/session behavior and table-shaped repository
+  implementations.
 - `skillbill.db`: SQLite schema, migrations, connection bootstrap, and current
   JDBC stores.
-- `skillbill.review`: review parsing, triage, review metrics, review telemetry
-  state, and current review persistence helpers.
-- `skillbill.learnings`: learning scope rules, learning store behavior, and
-  learning payload helpers.
+- `skillbill.review`: pure review parsing and triage decision normalization
+  plus transitional review metrics, review telemetry state, and current review
+  persistence helpers.
+- `skillbill.learnings`: learning records, learning scope rules, learning
+  source validation rules, and learning payload helpers. It must stay free of
+  JDBC.
 - `skillbill.telemetry`: telemetry config, sync orchestration, HTTP contracts,
   and current telemetry adapter code.
 - `skillbill.contracts`: shared JSON and runtime contract helpers.
@@ -86,6 +89,10 @@ useful for the next refactors:
   databases, importing JDBC, or checking database files directly
 - repository and unit-of-work ports are the required application persistence
   boundary
+- LearningRecord is owned by the learnings domain, while SQLite table access
+  for learnings lives in infrastructure adapters
+- review parsing and triage decision normalization are pure surfaces that do
+  not import JDBC or persistence adapters
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 

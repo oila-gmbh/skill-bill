@@ -3,6 +3,7 @@ package skillbill.application
 import me.tatarka.inject.annotations.Inject
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningScope
+import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningEntry
 import skillbill.learnings.learningEntrySessionJson
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -37,18 +38,34 @@ class LearningService(private val database: DatabaseSessionFactory) {
 
   fun add(request: AddLearningInput, dbOverride: String?): LearningRecordResult =
     database.transaction(dbOverride) { unitOfWork ->
-      val learningId =
-        unitOfWork.learnings.add(
-          CreateLearningRequest(
-            request.scope,
-            request.scopeKey,
-            request.title,
-            request.rule,
-            request.reason,
-            request.fromRun,
-            request.fromFinding,
+      val createRequest =
+        CreateLearningRequest(
+          request.scope,
+          request.scopeKey,
+          request.title,
+          request.rule,
+          request.reason,
+          request.fromRun,
+          request.fromFinding,
+        )
+      val sourceReference =
+        LearningsRuntime.validateLearningSourceReference(
+          createRequest.sourceReviewRunId,
+          createRequest.sourceFindingId,
+        )
+      val sourceValidation =
+        LearningsRuntime.validateLearningSource(
+          sourceReference = sourceReference,
+          sourceFindingExists =
+          unitOfWork.reviews.findingExists(sourceReference.reviewRunId, sourceReference.findingId),
+          latestRejectedOutcome =
+          unitOfWork.reviews.latestRejectedLearningSourceOutcome(
+            sourceReference.reviewRunId,
+            sourceReference.findingId,
           ),
         )
+      val learningId =
+        unitOfWork.learnings.add(createRequest, sourceValidation)
       LearningRecordResult(
         unitOfWork.dbPath.toString(),
         learningEntry(unitOfWork.learnings.get(learningId)),

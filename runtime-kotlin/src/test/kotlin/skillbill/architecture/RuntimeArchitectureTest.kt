@@ -23,6 +23,8 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "MCP workflow calls must use application services")
     assertContains(architecture, "learning application use cases return typed results")
     assertContains(architecture, "repository and unit-of-work ports")
+    assertContains(architecture, "LearningRecord is owned by the learnings domain")
+    assertContains(architecture, "review parsing and triage decision normalization are pure surfaces")
   }
 
   @Test
@@ -72,6 +74,46 @@ class RuntimeArchitectureTest {
       listOf(
         "java.sql",
         "java.nio.file.Files",
+        "skillbill.db",
+        "skillbill.infrastructure",
+        "skillbill.review.ReviewRuntime",
+        "skillbill.review.TriageRuntime",
+      ),
+    )
+  }
+
+  @Test
+  fun `learnings domain owns learning records without persistence dependencies`() {
+    assertNoBannedImports(
+      files = sourceFiles().filter { it.packageName.startsWith("skillbill.learnings") },
+      bannedImports =
+      listOf(
+        "java.sql",
+        "skillbill.db",
+        "skillbill.infrastructure",
+        "skillbill.review",
+      ),
+    )
+
+    val reviewModels = Files.readString(sourceRoot.resolve("skillbill/review/ReviewModels.kt"))
+    val learningRecord = Files.readString(sourceRoot.resolve("skillbill/learnings/LearningRecord.kt"))
+    assertTrue("data class LearningRecord" !in reviewModels)
+    assertContains(learningRecord, "data class LearningRecord")
+  }
+
+  @Test
+  fun `review parsing and triage normalization are persistence free`() {
+    val pureReviewFiles =
+      listOf(
+        sourceRoot.resolve("skillbill/review/ReviewParser.kt"),
+        sourceRoot.resolve("skillbill/review/TriageDecisionParser.kt"),
+      )
+
+    assertNoBannedImports(
+      files = pureReviewFiles.map(::sourceFile),
+      bannedImports =
+      listOf(
+        "java.sql",
         "skillbill.db",
         "skillbill.infrastructure",
       ),

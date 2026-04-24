@@ -1,43 +1,12 @@
 package skillbill.review
 
 import java.sql.Connection
-import kotlin.io.path.readText
 
 object ReviewRuntime {
-  fun parseReview(text: String): ImportedReview {
-    val reviewRunId =
-      requireMatch(
-        reviewRunIdPattern,
-        text,
-        "Review output is missing 'Review run ID: <review-run-id>'.",
-      )
-    val reviewSessionId =
-      requireMatch(
-        reviewSessionIdPattern,
-        text,
-        "Review output is missing 'Review session ID: <review-session-id>'.",
-      )
-    return ImportedReview(
-      reviewRunId = reviewRunId,
-      reviewSessionId = reviewSessionId,
-      rawText = text,
-      routedSkill = extractSummaryValue(text, "routed_skill"),
-      detectedScope = extractSummaryValue(text, "detected_scope"),
-      detectedStack = extractSummaryValue(text, "detected_stack"),
-      executionMode = extractSummaryValue(text, "execution_mode"),
-      specialistReviews = extractSpecialistReviews(text),
-      findings = parseReviewFindings(text),
-    )
-  }
+  fun parseReview(text: String): ImportedReview = ReviewParser.parseReview(text)
 
-  fun readInput(inputPath: String, stdinText: String? = null): Pair<String, String?> {
-    if (inputPath == "-") {
-      require(stdinText != null) { "stdinText is required when inputPath is '-'." }
-      return stdinText to null
-    }
-    val path = expandAndNormalizePath(inputPath)
-    return path.readText() to path.toString()
-  }
+  fun readInput(inputPath: String, stdinText: String? = null): Pair<String, String?> =
+    ReviewInputReader.readInput(inputPath, stdinText)
 
   fun saveImportedReview(connection: Connection, review: ImportedReview, sourcePath: String?) {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)

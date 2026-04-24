@@ -2,7 +2,10 @@ package skillbill.application
 
 import skillbill.RuntimeContext
 import skillbill.learnings.CreateLearningRequest
+import skillbill.learnings.LearningRecord
 import skillbill.learnings.LearningScope
+import skillbill.learnings.LearningSourceValidation
+import skillbill.learnings.RejectedLearningSourceOutcome
 import skillbill.learnings.UpdateLearningRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
@@ -16,7 +19,6 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.review.FeedbackRequest
 import skillbill.review.FeedbackTelemetryOptions
 import skillbill.review.ImportedReview
-import skillbill.review.LearningRecord
 import skillbill.review.NumberedFinding
 import java.nio.file.Files
 import java.nio.file.Path
@@ -45,8 +47,13 @@ class ApplicationPersistencePortTest {
 
   @Test
   fun `learning add owns a write transaction at the application boundary`() {
+    val reviewRepository =
+      FakeReviewRepository(
+        sourceFindingExists = true,
+        rejectedLearningSourceOutcome = RejectedLearningSourceOutcome("fix_rejected", "Rejected by reviewer."),
+      )
     val learningRepository = FakeLearningRepository()
-    val database = FakeDatabaseSessionFactory(learnings = learningRepository)
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository, learnings = learningRepository)
     val service = LearningService(database)
 
     val result =
@@ -66,6 +73,28 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf("transaction"), database.calls)
     assertEquals("Prefer ports", result.learning.title)
     assertEquals("bill-kotlin-code-review", learningRepository.addedRequests.single().scopeKey)
+    assertEquals(listOf("rvw-1:F-1"), reviewRepository.learningSourceLookups)
+  }
+
+  @Test
+  fun `learning add rejects sources that repository cannot prove were rejected`() {
+    val database = FakeDatabaseSessionFactory(reviews = FakeReviewRepository(sourceFindingExists = true))
+    val service = LearningService(database)
+
+    kotlin.test.assertFailsWith<IllegalArgumentException> {
+      service.add(
+        AddLearningInput(
+          scope = LearningScope.SKILL,
+          scopeKey = "bill-kotlin-code-review",
+          title = "Prefer ports",
+          rule = "Application services should depend on persistence ports.",
+          reason = "Keeps use cases testable.",
+          fromRun = "rvw-1",
+          fromFinding = "F-1",
+        ),
+        dbOverride = null,
+      )
+    }
   }
 
   @Test
@@ -144,7 +173,7 @@ private class FakeLearningRepository(
 
   override fun saveSessionLearnings(reviewSessionId: String, learningsJson: String) = Unit
 
-  override fun add(request: CreateLearningRequest): Int {
+  override fun add(request: CreateLearningRequest, sourceValidation: LearningSourceValidation): Int {
     addedRequests += request
     val id = (records.keys.maxOrNull() ?: 0) + 1
     records[id] =
@@ -153,8 +182,8 @@ private class FakeLearningRepository(
         scopeKey = request.scopeKey,
         ruleText = request.ruleText,
         rationale = request.rationale,
-        sourceReviewRunId = request.sourceReviewRunId,
-        sourceFindingId = request.sourceFindingId,
+        sourceReviewRunId = sourceValidation.reviewRunId,
+        sourceFindingId = sourceValidation.findingId,
       )
     return id
   }
@@ -180,8 +209,11 @@ private class FakeLearningRepository(
 
 private class FakeReviewRepository(
   private val numberedFindings: List<NumberedFinding> = emptyList(),
+  private val sourceFindingExists: Boolean = false,
+  private val rejectedLearningSourceOutcome: RejectedLearningSourceOutcome? = null,
 ) : ReviewRepository {
   val feedbackRequests = mutableListOf<FeedbackRequest>()
+  val learningSourceLookups = mutableListOf<String>()
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) = error("Unexpected saveImportedReview")
 
@@ -199,6 +231,14 @@ private class FakeReviewRepository(
   }
 
   override fun fetchNumberedFindings(runId: String): List<NumberedFinding> = numberedFindings
+
+  override fun findingExists(runId: String, findingId: String): Boolean {
+    learningSourceLookups += "$runId:$findingId"
+    return sourceFindingExists
+  }
+
+  override fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome? =
+    rejectedLearningSourceOutcome
 
   override fun reviewStatsPayload(runId: String?): Map<String, Any?> = error("Unexpected reviewStatsPayload")
 

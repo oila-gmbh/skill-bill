@@ -1,7 +1,5 @@
 package skillbill.learnings
 
-import skillbill.review.LearningRecord
-
 data class LearningEntry(
   val id: Int,
   val reference: String,
