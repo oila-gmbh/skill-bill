@@ -12,12 +12,26 @@ import java.sql.Connection
 
 @Inject
 class ReviewService(private val context: RuntimeContext) {
-  fun importReview(input: String, dbOverride: String?): Map<String, Any?> {
+  fun previewImport(input: String): Map<String, Any?> {
+    val (text) = ReviewRuntime.readInput(input, context.stdinText)
+    val review = ReviewRuntime.parseReview(text)
+    return linkedMapOf(
+      "review_run_id" to review.reviewRunId,
+      "review_session_id" to review.reviewSessionId,
+      "finding_count" to review.findings.size,
+      "routed_skill" to review.routedSkill,
+      "detected_scope" to review.detectedScope,
+      "detected_stack" to review.detectedStack,
+      "execution_mode" to review.executionMode,
+    )
+  }
+
+  fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
     val (text, sourcePath) = ReviewRuntime.readInput(input, context.stdinText)
     val review = ReviewRuntime.parseReview(text)
     DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
       ReviewRuntime.saveImportedReview(openDb.connection, review, sourcePath)
-      if (review.findings.isEmpty()) {
+      if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
         val settings = telemetrySettingsOrNull(context)
         ReviewStatsRuntime.updateReviewFinishedTelemetryState(
           openDb.connection,
@@ -35,6 +49,29 @@ class ReviewService(private val context: RuntimeContext) {
         "detected_scope" to review.detectedScope,
         "detected_stack" to review.detectedStack,
         "execution_mode" to review.executionMode,
+      )
+    }
+  }
+
+  fun markOrchestrated(runId: String, dbOverride: String?) {
+    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+      openDb.connection.prepareStatement(
+        "UPDATE review_runs SET orchestrated_run = 1 WHERE review_run_id = ?",
+      ).use { statement ->
+        statement.setString(1, runId)
+        statement.executeUpdate()
+      }
+    }
+  }
+
+  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): Map<String, Any?>? {
+    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+      val settings = telemetrySettingsOrNull(context)
+      return ReviewStatsRuntime.updateReviewFinishedTelemetryState(
+        openDb.connection,
+        runId,
+        enabled = settings?.enabled ?: false,
+        level = settings?.level ?: "off",
       )
     }
   }
@@ -61,10 +98,16 @@ class ReviewService(private val context: RuntimeContext) {
     }
   }
 
-  fun triage(runId: String, decisions: List<String>, listOnly: Boolean, dbOverride: String?): TriageResult {
+  fun triage(
+    runId: String,
+    decisions: List<String>,
+    listOnly: Boolean,
+    dbOverride: String?,
+    listWhenNoDecisions: Boolean = true,
+  ): TriageResult {
     DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
       val numberedFindings = ReviewRuntime.fetchNumberedFindings(openDb.connection, runId)
-      if (listOnly || decisions.isEmpty()) {
+      if (listOnly || (decisions.isEmpty() && listWhenNoDecisions)) {
         val findings = numberedFindings.map(::findingPayload)
         return TriageResult(
           payload =
@@ -76,58 +119,71 @@ class ReviewService(private val context: RuntimeContext) {
           findings = findings,
         )
       }
-      val recorded = applyTriageDecisions(openDb.connection, runId, numberedFindings, decisions)
+      val applied = applyTriageDecisions(openDb.connection, runId, numberedFindings, decisions)
       return TriageResult(
         payload =
         linkedMapOf(
           "db_path" to openDb.dbPath.toString(),
           "review_run_id" to runId,
-          "recorded" to recorded,
+          "recorded" to applied.recorded,
         ),
-        recorded = recorded,
+        recorded = applied.recorded,
+        telemetryPayload = applied.telemetryPayload,
       )
     }
   }
 
   fun reviewStats(runId: String?, dbOverride: String?): Map<String, Any?> =
-    statsPayload(dbOverride) { connection -> ReviewStatsRuntime.statsPayload(connection, runId) }
+    statsPayload(context, dbOverride) { connection -> ReviewStatsRuntime.statsPayload(connection, runId) }
 
   fun featureImplementStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(dbOverride, ReviewStatsRuntime::featureImplementStatsPayload)
+    statsPayload(context, dbOverride, ReviewStatsRuntime::featureImplementStatsPayload)
 
   fun featureVerifyStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(dbOverride, ReviewStatsRuntime::featureVerifyStatsPayload)
-
-  private fun statsPayload(dbOverride: String?, payloadBuilder: (Connection) -> Map<String, Any?>): Map<String, Any?> =
-    DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
-      linkedMapOf<String, Any?>().apply {
-        putAll(payloadBuilder(openDb.connection))
-        put("db_path", openDb.dbPath.toString())
-      }
-    }
+    statsPayload(context, dbOverride, ReviewStatsRuntime::featureVerifyStatsPayload)
 
   private fun applyTriageDecisions(
     connection: Connection,
     runId: String,
     numberedFindings: List<NumberedFinding>,
     decisions: List<String>,
-  ): List<Map<String, Any?>> {
+  ): AppliedTriageDecisions {
     val parsedDecisions = TriageRuntime.parseTriageDecisions(decisions, numberedFindings)
+    var telemetryPayload: Map<String, Any?>? = null
     parsedDecisions.forEach { decision ->
-      TriageRuntime.recordFeedback(
-        connection,
-        FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
-        feedbackTelemetryOptions(context),
-      )
+      val returnedPayload =
+        TriageRuntime.recordFeedback(
+          connection,
+          FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
+          feedbackTelemetryOptions(context),
+        )
+      if (returnedPayload != null) {
+        telemetryPayload = returnedPayload
+      }
     }
-    return parsedDecisions.map { decision ->
-      linkedMapOf(
-        "number" to decision.number,
-        "finding_id" to decision.findingId,
-        "outcome_type" to decision.outcomeType,
-        "note" to decision.note,
-      )
-    }
+    return AppliedTriageDecisions(
+      recorded =
+      parsedDecisions.map { decision ->
+        linkedMapOf(
+          "number" to decision.number,
+          "finding_id" to decision.findingId,
+          "outcome_type" to decision.outcomeType,
+          "note" to decision.note,
+        )
+      },
+      telemetryPayload = telemetryPayload,
+    )
+  }
+}
+
+private fun statsPayload(
+  context: RuntimeContext,
+  dbOverride: String?,
+  payloadBuilder: (Connection) -> Map<String, Any?>,
+): Map<String, Any?> = DatabaseRuntime.openDb(dbOverride, context.environment, context.userHome).use { openDb ->
+  linkedMapOf<String, Any?>().apply {
+    putAll(payloadBuilder(openDb.connection))
+    put("db_path", openDb.dbPath.toString())
   }
 }
 
@@ -135,4 +191,10 @@ data class TriageResult(
   val payload: Map<String, Any?>,
   val findings: List<Map<String, Any?>> = emptyList(),
   val recorded: List<Map<String, Any?>> = emptyList(),
+  val telemetryPayload: Map<String, Any?>? = null,
+)
+
+private data class AppliedTriageDecisions(
+  val recorded: List<Map<String, Any?>>,
+  val telemetryPayload: Map<String, Any?>?,
 )

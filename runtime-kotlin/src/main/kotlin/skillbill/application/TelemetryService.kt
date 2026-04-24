@@ -11,6 +11,8 @@ import skillbill.telemetry.TelemetrySyncRuntime
 
 @Inject
 class TelemetryService(private val context: RuntimeContext) {
+  fun isEnabled(): Boolean = telemetrySettingsOrNull(context)?.enabled ?: false
+
   fun status(dbOverride: String?): Map<String, Any?> {
     val dbPath = DatabaseRuntime.resolveDbPath(dbOverride, context.environment, context.userHome)
     return TelemetrySyncRuntime.telemetryStatusPayload(dbPath, loadTelemetrySettings(context))
@@ -53,10 +55,14 @@ class TelemetryService(private val context: RuntimeContext) {
     dateFrom: String,
     dateTo: String,
     groupBy: String,
-  ): Map<String, Any?> = linkedMapOf<String, Any?>().apply {
+  ): Map<String, Any?> = remoteStats(
+    RemoteStatsRequest(mapWorkflow(workflow), since, dateFrom, dateTo, groupBy),
+  )
+
+  fun remoteStats(request: RemoteStatsRequest): Map<String, Any?> = linkedMapOf<String, Any?>().apply {
     putAll(
       TelemetryRemoteStatsRuntime.fetchRemoteStats(
-        request = RemoteStatsRequest(mapWorkflow(workflow), since, dateFrom, dateTo, groupBy),
+        request = request,
         settings = loadTelemetrySettings(context),
         requester = context.requester,
         environment = context.environment,

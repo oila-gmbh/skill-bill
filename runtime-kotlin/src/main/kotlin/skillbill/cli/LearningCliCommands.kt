@@ -56,12 +56,12 @@ class LearningsListCommand(
   private val format by formatOption()
 
   override fun run() {
-    val payload = service.list(status, state.dbOverride)
+    val result = service.list(status, state.dbOverride)
+    val payload = result.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
     } else {
-      @Suppress("UNCHECKED_CAST")
-      state.completeText(CliOutput.learnings(payload["learnings"] as List<Map<String, Any?>>), payload)
+      state.completeText(CliOutput.learnings(result.learnings), payload)
     }
   }
 }
@@ -75,7 +75,7 @@ class LearningsShowCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.show(id, state.dbOverride), format)
+    state.complete(service.show(id, state.dbOverride).toPayload(), format)
   }
 }
 
@@ -90,20 +90,12 @@ class LearningsResolveCommand(
   private val format by formatOption()
 
   override fun run() {
-    val payload = service.resolve(repo, skill, reviewSessionId, state.dbOverride)
+    val result = service.resolve(repo, skill, reviewSessionId, state.dbOverride)
+    val payload = result.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
     } else {
-      @Suppress("UNCHECKED_CAST")
-      state.completeText(
-        CliOutput.resolvedLearnings(
-          payload["repo_scope_key"]?.toString(),
-          payload["skill_name"]?.toString(),
-          LearningScope.precedence,
-          payload["learnings"] as List<Map<String, Any?>>,
-        ),
-        payload,
-      )
+      state.completeText(CliOutput.resolvedLearnings(result), payload)
     }
   }
 }
@@ -128,7 +120,8 @@ class LearningsAddCommand(
 
   override fun run() {
     state.complete(
-      service.add(AddLearningInput(scope, scopeKey, title, rule, reason, fromRun, fromFinding), state.dbOverride),
+      service.add(AddLearningInput(scope, scopeKey, title, rule, reason, fromRun, fromFinding), state.dbOverride)
+        .toPayload(),
       format,
     )
   }
@@ -155,7 +148,10 @@ class LearningsEditCommand(
     require(listOf(scope, scopeKey, title, rule, reason).any { it != null }) {
       "Learning edit requires at least one field to update."
     }
-    state.complete(service.edit(EditLearningInput(id, scope, scopeKey, title, rule, reason), state.dbOverride), format)
+    state.complete(
+      service.edit(EditLearningInput(id, scope, scopeKey, title, rule, reason), state.dbOverride).toPayload(),
+      format,
+    )
   }
 }
 
@@ -168,7 +164,7 @@ class LearningsDisableCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setStatus(id, "disabled", state.dbOverride), format)
+    state.complete(service.setStatus(id, "disabled", state.dbOverride).toPayload(), format)
   }
 }
 
@@ -181,7 +177,7 @@ class LearningsEnableCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setStatus(id, "active", state.dbOverride), format)
+    state.complete(service.setStatus(id, "active", state.dbOverride).toPayload(), format)
   }
 }
 
@@ -194,6 +190,6 @@ class LearningsDeleteCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.delete(id, state.dbOverride), format)
+    state.complete(service.delete(id, state.dbOverride).toPayload(), format)
   }
 }

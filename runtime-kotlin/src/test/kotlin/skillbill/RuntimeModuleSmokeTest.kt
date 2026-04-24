@@ -20,7 +20,9 @@ class RuntimeModuleSmokeTest {
   fun `package scaffold remains available for later subsystem ports`() {
     val expectedSubsystemPackages =
       setOf(
+        "skillbill.application",
         "skillbill.cli",
+        "skillbill.di",
         "skillbill.launcher",
         "skillbill.mcp",
         "skillbill.db",
@@ -57,7 +59,8 @@ class RuntimeModuleSmokeTest {
     assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
     assertEquals(expectedSubsystemPackages, RuntimeModule.declaredSubsystemPackages.toSet())
     assertEquals(
-      expectedSubsystemPackages - setOf("skillbill.contracts", "skillbill.error"),
+      expectedSubsystemPackages -
+        setOf("skillbill.application", "skillbill.contracts", "skillbill.di", "skillbill.error"),
       runtimeSurfacePackages,
     )
     assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })

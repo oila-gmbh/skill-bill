@@ -6,8 +6,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import skillbill.application.LearningResolveResult
 import skillbill.contracts.JsonSupport
-import skillbill.learnings.LearningScope
+import skillbill.learnings.LearningEntry
 
 @OptIn(ExperimentalSerializationApi::class)
 private val cliPrettyJson =
@@ -46,39 +47,34 @@ internal object CliOutput {
     }
   }
 
-  fun learnings(entries: List<Map<String, Any?>>): String = if (entries.isEmpty()) {
+  fun learnings(entries: List<LearningEntry>): String = if (entries.isEmpty()) {
     "No learnings found.\n"
   } else {
     buildString {
       entries.forEach { entry ->
-        appendLine("${entry["reference"]}. [${entry["status"]}] ${scopedLabel(entry)} | ${entry["title"]}")
+        appendLine("${entry.reference}. [${entry.status}] ${scopedLabel(entry)} | ${entry.title}")
       }
     }
   }
 
-  fun resolvedLearnings(
-    repoScopeKey: String?,
-    skillName: String?,
-    scopePrecedence: List<LearningScope>,
-    entries: List<Map<String, Any?>>,
-  ): String = buildString {
-    appendLine("scope_precedence: ${scopePrecedence.joinToString(" > ") { it.wireName }}")
-    repoScopeKey?.let { appendLine("repo_scope_key: $it") }
-    skillName?.let { appendLine("skill_name: $it") }
-    appendLine("applied_learnings: ${summarizeAppliedLearnings(entries)}")
-    if (entries.isEmpty()) {
+  fun resolvedLearnings(result: LearningResolveResult): String = buildString {
+    appendLine("scope_precedence: ${result.scopePrecedence.joinToString(" > ") { it.wireName }}")
+    result.repoScopeKey?.let { appendLine("repo_scope_key: $it") }
+    result.skillName?.let { appendLine("skill_name: $it") }
+    appendLine("applied_learnings: ${summarizeAppliedLearnings(result.learnings)}")
+    if (result.learnings.isEmpty()) {
       appendLine("No active learnings matched this review context.")
     } else {
-      entries.forEach { entry ->
+      result.learnings.forEach { entry ->
         appendLine(
-          "- [${entry["reference"]}] ${scopedLabel(entry)} | ${entry["title"]} | ${entry["rule_text"]}",
+          "- [${entry.reference}] ${scopedLabel(entry)} | ${entry.title} | ${entry.ruleText}",
         )
       }
     }
   }
 
-  fun summarizeAppliedLearnings(entries: List<Map<String, Any?>>): String =
-    if (entries.isEmpty()) "none" else entries.joinToString(", ") { it["reference"].toString() }
+  fun summarizeAppliedLearnings(entries: List<LearningEntry>): String =
+    if (entries.isEmpty()) "none" else entries.joinToString(", ") { it.reference }
 }
 
 private fun emitText(payload: Map<String, Any?>): String = buildString {
@@ -118,8 +114,5 @@ private fun sortedJsonElement(value: Any?): JsonElement = when (value) {
   else -> JsonSupport.valueToJsonElement(value)
 }
 
-private fun scopedLabel(entry: Map<String, Any?>): String {
-  val scope = entry["scope"].toString()
-  val scopeKey = entry["scope_key"]?.toString().orEmpty()
-  return if (scopeKey.isNotEmpty()) "$scope:$scopeKey" else scope
-}
+private fun scopedLabel(entry: LearningEntry): String =
+  if (entry.scopeKey.isNotEmpty()) "${entry.scope.wireName}:${entry.scopeKey}" else entry.scope.wireName

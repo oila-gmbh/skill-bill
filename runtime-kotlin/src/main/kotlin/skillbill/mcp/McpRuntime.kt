@@ -1,30 +1,25 @@
 package skillbill.mcp
 
-import skillbill.SkillBillVersion
-import skillbill.db.DatabaseRuntime
-import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningsRuntime
-import skillbill.learnings.learningPayload
-import skillbill.learnings.learningSessionJson
-import skillbill.learnings.summarizeLearningReferences
-import skillbill.review.FeedbackRequest
-import skillbill.review.FeedbackTelemetryOptions
-import skillbill.review.ReviewRuntime
-import skillbill.review.ReviewStatsRuntime
-import skillbill.review.TriageRuntime
+import skillbill.RuntimeContext
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import skillbill.telemetry.HttpRequester
 import skillbill.telemetry.RemoteStatsRequest
-import skillbill.telemetry.TelemetryConfigRuntime
 import skillbill.telemetry.TelemetryHttpRuntime
-import skillbill.telemetry.TelemetryRemoteStatsRuntime
-import java.nio.file.Files
 import java.nio.file.Path
 
 data class McpRuntimeContext(
   val requester: HttpRequester = TelemetryHttpRuntime.defaultHttpRequester,
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
-)
+) {
+  fun toRuntimeContext(stdinText: String? = null): RuntimeContext = RuntimeContext(
+    stdinText = stdinText,
+    environment = environment,
+    userHome = userHome,
+    requester = requester,
+  )
+}
 
 object McpRuntime {
   fun importReview(
@@ -32,32 +27,32 @@ object McpRuntime {
     orchestrated: Boolean = false,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
-    val review = ReviewRuntime.parseReview(reviewText)
-    if (!TelemetryConfigRuntime.telemetryIsEnabled(context.environment, context.userHome)) {
+    val services = services(context, stdinText = reviewText)
+    if (!services.telemetryService.isEnabled()) {
+      val preview = services.reviewService.previewImport("-")
       return linkedMapOf(
         "status" to "skipped",
         "reason" to "telemetry is disabled",
-        "review_run_id" to review.reviewRunId,
-        "finding_count" to review.findings.size,
+        "review_run_id" to preview["review_run_id"],
+        "finding_count" to preview["finding_count"],
       )
     }
-    val telemetrySettings = loadTelemetrySettings(context)
-    DatabaseRuntime
-      .openDb(environment = context.environment, userHome = context.userHome)
-      .use { openDb ->
-        ReviewRuntime.saveImportedReview(openDb.connection, review, sourcePath = null)
-        markOrchestrated(openDb.connection, review.reviewRunId, orchestrated)
-        val telemetryPayload =
-          zeroFindingTelemetryPayload(
-            openDb.connection,
-            review.reviewRunId,
-            review.findings.isEmpty(),
-            telemetrySettings,
-          )
-        return importReviewPayload(openDb.dbPath.toString(), review).also { payload ->
-          enrichOrchestratedPayload(payload, telemetryPayload, orchestrated)
+    val payload =
+      services.reviewService
+        .importReview("-", dbOverride = null, finishZeroFindingTelemetry = !orchestrated)
+        .toMutableMap()
+    if (orchestrated) {
+      val reviewRunId = payload["review_run_id"] as String
+      services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
+      val telemetryPayload =
+        if (payload["finding_count"] == 0) {
+          services.reviewService.reviewFinishedTelemetryPayload(reviewRunId, dbOverride = null)
+        } else {
+          null
         }
-      }
+      enrichOrchestratedPayload(payload, telemetryPayload, orchestrated)
+    }
+    return payload
   }
 
   fun triageFindings(
@@ -66,31 +61,28 @@ object McpRuntime {
     orchestrated: Boolean = false,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
-    if (!TelemetryConfigRuntime.telemetryIsEnabled(context.environment, context.userHome)) {
+    val services = services(context)
+    if (!services.telemetryService.isEnabled()) {
       return linkedMapOf(
         "status" to "skipped",
         "reason" to "telemetry is disabled",
         "review_run_id" to reviewRunId,
       )
     }
-    val telemetrySettings = loadTelemetrySettings(context)
-    DatabaseRuntime
-      .openDb(environment = context.environment, userHome = context.userHome)
-      .use { openDb ->
-        markOrchestrated(openDb.connection, reviewRunId, orchestrated)
-        val numberedFindings = ReviewRuntime.fetchNumberedFindings(openDb.connection, reviewRunId)
-        val parsedDecisions = TriageRuntime.parseTriageDecisions(decisions, numberedFindings)
-        val telemetryPayload =
-          applyMcpTriageDecisions(
-            openDb.connection,
-            reviewRunId,
-            parsedDecisions,
-            FeedbackTelemetryOptions(telemetrySettings.enabled, telemetrySettings.level),
-          )
-        return triagePayload(openDb.dbPath.toString(), reviewRunId, parsedDecisions).also { payload ->
-          enrichOrchestratedPayload(payload, telemetryPayload, orchestrated)
-        }
-      }
+    if (orchestrated) {
+      services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
+    }
+    val result =
+      services.reviewService.triage(
+        reviewRunId,
+        decisions,
+        listOnly = false,
+        dbOverride = null,
+        listWhenNoDecisions = false,
+      )
+    return result.payload.toMutableMap().also { payload ->
+      enrichOrchestratedPayload(payload, result.telemetryPayload, orchestrated)
+    }
   }
 
   fun resolveLearnings(
@@ -99,7 +91,8 @@ object McpRuntime {
     reviewSessionId: String? = null,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
-    if (!TelemetryConfigRuntime.telemetryIsEnabled(context.environment, context.userHome)) {
+    val services = services(context)
+    if (!services.telemetryService.isEnabled()) {
       return linkedMapOf(
         "status" to "skipped",
         "reason" to "telemetry is disabled",
@@ -107,139 +100,32 @@ object McpRuntime {
         "learnings" to emptyList<Map<String, Any?>>(),
       )
     }
-    DatabaseRuntime
-      .openDb(environment = context.environment, userHome = context.userHome)
-      .use { openDb ->
-        val (repoScopeKey, skillName, rows) =
-          LearningsRuntime.resolveLearnings(openDb.connection, repo, skill)
-        val payloadEntries = rows.map(::learningPayload)
-        reviewSessionId?.takeIf(String::isNotBlank)?.let {
-          LearningsRuntime.saveSessionLearnings(
-            openDb.connection,
-            it,
-            learningSessionJson(skillName, payloadEntries),
-          )
-        }
-        return linkedMapOf<String, Any?>(
-          "db_path" to openDb.dbPath.toString(),
-          "repo_scope_key" to repoScopeKey,
-          "skill_name" to skillName,
-          "scope_precedence" to LearningScope.precedenceWireNames(),
-          "applied_learnings" to summarizeLearningReferences(payloadEntries),
-          "learnings" to payloadEntries,
-        ).also { payload ->
-          reviewSessionId?.takeIf(String::isNotBlank)?.let { payload["review_session_id"] = it }
-        }
-      }
+    return services.learningService.resolve(repo, skill, reviewSessionId, dbOverride = null).toMcpPayload()
   }
 
   fun reviewStats(reviewRunId: String? = null, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    featureStatsPayload(context) { connection ->
-      ReviewStatsRuntime.statsPayload(connection, reviewRunId)
-    }
+    services(context).reviewService.reviewStats(reviewRunId, dbOverride = null)
 
   fun featureImplementStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    featureStatsPayload(context, ReviewStatsRuntime::featureImplementStatsPayload)
+    services(context).reviewService.featureImplementStats(dbOverride = null)
 
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    featureStatsPayload(context, ReviewStatsRuntime::featureVerifyStatsPayload)
+    services(context).reviewService.featureVerifyStats(dbOverride = null)
 
   fun telemetryRemoteStats(
     request: RemoteStatsRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = TelemetryRemoteStatsRuntime.fetchRemoteStats(
-    request = request,
-    settings = loadTelemetrySettings(context),
-    requester = context.requester,
-    environment = context.environment,
-  )
+  ): Map<String, Any?> = services(context).telemetryService.remoteStats(request)
 
   fun telemetryProxyCapabilities(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    TelemetryHttpRuntime.fetchProxyCapabilities(
-      settings = loadTelemetrySettings(context),
-      requester = context.requester,
-      environment = context.environment,
-    )
+    services(context).telemetryService.capabilities()
 
-  fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> {
-    val dbPath = DatabaseRuntime.resolveDbPath(null, context.environment, context.userHome)
-    val settings = runCatching { loadTelemetrySettings(context) }.getOrNull()
-    return linkedMapOf(
-      "version" to SkillBillVersion.VALUE,
-      "db_path" to dbPath.toString(),
-      "db_exists" to Files.exists(dbPath),
-      "telemetry_enabled" to (settings?.enabled ?: false),
-      "telemetry_level" to (settings?.level ?: "off"),
-    )
-  }
+  fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
+    services(context).systemService.version()
+
+  fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
+    services(context).systemService.doctor(dbOverride = null)
 }
-
-private fun importReviewPayload(dbPath: String, review: skillbill.review.ImportedReview): LinkedHashMap<String, Any?> =
-  linkedMapOf(
-    "db_path" to dbPath,
-    "review_run_id" to review.reviewRunId,
-    "review_session_id" to review.reviewSessionId,
-    "finding_count" to review.findings.size,
-    "routed_skill" to review.routedSkill,
-    "detected_scope" to review.detectedScope,
-    "detected_stack" to review.detectedStack,
-    "execution_mode" to review.executionMode,
-  )
-
-private fun triagePayload(
-  dbPath: String,
-  reviewRunId: String,
-  parsedDecisions: List<skillbill.review.TriageDecision>,
-): LinkedHashMap<String, Any?> = linkedMapOf(
-  "db_path" to dbPath,
-  "review_run_id" to reviewRunId,
-  "recorded" to parsedDecisions.map { decision ->
-    linkedMapOf(
-      "number" to decision.number,
-      "finding_id" to decision.findingId,
-      "outcome_type" to decision.outcomeType,
-      "note" to decision.note,
-    )
-  },
-)
-
-private fun applyMcpTriageDecisions(
-  connection: java.sql.Connection,
-  reviewRunId: String,
-  parsedDecisions: List<skillbill.review.TriageDecision>,
-  telemetryOptions: FeedbackTelemetryOptions,
-): Map<String, Any?>? {
-  var telemetryPayload: Map<String, Any?>? = null
-  parsedDecisions.forEach { decision ->
-    val returnedPayload =
-      TriageRuntime.recordFeedback(
-        connection,
-        FeedbackRequest(
-          reviewRunId,
-          listOf(decision.findingId),
-          decision.outcomeType,
-          decision.note,
-        ),
-        telemetryOptions,
-      )
-    if (returnedPayload != null) {
-      telemetryPayload = returnedPayload
-    }
-  }
-  return telemetryPayload
-}
-
-private fun featureStatsPayload(
-  context: McpRuntimeContext,
-  payloadBuilder: (java.sql.Connection) -> Map<String, Any?>,
-): Map<String, Any?> = DatabaseRuntime
-  .openDb(environment = context.environment, userHome = context.userHome)
-  .use { openDb ->
-    linkedMapOf<String, Any?>().apply {
-      putAll(payloadBuilder(openDb.connection))
-      put("db_path", openDb.dbPath.toString())
-    }
-  }
 
 private fun enrichOrchestratedPayload(
   payload: MutableMap<String, Any?>,
@@ -258,36 +144,7 @@ private fun enrichOrchestratedPayload(
   }
 }
 
-private fun markOrchestrated(connection: java.sql.Connection, reviewRunId: String, orchestrated: Boolean) {
-  if (!orchestrated) {
-    return
-  }
-  connection.prepareStatement(
-    "UPDATE review_runs SET orchestrated_run = 1 WHERE review_run_id = ?",
-  ).use { statement ->
-    statement.setString(1, reviewRunId)
-    statement.executeUpdate()
-  }
+private fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
+  val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))
+  return McpComponent::class.create(runtimeComponent).services
 }
-
-private fun zeroFindingTelemetryPayload(
-  connection: java.sql.Connection,
-  reviewRunId: String,
-  hasZeroFindings: Boolean,
-  settings: skillbill.telemetry.TelemetrySettings,
-): Map<String, Any?>? = if (!hasZeroFindings) {
-  null
-} else {
-  ReviewStatsRuntime.updateReviewFinishedTelemetryState(
-    connection,
-    reviewRunId,
-    enabled = settings.enabled,
-    level = settings.level,
-  )
-}
-
-private fun loadTelemetrySettings(context: McpRuntimeContext): skillbill.telemetry.TelemetrySettings =
-  TelemetryConfigRuntime.loadTelemetrySettings(
-    environment = context.environment,
-    userHome = context.userHome,
-  )

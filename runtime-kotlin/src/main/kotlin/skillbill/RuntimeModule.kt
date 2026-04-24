@@ -7,7 +7,9 @@ object RuntimeModule {
 
   val declaredSubsystemPackages: List<String> =
     listOf(
+      "skillbill.application",
       "skillbill.cli",
+      "skillbill.di",
       "skillbill.launcher",
       "skillbill.mcp",
       "skillbill.db",

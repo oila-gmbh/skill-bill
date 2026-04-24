@@ -1,6 +1,9 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.cli.CliRuntime
+import skillbill.cli.CliRuntimeContext
+import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.HttpRequester
@@ -17,6 +20,23 @@ import kotlin.test.assertTrue
 
 class McpRuntimeTest {
   @Test
+  fun `version matches cli system service payload`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-version")
+    val env = disabledTelemetryEnvironment(tempDir)
+    val cliResult =
+      CliRuntime.run(
+        listOf("version", "--format", "json"),
+        CliRuntimeContext(environment = env, userHome = tempDir),
+      )
+
+    assertEquals(0, cliResult.exitCode, cliResult.stdout)
+    assertEquals(
+      decodeJsonObject(cliResult.stdout),
+      McpRuntime.version(McpRuntimeContext(environment = env, userHome = tempDir)),
+    )
+  }
+
+  @Test
   fun `doctor returns version and db info`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-doctor")
     val env = disabledTelemetryEnvironment(tempDir)
@@ -28,6 +48,24 @@ class McpRuntimeTest {
     assertFalse(result["db_exists"] as Boolean)
     assertEquals(false, result["telemetry_enabled"])
     assertEquals("off", result["telemetry_level"])
+  }
+
+  @Test
+  fun `doctor matches cli shared system service payload`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-cli-shared-doctor")
+    val env = disabledTelemetryEnvironment(tempDir)
+    val dbPath = tempDir.resolve("metrics.db")
+    val cliResult =
+      CliRuntime.run(
+        listOf("--db", dbPath.toString(), "doctor", "--format", "json"),
+        CliRuntimeContext(environment = env, userHome = tempDir),
+      )
+
+    assertEquals(0, cliResult.exitCode, cliResult.stdout)
+    assertEquals(
+      decodeJsonObject(cliResult.stdout),
+      McpRuntime.doctor(McpRuntimeContext(environment = env, userHome = tempDir)),
+    )
   }
 
   @Test
@@ -112,6 +150,30 @@ class McpRuntimeTest {
     assertEquals("telemetry is disabled", result["reason"])
     assertEquals("none", result["applied_learnings"])
     assertEquals(emptyList<Map<String, Any?>>(), result["learnings"])
+  }
+
+  @Test
+  fun `resolve learnings returns stable payload when telemetry is enabled`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-learnings")
+    val env = enabledTelemetryEnvironment(tempDir)
+    seedLearningScenario(tempDir, env)
+
+    val result =
+      McpRuntime.resolveLearnings(
+        skill = "bill-kotlin-code-review",
+        reviewSessionId = "rvs-20260402-001",
+        context = McpRuntimeContext(environment = env, userHome = tempDir),
+      )
+
+    assertEquals("bill-kotlin-code-review", result["skill_name"])
+    assertEquals(listOf("skill", "repo", "global"), result["scope_precedence"])
+    assertEquals("L-001", result["applied_learnings"])
+    assertEquals("rvs-20260402-001", result["review_session_id"])
+    val entries = result["learnings"] as List<*>
+    val firstEntry = entries.first() as Map<*, *>
+    assertEquals("L-001", firstEntry["reference"])
+    assertEquals("skill", firstEntry["scope"])
+    assertEquals("Keep wording aligned", firstEntry["title"])
   }
 
   @Test
@@ -253,6 +315,61 @@ private fun writeMcpTelemetryConfig(tempDir: Path, level: String): Path {
   return configPath
 }
 
+private fun seedLearningScenario(tempDir: Path, env: Map<String, String>) {
+  val dbPath = tempDir.resolve("metrics.db")
+  assertMcpCliSuccess(
+    CliRuntime.run(
+      listOf("--db", dbPath.toString(), "import-review", "-", "--format", "json"),
+      CliRuntimeContext(environment = env, userHome = tempDir, stdinText = SAMPLE_REVIEW.trimIndent()),
+    ),
+  )
+  assertMcpCliSuccess(
+    CliRuntime.run(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "triage",
+        "--run-id",
+        "rvw-20260402-001",
+        "--decision",
+        "2 reject - intentional",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(environment = env, userHome = tempDir),
+    ),
+  )
+  assertMcpCliSuccess(
+    CliRuntime.run(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "learnings",
+        "add",
+        "--scope",
+        "skill",
+        "--scope-key",
+        "bill-kotlin-code-review",
+        "--title",
+        "Keep wording aligned",
+        "--rule",
+        "Update the installer prompt when routing text changes.",
+        "--from-run",
+        "rvw-20260402-001",
+        "--from-finding",
+        "F-002",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(environment = env, userHome = tempDir),
+    ),
+  )
+}
+
+private fun assertMcpCliSuccess(result: skillbill.cli.CliExecutionResult) {
+  assertEquals(0, result.exitCode, result.stdout)
+}
+
 private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
   HttpRequester { method, url, bodyJson, headers ->
     capturedRequests +=
@@ -289,3 +406,11 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
         )
     }
   }
+
+private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
+  val parsed = JsonSupport.parseObjectOrNull(rawJson)
+  require(parsed != null) { "Expected JSON object but got: $rawJson" }
+  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+  require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
+  return decoded
+}
