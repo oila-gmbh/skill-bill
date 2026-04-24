@@ -1,3 +1,21 @@
+## [2026-04-23] kotlin-runtime-port phase 4
+Areas: runtime-kotlin/, docs/migrations/SKILL-27-kotlin-runtime-port.md, .feature-specs/SKILL-27-surface-integration/
+- Replaced the marker-only `runtime-kotlin` CLI and MCP surfaces with real adapters for the review/learnings/stats/telemetry slice while keeping command/tool names, payload fields, and orchestrated review semantics aligned with the Python oracle. reusable
+- Split the CLI port into command-support files (`CliReviewCommands`, `CliLearningCommands`, `CliTelemetryCommands`, output/helpers) so later phases can extend the surfaced command tree without rebuilding one monolith. reusable
+- Added Kotlin-side telemetry config mutation helpers plus parity tests for representative CLI outputs, MCP payloads, remote-stats proxy traffic, and alternate `userHome` config resolution. reusable
+- Known limit: production `skill-bill` / `skill-bill-mcp` entrypoints, workflow runtime, loader/scaffolder, install behavior, and launcher/cutover wiring remain Python-owned after this phase.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-04-22] kotlin-runtime-port phase 1
+Areas: runtime-kotlin/, docs/migrations/SKILL-27-kotlin-runtime-port.md, agent/history.md
+- Added a standalone JVM-only `runtime-kotlin/` Gradle module with local wrapper scripts, JDK 17 toolchain setup, version-catalog dependency management, a local `build-logic/` included build, and a package scaffold for future CLI, MCP, DB, telemetry, workflow, scaffold, and install ports. reusable
+- Added shared Kotlin contract/error primitives plus initial smoke tests so later subsystem ports can reuse one local foundation instead of inventing per-area scaffolding. reusable
+- Wired module-local quality gates from day one: 2-space Kotlin formatting via `.editorconfig`, `spotless` for formatting, and `detekt` for static analysis, all validated through the wrapper-based Gradle path. reusable
+- Recorded the Phase 1 carryover in `docs/migrations/SKILL-27-kotlin-runtime-port.md`, keeping Python as the active runtime source of truth and pointing the next session at Phase 2 persistence work.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-04-21] feature-verify-shell-pilot
 Areas: skills/bill-feature-verify/, scripts/, tests/, README.md, docs/getting-started-for-teams.md
 - Split `bill-feature-verify` into a workflow shell in `SKILL.md` and an author-owned `content.md`, keeping workflow-state, continuation, stable artifact names, and telemetry ownership in the shell while moving phase-by-phase verify guidance into the sibling content file. reusable
