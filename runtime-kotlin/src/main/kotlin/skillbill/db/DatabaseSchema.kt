@@ -5,6 +5,7 @@ import java.sql.Connection
 internal object DatabaseSchema {
   val tableNames: Set<String> =
     setOf(
+      "schema_migrations",
       "review_runs",
       "findings",
       "feedback_events",
@@ -35,6 +36,13 @@ internal object DatabaseSchema {
 
   private val statements: List<String> =
     listOf(
+      """
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS review_runs (
         review_run_id TEXT PRIMARY KEY,

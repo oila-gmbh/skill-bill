@@ -106,6 +106,8 @@ useful for the next refactors:
   and telemetry config file IO lives under `skillbill.infrastructure.fs`
 - telemetry proxy batch and stats wire payloads are explicit contract helpers,
   separate from sync orchestration
+- SQLite schema changes are represented as append-only versioned database migrations
+  and recorded in `schema_migrations`
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -115,7 +117,6 @@ useful for the next refactors:
    results with typed results.
 2. Move remaining pure domain models/rules away from JDBC-shaped runtime
    objects.
-3. Add versioned database migrations.
-4. Add contract DTOs and golden output fixtures for the remaining JSON
+3. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-5. Split Gradle modules only after package boundaries are proven.
+4. Split Gradle modules only after package boundaries are proven.

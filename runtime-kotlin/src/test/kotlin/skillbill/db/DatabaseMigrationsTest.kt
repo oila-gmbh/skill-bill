@@ -5,9 +5,51 @@ import java.nio.file.Path
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DatabaseMigrationsTest {
+  @Test
+  fun `migration definitions are append-only and deterministic`() {
+    val migrationDefinitions = DatabaseMigrations.migrations.map { migration -> migration.version to migration.name }
+
+    assertEquals(
+      listOf(
+        1 to "add-review-workflow-session-columns",
+        2 to "normalize-feedback-event-outcomes",
+      ),
+      migrationDefinitions,
+    )
+    assertEquals(migrationDefinitions.sortedBy { (version, _) -> version }, migrationDefinitions)
+    assertEquals(migrationDefinitions.map { (version, _) -> version }.toSet().size, migrationDefinitions.size)
+    assertEquals(migrationDefinitions.map { (_, name) -> name }.toSet().size, migrationDefinitions.size)
+  }
+
+  @Test
+  fun `ensureDatabase records all migrations for new databases`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("new.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val rows = migrationRows(connection)
+
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.version to migration.name },
+        rows.map { row -> row.version to row.name },
+      )
+      rows.forEach { row -> assertTrue(row.appliedAt.isNotBlank()) }
+    }
+  }
+
+  @Test
+  fun `ensureDatabase does not duplicate recorded migrations on repeated opens`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("repeat.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
   @Test
   fun `ensureDatabase adds missing review session column and backfills it`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-review-runs.db")
@@ -19,6 +61,7 @@ class DatabaseMigrationsTest {
 
       assertTrue("review_session_id" in columns)
       assertEquals("rvw-legacy-001", reviewSessionId)
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
     }
   }
 
@@ -34,6 +77,42 @@ class DatabaseMigrationsTest {
 
       assertTrue("'fix_rejected'" in schemaSql)
       assertEquals("fix_rejected", migratedEventType)
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase resumes from recorded migration version`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("partial.db")
+    createLegacyFeedbackEventsDatabase(dbPath)
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO schema_migrations (version, name)
+        VALUES (?, ?)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setInt(1, 1)
+        statement.setString(2, "add-review-workflow-session-columns")
+        statement.executeUpdate()
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals("fix_rejected", feedbackEventType(connection, "rvw-legacy-002", "F-001"))
+      assertNotNull(migrationRows(connection).singleOrNull { row -> row.version == 2 })
     }
   }
 
@@ -149,6 +228,28 @@ class DatabaseMigrationsTest {
       }
     }
 
+  private fun migrationRows(connection: java.sql.Connection): List<MigrationRow> = connection.prepareStatement(
+    """
+      SELECT version, name, applied_at
+      FROM schema_migrations
+      ORDER BY version
+    """.trimIndent(),
+  ).use { statement ->
+    statement.executeQuery().use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add(
+            MigrationRow(
+              version = resultSet.getInt("version"),
+              name = resultSet.getString("name"),
+              appliedAt = resultSet.getString("applied_at"),
+            ),
+          )
+        }
+      }
+    }
+  }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -159,6 +260,12 @@ class DatabaseMigrationsTest {
         }
       }
     }
+
+  private data class MigrationRow(
+    val version: Int,
+    val name: String,
+    val appliedAt: String,
+  )
 
   private companion object {
     const val CREATE_LEGACY_REVIEW_RUNS_SQL: String =

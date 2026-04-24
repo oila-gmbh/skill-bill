@@ -29,6 +29,8 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "TelemetryConfigStore")
     assertContains(architecture, "TelemetryClient")
     assertContains(architecture, "telemetry proxy DTO/payload mappers")
+    assertContains(architecture, "schema_migrations")
+    assertContains(architecture, "versioned database migrations")
   }
 
   @Test

@@ -18,13 +18,11 @@ internal object FeedbackEventMigration {
       return
     }
     val rows = legacyFeedbackEventRows(connection)
-    connection.inTransaction {
-      renameFeedbackEventsTable()
-      createCurrentFeedbackEventsTable()
-      insertFeedbackEventRows(rows)
-      createStatement().use { statement ->
-        statement.execute("DROP TABLE feedback_events_legacy")
-      }
+    connection.renameFeedbackEventsTable()
+    connection.createCurrentFeedbackEventsTable()
+    connection.insertFeedbackEventRows(rows)
+    connection.createStatement().use { statement ->
+      statement.execute("DROP TABLE feedback_events_legacy")
     }
   }
 
