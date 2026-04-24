@@ -94,6 +94,7 @@ Prefer routing through `bill-quality-check`. If a platform-specific checker does
 
 ```bash
 .venv/bin/python3 -m unittest discover -s tests
+(cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 .venv/bin/python3 scripts/validate_agent_configs.py
 ```
