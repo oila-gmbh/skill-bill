@@ -2,6 +2,10 @@ package skillbill.telemetry
 
 import java.nio.file.Path
 
+typealias HttpResponse = skillbill.ports.telemetry.HttpResponse
+
+typealias HttpRequester = skillbill.ports.telemetry.HttpRequester
+
 data class TelemetrySettings(
   val configPath: Path,
   val level: String,
@@ -26,12 +30,3 @@ data class SyncResult(
   val customProxyUrl: String? = null,
   val message: String? = null,
 )
-
-data class HttpResponse(
-  val statusCode: Int,
-  val body: String,
-)
-
-fun interface HttpRequester {
-  fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse
-}

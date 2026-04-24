@@ -3,6 +3,9 @@ package skillbill.telemetry
 import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
 import skillbill.db.TelemetryOutboxStore
+import skillbill.infrastructure.http.HttpTelemetryClient
+import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.telemetry.TelemetryClient
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.Test
@@ -17,16 +20,17 @@ class TelemetryRuntimeTest {
     val settings = telemetrySettings(Files.createTempFile("telemetry", ".json"))
 
     val payload =
-      TelemetryRemoteStatsRuntime.fetchRemoteStats(
+      HttpTelemetryClient(
+        requester = requester,
+        environment = mapOf("SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN" to "stats-token-123"),
+      ).fetchRemoteStats(
+        settings = settings,
         request =
         RemoteStatsRequest(
           workflow = "bill-feature-verify",
           dateFrom = "2026-04-01",
           dateTo = "2026-04-22",
         ),
-        settings = settings,
-        requester = requester,
-        environment = mapOf("SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN" to "stats-token-123"),
       )
 
     assertEquals("bill-feature-verify", payload["workflow"])
@@ -42,7 +46,7 @@ class TelemetryRuntimeTest {
     val requester = HttpRequester { _, _, _, _ -> HttpResponse(statusCode = 404, body = "") }
     val settings = telemetrySettings(Files.createTempFile("telemetry-capabilities", ".json"), customProxyUrl = null)
 
-    val payload = TelemetryHttpRuntime.fetchProxyCapabilities(settings = settings, requester = requester)
+    val payload = HttpTelemetryClient(requester).fetchProxyCapabilities(settings)
 
     assertEquals("0", payload["contract_version"])
     assertEquals(false, payload["supports_stats"])
@@ -63,31 +67,30 @@ class TelemetryRuntimeTest {
       val outboxStore = TelemetryOutboxStore(connection)
       outboxStore.enqueue("skillbill_feature_implement_started", JsonSupport.mapToJsonString(mapOf("name" to "ok")))
       outboxStore.enqueue("skillbill_feature_implement_finished", JsonSupport.mapToJsonString(mapOf("name" to "fail")))
-    }
 
-    val successRequester = HttpRequester { _, _, _, _ -> HttpResponse(statusCode = 200, body = "") }
-    val successResult = TelemetrySyncRuntime.syncTelemetry(dbPath, settings, successRequester)
-    assertEquals("synced", successResult.status)
-    assertEquals(2, successResult.syncedEvents)
+      val successClient = RecordingTelemetryClient()
+      val successResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, successClient)
+      assertEquals("synced", successResult.status)
+      assertEquals(2, successResult.syncedEvents)
+      assertEquals(listOf(listOf(1L, 2L)), successClient.sentBatchIds)
+    }
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val outboxStore = TelemetryOutboxStore(connection)
       outboxStore.enqueue("skillbill_feature_verify_started", JsonSupport.mapToJsonString(mapOf("name" to "retry")))
-    }
-    val failingRequester = HttpRequester { _, _, _, _ -> throw IOException("blocked by network isolation sentinel") }
-    val failedResult = TelemetrySyncRuntime.syncTelemetry(dbPath, settings, failingRequester)
-    assertEquals("failed", failedResult.status)
-    assertEquals("blocked by network isolation sentinel", failedResult.message)
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val latestError = TelemetryOutboxStore(connection).latestError()
-      assertEquals("blocked by network isolation sentinel", latestError)
+
+      val failingClient = RecordingTelemetryClient(failure = IOException("blocked by network isolation sentinel"))
+      val failedResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, failingClient)
+      assertEquals("failed", failedResult.status)
+      assertEquals("blocked by network isolation sentinel", failedResult.message)
+      assertEquals("blocked by network isolation sentinel", outboxStore.latestError())
     }
   }
 
   @Test
-  fun `autoSyncTelemetry returns disabled result when telemetry is off`() {
+  fun `syncTelemetry covers disabled noop and unconfigured paths`() {
     val dbPath = Files.createTempFile("telemetry-invalid", ".db")
-    val settings =
+    val disabledSettings =
       TelemetrySettings(
         configPath = Files.createTempFile("telemetry-invalid-config", ".json"),
         level = "off",
@@ -97,16 +100,71 @@ class TelemetryRuntimeTest {
         customProxyUrl = null,
         batchSize = 50,
       )
-    val result =
-      TelemetrySyncRuntime.autoSyncTelemetry(
-        dbPath = dbPath,
-        reportFailures = false,
-        settings = settings,
-      )
 
-    assertEquals("disabled", result?.status)
-    assertEquals(false, TelemetrySyncRuntime.telemetryStatusPayload(dbPath, settings)["telemetry_enabled"])
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val outboxStore = TelemetryOutboxStore(connection)
+      val result =
+        TelemetrySyncRuntime.autoSyncTelemetry(
+          settings = disabledSettings,
+          outboxRepository = outboxStore,
+          client = RecordingTelemetryClient(failure = IOException("must not call client")),
+          reportFailures = false,
+        )
+
+      assertEquals("disabled", result?.status)
+      assertEquals(
+        false,
+        TelemetrySyncRuntime.telemetryStatusPayload(dbPath, disabledSettings)["telemetry_enabled"],
+      )
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val outboxStore = TelemetryOutboxStore(connection)
+      val noopResult =
+        TelemetrySyncRuntime.syncTelemetry(
+          telemetrySettings(Files.createTempFile("telemetry-noop", ".json")),
+          outboxStore,
+          RecordingTelemetryClient(),
+        )
+
+      assertEquals("noop", noopResult.status)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val outboxStore = TelemetryOutboxStore(connection)
+      outboxStore.enqueue("skillbill_feature_verify_started", JsonSupport.mapToJsonString(mapOf("name" to "pending")))
+      val unconfiguredResult =
+        TelemetrySyncRuntime.syncTelemetry(
+          telemetrySettings(
+            configPath = Files.createTempFile("telemetry-unconfigured", ".json"),
+            proxyUrl = "",
+            customProxyUrl = null,
+          ),
+          outboxStore,
+          RecordingTelemetryClient(failure = IOException("must not call client")),
+        )
+
+      assertEquals("unconfigured", unconfiguredResult.status)
+      assertEquals(1, unconfiguredResult.pendingEvents)
+    }
   }
+}
+
+private class RecordingTelemetryClient(
+  private val failure: IOException? = null,
+) : TelemetryClient {
+  val sentBatchIds = mutableListOf<List<Long>>()
+
+  override fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>) {
+    failure?.let { throw it }
+    sentBatchIds += rows.map { it.id }
+  }
+
+  override fun fetchProxyCapabilities(settings: TelemetrySettings): Map<String, Any?> =
+    error("Unexpected fetchProxyCapabilities")
+
+  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): Map<String, Any?> =
+    error("Unexpected fetchRemoteStats")
 }
 
 private fun remoteStatsRequester(requests: MutableList<Triple<String, String, String?>>): HttpRequester =

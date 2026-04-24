@@ -17,64 +17,27 @@ object TelemetryRemoteStatsRuntime {
     dateFrom: String = "",
     dateTo: String = "",
     today: LocalDate = LocalDate.now(ZoneOffset.UTC),
-  ): Pair<String, String> {
-    require(dateFrom.isBlank() || since.isBlank()) {
-      "Use either since or date_from/date_to, not both."
-    }
-    val endDate = resolvedEndDate(dateTo, today)
-    val startDate = resolvedStartDate(since, dateFrom, endDate)
-    require(!startDate.isAfter(endDate)) {
-      "date_from must be on or before date_to."
-    }
-    return startDate.toString() to endDate.toString()
-  }
-
-  fun fetchRemoteStats(
-    request: RemoteStatsRequest,
-    settings: TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(),
-    requester: HttpRequester = TelemetryHttpRuntime.defaultHttpRequester,
-    environment: Map<String, String> = System.getenv(),
-  ): Map<String, Any?> {
-    validateRemoteStatsRequest(request)
-    require(settings.proxyUrl.isNotBlank()) {
-      "Telemetry relay URL is not configured."
-    }
-    val (resolvedDateFrom, resolvedDateTo) =
-      parseRemoteStatsWindow(request.since, request.dateFrom, request.dateTo)
-    val capabilities =
-      TelemetryHttpRuntime.fetchProxyCapabilities(
-        settings = settings,
-        requester = requester,
-        environment = environment,
-      )
-    validateRemoteStatsCapabilities(
-      request = request,
-      settings = settings,
-      capabilities = capabilities,
-    )
-    val statsUrl = settings.proxyUrl.trimEnd('/') + "/stats"
-    val payload =
-      requestJson(
-        url = statsUrl,
-        payload = remoteStatsPayload(request, resolvedDateFrom, resolvedDateTo),
-        errorContext = "Remote telemetry stats request",
-        headers = proxyAuthHeaders(environment),
-        requester = requester,
-      ).toMutableMap()
-    payload.putIfAbsent("workflow", request.workflow)
-    payload.putIfAbsent("date_from", resolvedDateFrom)
-    payload.putIfAbsent("date_to", resolvedDateTo)
-    payload.putIfAbsent("source", "remote_proxy")
-    payload.putIfAbsent("stats_url", statsUrl)
-    payload.putIfAbsent("capabilities", capabilities)
-    if (request.groupBy.isNotBlank()) {
-      payload.putIfAbsent("group_by", request.groupBy)
-    }
-    return payload
-  }
+  ): Pair<String, String> = skillbill.telemetry.parseRemoteStatsWindow(since, dateFrom, dateTo, today)
 }
 
-private fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
+internal fun parseRemoteStatsWindow(
+  since: String = "",
+  dateFrom: String = "",
+  dateTo: String = "",
+  today: LocalDate = LocalDate.now(ZoneOffset.UTC),
+): Pair<String, String> {
+  require(dateFrom.isBlank() || since.isBlank()) {
+    "Use either since or date_from/date_to, not both."
+  }
+  val endDate = resolvedEndDate(dateTo, today)
+  val startDate = resolvedStartDate(since, dateFrom, endDate)
+  require(!startDate.isAfter(endDate)) {
+    "date_from must be on or before date_to."
+  }
+  return startDate.toString() to endDate.toString()
+}
+
+internal fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
   require(request.workflow in remoteStatsWorkflows) {
     "workflow must be one of: ${remoteStatsWorkflows.joinToString(", ")}."
   }
@@ -83,7 +46,7 @@ private fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
   }
 }
 
-private fun validateRemoteStatsCapabilities(
+internal fun validateRemoteStatsCapabilities(
   request: RemoteStatsRequest,
   settings: TelemetrySettings,
   capabilities: Map<String, Any?>,
@@ -101,19 +64,6 @@ private fun validateRemoteStatsCapabilities(
   require(supportedWorkflows.isEmpty() || request.workflow in supportedWorkflows) {
     "Configured telemetry proxy does not support workflow '${request.workflow}'. " +
       "Supported workflows: ${supportedWorkflows.joinToString(", ")}."
-  }
-}
-
-private fun remoteStatsPayload(
-  request: RemoteStatsRequest,
-  resolvedDateFrom: String,
-  resolvedDateTo: String,
-): Map<String, Any?> = buildMap {
-  put("workflow", request.workflow)
-  put("date_from", resolvedDateFrom)
-  put("date_to", resolvedDateTo)
-  if (request.groupBy.isNotBlank()) {
-    put("group_by", request.groupBy)
   }
 }
 

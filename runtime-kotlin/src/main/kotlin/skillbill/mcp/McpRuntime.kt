@@ -3,13 +3,13 @@ package skillbill.mcp
 import skillbill.RuntimeContext
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.telemetry.HttpRequester
+import skillbill.infrastructure.http.JdkHttpRequester
+import skillbill.ports.telemetry.HttpRequester
 import skillbill.telemetry.RemoteStatsRequest
-import skillbill.telemetry.TelemetryHttpRuntime
 import java.nio.file.Path
 
 data class McpRuntimeContext(
-  val requester: HttpRequester = TelemetryHttpRuntime.defaultHttpRequester,
+  val requester: HttpRequester = JdkHttpRequester,
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
 ) {

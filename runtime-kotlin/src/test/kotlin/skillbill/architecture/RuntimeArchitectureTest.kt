@@ -25,6 +25,10 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "repository and unit-of-work ports")
     assertContains(architecture, "LearningRecord is owned by the learnings domain")
     assertContains(architecture, "review parsing and triage decision normalization are pure surfaces")
+    assertContains(architecture, "TelemetrySettingsProvider")
+    assertContains(architecture, "TelemetryConfigStore")
+    assertContains(architecture, "TelemetryClient")
+    assertContains(architecture, "telemetry proxy DTO/payload mappers")
   }
 
   @Test
@@ -78,6 +82,10 @@ class RuntimeArchitectureTest {
         "skillbill.infrastructure",
         "skillbill.review.ReviewRuntime",
         "skillbill.review.TriageRuntime",
+        "skillbill.telemetry.TelemetryConfigRuntime",
+        "skillbill.telemetry.TelemetryConfigMutationRuntime",
+        "skillbill.telemetry.TelemetryHttpRuntime",
+        "skillbill.telemetry.TelemetryRemoteStatsRuntime",
       ),
     )
   }
@@ -188,6 +196,54 @@ class RuntimeArchitectureTest {
         "skillbill.cli",
         "skillbill.db",
         "skillbill.mcp",
+      ),
+    )
+  }
+
+  @Test
+  fun `telemetry ports and adapters are explicit package surfaces`() {
+    val portFiles =
+      listOf(
+        sourceRoot.resolve("skillbill/ports/telemetry/TelemetrySettingsProvider.kt"),
+        sourceRoot.resolve("skillbill/ports/telemetry/TelemetryConfigStore.kt"),
+        sourceRoot.resolve("skillbill/ports/telemetry/TelemetryClient.kt"),
+        sourceRoot.resolve("skillbill/ports/persistence/TelemetryOutboxRepository.kt"),
+      )
+    portFiles.forEach { path ->
+      assertTrue(Files.exists(path), "Missing telemetry port: ${sourceRoot.relativize(path)}")
+    }
+
+    assertContains(
+      Files.readString(sourceRoot.resolve("skillbill/infrastructure/http/HttpTelemetryClient.kt")),
+      "java.net.http.HttpClient",
+    )
+    assertContains(
+      Files.readString(sourceRoot.resolve("skillbill/infrastructure/fs/FileTelemetryConfigStore.kt")),
+      "java.nio.file.Files",
+    )
+    assertContains(
+      Files.readString(sourceRoot.resolve("skillbill/contracts/telemetry/TelemetryProxyContracts.kt")),
+      "data class TelemetryProxyBatchEvent",
+    )
+  }
+
+  @Test
+  fun `telemetry sync orchestration avoids concrete db filesystem and http APIs`() {
+    assertNoBannedImports(
+      files =
+      listOf(
+        sourceRoot.resolve("skillbill/telemetry/TelemetrySyncRuntime.kt"),
+        sourceRoot.resolve("skillbill/telemetry/TelemetryConfigMutations.kt"),
+        sourceRoot.resolve("skillbill/telemetry/DefaultTelemetrySettingsProvider.kt"),
+        sourceRoot.resolve("skillbill/telemetry/TelemetryRemoteStatsRuntime.kt"),
+      ).map(::sourceFile),
+      bannedImports =
+      listOf(
+        "java.net.http",
+        "java.sql",
+        "java.nio.file.Files",
+        "skillbill.db",
+        "skillbill.infrastructure",
       ),
     )
   }

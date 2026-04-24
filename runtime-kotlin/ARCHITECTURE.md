@@ -30,10 +30,12 @@ di
   entry points.
 - `skillbill.di`: Kotlin-Inject composition roots and providers.
 - `skillbill.ports`: internal port contracts for persistence sessions,
-  repositories, and later filesystem/HTTP/time abstractions.
+  repositories, telemetry settings/config/client abstractions, and later
+  filesystem/time abstractions.
 - `skillbill.infrastructure`: concrete adapters for port contracts. SQLite
   adapters own JDBC connection/session behavior and table-shaped repository
-  implementations.
+  implementations; HTTP adapters own telemetry relay request/response details;
+  filesystem adapters own telemetry config file reads and writes.
 - `skillbill.db`: SQLite schema, migrations, connection bootstrap, and current
   JDBC stores.
 - `skillbill.review`: pure review parsing and triage decision normalization
@@ -42,9 +44,10 @@ di
 - `skillbill.learnings`: learning records, learning scope rules, learning
   source validation rules, and learning payload helpers. It must stay free of
   JDBC.
-- `skillbill.telemetry`: telemetry config, sync orchestration, HTTP contracts,
-  and current telemetry adapter code.
-- `skillbill.contracts`: shared JSON and runtime contract helpers.
+- `skillbill.telemetry`: telemetry settings normalization, sync orchestration,
+  config mutation rules, sync result models, and compatibility facades.
+- `skillbill.contracts`: shared JSON and runtime contract helpers, including
+  telemetry proxy DTO/payload mappers.
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.workflow.*`, `skillbill.install`, `skillbill.launcher`, and
   `skillbill.scaffold`: placeholder or early runtime surfaces for later
@@ -69,6 +72,10 @@ These are the stable dependency rules the runtime should converge toward.
 7. Application use cases must access SQLite through repository and unit-of-work
    ports. Read use cases call a read session; write use cases call an explicit
    transaction session.
+8. Telemetry application use cases must depend on `TelemetrySettingsProvider`,
+   `TelemetryConfigStore`, `TelemetryClient`, and `TelemetryOutboxRepository`.
+   HTTP request mechanics belong in `infrastructure/http`; config file IO
+   belongs in `infrastructure/fs`; telemetry proxy DTOs belong in `contracts`.
 
 ## Architecture Guardrails
 
@@ -93,6 +100,12 @@ useful for the next refactors:
   for learnings lives in infrastructure adapters
 - review parsing and triage decision normalization are pure surfaces that do
   not import JDBC or persistence adapters
+- telemetry sync orchestration depends on telemetry ports and the outbox
+  repository, not on SQLite, filesystem IO, or Java HTTP APIs
+- telemetry HTTP request/response details live under `skillbill.infrastructure.http`
+  and telemetry config file IO lives under `skillbill.infrastructure.fs`
+- telemetry proxy batch and stats wire payloads are explicit contract helpers,
+  separate from sync orchestration
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -102,7 +115,7 @@ useful for the next refactors:
    results with typed results.
 2. Move remaining pure domain models/rules away from JDBC-shaped runtime
    objects.
-3. Put telemetry config, HTTP, and filesystem behavior behind explicit ports.
-4. Add versioned database migrations.
-5. Add contract DTOs and golden output fixtures.
-6. Split Gradle modules only after package boundaries are proven.
+3. Add versioned database migrations.
+4. Add contract DTOs and golden output fixtures for the remaining JSON
+   surfaces.
+5. Split Gradle modules only after package boundaries are proven.

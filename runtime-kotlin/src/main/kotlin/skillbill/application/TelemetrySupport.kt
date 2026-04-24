@@ -1,22 +1,18 @@
 package skillbill.application
 
-import skillbill.RuntimeContext
+import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.FeedbackTelemetryOptions
-import skillbill.telemetry.TelemetryConfigRuntime
 import skillbill.telemetry.TelemetrySettings
 import skillbill.telemetry.telemetrySyncTarget
 
-internal fun loadTelemetrySettings(context: RuntimeContext): TelemetrySettings =
-  TelemetryConfigRuntime.loadTelemetrySettings(
-    environment = context.environment,
-    userHome = context.userHome,
-  )
+internal fun loadTelemetrySettings(settingsProvider: TelemetrySettingsProvider): TelemetrySettings =
+  settingsProvider.load()
 
-internal fun telemetrySettingsOrNull(context: RuntimeContext): TelemetrySettings? =
-  runCatching { loadTelemetrySettings(context) }.getOrNull()
+internal fun telemetrySettingsOrNull(settingsProvider: TelemetrySettingsProvider): TelemetrySettings? =
+  settingsProvider.loadOrNull()
 
-internal fun feedbackTelemetryOptions(context: RuntimeContext): FeedbackTelemetryOptions {
-  val settings = telemetrySettingsOrNull(context)
+internal fun feedbackTelemetryOptions(settingsProvider: TelemetrySettingsProvider): FeedbackTelemetryOptions {
+  val settings = telemetrySettingsOrNull(settingsProvider)
   return FeedbackTelemetryOptions(
     enabled = settings?.enabled ?: false,
     level = settings?.level ?: "off",

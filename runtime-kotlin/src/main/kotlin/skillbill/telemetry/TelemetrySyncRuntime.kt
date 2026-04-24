@@ -1,20 +1,22 @@
 package skillbill.telemetry
 
-import skillbill.db.DatabaseRuntime
-import skillbill.db.TelemetryOutboxRow
-import skillbill.db.TelemetryOutboxStore
+import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryClient
 import java.io.IOException
 import java.nio.file.Path
 
 object TelemetrySyncRuntime {
+  fun disabledSync(settings: TelemetrySettings): SyncResult = disabledSyncResult(settings)
+
   fun syncTelemetry(
-    dbPath: Path,
-    settings: TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(),
-    requester: HttpRequester = TelemetryHttpRuntime.defaultHttpRequester,
+    settings: TelemetrySettings,
+    outboxRepository: TelemetryOutboxRepository,
+    client: TelemetryClient,
   ): SyncResult = if (!settings.enabled) {
     disabledSyncResult(settings)
   } else {
-    syncEnabledTelemetry(dbPath, settings, requester)
+    syncEnabledTelemetry(settings, outboxRepository, client)
   }
 
   fun syncResultPayload(result: SyncResult): Map<String, Any?> = buildMap {
@@ -34,31 +36,29 @@ object TelemetrySyncRuntime {
 
   fun telemetryStatusPayload(
     dbPath: Path,
-    settings: TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(),
+    settings: TelemetrySettings,
+    pendingEvents: Int = 0,
+    latestError: String? = null,
   ): Map<String, Any?> {
     val payload = baseStatusPayload(dbPath, settings)
     if (!settings.enabled) {
       return payload
     }
-
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val outboxStore = TelemetryOutboxStore(connection)
-      payload["pending_events"] = outboxStore.pendingCount()
-      outboxStore.latestError()?.let { payload["latest_error"] = it }
-    }
+    payload["pending_events"] = pendingEvents
+    latestError?.let { payload["latest_error"] = it }
     return payload
   }
 
   fun autoSyncTelemetry(
-    dbPath: Path,
+    settings: TelemetrySettings,
+    outboxRepository: TelemetryOutboxRepository,
+    client: TelemetryClient,
     reportFailures: Boolean = false,
     stderr: (String) -> Unit = {},
-    settings: TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(),
-    requester: HttpRequester = TelemetryHttpRuntime.defaultHttpRequester,
   ): SyncResult? {
     val result =
       try {
-        syncTelemetry(dbPath, settings, requester)
+        syncTelemetry(settings, outboxRepository, client)
       } catch (error: IllegalArgumentException) {
         if (reportFailures) {
           stderr("Telemetry sync skipped: ${error.message}")
@@ -78,27 +78,29 @@ fun telemetrySyncTarget(settings: TelemetrySettings): String = when {
   else -> "hosted_relay"
 }
 
-private fun syncEnabledTelemetry(dbPath: Path, settings: TelemetrySettings, requester: HttpRequester): SyncResult =
-  DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-    val outboxStore = TelemetryOutboxStore(connection)
-    val pendingBefore = outboxStore.pendingCount()
-    val syncContext = syncContext(settings, pendingBefore)
-    when {
-      !syncContext.remoteConfigured -> unconfiguredSyncResult(syncContext)
-      pendingBefore == 0 -> noopSyncResult(syncContext)
-      else -> syncPendingBatches(outboxStore, settings, requester, syncContext)
-    }
+private fun syncEnabledTelemetry(
+  settings: TelemetrySettings,
+  outboxRepository: TelemetryOutboxRepository,
+  client: TelemetryClient,
+): SyncResult {
+  val pendingBefore = outboxRepository.pendingCount()
+  val syncContext = syncContext(settings, pendingBefore)
+  return when {
+    !syncContext.remoteConfigured -> unconfiguredSyncResult(syncContext)
+    pendingBefore == 0 -> noopSyncResult(syncContext)
+    else -> syncPendingBatches(outboxRepository, settings, client, syncContext)
   }
+}
 
 private fun syncPendingBatches(
-  outboxStore: TelemetryOutboxStore,
+  outboxRepository: TelemetryOutboxRepository,
   settings: TelemetrySettings,
-  requester: HttpRequester,
+  client: TelemetryClient,
   syncContext: SyncContext,
 ): SyncResult {
   var syncedTotal = 0
   while (true) {
-    val rows = outboxStore.listPending(limit = settings.batchSize)
+    val rows = outboxRepository.listPending(limit = settings.batchSize)
     if (rows.isEmpty()) {
       break
     }
@@ -106,9 +108,9 @@ private fun syncPendingBatches(
     val failureResult =
       trySyncBatch(
         PendingBatch(
-          outboxStore = outboxStore,
+          outboxRepository = outboxRepository,
           settings = settings,
-          requester = requester,
+          client = client,
           eventIds = eventIds,
           rows = rows,
           syncedTotal = syncedTotal,
@@ -120,12 +122,12 @@ private fun syncPendingBatches(
     }
     syncedTotal += eventIds.size
   }
-  return completedSyncResult(syncContext, syncedTotal, outboxStore.pendingCount())
+  return completedSyncResult(syncContext, syncedTotal, outboxRepository.pendingCount())
 }
 
 private fun trySyncBatch(batch: PendingBatch): SyncResult? = try {
-  TelemetryHttpRuntime.sendProxyBatch(batch.settings, batch.rows, batch.requester)
-  batch.outboxStore.markSynced(batch.eventIds)
+  batch.client.sendBatch(batch.settings, batch.rows)
+  batch.outboxRepository.markSynced(batch.eventIds)
   null
 } catch (error: IOException) {
   failedSyncResult(batch, error.message.orEmpty())
@@ -134,21 +136,21 @@ private fun trySyncBatch(batch: PendingBatch): SyncResult? = try {
 }
 
 private data class PendingBatch(
-  val outboxStore: TelemetryOutboxStore,
+  val outboxRepository: TelemetryOutboxRepository,
   val settings: TelemetrySettings,
-  val requester: HttpRequester,
+  val client: TelemetryClient,
   val eventIds: List<Long>,
-  val rows: List<TelemetryOutboxRow>,
+  val rows: List<TelemetryOutboxRecord>,
   val syncedTotal: Int,
   val syncContext: SyncContext,
 )
 
 private fun failedSyncResult(batch: PendingBatch, message: String): SyncResult {
-  batch.outboxStore.markFailed(batch.eventIds, message)
+  batch.outboxRepository.markFailed(batch.eventIds, message)
   return syncResult(
     status = "failed",
     syncedEvents = batch.syncedTotal,
-    pendingEvents = batch.outboxStore.pendingCount(),
+    pendingEvents = batch.outboxRepository.pendingCount(),
     syncContext = batch.syncContext,
     message = message,
   )

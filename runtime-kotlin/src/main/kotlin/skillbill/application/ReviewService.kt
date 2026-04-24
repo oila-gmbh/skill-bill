@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.FeedbackRequest
 import skillbill.review.NumberedFinding
 import skillbill.review.ReviewInputReader
@@ -14,6 +15,7 @@ import skillbill.review.TriageDecisionParser
 class ReviewService(
   private val context: RuntimeContext,
   private val database: DatabaseSessionFactory,
+  private val settingsProvider: TelemetrySettingsProvider,
 ) {
   fun previewImport(input: String): Map<String, Any?> {
     val (text) = ReviewInputReader.readInput(input, context.stdinText)
@@ -35,7 +37,7 @@ class ReviewService(
     return database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
-        val settings = telemetrySettingsOrNull(context)
+        val settings = telemetrySettingsOrNull(settingsProvider)
         unitOfWork.reviews.updateReviewFinishedTelemetryState(
           runId = review.reviewRunId,
           enabled = settings?.enabled ?: false,
@@ -63,7 +65,7 @@ class ReviewService(
 
   fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): Map<String, Any?>? =
     database.transaction(dbOverride) { unitOfWork ->
-      val settings = telemetrySettingsOrNull(context)
+      val settings = telemetrySettingsOrNull(settingsProvider)
       unitOfWork.reviews.updateReviewFinishedTelemetryState(
         runId = runId,
         enabled = settings?.enabled ?: false,
@@ -80,7 +82,7 @@ class ReviewService(
   ): Map<String, Any?> = database.transaction(dbOverride) { unitOfWork ->
     unitOfWork.reviews.recordFeedback(
       FeedbackRequest(runId, findings, event, note),
-      feedbackTelemetryOptions(context),
+      feedbackTelemetryOptions(settingsProvider),
     )
     linkedMapOf(
       "db_path" to unitOfWork.dbPath.toString(),
@@ -148,7 +150,7 @@ class ReviewService(
       val returnedPayload =
         reviewRepository.recordFeedback(
           FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
-          feedbackTelemetryOptions(context),
+          feedbackTelemetryOptions(settingsProvider),
         )
       if (returnedPayload != null) {
         telemetryPayload = returnedPayload

@@ -16,10 +16,15 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRecord
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.telemetry.TelemetryClient
+import skillbill.ports.telemetry.TelemetryConfigStore
+import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.FeedbackRequest
 import skillbill.review.FeedbackTelemetryOptions
 import skillbill.review.ImportedReview
 import skillbill.review.NumberedFinding
+import skillbill.telemetry.RemoteStatsRequest
+import skillbill.telemetry.TelemetrySettings
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -112,6 +117,7 @@ class ApplicationPersistencePortTest {
       ReviewService(
         RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-fake")),
         database,
+        FakeTelemetrySettingsProvider(enabled = false),
       )
 
     val result =
@@ -126,11 +132,45 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf("F-001", "F-002"), reviewRepository.feedbackRequests.map { it.findingIds.single() })
     assertEquals(listOf("fix_applied", "fix_applied"), result.recorded.map { it["outcome_type"] })
   }
+
+  @Test
+  fun `telemetry sync uses outbox repository and client ports inside transaction`() {
+    val outboxRepository =
+      InMemoryTelemetryOutboxRepository(
+        mutableListOf(
+          TelemetryOutboxRecord(
+            id = 1,
+            eventName = "skillbill_feature_implement_started",
+            payloadJson = """{"name":"ok"}""",
+            createdAt = "2026-04-24 00:00:00",
+            syncedAt = null,
+            lastError = "",
+          ),
+        ),
+      )
+    val database = FakeDatabaseSessionFactory(telemetryOutbox = outboxRepository)
+    val client = FakeTelemetryClient()
+    val service =
+      TelemetryService(
+        database = database,
+        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+        configStore = FakeTelemetryConfigStore,
+        telemetryClient = client,
+      )
+
+    val result = service.sync(dbOverride = null)
+
+    assertEquals(listOf("transaction"), database.calls)
+    assertEquals("synced", result.payload["sync_status"])
+    assertEquals(listOf(listOf(1L)), client.sentBatchIds)
+    assertEquals(0, outboxRepository.pendingCount())
+  }
 }
 
 private class FakeDatabaseSessionFactory(
   private val reviews: ReviewRepository = FakeReviewRepository(),
   private val learnings: LearningRepository = FakeLearningRepository(),
+  private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
@@ -153,7 +193,7 @@ private class FakeDatabaseSessionFactory(
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
-    override val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository
+    override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = NoopWorkflowStateRepository
   }
 }
@@ -263,6 +303,91 @@ private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {
   override fun markFailed(id: Long, lastError: String) = Unit
 
   override fun markFailed(eventIds: List<Long>, lastError: String) = Unit
+
+  override fun clear(): Int = 0
+}
+
+private class InMemoryTelemetryOutboxRepository(
+  private val rows: MutableList<TelemetryOutboxRecord> = mutableListOf(),
+) : TelemetryOutboxRepository {
+  override fun enqueue(eventName: String, payloadJson: String): Long = error("Unexpected enqueue")
+
+  override fun listPending(limit: Int?): List<TelemetryOutboxRecord> =
+    rows.filter { it.syncedAt == null }.let { pending ->
+      if (limit == null) pending else pending.take(limit)
+    }
+
+  override fun pendingCount(): Int = rows.count { it.syncedAt == null }
+
+  override fun latestError(): String? = rows.lastOrNull { it.syncedAt == null && it.lastError.isNotBlank() }?.lastError
+
+  override fun markSynced(id: Long, syncedAt: String) {
+    markSynced(listOf(id))
+  }
+
+  override fun markSynced(eventIds: List<Long>) {
+    rows.replaceAll { row ->
+      if (row.id in eventIds) row.copy(syncedAt = "2026-04-24 00:00:01", lastError = "") else row
+    }
+  }
+
+  override fun markFailed(id: Long, lastError: String) {
+    markFailed(listOf(id), lastError)
+  }
+
+  override fun markFailed(eventIds: List<Long>, lastError: String) {
+    rows.replaceAll { row ->
+      if (row.id in eventIds) row.copy(lastError = lastError) else row
+    }
+  }
+
+  override fun clear(): Int {
+    val count = rows.size
+    rows.clear()
+    return count
+  }
+}
+
+private class FakeTelemetrySettingsProvider(
+  private val enabled: Boolean,
+) : TelemetrySettingsProvider {
+  override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
+    configPath = Path.of("/fake/config.json"),
+    level = if (enabled) "anonymous" else "off",
+    enabled = enabled,
+    installId = if (enabled) "fake-install-id" else "",
+    proxyUrl = if (enabled) "https://telemetry.example.dev/ingest" else "",
+    customProxyUrl = if (enabled) "https://telemetry.example.dev/ingest" else null,
+    batchSize = 50,
+  )
+}
+
+private object FakeTelemetryConfigStore : TelemetryConfigStore {
+  override fun stateDir(): Path = Path.of("/fake")
+
+  override fun configPath(): Path = Path.of("/fake/config.json")
+
+  override fun read(): Map<String, Any?>? = null
+
+  override fun ensure(): Map<String, Any?> = emptyMap()
+
+  override fun write(payload: Map<String, Any?>) = Unit
+
+  override fun delete(): Boolean = true
+}
+
+private class FakeTelemetryClient : TelemetryClient {
+  val sentBatchIds = mutableListOf<List<Long>>()
+
+  override fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>) {
+    sentBatchIds += rows.map { it.id }
+  }
+
+  override fun fetchProxyCapabilities(settings: TelemetrySettings): Map<String, Any?> =
+    error("Unexpected fetchProxyCapabilities")
+
+  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): Map<String, Any?> =
+    error("Unexpected fetchRemoteStats")
 }
 
 private object NoopWorkflowStateRepository : WorkflowStateRepository {

@@ -25,4 +25,6 @@ interface TelemetryOutboxRepository {
   fun markFailed(id: Long, lastError: String)
 
   fun markFailed(eventIds: List<Long>, lastError: String)
+
+  fun clear(): Int
 }

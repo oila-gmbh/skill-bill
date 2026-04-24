@@ -28,6 +28,9 @@ class TelemetryOutboxStoreTest {
       assertEquals(1, store.pendingCount())
       assertEquals(listOf(secondId), pendingRows.map { it.id })
       assertTrue(pendingRows.all { it.syncedAt == null })
+
+      assertEquals(2, store.clear())
+      assertEquals(0, store.pendingCount())
     }
   }
 }

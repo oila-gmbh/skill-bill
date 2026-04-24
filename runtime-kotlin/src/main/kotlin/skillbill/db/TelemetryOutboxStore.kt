@@ -158,4 +158,17 @@ class TelemetryOutboxStore(
       statement.executeUpdate()
     }
   }
+
+  override fun clear(): Int {
+    val count = connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT COUNT(*) FROM telemetry_outbox").use { resultSet ->
+        resultSet.next()
+        resultSet.getInt(1)
+      }
+    }
+    connection.createStatement().use { statement ->
+      statement.executeUpdate("DELETE FROM telemetry_outbox")
+    }
+    return count
+  }
 }
