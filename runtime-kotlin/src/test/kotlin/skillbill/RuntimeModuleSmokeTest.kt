@@ -1,6 +1,8 @@
 package skillbill
 
 import skillbill.cli.CliRuntime
+import skillbill.contracts.surface.RuntimeSurfaceContract
+import skillbill.contracts.surface.RuntimeSurfaceStatus
 import skillbill.db.DatabaseRuntime
 import skillbill.install.InstallRuntime
 import skillbill.launcher.LauncherRuntime
@@ -17,8 +19,55 @@ import kotlin.test.assertTrue
 
 class RuntimeModuleSmokeTest {
   @Test
-  fun `package scaffold remains available for later subsystem ports`() {
-    val expectedSubsystemPackages =
+  fun `runtime module declares package boundaries and reserved surface contracts`() {
+    assertEquals("runtime-kotlin", RuntimeModule.NAME)
+    assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
+    assertDeclaredPackages()
+    assertRuntimeSurfacePackages()
+    assertReservedRuntimeContracts()
+  }
+
+  private fun assertDeclaredPackages() {
+    assertEquals(expectedSubsystemPackages, RuntimeModule.declaredSubsystemPackages.toSet())
+  }
+
+  private fun assertRuntimeSurfacePackages() {
+    assertEquals(
+      expectedSubsystemPackages -
+        setOf(
+          "skillbill.application",
+          "skillbill.contracts",
+          "skillbill.di",
+          "skillbill.error",
+          "skillbill.infrastructure",
+          "skillbill.ports",
+        ),
+      runtimeSurfacePackages,
+    )
+    assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })
+  }
+
+  private fun assertReservedRuntimeContracts() {
+    assertEquals(
+      setOf(
+        "install",
+        "launcher",
+        "scaffold",
+        "feature-implement-workflow",
+        "feature-verify-workflow",
+      ),
+      reservedContracts.map(RuntimeSurfaceContract::name).toSet(),
+    )
+    reservedContracts.forEach { contract ->
+      assertEquals("0.1", contract.contractVersion)
+      assertEquals(RuntimeSurfaceStatus.RESERVED, contract.status)
+      assertTrue(contract.placeholderReason.length > 60, "Placeholder reason is too weak for ${contract.name}")
+      assertTrue(contract.supportedOperations.isEmpty(), "Reserved surfaces must not claim operations")
+    }
+  }
+
+  private companion object {
+    val expectedSubsystemPackages: Set<String> =
       setOf(
         "skillbill.application",
         "skillbill.cli",
@@ -47,31 +96,18 @@ class RuntimeModuleSmokeTest {
         TelemetryRuntime::class,
         ReviewRuntime::class,
         LearningsRuntime::class,
-        FeatureImplementWorkflowRuntime::class,
-        FeatureVerifyWorkflowRuntime::class,
-        ScaffoldRuntime::class,
-        InstallRuntime::class,
       )
-    val runtimeSurfacePackages =
+    val reservedContracts =
+      listOf(
+        InstallRuntime.contract,
+        LauncherRuntime.contract,
+        ScaffoldRuntime.contract,
+        FeatureImplementWorkflowRuntime.contract,
+        FeatureVerifyWorkflowRuntime.contract,
+      )
+    val runtimeSurfacePackages: Set<String> =
       runtimeSurfaces
         .mapNotNull { it.qualifiedName?.substringBeforeLast(".") }
-        .toSet()
-
-    assertEquals("runtime-kotlin", RuntimeModule.NAME)
-    assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
-    assertEquals(expectedSubsystemPackages, RuntimeModule.declaredSubsystemPackages.toSet())
-    assertEquals(
-      expectedSubsystemPackages -
-        setOf(
-          "skillbill.application",
-          "skillbill.contracts",
-          "skillbill.di",
-          "skillbill.error",
-          "skillbill.infrastructure",
-          "skillbill.ports",
-        ),
-      runtimeSurfacePackages,
-    )
-    assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })
+        .toSet() + reservedContracts.map(RuntimeSurfaceContract::ownerPackage)
   }
 }

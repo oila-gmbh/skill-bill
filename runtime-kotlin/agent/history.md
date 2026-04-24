@@ -1,3 +1,12 @@
+## [2026-04-25] runtime-placeholder-surface-contracts
+Areas: skillbill.install, skillbill.launcher, skillbill.scaffold, skillbill.workflow.*, skillbill.contracts.surface, runtime smoke tests
+- Replaced empty marker interfaces with reserved runtime surface objects exposing `RuntimeSurfaceContract` metadata.
+- Documented why install, launcher, scaffold, feature-implement workflow, and feature-verify workflow remain placeholder-only.
+- Reusable pattern: reserved runtime surfaces must declare owner package, contract version, reserved status, and a concrete placeholder reason before implementation.
+- Runtime smoke coverage now asserts reserved contracts and package boundaries instead of only checking class/package presence.
+Feature flag: N/A
+Acceptance criteria: 2/2 implemented
+
 ## [2026-04-25] runtime-contract-dtos-presenters
 Areas: skillbill.contracts, skillbill.cli, skillbill.mcp, skillbill.application, architecture tests, golden fixtures
 - Added explicit JSON contract DTOs for learning, review, MCP adapter-only payloads, and shared system version/doctor payloads.

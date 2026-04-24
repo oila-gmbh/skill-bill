@@ -50,8 +50,9 @@ di
   telemetry proxy DTO/payload mappers.
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.workflow.*`, `skillbill.install`, `skillbill.launcher`, and
-  `skillbill.scaffold`: placeholder or early runtime surfaces for later
-  SKILL-27/SKILL-28 phases.
+  `skillbill.scaffold`: reserved runtime surfaces. Each exposes a
+  `RuntimeSurfaceContract` with status, owner package, and the reason it stays
+  placeholder-only until that behavior is intentionally ported.
 
 ## Boundary Rules
 
@@ -111,6 +112,8 @@ useful for the next refactors:
 - CLI and MCP JSON output should be produced through explicit contract DTOs and
   mappers, while CLI text rendering should consume typed CLI presenter models
   instead of raw maps
+- reserved runtime surfaces must expose a documented `RuntimeSurfaceContract`
+  instead of empty marker interfaces
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 

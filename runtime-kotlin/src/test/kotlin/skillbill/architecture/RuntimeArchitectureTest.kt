@@ -33,6 +33,7 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "versioned database migrations")
     assertContains(architecture, "contract DTOs")
     assertContains(architecture, "typed CLI presenter models")
+    assertContains(architecture, "RuntimeSurfaceContract")
   }
 
   @Test
