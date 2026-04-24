@@ -1,4 +1,4 @@
-package skillbill.app
+package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext

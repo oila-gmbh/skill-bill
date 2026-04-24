@@ -1,4 +1,4 @@
-package skillbill.app
+package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.RuntimeContext
@@ -8,8 +8,7 @@ import skillbill.learnings.LearningScope
 import skillbill.learnings.LearningStore
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningPayload
-import skillbill.learnings.learningSummaryPayload
-import skillbill.learnings.scopeCounts
+import skillbill.learnings.learningSessionJson
 
 @Inject
 class LearningService(private val context: RuntimeContext) {
@@ -32,7 +31,7 @@ class LearningService(private val context: RuntimeContext) {
       val (repoScopeKey, skillName, rows) = LearningsRuntime.resolveLearnings(openDb.connection, repo, skill)
       val payloadEntries = rows.map(::learningPayload)
       reviewSessionId?.takeIf(String::isNotBlank)?.let {
-        LearningsRuntime.saveSessionLearnings(openDb.connection, it, sessionJson(skillName, payloadEntries))
+        LearningsRuntime.saveSessionLearnings(openDb.connection, it, learningSessionJson(skillName, payloadEntries))
       }
       return learningsResolvePayload(openDb.dbPath.toString(), repoScopeKey, skillName, reviewSessionId, payloadEntries)
     }
@@ -88,18 +87,6 @@ class LearningService(private val context: RuntimeContext) {
       return linkedMapOf("db_path" to openDb.dbPath.toString(), "deleted_learning_id" to id)
     }
   }
-
-  private fun sessionJson(skillName: String?, payloadEntries: List<Map<String, Any?>>): String =
-    skillbill.contracts.JsonSupport.mapToJsonString(
-      linkedMapOf(
-        "skill_name" to skillName,
-        "applied_learning_count" to payloadEntries.size,
-        "applied_learning_references" to payloadEntries.map { it["reference"] },
-        "applied_learnings" to summarizeAppliedLearnings(payloadEntries),
-        "scope_counts" to scopeCounts(payloadEntries),
-        "learnings" to payloadEntries.map(::learningSummaryPayload),
-      ),
-    )
 }
 
 data class AddLearningInput(

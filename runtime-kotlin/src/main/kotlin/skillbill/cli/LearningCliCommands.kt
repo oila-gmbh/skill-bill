@@ -7,9 +7,9 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.app.AddLearningInput
-import skillbill.app.EditLearningInput
-import skillbill.app.LearningService
+import skillbill.application.AddLearningInput
+import skillbill.application.EditLearningInput
+import skillbill.application.LearningService
 import skillbill.learnings.LearningScope
 
 @Inject

@@ -1,7 +1,7 @@
 package skillbill.cli
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.app.SystemService
+import skillbill.application.SystemService
 
 @Inject
 class VersionCommand(

@@ -6,7 +6,7 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
-import skillbill.app.TelemetryService
+import skillbill.application.TelemetryService
 
 @Inject
 class TelemetryLocalCommands(

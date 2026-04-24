@@ -8,7 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
-import skillbill.app.ReviewService
+import skillbill.application.ReviewService
 
 @Inject
 class ReviewTopLevelCommands(

@@ -5,8 +5,8 @@ import skillbill.db.DatabaseRuntime
 import skillbill.learnings.LearningScope
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningPayload
-import skillbill.learnings.learningSummaryPayload
-import skillbill.learnings.scopeCounts
+import skillbill.learnings.learningSessionJson
+import skillbill.learnings.summarizeLearningReferences
 import skillbill.review.FeedbackRequest
 import skillbill.review.FeedbackTelemetryOptions
 import skillbill.review.ReviewRuntime
@@ -117,7 +117,7 @@ object McpRuntime {
           LearningsRuntime.saveSessionLearnings(
             openDb.connection,
             it,
-            learningsSessionJson(skillName, payloadEntries),
+            learningSessionJson(skillName, payloadEntries),
           )
         }
         return linkedMapOf<String, Any?>(
@@ -125,7 +125,7 @@ object McpRuntime {
           "repo_scope_key" to repoScopeKey,
           "skill_name" to skillName,
           "scope_precedence" to LearningScope.precedenceWireNames(),
-          "applied_learnings" to summarizeAppliedLearnings(payloadEntries),
+          "applied_learnings" to summarizeLearningReferences(payloadEntries),
           "learnings" to payloadEntries,
         ).also { payload ->
           reviewSessionId?.takeIf(String::isNotBlank)?.let { payload["review_session_id"] = it }
@@ -291,18 +291,3 @@ private fun loadTelemetrySettings(context: McpRuntimeContext): skillbill.telemet
     environment = context.environment,
     userHome = context.userHome,
   )
-
-private fun learningsSessionJson(skillName: String?, payloadEntries: List<Map<String, Any?>>): String =
-  skillbill.contracts.JsonSupport.mapToJsonString(
-    linkedMapOf(
-      "skill_name" to skillName,
-      "applied_learning_count" to payloadEntries.size,
-      "applied_learning_references" to payloadEntries.map { it["reference"] },
-      "applied_learnings" to summarizeAppliedLearnings(payloadEntries),
-      "scope_counts" to scopeCounts(payloadEntries),
-      "learnings" to payloadEntries.map(::learningSummaryPayload),
-    ),
-  )
-
-private fun summarizeAppliedLearnings(entries: List<Map<String, Any?>>): String =
-  if (entries.isEmpty()) "none" else entries.joinToString(", ") { it["reference"].toString() }

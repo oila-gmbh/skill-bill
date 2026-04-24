@@ -1,5 +1,6 @@
 package skillbill.learnings
 
+import skillbill.contracts.JsonSupport
 import skillbill.review.LearningRecord
 
 fun learningReference(record: LearningRecord): String = "L-%03d".format(record.id)
@@ -29,3 +30,18 @@ fun scopeCounts(payloads: List<Map<String, Any?>>): Map<String, Int> = LearningS
     put(scope.wireName, getValue(scope.wireName) + 1)
   }
 }
+
+fun learningSessionJson(skillName: String?, payloadEntries: List<Map<String, Any?>>): String =
+  JsonSupport.mapToJsonString(
+    linkedMapOf(
+      "skill_name" to skillName,
+      "applied_learning_count" to payloadEntries.size,
+      "applied_learning_references" to payloadEntries.map { it["reference"] },
+      "applied_learnings" to summarizeLearningReferences(payloadEntries),
+      "scope_counts" to scopeCounts(payloadEntries),
+      "learnings" to payloadEntries.map(::learningSummaryPayload),
+    ),
+  )
+
+fun summarizeLearningReferences(entries: List<Map<String, Any?>>): String =
+  if (entries.isEmpty()) "none" else entries.joinToString(", ") { it["reference"].toString() }
