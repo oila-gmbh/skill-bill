@@ -6,6 +6,7 @@ import skillbill.application.LearningService
 import skillbill.application.ReviewService
 import skillbill.application.SystemService
 import skillbill.application.TelemetryService
+import skillbill.application.WorkflowService
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
@@ -36,4 +37,5 @@ abstract class RuntimeComponent(
   abstract val reviewService: ReviewService
   abstract val systemService: SystemService
   abstract val telemetryService: TelemetryService
+  abstract val workflowService: WorkflowService
 }

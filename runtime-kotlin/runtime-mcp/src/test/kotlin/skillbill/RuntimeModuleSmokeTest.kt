@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 class RuntimeModuleSmokeTest {
   @Test
-  fun `runtime module declares package boundaries and reserved surface contracts`() {
+  fun `runtime module declares package boundaries and workflow surface contracts`() {
     assertEquals("runtime-kotlin", RuntimeModule.NAME)
     assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
     assertEquals(
@@ -39,7 +39,7 @@ class RuntimeModuleSmokeTest {
     )
     assertDeclaredPackages()
     assertRuntimeSurfacePackages()
-    assertReservedRuntimeContracts()
+    assertRuntimeContracts()
   }
 
   private fun assertDeclaredPackages() {
@@ -63,14 +63,12 @@ class RuntimeModuleSmokeTest {
     assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })
   }
 
-  private fun assertReservedRuntimeContracts() {
+  private fun assertRuntimeContracts() {
     assertEquals(
       setOf(
         "install",
         "launcher",
         "scaffold",
-        "feature-implement-workflow",
-        "feature-verify-workflow",
       ),
       reservedContracts.map(RuntimeSurfaceContract::name).toSet(),
     )
@@ -79,6 +77,14 @@ class RuntimeModuleSmokeTest {
       assertEquals(RuntimeSurfaceStatus.RESERVED, contract.status)
       assertTrue(contract.placeholderReason.length > 60, "Placeholder reason is too weak for ${contract.name}")
       assertTrue(contract.supportedOperations.isEmpty(), "Reserved surfaces must not claim operations")
+    }
+    workflowContracts.forEach { contract ->
+      assertEquals("0.1", contract.contractVersion)
+      assertEquals(RuntimeSurfaceStatus.ACTIVE, contract.status)
+      assertEquals(
+        listOf("open", "update", "get", "list", "latest", "resume", "continue"),
+        contract.supportedOperations,
+      )
     }
   }
 
@@ -119,12 +125,12 @@ class RuntimeModuleSmokeTest {
         InstallRuntime.contract,
         LauncherRuntime.contract,
         ScaffoldRuntime.contract,
-        FeatureImplementWorkflowRuntime.contract,
-        FeatureVerifyWorkflowRuntime.contract,
       )
+    val workflowContracts = listOf(FeatureImplementWorkflowRuntime.contract, FeatureVerifyWorkflowRuntime.contract)
     val runtimeSurfacePackages: Set<String> =
       runtimeSurfaces
         .mapNotNull { it.qualifiedName?.substringBeforeLast(".") }
-        .toSet() + reservedContracts.map(RuntimeSurfaceContract::ownerPackage)
+        .toSet() + reservedContracts.map(RuntimeSurfaceContract::ownerPackage) +
+        workflowContracts.map(RuntimeSurfaceContract::ownerPackage)
   }
 }

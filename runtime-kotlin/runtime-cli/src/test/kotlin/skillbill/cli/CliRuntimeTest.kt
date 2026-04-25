@@ -328,6 +328,116 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `workflow cli commands list latest resume and block continuation`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-workflow")
+    val dbPath = tempDir.resolve("metrics.db")
+    val opened =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "workflow",
+        "open",
+        "--session-id",
+        "fis-20260425-000001-test",
+        "--format",
+        "json",
+      )
+    val workflowId = opened["workflow_id"] as String
+
+    val listed = runJson("--db", dbPath.toString(), "workflow", "list", "--format", "json")
+    val latest = runJson("--db", dbPath.toString(), "workflow", "latest", "--format", "json")
+    val resumed = runJson("--db", dbPath.toString(), "workflow", "resume", workflowId, "--format", "json")
+
+    assertEquals(1, listed["workflow_count"])
+    assertEquals(workflowId, latest["workflow_id"])
+    assertEquals("resume", resumed["resume_mode"])
+
+    val update =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "workflow",
+        "update",
+        workflowId,
+        "--workflow-status",
+        "blocked",
+        "--current-step-id",
+        "implement",
+        "--step-updates",
+        """[{"step_id":"implement","status":"blocked","attempt_count":1}]""",
+        "--artifacts-patch",
+        """{"preplan_digest":{"ok":true}}""",
+        "--format",
+        "json",
+      )
+    assertEquals("blocked", update["workflow_status"])
+
+    val continued =
+      CliRuntime.run(
+        listOf("--db", dbPath.toString(), "workflow", "continue", workflowId, "--format", "json"),
+      )
+    val continuePayload = decodeJsonObject(continued.stdout)
+    assertEquals(1, continued.exitCode)
+    assertEquals("blocked", continuePayload["continue_status"])
+    assertEquals(listOf("plan"), continuePayload["missing_artifacts"])
+  }
+
+  @Test
+  fun `verify workflow cli preserves prior step completion and continuation payloads`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-verify-workflow")
+    val dbPath = tempDir.resolve("metrics.db")
+    val opened =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "verify-workflow",
+        "open",
+        "--current-step-id",
+        "code_review",
+        "--format",
+        "json",
+      )
+    val workflowId = opened["workflow_id"] as String
+    val steps = opened.steps()
+    assertEquals("completed", steps.single { it["step_id"] == "gather_diff" }["status"])
+
+    runJson(
+      "--db",
+      dbPath.toString(),
+      "verify-workflow",
+      "update",
+      workflowId,
+      "--workflow-status",
+      "running",
+      "--current-step-id",
+      "verdict",
+      "--step-updates",
+      """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
+      "--artifacts-patch",
+      """{"criteria_summary":{},"diff_summary":{},"review_result":{},"completeness_audit_result":{}}""",
+      "--format",
+      "json",
+    )
+
+    val continued = runJson("--db", dbPath.toString(), "verify-workflow", "continue", "--latest", "--format", "json")
+    assertEquals("reopened", continued["continue_status"])
+    assertEquals("verdict", continued["continue_step_id"])
+  }
+
+  @Test
+  fun `workflow latest no rows returns resolved db path`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-empty-workflow")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    val result = CliRuntime.run(listOf("workflow", "resume", "--latest", "--format", "json"), context)
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(1, result.exitCode)
+    assertEquals("No feature-implement workflows found.", payload["error"])
+    assertEquals(tempDir.resolve(".skill-bill/review-metrics.db").toString(), payload["db_path"])
+  }
+
+  @Test
   fun `clikt validation reports command usage errors`() {
     val missingRequiredOption = CliRuntime.run(listOf("record-feedback", "--run-id", "rvw-1"))
     assertEquals(1, missingRequiredOption.exitCode)
@@ -346,6 +456,8 @@ class CliRuntimeTest {
 
 private fun runJson(vararg arguments: String, context: CliRuntimeContext = CliRuntimeContext()): Map<String, Any?> =
   runJson(arguments.toList(), context)
+
+private fun Map<String, Any?>.steps(): List<Map<*, *>> = (this["steps"] as List<*>).map { step -> step as Map<*, *> }
 
 private fun runJson(arguments: List<String>, context: CliRuntimeContext = CliRuntimeContext()): Map<String, Any?> {
   val result = CliRuntime.run(arguments, context)

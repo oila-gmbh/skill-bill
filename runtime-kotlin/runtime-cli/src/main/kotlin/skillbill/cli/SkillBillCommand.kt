@@ -8,11 +8,7 @@ import me.tatarka.inject.annotations.Inject
 @Inject
 class SkillBillCommand(
   private val state: CliRunState,
-  reviewCommands: ReviewTopLevelCommands,
-  learningsCommand: LearningsCommand,
-  telemetryCommand: TelemetryCommand,
-  versionCommand: VersionCommand,
-  doctorCommand: DoctorCliCommand,
+  commands: TopLevelCliCommands,
 ) : DocumentedCliCommand(
   "skill-bill",
   "Import Skill Bill review output, triage findings, manage learnings, and inspect telemetry.",
@@ -25,16 +21,18 @@ class SkillBillCommand(
   init {
     completionOption()
     subcommands(
-      reviewCommands.importReviewCommand,
-      reviewCommands.recordFeedbackCommand,
-      reviewCommands.triageCommand,
-      reviewCommands.statsCommand,
-      reviewCommands.featureImplementStatsCommand,
-      reviewCommands.featureVerifyStatsCommand,
-      learningsCommand,
-      telemetryCommand,
-      versionCommand,
-      doctorCommand,
+      commands.review.importReviewCommand,
+      commands.review.recordFeedbackCommand,
+      commands.review.triageCommand,
+      commands.review.statsCommand,
+      commands.review.featureImplementStatsCommand,
+      commands.review.featureVerifyStatsCommand,
+      commands.learnings,
+      commands.telemetry,
+      commands.workflows.workflowCommand,
+      commands.workflows.verifyWorkflowCommand,
+      commands.version,
+      commands.doctor,
     )
   }
 
@@ -46,4 +44,21 @@ class SkillBillCommand(
   override fun run() {
     state.dbOverride = dbOverride
   }
+}
+
+@Inject
+class TopLevelCliCommands(
+  reviewCommands: ReviewTopLevelCommands,
+  learningsCommand: LearningsCommand,
+  telemetryCommand: TelemetryCommand,
+  workflowCommands: WorkflowTopLevelCommands,
+  versionCommand: VersionCommand,
+  doctorCommand: DoctorCliCommand,
+) {
+  val review = reviewCommands
+  val learnings = learningsCommand
+  val telemetry = telemetryCommand
+  val workflows = workflowCommands
+  val version = versionCommand
+  val doctor = doctorCommand
 }

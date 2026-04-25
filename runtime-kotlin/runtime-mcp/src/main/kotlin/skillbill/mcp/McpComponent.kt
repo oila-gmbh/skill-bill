@@ -6,6 +6,7 @@ import skillbill.application.LearningService
 import skillbill.application.ReviewService
 import skillbill.application.SystemService
 import skillbill.application.TelemetryService
+import skillbill.application.WorkflowService
 import skillbill.di.RuntimeComponent
 
 @Component
@@ -21,4 +22,5 @@ class McpRuntimeServices(
   val reviewService: ReviewService,
   val systemService: SystemService,
   val telemetryService: TelemetryService,
+  val workflowService: WorkflowService,
 )

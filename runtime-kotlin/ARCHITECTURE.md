@@ -34,8 +34,8 @@ di
   SQL-backed review helpers.
 - `runtime-infra-http`: telemetry HTTP client/requester and HTTP wire mapping.
 - `runtime-infra-fs`: telemetry config file adapter.
-- `runtime-core`: Kotlin-Inject composition root, module metadata, and reserved
-  runtime surfaces.
+- `runtime-core`: Kotlin-Inject composition root, module metadata, active
+  workflow surface declarations, and remaining reserved runtime surfaces.
 - `runtime-cli`: Clikt command tree, terminal rendering, JSON output, help, and
   completion surfaces.
 - `runtime-mcp`: MCP adapter surface and MCP-specific payload shaping.
@@ -78,10 +78,15 @@ di
   serialization helpers. Mapping from application/domain/port models into
   contract DTOs belongs in application or adapter-owned packages.
 - `skillbill.error`: runtime exception taxonomy.
-- `skillbill.workflow.*`, `skillbill.install`, `skillbill.launcher`, and
-  `skillbill.scaffold`: reserved runtime surfaces. Each exposes a
-  `RuntimeSurfaceContract` with status, owner package, and the reason it stays
-  placeholder-only until that behavior is intentionally ported.
+- `skillbill.workflow.*`: active durable workflow state/runtime surfaces for
+  feature-implement and feature-verify. State behavior is owned by
+  `skillbill.application.WorkflowService`, modeled in `runtime-domain`, mapped
+  through `runtime-contracts`, and persisted through workflow repository ports
+  backed by the existing SQLite tables.
+- `skillbill.install`, `skillbill.launcher`, and `skillbill.scaffold`:
+  reserved runtime surfaces. Each exposes a `RuntimeSurfaceContract` with
+  status, owner package, and the reason it stays placeholder-only until that
+  behavior is intentionally ported.
 
 ## Boundary Rules
 
@@ -139,6 +144,9 @@ useful for the next refactors:
   not import JDBC or persistence adapters
 - SQL-backed review persistence, stats, workflow telemetry, and feedback
   helpers live under `skillbill.infrastructure.sqlite.review`
+- workflow state persistence reuses `feature_implement_workflows` and
+  `feature_verify_workflows` through `WorkflowStateRepository`; there is no
+  workflow-local store or schema redesign
 - telemetry sync orchestration depends on telemetry ports and the outbox
   repository, not on SQLite, filesystem IO, or Java HTTP APIs
 - telemetry HTTP request/response details live under `skillbill.infrastructure.http`
@@ -151,8 +159,9 @@ useful for the next refactors:
 - CLI and MCP JSON output should be produced through explicit contract DTOs and
   mappers, while CLI text rendering should consume typed CLI presenter models
   instead of raw maps
-- reserved runtime surfaces must expose a documented `RuntimeSurfaceContract`
-  instead of empty marker interfaces
+- runtime surfaces must expose a documented `RuntimeSurfaceContract`; active
+  workflow surfaces declare open/update/get/list/latest/resume/continue while
+  reserved surfaces stay placeholder-only
 - `RuntimeContext` lives in `skillbill.model` and must not import
   infrastructure defaults; concrete adapters are provided by CLI/MCP contexts
   or DI composition roots

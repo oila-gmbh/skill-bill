@@ -1,6 +1,8 @@
 package skillbill.application
 
 import skillbill.application.model.AddLearningInput
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningScope
@@ -14,6 +16,8 @@ import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.persistence.model.WorkflowStateRecord
@@ -166,12 +170,145 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf(listOf(1L)), client.sentBatchIds)
     assertEquals(0, outboxRepository.pendingCount())
   }
+
+  @Test
+  fun `workflow service owns implement rows list resume and continuation through ports`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+
+    val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
+    val workflowId = opened["workflow_id"] as String
+    val updated =
+      service.update(
+        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowUpdateRequest(
+          workflowId = workflowId,
+          workflowStatus = "blocked",
+          currentStepId = "implement",
+          stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
+          artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
+        ),
+        dbOverride = null,
+      )
+    val listed = service.list(WorkflowFamilyKind.IMPLEMENT, dbOverride = null)
+    val latest = service.latest(WorkflowFamilyKind.IMPLEMENT, dbOverride = null)
+    val resumed = service.resume(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null)
+
+    assertEquals(listOf("transaction", "transaction", "read", "read", "read", "transaction"), database.calls)
+    assertEquals("blocked", updated["workflow_status"])
+    assertEquals(1, listed["workflow_count"])
+    assertEquals(workflowId, latest["workflow_id"])
+    assertEquals(listOf("plan"), resumed["missing_artifacts"])
+    assertEquals("error", continued["status"])
+    assertEquals("blocked", continued["continue_status"])
+  }
+
+  @Test
+  fun `workflow service hydrates implement session summary for continuation payloads`() {
+    val workflowRepository =
+      InMemoryWorkflowStateRepository(
+        implementSessionSummary =
+        FeatureImplementSessionSummary(
+          sessionId = "fis-001",
+          issueKeyProvided = true,
+          issueKeyType = "other",
+          specInputTypes = listOf("markdown_file"),
+          specWordCount = 42,
+          featureSize = "MEDIUM",
+          featureName = "workflow-runtime",
+          rolloutNeeded = false,
+          acceptanceCriteriaCount = 6,
+          openQuestionsCount = 0,
+          specSummary = "Port workflow runtime",
+        ),
+      )
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+
+    val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened["workflow_id"] as String, null)
+    val sessionSummary = continued["session_summary"] as Map<*, *>
+
+    assertEquals("fis-001", sessionSummary["session_id"])
+    assertEquals(listOf("markdown_file"), sessionSummary["spec_input_types"])
+    assertEquals("workflow-runtime", sessionSummary["feature_name"])
+    assertEquals("Port workflow runtime", sessionSummary["spec_summary"])
+  }
+
+  @Test
+  fun `workflow service owns verify prior steps done resume and reopened continuation`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+
+    val opened = service.open(WorkflowFamilyKind.VERIFY, currentStepId = "code_review", dbOverride = null)
+    val workflowId = opened["workflow_id"] as String
+    val steps = opened.steps()
+    assertEquals("completed", steps.single { it["step_id"] == "gather_diff" }["status"])
+
+    service.update(
+      WorkflowFamilyKind.VERIFY,
+      WorkflowUpdateRequest(
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "verdict",
+        stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
+        artifactsPatch =
+        mapOf(
+          "criteria_summary" to emptyMap<String, Any?>(),
+          "diff_summary" to emptyMap(),
+          "review_result" to emptyMap(),
+          "completeness_audit_result" to emptyMap(),
+        ),
+      ),
+      dbOverride = null,
+    )
+
+    val resumed = service.resume(WorkflowFamilyKind.VERIFY, workflowId, dbOverride = null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, dbOverride = null)
+    val afterContinue = service.get(WorkflowFamilyKind.VERIFY, workflowId, dbOverride = null)
+    val continuedSteps = afterContinue.steps()
+
+    assertEquals("resume", resumed["resume_mode"])
+    assertEquals("ok", continued["status"])
+    assertEquals("reopened", continued["continue_status"])
+    assertEquals("running", continuedSteps.single { it["step_id"] == "verdict" }["status"])
+    assertEquals(2, continuedSteps.single { it["step_id"] == "verdict" }["attempt_count"])
+  }
+
+  @Test
+  fun `workflow service hydrates verify session summary for continuation payloads`() {
+    val workflowRepository =
+      InMemoryWorkflowStateRepository(
+        verifySessionSummary =
+        FeatureVerifySessionSummary(
+          sessionId = "fvr-001",
+          acceptanceCriteriaCount = 3,
+          rolloutRelevant = true,
+          specSummary = "Verify workflow runtime",
+        ),
+      )
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+
+    val opened = service.open(WorkflowFamilyKind.VERIFY, sessionId = "fvr-001", dbOverride = null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.VERIFY, opened["workflow_id"] as String, null)
+    val sessionSummary = continued["session_summary"] as Map<*, *>
+
+    assertEquals("fvr-001", sessionSummary["session_id"])
+    assertEquals(3, sessionSummary["acceptance_criteria_count"])
+    assertEquals(true, sessionSummary["rollout_relevant"])
+    assertEquals("Verify workflow runtime", sessionSummary["spec_summary"])
+  }
 }
 
 private class FakeDatabaseSessionFactory(
   private val reviews: ReviewRepository = FakeReviewRepository(),
   private val learnings: LearningRepository = FakeLearningRepository(),
   private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
+  private val workflows: WorkflowStateRepository = NoopWorkflowStateRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
@@ -195,7 +332,7 @@ private class FakeDatabaseSessionFactory(
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
-    override val workflowStates: WorkflowStateRepository = NoopWorkflowStateRepository
+    override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
   }
 }
 
@@ -399,6 +536,56 @@ private object NoopWorkflowStateRepository : WorkflowStateRepository {
   override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
 
   override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
+
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = null
+
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
+
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
+
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+}
+
+private fun Map<String, Any?>.steps(): List<Map<*, *>> = (this["steps"] as List<*>).map { step -> step as Map<*, *> }
+
+private class InMemoryWorkflowStateRepository(
+  private val implementSessionSummary: FeatureImplementSessionSummary? = null,
+  private val verifySessionSummary: FeatureVerifySessionSummary? = null,
+) : WorkflowStateRepository {
+  private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
+  private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
+
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
+    implementRows[row.workflowId] = row
+  }
+
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) {
+    verifyRows[row.workflowId] = row
+  }
+
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = implementRows[workflowId]
+
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = verifyRows[workflowId]
+
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> =
+    implementRows.values.toList().asReversed().take(limit)
+
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> =
+    verifyRows.values.toList().asReversed().take(limit)
+
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = listFeatureImplementWorkflows(1).firstOrNull()
+
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = listFeatureVerifyWorkflows(1).firstOrNull()
+
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? =
+    implementSessionSummary?.takeIf { it.sessionId == sessionId }
+
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? =
+    verifySessionSummary?.takeIf { it.sessionId == sessionId }
 }
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(

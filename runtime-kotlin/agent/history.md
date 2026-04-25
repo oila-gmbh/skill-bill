@@ -64,6 +64,15 @@ Areas: skillbill.db, runtime architecture tests, database migration tests
 Feature flag: N/A
 Acceptance criteria: 5/5 implemented
 
+## [2026-04-25] workflow-runtime-phase-5
+Areas: skillbill.workflow, skillbill.application, skillbill.ports.persistence, skillbill.infrastructure.sqlite, skillbill.cli, skillbill.mcp, runtime contracts
+- Added Kotlin-owned durable workflow runtime behavior for `bill-feature-implement` and `bill-feature-verify`: open, update, get, list, latest, resume, and continue now route through `WorkflowService`.
+- Reused the existing `feature_implement_workflows` and `feature_verify_workflows` SQLite tables through `WorkflowStateRepository`; no workflow-local store, schema redesign, Python entrypoint cutover, loader/scaffolder/install changes, launcher changes, or Python deletion were included.
+- Preserved stable step ids, step state ordering, artifact patch semantics, resume summaries, session-summary hydration from telemetry session rows, blocked/done/already-running/reopened continuation decisions, and exact step-specific continuation directives in Kotlin domain/contract code.
+- CLI and MCP adapters now delegate workflow calls to application services and add adapter-facing `status`/`db_path`/blocked-error payload fields at the boundary.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-04-24] runtime-telemetry-ported-subsystem
 Areas: skillbill.application, skillbill.telemetry, skillbill.ports.telemetry, skillbill.infrastructure.http, skillbill.infrastructure.fs, skillbill.contracts.telemetry, architecture tests
 - Added telemetry settings/config/client ports and wired them through Kotlin-Inject; application telemetry/status/sync/mutation paths now use ports plus `TelemetryOutboxRepository`.

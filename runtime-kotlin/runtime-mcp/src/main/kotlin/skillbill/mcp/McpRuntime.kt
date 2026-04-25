@@ -1,5 +1,7 @@
 package skillbill.mcp
 
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract
@@ -125,6 +127,57 @@ object McpRuntime {
 
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.doctor(dbOverride = null)
+}
+
+object McpWorkflowRuntime {
+  fun open(
+    kind: WorkflowFamilyKind,
+    sessionId: String = "",
+    currentStepId: String? = null,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.open(
+    kind,
+    sessionId = sessionId,
+    currentStepId = currentStepId,
+    dbOverride = null,
+  )
+
+  fun update(
+    kind: WorkflowFamilyKind,
+    request: WorkflowUpdateRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.update(
+    kind,
+    request,
+    dbOverride = null,
+  )
+
+  fun get(
+    kind: WorkflowFamilyKind,
+    workflowId: String,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.get(kind, workflowId, dbOverride = null)
+
+  fun list(
+    kind: WorkflowFamilyKind,
+    limit: Int = 20,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.list(kind, limit, dbOverride = null)
+
+  fun latest(kind: WorkflowFamilyKind, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
+    services(context).workflowService.latest(kind, dbOverride = null)
+
+  fun resume(
+    kind: WorkflowFamilyKind,
+    workflowId: String,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.resume(kind, workflowId, dbOverride = null)
+
+  fun continueWorkflow(
+    kind: WorkflowFamilyKind,
+    workflowId: String,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).workflowService.continueWorkflow(kind, workflowId, dbOverride = null)
 }
 
 private fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {

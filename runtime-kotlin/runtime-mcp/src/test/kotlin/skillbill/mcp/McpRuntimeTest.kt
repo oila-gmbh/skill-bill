@@ -1,6 +1,8 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.cli.CliRuntime
 import skillbill.cli.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -262,6 +264,85 @@ class McpRuntimeTest {
         ),
       )
     assertEquals(expectedRequests, capturedRequests)
+  }
+
+  @Test
+  fun `mcp workflow methods cover implement verbs and blocked continuation`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-workflow")
+    val env = disabledTelemetryEnvironment(tempDir)
+    val context = McpRuntimeContext(environment = env, userHome = tempDir)
+    val opened = McpWorkflowRuntime.open(
+      WorkflowFamilyKind.IMPLEMENT,
+      sessionId = "fis-20260425-mcp",
+      context = context,
+    )
+    val workflowId = opened["workflow_id"] as String
+
+    val updated =
+      McpWorkflowRuntime.update(
+        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowUpdateRequest(
+          workflowId = workflowId,
+          workflowStatus = "blocked",
+          currentStepId = "implement",
+          stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
+          artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
+        ),
+        context,
+      )
+    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.IMPLEMENT, context = context)
+    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.IMPLEMENT, context)
+    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
+    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
+    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
+
+    assertEquals("blocked", updated["workflow_status"])
+    assertEquals(1, listed["workflow_count"])
+    assertEquals(workflowId, latest["workflow_id"])
+    assertEquals(workflowId, got["workflow_id"])
+    assertEquals(listOf("plan"), resumed["missing_artifacts"])
+    assertEquals("error", continued["status"])
+    assertEquals("blocked", continued["continue_status"])
+  }
+
+  @Test
+  fun `mcp workflow methods cover verify verbs and reopened continuation`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-verify-workflow")
+    val env = disabledTelemetryEnvironment(tempDir)
+    val context = McpRuntimeContext(environment = env, userHome = tempDir)
+    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.VERIFY, currentStepId = "code_review", context = context)
+    val workflowId = opened["workflow_id"] as String
+
+    McpWorkflowRuntime.update(
+      WorkflowFamilyKind.VERIFY,
+      WorkflowUpdateRequest(
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "verdict",
+        stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
+        artifactsPatch =
+        mapOf(
+          "criteria_summary" to emptyMap<String, Any?>(),
+          "diff_summary" to emptyMap(),
+          "review_result" to emptyMap(),
+          "completeness_audit_result" to emptyMap(),
+        ),
+      ),
+      context = context,
+    )
+
+    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.VERIFY, context = context)
+    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.VERIFY, context)
+    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.VERIFY, workflowId, context)
+    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.VERIFY, workflowId, context)
+    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, context)
+
+    assertEquals(1, listed["workflow_count"])
+    assertEquals(workflowId, latest["workflow_id"])
+    assertEquals("verdict", got["current_step_id"])
+    assertEquals("resume", resumed["resume_mode"])
+    assertEquals("ok", continued["status"])
+    assertEquals("reopened", continued["continue_status"])
   }
 }
 
