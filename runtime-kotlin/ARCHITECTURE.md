@@ -114,6 +114,10 @@ useful for the next refactors:
   instead of raw maps
 - reserved runtime surfaces must expose a documented `RuntimeSurfaceContract`
   instead of empty marker interfaces
+- the first physical Gradle module split is limited to `runtime-core`,
+  `runtime-cli`, and `runtime-mcp`; deeper contract, domain, application, and
+  infrastructure modules remain deferred until the upward dependencies listed
+  in `docs/architecture/gradle-module-split-evaluation.md` are removed
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -125,4 +129,6 @@ useful for the next refactors:
    objects.
 3. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-4. Split Gradle modules only after package boundaries are proven.
+4. Remove the remaining split blockers documented in the Gradle module split
+   evaluation, then split deeper contract, application, infrastructure, and
+   domain modules.
