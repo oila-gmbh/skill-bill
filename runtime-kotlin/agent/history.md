@@ -1,3 +1,11 @@
+## [2026-04-25] runtime-cutover-preparation
+Areas: docs/migrations/SKILL-27-cutover-checklist.md, runtime-kotlin/ARCHITECTURE.md, runtime surface contracts, runtime smoke tests
+- Added a maintained Kotlin runtime cutover checklist that names the current Python default, Kotlin parity gates, Phase 9 switch plan, and rollback path.
+- Updated runtime surface contracts so scaffold and install are active Kotlin-owned surfaces after the completed scaffold-loader-install bridge, while launcher remains the reserved default-runtime switch surface.
+- Reusable pattern: do not flip entrypoints in the same step that documents cutover; keep Phase 8 as handoff preparation and Phase 9 as the intentional default-runtime switch.
+Feature flag: N/A
+Acceptance criteria: cutover checklist, active surface metadata, launcher boundary preserved
+
 ## [2026-04-25] runtime-scaffold-loader-install-adapter
 Areas: skillbill.scaffold, skillbill.install, skillbill.cli, skillbill.mcp, runtime-core, runtime-cli, runtime-mcp, runtime-contracts
 - Added Kotlin scaffold-loader/install primitives and wired the CLI/MCP scaffold paths onto the Kotlin core while keeping the Python runtime as the broader oracle for the remaining surface.
