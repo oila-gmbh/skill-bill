@@ -8,13 +8,13 @@ private const val JSON_RPC_PARSE_ERROR = -32700
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601
 
 object McpStdioServer {
-  fun run() {
+  fun run(context: McpRuntimeContext = McpRuntimeContext()) {
     generateSequence(::readlnOrNull).forEach { line ->
-      handleLine(line)?.let(::println)
+      handleLine(line, context)?.let(::println)
     }
   }
 
-  fun handleLine(line: String): String? {
+  fun handleLine(line: String, context: McpRuntimeContext = McpRuntimeContext()): String? {
     val message = JsonSupport.parseObjectOrNull(line)
     val id = message?.get("id")
     val method = message?.get("method")?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
@@ -23,7 +23,7 @@ object McpStdioServer {
       id == null -> null
       method == "initialize" -> successResponse(id, initializeResult())
       method == "tools/list" -> successResponse(id, toolsListResult())
-      method == "tools/call" -> successResponse(id, callToolResult(message.arguments()))
+      method == "tools/call" -> successResponse(id, callToolResult(message.arguments(), context))
       else -> errorResponse(id, JSON_RPC_METHOD_NOT_FOUND, "Method not found: $method")
     }
   }
@@ -43,11 +43,11 @@ object McpStdioServer {
     "tools" to McpToolRegistry.tools.map(McpToolSpec::toPayload),
   )
 
-  private fun callToolResult(params: Map<String, Any?>): Map<String, Any?> {
+  private fun callToolResult(params: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
     val toolName = params["name"]?.toString().orEmpty()
     val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
     return try {
-      val payload = McpToolDispatcher.call(toolName, arguments)
+      val payload = McpToolDispatcher.call(toolName, arguments, context)
       toolResult(payload, isError = false)
     } catch (error: IllegalArgumentException) {
       toolErrorResult(toolName, error)

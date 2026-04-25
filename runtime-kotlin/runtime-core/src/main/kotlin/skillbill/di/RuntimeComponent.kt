@@ -3,6 +3,7 @@ package skillbill.di
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.LearningService
+import skillbill.application.LifecycleTelemetryService
 import skillbill.application.ReviewService
 import skillbill.application.SystemService
 import skillbill.application.TelemetryService
@@ -34,6 +35,7 @@ abstract class RuntimeComponent(
   fun telemetryClient(client: HttpTelemetryClient): TelemetryClient = client
 
   abstract val learningService: LearningService
+  abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val reviewService: ReviewService
   abstract val systemService: SystemService
   abstract val telemetryService: TelemetryService

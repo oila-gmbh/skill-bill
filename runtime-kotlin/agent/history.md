@@ -1,3 +1,11 @@
+## [2026-04-25] runtime-mcp-lifecycle-native
+Areas: runtime-application lifecycle telemetry service, runtime-infra-sqlite lifecycle telemetry store, runtime-mcp dispatcher, docs/migrations/SKILL-27-cutover-checklist.md
+- Ported the remaining MCP telemetry lifecycle tools to Kotlin-native services and SQLite persistence while preserving standalone session/outbox behavior and orchestrated child telemetry payloads.
+- Removed the temporary Kotlin-to-Python MCP bridge and `skill_bill.mcp_tool_bridge`; Python remains only as the explicit CLI/MCP fallback path.
+- Reusable pattern: once the process boundary is cut over, retire compatibility bridges by adding a narrow application service plus persistence port, then keep MCP argument coercion at the adapter edge.
+Feature flag: N/A
+Acceptance criteria: native lifecycle MCP handlers, bridge removal, standalone/orchestrated telemetry parity, runtime validation
+
 ## [2026-04-25] runtime-mcp-stdio-cutover
 Areas: runtime-mcp application entrypoint, skill_bill.launcher, installer MCP registration, docs/migrations/SKILL-27-cutover-checklist.md
 - Added a Kotlin stdio MCP server that speaks line-delimited JSON-RPC, exposes the Python-compatible tool inventory, and dispatches ported MCP tools through Kotlin runtime services.

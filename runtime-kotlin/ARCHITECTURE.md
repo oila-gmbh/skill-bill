@@ -94,9 +94,8 @@ di
   `skill-bill` script defaults to the Kotlin CLI through the launcher and
   supports `SKILL_BILL_RUNTIME=python` as the rollback path. `skill-bill-mcp`
   defaults to the Kotlin stdio server and supports
-  `SKILL_BILL_MCP_RUNTIME=python` as the rollback path. A narrow Python bridge
-  remains for MCP telemetry lifecycle tools until those leaf persistence paths
-  are ported.
+  `SKILL_BILL_MCP_RUNTIME=python` as the rollback path. MCP telemetry
+  lifecycle tools are Kotlin-native.
 
 ## Boundary Rules
 

@@ -741,8 +741,8 @@ What changed in this phase:
   `tools/list`, and `tools/call`
 - preserved the Python-compatible MCP tool inventory
 - routed ported MCP tools through Kotlin runtime services
-- routed still-Python-owned telemetry lifecycle tools through
-  `skill_bill.mcp_tool_bridge`
+- temporarily routed still-Python-owned telemetry lifecycle tools through
+  `skill_bill.mcp_tool_bridge`; Phase 11 removes this bridge
 - changed `skill-bill-mcp` so Kotlin is the default MCP runtime and
   `SKILL_BILL_MCP_RUNTIME=python` is the explicit rollback path
 - updated installer MCP registrations and `scripts/mcp_server_start.sh` to
@@ -753,8 +753,7 @@ Runtime source of truth after Phase 10:
 - Kotlin is the default CLI runtime for `skill-bill`
 - Kotlin is the default stdio MCP server runtime for `skill-bill-mcp`
 - Python remains available for CLI and MCP rollback
-- Python remains a temporary compatibility bridge for MCP telemetry lifecycle
-  tools until those leaf paths are ported
+- MCP telemetry lifecycle tools are Kotlin-native as of Phase 11
 
 Validation added in this phase:
 
@@ -762,8 +761,7 @@ Validation added in this phase:
 - live Python MCP client against `runtime-kotlin/gradlew -q :runtime-mcp:run`
   for `tools/list` and `doctor`
 - live Python MCP client against `skill_bill.launcher:mcp_main` for `doctor`
-- live Python MCP client against Kotlin MCP `quality_check_started`, verifying
-  the Python bridge path
+- live Python MCP client against Kotlin MCP `quality_check_started`
 
 ## Phase 10 Exit Result
 
@@ -772,11 +770,51 @@ Checkpoint status:
 - `skill-bill-mcp` now routes through `skill_bill.launcher:mcp_main` and
   defaults to the Kotlin stdio MCP server
 - `SKILL_BILL_MCP_RUNTIME=python` remains the explicit Python MCP rollback path
-- Python runtime code is intentionally retained for rollback and the temporary
-  lifecycle-tool bridge
+- Python runtime code is intentionally retained for rollback
+
+## Phase 11 - MCP Lifecycle Native Kotlin
+
+What changed in this phase:
+
+- added a Kotlin lifecycle telemetry application service and SQLite repository
+  port for MCP lifecycle persistence
+- ported `feature_implement_started`, `feature_implement_finished`,
+  `quality_check_started`, `quality_check_finished`,
+  `feature_verify_started`, `feature_verify_finished`, and
+  `pr_description_generated` to native Kotlin MCP handlers
+- preserved standalone telemetry session persistence and outbox emission
+- preserved orchestrated child payload behavior without local outbox emission
+- removed `LegacyPythonMcpBridge` and `skill_bill.mcp_tool_bridge`
+
+Validation added in this phase:
+
+- Kotlin MCP runtime tests for native lifecycle persistence/outbox emission
+- Kotlin MCP runtime tests for orchestrated lifecycle child payload behavior
+
+## Phase 12 - Runtime Parity Coverage
+
+What changed in this phase:
+
+- added Kotlin CLI command coverage for the Python-backed governed authoring
+  surface: `list`, `show`, `explain`, `validate`, `upgrade`, `render`, `edit`,
+  `fill`, and `doctor skill`
+- added Python-compatible `workflow show` and `verify-workflow show` subcommands
+  to the Kotlin CLI while keeping the existing Kotlin `get` subcommands
+- expanded Kotlin CLI tests so the default runtime exercises non-mutating
+  Python-backed authoring commands against real repo data
+- tightened Kotlin MCP stdio tests to assert the full Python-compatible tool
+  inventory instead of only checking a few representative tools
+
+Validation run in this session:
+
+- `cd runtime-kotlin && ./gradlew check`
+- `.venv/bin/python3 -m unittest discover -s tests`
+- `npx --yes agnix --strict .`
+- `.venv/bin/python3 scripts/validate_agent_configs.py`
+- `python3 -m skill_bill.launcher list --repo-root . --skill-name bill-feature-implement --format json`
+- `python3 -m skill_bill.launcher doctor skill bill-feature-implement --repo-root . --content none --format json`
 
 ## Next Session Start
 
-Start by porting the remaining MCP telemetry lifecycle tools off the Python
-bridge, then revisit Python runtime retirement only after normal-use confidence
-exists for the Kotlin-default CLI and MCP paths.
+Start Python runtime retirement planning only after normal-use confidence exists
+for the Kotlin-default CLI and MCP paths.

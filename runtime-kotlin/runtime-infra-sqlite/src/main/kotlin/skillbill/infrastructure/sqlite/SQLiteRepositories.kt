@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.db.LifecycleTelemetryStore
 import skillbill.db.TelemetryOutboxStore
 import skillbill.db.WorkflowStateStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
@@ -16,6 +17,7 @@ import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.ports.persistence.LearningRepository
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
@@ -34,6 +36,7 @@ class SQLiteUnitOfWork(
 ) : UnitOfWork {
   override val reviews: ReviewRepository = SQLiteReviewRepository(connection)
   override val learnings: LearningRepository = SQLiteLearningRepository(connection)
+  override val lifecycleTelemetry: LifecycleTelemetryRepository = LifecycleTelemetryStore(connection)
   override val telemetryOutbox: TelemetryOutboxRepository = TelemetryOutboxStore(connection)
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
 }

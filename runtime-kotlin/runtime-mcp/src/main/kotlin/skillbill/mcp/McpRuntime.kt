@@ -2,6 +2,13 @@
 
 package skillbill.mcp
 
+import skillbill.application.model.FeatureImplementFinishedRequest
+import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureVerifyFinishedRequest
+import skillbill.application.model.FeatureVerifyStartedRequest
+import skillbill.application.model.PrDescriptionGeneratedRequest
+import skillbill.application.model.QualityCheckFinishedRequest
+import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.contracts.mcp.McpLearningsSkippedContract
@@ -115,6 +122,41 @@ object McpRuntime {
 
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.featureVerifyStats(dbOverride = null)
+
+  fun featureImplementStarted(
+    request: FeatureImplementStartedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureImplementStarted(request)
+
+  fun featureImplementFinished(
+    request: FeatureImplementFinishedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureImplementFinished(request)
+
+  fun qualityCheckStarted(
+    request: QualityCheckStartedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.qualityCheckStarted(request)
+
+  fun qualityCheckFinished(
+    request: QualityCheckFinishedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.qualityCheckFinished(request)
+
+  fun featureVerifyStarted(
+    request: FeatureVerifyStartedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureVerifyStarted(request)
+
+  fun featureVerifyFinished(
+    request: FeatureVerifyFinishedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureVerifyFinished(request)
+
+  fun prDescriptionGenerated(
+    request: PrDescriptionGeneratedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).lifecycleTelemetryService.prDescriptionGenerated(request)
 
   fun telemetryRemoteStats(
     request: RemoteStatsRequest,

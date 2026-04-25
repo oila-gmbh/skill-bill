@@ -230,9 +230,8 @@ The local CLI is the operator and maintainer surface for telemetry, workflow sta
 The MCP server exposes Skill Bill’s local primitives as agent tools. This is the primary integration path when an agent can call local MCP tools directly.
 
 The installed `skill-bill-mcp` entrypoint launches the Kotlin stdio server by
-default. A narrow Python bridge remains behind the Kotlin server for telemetry
-lifecycle tools that are not Kotlin-native yet; direct Python MCP fallback is
-available with `SKILL_BILL_MCP_RUNTIME=python`.
+default. MCP telemetry lifecycle tools are Kotlin-native; direct Python MCP
+fallback remains available with `SKILL_BILL_MCP_RUNTIME=python`.
 
 ### Review telemetry and learnings tools
 

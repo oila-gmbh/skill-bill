@@ -25,6 +25,7 @@ class WorkflowTopLevelCommands(
       .subcommands(
         implementCommands.open,
         implementCommands.update,
+        implementCommands.show,
         implementCommands.get,
         implementCommands.list,
         implementCommands.latest,
@@ -39,6 +40,7 @@ class WorkflowTopLevelCommands(
       .subcommands(
         verifyCommands.open,
         verifyCommands.update,
+        verifyCommands.show,
         verifyCommands.get,
         verifyCommands.list,
         verifyCommands.latest,
@@ -60,6 +62,7 @@ class ImplementWorkflowCommands(
 ) {
   val open = implementOpen
   val update = implementUpdate
+  val show = implementInspection.show
   val get = implementGet
   val list = implementInspection.list
   val latest = implementInspection.latest
@@ -69,6 +72,7 @@ class ImplementWorkflowCommands(
 
 @Inject
 class ImplementWorkflowInspectionCommands(
+  val show: ImplementWorkflowShowCommand,
   val list: ImplementWorkflowListCommand,
   val latest: ImplementWorkflowLatestCommand,
 )
@@ -84,6 +88,7 @@ class VerifyWorkflowCommands(
 ) {
   val open = verifyOpen
   val update = verifyUpdate
+  val show = verifyInspection.show
   val get = verifyGet
   val list = verifyInspection.list
   val latest = verifyInspection.latest
@@ -93,6 +98,7 @@ class VerifyWorkflowCommands(
 
 @Inject
 class VerifyWorkflowInspectionCommands(
+  val show: VerifyWorkflowShowCommand,
   val list: VerifyWorkflowListCommand,
   val latest: VerifyWorkflowLatestCommand,
 )
@@ -167,6 +173,18 @@ open class WorkflowUpdateCommand(
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
+
+@Inject
+class ImplementWorkflowShowCommand(
+  service: WorkflowService,
+  state: CliRunState,
+) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.IMPLEMENT)
+
+@Inject
+class VerifyWorkflowShowCommand(
+  service: WorkflowService,
+  state: CliRunState,
+) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.VERIFY)
 
 @Inject
 class ImplementWorkflowGetCommand(

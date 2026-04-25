@@ -69,13 +69,17 @@ object JsonSupport {
     ?: collectionJsonElement(value)
     ?: JsonPrimitive(value.toString())
 
-  private fun primitiveToValue(primitive: JsonPrimitive): Any? = listOfNotNull(
-    primitive.booleanOrNull,
-    primitive.intOrNull,
-    primitive.longOrNull,
-    primitive.doubleOrNull,
-    primitive.contentOrNull,
-  ).firstOrNull()
+  private fun primitiveToValue(primitive: JsonPrimitive): Any? = if (primitive.isJsonString()) {
+    primitive.contentOrNull
+  } else {
+    listOfNotNull(
+      primitive.booleanOrNull,
+      primitive.intOrNull,
+      primitive.longOrNull,
+      primitive.doubleOrNull,
+      primitive.contentOrNull,
+    ).firstOrNull()
+  }
 
   private fun primitiveJsonElement(value: Any?): JsonElement? = when (value) {
     null -> JsonNull
@@ -90,6 +94,8 @@ object JsonSupport {
     else -> null
   }
 }
+
+private fun JsonPrimitive.isJsonString(): Boolean = toString().startsWith("\"")
 
 private fun JsonSupport.collectionJsonElement(value: Any?): JsonElement? =
   mapJsonElement(value) ?: iterableJsonElement(value) ?: arrayJsonElement(value)

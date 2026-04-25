@@ -12,6 +12,7 @@ import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
@@ -28,6 +29,13 @@ import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.telemetry.model.FeatureImplementFinishedRecord
+import skillbill.telemetry.model.FeatureImplementStartedRecord
+import skillbill.telemetry.model.FeatureVerifyFinishedRecord
+import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.telemetry.model.PrDescriptionGeneratedRecord
+import skillbill.telemetry.model.QualityCheckFinishedRecord
+import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
@@ -331,9 +339,26 @@ private class FakeDatabaseSessionFactory(
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
+    override val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
   }
+}
+
+private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
+  override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) = Unit
+
+  override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) = Unit
+
+  override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
+
+  override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
+
+  override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = Unit
+
+  override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = Unit
+
+  override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = Unit
 }
 
 private class FakeLearningRepository(

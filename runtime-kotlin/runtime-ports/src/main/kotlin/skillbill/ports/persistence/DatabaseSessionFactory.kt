@@ -16,6 +16,7 @@ interface UnitOfWork {
   val dbPath: Path
   val reviews: ReviewRepository
   val learnings: LearningRepository
+  val lifecycleTelemetry: LifecycleTelemetryRepository
   val telemetryOutbox: TelemetryOutboxRepository
   val workflowStates: WorkflowStateRepository
 }

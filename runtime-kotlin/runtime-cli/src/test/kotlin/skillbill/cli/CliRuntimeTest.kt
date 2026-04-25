@@ -80,6 +80,22 @@ class CliRuntimeTest {
     assertContains(result.stdout, "review_run_id: rvw-20260402-001")
     assertContains(result.stdout, "1. F-001 -> fix_applied | note: patched")
     assertContains(result.stdout, "2. F-002 -> fix_rejected | note: intentional")
+
+    val jsonPayload =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "triage",
+        "--run-id",
+        "rvw-20260402-001",
+        "--decision",
+        "1 accept - json parity",
+        "--format",
+        "json",
+      )
+    val recorded = jsonPayload["recorded"] as List<*>
+    assertEquals("F-001", (recorded.first() as Map<*, *>)["finding_id"])
+    assertEquals("finding_accepted", (recorded.first() as Map<*, *>)["outcome_type"])
   }
 
   @Test
@@ -160,6 +176,20 @@ class CliRuntimeTest {
       "- [L-001] skill:bill-kotlin-code-review | Keep wording aligned | " +
         "Update the installer prompt when routing text changes.",
     )
+
+    val jsonPayload =
+      runJson(
+        "--db",
+        dbPath.toString(),
+        "learnings",
+        "resolve",
+        "--skill",
+        "bill-kotlin-code-review",
+        "--format",
+        "json",
+      )
+    assertEquals("bill-kotlin-code-review", jsonPayload["skill_name"])
+    assertEquals("L-001", jsonPayload["applied_learnings"])
   }
 
   @Test
@@ -320,12 +350,24 @@ class CliRuntimeTest {
 
     assertEquals(0, rootHelp.exitCode)
     assertContains(rootHelp.stdout, "--generate-completion=(bash|zsh|fish)")
+    assertContains(rootHelp.stdout, "list")
+    assertContains(rootHelp.stdout, "show")
+    assertContains(rootHelp.stdout, "explain")
+    assertContains(rootHelp.stdout, "validate")
+    assertContains(rootHelp.stdout, "upgrade")
+    assertContains(rootHelp.stdout, "render")
+    assertContains(rootHelp.stdout, "edit")
+    assertContains(rootHelp.stdout, "fill")
     assertContains(rootHelp.stdout, "learnings")
     assertContains(rootHelp.stdout, "telemetry")
     assertContains(rootHelp.stdout, "new-skill")
     assertContains(rootHelp.stdout, "create-and-fill")
     assertContains(rootHelp.stdout, "new-addon")
     assertContains(rootHelp.stdout, "install")
+    val workflowHelp = CliRuntime.run(listOf("workflow", "--help"))
+    val verifyWorkflowHelp = CliRuntime.run(listOf("verify-workflow", "--help"))
+    assertContains(workflowHelp.stdout, "show")
+    assertContains(verifyWorkflowHelp.stdout, "show")
     assertEquals(0, telemetryHelp.exitCode)
     assertContains(telemetryHelp.stdout, "capabilities")
     assertContains(telemetryHelp.stdout, "set-level")
@@ -457,10 +499,12 @@ class CliRuntimeTest {
 
     val listed = runJson("--db", dbPath.toString(), "workflow", "list", "--format", "json")
     val latest = runJson("--db", dbPath.toString(), "workflow", "latest", "--format", "json")
+    val shown = runJson("--db", dbPath.toString(), "workflow", "show", workflowId, "--format", "json")
     val resumed = runJson("--db", dbPath.toString(), "workflow", "resume", workflowId, "--format", "json")
 
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
+    assertEquals(workflowId, shown["workflow_id"])
     assertEquals("resume", resumed["resume_mode"])
 
     val update =
@@ -531,8 +575,10 @@ class CliRuntimeTest {
     )
 
     val continued = runJson("--db", dbPath.toString(), "verify-workflow", "continue", "--latest", "--format", "json")
+    val shown = runJson("--db", dbPath.toString(), "verify-workflow", "show", workflowId, "--format", "json")
     assertEquals("reopened", continued["continue_status"])
     assertEquals("verdict", continued["continue_step_id"])
+    assertEquals("verdict", shown["current_step_id"])
   }
 
   @Test

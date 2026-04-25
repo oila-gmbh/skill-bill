@@ -1,7 +1,7 @@
 # SKILL-27 Kotlin Runtime Cutover Checklist
 
-This checklist records the Phase 9 CLI cutover and the Phase 10 MCP stdio
-cutover.
+This checklist records the Phase 9 CLI cutover, Phase 10 MCP stdio cutover,
+and Phase 11 native MCP lifecycle telemetry cutover.
 
 ## Runtime Boundary
 
@@ -25,14 +25,13 @@ Current Kotlin runtime:
 - Kotlin owns durable workflow runtime behavior, review/learnings/stats/
   telemetry service behavior, governed loader/scaffold primitives, and install
   primitives.
-- Python remains the MCP fallback, the CLI rollback path, and the temporary
-  compatibility bridge for unported MCP telemetry lifecycle tools.
+- Python remains the MCP fallback and the CLI rollback path.
+- MCP telemetry lifecycle tools are Kotlin-native.
 
 Still reserved after this stage:
 
 - deleting or weakening Python fallback behavior
-- porting the remaining MCP telemetry lifecycle leaf persistence paths from
-  the Python bridge into Kotlin services
+- retiring Python runtime code before normal-use confidence exists
 
 ## Cutover Gates
 
@@ -79,10 +78,19 @@ Before Python runtime retirement, all of these must be true:
 2. The Kotlin MCP server exposes the Python-compatible tool inventory over
    line-delimited stdio JSON-RPC.
 3. Ported tools route through Kotlin runtime services.
-4. Telemetry lifecycle tools that remain Python-owned route through
-   `skill_bill.mcp_tool_bridge`.
+4. Telemetry lifecycle tools route through Kotlin-native services.
 5. Installer MCP registrations and `scripts/mcp_server_start.sh` invoke the
    launcher-backed MCP entrypoint.
+
+## Phase 11 MCP Lifecycle Result
+
+1. MCP lifecycle telemetry tools persist through Kotlin services and SQLite
+   repository ports.
+2. Standalone lifecycle tools emit the same outbox event names and payload
+   shapes as the Python implementation.
+3. Orchestrated lifecycle tools return child `telemetry_payload` values
+   without local outbox emission.
+4. `LegacyPythonMcpBridge` and `skill_bill.mcp_tool_bridge` have been removed.
 
 ## Rollback Plan
 

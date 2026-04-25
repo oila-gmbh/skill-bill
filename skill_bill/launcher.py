@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-import platform
 import shlex
 import subprocess
 import sys
@@ -101,14 +100,9 @@ def mcp_main() -> None:
     )
     raise SystemExit(2)
   if runtime == "kotlin":
-    env = dict(os.environ)
-    env.setdefault("SKILL_BILL_PYTHON", sys.executable)
-    if platform.system() == "Darwin" and platform.machine() == "arm64":
-      env.setdefault("SKILL_BILL_PYTHON_ARCH", "arm64")
     raise SystemExit(subprocess.run(
       kotlin_mcp_command(),
       cwd=repo_root() / "runtime-kotlin",
-      env=env,
       check=False,
     ).returncode)
 
