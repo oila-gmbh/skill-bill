@@ -149,11 +149,26 @@ async function forwardBatch(env, batch) {
     clearTimeout(timer);
   }
 
+  const responseText = await upstreamResponse.text();
   if (!upstreamResponse.ok) {
-    return jsonResponse(502, { error: "Upstream telemetry relay returned an error." });
+    console.log(JSON.stringify({
+      event: "posthog_ingest_failed",
+      status: upstreamResponse.status,
+      batch_size: batch.length,
+      response: responseText || null,
+    }));
+    return jsonResponse(502, {
+      error: "Upstream telemetry relay returned an error.",
+      details: responseText || null,
+    });
   }
 
-  const responseText = await upstreamResponse.text();
+  console.log(JSON.stringify({
+    event: "posthog_ingest_forwarded",
+    status: upstreamResponse.status,
+    batch_size: batch.length,
+    response: responseText || null,
+  }));
   return new Response(
     responseText || JSON.stringify({ ok: true }),
     {
