@@ -322,9 +322,120 @@ class CliRuntimeTest {
     assertContains(rootHelp.stdout, "--generate-completion=(bash|zsh|fish)")
     assertContains(rootHelp.stdout, "learnings")
     assertContains(rootHelp.stdout, "telemetry")
+    assertContains(rootHelp.stdout, "new-skill")
+    assertContains(rootHelp.stdout, "create-and-fill")
+    assertContains(rootHelp.stdout, "new-addon")
+    assertContains(rootHelp.stdout, "install")
     assertEquals(0, telemetryHelp.exitCode)
     assertContains(telemetryHelp.stdout, "capabilities")
     assertContains(telemetryHelp.stdout, "set-level")
+  }
+
+  @Test
+  fun `new skill and new alias share the scaffold payload contract`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-new")
+    val context = scaffoldPayloadContext(tempDir)
+
+    val newSkillPayload = scaffoldPayload("new-skill", context)
+    val newAliasPayload = scaffoldPayload("new", context)
+
+    assertEquals("horizontal", newSkillPayload["kind"])
+    assertEquals("bill-horizontal-kotlin", newSkillPayload["skill_name"])
+    assertEquals(true, newSkillPayload["dry_run"])
+    assertEquals("bill-horizontal-kotlin", (newSkillPayload["started_payload"] as Map<*, *>)["skill_name"])
+    assertEquals("horizontal", newAliasPayload["kind"])
+    assertEquals("bill-horizontal-kotlin", newAliasPayload["skill_name"])
+  }
+
+  @Test
+  fun `create-and-fill dry run preserves scaffold payload contract`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-fill")
+    val context =
+      CliRuntimeContext(
+        stdinText =
+        """
+        {
+          "scaffold_payload_version": "1.0",
+          "kind": "code-review-area",
+          "name": "bill-kotlin-code-review-ui",
+          "platform": "kotlin",
+          "area": "ui"
+        }
+        """.trimIndent(),
+        userHome = tempDir,
+      )
+
+    val payload =
+      scaffoldPayload(
+        listOf("create-and-fill", "--payload", "-", "--dry-run", "--format", "json"),
+        context,
+      )
+
+    assertEquals("code-review-area", payload["kind"])
+    assertEquals("bill-kotlin-code-review-ui", payload["skill_name"])
+  }
+
+  @Test
+  fun `new addon dry run preserves scaffold payload contract`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-addon")
+    val payload =
+      scaffoldPayload(
+        listOf(
+          "new-addon",
+          "--platform",
+          "kmp",
+          "--name",
+          "android-new-addon",
+          "--body",
+          "Pack-owned guidance.",
+          "--dry-run",
+          "--format",
+          "json",
+        ),
+        CliRuntimeContext(userHome = tempDir),
+      )
+
+    assertEquals("add-on", payload["kind"])
+    assertTrue(
+      Path.of(payload["skill_path"] as String)
+        .endsWith(Path.of("platform-packs", "kmp", "addons")),
+    )
+  }
+
+  @Test
+  fun `install commands expose agent path lookup and link-skill`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-install")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    val agentPathResult = CliRuntime.run(listOf("install", "agent-path", "codex"), context)
+    val detectAgentsResult = CliRuntime.run(listOf("install", "detect-agents"), context)
+
+    val sourceSkill = tempDir.resolve("skill-source")
+    Files.createDirectories(sourceSkill)
+    Files.writeString(sourceSkill.resolve("SKILL.md"), "# Skill\n")
+    val targetDir = tempDir.resolve("agents")
+    val linkResult =
+      CliRuntime.run(
+        listOf(
+          "install",
+          "link-skill",
+          "--source",
+          sourceSkill.toString(),
+          "--target-dir",
+          targetDir.toString(),
+          "--agent",
+          "codex",
+        ),
+        context,
+      )
+
+    assertEquals(0, agentPathResult.exitCode, agentPathResult.stdout)
+    assertEquals(tempDir.resolve(".agents/skills").toString(), agentPathResult.stdout.trim())
+    assertEquals(0, detectAgentsResult.exitCode, detectAgentsResult.stdout)
+    assertEquals("", detectAgentsResult.stdout.trim())
+    assertEquals(0, linkResult.exitCode, linkResult.stdout)
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("skill-source")))
+    assertEquals(sourceSkill.toRealPath(), targetDir.resolve("skill-source").toRealPath())
   }
 
   @Test
@@ -458,6 +569,27 @@ private fun runJson(vararg arguments: String, context: CliRuntimeContext = CliRu
   runJson(arguments.toList(), context)
 
 private fun Map<String, Any?>.steps(): List<Map<*, *>> = (this["steps"] as List<*>).map { step -> step as Map<*, *> }
+
+private fun scaffoldPayloadContext(tempDir: Path): CliRuntimeContext = CliRuntimeContext(
+  stdinText =
+  """
+        {
+          "scaffold_payload_version": "1.0",
+          "kind": "horizontal",
+          "name": "bill-horizontal-kotlin"
+        }
+  """.trimIndent(),
+  userHome = tempDir,
+)
+
+private fun scaffoldPayload(command: String, context: CliRuntimeContext): Map<String, Any?> =
+  scaffoldPayload(listOf(command, "--payload", "-", "--dry-run", "--format", "json"), context)
+
+private fun scaffoldPayload(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
+  val result = CliRuntime.run(arguments, context)
+  assertEquals(0, result.exitCode, result.stdout)
+  return decodeJsonObject(result.stdout)
+}
 
 private fun runJson(arguments: List<String>, context: CliRuntimeContext = CliRuntimeContext()): Map<String, Any?> {
   val result = CliRuntime.run(arguments, context)

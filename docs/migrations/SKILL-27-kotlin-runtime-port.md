@@ -6,7 +6,7 @@
 - Phase: `4 - Surface integration`
 - Runtime source of truth: Python
 - Kotlin ownership: build foundation, shared scaffolding, persistence core, review-domain services, and in-module CLI/MCP surface adapters
-- Last updated: `2026-04-23`
+- Last updated: `2026-04-25`
 
 ## Purpose
 
@@ -16,6 +16,11 @@ surface, the frozen contracts, or the test boundaries before starting work.
 
 The current Python runtime remains the behavioral oracle until later phases
 explicitly move a subsystem to Kotlin with parity coverage.
+
+Recent adapter work has already moved the scaffold loader/install bridge and
+the CLI/MCP scaffold envelopes onto the Kotlin runtime modules, while keeping
+the broader Python runtime available as the reference oracle for the rest of
+the port.
 
 ## Current Runtime Inventory
 

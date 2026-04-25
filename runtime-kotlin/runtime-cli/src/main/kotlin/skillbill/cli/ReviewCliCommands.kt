@@ -18,7 +18,17 @@ class ReviewTopLevelCommands(
   val statsCommand: ReviewStatsCommand,
   val featureImplementStatsCommand: FeatureImplementStatsCommand,
   val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
-)
+) {
+  val commands =
+    listOf(
+      importReviewCommand,
+      recordFeedbackCommand,
+      triageCommand,
+      statsCommand,
+      featureImplementStatsCommand,
+      featureVerifyStatsCommand,
+    )
+}
 
 @Inject
 class ImportReviewCommand(

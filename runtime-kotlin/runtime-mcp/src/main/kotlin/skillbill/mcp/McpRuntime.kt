@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.mcp
 
 import skillbill.application.model.WorkflowFamilyKind
@@ -127,6 +129,18 @@ object McpRuntime {
 
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.doctor(dbOverride = null)
+
+  fun newSkillScaffold(
+    payload: Map<String, Any?>,
+    dryRun: Boolean = false,
+    orchestrated: Boolean = false,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = McpScaffoldRuntime.newSkillScaffold(
+    payload = payload,
+    dryRun = dryRun,
+    orchestrated = orchestrated,
+    context = context,
+  )
 }
 
 object McpWorkflowRuntime {

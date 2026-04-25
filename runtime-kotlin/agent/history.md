@@ -1,3 +1,12 @@
+## [2026-04-25] runtime-scaffold-loader-install-adapter
+Areas: skillbill.scaffold, skillbill.install, skillbill.cli, skillbill.mcp, runtime-core, runtime-cli, runtime-mcp, runtime-contracts
+- Added Kotlin scaffold-loader/install primitives and wired the CLI/MCP scaffold paths onto the Kotlin core while keeping the Python runtime as the broader oracle for the remaining surface.
+- Preserved the governed loader and scaffold payload contract in the adapter layer, including explicit repo-root injection, typed started/finished payloads, and install symlink handling.
+- Reusable pattern: boundary adapters should normalize payload quirks at the edge, then let the shared Kotlin core own the actual filesystem and manifest behavior.
+- Runtime-kotlin `./gradlew check` passes with the new scaffold-loader-install bridge in place.
+Feature flag: N/A
+Acceptance criteria: scaffold loader/install bridge, adapter payload parity, full runtime-kotlin check
+
 ## [2026-04-25] runtime-model-package-ownership
 Areas: runtime-domain model packages, runtime-ports model packages, runtime-application model packages, RuntimeContext, architecture tests
 - Moved public data/enum model declarations out of service, runtime, and port interface files into explicit `model` packages.

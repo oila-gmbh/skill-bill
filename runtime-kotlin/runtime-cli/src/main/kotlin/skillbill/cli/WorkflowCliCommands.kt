@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
@@ -44,6 +45,8 @@ class WorkflowTopLevelCommands(
         verifyCommands.resume,
         verifyCommands.continueCommand,
       )
+
+  val commands: List<CliktCommand> = listOf(workflowCommand, verifyWorkflowCommand)
 }
 
 @Inject

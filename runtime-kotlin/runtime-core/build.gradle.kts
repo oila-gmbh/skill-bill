@@ -12,6 +12,7 @@ dependencies {
   api(project(":runtime-infra-http"))
   api(project(":runtime-infra-sqlite"))
   api(project(":runtime-ports"))
+  implementation(libs.snakeyaml)
   implementation(libs.kotlin.inject.runtime)
   ksp(libs.kotlin.inject.compiler)
   testImplementation(libs.junit.jupiter)

@@ -1,3 +1,5 @@
+@file:Suppress("SpreadOperator")
+
 package skillbill.cli
 
 import com.github.ajalt.clikt.completion.completionOption
@@ -11,7 +13,8 @@ class SkillBillCommand(
   commands: TopLevelCliCommands,
 ) : DocumentedCliCommand(
   "skill-bill",
-  "Import Skill Bill review output, triage findings, manage learnings, and inspect telemetry.",
+  "Import Skill Bill review output, triage findings, manage learnings, " +
+    "scaffold governed skills, and inspect telemetry.",
 ) {
   private val dbOverride by option(
     "--db",
@@ -20,20 +23,7 @@ class SkillBillCommand(
 
   init {
     completionOption()
-    subcommands(
-      commands.review.importReviewCommand,
-      commands.review.recordFeedbackCommand,
-      commands.review.triageCommand,
-      commands.review.statsCommand,
-      commands.review.featureImplementStatsCommand,
-      commands.review.featureVerifyStatsCommand,
-      commands.learnings,
-      commands.telemetry,
-      commands.workflows.workflowCommand,
-      commands.workflows.verifyWorkflowCommand,
-      commands.version,
-      commands.doctor,
-    )
+    subcommands(*commands.rootCommands.toTypedArray())
   }
 
   override fun aliases(): Map<String, List<String>> = mapOf(
@@ -44,21 +34,4 @@ class SkillBillCommand(
   override fun run() {
     state.dbOverride = dbOverride
   }
-}
-
-@Inject
-class TopLevelCliCommands(
-  reviewCommands: ReviewTopLevelCommands,
-  learningsCommand: LearningsCommand,
-  telemetryCommand: TelemetryCommand,
-  workflowCommands: WorkflowTopLevelCommands,
-  versionCommand: VersionCommand,
-  doctorCommand: DoctorCliCommand,
-) {
-  val review = reviewCommands
-  val learnings = learningsCommand
-  val telemetry = telemetryCommand
-  val workflows = workflowCommands
-  val version = versionCommand
-  val doctor = doctorCommand
 }

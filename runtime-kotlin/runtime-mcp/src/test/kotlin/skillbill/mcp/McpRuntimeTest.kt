@@ -90,6 +90,37 @@ class McpRuntimeTest {
   }
 
   @Test
+  fun `new skill scaffold preserves standalone and orchestrated payload envelopes`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-scaffold")
+    val env = enabledTelemetryEnvironment(tempDir)
+    val context = McpRuntimeContext(environment = env, userHome = tempDir)
+    val payload =
+      mapOf(
+        "scaffold_payload_version" to "1.0",
+        "kind" to "horizontal",
+        "name" to "bill-horizontal-mcp",
+      )
+
+    val standalone = McpRuntime.newSkillScaffold(payload, dryRun = true, orchestrated = false, context = context)
+    val orchestrated = McpRuntime.newSkillScaffold(payload, dryRun = true, orchestrated = true, context = context)
+
+    assertEquals("ok", standalone["status"])
+    assertTrue("session_id" in standalone)
+    assertTrue("skill_path" in standalone)
+    assertTrue("notes" in standalone)
+    assertTrue("mode" !in standalone)
+    assertTrue("telemetry_payload" !in standalone)
+
+    assertEquals("orchestrated", orchestrated["mode"])
+    assertTrue("telemetry_payload" in orchestrated)
+    val telemetryPayload = orchestrated["telemetry_payload"] as Map<*, *>
+    assertEquals("bill-create-skill", telemetryPayload["skill"])
+    assertEquals("dry-run", telemetryPayload["result"])
+    assertTrue("skill_path" in orchestrated)
+    assertTrue("notes" in orchestrated)
+  }
+
+  @Test
   fun `triage orchestrated returns telemetry payload and suppresses outbox emission`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-orchestrated")
     val env = enabledTelemetryEnvironment(tempDir)

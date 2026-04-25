@@ -8,7 +8,13 @@ import skillbill.di.create
 object CliRuntime {
   fun run(arguments: List<String>, context: CliRuntimeContext = CliRuntimeContext()): CliExecutionResult {
     val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext())
-    val cliComponent = CliComponent::class.create(runtimeComponent, CliRunState())
+    val runState =
+      CliRunState().apply {
+        stdinText = context.stdinText
+        environment = context.environment
+        userHome = context.userHome
+      }
+    val cliComponent = CliComponent::class.create(runtimeComponent, runState)
     val rootCommand = cliComponent.rootCommand
     return try {
       CommandLineParser.parseAndRun(rootCommand, arguments) { command -> command.run() }
