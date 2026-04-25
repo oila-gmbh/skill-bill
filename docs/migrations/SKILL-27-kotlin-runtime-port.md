@@ -3,9 +3,9 @@
 ## Status
 
 - Issue: `SKILL-27`
-- Phase: `4 - Surface integration`
+- Phase: `8 - Cutover preparation`
 - Runtime source of truth: Python
-- Kotlin ownership: build foundation, shared scaffolding, persistence core, review-domain services, and in-module CLI/MCP surface adapters
+- Kotlin ownership: build foundation, shared scaffolding, persistence core, review-domain services, workflow runtime, governed loader/scaffold/install primitives, and in-module CLI/MCP surface adapters
 - Last updated: `2026-04-25`
 
 ## Purpose
@@ -21,6 +21,10 @@ Recent adapter work has already moved the scaffold loader/install bridge and
 the CLI/MCP scaffold envelopes onto the Kotlin runtime modules, while keeping
 the broader Python runtime available as the reference oracle for the rest of
 the port.
+
+Phase 8 prepares the runtime switch without flipping defaults. Python remains
+the production entrypoint and fallback. The maintained cutover checklist lives
+in `docs/migrations/SKILL-27-cutover-checklist.md`.
 
 ## Current Runtime Inventory
 
@@ -630,14 +634,51 @@ Checkpoint status:
 
 ## Next Session Start
 
-Start with `Phase 5 - Workflow runtime`.
+Start with `Phase 8 - Cutover preparation`.
 
 The next session should:
 
-1. port `bill-feature-implement` and `bill-feature-verify` workflow runtime
-   state and continuation payload behavior into `runtime-kotlin/`
-2. keep production Python entrypoints, loader/scaffolder, install behavior,
-   and launcher/cutover wiring out of scope until workflow-runtime parity is
-   in place
-3. continue treating Python as the oracle for any external contract that is not
-   yet explicitly flipped to Kotlin
+1. add the cutover checklist and keep Python as the default/fallback runtime
+2. update runtime surface contracts so scaffold and install reflect the
+   completed Kotlin port rather than placeholder status
+3. keep launcher/default-runtime switching reserved for Phase 9
+
+## Phase 8 - Cutover Preparation
+
+What changed in this phase:
+
+- added `docs/migrations/SKILL-27-cutover-checklist.md` as the maintained
+  handoff for default-runtime switching, rollback, and validation gates
+- updated the runtime architecture note so scaffold and install are active
+  Kotlin surfaces while the launcher remains reserved
+- updated runtime surface contracts and smoke coverage to pin that boundary
+
+Runtime source of truth after Phase 8:
+
+- Python remains the production default for `skill-bill`, `skill-bill-mcp`,
+  installer bootstrapping, and MCP start scripts
+- Kotlin owns the already ported runtime surfaces inside `runtime-kotlin`
+- Phase 9 is responsible for executable packaging and changing default
+  entrypoint routing
+
+Validation run in this session:
+
+- `cd runtime-kotlin && ./gradlew check`
+- `.venv/bin/python3 -m unittest discover -s tests`
+- `npx --yes agnix --strict .`
+- `.venv/bin/python3 scripts/validate_agent_configs.py`
+
+## Phase 8 Exit Result
+
+Checkpoint status:
+
+- cutover checklist exists and names default runtime, Kotlin parity gates,
+  Phase 9 switch plan, and rollback path
+- scaffold and install runtime contracts are active; launcher remains the only
+  reserved default-runtime switch surface
+- production Python entrypoints remain unchanged
+
+## Next Session Start
+
+Start with `Phase 9 - Final cutover` only after every gate in
+`docs/migrations/SKILL-27-cutover-checklist.md` is satisfied.

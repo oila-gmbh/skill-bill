@@ -3,16 +3,15 @@ package skillbill.scaffold
 import skillbill.contracts.surface.RuntimeSurfaceContract
 import skillbill.contracts.surface.RuntimeSurfaceStatus
 
-/** Reserved until governed skill scaffolding is intentionally ported. */
+/** Kotlin-owned governed loader and scaffold mutation surface. */
 object ScaffoldRuntime {
   val contract: RuntimeSurfaceContract = RuntimeSurfaceContract(
     name = "scaffold",
     ownerPackage = "skillbill.scaffold",
     contractVersion = "0.1",
-    status = RuntimeSurfaceStatus.RESERVED,
-    summary = "Governed skill scaffolding and loader runtime surface.",
-    placeholderReason =
-    "The Python scaffolder remains canonical for governed skill authoring; Kotlin should expose this surface only " +
-      "after scaffold payload validation and atomic file writes are ported together.",
+    status = RuntimeSurfaceStatus.ACTIVE,
+    summary = "Governed loader, scaffold planning, manifest mutation, symlink wiring, and rollback surface.",
+    placeholderReason = "",
+    supportedOperations = listOf("load-pack", "discover-packs", "discover-addons", "scaffold", "dry-run"),
   )
 }

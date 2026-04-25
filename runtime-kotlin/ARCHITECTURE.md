@@ -83,10 +83,16 @@ di
   `skillbill.application.WorkflowService`, modeled in `runtime-domain`, mapped
   through `runtime-contracts`, and persisted through workflow repository ports
   backed by the existing SQLite tables.
-- `skillbill.install`, `skillbill.launcher`, and `skillbill.scaffold`:
-  reserved runtime surfaces. Each exposes a `RuntimeSurfaceContract` with
-  status, owner package, and the reason it stays placeholder-only until that
-  behavior is intentionally ported.
+- `skillbill.install`: active Kotlin-owned install primitives for agent-path
+  detection, skill symlink installation, and install rollback support. The
+  shell installer remains Python-owned until cutover packaging changes
+  intentionally move it.
+- `skillbill.scaffold`: active Kotlin-owned governed loader and scaffold
+  mutation surface, including manifest discovery, scaffold planning, symlink
+  wiring, and rollback primitives.
+- `skillbill.launcher`: reserved runtime-selection surface. It exposes a
+  `RuntimeSurfaceContract` but remains placeholder-only until Phase 9 adds a
+  Kotlin-default launcher and documented Python fallback.
 
 ## Boundary Rules
 
@@ -160,8 +166,9 @@ useful for the next refactors:
   mappers, while CLI text rendering should consume typed CLI presenter models
   instead of raw maps
 - runtime surfaces must expose a documented `RuntimeSurfaceContract`; active
-  workflow surfaces declare open/update/get/list/latest/resume/continue while
-  reserved surfaces stay placeholder-only
+  workflow surfaces declare open/update/get/list/latest/resume/continue,
+  scaffold/install declare their supported operations, and the launcher stays
+  reserved until the default-runtime switch
 - `RuntimeContext` lives in `skillbill.model` and must not import
   infrastructure defaults; concrete adapters are provided by CLI/MCP contexts
   or DI composition roots
@@ -176,9 +183,12 @@ useful for the next refactors:
 
 ## Near-Term Refactor Order
 
-1. Continue replacing non-learning application-layer `Map<String, Any?>`
+1. Prepare Phase 9 cutover by keeping
+   `docs/migrations/SKILL-27-cutover-checklist.md` current with the default
+   runtime, Kotlin opt-in path, validation gates, and rollback path.
+2. Continue replacing non-learning application-layer `Map<String, Any?>`
    results with typed results.
-2. Add contract DTOs and golden output fixtures for the remaining JSON
+3. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-3. Continue tightening public APIs so each physical module exposes only the
+4. Continue tightening public APIs so each physical module exposes only the
    contracts needed by downstream modules.
