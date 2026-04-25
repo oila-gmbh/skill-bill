@@ -14,9 +14,22 @@ subprojects {
   version = rootProject.version
 }
 
-val buildLogicCheck = gradle.includedBuild("build-logic").task(":convention:check")
+val buildLogic = gradle.includedBuild("build-logic")
+val buildLogicCheck = buildLogic.task(":convention:check")
+val buildLogicDetekt = buildLogic.task(":convention:detekt")
+val buildLogicSpotlessCheck = buildLogic.task(":convention:spotlessCheck")
 
 tasks.named("check") {
   dependsOn(buildLogicCheck)
   dependsOn(subprojects.map { subproject -> subproject.tasks.named("check") })
+}
+
+tasks.register("detekt") {
+  dependsOn(buildLogicDetekt)
+  dependsOn(subprojects.map { subproject -> subproject.tasks.named("detekt") })
+}
+
+tasks.register("spotlessCheck") {
+  dependsOn(buildLogicSpotlessCheck)
+  dependsOn(subprojects.map { subproject -> subproject.tasks.named("spotlessCheck") })
 }
