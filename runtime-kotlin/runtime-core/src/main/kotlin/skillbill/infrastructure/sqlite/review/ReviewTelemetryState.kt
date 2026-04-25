@@ -1,8 +1,8 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.TelemetryOutboxStore
-import skillbill.telemetry.TelemetryConfigRuntime
+import skillbill.review.ReviewSummary
 import java.sql.Connection
 
 data class ReviewTelemetryState(
@@ -11,15 +11,9 @@ data class ReviewTelemetryState(
 )
 
 fun resolveTelemetryState(enabled: Boolean?, level: String?): ReviewTelemetryState {
-  val settings =
-    if (enabled == null || level == null) {
-      runCatching { TelemetryConfigRuntime.loadTelemetrySettings() }.getOrNull()
-    } else {
-      null
-    }
   return ReviewTelemetryState(
-    enabled = enabled ?: settings?.enabled ?: false,
-    level = level ?: settings?.level ?: "off",
+    enabled = enabled ?: false,
+    level = level ?: "off",
   )
 }
 

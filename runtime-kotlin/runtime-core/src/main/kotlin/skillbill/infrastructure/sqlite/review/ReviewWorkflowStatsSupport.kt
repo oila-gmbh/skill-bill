@@ -1,4 +1,4 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
 import java.sql.Connection
 

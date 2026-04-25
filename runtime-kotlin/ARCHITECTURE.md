@@ -34,20 +34,23 @@ di
   filesystem/time abstractions.
 - `skillbill.infrastructure`: concrete adapters for port contracts. SQLite
   adapters own JDBC connection/session behavior and table-shaped repository
-  implementations; HTTP adapters own telemetry relay request/response details;
+  implementations, including SQL-backed review persistence, stats, and review
+  telemetry state; HTTP adapters own telemetry relay request/response details;
   filesystem adapters own telemetry config file reads and writes.
 - `skillbill.db`: SQLite schema, migrations, connection bootstrap, and current
   JDBC stores.
-- `skillbill.review`: pure review parsing and triage decision normalization
-  plus transitional review metrics, review telemetry state, and current review
-  persistence helpers.
+- `skillbill.review`: review domain models, pure review parsing, triage
+  decision normalization, and input reading helpers. It must stay free of JDBC,
+  SQLite infrastructure, telemetry facades, and persistence adapters.
 - `skillbill.learnings`: learning records, learning scope rules, learning
   source validation rules, and learning payload helpers. It must stay free of
   JDBC.
 - `skillbill.telemetry`: telemetry settings normalization, sync orchestration,
-  config mutation rules, sync result models, and compatibility facades.
-- `skillbill.contracts`: shared JSON and runtime contract helpers, including
-  telemetry proxy DTO/payload mappers.
+  config mutation rules, sync result models, and port-backed compatibility
+  facades.
+- `skillbill.contracts`: shared JSON and runtime contract DTOs plus pure
+  serialization helpers. Mapping from application/domain/port models into
+  contract DTOs belongs in application or adapter-owned packages.
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.workflow.*`, `skillbill.install`, `skillbill.launcher`, and
   `skillbill.scaffold`: reserved runtime surfaces. Each exposes a
@@ -76,7 +79,8 @@ These are the stable dependency rules the runtime should converge toward.
 8. Telemetry application use cases must depend on `TelemetrySettingsProvider`,
    `TelemetryConfigStore`, `TelemetryClient`, and `TelemetryOutboxRepository`.
    HTTP request mechanics belong in `infrastructure/http`; config file IO
-   belongs in `infrastructure/fs`; telemetry proxy DTOs belong in `contracts`.
+   belongs in `infrastructure/fs`; telemetry proxy DTOs belong in `contracts`
+   and telemetry proxy payload mapping belongs with the HTTP adapter.
 
 ## Architecture Guardrails
 
@@ -101,12 +105,15 @@ useful for the next refactors:
   for learnings lives in infrastructure adapters
 - review parsing and triage decision normalization are pure surfaces that do
   not import JDBC or persistence adapters
+- SQL-backed review persistence, stats, workflow telemetry, and feedback
+  helpers live under `skillbill.infrastructure.sqlite.review`
 - telemetry sync orchestration depends on telemetry ports and the outbox
   repository, not on SQLite, filesystem IO, or Java HTTP APIs
 - telemetry HTTP request/response details live under `skillbill.infrastructure.http`
   and telemetry config file IO lives under `skillbill.infrastructure.fs`
 - telemetry proxy batch and stats wire payloads are explicit contract helpers,
-  separate from sync orchestration
+  separate from sync orchestration; model-to-contract mapping must stay out of
+  `skillbill.contracts`
 - SQLite schema changes are represented as append-only versioned database migrations
   and recorded in `schema_migrations`
 - CLI and MCP JSON output should be produced through explicit contract DTOs and
@@ -114,10 +121,13 @@ useful for the next refactors:
   instead of raw maps
 - reserved runtime surfaces must expose a documented `RuntimeSurfaceContract`
   instead of empty marker interfaces
+- `RuntimeContext` must not import infrastructure defaults; concrete adapters
+  are provided by CLI/MCP contexts or DI composition roots
 - the first physical Gradle module split is limited to `runtime-core`,
   `runtime-cli`, and `runtime-mcp`; deeper contract, domain, application, and
-  infrastructure modules remain deferred until the upward dependencies listed
-  in `docs/architecture/gradle-module-split-evaluation.md` are removed
+  infrastructure modules are deferred to a dedicated extraction after the
+  package-level split blockers documented in
+  `docs/architecture/gradle-module-split-evaluation.md` were removed
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -125,10 +135,7 @@ useful for the next refactors:
 
 1. Continue replacing non-learning application-layer `Map<String, Any?>`
    results with typed results.
-2. Move remaining pure domain models/rules away from JDBC-shaped runtime
-   objects.
-3. Add contract DTOs and golden output fixtures for the remaining JSON
+2. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-4. Remove the remaining split blockers documented in the Gradle module split
-   evaluation, then split deeper contract, application, infrastructure, and
-   domain modules.
+3. Split deeper contract, application, infrastructure, and domain modules in a
+   dedicated behavior-neutral extraction.

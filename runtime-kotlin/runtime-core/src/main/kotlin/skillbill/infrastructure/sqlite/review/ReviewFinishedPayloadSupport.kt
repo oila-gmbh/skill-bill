@@ -1,7 +1,9 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.learnings.LearningScope
+import skillbill.review.FindingOutcomeRow
+import skillbill.review.ReviewSummary
 import java.sql.Connection
 
 fun reviewFinishedPayload(

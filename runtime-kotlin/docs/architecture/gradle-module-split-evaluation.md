@@ -1,7 +1,7 @@
 # Gradle Module Split Evaluation
 
 Issue: SKILL-28
-Status: First Split Implemented
+Status: First Split Implemented; Deeper Split Blockers Cleaned
 Date: 2026-04-25
 
 ## Decision
@@ -15,9 +15,9 @@ already compile cleanly:
 
 Defer the deeper `runtime-contracts`, `runtime-domain`,
 `runtime-application`, `runtime-infra-sqlite`, and `runtime-infra-http` split
-until the remaining upward dependencies are removed. This keeps Phase 9
-behavior-neutral while still making the user-facing adapters real Gradle
-boundaries.
+to a dedicated extraction. The package-level upward dependencies that blocked
+that work have been removed, but the physical split should still land
+separately to keep the already-open module PR reviewable.
 
 ## Current Modules
 
@@ -45,21 +45,24 @@ because their public context models expose core runtime port types such as
 
 ## Deeper Split Blockers
 
-- `skillbill.contracts.*` still contains mapper functions that import
-  `skillbill.application`, `skillbill.learnings`, `skillbill.review`,
-  `skillbill.ports`, and `skillbill.telemetry` types. A standalone
-  `runtime-contracts` module would either depend upward or require moving those
-  mappers to adapter/application modules first.
-- `skillbill.review` is partly domain and partly transitional runtime support:
-  pure parsing lives beside stats, SQL, workflow telemetry, and compatibility
-  facades. A useful `runtime-domain` split needs those compatibility helpers
-  moved behind ports first.
-- `RuntimeContext` still defaults its requester through
-  `infrastructure.http.JdkHttpRequester`. A clean `runtime-core` or
-  `runtime-application` module needs this default moved to a composition root.
-- `skillbill.telemetry` still has compatibility runtime facades that import
-  infrastructure adapters. A clean `runtime-application` to infrastructure
-  direction needs those facades retired or moved.
+No known package-level upward dependencies remain for the evaluated deeper
+split. The remaining work is mechanical Gradle extraction, dependency
+declaration, and test-fixture ownership.
+
+## Resolved Split Blockers
+
+- `skillbill.contracts.*` now contains DTOs, serializer helpers, and pure
+  contract defaults only. Mapping from application/domain/port models into
+  contract DTOs lives in application or adapter-owned packages.
+- `RuntimeContext` no longer imports the HTTP infrastructure adapter. CLI and
+  MCP composition contexts provide the JDK requester, while core defaults to an
+  explicit unconfigured requester for contexts that do not use HTTP.
+- SQL-backed review persistence, stats, feedback, and workflow telemetry
+  helpers moved under `skillbill.infrastructure.sqlite.review`. The
+  `skillbill.review` package now contains review models, parsing, triage
+  normalization, and input helpers without JDBC or infrastructure imports.
+- Telemetry compatibility facades now depend on telemetry/config/client ports
+  rather than constructing filesystem, SQLite, or HTTP infrastructure adapters.
 
 ## Proven Boundaries Today
 
@@ -70,15 +73,18 @@ and useful now:
 - Application services do not import entrypoint frameworks or SQLite
   infrastructure directly.
 - Learnings domain code stays free of JDBC and review runtime dependencies.
-- Pure review parsing and triage normalization stay persistence-free.
+- The review package stays persistence-free; SQL-backed review helpers live
+  under SQLite infrastructure.
 - Telemetry sync orchestration depends on ports rather than concrete DB,
   filesystem, or HTTP APIs.
+- Telemetry compatibility facades depend on ports rather than infrastructure
+  adapters.
 - Reserved runtime surfaces expose documented `RuntimeSurfaceContract` metadata.
 - CLI and MCP are independently compiled adapter modules.
 
 ## Deeper Split Readiness Criteria
 
-Revisit the deeper physical split when these conditions are true:
+The deeper physical split is ready to plan when these conditions remain true:
 
 1. `skillbill.contracts.*` contains DTOs and serializers only; mapping from
    application/domain models lives in adapter or application packages.
@@ -91,8 +97,8 @@ Revisit the deeper physical split when these conditions are true:
 
 ## Next Increment
 
-Keep `runtime-core` as the integration module for now and continue reducing the
-remaining upward dependencies. Split deeper modules in this order:
+Keep `runtime-core` as the integration module for the current PR. The next
+architecture phase should extract the deeper modules in this order:
 
 1. `runtime-contracts`
 2. `runtime-application`

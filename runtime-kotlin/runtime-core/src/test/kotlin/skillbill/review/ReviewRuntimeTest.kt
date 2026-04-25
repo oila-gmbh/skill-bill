@@ -2,6 +2,7 @@ package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.TABLE_REVIEW
+import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals

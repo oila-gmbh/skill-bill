@@ -1,4 +1,4 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
 const val PARAM_ONE: Int = 1
 const val PARAM_TWO: Int = 2

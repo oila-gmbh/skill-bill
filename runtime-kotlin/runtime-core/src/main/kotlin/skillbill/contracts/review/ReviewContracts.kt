@@ -1,9 +1,6 @@
 package skillbill.contracts.review
 
 import skillbill.contracts.JsonPayloadContract
-import skillbill.review.ImportedReview
-import skillbill.review.NumberedFinding
-import skillbill.review.TriageDecision
 
 data class ReviewPreviewContract(
   val reviewRunId: String,
@@ -103,32 +100,3 @@ data class TriageRecordedContract(
     "recorded" to recorded.map(TriageDecisionContract::toPayload),
   )
 }
-
-fun ImportedReview.toReviewPreviewContract(): ReviewPreviewContract = ReviewPreviewContract(
-  reviewRunId = reviewRunId,
-  reviewSessionId = reviewSessionId,
-  findingCount = findings.size,
-  routedSkill = routedSkill,
-  detectedScope = detectedScope,
-  detectedStack = detectedStack,
-  executionMode = executionMode,
-)
-
-fun ImportedReview.toImportedReviewContract(dbPath: String): ImportedReviewContract =
-  ImportedReviewContract(dbPath = dbPath, review = toReviewPreviewContract())
-
-fun NumberedFinding.toNumberedFindingContract(): NumberedFindingContract = NumberedFindingContract(
-  number = number,
-  findingId = findingId,
-  severity = severity,
-  confidence = confidence,
-  location = location,
-  description = description,
-)
-
-fun TriageDecision.toTriageDecisionContract(): TriageDecisionContract = TriageDecisionContract(
-  number = number,
-  findingId = findingId,
-  outcomeType = outcomeType,
-  note = note,
-)

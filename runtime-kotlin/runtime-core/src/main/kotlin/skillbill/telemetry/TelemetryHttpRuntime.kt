@@ -1,27 +1,18 @@
 package skillbill.telemetry
 
-import skillbill.contracts.telemetry.telemetryProxyBatchPayload
-import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.telemetry.TelemetryClient
 
 object TelemetryHttpRuntime {
-  val defaultHttpRequester: HttpRequester = JdkHttpRequester
+  fun fetchProxyCapabilities(settings: TelemetrySettings, client: TelemetryClient): Map<String, Any?> =
+    client.fetchProxyCapabilities(settings)
 
-  fun buildTelemetryBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>): List<Map<String, Any?>> =
-    telemetryProxyBatchPayload(settings, rows).batch.map { it.toPayload() }
-
-  fun fetchProxyCapabilities(
-    settings: TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(),
-    requester: HttpRequester = defaultHttpRequester,
-    environment: Map<String, String> = System.getenv(),
-  ): Map<String, Any?> = HttpTelemetryClient(requester, environment).fetchProxyCapabilities(settings)
-
-  fun sendProxyBatch(
+  fun fetchRemoteStats(
     settings: TelemetrySettings,
-    rows: List<TelemetryOutboxRecord>,
-    requester: HttpRequester = defaultHttpRequester,
-  ) {
-    HttpTelemetryClient(requester).sendBatch(settings, rows)
-  }
+    request: RemoteStatsRequest,
+    client: TelemetryClient,
+  ): Map<String, Any?> = client.fetchRemoteStats(settings, request)
+
+  fun sendProxyBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>, client: TelemetryClient) =
+    client.sendBatch(settings, rows)
 }

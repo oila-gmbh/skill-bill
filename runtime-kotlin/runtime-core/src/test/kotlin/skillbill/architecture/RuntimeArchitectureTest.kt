@@ -37,15 +37,17 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "repository and unit-of-work ports")
     assertContains(architecture, "LearningRecord is owned by the learnings domain")
     assertContains(architecture, "review parsing and triage decision normalization are pure surfaces")
+    assertContains(architecture, "SQL-backed review persistence")
     assertContains(architecture, "TelemetrySettingsProvider")
     assertContains(architecture, "TelemetryConfigStore")
     assertContains(architecture, "TelemetryClient")
-    assertContains(architecture, "telemetry proxy DTO/payload mappers")
+    assertContains(architecture, "telemetry proxy payload mapping belongs with the HTTP adapter")
     assertContains(architecture, "schema_migrations")
     assertContains(architecture, "versioned database migrations")
     assertContains(architecture, "contract DTOs")
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
+    assertContains(architecture, "RuntimeContext")
     assertContains(architecture, "gradle-module-split-evaluation.md")
   }
 
@@ -128,22 +130,25 @@ class RuntimeArchitectureTest {
   }
 
   @Test
-  fun `review parsing and triage normalization are persistence free`() {
-    val pureReviewFiles =
-      listOf(
-        sourcePath("skillbill/review/ReviewParser.kt"),
-        sourcePath("skillbill/review/TriageDecisionParser.kt"),
-      )
-
+  fun `review package is separated from sqlite runtime support`() {
     assertNoBannedImports(
-      files = pureReviewFiles.map(::sourceFile),
+      files = sourceFiles().filter { it.packageName == "skillbill.review" },
       bannedImports =
       listOf(
         "java.sql",
         "skillbill.db",
         "skillbill.infrastructure",
+        "skillbill.ports",
+        "skillbill.telemetry",
       ),
     )
+
+    val sqliteReviewRuntime = sourcePath("skillbill/infrastructure/sqlite/review/ReviewRuntime.kt")
+    val sqliteTriageRuntime = sourcePath("skillbill/infrastructure/sqlite/review/TriageRuntime.kt")
+    val sqliteStatsRuntime = sourcePath("skillbill/infrastructure/sqlite/review/ReviewStatsRuntime.kt")
+    listOf(sqliteReviewRuntime, sqliteTriageRuntime, sqliteStatsRuntime).forEach { path ->
+      assertContains(Files.readString(path), "package skillbill.infrastructure.sqlite.review")
+    }
   }
 
   @Test
@@ -243,6 +248,29 @@ class RuntimeArchitectureTest {
       Files.readString(sourcePath("skillbill/contracts/telemetry/TelemetryProxyContracts.kt")),
       "data class TelemetryProxyBatchEvent",
     )
+    assertContains(
+      Files.readString(sourcePath("skillbill/infrastructure/http/TelemetryProxyPayloadMappers.kt")),
+      "TelemetryProxyBatchPayload",
+    )
+  }
+
+  @Test
+  fun `contract package stays dto only without upward runtime dependencies`() {
+    assertNoBannedImports(
+      files = sourceFiles().filter { it.packageName.startsWith("skillbill.contracts") },
+      bannedImports =
+      listOf(
+        "skillbill.application",
+        "skillbill.cli",
+        "skillbill.db",
+        "skillbill.infrastructure",
+        "skillbill.learnings",
+        "skillbill.mcp",
+        "skillbill.ports",
+        "skillbill.review",
+        "skillbill.telemetry",
+      ),
+    )
   }
 
   @Test
@@ -250,6 +278,9 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files =
       listOf(
+        sourcePath("skillbill/telemetry/TelemetryConfigRuntime.kt"),
+        sourcePath("skillbill/telemetry/TelemetryConfigMutationRuntime.kt"),
+        sourcePath("skillbill/telemetry/TelemetryHttpRuntime.kt"),
         sourcePath("skillbill/telemetry/TelemetrySyncRuntime.kt"),
         sourcePath("skillbill/telemetry/TelemetryConfigMutations.kt"),
         sourcePath("skillbill/telemetry/DefaultTelemetrySettingsProvider.kt"),
@@ -270,15 +301,29 @@ class RuntimeArchitectureTest {
   fun `cli and mcp learning payloads use contract DTO mappers`() {
     val cliPayloads = Files.readString(sourcePath("skillbill/cli/LearningCliPayloads.kt"))
     val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/McpLearningPayloads.kt"))
+    val learningMappers = Files.readString(sourcePath("skillbill/application/LearningContractMappers.kt"))
     val learningContracts = sourcePath("skillbill/contracts/learning/LearningContracts.kt")
     val systemContracts = sourcePath("skillbill/contracts/system/SystemContracts.kt")
 
     assertTrue(Files.exists(learningContracts), "Missing learning contract DTOs")
     assertTrue(Files.exists(systemContracts), "Missing system contract DTOs")
-    assertContains(cliPayloads, "skillbill.contracts.learning")
-    assertContains(mcpPayloads, "skillbill.contracts.learning")
+    assertContains(cliPayloads, "skillbill.application.toLearning")
+    assertContains(mcpPayloads, "skillbill.application.toLearningResolveContract")
+    assertContains(learningMappers, "skillbill.contracts.learning")
     assertTrue("learningEntryPayload" !in cliPayloads)
     assertTrue("learningEntryPayload" !in mcpPayloads)
+  }
+
+  @Test
+  fun `runtime context does not depend on infrastructure defaults`() {
+    assertNoBannedImports(
+      files = listOf(sourceFile(sourcePath("skillbill/RuntimeContext.kt"))),
+      bannedImports = listOf("skillbill.infrastructure"),
+    )
+    assertContains(
+      Files.readString(sourcePath("skillbill/ports/telemetry/HttpRequester.kt")),
+      "object UnconfiguredHttpRequester",
+    )
   }
 
   @Test
@@ -295,6 +340,8 @@ class RuntimeArchitectureTest {
     assertContains(evaluation, "runtime-cli")
     assertContains(evaluation, "runtime-mcp")
     assertContains(evaluation, "RuntimeContext")
+    assertContains(evaluation, "Resolved Split Blockers")
+    assertContains(evaluation, "No known package-level upward dependencies remain")
     assertContains(evaluation, "Deeper Split Readiness Criteria")
   }
 

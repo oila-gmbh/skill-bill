@@ -56,6 +56,18 @@ data class TriageDecision(
   val note: String,
 )
 
+data class FeedbackRequest(
+  val reviewRunId: String,
+  val findingIds: List<String>,
+  val eventType: String,
+  val note: String,
+)
+
+data class FeedbackTelemetryOptions(
+  val enabled: Boolean? = null,
+  val level: String? = null,
+)
+
 data class FindingOutcomeRow(
   val reviewRunId: String,
   val findingId: String,

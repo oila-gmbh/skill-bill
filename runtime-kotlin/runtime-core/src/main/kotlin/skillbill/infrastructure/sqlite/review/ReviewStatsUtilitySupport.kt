@@ -1,4 +1,4 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import java.time.Duration

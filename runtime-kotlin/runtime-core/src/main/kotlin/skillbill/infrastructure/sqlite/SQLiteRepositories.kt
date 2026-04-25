@@ -2,6 +2,13 @@ package skillbill.infrastructure.sqlite
 
 import skillbill.db.TelemetryOutboxStore
 import skillbill.db.WorkflowStateStore
+import skillbill.infrastructure.sqlite.review.ReviewRuntime
+import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
+import skillbill.infrastructure.sqlite.review.TriageRuntime
+import skillbill.infrastructure.sqlite.review.existingReviewSummary
+import skillbill.infrastructure.sqlite.review.replaceFindings
+import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
+import skillbill.infrastructure.sqlite.review.upsertReviewRun
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningRecord
 import skillbill.learnings.LearningSourceValidation
@@ -18,13 +25,6 @@ import skillbill.review.FeedbackRequest
 import skillbill.review.FeedbackTelemetryOptions
 import skillbill.review.ImportedReview
 import skillbill.review.NumberedFinding
-import skillbill.review.ReviewRuntime
-import skillbill.review.ReviewStatsRuntime
-import skillbill.review.TriageRuntime
-import skillbill.review.existingReviewSummary
-import skillbill.review.replaceFindings
-import skillbill.review.reviewSummaryChanged
-import skillbill.review.upsertReviewRun
 import java.nio.file.Path
 import java.sql.Connection
 

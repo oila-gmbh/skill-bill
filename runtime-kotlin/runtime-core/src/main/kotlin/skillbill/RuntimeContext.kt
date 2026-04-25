@@ -1,7 +1,7 @@
 package skillbill
 
-import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import java.nio.file.Path
 
 data class RuntimeContext(
@@ -9,5 +9,5 @@ data class RuntimeContext(
   val stdinText: String? = null,
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
-  val requester: HttpRequester = JdkHttpRequester,
+  val requester: HttpRequester = UnconfiguredHttpRequester,
 )

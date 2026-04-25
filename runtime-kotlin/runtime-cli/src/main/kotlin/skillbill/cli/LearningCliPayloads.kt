@@ -4,10 +4,10 @@ import skillbill.application.LearningDeleteResult
 import skillbill.application.LearningListResult
 import skillbill.application.LearningRecordResult
 import skillbill.application.LearningResolveResult
-import skillbill.contracts.learning.toLearningDeleteContract
-import skillbill.contracts.learning.toLearningListContract
-import skillbill.contracts.learning.toLearningRecordContract
-import skillbill.contracts.learning.toLearningResolveContract
+import skillbill.application.toLearningDeleteContract
+import skillbill.application.toLearningListContract
+import skillbill.application.toLearningRecordContract
+import skillbill.application.toLearningResolveContract
 
 internal fun LearningListResult.toPayload(): Map<String, Any?> = toLearningListContract().toPayload()
 

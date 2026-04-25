@@ -5,7 +5,6 @@ import skillbill.RuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
-import skillbill.contracts.telemetry.telemetryProxyBatchPayload
 import skillbill.ports.persistence.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.HttpResponse

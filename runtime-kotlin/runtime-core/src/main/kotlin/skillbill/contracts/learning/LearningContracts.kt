@@ -1,11 +1,6 @@
 package skillbill.contracts.learning
 
-import skillbill.application.LearningDeleteResult
-import skillbill.application.LearningListResult
-import skillbill.application.LearningRecordResult
-import skillbill.application.LearningResolveResult
 import skillbill.contracts.JsonPayloadContract
-import skillbill.learnings.LearningEntry
 
 data class LearningEntryDto(
   val reference: String,
@@ -80,36 +75,6 @@ data class LearningDeleteContract(
     "deleted_learning_id" to deletedLearningId,
   )
 }
-
-fun LearningEntry.toLearningEntryDto(): LearningEntryDto = LearningEntryDto(
-  reference = reference,
-  scope = scope.wireName,
-  scopeKey = scopeKey,
-  status = status,
-  title = title,
-  ruleText = ruleText,
-  rationale = rationale,
-  sourceReviewRunId = sourceReviewRunId,
-  sourceFindingId = sourceFindingId,
-)
-
-fun LearningListResult.toLearningListContract(): LearningListContract =
-  LearningListContract(dbPath = dbPath, learnings = learnings.map(LearningEntry::toLearningEntryDto))
-
-fun LearningRecordResult.toLearningRecordContract(): LearningRecordContract =
-  LearningRecordContract(dbPath = dbPath, learning = learning.toLearningEntryDto())
-
-fun LearningResolveResult.toLearningResolveContract(): LearningResolveContract = LearningResolveContract(
-  dbPath = dbPath,
-  repoScopeKey = repoScopeKey,
-  skillName = skillName,
-  reviewSessionId = reviewSessionId,
-  scopePrecedence = scopePrecedence.map { scope -> scope.wireName },
-  learnings = learnings.map(LearningEntry::toLearningEntryDto),
-)
-
-fun LearningDeleteResult.toLearningDeleteContract(): LearningDeleteContract =
-  LearningDeleteContract(dbPath = dbPath, deletedLearningId = deletedLearningId)
 
 private fun summarizeLearningReferences(entries: List<LearningEntryDto>): String =
   if (entries.isEmpty()) "none" else entries.joinToString(", ") { it.reference }

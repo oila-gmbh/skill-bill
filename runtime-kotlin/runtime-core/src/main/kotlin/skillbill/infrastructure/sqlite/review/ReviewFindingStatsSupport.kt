@@ -1,5 +1,7 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
+import skillbill.review.FindingOutcomeRow
+import skillbill.review.ReviewSummary
 import java.sql.Connection
 
 private val acceptedFindingOutcomeTypes = setOf("finding_accepted", "fix_applied", "finding_edited")

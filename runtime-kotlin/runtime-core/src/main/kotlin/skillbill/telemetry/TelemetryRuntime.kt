@@ -1,20 +1,16 @@
 package skillbill.telemetry
 
-import java.nio.file.Path
+import skillbill.ports.telemetry.TelemetrySettingsProvider
 
 object TelemetryRuntime {
   fun loadTelemetrySettings(
+    settingsProvider: TelemetrySettingsProvider,
     materialize: Boolean = false,
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
   ): TelemetrySettings = TelemetryConfigRuntime.loadTelemetrySettings(
     materialize = materialize,
-    environment = environment,
-    userHome = userHome,
+    settingsProvider = settingsProvider,
   )
 
-  fun telemetryIsEnabled(
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
-  ): Boolean = TelemetryConfigRuntime.telemetryIsEnabled(environment, userHome)
+  fun telemetryIsEnabled(settingsProvider: TelemetrySettingsProvider): Boolean =
+    TelemetryConfigRuntime.telemetryIsEnabled(settingsProvider)
 }

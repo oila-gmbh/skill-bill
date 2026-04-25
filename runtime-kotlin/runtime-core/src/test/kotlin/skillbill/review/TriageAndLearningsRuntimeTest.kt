@@ -3,6 +3,8 @@ package skillbill.review
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
+import skillbill.infrastructure.sqlite.review.ReviewRuntime
+import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.learnings.CreateLearningRequest
 import skillbill.learnings.LearningScope
 import skillbill.learnings.LearningSourceValidation

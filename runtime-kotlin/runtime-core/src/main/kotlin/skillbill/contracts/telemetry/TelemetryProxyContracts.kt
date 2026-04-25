@@ -1,9 +1,5 @@
 package skillbill.contracts.telemetry
 
-import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.TelemetryOutboxRecord
-import skillbill.telemetry.TelemetrySettings
-
 data class TelemetryProxyBatchEvent(
   val event: String,
   val distinctId: String,
@@ -40,21 +36,6 @@ data class RemoteStatsQueryPayload(
   }
 }
 
-fun telemetryProxyBatchPayload(
-  settings: TelemetrySettings,
-  rows: List<TelemetryOutboxRecord>,
-): TelemetryProxyBatchPayload = TelemetryProxyBatchPayload(
-  batch =
-  rows.map { row ->
-    TelemetryProxyBatchEvent(
-      event = row.eventName,
-      distinctId = settings.installId,
-      properties = telemetryProperties(row.payloadJson, settings.installId),
-      timestamp = row.createdAt,
-    )
-  },
-)
-
 fun defaultProxyCapabilities(proxyUrl: String, capabilitiesUrl: String): Map<String, Any?> = mapOf(
   "contract_version" to "0",
   "source" to "remote_proxy",
@@ -64,12 +45,3 @@ fun defaultProxyCapabilities(proxyUrl: String, capabilitiesUrl: String): Map<Str
   "supports_stats" to false,
   "supported_workflows" to emptyList<String>(),
 )
-
-private fun telemetryProperties(payloadJson: String, installId: String): MutableMap<String, Any?> = (
-  JsonSupport.parseObjectOrNull(payloadJson)?.let {
-    JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
-  } ?: emptyMap()
-  ).toMutableMap().apply {
-  this["install_id"] = installId
-  this["\$process_person_profile"] = false
-}

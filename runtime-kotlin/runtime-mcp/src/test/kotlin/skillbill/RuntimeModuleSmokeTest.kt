@@ -8,7 +8,7 @@ import skillbill.install.InstallRuntime
 import skillbill.launcher.LauncherRuntime
 import skillbill.learnings.LearningsRuntime
 import skillbill.mcp.McpRuntime
-import skillbill.review.ReviewRuntime
+import skillbill.review.ReviewParser
 import skillbill.scaffold.ScaffoldRuntime
 import skillbill.telemetry.TelemetryRuntime
 import skillbill.workflow.implement.FeatureImplementWorkflowRuntime
@@ -98,7 +98,7 @@ class RuntimeModuleSmokeTest {
         McpRuntime::class,
         DatabaseRuntime::class,
         TelemetryRuntime::class,
-        ReviewRuntime::class,
+        ReviewParser::class,
         LearningsRuntime::class,
       )
     val reservedContracts =

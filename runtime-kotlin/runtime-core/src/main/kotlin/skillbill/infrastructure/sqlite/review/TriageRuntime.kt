@@ -1,19 +1,11 @@
-package skillbill.review
+package skillbill.infrastructure.sqlite.review
 
-import skillbill.telemetry.TelemetryConfigRuntime
+import skillbill.review.FeedbackRequest
+import skillbill.review.FeedbackTelemetryOptions
+import skillbill.review.NumberedFinding
+import skillbill.review.TriageDecision
+import skillbill.review.TriageDecisionParser
 import java.sql.Connection
-
-data class FeedbackRequest(
-  val reviewRunId: String,
-  val findingIds: List<String>,
-  val eventType: String,
-  val note: String,
-)
-
-data class FeedbackTelemetryOptions(
-  val enabled: Boolean? = null,
-  val level: String? = null,
-)
 
 object TriageRuntime {
   fun expandBulkDecisions(rawDecisions: List<String>, numberedFindings: List<NumberedFinding>): List<String> =
@@ -49,8 +41,8 @@ object TriageRuntime {
     return ReviewStatsRuntime.updateReviewFinishedTelemetryState(
       connection = connection,
       reviewRunId = request.reviewRunId,
-      enabled = telemetryOptions.enabled ?: TelemetryConfigRuntime.telemetryIsEnabled(),
-      level = telemetryOptions.level,
+      enabled = telemetryOptions.enabled ?: false,
+      level = telemetryOptions.level ?: "off",
     )
   }
 }

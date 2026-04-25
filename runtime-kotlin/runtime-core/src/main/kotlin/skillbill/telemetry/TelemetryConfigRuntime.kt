@@ -1,24 +1,14 @@
 package skillbill.telemetry
 
-import skillbill.RuntimeContext
-import skillbill.infrastructure.fs.FileTelemetryConfigStore
-import skillbill.infrastructure.fs.ensureTelemetryConfigFile
-import skillbill.infrastructure.fs.readTelemetryConfigFile
-import skillbill.infrastructure.fs.resolveTelemetryConfigPath
-import skillbill.infrastructure.fs.resolveTelemetryStateDir
+import skillbill.ports.telemetry.TelemetryConfigStore
+import skillbill.ports.telemetry.TelemetrySettingsProvider
 import java.nio.file.Path
 import java.util.UUID
 
 object TelemetryConfigRuntime {
-  fun stateDir(
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
-  ): Path = resolveTelemetryStateDir(environment, userHome)
+  fun stateDir(configStore: TelemetryConfigStore): Path = configStore.stateDir()
 
-  fun resolveConfigPath(
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
-  ): Path = resolveTelemetryConfigPath(environment, userHome)
+  fun resolveConfigPath(configStore: TelemetryConfigStore): Path = configStore.configPath()
 
   fun defaultLocalConfig(): Map<String, Any?> = mapOf(
     "install_id" to UUID.randomUUID().toString(),
@@ -30,9 +20,9 @@ object TelemetryConfigRuntime {
       ),
   )
 
-  fun readLocalConfig(path: Path): Map<String, Any?>? = readTelemetryConfigFile(path)
+  fun readLocalConfig(configStore: TelemetryConfigStore): Map<String, Any?>? = configStore.read()
 
-  fun ensureLocalConfig(path: Path): Map<String, Any?> = ensureTelemetryConfigFile(path)
+  fun ensureLocalConfig(configStore: TelemetryConfigStore): Map<String, Any?> = configStore.ensure()
 
   fun parseBoolValue(rawValue: String, name: String): Boolean = when (rawValue.trim().lowercase()) {
     "1", "true", "yes", "on" -> true
@@ -56,18 +46,9 @@ object TelemetryConfigRuntime {
 
   fun loadTelemetrySettings(
     materialize: Boolean = false,
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
-  ): TelemetrySettings = loadTelemetrySettingsFromStore(
-    materialize = materialize,
-    environment = environment,
-    configStore = FileTelemetryConfigStore(RuntimeContext(environment = environment, userHome = userHome)),
-  )
+    settingsProvider: TelemetrySettingsProvider,
+  ): TelemetrySettings = settingsProvider.load(materialize)
 
-  fun telemetryIsEnabled(
-    environment: Map<String, String> = System.getenv(),
-    userHome: Path = Path.of(System.getProperty("user.home")),
-  ): Boolean = runCatching {
-    loadTelemetrySettings(environment = environment, userHome = userHome).enabled
-  }.getOrDefault(false)
+  fun telemetryIsEnabled(settingsProvider: TelemetrySettingsProvider): Boolean =
+    settingsProvider.loadOrNull()?.enabled ?: false
 }
