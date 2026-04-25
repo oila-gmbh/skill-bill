@@ -5,6 +5,13 @@ object RuntimeModule {
   const val NAME: String = "runtime-kotlin"
   const val TOOLCHAIN_JDK: Int = 17
 
+  val declaredGradleModules: List<String> =
+    listOf(
+      "runtime-core",
+      "runtime-cli",
+      "runtime-mcp",
+    )
+
   val declaredSubsystemPackages: List<String> =
     listOf(
       "skillbill.application",

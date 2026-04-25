@@ -2,7 +2,7 @@
 issue_key: SKILL-28
 feature_name: runtime-architecture-hardening
 feature_size: LARGE
-status: In Progress
+status: Complete
 created: 2026-04-24
 depends_on: SKILL-27 Kotlin runtime foundation, SKILL-27 persistence core, SKILL-27 review domain
 ---
@@ -71,7 +71,13 @@ This spec records the next architecture steps after that baseline.
 
 ## Current runtime shape
 
-`runtime-kotlin` is still a single Gradle module. Current package surfaces:
+`runtime-kotlin` now has a first physical Gradle split for adapter boundaries:
+
+- `runtime-core`
+- `runtime-cli`
+- `runtime-mcp`
+
+Current package surfaces:
 
 - `skillbill.cli`
 - `skillbill.mcp`
@@ -89,9 +95,10 @@ This spec records the next architecture steps after that baseline.
 - `skillbill.launcher`
 - `skillbill.error`
 
-The single-module shape should stay until package boundaries are enforceable
-and useful. A Gradle module split should be a later extraction, not the first
-move.
+The deeper contract, application, domain, and infrastructure module split
+should stay deferred until those package boundaries are enforceable and useful.
+The first extraction should remain limited to adapter modules that already
+compile cleanly against core.
 
 ## Target dependency direction
 
@@ -122,7 +129,8 @@ Boundary rule:
 
 ## Target package shape
 
-The near-term package shape should remain inside one Gradle module:
+The near-term package shape should remain mostly inside `runtime-core`, with
+CLI and MCP adapters in their own Gradle modules:
 
 ```text
 skillbill/
@@ -242,7 +250,8 @@ injecting smaller dependencies such as `Environment`, `UserHome`, `Clock`,
   schema semantics as part of architecture cleanup.
 - Replacing SQLite.
 - Introducing coroutine infrastructure unless a real async boundary appears.
-- Splitting Gradle modules before package boundaries are stable.
+- Splitting deeper contract, domain, application, or infrastructure Gradle
+  modules before package boundaries are stable.
 - Creating a framework-heavy architecture that is harder to understand than
   the current runtime.
 - Deleting the Python runtime or changing the wider SKILL-27 migration plan.
@@ -396,7 +405,8 @@ Candidate modules:
 
 Acceptance criteria:
 
-1. Module split enforces boundaries already proven by tests.
+1. Module split enforces boundaries already proven by tests, or documents why
+   deeper modules are intentionally deferred.
 2. Build time and developer ergonomics remain acceptable.
 3. No behavior changes are bundled with the split.
 
@@ -449,4 +459,3 @@ Architecture-specific phases should also add or update:
 
 4. Should Kotlin-Inject replace all singleton runtime objects immediately?
    Recommendation: no. Replace them only as dependencies become explicit.
-

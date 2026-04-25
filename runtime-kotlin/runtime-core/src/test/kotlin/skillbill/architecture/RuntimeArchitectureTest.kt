@@ -9,12 +9,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class RuntimeArchitectureTest {
-  private val projectRoot: Path = Path.of("").toAbsolutePath().normalize()
-  private val sourceRoot: Path = projectRoot.resolve("src/main/kotlin")
+  private val runtimeRoot: Path =
+    Path.of("").toAbsolutePath().normalize().let { workingDir ->
+      if (workingDir.fileName.toString().startsWith("runtime-")) {
+        workingDir.parent
+      } else {
+        workingDir
+      }
+    }
+  private val sourceRoots: List<Path> =
+    listOf(
+      runtimeRoot.resolve("runtime-core/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-cli/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-mcp/src/main/kotlin"),
+    )
 
   @Test
   fun `architecture document declares package ownership and dependency direction`() {
-    val architecture = Files.readString(projectRoot.resolve("ARCHITECTURE.md"))
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
 
     assertContains(architecture, "cli / mcp")
     assertContains(architecture, "-> application use cases")
@@ -34,6 +46,7 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "contract DTOs")
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
+    assertContains(architecture, "gradle-module-split-evaluation.md")
   }
 
   @Test
@@ -108,8 +121,8 @@ class RuntimeArchitectureTest {
       ),
     )
 
-    val reviewModels = Files.readString(sourceRoot.resolve("skillbill/review/ReviewModels.kt"))
-    val learningRecord = Files.readString(sourceRoot.resolve("skillbill/learnings/LearningRecord.kt"))
+    val reviewModels = Files.readString(sourcePath("skillbill/review/ReviewModels.kt"))
+    val learningRecord = Files.readString(sourcePath("skillbill/learnings/LearningRecord.kt"))
     assertTrue("data class LearningRecord" !in reviewModels)
     assertContains(learningRecord, "data class LearningRecord")
   }
@@ -118,8 +131,8 @@ class RuntimeArchitectureTest {
   fun `review parsing and triage normalization are persistence free`() {
     val pureReviewFiles =
       listOf(
-        sourceRoot.resolve("skillbill/review/ReviewParser.kt"),
-        sourceRoot.resolve("skillbill/review/TriageDecisionParser.kt"),
+        sourcePath("skillbill/review/ReviewParser.kt"),
+        sourcePath("skillbill/review/TriageDecisionParser.kt"),
       )
 
     assertNoBannedImports(
@@ -138,8 +151,8 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files =
       sourceFiles().filter { file ->
-        file.relativePath.startsWith("skillbill/cli/") &&
-          !file.relativePath.startsWith("skillbill/cli/models/")
+        file.packageName.startsWith("skillbill.cli") &&
+          !file.packageName.startsWith("skillbill.cli.models")
       },
       bannedImports =
       listOf(
@@ -158,7 +171,7 @@ class RuntimeArchitectureTest {
   @Test
   fun `mcp workflow calls delegate to application instead of low level runtimes`() {
     assertNoBannedImports(
-      files = sourceFiles().filter { file -> file.relativePath.startsWith("skillbill/mcp/") },
+      files = sourceFiles().filter { file -> file.packageName.startsWith("skillbill.mcp") },
       bannedImports =
       listOf(
         "skillbill.db",
@@ -173,7 +186,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `learning service exposes typed results instead of map payloads`() {
-    val serviceSource = Files.readString(sourceRoot.resolve("skillbill/application/LearningService.kt"))
+    val serviceSource = Files.readString(sourcePath("skillbill/application/LearningService.kt"))
     val mapReturningLearningFunctions =
       Regex("""fun\s+(list|show|resolve|add|edit|setStatus|delete)\s*\([^)]*\)\s*:\s*Map<""")
         .findAll(serviceSource)
@@ -209,25 +222,25 @@ class RuntimeArchitectureTest {
   fun `telemetry ports and adapters are explicit package surfaces`() {
     val portFiles =
       listOf(
-        sourceRoot.resolve("skillbill/ports/telemetry/TelemetrySettingsProvider.kt"),
-        sourceRoot.resolve("skillbill/ports/telemetry/TelemetryConfigStore.kt"),
-        sourceRoot.resolve("skillbill/ports/telemetry/TelemetryClient.kt"),
-        sourceRoot.resolve("skillbill/ports/persistence/TelemetryOutboxRepository.kt"),
+        sourcePath("skillbill/ports/telemetry/TelemetrySettingsProvider.kt"),
+        sourcePath("skillbill/ports/telemetry/TelemetryConfigStore.kt"),
+        sourcePath("skillbill/ports/telemetry/TelemetryClient.kt"),
+        sourcePath("skillbill/ports/persistence/TelemetryOutboxRepository.kt"),
       )
     portFiles.forEach { path ->
-      assertTrue(Files.exists(path), "Missing telemetry port: ${sourceRoot.relativize(path)}")
+      assertTrue(Files.exists(path), "Missing telemetry port: ${runtimeRoot.relativize(path)}")
     }
 
     assertContains(
-      Files.readString(sourceRoot.resolve("skillbill/infrastructure/http/HttpTelemetryClient.kt")),
+      Files.readString(sourcePath("skillbill/infrastructure/http/HttpTelemetryClient.kt")),
       "java.net.http.HttpClient",
     )
     assertContains(
-      Files.readString(sourceRoot.resolve("skillbill/infrastructure/fs/FileTelemetryConfigStore.kt")),
+      Files.readString(sourcePath("skillbill/infrastructure/fs/FileTelemetryConfigStore.kt")),
       "java.nio.file.Files",
     )
     assertContains(
-      Files.readString(sourceRoot.resolve("skillbill/contracts/telemetry/TelemetryProxyContracts.kt")),
+      Files.readString(sourcePath("skillbill/contracts/telemetry/TelemetryProxyContracts.kt")),
       "data class TelemetryProxyBatchEvent",
     )
   }
@@ -237,10 +250,10 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files =
       listOf(
-        sourceRoot.resolve("skillbill/telemetry/TelemetrySyncRuntime.kt"),
-        sourceRoot.resolve("skillbill/telemetry/TelemetryConfigMutations.kt"),
-        sourceRoot.resolve("skillbill/telemetry/DefaultTelemetrySettingsProvider.kt"),
-        sourceRoot.resolve("skillbill/telemetry/TelemetryRemoteStatsRuntime.kt"),
+        sourcePath("skillbill/telemetry/TelemetrySyncRuntime.kt"),
+        sourcePath("skillbill/telemetry/TelemetryConfigMutations.kt"),
+        sourcePath("skillbill/telemetry/DefaultTelemetrySettingsProvider.kt"),
+        sourcePath("skillbill/telemetry/TelemetryRemoteStatsRuntime.kt"),
       ).map(::sourceFile),
       bannedImports =
       listOf(
@@ -255,10 +268,10 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `cli and mcp learning payloads use contract DTO mappers`() {
-    val cliPayloads = Files.readString(sourceRoot.resolve("skillbill/cli/LearningCliPayloads.kt"))
-    val mcpPayloads = Files.readString(sourceRoot.resolve("skillbill/mcp/McpLearningPayloads.kt"))
-    val learningContracts = sourceRoot.resolve("skillbill/contracts/learning/LearningContracts.kt")
-    val systemContracts = sourceRoot.resolve("skillbill/contracts/system/SystemContracts.kt")
+    val cliPayloads = Files.readString(sourcePath("skillbill/cli/LearningCliPayloads.kt"))
+    val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/McpLearningPayloads.kt"))
+    val learningContracts = sourcePath("skillbill/contracts/learning/LearningContracts.kt")
+    val systemContracts = sourcePath("skillbill/contracts/system/SystemContracts.kt")
 
     assertTrue(Files.exists(learningContracts), "Missing learning contract DTOs")
     assertTrue(Files.exists(systemContracts), "Missing system contract DTOs")
@@ -269,9 +282,26 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `gradle module split has an explicit evaluation decision`() {
+    val evaluation = Files.readString(runtimeRoot.resolve("docs/architecture/gradle-module-split-evaluation.md"))
+
+    assertContains(evaluation, "Status: First Split Implemented")
+    assertContains(evaluation, "first physical Gradle module split")
+    assertContains(evaluation, "runtime-contracts")
+    assertContains(evaluation, "runtime-domain")
+    assertContains(evaluation, "runtime-application")
+    assertContains(evaluation, "runtime-infra-sqlite")
+    assertContains(evaluation, "runtime-infra-http")
+    assertContains(evaluation, "runtime-cli")
+    assertContains(evaluation, "runtime-mcp")
+    assertContains(evaluation, "RuntimeContext")
+    assertContains(evaluation, "Deeper Split Readiness Criteria")
+  }
+
+  @Test
   fun `cli text rendering consumes typed presenter models instead of raw maps`() {
-    val cliOutput = Files.readString(sourceRoot.resolve("skillbill/cli/CliOutput.kt"))
-    val cliPresenters = Files.readString(sourceRoot.resolve("skillbill/cli/CliPresenters.kt"))
+    val cliOutput = Files.readString(sourcePath("skillbill/cli/CliOutput.kt"))
+    val cliPresenters = Files.readString(sourcePath("skillbill/cli/CliPresenters.kt"))
 
     assertTrue("List<Map<String, Any?>>" !in cliOutput)
     assertContains(cliOutput, "CliNumberedFindingsPresentation")
@@ -290,21 +320,28 @@ class RuntimeArchitectureTest {
     assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
   }
 
-  private fun sourceFiles(): List<SourceFile> = Files.walk(sourceRoot).use { stream ->
-    stream
-      .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
-      .map(::sourceFile)
-      .toList()
+  private fun sourceFiles(): List<SourceFile> = sourceRoots.flatMap { sourceRoot ->
+    Files.walk(sourceRoot).use { stream ->
+      stream
+        .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+        .map(::sourceFile)
+        .toList()
+    }
   }
 
   private fun sourceFile(path: Path): SourceFile {
     val source = Files.readString(path)
     return SourceFile(
-      relativePath = sourceRoot.relativize(path).toString().replace('\\', '/'),
+      relativePath = runtimeRoot.relativize(path).toString().replace('\\', '/'),
       packageName = packagePattern.find(source)?.groupValues?.get(1).orEmpty(),
       imports = importPattern.findAll(source).map { it.groupValues[1].substringBefore(" as ") }.toList(),
     )
   }
+
+  private fun sourcePath(relativePath: String): Path = sourceRoots
+    .map { sourceRoot -> sourceRoot.resolve(relativePath) }
+    .firstOrNull(Files::exists)
+    ?: error("Missing source file: $relativePath")
 
   private data class SourceFile(
     val relativePath: String,

@@ -22,6 +22,10 @@ class RuntimeModuleSmokeTest {
   fun `runtime module declares package boundaries and reserved surface contracts`() {
     assertEquals("runtime-kotlin", RuntimeModule.NAME)
     assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
+    assertEquals(
+      setOf("runtime-core", "runtime-cli", "runtime-mcp"),
+      RuntimeModule.declaredGradleModules.toSet(),
+    )
     assertDeclaredPackages()
     assertRuntimeSurfacePackages()
     assertReservedRuntimeContracts()
