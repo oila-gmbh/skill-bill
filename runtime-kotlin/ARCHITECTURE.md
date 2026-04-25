@@ -8,16 +8,35 @@ The runtime should be a pragmatic hexagonal JVM runtime:
 ```text
 cli / mcp
   -> application use cases
-    -> domain services + ports
+    -> ports
       -> domain models
 
 infrastructure/sqlite, infrastructure/http, infrastructure/fs
-  -> implement domain/application ports
+  -> implement ports
 
 di
   -> wires adapters, use cases, repositories, clients, clocks, and runtime
      contexts
 ```
+
+## Gradle Modules
+
+- `runtime-contracts`: JSON helpers, contract DTOs, runtime surface contracts,
+  and runtime exception types.
+- `runtime-domain`: pure learning, review, telemetry, and version models/rules.
+- `runtime-ports`: `RuntimeContext` plus persistence and telemetry port
+  interfaces.
+- `runtime-application`: reusable CLI/MCP use cases and port-backed telemetry
+  orchestration.
+- `runtime-infra-sqlite`: SQLite schema, migrations, stores, repositories, and
+  SQL-backed review helpers.
+- `runtime-infra-http`: telemetry HTTP client/requester and HTTP wire mapping.
+- `runtime-infra-fs`: telemetry config file adapter.
+- `runtime-core`: Kotlin-Inject composition root, module metadata, and reserved
+  runtime surfaces.
+- `runtime-cli`: Clikt command tree, terminal rendering, JSON output, help, and
+  completion surfaces.
+- `runtime-mcp`: MCP adapter surface and MCP-specific payload shaping.
 
 ## Current Package Ownership
 
@@ -123,11 +142,12 @@ useful for the next refactors:
   instead of empty marker interfaces
 - `RuntimeContext` must not import infrastructure defaults; concrete adapters
   are provided by CLI/MCP contexts or DI composition roots
-- the first physical Gradle module split is limited to `runtime-core`,
-  `runtime-cli`, and `runtime-mcp`; deeper contract, domain, application, and
-  infrastructure modules are deferred to a dedicated extraction after the
-  package-level split blockers documented in
-  `docs/architecture/gradle-module-split-evaluation.md` were removed
+- the physical Gradle module split includes `runtime-contracts`,
+  `runtime-domain`, `runtime-ports`, `runtime-application`,
+  `runtime-infra-sqlite`, `runtime-infra-http`, `runtime-infra-fs`,
+  `runtime-core`, `runtime-cli`, and `runtime-mcp`
+- `docs/architecture/gradle-module-split-evaluation.md` records the physical
+  split decision and the readiness rules that must remain true
 - future `skillbill.domain.*` packages are protected from infrastructure
   imports as soon as they appear
 
@@ -137,5 +157,5 @@ useful for the next refactors:
    results with typed results.
 2. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-3. Split deeper contract, application, infrastructure, and domain modules in a
-   dedicated behavior-neutral extraction.
+3. Continue tightening public APIs so each physical module exposes only the
+   contracts needed by downstream modules.

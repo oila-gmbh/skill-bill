@@ -1,53 +1,68 @@
 # Gradle Module Split Evaluation
 
 Issue: SKILL-28
-Status: First Split Implemented; Deeper Split Blockers Cleaned
+Status: Deeper Split Implemented
 Date: 2026-04-25
 
 ## Decision
 
-Implement the first physical Gradle module split for the boundaries that
-already compile cleanly:
+Implement the physical Gradle split for the boundaries that now compile
+cleanly:
 
+- `runtime-contracts`
+- `runtime-domain`
+- `runtime-ports`
+- `runtime-application`
+- `runtime-infra-sqlite`
+- `runtime-infra-http`
+- `runtime-infra-fs`
 - `runtime-core`
 - `runtime-cli`
 - `runtime-mcp`
 
-Defer the deeper `runtime-contracts`, `runtime-domain`,
-`runtime-application`, `runtime-infra-sqlite`, and `runtime-infra-http` split
-to a dedicated extraction. The package-level upward dependencies that blocked
-that work have been removed, but the physical split should still land
-separately to keep the already-open module PR reviewable.
+`runtime-core` is now the integration/composition module instead of the owner
+of all runtime implementation code.
 
 ## Current Modules
 
-- `runtime-core`: application services, domain packages, ports, infrastructure
-  adapters, database runtime, telemetry runtime, DI, contracts, and reserved
-  runtime surfaces.
+- `runtime-contracts`: JSON helpers, runtime contract DTOs, runtime surface
+  contracts, and runtime exception types.
+- `runtime-domain`: learning, review, telemetry, and version domain models and
+  pure rules.
+- `runtime-ports`: `RuntimeContext`, persistence ports, and telemetry ports.
+- `runtime-application`: CLI/MCP-shared use cases, contract mappers, and
+  port-backed telemetry orchestration.
+- `runtime-infra-sqlite`: SQLite schema/migrations/stores/repositories and
+  SQL-backed review helpers.
+- `runtime-infra-http`: telemetry HTTP requester/client and proxy wire mapping.
+- `runtime-infra-fs`: telemetry config file adapter.
+- `runtime-core`: Kotlin-Inject runtime composition root, module metadata, and
+  reserved runtime surfaces.
 - `runtime-cli`: Clikt command tree, CLI option validation, terminal
   presenters, JSON output, help/completion surfaces, and CLI tests.
 - `runtime-mcp`: MCP adapter surface, MCP payload shaping, MCP tests, and the
   runtime smoke test that verifies cross-module declarations.
 
 `runtime-cli` and `runtime-mcp` expose `runtime-core` as an API dependency
-because their public context models expose core runtime port types such as
-`RuntimeContext` and telemetry request abstractions.
+because `runtime-core` re-exports the shared application, domain, port,
+contract, and infrastructure modules required by their public context and
+composition surfaces.
 
 ## Candidate Modules Evaluated
 
 - `runtime-contracts`
 - `runtime-domain`
+- `runtime-ports`
 - `runtime-application`
 - `runtime-infra-sqlite`
 - `runtime-infra-http`
+- `runtime-infra-fs`
 - `runtime-cli`
 - `runtime-mcp`
 
 ## Deeper Split Blockers
 
-No known package-level upward dependencies remain for the evaluated deeper
-split. The remaining work is mechanical Gradle extraction, dependency
-declaration, and test-fixture ownership.
+No known package-level upward dependencies remain for the implemented split.
 
 ## Resolved Split Blockers
 
@@ -81,10 +96,12 @@ and useful now:
   adapters.
 - Reserved runtime surfaces expose documented `RuntimeSurfaceContract` metadata.
 - CLI and MCP are independently compiled adapter modules.
+- Contract, domain, port, application, SQLite, HTTP, and filesystem runtime
+  layers compile as independent Gradle modules.
 
 ## Deeper Split Readiness Criteria
 
-The deeper physical split is ready to plan when these conditions remain true:
+The deeper physical split is expected to preserve these conditions:
 
 1. `skillbill.contracts.*` contains DTOs and serializers only; mapping from
    application/domain models lives in adapter or application packages.
@@ -92,18 +109,12 @@ The deeper physical split is ready to plan when these conditions remain true:
    and telemetry state helpers.
 3. `RuntimeContext` no longer imports infrastructure defaults.
 4. Telemetry compatibility facades no longer import infrastructure adapters.
-5. Shared test fixtures are either module-owned or available through a small
+5. Shared test fixtures remain module-owned or available only through a small
    one-directional test fixture surface.
 
 ## Next Increment
 
-Keep `runtime-core` as the integration module for the current PR. The next
-architecture phase should extract the deeper modules in this order:
-
-1. `runtime-contracts`
-2. `runtime-application`
-3. `runtime-infra-sqlite` and `runtime-infra-http`
-4. `runtime-domain`
-
-This keeps each future extraction aligned with boundaries that already compile
-cleanly and avoids a large behavior-neutral PR that is only neutral on paper.
+Keep tightening public APIs so each module exposes only the minimum downstream
+surface. The next cleanup candidates are moving module-specific tests closer to
+their owning modules and reducing `runtime-core` API re-exports once CLI/MCP
+declare their direct dependencies explicitly.

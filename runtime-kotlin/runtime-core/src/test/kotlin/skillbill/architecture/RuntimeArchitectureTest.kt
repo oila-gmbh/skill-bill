@@ -19,9 +19,16 @@ class RuntimeArchitectureTest {
     }
   private val sourceRoots: List<Path> =
     listOf(
+      runtimeRoot.resolve("runtime-application/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-contracts/src/main/kotlin"),
       runtimeRoot.resolve("runtime-core/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-domain/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-infra-fs/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-infra-http/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-infra-sqlite/src/main/kotlin"),
       runtimeRoot.resolve("runtime-cli/src/main/kotlin"),
       runtimeRoot.resolve("runtime-mcp/src/main/kotlin"),
+      runtimeRoot.resolve("runtime-ports/src/main/kotlin"),
     )
 
   @Test
@@ -48,6 +55,7 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
     assertContains(architecture, "RuntimeContext")
+    assertContains(architecture, "runtime-ports")
     assertContains(architecture, "gradle-module-split-evaluation.md")
   }
 
@@ -330,11 +338,13 @@ class RuntimeArchitectureTest {
   fun `gradle module split has an explicit evaluation decision`() {
     val evaluation = Files.readString(runtimeRoot.resolve("docs/architecture/gradle-module-split-evaluation.md"))
 
-    assertContains(evaluation, "Status: First Split Implemented")
-    assertContains(evaluation, "first physical Gradle module split")
+    assertContains(evaluation, "Status: Deeper Split Implemented")
+    assertContains(evaluation, "physical Gradle split")
     assertContains(evaluation, "runtime-contracts")
     assertContains(evaluation, "runtime-domain")
     assertContains(evaluation, "runtime-application")
+    assertContains(evaluation, "runtime-ports")
+    assertContains(evaluation, "runtime-infra-fs")
     assertContains(evaluation, "runtime-infra-sqlite")
     assertContains(evaluation, "runtime-infra-http")
     assertContains(evaluation, "runtime-cli")
@@ -343,6 +353,32 @@ class RuntimeArchitectureTest {
     assertContains(evaluation, "Resolved Split Blockers")
     assertContains(evaluation, "No known package-level upward dependencies remain")
     assertContains(evaluation, "Deeper Split Readiness Criteria")
+  }
+
+  @Test
+  fun `gradle module dependencies follow runtime layering`() {
+    val expectedModules =
+      setOf(
+        "runtime-application",
+        "runtime-contracts",
+        "runtime-core",
+        "runtime-domain",
+        "runtime-infra-fs",
+        "runtime-infra-http",
+        "runtime-infra-sqlite",
+        "runtime-cli",
+        "runtime-mcp",
+        "runtime-ports",
+      )
+    assertEquals(expectedModules, declaredSettingsModules())
+
+    assertNoProjectDependencies("runtime-contracts")
+    assertNoProjectDependencies("runtime-domain", "runtime-ports", "runtime-application", "runtime-core")
+    assertNoProjectDependencies("runtime-ports", "runtime-application", "runtime-core")
+    assertNoProjectDependencies("runtime-application", "runtime-infra-fs", "runtime-infra-http", "runtime-infra-sqlite")
+    listOf("runtime-infra-fs", "runtime-infra-http", "runtime-infra-sqlite").forEach { moduleName ->
+      assertNoProjectDependencies(moduleName, "runtime-application", "runtime-core", "runtime-cli", "runtime-mcp")
+    }
   }
 
   @Test
@@ -389,6 +425,39 @@ class RuntimeArchitectureTest {
     .map { sourceRoot -> sourceRoot.resolve(relativePath) }
     .firstOrNull(Files::exists)
     ?: error("Missing source file: $relativePath")
+
+  private fun declaredSettingsModules(): Set<String> {
+    val settings = Files.readString(runtimeRoot.resolve("settings.gradle.kts"))
+    val includeBlock =
+      Regex("include\\((.*?)\\)", RegexOption.DOT_MATCHES_ALL)
+        .find(settings)
+        ?.groupValues
+        ?.get(1)
+        .orEmpty()
+    return Regex("\"([A-Za-z0-9-]+)\"")
+      .findAll(includeBlock)
+      .map { match -> match.groupValues[1] }
+      .toSet()
+  }
+
+  private fun assertNoProjectDependencies(moduleName: String, vararg bannedDependencies: String) {
+    val buildFile = runtimeRoot.resolve("$moduleName/build.gradle.kts")
+    val source = Files.readString(buildFile)
+    val projectDependencies =
+      Regex("project\\(\":([A-Za-z0-9-]+)\"\\)")
+        .findAll(source)
+        .map { match -> match.groupValues[1] }
+        .toSet()
+    val violations = if (bannedDependencies.isEmpty()) {
+      projectDependencies
+    } else {
+      projectDependencies.intersect(bannedDependencies.toSet())
+    }
+    assertTrue(
+      violations.isEmpty(),
+      "$moduleName has banned project dependencies: ${violations.joinToString()}",
+    )
+  }
 
   private data class SourceFile(
     val relativePath: String,

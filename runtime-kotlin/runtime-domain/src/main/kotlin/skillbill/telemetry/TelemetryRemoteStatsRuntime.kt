@@ -20,7 +20,7 @@ object TelemetryRemoteStatsRuntime {
   ): Pair<String, String> = skillbill.telemetry.parseRemoteStatsWindow(since, dateFrom, dateTo, today)
 }
 
-internal fun parseRemoteStatsWindow(
+fun parseRemoteStatsWindow(
   since: String = "",
   dateFrom: String = "",
   dateTo: String = "",
@@ -37,7 +37,7 @@ internal fun parseRemoteStatsWindow(
   return startDate.toString() to endDate.toString()
 }
 
-internal fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
+fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
   require(request.workflow in remoteStatsWorkflows) {
     "workflow must be one of: ${remoteStatsWorkflows.joinToString(", ")}."
   }
@@ -46,7 +46,7 @@ internal fun validateRemoteStatsRequest(request: RemoteStatsRequest) {
   }
 }
 
-internal fun validateRemoteStatsCapabilities(
+fun validateRemoteStatsCapabilities(
   request: RemoteStatsRequest,
   settings: TelemetrySettings,
   capabilities: Map<String, Any?>,

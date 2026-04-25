@@ -6,8 +6,9 @@ import skillbill.contracts.JsonSupport
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY
-import skillbill.telemetry.TelemetryConfigRuntime
+import skillbill.telemetry.defaultLocalTelemetryConfig
 import skillbill.telemetry.expandAndNormalizeTelemetryPath
+import skillbill.telemetry.parseTelemetryBoolValue
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -56,7 +57,7 @@ internal fun ensureTelemetryConfigFile(path: Path): Map<String, Any?> {
   path.parent?.let(Files::createDirectories)
   val existing = readTelemetryConfigFile(path)
   val payload = (existing?.toMutableMap() ?: mutableMapOf())
-  val defaults = TelemetryConfigRuntime.defaultLocalConfig()
+  val defaults = defaultLocalTelemetryConfig()
   val telemetry = normalizedTelemetryMap(payload, defaults)
   payload["install_id"] = normalizedInstallId(payload, defaults)
   payload["telemetry"] = telemetry
@@ -102,6 +103,6 @@ private fun normalizeLegacyEnabledFlag(telemetry: MutableMap<String, Any?>) {
 
 private fun legacyEnabledLevel(enabledRaw: Any?): String = when (enabledRaw) {
   is Boolean -> if (enabledRaw) "anonymous" else "off"
-  is String -> if (TelemetryConfigRuntime.parseBoolValue(enabledRaw, "telemetry.enabled")) "anonymous" else "off"
+  is String -> if (parseTelemetryBoolValue(enabledRaw, "telemetry.enabled")) "anonymous" else "off"
   else -> if (enabledRaw == true) "anonymous" else "off"
 }

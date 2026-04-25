@@ -5,6 +5,8 @@ import skillbill.db.DatabaseRuntime
 import skillbill.db.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.HttpResponse
 import skillbill.ports.telemetry.TelemetryClient
 import java.io.IOException
 import java.nio.file.Files

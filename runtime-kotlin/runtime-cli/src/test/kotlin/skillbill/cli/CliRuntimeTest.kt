@@ -2,8 +2,9 @@ package skillbill.cli
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
+import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.HttpRequester
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -447,7 +448,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
       )
     when {
       url.endsWith("/capabilities") ->
-        skillbill.telemetry.HttpResponse(
+        HttpResponse(
           200,
           """
           {
@@ -460,7 +461,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
         )
 
       else ->
-        skillbill.telemetry.HttpResponse(
+        HttpResponse(
           200,
           """
           {

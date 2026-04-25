@@ -23,7 +23,18 @@ class RuntimeModuleSmokeTest {
     assertEquals("runtime-kotlin", RuntimeModule.NAME)
     assertEquals(17, RuntimeModule.TOOLCHAIN_JDK)
     assertEquals(
-      setOf("runtime-core", "runtime-cli", "runtime-mcp"),
+      setOf(
+        "runtime-application",
+        "runtime-contracts",
+        "runtime-core",
+        "runtime-domain",
+        "runtime-infra-fs",
+        "runtime-infra-http",
+        "runtime-infra-sqlite",
+        "runtime-cli",
+        "runtime-mcp",
+        "runtime-ports",
+      ),
       RuntimeModule.declaredGradleModules.toSet(),
     )
     assertDeclaredPackages()

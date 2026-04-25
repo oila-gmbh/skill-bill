@@ -2,10 +2,6 @@ package skillbill.telemetry
 
 import java.nio.file.Path
 
-typealias HttpResponse = skillbill.ports.telemetry.HttpResponse
-
-typealias HttpRequester = skillbill.ports.telemetry.HttpRequester
-
 data class TelemetrySettings(
   val configPath: Path,
   val level: String,

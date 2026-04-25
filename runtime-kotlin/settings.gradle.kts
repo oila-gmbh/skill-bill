@@ -19,7 +19,14 @@ dependencyResolutionManagement {
 }
 
 include(
+  "runtime-application",
+  "runtime-contracts",
   "runtime-core",
+  "runtime-domain",
+  "runtime-infra-fs",
+  "runtime-infra-http",
+  "runtime-infra-sqlite",
   "runtime-cli",
   "runtime-mcp",
+  "runtime-ports",
 )

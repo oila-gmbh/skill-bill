@@ -9,8 +9,6 @@ import skillbill.ports.persistence.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.HttpResponse
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.telemetry.HTTP_METHOD_NOT_ALLOWED
-import skillbill.telemetry.HTTP_NOT_FOUND
 import skillbill.telemetry.RemoteStatsRequest
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY

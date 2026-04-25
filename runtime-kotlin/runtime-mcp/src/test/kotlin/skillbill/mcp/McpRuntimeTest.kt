@@ -5,8 +5,9 @@ import skillbill.cli.CliRuntime
 import skillbill.cli.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
+import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.HttpRequester
 import skillbill.telemetry.RemoteStatsRequest
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -390,7 +391,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
       )
     when {
       url.endsWith("/capabilities") ->
-        skillbill.telemetry.HttpResponse(
+        HttpResponse(
           200,
           """
           {
@@ -402,7 +403,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
         )
 
       else ->
-        skillbill.telemetry.HttpResponse(
+        HttpResponse(
           200,
           """
           {
