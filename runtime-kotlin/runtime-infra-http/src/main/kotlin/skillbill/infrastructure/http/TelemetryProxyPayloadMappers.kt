@@ -3,8 +3,8 @@ package skillbill.infrastructure.http
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.telemetry.TelemetryProxyBatchEvent
 import skillbill.contracts.telemetry.TelemetryProxyBatchPayload
-import skillbill.ports.persistence.TelemetryOutboxRecord
-import skillbill.telemetry.TelemetrySettings
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.telemetry.model.TelemetrySettings
 
 fun telemetryProxyBatchPayload(
   settings: TelemetrySettings,

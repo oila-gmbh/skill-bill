@@ -1,11 +1,15 @@
 package skillbill.application
 
+import skillbill.application.model.LearningDeleteResult
+import skillbill.application.model.LearningListResult
+import skillbill.application.model.LearningRecordResult
+import skillbill.application.model.LearningResolveResult
 import skillbill.contracts.learning.LearningDeleteContract
 import skillbill.contracts.learning.LearningEntryDto
 import skillbill.contracts.learning.LearningListContract
 import skillbill.contracts.learning.LearningRecordContract
 import skillbill.contracts.learning.LearningResolveContract
-import skillbill.learnings.LearningEntry
+import skillbill.learnings.model.LearningEntry
 
 fun LearningEntry.toLearningEntryDto(): LearningEntryDto = LearningEntryDto(
   reference = reference,

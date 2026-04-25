@@ -1,4 +1,4 @@
-package skillbill.learnings
+package skillbill.learnings.model
 
 enum class LearningScope(
   val wireName: String,

@@ -1,12 +1,12 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.contracts.JsonSupport
-import skillbill.learnings.CreateLearningRequest
-import skillbill.learnings.LearningRecord
-import skillbill.learnings.LearningScope
-import skillbill.learnings.LearningSourceValidation
 import skillbill.learnings.LearningsRuntime
-import skillbill.learnings.UpdateLearningRequest
+import skillbill.learnings.model.CreateLearningRequest
+import skillbill.learnings.model.LearningRecord
+import skillbill.learnings.model.LearningScope
+import skillbill.learnings.model.LearningSourceValidation
+import skillbill.learnings.model.UpdateLearningRequest
 import java.sql.Connection
 
 object SQLiteLearningStore {

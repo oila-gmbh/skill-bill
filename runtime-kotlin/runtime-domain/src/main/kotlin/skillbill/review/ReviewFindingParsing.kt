@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.review.model.ImportedFinding
+
 fun requireMatch(pattern: Regex, text: String, errorMessage: String): String =
   pattern.find(text)?.groups?.get("value")?.value ?: throw IllegalArgumentException(errorMessage)
 

@@ -1,7 +1,7 @@
 package skillbill.cli.models
 
-import skillbill.RuntimeContext
 import skillbill.infrastructure.http.JdkHttpRequester
+import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.HttpRequester
 import java.nio.file.Path
 

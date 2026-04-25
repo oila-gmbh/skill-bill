@@ -4,9 +4,9 @@ import skillbill.contracts.review.ImportedReviewContract
 import skillbill.contracts.review.NumberedFindingContract
 import skillbill.contracts.review.ReviewPreviewContract
 import skillbill.contracts.review.TriageDecisionContract
-import skillbill.review.ImportedReview
-import skillbill.review.NumberedFinding
-import skillbill.review.TriageDecision
+import skillbill.review.model.ImportedReview
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.TriageDecision
 
 fun ImportedReview.toReviewPreviewContract(): ReviewPreviewContract = ReviewPreviewContract(
   reviewRunId = reviewRunId,

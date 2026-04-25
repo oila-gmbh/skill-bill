@@ -1,9 +1,9 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.review.ImportedFinding
-import skillbill.review.ImportedReview
-import skillbill.review.NumberedFinding
-import skillbill.review.ReviewSummary
+import skillbill.review.model.ImportedFinding
+import skillbill.review.model.ImportedReview
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 fun existingReviewSummary(connection: Connection, reviewRunId: String): ReviewSummary? =

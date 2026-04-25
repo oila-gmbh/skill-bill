@@ -1,15 +1,10 @@
 package skillbill.ports.persistence
 
-import skillbill.learnings.CreateLearningRequest
-import skillbill.learnings.LearningRecord
-import skillbill.learnings.LearningSourceValidation
-import skillbill.learnings.UpdateLearningRequest
-
-data class LearningResolution(
-  val repoScopeKey: String?,
-  val skillName: String?,
-  val records: List<LearningRecord>,
-)
+import skillbill.learnings.model.CreateLearningRequest
+import skillbill.learnings.model.LearningRecord
+import skillbill.learnings.model.LearningSourceValidation
+import skillbill.learnings.model.UpdateLearningRequest
+import skillbill.ports.persistence.model.LearningResolution
 
 interface LearningRepository {
   fun list(status: String): List<LearningRecord>

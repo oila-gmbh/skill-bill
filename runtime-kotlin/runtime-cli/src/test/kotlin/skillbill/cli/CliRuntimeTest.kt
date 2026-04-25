@@ -3,7 +3,7 @@ package skillbill.cli
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
 import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.HttpResponse
+import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY

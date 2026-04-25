@@ -1,4 +1,4 @@
-package skillbill
+package skillbill.model
 
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester

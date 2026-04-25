@@ -1,8 +1,10 @@
 package skillbill.telemetry
 
-import skillbill.ports.persistence.TelemetryOutboxRecord
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.TelemetryClient
+import skillbill.telemetry.model.SyncResult
+import skillbill.telemetry.model.TelemetrySettings
 import java.io.IOException
 import java.nio.file.Path
 

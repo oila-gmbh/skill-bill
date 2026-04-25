@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
 import skillbill.contracts.JsonSupport
+import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY

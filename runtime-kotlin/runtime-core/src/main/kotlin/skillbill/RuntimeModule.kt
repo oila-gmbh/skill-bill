@@ -26,6 +26,7 @@ object RuntimeModule {
       "skillbill.di",
       "skillbill.launcher",
       "skillbill.mcp",
+      "skillbill.model",
       "skillbill.db",
       "skillbill.telemetry",
       "skillbill.review",

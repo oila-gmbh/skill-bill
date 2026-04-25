@@ -1,9 +1,9 @@
 package skillbill.cli
 
-import skillbill.application.LearningListResult
-import skillbill.application.LearningResolveResult
-import skillbill.application.TriageResult
-import skillbill.learnings.LearningEntry
+import skillbill.application.model.LearningListResult
+import skillbill.application.model.LearningResolveResult
+import skillbill.application.model.TriageResult
+import skillbill.learnings.model.LearningEntry
 
 internal data class CliLearningListPresentation(
   val entries: List<CliLearningLine>,

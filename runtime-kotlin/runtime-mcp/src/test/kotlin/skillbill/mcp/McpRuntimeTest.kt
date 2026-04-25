@@ -6,11 +6,11 @@ import skillbill.cli.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
 import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.HttpResponse
+import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.RemoteStatsRequest
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
+import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

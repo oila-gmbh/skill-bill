@@ -1,4 +1,4 @@
-package skillbill.telemetry
+package skillbill.telemetry.model
 
 import java.nio.file.Path
 

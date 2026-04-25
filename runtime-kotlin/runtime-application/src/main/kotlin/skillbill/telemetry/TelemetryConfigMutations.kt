@@ -3,6 +3,7 @@ package skillbill.telemetry
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetrySettings
 
 object TelemetryConfigMutations {
   fun setTelemetryLevel(

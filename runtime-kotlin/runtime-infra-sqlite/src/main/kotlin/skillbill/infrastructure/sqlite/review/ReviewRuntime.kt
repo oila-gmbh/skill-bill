@@ -1,12 +1,12 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.review.FindingMetadata
-import skillbill.review.ImportedFinding
-import skillbill.review.ImportedReview
-import skillbill.review.NumberedFinding
 import skillbill.review.ReviewInputReader
 import skillbill.review.ReviewParser
-import skillbill.review.ReviewSummary
+import skillbill.review.model.FindingMetadata
+import skillbill.review.model.ImportedFinding
+import skillbill.review.model.ImportedReview
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 object ReviewRuntime {

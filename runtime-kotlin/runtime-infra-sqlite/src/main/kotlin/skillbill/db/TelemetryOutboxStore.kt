@@ -1,7 +1,7 @@
 package skillbill.db
 
-import skillbill.ports.persistence.TelemetryOutboxRecord
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import java.sql.Connection
 
 typealias TelemetryOutboxRow = TelemetryOutboxRecord

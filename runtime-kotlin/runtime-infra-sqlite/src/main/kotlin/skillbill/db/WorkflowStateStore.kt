@@ -1,7 +1,7 @@
 package skillbill.db
 
-import skillbill.ports.persistence.WorkflowStateRecord
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
 
 typealias WorkflowStateRow = WorkflowStateRecord

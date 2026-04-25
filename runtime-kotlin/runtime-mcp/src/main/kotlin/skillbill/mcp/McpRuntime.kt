@@ -1,6 +1,5 @@
 package skillbill.mcp
 
-import skillbill.RuntimeContext
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract
@@ -8,8 +7,9 @@ import skillbill.contracts.mcp.McpTriageSkippedContract
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.infrastructure.http.JdkHttpRequester
+import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.HttpRequester
-import skillbill.telemetry.RemoteStatsRequest
+import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Path
 
 data class McpRuntimeContext(

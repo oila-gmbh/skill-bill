@@ -2,7 +2,6 @@ package skillbill.di
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
-import skillbill.RuntimeContext
 import skillbill.application.LearningService
 import skillbill.application.ReviewService
 import skillbill.application.SystemService
@@ -10,6 +9,7 @@ import skillbill.application.TelemetryService
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
+import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore

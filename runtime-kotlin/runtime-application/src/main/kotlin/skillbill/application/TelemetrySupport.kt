@@ -1,8 +1,8 @@
 package skillbill.application
 
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.review.FeedbackTelemetryOptions
-import skillbill.telemetry.TelemetrySettings
+import skillbill.review.model.FeedbackTelemetryOptions
+import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.telemetrySyncTarget
 
 internal fun loadTelemetrySettings(settingsProvider: TelemetrySettingsProvider): TelemetrySettings =

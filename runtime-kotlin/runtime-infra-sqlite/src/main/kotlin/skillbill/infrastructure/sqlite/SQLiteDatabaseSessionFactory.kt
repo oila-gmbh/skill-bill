@@ -1,8 +1,8 @@
 package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
 import skillbill.db.DatabaseRuntime
+import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Files

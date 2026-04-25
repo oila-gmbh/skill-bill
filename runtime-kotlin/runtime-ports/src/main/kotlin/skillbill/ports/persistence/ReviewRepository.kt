@@ -1,10 +1,10 @@
 package skillbill.ports.persistence
 
-import skillbill.learnings.RejectedLearningSourceOutcome
-import skillbill.review.FeedbackRequest
-import skillbill.review.FeedbackTelemetryOptions
-import skillbill.review.ImportedReview
-import skillbill.review.NumberedFinding
+import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.review.model.FeedbackRequest
+import skillbill.review.model.FeedbackTelemetryOptions
+import skillbill.review.model.ImportedReview
+import skillbill.review.model.NumberedFinding
 
 interface ReviewRepository {
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)

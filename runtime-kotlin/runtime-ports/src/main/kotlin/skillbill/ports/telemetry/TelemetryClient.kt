@@ -1,8 +1,8 @@
 package skillbill.ports.telemetry
 
-import skillbill.ports.persistence.TelemetryOutboxRecord
-import skillbill.telemetry.RemoteStatsRequest
-import skillbill.telemetry.TelemetrySettings
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetrySettings
 
 interface TelemetryClient {
   fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>)

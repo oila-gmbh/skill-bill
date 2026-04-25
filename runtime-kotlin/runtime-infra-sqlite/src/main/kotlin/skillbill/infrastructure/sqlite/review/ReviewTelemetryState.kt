@@ -2,7 +2,7 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.TelemetryOutboxStore
-import skillbill.review.ReviewSummary
+import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 data class ReviewTelemetryState(

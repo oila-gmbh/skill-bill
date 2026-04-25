@@ -1,9 +1,6 @@
 package skillbill.ports.telemetry
 
-data class HttpResponse(
-  val statusCode: Int,
-  val body: String,
-)
+import skillbill.ports.telemetry.model.HttpResponse
 
 fun interface HttpRequester {
   fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse

@@ -1,19 +1,20 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
+import skillbill.application.model.TriageResult
 import skillbill.contracts.review.ReviewFeedbackContract
 import skillbill.contracts.review.TriageListContract
 import skillbill.contracts.review.TriageRecordedContract
+import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.review.FeedbackRequest
-import skillbill.review.NumberedFinding
 import skillbill.review.ReviewInputReader
 import skillbill.review.ReviewParser
-import skillbill.review.TriageDecision
 import skillbill.review.TriageDecisionParser
+import skillbill.review.model.FeedbackRequest
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.TriageDecision
 
 @Inject
 class ReviewService(
@@ -167,13 +168,6 @@ private fun statsPayload(
     put("db_path", unitOfWork.dbPath.toString())
   }
 }
-
-data class TriageResult(
-  val payload: Map<String, Any?>,
-  val findings: List<NumberedFinding> = emptyList(),
-  val recorded: List<TriageDecision> = emptyList(),
-  val telemetryPayload: Map<String, Any?>? = null,
-)
 
 private data class AppliedTriageDecisions(
   val recorded: List<TriageDecision>,

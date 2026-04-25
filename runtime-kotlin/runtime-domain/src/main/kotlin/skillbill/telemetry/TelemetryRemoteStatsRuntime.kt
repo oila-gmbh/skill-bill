@@ -1,15 +1,9 @@
 package skillbill.telemetry
 
+import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetrySettings
 import java.time.LocalDate
 import java.time.ZoneOffset
-
-data class RemoteStatsRequest(
-  val workflow: String,
-  val since: String = "",
-  val dateFrom: String = "",
-  val dateTo: String = "",
-  val groupBy: String = "",
-)
 
 object TelemetryRemoteStatsRuntime {
   fun parseRemoteStatsWindow(
