@@ -1,9 +1,10 @@
 package skillbill.telemetry
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
+import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
 class DefaultTelemetrySettingsProvider(

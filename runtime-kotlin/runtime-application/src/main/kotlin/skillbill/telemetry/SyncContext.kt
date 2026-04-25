@@ -1,5 +1,7 @@
 package skillbill.telemetry
 
+import skillbill.telemetry.model.SyncResult
+import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Path
 
 internal data class SyncContext(

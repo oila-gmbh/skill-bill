@@ -1,5 +1,8 @@
 package skillbill.review
 
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.TriageDecision
+
 object TriageDecisionParser {
   fun expandBulkDecisions(rawDecisions: List<String>, numberedFindings: List<NumberedFinding>): List<String> =
     buildList {

@@ -23,11 +23,13 @@ di
 
 - `runtime-contracts`: JSON helpers, contract DTOs, runtime surface contracts,
   and runtime exception types.
-- `runtime-domain`: pure learning, review, telemetry, and version models/rules.
-- `runtime-ports`: `RuntimeContext` plus persistence and telemetry port
-  interfaces.
+- `runtime-domain`: pure learning, review, telemetry, and version models/rules;
+  public domain data types live in area-owned `model` packages.
+- `runtime-ports`: shared `skillbill.model.RuntimeContext`, persistence and
+  telemetry port interfaces, and port-owned model types.
 - `runtime-application`: reusable CLI/MCP use cases and port-backed telemetry
-  orchestration.
+  orchestration; public use-case inputs/results live in
+  `skillbill.application.model`.
 - `runtime-infra-sqlite`: SQLite schema, migrations, stores, repositories, and
   SQL-backed review helpers.
 - `runtime-infra-http`: telemetry HTTP client/requester and HTTP wire mapping.
@@ -46,11 +48,15 @@ di
   workflows to `skillbill.application` and keeps MCP-specific orchestration
   metadata at the adapter boundary.
 - `skillbill.application`: reusable runtime use cases for CLI, MCP, and future
-  entry points.
+  entry points. Public use-case inputs and results live in
+  `skillbill.application.model`.
+- `skillbill.model`: shared runtime model types that are not owned by a narrower
+  domain area, currently `RuntimeContext`.
 - `skillbill.di`: Kotlin-Inject composition roots and providers.
 - `skillbill.ports`: internal port contracts for persistence sessions,
   repositories, telemetry settings/config/client abstractions, and later
-  filesystem/time abstractions.
+  filesystem/time abstractions. Port DTOs/results live under
+  `skillbill.ports.*.model`.
 - `skillbill.infrastructure`: concrete adapters for port contracts. SQLite
   adapters own JDBC connection/session behavior and table-shaped repository
   implementations, including SQL-backed review persistence, stats, and review
@@ -58,15 +64,16 @@ di
   filesystem adapters own telemetry config file reads and writes.
 - `skillbill.db`: SQLite schema, migrations, connection bootstrap, and current
   JDBC stores.
-- `skillbill.review`: review domain models, pure review parsing, triage
-  decision normalization, and input reading helpers. It must stay free of JDBC,
-  SQLite infrastructure, telemetry facades, and persistence adapters.
-- `skillbill.learnings`: learning records, learning scope rules, learning
-  source validation rules, and learning payload helpers. It must stay free of
-  JDBC.
+- `skillbill.review`: pure review parsing, triage decision normalization, and
+  input reading helpers. Review data types live in `skillbill.review.model`.
+  It must stay free of JDBC, SQLite infrastructure, telemetry facades, and
+  persistence adapters.
+- `skillbill.learnings`: learning scope/source validation rules and learning
+  payload helpers. Learning data types live in `skillbill.learnings.model`.
+  It must stay free of JDBC.
 - `skillbill.telemetry`: telemetry settings normalization, sync orchestration,
-  config mutation rules, sync result models, and port-backed compatibility
-  facades.
+  config mutation rules, and port-backed compatibility facades. Telemetry data
+  types live in `skillbill.telemetry.model`.
 - `skillbill.contracts`: shared JSON and runtime contract DTOs plus pure
   serialization helpers. Mapping from application/domain/port models into
   contract DTOs belongs in application or adapter-owned packages.
@@ -92,10 +99,13 @@ These are the stable dependency rules the runtime should converge toward.
    required to wire the graph.
 6. JSON maps and terminal strings are boundary concerns. Internal use cases
    should move toward typed input and output models.
-7. Application use cases must access SQLite through repository and unit-of-work
+7. Public data/enum/sealed model declarations in application, domain, and port
+   modules belong in explicit `model` packages; services, runtimes, and port
+   interfaces import those models instead of declaring them inline.
+8. Application use cases must access SQLite through repository and unit-of-work
    ports. Read use cases call a read session; write use cases call an explicit
    transaction session.
-8. Telemetry application use cases must depend on `TelemetrySettingsProvider`,
+9. Telemetry application use cases must depend on `TelemetrySettingsProvider`,
    `TelemetryConfigStore`, `TelemetryClient`, and `TelemetryOutboxRepository`.
    HTTP request mechanics belong in `infrastructure/http`; config file IO
    belongs in `infrastructure/fs`; telemetry proxy DTOs belong in `contracts`
@@ -122,6 +132,9 @@ useful for the next refactors:
   boundary
 - LearningRecord is owned by the learnings domain, while SQLite table access
   for learnings lives in infrastructure adapters
+- public application/domain/port model declarations must live under explicit
+  `model` packages, e.g. `skillbill.learnings.model` or
+  `skillbill.ports.persistence.model`
 - review parsing and triage decision normalization are pure surfaces that do
   not import JDBC or persistence adapters
 - SQL-backed review persistence, stats, workflow telemetry, and feedback
@@ -140,8 +153,9 @@ useful for the next refactors:
   instead of raw maps
 - reserved runtime surfaces must expose a documented `RuntimeSurfaceContract`
   instead of empty marker interfaces
-- `RuntimeContext` must not import infrastructure defaults; concrete adapters
-  are provided by CLI/MCP contexts or DI composition roots
+- `RuntimeContext` lives in `skillbill.model` and must not import
+  infrastructure defaults; concrete adapters are provided by CLI/MCP contexts
+  or DI composition roots
 - the physical Gradle module split includes `runtime-contracts`,
   `runtime-domain`, `runtime-ports`, `runtime-application`,
   `runtime-infra-sqlite`, `runtime-infra-http`, `runtime-infra-fs`,

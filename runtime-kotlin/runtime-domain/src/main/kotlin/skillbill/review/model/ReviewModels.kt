@@ -1,4 +1,4 @@
-package skillbill.review
+package skillbill.review.model
 
 data class ImportedFinding(
   val findingId: String,

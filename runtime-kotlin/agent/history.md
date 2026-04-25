@@ -1,3 +1,13 @@
+## [2026-04-25] runtime-model-package-ownership
+Areas: runtime-domain model packages, runtime-ports model packages, runtime-application model packages, RuntimeContext, architecture tests
+- Moved public data/enum model declarations out of service, runtime, and port interface files into explicit `model` packages.
+- `LearningResolution`, `TelemetryOutboxRecord`, `WorkflowStateRecord`, and `HttpResponse` now live under port-owned model packages; learning/review/telemetry/domain DTOs live under area model packages.
+- Moved `RuntimeContext` to `skillbill.model` and updated runtime composition/adapters to import it from the shared model package.
+- Moved SQLite-owned tests from `runtime-core` to `runtime-infra-sqlite` so internal migration/schema details remain encapsulated in their owning module.
+- Reusable guardrail: architecture tests now fail if a public data/enum/sealed model declaration appears in application/domain/port modules outside a `model` package.
+Feature flag: N/A
+Acceptance criteria: public runtime model types have explicit model package ownership
+
 ## [2026-04-25] runtime-deeper-gradle-module-split
 Areas: settings.gradle.kts, runtime-contracts, runtime-domain, runtime-ports, runtime-application, runtime-infra-*, runtime-core, architecture tests
 - Extracted the cleaned runtime boundaries into physical Gradle modules: contracts, domain, ports, application, SQLite infra, HTTP infra, filesystem infra, core composition, CLI, and MCP.

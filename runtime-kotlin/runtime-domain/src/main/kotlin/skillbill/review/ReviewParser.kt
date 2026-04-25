@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.review.model.ImportedReview
+
 object ReviewParser {
   fun parseReview(text: String): ImportedReview {
     val reviewRunId =

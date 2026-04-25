@@ -1,6 +1,8 @@
 package skillbill.learnings
 
 import skillbill.contracts.JsonSupport
+import skillbill.learnings.model.LearningRecord
+import skillbill.learnings.model.LearningScope
 
 fun learningReference(record: LearningRecord): String = "L-%03d".format(record.id)
 

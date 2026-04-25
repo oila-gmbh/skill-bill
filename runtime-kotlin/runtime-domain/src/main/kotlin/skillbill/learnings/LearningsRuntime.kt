@@ -1,20 +1,9 @@
 package skillbill.learnings
 
-data class RejectedLearningSourceOutcome(
-  val eventType: String,
-  val note: String,
-)
-
-data class LearningSourceReference(
-  val reviewRunId: String,
-  val findingId: String,
-)
-
-data class LearningSourceValidation(
-  val reviewRunId: String,
-  val findingId: String,
-  val rejectedOutcome: RejectedLearningSourceOutcome,
-)
+import skillbill.learnings.model.LearningScope
+import skillbill.learnings.model.LearningSourceReference
+import skillbill.learnings.model.LearningSourceValidation
+import skillbill.learnings.model.RejectedLearningSourceOutcome
 
 object LearningsRuntime {
   val learningStatuses: List<String> = listOf("active", "disabled")

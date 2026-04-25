@@ -1,17 +1,8 @@
 package skillbill.learnings
 
-data class LearningEntry(
-  val id: Int,
-  val reference: String,
-  val scope: LearningScope,
-  val scopeKey: String,
-  val status: String,
-  val title: String,
-  val ruleText: String,
-  val rationale: String,
-  val sourceReviewRunId: String?,
-  val sourceFindingId: String?,
-)
+import skillbill.learnings.model.LearningEntry
+import skillbill.learnings.model.LearningRecord
+import skillbill.learnings.model.LearningScope
 
 fun learningEntry(record: LearningRecord): LearningEntry = LearningEntry(
   id = record.id,

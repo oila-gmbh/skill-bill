@@ -1,6 +1,7 @@
 package skillbill.telemetry
 
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetrySettings
 
 object TelemetryRuntime {
   fun loadTelemetrySettings(

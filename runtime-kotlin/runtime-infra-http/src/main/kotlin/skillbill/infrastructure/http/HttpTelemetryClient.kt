@@ -1,18 +1,18 @@
 package skillbill.infrastructure.http
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.RuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
-import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.model.RuntimeContext
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.HttpResponse
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.telemetry.RemoteStatsRequest
+import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
-import skillbill.telemetry.TelemetrySettings
+import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.parseRemoteStatsWindow
 import skillbill.telemetry.validateRemoteStatsCapabilities
 import skillbill.telemetry.validateRemoteStatsRequest

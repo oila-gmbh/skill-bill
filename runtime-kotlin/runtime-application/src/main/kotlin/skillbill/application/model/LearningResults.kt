@@ -1,7 +1,7 @@
-package skillbill.application
+package skillbill.application.model
 
-import skillbill.learnings.LearningEntry
-import skillbill.learnings.LearningScope
+import skillbill.learnings.model.LearningEntry
+import skillbill.learnings.model.LearningScope
 
 data class LearningListResult(
   val dbPath: String,

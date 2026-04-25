@@ -1,13 +1,6 @@
 package skillbill.ports.persistence
 
-data class TelemetryOutboxRecord(
-  val id: Long,
-  val eventName: String,
-  val payloadJson: String,
-  val createdAt: String,
-  val syncedAt: String?,
-  val lastError: String,
-)
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 
 interface TelemetryOutboxRepository {
   fun enqueue(eventName: String, payloadJson: String): Long

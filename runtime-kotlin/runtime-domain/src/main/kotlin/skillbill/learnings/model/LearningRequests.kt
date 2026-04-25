@@ -1,4 +1,4 @@
-package skillbill.learnings
+package skillbill.learnings.model
 
 data class CreateLearningRequest(
   val scope: LearningScope,

@@ -1,10 +1,10 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.review.FeedbackRequest
-import skillbill.review.FeedbackTelemetryOptions
-import skillbill.review.NumberedFinding
-import skillbill.review.TriageDecision
 import skillbill.review.TriageDecisionParser
+import skillbill.review.model.FeedbackRequest
+import skillbill.review.model.FeedbackTelemetryOptions
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.TriageDecision
 import java.sql.Connection
 
 object TriageRuntime {

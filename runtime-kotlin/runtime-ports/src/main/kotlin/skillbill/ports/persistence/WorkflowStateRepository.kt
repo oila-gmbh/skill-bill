@@ -1,18 +1,6 @@
 package skillbill.ports.persistence
 
-data class WorkflowStateRecord(
-  val workflowId: String,
-  val sessionId: String,
-  val workflowName: String,
-  val contractVersion: String,
-  val workflowStatus: String,
-  val currentStepId: String,
-  val stepsJson: String,
-  val artifactsJson: String,
-  val startedAt: String?,
-  val updatedAt: String?,
-  val finishedAt: String?,
-)
+import skillbill.ports.persistence.model.WorkflowStateRecord
 
 interface WorkflowStateRepository {
   fun saveFeatureImplementWorkflow(row: WorkflowStateRecord)

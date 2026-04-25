@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.review.FindingOutcomeRow
-import skillbill.review.ReviewSummary
+import skillbill.review.model.FindingOutcomeRow
+import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 object ReviewStatsRuntime {

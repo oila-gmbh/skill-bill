@@ -1,4 +1,4 @@
-package skillbill.learnings
+package skillbill.learnings.model
 
 data class LearningRecord(
   val id: Int,

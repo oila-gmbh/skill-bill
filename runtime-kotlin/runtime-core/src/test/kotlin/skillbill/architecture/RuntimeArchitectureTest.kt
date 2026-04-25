@@ -55,6 +55,8 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
     assertContains(architecture, "RuntimeContext")
+    assertContains(architecture, "skillbill.model")
+    assertContains(architecture, "`model` packages")
     assertContains(architecture, "runtime-ports")
     assertContains(architecture, "gradle-module-split-evaluation.md")
   }
@@ -74,6 +76,7 @@ class RuntimeArchitectureTest {
         "skillbill.launcher",
         "skillbill.learnings",
         "skillbill.mcp",
+        "skillbill.model",
         "skillbill.ports",
         "skillbill.review",
         "skillbill.scaffold",
@@ -131,10 +134,31 @@ class RuntimeArchitectureTest {
       ),
     )
 
-    val reviewModels = Files.readString(sourcePath("skillbill/review/ReviewModels.kt"))
-    val learningRecord = Files.readString(sourcePath("skillbill/learnings/LearningRecord.kt"))
+    val reviewModels = Files.readString(sourcePath("skillbill/review/model/ReviewModels.kt"))
+    val learningRecord = Files.readString(sourcePath("skillbill/learnings/model/LearningRecord.kt"))
     assertTrue("data class LearningRecord" !in reviewModels)
     assertContains(learningRecord, "data class LearningRecord")
+  }
+
+  @Test
+  fun `public model declarations live in model packages`() {
+    val violations =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-application/") ||
+            file.relativePath.startsWith("runtime-domain/") ||
+            file.relativePath.startsWith("runtime-ports/")
+        }
+        .flatMap { file ->
+          val source = Files.readString(runtimeRoot.resolve(file.relativePath))
+          publicModelDeclarationPattern
+            .findAll(source)
+            .filter { ".model" !in file.packageName }
+            .map { match -> "${file.relativePath} declares ${match.groupValues[2]} outside a model package" }
+        }
+        .toList()
+
+    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
   }
 
   @Test
@@ -325,7 +349,7 @@ class RuntimeArchitectureTest {
   @Test
   fun `runtime context does not depend on infrastructure defaults`() {
     assertNoBannedImports(
-      files = listOf(sourceFile(sourcePath("skillbill/RuntimeContext.kt"))),
+      files = listOf(sourceFile(sourcePath("skillbill/model/RuntimeContext.kt"))),
       bannedImports = listOf("skillbill.infrastructure"),
     )
     assertContains(
@@ -468,5 +492,10 @@ class RuntimeArchitectureTest {
   private companion object {
     val packagePattern: Regex = Regex("^package\\s+([A-Za-z0-9_.]+)", RegexOption.MULTILINE)
     val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)
+    val publicModelDeclarationPattern: Regex =
+      Regex(
+        "^\\s*(data\\s+class|enum\\s+class|sealed\\s+(?:class|interface))\\s+([A-Za-z0-9_]+)",
+        RegexOption.MULTILINE,
+      )
   }
 }

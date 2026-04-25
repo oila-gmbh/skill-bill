@@ -1,11 +1,18 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.learnings.CreateLearningRequest
-import skillbill.learnings.LearningScope
+import skillbill.application.model.AddLearningInput
+import skillbill.application.model.EditLearningInput
+import skillbill.application.model.LearningDeleteResult
+import skillbill.application.model.LearningListResult
+import skillbill.application.model.LearningRecordResult
+import skillbill.application.model.LearningResolveResult
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningEntry
 import skillbill.learnings.learningEntrySessionJson
+import skillbill.learnings.model.CreateLearningRequest
+import skillbill.learnings.model.LearningScope
+import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 
 @Inject
@@ -76,7 +83,7 @@ class LearningService(private val database: DatabaseSessionFactory) {
     database.transaction(dbOverride) { unitOfWork ->
       val record =
         unitOfWork.learnings.edit(
-          skillbill.learnings.UpdateLearningRequest(
+          UpdateLearningRequest(
             request.id,
             request.scope,
             request.scopeKey,
@@ -99,22 +106,3 @@ class LearningService(private val database: DatabaseSessionFactory) {
     LearningDeleteResult(unitOfWork.dbPath.toString(), id)
   }
 }
-
-data class AddLearningInput(
-  val scope: LearningScope,
-  val scopeKey: String,
-  val title: String,
-  val rule: String,
-  val reason: String,
-  val fromRun: String,
-  val fromFinding: String,
-)
-
-data class EditLearningInput(
-  val id: Int,
-  val scope: LearningScope?,
-  val scopeKey: String?,
-  val title: String?,
-  val rule: String?,
-  val reason: String?,
-)

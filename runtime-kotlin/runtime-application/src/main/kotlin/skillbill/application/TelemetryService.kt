@@ -1,14 +1,15 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.TelemetrySyncPayload
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.telemetry.RemoteStatsRequest
 import skillbill.telemetry.TelemetryConfigMutations
-import skillbill.telemetry.TelemetrySettings
 import skillbill.telemetry.TelemetrySyncRuntime
+import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
 class TelemetryService(
@@ -92,8 +93,3 @@ class TelemetryService(
       )
     }
 }
-
-data class TelemetrySyncPayload(
-  val exitCode: Int,
-  val payload: Map<String, Any?>,
-)

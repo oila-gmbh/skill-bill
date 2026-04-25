@@ -1,7 +1,9 @@
 package skillbill.telemetry
 
-import skillbill.ports.persistence.TelemetryOutboxRecord
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.TelemetryClient
+import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetrySettings
 
 object TelemetryHttpRuntime {
   fun fetchProxyCapabilities(settings: TelemetrySettings, client: TelemetryClient): Map<String, Any?> =

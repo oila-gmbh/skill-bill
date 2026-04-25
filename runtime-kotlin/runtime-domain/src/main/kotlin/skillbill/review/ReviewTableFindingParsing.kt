@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.review.model.ImportedFinding
+
 fun isTableHeaderLine(line: String): Boolean {
   val cells = line.split("|").map { it.trim().lowercase() }
   return cells.any { it == "severity" || it == "sev" } &&

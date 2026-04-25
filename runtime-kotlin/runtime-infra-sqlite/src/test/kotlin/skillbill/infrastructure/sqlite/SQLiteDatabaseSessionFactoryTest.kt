@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.RuntimeContext
-import skillbill.ports.persistence.WorkflowStateRecord
+import skillbill.model.RuntimeContext
+import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
