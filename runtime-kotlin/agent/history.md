@@ -1,3 +1,12 @@
+## [2026-04-25] runtime-mcp-stdio-cutover
+Areas: runtime-mcp application entrypoint, skill_bill.launcher, installer MCP registration, docs/migrations/SKILL-27-cutover-checklist.md
+- Added a Kotlin stdio MCP server that speaks line-delimited JSON-RPC, exposes the Python-compatible tool inventory, and dispatches ported MCP tools through Kotlin runtime services.
+- Switched `skill-bill-mcp` to default to the Kotlin MCP server through the launcher, with `SKILL_BILL_MCP_RUNTIME=python` as the explicit rollback path.
+- Kept a narrow Python bridge for telemetry lifecycle tools that are still Python-owned, so MCP callers keep stable tool names and payload shapes during the Kotlin server cutover.
+- Reusable pattern: executable cutover can move the process boundary first while preserving unported leaf behavior behind a named compatibility bridge; document the bridge as transitional, not retired architecture.
+Feature flag: N/A
+Acceptance criteria: Kotlin stdio MCP packaging, launcher default switch, Python fallback, tool inventory compatibility
+
 ## [2026-04-25] runtime-cli-final-cutover
 Areas: skill_bill.launcher, pyproject.toml, runtime-cli application entrypoint, docs/migrations/SKILL-27-cutover-checklist.md, docs/getting-started.md
 - Switched the installed `skill-bill` script to a launcher that defaults to the Kotlin CLI and keeps `SKILL_BILL_RUNTIME=python` as the explicit rollback path.

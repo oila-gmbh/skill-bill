@@ -1,7 +1,7 @@
 # SKILL-27 Kotlin Runtime Cutover Checklist
 
-This checklist records the Phase 9 CLI cutover and the remaining MCP cutover
-gap.
+This checklist records the Phase 9 CLI cutover and the Phase 10 MCP stdio
+cutover.
 
 ## Runtime Boundary
 
@@ -11,10 +11,12 @@ Current default runtime:
   The launcher defaults to the Kotlin CLI.
 - `SKILL_BILL_RUNTIME=python skill-bill ...` is the explicit Python CLI
   fallback.
-- `skill-bill-mcp` resolves to `skill_bill.launcher:mcp_main` and remains
-  Python-backed by default.
+- `skill-bill-mcp` resolves to `skill_bill.launcher:mcp_main`. The launcher
+  defaults to the Kotlin stdio MCP server.
+- `SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` is the explicit Python MCP
+  fallback.
 - `scripts/mcp_server_start.sh` bootstraps the Python package and starts the
-  Python MCP server.
+  launcher-backed MCP server.
 
 Current Kotlin runtime:
 
@@ -23,17 +25,18 @@ Current Kotlin runtime:
 - Kotlin owns durable workflow runtime behavior, review/learnings/stats/
   telemetry service behavior, governed loader/scaffold primitives, and install
   primitives.
-- Python remains the production MCP fallback and CLI rollback path.
+- Python remains the MCP fallback, the CLI rollback path, and the temporary
+  compatibility bridge for unported MCP telemetry lifecycle tools.
 
 Still reserved after this stage:
 
-- packaging a Kotlin stdio MCP server
-- changing MCP start scripts to prefer Kotlin
 - deleting or weakening Python fallback behavior
+- porting the remaining MCP telemetry lifecycle leaf persistence paths from
+  the Python bridge into Kotlin services
 
 ## Cutover Gates
 
-Before Kotlin becomes the default MCP runtime, all of these must be true:
+Before Python runtime retirement, all of these must be true:
 
 1. `cd runtime-kotlin && ./gradlew check` passes from a clean checkout.
 2. `.venv/bin/python3 -m unittest discover -s tests` passes from the same
@@ -66,19 +69,31 @@ Before Kotlin becomes the default MCP runtime, all of these must be true:
 1. `skill-bill` now routes through `skill_bill.launcher:main`.
 2. The launcher defaults to Kotlin for CLI commands.
 3. `SKILL_BILL_RUNTIME=python` routes the same command name to the Python CLI.
-4. `skill-bill-mcp` remains Python-backed and fails loudly if
-   `SKILL_BILL_MCP_RUNTIME=kotlin` is requested before a Kotlin stdio server is
-   packaged.
+4. `skill-bill-mcp` defaults to the Kotlin stdio MCP server.
+5. `SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` routes to the Python MCP
+   server.
+
+## Phase 10 MCP Switch Result
+
+1. `runtime-mcp` now has a Gradle application entrypoint.
+2. The Kotlin MCP server exposes the Python-compatible tool inventory over
+   line-delimited stdio JSON-RPC.
+3. Ported tools route through Kotlin runtime services.
+4. Telemetry lifecycle tools that remain Python-owned route through
+   `skill_bill.mcp_tool_bridge`.
+5. Installer MCP registrations and `scripts/mcp_server_start.sh` invoke the
+   launcher-backed MCP entrypoint.
 
 ## Rollback Plan
 
-If the Kotlin-default CLI path fails:
+If the Kotlin-default CLI or MCP path fails:
 
-1. Run the command with `SKILL_BILL_RUNTIME=python`.
-2. Re-run `skill-bill doctor --format json` and the MCP `doctor` tool through
+1. Run CLI commands with `SKILL_BILL_RUNTIME=python`.
+2. Run MCP with `SKILL_BILL_MCP_RUNTIME=python`.
+3. Re-run `skill-bill doctor --format json` and the MCP `doctor` tool through
    the Python path.
-3. Re-run the Python unit suite and agent-config validation.
-4. Leave Kotlin artifacts in place for diagnosis; do not delete Python runtime
+4. Re-run the Python unit suite and agent-config validation.
+5. Leave Kotlin artifacts in place for diagnosis; do not delete Python runtime
    code as part of rollback.
-5. Record the failure and fix-forward criteria in
+6. Record the failure and fix-forward criteria in
    `docs/migrations/SKILL-27-kotlin-runtime-port.md`.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import platform
 import shlex
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import sys
 RUNTIME_ENV = "SKILL_BILL_RUNTIME"
 MCP_RUNTIME_ENV = "SKILL_BILL_MCP_RUNTIME"
 KOTLIN_CLI_ENV = "SKILL_BILL_KOTLIN_CLI"
+KOTLIN_MCP_ENV = "SKILL_BILL_KOTLIN_MCP"
 
 
 def repo_root() -> Path:
@@ -35,6 +37,21 @@ def kotlin_cli_command(argv: list[str], environment: dict[str, str] | None = Non
     "--args",
     shlex.join(argv),
   ]
+
+
+def selected_mcp_runtime(environment: dict[str, str] | None = None) -> str:
+  env = environment or os.environ
+  return env.get(MCP_RUNTIME_ENV, "kotlin").strip().lower() or "kotlin"
+
+
+def kotlin_mcp_command(environment: dict[str, str] | None = None) -> list[str]:
+  env = environment or os.environ
+  override = env.get(KOTLIN_MCP_ENV, "").strip()
+  if override:
+    return shlex.split(override)
+  root = repo_root()
+  gradlew = root / "runtime-kotlin" / "gradlew"
+  return [str(gradlew), "-q", ":runtime-mcp:run"]
 
 
 def python_cli_main(argv: list[str] | None = None) -> int:
@@ -76,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def mcp_main() -> None:
-  runtime = os.environ.get(MCP_RUNTIME_ENV, "python").strip().lower() or "python"
+  runtime = selected_mcp_runtime()
   if runtime not in {"python", "kotlin"}:
     print(
       f"Unsupported {MCP_RUNTIME_ENV}={runtime!r}; expected 'python' or 'kotlin'.",
@@ -84,12 +101,16 @@ def mcp_main() -> None:
     )
     raise SystemExit(2)
   if runtime == "kotlin":
-    print(
-      "Kotlin MCP stdio server is not packaged yet; use "
-      f"{MCP_RUNTIME_ENV}=python until the Phase 9 MCP server cutover lands.",
-      file=sys.stderr,
-    )
-    raise SystemExit(2)
+    env = dict(os.environ)
+    env.setdefault("SKILL_BILL_PYTHON", sys.executable)
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+      env.setdefault("SKILL_BILL_PYTHON_ARCH", "arm64")
+    raise SystemExit(subprocess.run(
+      kotlin_mcp_command(),
+      cwd=repo_root() / "runtime-kotlin",
+      env=env,
+      check=False,
+    ).returncode)
 
   from skill_bill.mcp_server import main as python_mcp_main
 

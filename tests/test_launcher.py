@@ -23,17 +23,27 @@ class LauncherTest(unittest.TestCase):
       command,
     )
 
+  def test_selected_mcp_runtime_defaults_to_kotlin(self):
+    self.assertEqual("kotlin", launcher.selected_mcp_runtime({}))
+
+  def test_kotlin_mcp_command_uses_override_when_provided(self):
+    command = launcher.kotlin_mcp_command({"SKILL_BILL_KOTLIN_MCP": "/tmp/skill-bill-mcp-kotlin"})
+    self.assertEqual(["/tmp/skill-bill-mcp-kotlin"], command)
+
   def test_main_routes_python_runtime_to_python_cli(self):
     with mock.patch.object(launcher, "python_cli_main", return_value=7) as python_main:
       with mock.patch.object(launcher, "selected_runtime", return_value="python"):
         self.assertEqual(7, launcher.main(["version"]))
     python_main.assert_called_once_with(["version"])
 
-  def test_mcp_kotlin_runtime_reports_not_packaged(self):
+  def test_mcp_kotlin_runtime_routes_to_kotlin_command(self):
+    completed = mock.Mock(returncode=7)
     with mock.patch.dict("os.environ", {"SKILL_BILL_MCP_RUNTIME": "kotlin"}):
-      with self.assertRaises(SystemExit) as raised:
-        launcher.mcp_main()
-    self.assertEqual(2, raised.exception.code)
+      with mock.patch.object(launcher.subprocess, "run", return_value=completed) as run:
+        with self.assertRaises(SystemExit) as raised:
+          launcher.mcp_main()
+    self.assertEqual(7, raised.exception.code)
+    run.assert_called_once()
 
 
 if __name__ == "__main__":

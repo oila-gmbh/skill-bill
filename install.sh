@@ -845,7 +845,7 @@ servers = settings.get('mcpServers', {})
 servers['skill-bill'] = {
     'type': 'stdio',
     'command': sys.executable,
-    'args': ['-m', 'skill_bill.mcp_server']
+    'args': ['-c', 'from skill_bill.launcher import mcp_main; mcp_main()']
 }
 settings['mcpServers'] = servers
 os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -885,7 +885,7 @@ while filtered and not filtered[-1].strip():
 filtered.append('')
 filtered.append(section)
 filtered.append(f'command = \"{python_cmd}\"')
-filtered.append('args = [\"-m\", \"skill_bill.mcp_server\"]')
+filtered.append('args = [\"-c\", \"from skill_bill.launcher import mcp_main; mcp_main()\"]')
 filtered.append('')
 os.makedirs(os.path.dirname(path), exist_ok=True)
 open(path, 'w').write('\n'.join(filtered))
@@ -1004,7 +1004,7 @@ if not isinstance(mcp, dict):
     mcp = {}
 mcp['skill-bill'] = {
     'type': 'local',
-    'command': [sys.executable, '-m', 'skill_bill.mcp_server'],
+    'command': [sys.executable, '-c', 'from skill_bill.launcher import mcp_main; mcp_main()'],
     'enabled': True,
 }
 settings['mcp'] = mcp

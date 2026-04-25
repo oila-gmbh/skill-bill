@@ -108,4 +108,4 @@ EOF
 }
 
 ensure_venv
-exec "$venv_python" -m skill_bill.mcp_server
+exec "$venv_python" -c 'from skill_bill.launcher import mcp_main; mcp_main()'

@@ -93,7 +93,10 @@ di
 - `skillbill.launcher`: active runtime-selection surface. The installed
   `skill-bill` script defaults to the Kotlin CLI through the launcher and
   supports `SKILL_BILL_RUNTIME=python` as the rollback path. `skill-bill-mcp`
-  remains Python-backed until a Kotlin stdio MCP server is packaged.
+  defaults to the Kotlin stdio server and supports
+  `SKILL_BILL_MCP_RUNTIME=python` as the rollback path. A narrow Python bridge
+  remains for MCP telemetry lifecycle tools until those leaf persistence paths
+  are ported.
 
 ## Boundary Rules
 

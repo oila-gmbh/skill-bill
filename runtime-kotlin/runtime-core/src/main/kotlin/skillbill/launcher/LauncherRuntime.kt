@@ -12,6 +12,6 @@ object LauncherRuntime {
     status = RuntimeSurfaceStatus.ACTIVE,
     summary = "Runtime launcher and Python/Kotlin selection surface.",
     placeholderReason = "",
-    supportedOperations = listOf("select-cli-runtime", "python-fallback", "mcp-python-fallback"),
+    supportedOperations = listOf("select-cli-runtime", "python-fallback", "select-mcp-runtime", "mcp-python-fallback"),
   )
 }

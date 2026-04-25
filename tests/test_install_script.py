@@ -121,7 +121,10 @@ class InstallScriptTest(unittest.TestCase):
 
       config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
       self.assertEqual(config["mcp"]["skill-bill"]["type"], "local")
-      self.assertEqual(config["mcp"]["skill-bill"]["command"][1:], ["-m", "skill_bill.mcp_server"])
+      self.assertEqual(
+        config["mcp"]["skill-bill"]["command"][1:],
+        ["-c", "from skill_bill.launcher import mcp_main; mcp_main()"],
+      )
       self.assertTrue(config["mcp"]["skill-bill"]["enabled"])
 
   def test_installer_merges_opencode_jsonc_config_when_registering_mcp(self) -> None:

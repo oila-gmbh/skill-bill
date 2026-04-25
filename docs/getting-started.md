@@ -75,8 +75,8 @@ pip install -e .
 
 `skill-bill` defaults to the Kotlin CLI runtime. Use
 `SKILL_BILL_RUNTIME=python skill-bill ...` as the Python fallback. The
-`skill-bill-mcp` server remains Python-backed until the Kotlin stdio MCP server
-is packaged.
+`skill-bill-mcp` server defaults to the Kotlin stdio runtime. Use
+`SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` as the Python MCP fallback.
 
 ## First run
 
@@ -228,6 +228,11 @@ The local CLI is the operator and maintainer surface for telemetry, workflow sta
 ## The `skill-bill-mcp` server
 
 The MCP server exposes Skill Bill’s local primitives as agent tools. This is the primary integration path when an agent can call local MCP tools directly.
+
+The installed `skill-bill-mcp` entrypoint launches the Kotlin stdio server by
+default. A narrow Python bridge remains behind the Kotlin server for telemetry
+lifecycle tools that are not Kotlin-native yet; direct Python MCP fallback is
+available with `SKILL_BILL_MCP_RUNTIME=python`.
 
 ### Review telemetry and learnings tools
 
