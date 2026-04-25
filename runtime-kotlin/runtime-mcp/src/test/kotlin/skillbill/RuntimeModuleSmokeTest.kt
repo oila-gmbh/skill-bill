@@ -65,7 +65,7 @@ class RuntimeModuleSmokeTest {
 
   private fun assertRuntimeContracts() {
     assertEquals(
-      setOf("launcher"),
+      emptySet(),
       reservedContracts.map(RuntimeSurfaceContract::name).toSet(),
     )
     reservedContracts.forEach { contract ->
@@ -83,7 +83,7 @@ class RuntimeModuleSmokeTest {
       )
     }
     assertEquals(
-      setOf("install", "scaffold"),
+      setOf("install", "launcher", "scaffold"),
       activeRuntimeContracts.map(RuntimeSurfaceContract::name).toSet(),
     )
     activeRuntimeContracts.forEach { contract ->
@@ -129,10 +129,8 @@ class RuntimeModuleSmokeTest {
         ScaffoldRuntime::class,
       )
     val reservedContracts =
-      listOf(
-        LauncherRuntime.contract,
-      )
-    val activeRuntimeContracts = listOf(InstallRuntime.contract, ScaffoldRuntime.contract)
+      emptyList<RuntimeSurfaceContract>()
+    val activeRuntimeContracts = listOf(InstallRuntime.contract, LauncherRuntime.contract, ScaffoldRuntime.contract)
     val workflowContracts = listOf(FeatureImplementWorkflowRuntime.contract, FeatureVerifyWorkflowRuntime.contract)
     val runtimeSurfacePackages: Set<String> =
       runtimeSurfaces

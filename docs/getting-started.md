@@ -59,18 +59,24 @@ Canonical skills in `skills/` are always installed. Platform packs are selected 
 
 Installed skills are symlinks back to this repo, so a `git pull` updates installed behavior without reinstalling.
 
-### 4. Optional local Python entry points
+### 4. Optional local runtime entry points
 
 The package exposes:
 
 - `skill-bill`
 - `skill-bill-mcp`
 
-If you want the local Python entry points available directly, install the package in your environment:
+If you want the local entry points available directly, install the package in
+your environment:
 
 ```bash
 pip install -e .
 ```
+
+`skill-bill` defaults to the Kotlin CLI runtime. Use
+`SKILL_BILL_RUNTIME=python skill-bill ...` as the Python fallback. The
+`skill-bill-mcp` server remains Python-backed until the Kotlin stdio MCP server
+is packaged.
 
 ## First run
 

@@ -1,14 +1,18 @@
 # SKILL-27 Kotlin Runtime Cutover Checklist
 
-This checklist is the Phase 8 handoff document for switching Skill Bill from
-Python-default to Kotlin-default in a later phase. It is not the cutover itself.
+This checklist records the Phase 9 CLI cutover and the remaining MCP cutover
+gap.
 
 ## Runtime Boundary
 
 Current default runtime:
 
-- `skill-bill` resolves to `skill_bill.cli:main` from `pyproject.toml`.
-- `skill-bill-mcp` resolves to `skill_bill.mcp_server:main`.
+- `skill-bill` resolves to `skill_bill.launcher:main` from `pyproject.toml`.
+  The launcher defaults to the Kotlin CLI.
+- `SKILL_BILL_RUNTIME=python skill-bill ...` is the explicit Python CLI
+  fallback.
+- `skill-bill-mcp` resolves to `skill_bill.launcher:mcp_main` and remains
+  Python-backed by default.
 - `scripts/mcp_server_start.sh` bootstraps the Python package and starts the
   Python MCP server.
 
@@ -19,19 +23,17 @@ Current Kotlin runtime:
 - Kotlin owns durable workflow runtime behavior, review/learnings/stats/
   telemetry service behavior, governed loader/scaffold primitives, and install
   primitives.
-- Python remains the production fallback and behavioral oracle until Phase 9
-  intentionally flips the default entrypoints.
+- Python remains the production MCP fallback and CLI rollback path.
 
-Reserved for Phase 9:
+Still reserved after this stage:
 
-- changing `pyproject.toml` script entrypoints
-- changing installer or MCP start scripts to prefer Kotlin
-- release packaging for Kotlin executables
+- packaging a Kotlin stdio MCP server
+- changing MCP start scripts to prefer Kotlin
 - deleting or weakening Python fallback behavior
 
 ## Cutover Gates
 
-Before Kotlin becomes the default runtime, all of these must be true:
+Before Kotlin becomes the default MCP runtime, all of these must be true:
 
 1. `cd runtime-kotlin && ./gradlew check` passes from a clean checkout.
 2. `.venv/bin/python3 -m unittest discover -s tests` passes from the same
@@ -59,23 +61,20 @@ Before Kotlin becomes the default runtime, all of these must be true:
    reason for keeping the Python installer as the fallback after cutover.
 8. The release notes name the fallback command/path and the rollback command.
 
-## Phase 9 Switch Plan
+## Phase 9 CLI Switch Result
 
-1. Add Kotlin executable packaging for the CLI and MCP server.
-2. Add an opt-in launcher selection path that can choose `python` or `kotlin`
-   without changing the command names.
-3. Run the cutover gates in both runtime modes.
-4. Flip the default runtime selection to Kotlin.
-5. Keep Python fallback selectable and documented.
-6. Run one normal feature workflow and one review/triage workflow through the
-   Kotlin-default path.
-7. Publish the validation report and rollback instructions with the change.
+1. `skill-bill` now routes through `skill_bill.launcher:main`.
+2. The launcher defaults to Kotlin for CLI commands.
+3. `SKILL_BILL_RUNTIME=python` routes the same command name to the Python CLI.
+4. `skill-bill-mcp` remains Python-backed and fails loudly if
+   `SKILL_BILL_MCP_RUNTIME=kotlin` is requested before a Kotlin stdio server is
+   packaged.
 
 ## Rollback Plan
 
-If the Kotlin-default path fails after Phase 9:
+If the Kotlin-default CLI path fails:
 
-1. Switch runtime selection back to Python.
+1. Run the command with `SKILL_BILL_RUNTIME=python`.
 2. Re-run `skill-bill doctor --format json` and the MCP `doctor` tool through
    the Python path.
 3. Re-run the Python unit suite and agent-config validation.

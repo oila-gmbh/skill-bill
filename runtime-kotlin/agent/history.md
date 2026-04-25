@@ -1,3 +1,12 @@
+## [2026-04-25] runtime-cli-final-cutover
+Areas: skill_bill.launcher, pyproject.toml, runtime-cli application entrypoint, docs/migrations/SKILL-27-cutover-checklist.md, docs/getting-started.md
+- Switched the installed `skill-bill` script to a launcher that defaults to the Kotlin CLI and keeps `SKILL_BILL_RUNTIME=python` as the explicit rollback path.
+- Added a Kotlin CLI `main` plus Gradle application run path, including stdin forwarding so payload-backed commands such as `new-skill --payload - --dry-run` work through the Kotlin-default launcher.
+- Kept `skill-bill-mcp` Python-backed and made Kotlin MCP selection loud-fail until a real Kotlin stdio MCP server is packaged.
+- Reusable pattern: cut over one executable surface only when it has an executable runtime path; leave unsupported sibling surfaces on documented fallback instead of pretending parity exists.
+Feature flag: N/A
+Acceptance criteria: Kotlin-default CLI launcher, Python fallback, MCP fallback boundary
+
 ## [2026-04-25] runtime-cutover-preparation
 Areas: docs/migrations/SKILL-27-cutover-checklist.md, runtime-kotlin/ARCHITECTURE.md, runtime surface contracts, runtime smoke tests
 - Added a maintained Kotlin runtime cutover checklist that names the current Python default, Kotlin parity gates, Phase 9 switch plan, and rollback path.

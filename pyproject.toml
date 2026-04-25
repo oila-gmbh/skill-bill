@@ -13,5 +13,5 @@ dependencies = ["mcp", "pyyaml>=6"]
 include = ["skill_bill*"]
 
 [project.scripts]
-skill-bill = "skill_bill.cli:main"
-skill-bill-mcp = "skill_bill.mcp_server:main"
+skill-bill = "skill_bill.launcher:main"
+skill-bill-mcp = "skill_bill.launcher:mcp_main"

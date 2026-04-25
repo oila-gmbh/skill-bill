@@ -90,9 +90,10 @@ di
 - `skillbill.scaffold`: active Kotlin-owned governed loader and scaffold
   mutation surface, including manifest discovery, scaffold planning, symlink
   wiring, and rollback primitives.
-- `skillbill.launcher`: reserved runtime-selection surface. It exposes a
-  `RuntimeSurfaceContract` but remains placeholder-only until Phase 9 adds a
-  Kotlin-default launcher and documented Python fallback.
+- `skillbill.launcher`: active runtime-selection surface. The installed
+  `skill-bill` script defaults to the Kotlin CLI through the launcher and
+  supports `SKILL_BILL_RUNTIME=python` as the rollback path. `skill-bill-mcp`
+  remains Python-backed until a Kotlin stdio MCP server is packaged.
 
 ## Boundary Rules
 
@@ -167,8 +168,8 @@ useful for the next refactors:
   instead of raw maps
 - runtime surfaces must expose a documented `RuntimeSurfaceContract`; active
   workflow surfaces declare open/update/get/list/latest/resume/continue,
-  scaffold/install declare their supported operations, and the launcher stays
-  reserved until the default-runtime switch
+  scaffold/install declare their supported operations, and the launcher
+  declares the Python/Kotlin selection and fallback operations
 - `RuntimeContext` lives in `skillbill.model` and must not import
   infrastructure defaults; concrete adapters are provided by CLI/MCP contexts
   or DI composition roots

@@ -3,7 +3,7 @@
 ## Status
 
 - Issue: `SKILL-27`
-- Phase: `8 - Cutover preparation`
+- Phase: `9 - Final cutover`
 - Runtime source of truth: Python
 - Kotlin ownership: build foundation, shared scaffolding, persistence core, review-domain services, workflow runtime, governed loader/scaffold/install primitives, and in-module CLI/MCP surface adapters
 - Last updated: `2026-04-25`
@@ -22,9 +22,11 @@ the CLI/MCP scaffold envelopes onto the Kotlin runtime modules, while keeping
 the broader Python runtime available as the reference oracle for the rest of
 the port.
 
-Phase 8 prepares the runtime switch without flipping defaults. Python remains
-the production entrypoint and fallback. The maintained cutover checklist lives
-in `docs/migrations/SKILL-27-cutover-checklist.md`.
+Phase 9 flips the `skill-bill` CLI script to a Kotlin-default launcher while
+keeping Python available through `SKILL_BILL_RUNTIME=python`. The MCP server
+remains Python-backed until a Kotlin stdio MCP server is packaged. The
+maintained cutover checklist lives in
+`docs/migrations/SKILL-27-cutover-checklist.md`.
 
 ## Current Runtime Inventory
 
@@ -682,3 +684,49 @@ Checkpoint status:
 
 Start with `Phase 9 - Final cutover` only after every gate in
 `docs/migrations/SKILL-27-cutover-checklist.md` is satisfied.
+
+## Phase 9 - Final Cutover
+
+What changed in this phase:
+
+- added `skill_bill.launcher` as the installed entrypoint layer
+- changed `pyproject.toml` so `skill-bill` routes through the launcher and
+  defaults to the Kotlin CLI
+- kept `SKILL_BILL_RUNTIME=python` as the explicit Python CLI rollback path
+- added a Kotlin CLI `main` and Gradle application packaging path
+- kept `skill-bill-mcp` Python-backed by default and made
+  `SKILL_BILL_MCP_RUNTIME=kotlin` fail loudly because no Kotlin stdio MCP
+  server is packaged yet
+
+Runtime source of truth after Phase 9:
+
+- Kotlin is the default CLI runtime for the installed `skill-bill` command
+- Python remains the fallback CLI runtime and production MCP runtime
+- Python runtime code is intentionally retained
+
+Validation run in this session:
+
+- `cd runtime-kotlin && ./gradlew check`
+- `.venv/bin/python3 -m unittest discover -s tests`
+- `npx --yes agnix --strict .`
+- `.venv/bin/python3 scripts/validate_agent_configs.py`
+- `python3 -m skill_bill.launcher version --format json`
+- `SKILL_BILL_RUNTIME=python python3 -m skill_bill.launcher version --format json`
+- `printf ... | python3 -m skill_bill.launcher new-skill --payload - --dry-run --format json`
+
+## Phase 9 Exit Result
+
+Checkpoint status:
+
+- `skill-bill` now routes through `skill_bill.launcher:main` and defaults to
+  the Kotlin CLI
+- `SKILL_BILL_RUNTIME=python` remains the explicit Python CLI rollback path
+- `skill-bill-mcp` remains Python-backed; requesting
+  `SKILL_BILL_MCP_RUNTIME=kotlin` fails loudly until a Kotlin stdio MCP server
+  is packaged
+
+## Next Session Start
+
+Start with the Kotlin MCP stdio server cutover gap, then revisit Python
+retirement only after normal-use confidence exists for the Kotlin-default CLI
+and MCP paths.
