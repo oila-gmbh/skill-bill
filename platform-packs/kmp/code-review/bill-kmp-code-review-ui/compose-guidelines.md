@@ -97,6 +97,15 @@ data class ProfileUiState(
 )
 ```
 
+### Strong Skipping Caveats
+
+Strong skipping does **not** make unstable types stable. It only adds a referential (`===`) check for unstable parameters, so it skips when the *exact same instance* flows through. The patterns we actually write often defeat it:
+
+- **MVI `copy()` and freshly built collections** (`state.copy(...)`, `listOf(...)` inside the composable body) produce a new instance every recomposition. Strong skipping won't help — `@Immutable` / structural equality still does.
+- **Lambdas capturing unstable values** are invalidated by a single unstable capture. `remember(key) { { ... } }` only helps when every captured value is stable or keyed.
+- **`StateFlow` already deduplicates structurally** before values reach Compose. Adding `@Immutable` purely "to make skipping work downstream of a StateFlow" is often redundant — justify the annotation by an actual recomposition source, not by reflex.
+- **`equals()` on deep, nested state can cost more than recomposing.** Prefer `remember(inputs) { derive(...) }` for expensive derived values rather than forcing stability on a large state object just to skip.
+
 ### Avoid Unnecessary Recomposition
 
 - Wrap expensive computations in `remember(key) { }` with proper keys.
