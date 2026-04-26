@@ -16,6 +16,7 @@ fun reviewFinishedPayload(
   val learningsSection = buildLearningsSection(connection, reviewSummary.reviewSessionId.orEmpty(), level)
   return payload +
     mapOf(
+      "review_run_id" to reviewSummary.reviewRunId,
       "review_session_id" to reviewSummary.reviewSessionId.orEmpty(),
       "routed_skill" to reviewSummary.routedSkill,
       "review_subskills" to parseSpecialistReviews(reviewSummary.specialistReviewsRaw),

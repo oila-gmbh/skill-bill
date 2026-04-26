@@ -1211,7 +1211,7 @@ Reason: kotlin signals dominate
 
       review_summary = finished_event["properties"]
       self.assertEqual(review_summary["review_session_id"], "rvs-20260402-001")
-      self.assertNotIn("review_run_id", review_summary)
+      self.assertEqual(review_summary["review_run_id"], "rvw-20260402-001")
       self.assertNotIn("review_status", review_summary)
       self.assertNotIn("rejected_findings", review_summary)
       self.assertNotIn("rejected_rate", review_summary)

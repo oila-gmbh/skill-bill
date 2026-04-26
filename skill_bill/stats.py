@@ -514,6 +514,7 @@ def build_review_finished_payload(
 
   payload.update(
     {
+      "review_run_id": review_run_id,
       "review_session_id": session_id,
       "routed_skill": review_summary["routed_skill"],
       "review_subskills": specialist_reviews,

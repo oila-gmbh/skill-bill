@@ -60,7 +60,6 @@ from skill_bill.scaffold_template import (
   render_content_body,
   render_descriptor_section,
   render_skill_frontmatter,
-  render_project_overrides,
 )
 from skill_bill.shell_content_contract import (
   APPROVED_CODE_REVIEW_AREAS,
@@ -131,6 +130,18 @@ FAMILY_REGISTRY: dict[str, dict[str, Any]] = {
   "feature-verify": {
     "layout_kind": "pre-shell",
     "base_path_template": "skills/{platform}/{name}",
+    "is_shelled": False,
+    "manifest_key": None,
+  },
+  "workflow": {
+    "layout_kind": "horizontal",
+    "base_path_template": "skills/{name}",
+    "is_shelled": False,
+    "manifest_key": None,
+  },
+  "advisor": {
+    "layout_kind": "horizontal",
+    "base_path_template": "skills/{name}",
     "is_shelled": False,
     "manifest_key": None,
   },
@@ -764,6 +775,12 @@ _PLANNERS: dict[str, Any] = {
 
 
 def _render_skill_body(plan: dict[str, Any], payload: dict) -> str:
+  """Render the canonical three-section SKILL.md body for any family.
+
+  Every scaffolded SKILL.md emits ``## Descriptor`` + ``## Execution`` +
+  ``## Ceremony`` and nothing else. Family-specific authored prose lives in
+  the sibling ``content.md``.
+  """
   platform = plan["platform"]
   display_name = plan.get("display_name") or (
     _derive_display_name(platform) if platform else ""
@@ -777,52 +794,20 @@ def _render_skill_body(plan: dict[str, Any], payload: dict) -> str:
   )
 
   description = _optional_string(payload, "description") or infer_skill_description(context)
-
   front_matter = render_skill_frontmatter(plan["skill_name"], description)
 
-  if plan["is_shelled"]:
-    descriptor_section = render_descriptor_section(
-      context,
-      metadata=DescriptorMetadata(
-        area_focus=plan.get("descriptor_metadata", {}).get("area_focus", "")
-      ),
-    )
-    sections = [
-      descriptor_section,
-      render_default_section("## Execution", context),
-      render_default_section("## Ceremony", context),
-    ]
-    return f"{front_matter}\n" + "\n".join(sections)
-
-  sections: list[str] = []
-  # Skills that land under ``skills/`` (horizontal + pre-shell platform
-  # overrides) are validated by ``validate_skill_file``, which requires the
-  # ``## Project Overrides`` heading and a reference to
-  # ``.agents/skill-overrides.md``. Platform-pack skills go through the
-  # lighter ``validate_platform_pack_skill_file`` and intentionally skip it
-  # to keep platform-pack skills lean.
-  if not plan["is_shelled"] and plan["kind"] != SKILL_KIND_ADD_ON:
-    sections.append(render_project_overrides(context))
-  sections.extend(render_default_section(heading, context) for heading in NON_GOVERNED_REQUIRED_SECTIONS)
-
-  # Baseline code-review skills ship with dual-mode seeds so the skill works
-  # whether the pack has specialists yet or not. Area specialists and other
-  # families don't need this branching.
-  is_code_review_baseline = (
-    plan["family"] == "code-review"
-    and not plan["area"]
-    and plan["is_shelled"]
+  descriptor_section = render_descriptor_section(
+    context,
+    metadata=DescriptorMetadata(
+      area_focus=plan.get("descriptor_metadata", {}).get("area_focus", "")
+    ),
   )
-  if is_code_review_baseline:
-    outputs_index = next(
-      (i for i, section in enumerate(sections) if section.startswith("## Outputs Contract")),
-      len(sections),
-    )
-    sections.insert(outputs_index + 1, render_delegated_mode_section(context))
-    sections.insert(outputs_index + 2, render_inline_mode_section(context))
-
-  body = "\n".join(sections)
-  return f"{front_matter}\n{body}"
+  sections = [
+    descriptor_section,
+    render_default_section("## Execution", context),
+    render_default_section("## Ceremony", context),
+  ]
+  return f"{front_matter}\n" + "\n".join(sections)
 
 
 def _render_governed_content_body(plan: dict[str, Any], payload: dict) -> str:
@@ -1487,12 +1472,13 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
         body = _render_skill_body(plan, payload)
 
       _stage_file(txn, plan["skill_file"], body)
-      if plan["is_shelled"] and plan.get("content_file") is not None:
+      if plan["kind"] != SKILL_KIND_ADD_ON:
+        content_path = plan.get("content_file") or plan["skill_file"].with_name("content.md")
         _stage_file(
           txn,
-          plan["content_file"],
-        _render_governed_content_body(plan, payload),
-      )
+          content_path,
+          _render_governed_content_body(plan, payload),
+        )
 
       manifest_edits = _apply_manifest_edits(txn, plan, repo_root)
       symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)

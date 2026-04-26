@@ -12,7 +12,11 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from skill_bill.shell_content_contract import (  # noqa: E402
   APPROVED_CODE_REVIEW_AREAS as SHELL_APPROVED_CODE_REVIEW_AREAS,
+  CANONICAL_SKILL_MD_BANLIST_PATTERNS,
+  CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS,
   CEREMONY_FREE_FORM_H2S,
+  InvalidSkillMdShapeError,
+  REQUIRED_GOVERNED_SECTIONS,
   SHELL_CONTRACT_VERSION,
   ShellContentContractError,
   discover_platform_packs,
@@ -50,7 +54,6 @@ SKILL_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-
 FRONTMATTER_PATTERN = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 SKILL_NAME_PATTERN = re.compile(r"^bill-[a-z0-9-]+$")
 ADDON_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-PROJECT_OVERRIDES_HEADING = "## Project Overrides"
 SKILL_OVERRIDE_FILE = ".agents/skill-overrides.md"
 SKILL_OVERRIDE_EXAMPLE_FILE = ".agents/skill-overrides.example.md"
 SKILL_OVERRIDE_TITLE = "# Skill Overrides"
@@ -153,7 +156,6 @@ FRAMEWORK_DUPLICATION_LINES: tuple[str, ...] = (
 )
 SYSTEM_OWNED_CONTENT_MARKERS: tuple[str, ...] = (
   "## Setup",
-  "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.",
 )
 EXECUTION_AND_REPORTING_CEREMONY_MARKERS: tuple[str, ...] = (
   "shared execution-mode contract",
@@ -168,6 +170,132 @@ EXECUTION_AND_REPORTING_CEREMONY_MARKERS: tuple[str, ...] = (
   "display the final `./gradlew check` result",
 )
 UNRESOLVED_PLACEHOLDER_PATTERN = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b")
+
+CANONICAL_SKILL_MD_LEGACY_MARKERS: tuple[str, ...] = ()
+
+CANONICAL_SKILL_MD_ENFORCEMENT_DISABLED = False
+CANONICAL_SKILL_MD_FORCE_SKIP_DIRECTORIES: tuple[str, ...] = (
+  "skills/bill-editorial-assignment-desk",
+)
+
+
+def validate_skill_md_shape(skill_md_path: Path, *, enforce: bool = True) -> None:
+  """Enforce the canonical SKILL.md shape on a single file.
+
+  The canonical shape is: a frontmatter block whose keys are restricted to
+  :data:`CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS`, immediately followed by
+  three required H2 sections — ``## Descriptor``, ``## Execution``,
+  ``## Ceremony`` — in that order. The body must contain no other H2, no H1,
+  no H3+, no intro paragraph before the first H2, and none of the patterns
+  enumerated in :data:`CANONICAL_SKILL_MD_BANLIST_PATTERNS`.
+
+  When ``enforce`` is ``False`` and the file still carries any legacy-shape
+  markers from :data:`CANONICAL_SKILL_MD_LEGACY_MARKERS`, the file is skipped
+  rather than rejected. This guard is removed once every in-scope SKILL.md has
+  been migrated to the canonical shape.
+  """
+  text = skill_md_path.read_text(encoding="utf-8")
+  if not enforce:
+    for marker in CANONICAL_SKILL_MD_LEGACY_MARKERS:
+      if marker in text:
+        return
+
+  frontmatter_match = FRONTMATTER_PATTERN.match(text)
+  if not frontmatter_match:
+    raise InvalidSkillMdShapeError(
+      f"{skill_md_path}: SKILL.md must begin with a YAML frontmatter block."
+    )
+
+  frontmatter = parse_frontmatter(frontmatter_match.group(1))
+  unknown_keys = sorted(set(frontmatter.keys()) - CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS)
+  if unknown_keys:
+    raise InvalidSkillMdShapeError(
+      f"{skill_md_path}: SKILL.md frontmatter contains disallowed keys "
+      f"{unknown_keys}; only {sorted(CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS)} are allowed."
+    )
+  for required_key in ("name", "description"):
+    if required_key not in frontmatter or not frontmatter[required_key]:
+      raise InvalidSkillMdShapeError(
+        f"{skill_md_path}: SKILL.md frontmatter is missing required key '{required_key}'."
+      )
+
+  body = text[frontmatter_match.end():]
+  body_lines = body.splitlines()
+
+  fm_line_count = text[: frontmatter_match.end()].count("\n")
+  body_start_line = fm_line_count + 1
+
+  in_fence = False
+  found_first_h2 = False
+  intro_seen = False
+  h2_sequence: list[tuple[int, str]] = []
+
+  fence_pattern = re.compile(r"^\s*(?:```|~~~)")
+
+  for offset, raw_line in enumerate(body_lines):
+    file_line_no = body_start_line + offset
+    line = raw_line
+
+    if fence_pattern.match(line):
+      raise InvalidSkillMdShapeError(
+        f"{skill_md_path}:{file_line_no}: fenced code blocks are not allowed in SKILL.md."
+      )
+
+    stripped = line.strip()
+    if line.startswith("## "):
+      h2_sequence.append((file_line_no, stripped))
+      found_first_h2 = True
+      continue
+
+    if not found_first_h2:
+      if stripped:
+        intro_seen = True
+        raise InvalidSkillMdShapeError(
+          f"{skill_md_path}:{file_line_no}: intro paragraph or content is not allowed before the first H2."
+        )
+      continue
+
+    for label, pattern in CANONICAL_SKILL_MD_BANLIST_PATTERNS:
+      if pattern.match(line):
+        raise InvalidSkillMdShapeError(
+          f"{skill_md_path}:{file_line_no}: SKILL.md body must not contain {label}; matched '{line.rstrip()}'."
+        )
+
+  if not h2_sequence:
+    raise InvalidSkillMdShapeError(
+      f"{skill_md_path}: SKILL.md must contain the canonical H2 sections "
+      f"{list(REQUIRED_GOVERNED_SECTIONS)}."
+    )
+
+  observed_headings = [heading for _, heading in h2_sequence]
+  expected_headings = list(REQUIRED_GOVERNED_SECTIONS)
+  if observed_headings != expected_headings:
+    raise InvalidSkillMdShapeError(
+      f"{skill_md_path}: SKILL.md must contain exactly the H2 sections "
+      f"{expected_headings} in that order; got {observed_headings}."
+    )
+
+  del intro_seen  # silence linter; the loop already raises on intro content
+
+
+def collect_skill_md_shape_issues(root: Path, issues: list[str]) -> None:
+  """Walk every SKILL.md in skills/ and platform-packs/ and validate shape."""
+  candidate_files: list[Path] = []
+  for container in ("skills", "platform-packs"):
+    container_dir = root / container
+    if not container_dir.is_dir():
+      continue
+    candidate_files.extend(sorted(container_dir.rglob("SKILL.md")))
+
+  enforce_globally = not CANONICAL_SKILL_MD_ENFORCEMENT_DISABLED
+  for skill_md_path in candidate_files:
+    relative = str(skill_md_path.parent.relative_to(root))
+    if any(relative == skip or relative.startswith(skip + "/") for skip in CANONICAL_SKILL_MD_FORCE_SKIP_DIRECTORIES):
+      continue
+    try:
+      validate_skill_md_shape(skill_md_path, enforce=enforce_globally)
+    except InvalidSkillMdShapeError as error:
+      issues.append(str(error))
 
 
 def main() -> int:
@@ -212,6 +340,7 @@ def main() -> int:
   )
   validate_plugin_manifest(root / ".claude-plugin" / "plugin.json", issues)
   validate_no_inline_telemetry_contract_drift(root, issues)
+  collect_skill_md_shape_issues(root, issues)
   platform_pack_slugs = validate_platform_packs(root, issues)
 
   if issues:
@@ -363,6 +492,10 @@ def validate_platform_pack_skill_file(skill_name: str, skill_file: Path, issues:
   validate_runtime_supporting_files(skill_name, text, skill_file, issues)
   validate_portable_review_wording(skill_name, text, skill_file, issues)
   validate_governed_content_file(skill_name, skill_file, issues)
+  try:
+    validate_skill_md_shape(skill_file)
+  except InvalidSkillMdShapeError as error:
+    issues.append(str(error))
 
 
 def validate_governed_content_file(
@@ -441,17 +574,18 @@ def discover_addon_files(root: Path) -> list[Path]:
 
 ORCHESTRATOR_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
   # (skill_dir, files_to_scan_relative_to_skill_dir)
-  ("skills/bill-feature-implement", ("SKILL.md", "reference.md")),
-  ("skills/bill-feature-verify", ("SKILL.md",)),
+  ("skills/bill-feature-implement", ("SKILL.md", "content.md", "reference.md")),
+  ("skills/bill-feature-verify", ("SKILL.md", "content.md")),
 )
 ORCHESTRATED_PASS_THROUGH_MARKER = "orchestrated=true"
 WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
   (
     "skills/bill-feature-implement",
-    ("SKILL.md", "reference.md"),
+    ("content.md", "reference.md"),
     (
-      "## Workflow State",
-      "## Continuation Mode",
+      "Step id: `assess`",
+      "Step id: `implement`",
+      "Step id: `pr_description`",
       "feature_implement_workflow_open",
       "feature_implement_workflow_update",
       "feature_implement_workflow_continue",
@@ -463,10 +597,11 @@ WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
   ),
   (
     "skills/bill-feature-verify",
-    ("SKILL.md",),
+    ("content.md",),
     (
-      "## Workflow State",
-      "## Continuation Mode",
+      "Step id: `collect_inputs`",
+      "Step id: `code_review`",
+      "Step id: `verdict`",
       "feature_verify_workflow_open",
       "feature_verify_workflow_update",
       "feature_verify_workflow_get",
@@ -481,21 +616,17 @@ WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
   ),
 )
 FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS: tuple[str, ...] = (
-  "## Execution",
-  "[content.md](content.md)",
-  "## Workflow State",
-  "### Stable Step Ids",
-  "### Stable Artifact Names",
-  "## Continuation Mode",
-  "## Step 1: Collect Design Doc + Assess Size (orchestrator)",
-  "## Step 1b: Create Feature Branch (orchestrator)",
-  "## Step 2: Pre-Planning (subagent)",
-  "## Step 3: Create Implementation Plan (subagent)",
-  "## Step 4: Execute Plan (subagent)",
-  "## Step 5: Code Review (orchestrator)",
-  "## Step 6: Completeness Audit (subagent)",
-  "## Finalization sequence (Steps 6b -> 9)",
-  "## Telemetry: Record Finished",
+  "Step id: `assess`",
+  "Step id: `create_branch`",
+  "Step id: `preplan`",
+  "Step id: `plan`",
+  "Step id: `implement`",
+  "Step id: `review`",
+  "Step id: `audit`",
+  "Step id: `validate`",
+  "Step id: `write_history`",
+  "Step id: `commit_push`",
+  "Step id: `pr_description`",
   "feature_implement_workflow_open",
   "feature_implement_workflow_update",
   "feature_implement_workflow_continue",
@@ -559,8 +690,12 @@ def validate_workflow_driven_skills(root: Path, issues: list[str]) -> None:
 
 
 def validate_feature_implement_shell_contract(root: Path, issues: list[str]) -> None:
-  """`bill-feature-implement` is a shell/content split pilot with shell-owned
-  workflow markers that must remain in `SKILL.md`.
+  """Verify ``bill-feature-implement``'s workflow contract surface.
+
+  Step prose, artifact names, and install gates live in ``content.md`` after
+  SKILL-31. The validator cross-checks every step id against
+  :data:`FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS` and every artifact name against
+  :data:`FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES` from ``skill_bill.constants``.
   """
   skill_dir = root / "skills" / "bill-feature-implement"
   if not skill_dir.exists():
@@ -575,17 +710,42 @@ def validate_feature_implement_shell_contract(root: Path, issues: list[str]) -> 
     issues.append(f"{skill_dir}: bill-feature-implement must include sibling content.md")
     return
 
-  text = skill_file.read_text(encoding="utf-8")
+  from skill_bill.constants import (
+    FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES,
+    FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS,
+  )
+
+  content_text = content_file.read_text(encoding="utf-8")
   for marker in FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS:
-    if marker not in text:
+    if marker not in content_text:
       issues.append(
-        f"{skill_file}: bill-feature-implement shell must include '{marker}'"
+        f"{content_file}: bill-feature-implement content must include '{marker}'"
+      )
+
+  for step_id in FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS:
+    if step_id == "finish":
+      continue
+    binding = f"Step id: `{step_id}`"
+    if binding not in content_text:
+      issues.append(
+        f"{content_file}: bill-feature-implement content must bind step '{step_id}' "
+        f"with the inline marker '{binding}'"
+      )
+
+  for artifact_name in FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES:
+    if f"`{artifact_name}`" not in content_text:
+      issues.append(
+        f"{content_file}: bill-feature-implement content must reference artifact '`{artifact_name}`'"
       )
 
 
 def validate_feature_verify_shell_contract(root: Path, issues: list[str]) -> None:
-  """`bill-feature-verify` is a shell/content split pilot with shell-owned
-  workflow markers that must remain in `SKILL.md`.
+  """Verify ``bill-feature-verify``'s workflow contract surface.
+
+  Step prose and artifact names live in ``content.md`` after SKILL-31. The
+  validator cross-checks every step id against
+  :data:`FEATURE_VERIFY_WORKFLOW_STEP_IDS` and every artifact name against
+  :data:`FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES` from ``skill_bill.constants``.
   """
   skill_dir = root / "skills" / "bill-feature-verify"
   if not skill_dir.exists():
@@ -600,23 +760,13 @@ def validate_feature_verify_shell_contract(root: Path, issues: list[str]) -> Non
     issues.append(f"{skill_dir}: bill-feature-verify must include sibling content.md")
     return
 
-  text = skill_file.read_text(encoding="utf-8")
-  for marker in (
-    "## Execution",
-    "[content.md](content.md)",
-    "## Workflow State",
-    "### Stable Step Ids",
-    "### Stable Artifact Names",
-    "## Continuation Mode",
-    "## Step 1: Collect Inputs",
-    "## Step 2: Extract Acceptance Criteria",
-    "## Step 3: Gather PR Diff",
-    "## Step 4: Feature Flag Audit (conditional)",
-    "## Step 5: Code Review",
-    "## Step 6: Completeness Audit",
-    "## Step 7: Consolidated Verdict",
-    "## Telemetry",
-    "## Nested Child Tools",
+  from skill_bill.constants import (
+    FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES,
+    FEATURE_VERIFY_WORKFLOW_STEP_IDS,
+  )
+
+  content_text = content_file.read_text(encoding="utf-8")
+  required_markers = (
     "audit-rubrics.md",
     "feature_verify_started",
     "feature_verify_finished",
@@ -624,17 +774,27 @@ def validate_feature_verify_shell_contract(root: Path, issues: list[str]) -> Non
     "feature_verify_workflow_update",
     "feature_verify_workflow_get",
     "feature_verify_workflow_continue",
-    "`input_context`",
-    "`criteria_summary`",
-    "`diff_summary`",
-    "`feature_flag_audit_result`",
-    "`review_result`",
-    "`completeness_audit_result`",
-    "`verdict_result`",
-  ):
-    if marker not in text:
+  )
+  for marker in required_markers:
+    if marker not in content_text:
       issues.append(
-        f"{skill_file}: bill-feature-verify shell must include '{marker}'"
+        f"{content_file}: bill-feature-verify content must include '{marker}'"
+      )
+
+  for step_id in FEATURE_VERIFY_WORKFLOW_STEP_IDS:
+    if step_id == "finish":
+      continue
+    binding = f"Step id: `{step_id}`"
+    if binding not in content_text:
+      issues.append(
+        f"{content_file}: bill-feature-verify content must bind step '{step_id}' "
+        f"with the inline marker '{binding}'"
+      )
+
+  for artifact_name in FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES:
+    if f"`{artifact_name}`" not in content_text:
+      issues.append(
+        f"{content_file}: bill-feature-verify content must reference artifact '`{artifact_name}`'"
       )
 
 
@@ -678,13 +838,6 @@ def validate_no_inline_telemetry_contract_drift(root: Path, issues: list[str]) -
 
 def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) -> None:
   text = skill_file.read_text(encoding="utf-8")
-  shell_ceremony_file = skill_file.parent / "shell-ceremony.md"
-  shell_ceremony_text = (
-    shell_ceremony_file.read_text(encoding="utf-8")
-    if shell_ceremony_file.is_file()
-    else ""
-  )
-  combined_text = text if not shell_ceremony_text else f"{text}\n{shell_ceremony_text}"
   frontmatter_match = FRONTMATTER_PATTERN.match(text)
   if not frontmatter_match:
     issues.append(f"{skill_file}: missing YAML frontmatter block")
@@ -704,13 +857,10 @@ def validate_skill_file(skill_name: str, skill_file: Path, issues: list[str]) ->
   if not description:
     issues.append(f"{skill_file}: frontmatter description is missing")
 
-  if PROJECT_OVERRIDES_HEADING not in text:
-    issues.append(f"{skill_file}: missing '{PROJECT_OVERRIDES_HEADING}' section")
-
-  if SKILL_OVERRIDE_FILE not in combined_text:
-    issues.append(
-      f"{skill_file}: missing reference to '{SKILL_OVERRIDE_FILE}' in the skill or its shell ceremony sidecar"
-    )
+  try:
+    validate_skill_md_shape(skill_file)
+  except InvalidSkillMdShapeError as error:
+    issues.append(str(error))
 
   validate_runtime_supporting_files(skill_name, text, skill_file, issues)
   validate_portable_review_wording(skill_name, text, skill_file, issues)
@@ -737,21 +887,24 @@ def validate_runtime_supporting_files(
     if match:
       issues.append(f"{skill_file}: {message}; found '{match.group(0)}'")
 
+  full_combined_text = text if not content_text else f"{text}\n{content_text}"
   for file_name in required_files:
     supporting_file = skill_file.parent / file_name
     if (
       skill_name == "bill-feature-implement"
       and file_name in ADDON_SUPPORTING_FILE_TARGETS
     ):
-      if file_name not in combined_text and "matching pack-owned add-on supporting files" not in combined_text:
+      if (
+        file_name not in full_combined_text
+        and "matching pack-owned add-on supporting files" not in full_combined_text
+      ):
         issues.append(
           f"{skill_file}: must reference local supporting file '{file_name}' or describe pack-owned add-on support-file selection"
         )
     elif file_name in ADDON_SUPPORTING_FILE_TARGETS:
-      addon_combined_text = text if not content_text else f"{text}\n{content_text}"
-      if file_name not in addon_combined_text:
+      if file_name not in full_combined_text:
         issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
-    elif file_name not in combined_text:
+    elif file_name not in full_combined_text:
       issues.append(f"{skill_file}: must reference local supporting file '{file_name}'")
     if not supporting_file.exists():
       issues.append(f"{skill_file}: supporting file '{file_name}' is missing")

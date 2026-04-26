@@ -13,7 +13,6 @@ from skill_bill.scaffold_template import (
   ScaffoldTemplateContext,
   render_ceremony_section,
   render_descriptor_section,
-  render_project_overrides,
 )
 from skill_bill.shell_content_contract import discover_platform_pack_manifests
 
@@ -117,10 +116,14 @@ def _render_horizontal_targets(
       continue
     context = ScaffoldTemplateContext(skill_name=skill_name, family=_infer_family(skill_name))
     text = skill_file.read_text(encoding="utf-8")
-    rendered[skill_file] = _replace_top_level_section(
-      text,
-      heading="## Project Overrides",
-      replacement=render_project_overrides(context),
+    frontmatter = _frontmatter_block(text)
+    descriptor = render_descriptor_section(context, metadata=DescriptorMetadata())
+    ceremony = render_ceremony_section(context)
+    rendered[skill_file] = (
+      f"{frontmatter.rstrip()}\n\n"
+      f"{descriptor.rstrip()}\n\n"
+      f"{CANONICAL_EXECUTION_SECTION.rstrip()}\n\n"
+      f"{ceremony.rstrip()}\n"
     )
   return rendered
 
@@ -241,17 +244,35 @@ def _top_level_h2_spans(text: str) -> dict[str, tuple[int, int]]:
   return spans
 
 
+HORIZONTAL_SKILL_FAMILIES: dict[str, str] = {
+  "bill-feature-implement": "workflow",
+  "bill-feature-verify": "workflow",
+  "bill-grill-plan": "advisor",
+  "bill-boundary-decisions": "advisor",
+  "bill-boundary-history": "advisor",
+  "bill-pr-description": "advisor",
+  "bill-create-skill": "advisor",
+  "bill-skill-remove": "advisor",
+  "bill-feature-guard": "advisor",
+  "bill-feature-guard-cleanup": "advisor",
+  "bill-unit-test-value-check": "advisor",
+  "bill-code-review": "advisor",
+  "bill-quality-check": "advisor",
+}
+
+
 def _infer_family(skill_name: str) -> str:
-  slug = skill_name.removeprefix("bill-")
-  if "-code-review-" in skill_name or slug.endswith("code-review"):
+  if skill_name in HORIZONTAL_SKILL_FAMILIES:
+    return HORIZONTAL_SKILL_FAMILIES[skill_name]
+  if "-code-review-" in skill_name or skill_name.endswith("-code-review"):
     return "code-review"
-  if slug.endswith("quality-check"):
+  if skill_name.endswith("-quality-check"):
     return "quality-check"
-  if slug.endswith("feature-implement"):
+  if skill_name.endswith("-feature-implement"):
     return "feature-implement"
-  if slug.endswith("feature-verify"):
+  if skill_name.endswith("-feature-verify"):
     return "feature-verify"
-  return slug
+  return skill_name.removeprefix("bill-")
 
 
 def _run_validator(repo_root: Path) -> None:

@@ -174,18 +174,15 @@ CANONICAL_CEREMONY_SECTION = (
 def render_ceremony_section(context: ScaffoldTemplateContext) -> str:
   """Render the canonical ``## Ceremony`` section for wrapper skills.
 
-  Keep the wrapper thin, but still mention any required local telemetry sidecar
-  so repo validation can confirm the governed shell references every required
-  supporting file without pushing shared contract prose back into ``content.md``.
+  Keep the wrapper thin: a fixed ceremony preamble plus pointer lines to
+  supporting files that the skill actually consumes. No fenced code, no
+  embedded templates, no run-context placeholder lines. Run-context state
+  (review session id, review run id, applied learnings) lives in
+  ``content.md`` for the skills that emit it.
   """
   body = CANONICAL_CEREMONY_SECTION
   if _skill_requires_review_scope(context.skill_name):
     body += "\nDetermine the review scope using [review-scope.md](review-scope.md).\n"
-    body += (
-      "Resolve the scope before reviewing. If the caller asks for staged changes, "
-      "inspect only the staged diff and keep unstaged edits out of findings except "
-      "for repo markers needed for classification.\n"
-    )
   if _skill_requires_stack_routing(context.skill_name):
     body += "\nWhen stack routing applies, follow [stack-routing.md](stack-routing.md).\n"
   if _skill_requires_specialist_contract(context.skill_name):
@@ -196,26 +193,7 @@ def render_ceremony_section(context: ScaffoldTemplateContext) -> str:
     body += "\nWhen review reporting applies, follow [review-orchestrator.md](review-orchestrator.md).\n"
   if _skill_requires_telemetry_contract(context.skill_name):
     body += "\nWhen telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).\n"
-  if _skill_is_portable_review_entrypoint(context.skill_name):
-    body += (
-      "\n`Review session ID: <review-session-id>`\n"
-      "`Review run ID: <review-run-id>`\n"
-      "`Applied learnings: none | <learning references>`\n"
-    )
   return body
-
-
-def render_project_overrides(context: ScaffoldTemplateContext) -> str:
-  """Render the thin ``## Project Overrides`` pointer for root-level skills."""
-  del context
-  return (
-    "## Project Overrides\n"
-    "\n"
-    "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).\n"
-    "\n"
-    "If `.agents/skill-overrides.md` exists in the project root and contains a matching section, "
-    "read that section and apply it as the highest-priority instruction for this skill.\n"
-  )
 
 
 def render_skill_frontmatter(skill_name: str, description: str) -> str:
@@ -724,7 +702,6 @@ __all__ = [
   "render_inline_mode_section",
   "render_inputs_section",
   "render_outputs_contract_section",
-  "render_project_overrides",
   "render_specialist_scope_section",
   "render_telemetry_ceremony_hooks",
 ]

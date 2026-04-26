@@ -83,7 +83,7 @@ def import_review(review_text: str, orchestrated: bool = False) -> dict:
       "review_run_id": review.review_run_id,
       "finding_count": len(review.findings),
     }
-  with open_db(sync=False) as (connection, db_path):
+  with open_db() as (connection, db_path):
     save_imported_review(connection, review, source_path=None)
     if orchestrated:
       with connection:
@@ -143,7 +143,7 @@ def triage_findings(
       "reason": "telemetry is disabled",
       "review_run_id": review_run_id,
     }
-  with open_db(sync=False) as (connection, db_path):
+  with open_db() as (connection, db_path):
     if orchestrated:
       with connection:
         connection.execute(
@@ -351,7 +351,7 @@ def feature_implement_started(
   if not telemetry_is_enabled():
     return {"status": "skipped", "session_id": session_id}
 
-  with open_db(sync=False) as (connection, db_path):
+  with open_db() as (connection, db_path):
     save_started(
       connection,
       session_id=session_id,

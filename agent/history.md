@@ -1,3 +1,13 @@
+## [2026-04-26] canonical-skill-md-shape
+Areas: skills/, platform-packs/, scripts/validate_agent_configs.py, skill_bill/, tests/, orchestration/shell-content-contract/
+- Locked SKILL.md to a single canonical shape across every skill: frontmatter + `## Descriptor` + `## Execution` + `## Ceremony` only, with a body banlist (fenced code, tables, `## Step N:` headings, embedded templates, install gates, telemetry instructions, routing rules, run-context placeholders). All substantive prose moves to content.md. reusable
+- Reverses the 2026-04-21 feature-implement/verify-shell-pilot direction (step prose lived in SKILL.md): SKILL.md is now scaffold-only and content.md owns step prose with inline `Step id: \`X\`` bindings cross-checked against `skill_bill/constants.py`. reusable
+- New `validate_skill_md_shape` (loud-fail via `InvalidSkillMdShapeError`); existing validators retargeted from SKILL.md to content.md (`FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS`, `validate_feature_implement_shell_contract`, `validate_feature_verify_shell_contract`, `validate_workflow_driven_skills`). `PROJECT_OVERRIDES_HEADING` enforcement dropped; `.agents/skill-overrides.md` rule inherits via shell-ceremony.md. reusable
+- Family taxonomy locked at 4 (`code-review`, `quality-check`, `workflow`, `advisor`) with no path-based exceptions; `HORIZONTAL_SKILL_FAMILIES` lookup added in `skill_bill/upgrade.py` so `skill-bill upgrade` cannot silently corrupt migrated SKILL.md files. reusable
+- Known limit: `bill-editorial-assignment-desk` (lives on unmerged SKILL-30 branch) is out of scope; canonical shape applies there as a SKILL-30 follow-up. 9 deferred Minor validator/test cleanups (F-002 through F-010) tracked in workflow review_result.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-04-23] kotlin-runtime-port phase 4
 Areas: runtime-kotlin/, docs/migrations/SKILL-27-kotlin-runtime-port.md, .feature-specs/SKILL-27-surface-integration/
 - Replaced the marker-only `runtime-kotlin` CLI and MCP surfaces with real adapters for the review/learnings/stats/telemetry slice while keeping command/tool names, payload fields, and orchestrated review semantics aligned with the Python oracle. reusable

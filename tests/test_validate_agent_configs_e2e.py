@@ -215,6 +215,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("must use portable summary wording", result.stdout)
 
   def test_rejects_portable_review_skill_without_review_run_id_contract(self) -> None:
+    bare_content = "# fixture\n\nMinimal content body.\n"
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
@@ -226,6 +227,10 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
           "bill-kotlin-code-review"
         ),
       },
+      content_md_overrides={
+        "bill-code-review": bare_content,
+        "bill-kotlin-code-review": bare_content,
+      },
     ) as repo_root:
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
@@ -236,6 +241,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       self.assertIn("shared code-review router must define the review session id format", result.stdout)
 
   def test_rejects_portable_review_skill_without_applied_learnings_contract(self) -> None:
+    bare_content = "# fixture\n\nMinimal content body.\n"
     with self.fixture_repo(
       [
         ("base", "bill-code-review"),
@@ -246,6 +252,10 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         "bill-kmp-code-review": self.portable_review_fixture_without_applied_learnings(
           "bill-kmp-code-review"
         ),
+      },
+      content_md_overrides={
+        "bill-code-review": bare_content,
+        "bill-kmp-code-review": bare_content,
       },
       review_orchestrator_has_applied_learnings=False,
     ) as repo_root:
@@ -345,43 +355,43 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
 
   def test_rejects_feature_verify_without_workflow_state_contract(self) -> None:
     with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
-      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
-      skill_md.write_text(
-        skill_md.read_text(encoding="utf-8").replace("## Workflow State\n\n", "", 1),
+      content_md = repo_root / "skills" / "bill-feature-verify" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("feature_verify_workflow_open", "removed_marker", 1),
         encoding="utf-8",
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-verify shell must include '## Workflow State'",
+        "bill-feature-verify content must include 'feature_verify_workflow_open'",
         result.stdout,
       )
 
   def test_rejects_feature_verify_without_continuation_mode_contract(self) -> None:
     with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
-      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
-      skill_md.write_text(
-        skill_md.read_text(encoding="utf-8").replace("## Continuation Mode\n\n", "", 1),
+      content_md = repo_root / "skills" / "bill-feature-verify" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("Step id: `verdict`", "Step id: `removed`", 1),
         encoding="utf-8",
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-verify shell must include '## Continuation Mode'",
+        "Step id: `verdict`",
         result.stdout,
       )
 
   def test_rejects_feature_verify_without_execution_pointer(self) -> None:
     with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
-      skill_md = repo_root / "skills" / "bill-feature-verify" / "SKILL.md"
-      skill_md.write_text(
-        skill_md.read_text(encoding="utf-8").replace("[content.md](content.md)", "[reference.md](reference.md)", 1),
+      content_md = repo_root / "skills" / "bill-feature-verify" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("Step id: `code_review`", "Step id: `removed`", 1),
         encoding="utf-8",
       )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-verify shell must include '[content.md](content.md)'",
+        "Step id: `code_review`",
         result.stdout,
       )
 
@@ -409,15 +419,19 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       skill_contents={
         "bill-feature-implement": (
           self.skill_markdown("bill-feature-implement")
-          .replace("## Workflow State\n\n", "", 1)
           + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
         ),
       },
     ) as repo_root:
+      content_md = repo_root / "skills" / "bill-feature-implement" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("feature_implement_workflow_open", "removed_marker", 1),
+        encoding="utf-8",
+      )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-implement shell must include '## Workflow State'",
+        "bill-feature-implement content must include 'feature_implement_workflow_open'",
         result.stdout,
       )
 
@@ -427,15 +441,19 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       skill_contents={
         "bill-feature-implement": (
           self.skill_markdown("bill-feature-implement")
-          .replace("## Continuation Mode\n\n", "", 1)
           + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
         ),
       },
     ) as repo_root:
+      content_md = repo_root / "skills" / "bill-feature-implement" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("Step id: `assess`", "Step id: `removed`", 1),
+        encoding="utf-8",
+      )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-implement shell must include '## Continuation Mode'",
+        "Step id: `assess`",
         result.stdout,
       )
 
@@ -445,29 +463,32 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       skill_contents={
         "bill-feature-implement": (
           self.skill_markdown("bill-feature-implement")
-          .replace("[content.md](content.md)", "[reference.md](reference.md)", 1)
           + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
         ),
       },
     ) as repo_root:
+      content_md = repo_root / "skills" / "bill-feature-implement" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace("Step id: `pr_description`", "Step id: `removed`", 1),
+        encoding="utf-8",
+      )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
-        "bill-feature-implement shell must include '[content.md](content.md)'",
+        "Step id: `pr_description`",
         result.stdout,
       )
 
   def test_rejects_feature_verify_without_workflow_continue_marker(self) -> None:
-    with self.fixture_repo(
-      [("base", "bill-feature-verify")],
-      skill_contents={
-        "bill-feature-verify": (
-          self.skill_markdown("bill-feature-verify")
-          .replace("feature_verify_workflow_continue", "feature_verify_workflow_resume_only", 1)
-          + "\nWhen invoking child MCP tools, pass `orchestrated=true` to every call.\n"
+    with self.fixture_repo([("base", "bill-feature-verify")]) as repo_root:
+      content_md = repo_root / "skills" / "bill-feature-verify" / "content.md"
+      content_md.write_text(
+        content_md.read_text(encoding="utf-8").replace(
+          "feature_verify_workflow_continue",
+          "feature_verify_workflow_resume_only",
         ),
-      },
-    ) as repo_root:
+        encoding="utf-8",
+      )
       result = self.run_validator(repo_root)
       self.assertEqual(result.returncode, 1, result.stdout)
       self.assertIn(
@@ -751,6 +772,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     skills: list[tuple[str, str]],
     *,
     skill_contents: dict[str, str] | None = None,
+    content_md_overrides: dict[str, str] | None = None,
     review_orchestrator_has_telemetry: bool = True,
     review_orchestrator_has_applied_learnings: bool = True,
     review_orchestrator_uses_heading_sections: bool = True,
@@ -791,6 +813,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
           package_name,
           skill_name,
           content=(skill_contents or {}).get(skill_name),
+          content_md=(content_md_overrides or {}).get(skill_name),
         )
         self.write_supporting_files(repo_root, package_name, skill_name)
 
@@ -1125,6 +1148,7 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
     skill_name: str,
     *,
     content: str | None = None,
+    content_md: str | None = None,
   ) -> None:
     if package_name == "base":
       path = repo_root / "skills" / skill_name / "SKILL.md"
@@ -1132,16 +1156,43 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       path = repo_root / "skills" / package_name / skill_name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content or self.skill_markdown(skill_name), encoding="utf-8")
-    if skill_name == "bill-feature-implement":
+    if content_md is not None:
+      (path.parent / "content.md").write_text(content_md, encoding="utf-8")
+    elif skill_name == "bill-feature-implement":
       (path.parent / "content.md").write_text(
         self.feature_implement_content_markdown(),
         encoding="utf-8",
       )
-    if skill_name == "bill-feature-verify":
+    elif skill_name == "bill-feature-verify":
       (path.parent / "content.md").write_text(
         self.feature_verify_content_markdown(),
         encoding="utf-8",
       )
+    else:
+      (path.parent / "content.md").write_text(
+        self.default_content_markdown(skill_name),
+        encoding="utf-8",
+      )
+
+  def default_content_markdown(self, skill_name: str) -> str:
+    lines = [
+      f"# {skill_name} content",
+      "",
+      f"Fixture content body for {skill_name}.",
+    ]
+    if skill_name == "bill-code-review" or skill_name in (
+      "bill-kotlin-code-review",
+      "bill-kmp-code-review",
+    ):
+      lines.extend([
+        "",
+        REVIEW_SESSION_ID_PLACEHOLDER,
+        f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.",
+        REVIEW_RUN_ID_PLACEHOLDER,
+        f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
+        APPLIED_LEARNINGS_PLACEHOLDER,
+      ])
+    return "\n".join(lines) + "\n"
 
   def write_supporting_files(self, repo_root: Path, package_name: str, skill_name: str) -> None:
     targets = supporting_file_targets(repo_root)
@@ -1153,172 +1204,99 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       (skill_dir / file_name).symlink_to(targets[file_name])
 
   def feature_implement_content_markdown(self) -> str:
-    return textwrap.dedent(
-      """\
-      # Feature Implement Content
-
-      ## Step 1: Collect Design Doc + Assess Size (orchestrator)
-
-      Fixture execution body for Step 1.
-
-      ## Step 5: Code Review (orchestrator)
-
-      Run `bill-code-review` inline and pass `orchestrated=true`.
-
-      ## Finalization sequence (Steps 6b -> 9)
-
-      Finish the workflow without changing runtime behavior.
-      """
+    from skill_bill.constants import (
+      FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES,
+      FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS,
+    )
+    artifact_lines = "\n".join(
+      f"- `{name}`" for name in FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES
+    )
+    step_lines = "\n".join(
+      f"## Phase: {step_id}\n\nStep id: `{step_id}`\n\nFixture body for {step_id}.\n"
+      for step_id in FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS
+      if step_id != "finish"
+    )
+    return (
+      "# Feature Implement Content\n\n"
+      "Resolve governed add-ons by scanning the matching pack-owned add-on supporting files.\n\n"
+      "## Workflow State\n\n"
+      "- `feature_implement_workflow_open`\n"
+      "- `feature_implement_workflow_update`\n"
+      "- `feature_implement_workflow_continue`\n"
+      f"{artifact_lines}\n\n"
+      "## Continuation Mode\n\n"
+      "Resume with the persisted workflow artifacts instead of restarting from Step 1.\n\n"
+      f"{step_lines}\n"
     )
 
   def feature_verify_content_markdown(self) -> str:
-    return (ROOT / "skills" / "bill-feature-verify" / "content.md").read_text(encoding="utf-8")
+    from skill_bill.constants import (
+      FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES,
+      FEATURE_VERIFY_WORKFLOW_STEP_IDS,
+    )
+    artifact_lines = "\n".join(
+      f"- `{name}`" for name in FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES
+    )
+    step_lines = "\n".join(
+      f"## Phase: {step_id}\n\nStep id: `{step_id}`\n\nFixture body for {step_id}.\n"
+      for step_id in FEATURE_VERIFY_WORKFLOW_STEP_IDS
+      if step_id != "finish"
+    )
+    return (
+      "# Feature Verify Content\n\n"
+      "## Workflow State\n\n"
+      "- `feature_verify_workflow_open`\n"
+      "- `feature_verify_workflow_update`\n"
+      "- `feature_verify_workflow_get`\n"
+      "- `feature_verify_workflow_continue`\n"
+      f"{artifact_lines}\n\n"
+      "## Continuation Mode\n\n"
+      "Resume with the persisted workflow artifacts instead of restarting from Step 1.\n\n"
+      "## Telemetry hooks\n\n"
+      "- `feature_verify_started`\n"
+      "- `feature_verify_finished`\n"
+      "- See [audit-rubrics.md](audit-rubrics.md).\n\n"
+      f"{step_lines}\n"
+    )
 
   def skill_markdown(self, skill_name: str) -> str:
     if skill_name == "bill-feature-implement":
-      lines = [
-        "---",
-        f"name: {skill_name}",
-        f"description: Use when validating fixture taxonomy behavior for {skill_name}.",
-        "---",
-        "",
-        "# bill-feature-implement",
-        "",
-        "## Project Overrides",
-        "",
-        "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
-        "",
-        "If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.",
-        "",
-        "## Execution",
-        "",
-        "Follow the instructions in [content.md](content.md).",
-        "",
-        "## Workflow State",
-        "",
-        "- `feature_implement_workflow_open`",
-        "- `feature_implement_workflow_update`",
-        "- `feature_implement_workflow_continue`",
-        "",
-        "### Stable Step Ids",
-        "",
-        "1. `assess`",
-        "2. `create_branch`",
-        "3. `preplan`",
-        "4. `plan`",
-        "5. `implement`",
-        "6. `review`",
-        "7. `audit`",
-        "8. `validate`",
-        "9. `write_history`",
-        "10. `commit_push`",
-        "11. `pr_description`",
-        "12. `finish`",
-        "",
-        "### Stable Artifact Names",
-        "",
-        "- `assessment`",
-        "- `branch`",
-        "- `preplan_digest`",
-        "- `plan`",
-        "- `implementation_summary`",
-        "- `review_result`",
-        "- `audit_report`",
-        "- `validation_result`",
-        "- `history_result`",
-        "- `commit_push_result`",
-        "- `pr_result`",
-        "",
-        "## Continuation Mode",
-        "",
-        "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
-        "",
-        "## Step 1: Collect Design Doc + Assess Size (orchestrator)",
-        "",
-        "Persist `assessment` before advancing.",
-        "",
-        "## Step 1b: Create Feature Branch (orchestrator)",
-        "",
-        "Persist `branch` before advancing.",
-        "",
-        "## Step 2: Pre-Planning (subagent)",
-        "",
-        "Persist `preplan_digest` before advancing.",
-        "",
-        "## Step 3: Create Implementation Plan (subagent)",
-        "",
-        "Persist `plan` before advancing.",
-        "",
-        "## Step 4: Execute Plan (subagent)",
-        "",
-        "Persist `implementation_summary` before advancing.",
-        "",
-        "## Step 5: Code Review (orchestrator)",
-        "",
-        "Persist `review_result` before advancing.",
-        "",
-        "## Step 6: Completeness Audit (subagent)",
-        "",
-        "Persist `audit_report` before advancing.",
-        "",
-        "## Finalization sequence (Steps 6b -> 9)",
-        "",
-        "Persist `validation_result`, `history_result`, `commit_push_result`, and `pr_result` as the shell-owned artifact inventory allows.",
-        "",
-        "## Telemetry: Record Finished",
-        "",
-        "Record the parent-owned finished event after child telemetry collection is complete.",
-        "",
-      ]
-      for sidecar in required_supporting_files_for_skill(skill_name):
-        lines.append(f"[{sidecar}]({sidecar})")
-      return "\n".join(lines) + "\n"
-
-    lines = [
-      f"---",
-      f"name: {skill_name}",
-      f"description: Use when validating fixture taxonomy behavior for {skill_name}.",
-      f"---",
-      f"",
-      f"# {skill_name}",
-      f"",
-      f"## Project Overrides",
-      f"",
-      f"Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
-      f"",
-      f"If `.agents/skill-overrides.md` exists in the project root and contains a matching section, read that section and apply it as the highest-priority instruction for this skill.",
-      f"",
-      f"Use this fixture skill for validator end-to-end coverage.",
-    ]
-    if skill_name == "bill-code-review" or "telemetry-contract.md" in required_supporting_files_for_skill(skill_name):
-      lines.extend([
-        REVIEW_SESSION_ID_PLACEHOLDER,
-        f"Use the review session id format {REVIEW_SESSION_ID_FORMAT}.",
-        REVIEW_RUN_ID_PLACEHOLDER,
-        f"Use the review run id format {REVIEW_RUN_ID_FORMAT}.",
-        APPLIED_LEARNINGS_PLACEHOLDER,
-      ])
-    if skill_name == "bill-feature-implement":
-      lines.extend([
-        "## Workflow State",
-        "",
-        "- `feature_implement_workflow_open`",
-        "- `feature_implement_workflow_update`",
-        "- `feature_implement_workflow_continue`",
-        "- `assessment`",
-        "- `preplan_digest`",
-        "- `implementation_summary`",
-        "- `pr_result`",
-        "",
-          "## Continuation Mode",
-          "",
-          "Resume with the persisted workflow artifacts instead of restarting from Step 1.",
-          "",
-        ])
+      return (ROOT / "skills" / "bill-feature-implement" / "SKILL.md").read_text(encoding="utf-8")
     if skill_name == "bill-feature-verify":
       return self.feature_verify_shell_markdown()
+
+    family = "advisor"
+    descriptor_lines = [
+      "## Descriptor",
+      "",
+      f"Governed skill: `{skill_name}`",
+      f"Family: `{family}`",
+      f"Description: Use when validating fixture taxonomy behavior for {skill_name}.",
+    ]
+    ceremony_lines = [
+      "## Ceremony",
+      "",
+      "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
+    ]
     for sidecar in required_supporting_files_for_skill(skill_name):
-      lines.append(f"[{sidecar}]({sidecar})")
+      if sidecar == "shell-ceremony.md":
+        continue
+      ceremony_lines.append(f"\nWhen {sidecar} applies, follow [{sidecar}]({sidecar}).")
+
+    lines = [
+      "---",
+      f"name: {skill_name}",
+      f"description: Use when validating fixture taxonomy behavior for {skill_name}.",
+      "---",
+      "",
+      *descriptor_lines,
+      "",
+      "## Execution",
+      "",
+      "Follow the instructions in [content.md](content.md).",
+      "",
+      *ceremony_lines,
+    ]
     return "\n".join(lines) + "\n"
 
   def feature_verify_shell_markdown(self) -> str:
@@ -1374,92 +1352,70 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
       """
     )
 
+  def _canonical_router_skill_md(self, skill_name: str, description: str) -> str:
+    return (
+      "---\n"
+      f"name: {skill_name}\n"
+      f"description: {description}\n"
+      "---\n\n"
+      "## Descriptor\n\n"
+      f"Governed skill: `{skill_name}`\n"
+      "Family: `advisor`\n"
+      f"Description: {description}\n\n"
+      "## Execution\n\n"
+      "Follow the instructions in [content.md](content.md).\n\n"
+      "## Ceremony\n\n"
+      "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).\n\n"
+      "When stack routing applies, follow [stack-routing.md](stack-routing.md).\n\n"
+      "When delegated review execution applies, follow [review-delegation.md](review-delegation.md).\n\n"
+      "When the shell+content contract enforcement applies, follow [shell-content-contract.md](shell-content-contract.md).\n\n"
+      "Determine the review scope using [review-scope.md](review-scope.md).\n\n"
+      "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).\n"
+    )
+
+  def _canonical_portable_skill_md(self, skill_name: str, description: str) -> str:
+    return (
+      "---\n"
+      f"name: {skill_name}\n"
+      f"description: {description}\n"
+      "---\n\n"
+      "## Descriptor\n\n"
+      f"Governed skill: `{skill_name}`\n"
+      "Family: `code-review`\n"
+      f"Description: {description}\n\n"
+      "## Execution\n\n"
+      "Follow the instructions in [content.md](content.md).\n\n"
+      "## Ceremony\n\n"
+      "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).\n\n"
+      "When stack routing applies, follow [stack-routing.md](stack-routing.md).\n\n"
+      "When delegated specialist review applies, use [specialist-contract.md](specialist-contract.md).\n\n"
+      "When delegated review execution applies, follow [review-delegation.md](review-delegation.md).\n\n"
+      "When review reporting applies, follow [review-orchestrator.md](review-orchestrator.md).\n\n"
+      "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).\n"
+    )
+
   def router_fixture_without_review_run_id(self) -> str:
-    return textwrap.dedent(
-      """\
-      ---
-      name: bill-code-review
-      description: Fixture shared review router used for validator telemetry coverage.
-      ---
-
-      # bill-code-review
-
-      ## Project Overrides
-
-      If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-code-review` section, read that section and apply it as the highest-priority instruction for this skill.
-
-      Shared router fixture without telemetry summary output.
-      """
+    return self._canonical_router_skill_md(
+      "bill-code-review",
+      "Fixture shared review router used for validator telemetry coverage.",
     )
 
   def portable_review_fixture_without_review_run_id(self, skill_name: str) -> str:
-    return textwrap.dedent(
-      f"""\
-      ---
-      name: {skill_name}
-      description: Fixture review skill missing telemetry summary output.
-      ---
-
-      # {skill_name}
-
-      ## Project Overrides
-
-      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
-
-      {REVIEW_SESSION_ID_PLACEHOLDER}
-      {APPLIED_LEARNINGS_PLACEHOLDER}
-      [specialist-contract.md](specialist-contract.md)
-      [review-orchestrator.md](review-orchestrator.md)
-      [review-delegation.md](review-delegation.md)
-      For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
-      Specialist review fixture content.
-      """
+    return self._canonical_portable_skill_md(
+      skill_name,
+      "Fixture review skill missing telemetry summary output.",
     )
 
   def router_fixture_without_applied_learnings(self) -> str:
-    return textwrap.dedent(
-      f"""\
-      ---
-      name: bill-code-review
-      description: Fixture shared review router missing applied learnings output.
-      ---
-
-      # bill-code-review
-
-      ## Project Overrides
-
-      If `.agents/skill-overrides.md` exists in the project root and contains a `## bill-code-review` section, read that section and apply it as the highest-priority instruction for this skill.
-
-      {REVIEW_SESSION_ID_PLACEHOLDER}
-      Use the review session id format {REVIEW_SESSION_ID_FORMAT}.
-      {REVIEW_RUN_ID_PLACEHOLDER}
-      Use the review run id format {REVIEW_RUN_ID_FORMAT}.
-      Shared router fixture without learnings summary output.
-      """
+    return self._canonical_router_skill_md(
+      "bill-code-review",
+      "Fixture shared review router missing applied learnings output.",
     )
 
   def portable_review_fixture_without_applied_learnings(self, skill_name: str) -> str:
-    return textwrap.dedent(
-      f"""\
-      ---
-      name: {skill_name}
-      description: Fixture review skill missing applied learnings summary output.
-      ---
-
-      # {skill_name}
-
-      ## Project Overrides
-
-      If `.agents/skill-overrides.md` exists in the project root and contains a `## {skill_name}` section, read that section and apply it as the highest-priority instruction for this skill.
-
-      {REVIEW_SESSION_ID_PLACEHOLDER}
-      {REVIEW_RUN_ID_PLACEHOLDER}
-      [specialist-contract.md](specialist-contract.md)
-      [review-orchestrator.md](review-orchestrator.md)
-      [review-delegation.md](review-delegation.md)
-      For telemetry and triage rules, follow [telemetry-contract.md](telemetry-contract.md).
-      Specialist review fixture content.
-      """
+    return self._canonical_portable_skill_md(
+      skill_name,
+      "Fixture review skill missing applied learnings summary output.",
     )
 
   def portable_review_fixture_without_inline_lifecycle_handoff(self, skill_name: str) -> str:

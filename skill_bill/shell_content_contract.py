@@ -84,21 +84,22 @@ REQUIRED_QUALITY_CHECK_SECTIONS: tuple[str, ...] = REQUIRED_CONTENT_SECTIONS
 CONTENT_BODY_FILENAME: str = "content.md"
 CANONICAL_EXECUTION_BODY: str = CANONICAL_EXECUTION_SECTION
 CEREMONY_FREE_FORM_H2S: tuple[str, ...] = (
-  "## Setup",
-  "## Additional Resources",
-  "## Local Review Learnings",
-  "## Output Format",
-  "## Output Rules",
-  "## Review Output",
-  "## Delegated Mode",
-  "## Inline Mode",
-  "## Routing Rules",
-  "## Shared Stack Detection",
-  "## Execution Contract",
-  "## Overview",
-  "## Project Overrides",
   "## Execution",
   "## Ceremony",
+)
+
+CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS: frozenset[str] = frozenset({"name", "description"})
+
+CANONICAL_SKILL_MD_BANLIST_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+  ("fenced code block", re.compile(r"^\s*(?:```|~~~)")),
+  ("markdown table", re.compile(r"^\s*\|.*\|\s*$")),
+  ("'## Step N:' heading", re.compile(r"^##\s+Step\s+\d+[a-z]?\b", re.IGNORECASE)),
+  ("MCP install gate", re.compile(r"npm install -g|readian-mcp", re.IGNORECASE)),
+  ("telemetry instructions", re.compile(r"\b(?:_started|_finished)\b\s*MCP|telemetry_proxy_capabilities|skillbill_[a-z_]+_(?:started|finished)")),
+  ("routing rule", re.compile(r"^\s*(?:Route|Routing rule|Routing rules):", re.IGNORECASE)),
+  ("run-context placeholder line", re.compile(r"^\s*`(?:Review session ID|Review run ID|Applied learnings):")),
+  ("H1 heading", re.compile(r"^#\s+\S")),
+  ("H3+ heading", re.compile(r"^#{3,}\s+\S")),
 )
 
 MANIFEST_FILENAME: str = "platform.yaml"
@@ -154,6 +155,18 @@ class InvalidCeremonySectionError(ShellContentContractError):
 
 class MissingShellCeremonyFileError(ShellContentContractError):
   """Raised when a governed skill is missing its ``shell-ceremony.md`` sidecar."""
+
+
+class InvalidSkillMdShapeError(ShellContentContractError):
+  """Raised when a SKILL.md file violates the canonical shape contract.
+
+  The canonical shape requires a frontmatter block with only the allowed
+  keys, the three governed H2 sections (``## Descriptor``, ``## Execution``,
+  ``## Ceremony``) in that order, and bans fenced code, tables, ``## Step``
+  headings, embedded templates, install gates, telemetry instructions,
+  routing rules, run-context placeholder lines, H1, H3+, and intro
+  paragraphs.
+  """
 
 
 class PyYAMLMissingError(ShellContentContractError):
@@ -744,6 +757,8 @@ def _governed_context(
 __all__ = [
   "APPROVED_CODE_REVIEW_AREAS",
   "CANONICAL_EXECUTION_BODY",
+  "CANONICAL_SKILL_MD_BANLIST_PATTERNS",
+  "CANONICAL_SKILL_MD_FRONTMATTER_ALLOWED_KEYS",
   "CEREMONY_SECTIONS",
   "ContractVersionMismatchError",
   "CEREMONY_FREE_FORM_H2S",
@@ -752,6 +767,7 @@ __all__ = [
   "InvalidDescriptorSectionError",
   "InvalidExecutionSectionError",
   "InvalidManifestSchemaError",
+  "InvalidSkillMdShapeError",
   "MissingContentFileError",
   "MissingManifestError",
   "MissingRequiredSectionError",

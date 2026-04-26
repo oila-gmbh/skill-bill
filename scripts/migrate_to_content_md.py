@@ -74,6 +74,23 @@ from skill_bill.shell_content_contract import (  # noqa: E402
 )
 
 
+MIGRATION_CEREMONY_DROP_HEADINGS: tuple[str, ...] = (
+  "## Setup",
+  "## Additional Resources",
+  "## Local Review Learnings",
+  "## Output Format",
+  "## Output Rules",
+  "## Review Output",
+  "## Delegated Mode",
+  "## Inline Mode",
+  "## Routing Rules",
+  "## Shared Stack Detection",
+  "## Execution Contract",
+  "## Overview",
+  "## Project Overrides",
+)
+
+
 @dataclass
 class SkillMigration:
   skill_file: Path
@@ -206,7 +223,7 @@ def _extract_author_content(
 
   required_for_family = REQUIRED_SECTIONS_BY_FAMILY[family]
   ceremony_headings = set(CEREMONY_SECTIONS)
-  ceremony_free_form_headings = set(CEREMONY_FREE_FORM_H2S)
+  ceremony_free_form_headings = set(CEREMONY_FREE_FORM_H2S) | set(MIGRATION_CEREMONY_DROP_HEADINGS)
 
   frontmatter = parse_skill_frontmatter(skill_file)
   plan = infer_plan_from_skill_file(skill_file, frontmatter)

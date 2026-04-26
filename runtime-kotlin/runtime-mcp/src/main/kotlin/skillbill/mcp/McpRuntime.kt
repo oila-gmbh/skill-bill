@@ -55,7 +55,7 @@ object McpRuntime {
       services.reviewService
         .importReview("-", dbOverride = null, finishZeroFindingTelemetry = !orchestrated)
         .toMutableMap()
-    return if (orchestrated) {
+    val result = if (orchestrated) {
       val reviewRunId = payload["review_run_id"] as String
       services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
       val telemetryPayload =
@@ -68,6 +68,8 @@ object McpRuntime {
     } else {
       payload
     }
+    services.telemetryService.autoSync()
+    return result
   }
 
   fun triageFindings(
@@ -91,7 +93,7 @@ object McpRuntime {
         dbOverride = null,
         listWhenNoDecisions = false,
       )
-    return if (orchestrated) {
+    val payload = if (orchestrated) {
       McpOrchestratedPayloadContract(
         basePayload = result.payload,
         telemetryPayload = result.telemetryPayload,
@@ -99,6 +101,8 @@ object McpRuntime {
     } else {
       result.payload
     }
+    services.telemetryService.autoSync()
+    return payload
   }
 
   fun resolveLearnings(
@@ -126,37 +130,47 @@ object McpRuntime {
   fun featureImplementStarted(
     request: FeatureImplementStartedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureImplementStarted(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureImplementStarted(request) }
 
   fun featureImplementFinished(
     request: FeatureImplementFinishedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureImplementFinished(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureImplementFinished(request) }
 
   fun qualityCheckStarted(
     request: QualityCheckStartedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.qualityCheckStarted(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.qualityCheckStarted(request) }
 
   fun qualityCheckFinished(
     request: QualityCheckFinishedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.qualityCheckFinished(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.qualityCheckFinished(request) }
 
   fun featureVerifyStarted(
     request: FeatureVerifyStartedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureVerifyStarted(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureVerifyStarted(request) }
 
   fun featureVerifyFinished(
     request: FeatureVerifyFinishedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.featureVerifyFinished(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureVerifyFinished(request) }
 
   fun prDescriptionGenerated(
     request: PrDescriptionGeneratedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).lifecycleTelemetryService.prDescriptionGenerated(request)
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.prDescriptionGenerated(request) }
+
+  private fun withAutoSync(
+    context: McpRuntimeContext,
+    block: (McpRuntimeServices) -> Map<String, Any?>,
+  ): Map<String, Any?> {
+    val services = services(context)
+    val payload = block(services)
+    services.telemetryService.autoSync()
+    return payload
+  }
 
   fun telemetryRemoteStats(
     request: RemoteStatsRequest,

@@ -373,13 +373,18 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     skill_md = self.repo / "skills" / "bill-horizontal-new" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     body = skill_md.read_text(encoding="utf-8")
-    self.assertIn("## Description", body)
-    self.assertIn("## Execution Mode Reporting", body)
-    # F-001: horizontal skills are validated by validate_skill_file, which
-    # requires the Project Overrides heading and a literal reference to
-    # .agents/skill-overrides.md.
-    self.assertIn("## Project Overrides", body)
-    self.assertIn(".agents/skill-overrides.md", body)
+    self.assertIn("## Descriptor", body)
+    self.assertIn("## Execution", body)
+    self.assertIn("## Ceremony", body)
+    self.assertNotIn("## Description", body)
+    self.assertNotIn("## Execution Mode Reporting", body)
+    self.assertNotIn("## Project Overrides", body)
+    self.assertNotIn(".agents/skill-overrides.md", body)
+    content_md = skill_md.parent / "content.md"
+    self.assertTrue(content_md.is_file())
+    content_body = content_md.read_text(encoding="utf-8")
+    for ceremony_h2 in ("## Project Overrides", "## Execution", "## Ceremony"):
+      self.assertNotIn(ceremony_h2, content_body)
 
   def test_code_review_area(self) -> None:
     result = scaffold(
@@ -458,10 +463,8 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertIn("## Ceremony", review_body)
     self.assertNotIn("## Additional Resources", review_content)
     self.assertIn("[review-scope.md](review-scope.md)", review_body)
-    self.assertIn(
-      "Resolve the scope before reviewing. If the caller asks for staged changes, "
-      "inspect only the staged diff and keep unstaged edits out of findings except "
-      "for repo markers needed for classification.",
+    self.assertNotIn(
+      "Resolve the scope before reviewing. If the caller asks for staged changes, ",
       review_body,
     )
     self.assertIn("## Review Focus", review_content)
@@ -780,11 +783,15 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     verify_body = (
       self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "SKILL.md"
     ).read_text(encoding="utf-8")
-    self.assertNotIn("TODO: author the specialist scope", verify_body)
-    self.assertNotIn("TODO: author the inputs", verify_body)
-    self.assertNotIn("TODO: author the outputs contract", verify_body)
-    self.assertIn("acceptance criteria", verify_body)
-    self.assertIn("Pass/fail verdict", verify_body)
+    self.assertIn("## Descriptor", verify_body)
+    self.assertIn("## Execution", verify_body)
+    self.assertIn("## Ceremony", verify_body)
+    verify_content = (
+      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "content.md"
+    ).read_text(encoding="utf-8")
+    self.assertNotIn("TODO: author the specialist scope", verify_content)
+    self.assertNotIn("TODO: author the inputs", verify_content)
+    self.assertNotIn("TODO: author the outputs contract", verify_content)
 
     quality_result = scaffold(
       self._payload(
@@ -824,12 +831,11 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     skill_md = self.repo / "skills" / "kotlin" / "bill-kotlin-feature-implement" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     self.assertTrue(any("will move when" in note for note in result.notes))
-    # F-001: pre-shell platform overrides land under ``skills/`` and must
-    # include Project Overrides + .agents/skill-overrides.md so the real
-    # ``validate_skill_file`` accepts them post-scaffold.
     body = skill_md.read_text(encoding="utf-8")
-    self.assertIn("## Project Overrides", body)
-    self.assertIn(".agents/skill-overrides.md", body)
+    self.assertIn("## Descriptor", body)
+    self.assertIn("## Execution", body)
+    self.assertIn("## Ceremony", body)
+    self.assertNotIn("## Project Overrides", body)
     self.assertTrue((skill_md.parent / "shell-ceremony.md").exists())
     self.assertTrue((skill_md.parent / "telemetry-contract.md").exists())
 
@@ -1557,6 +1563,80 @@ class AgentDetectionTest(unittest.TestCase):
       sorted(target.name for target in detected),
       sorted(install_module.SUPPORTED_AGENTS),
     )
+
+
+class RenderUpgradeTargetsHorizontalFamilyTest(unittest.TestCase):
+  """Regression for F-001: upgrade renderer must emit canonical-taxonomy families.
+
+  After SKILL-31, every horizontal SKILL.md declares either ``workflow`` or
+  ``advisor`` as its family. The upgrade renderer must produce the same
+  values; otherwise ``skill-bill upgrade`` would silently overwrite the
+  migrated descriptors with stale slug-based families.
+  """
+
+  EXPECTED_FAMILIES: dict[str, str] = {
+    "bill-feature-implement": "workflow",
+    "bill-feature-verify": "workflow",
+    "bill-grill-plan": "advisor",
+    "bill-boundary-decisions": "advisor",
+    "bill-boundary-history": "advisor",
+    "bill-pr-description": "advisor",
+    "bill-create-skill": "advisor",
+    "bill-skill-remove": "advisor",
+    "bill-feature-guard": "advisor",
+    "bill-feature-guard-cleanup": "advisor",
+    "bill-unit-test-value-check": "advisor",
+    "bill-code-review": "advisor",
+    "bill-quality-check": "advisor",
+  }
+
+  def test_renderer_emits_new_taxonomy_family_for_each_horizontal_skill(self) -> None:
+    from skill_bill.upgrade import render_upgrade_targets
+
+    skills_root = ROOT / "skills"
+    rendered = render_upgrade_targets(ROOT)
+    for skill_name, expected_family in self.EXPECTED_FAMILIES.items():
+      skill_file = skills_root / skill_name / "SKILL.md"
+      self.assertIn(
+        skill_file,
+        rendered,
+        msg=f"render_upgrade_targets did not emit a target for {skill_name}",
+      )
+      family_line = f"Family: `{expected_family}`"
+      self.assertIn(
+        family_line,
+        rendered[skill_file],
+        msg=(
+          f"Rendered SKILL.md for {skill_name} should declare "
+          f"'{family_line}' but produced:\n{rendered[skill_file]}"
+        ),
+      )
+
+  def test_rendered_family_matches_existing_skill_md(self) -> None:
+    from skill_bill.upgrade import render_upgrade_targets
+
+    skills_root = ROOT / "skills"
+    rendered = render_upgrade_targets(ROOT)
+    for skill_name in self.EXPECTED_FAMILIES:
+      skill_file = skills_root / skill_name / "SKILL.md"
+      current = skill_file.read_text(encoding="utf-8")
+      current_family = _extract_family_line(current)
+      rendered_family = _extract_family_line(rendered[skill_file])
+      self.assertEqual(
+        current_family,
+        rendered_family,
+        msg=(
+          f"Rendered family for {skill_name} drifts from on-disk SKILL.md: "
+          f"current='{current_family}' rendered='{rendered_family}'"
+        ),
+      )
+
+
+def _extract_family_line(text: str) -> str:
+  for line in text.splitlines():
+    if line.startswith("Family:"):
+      return line
+  return ""
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.ZERO_FINDING_REVIEW
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
@@ -95,6 +96,41 @@ class McpRuntimeTest {
     assertEquals("bill-kotlin-code-review", importResult["routed_skill"])
     assertNotNull(implementStats["db_path"])
     assertNotNull(verifyStats["db_path"])
+  }
+
+  @Test
+  fun `standalone zero finding import emits review finished telemetry`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-zero-finding-import")
+    val env = enabledTelemetryEnvironment(tempDir)
+    val dbPath = tempDir.resolve("metrics.db")
+    val context = McpRuntimeContext(environment = env, userHome = tempDir)
+
+    val importResult = McpRuntime.importReview(ZERO_FINDING_REVIEW.trimIndent(), context = context)
+
+    assertEquals("rvw-20260427-empty", importResult["review_run_id"])
+    assertEquals(0, importResult["finding_count"])
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        1,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM telemetry_outbox WHERE event_name = 'skillbill_review_finished'",
+        ),
+      )
+      assertEquals(
+        1,
+        scalarInt(
+          connection,
+          """
+          SELECT COUNT(*)
+          FROM review_runs
+          WHERE review_run_id = 'rvw-20260427-empty'
+            AND review_finished_at IS NOT NULL
+            AND review_finished_event_emitted_at IS NOT NULL
+          """.trimIndent(),
+        ),
+      )
+    }
   }
 
   @Test

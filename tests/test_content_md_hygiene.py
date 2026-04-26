@@ -26,7 +26,6 @@ FRAMEWORK_DUPLICATION_LINES = (
 
 SYSTEM_OWNED_CONTENT_MARKERS = (
   "## Setup",
-  "Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.",
 )
 
 EXECUTION_AND_REPORTING_CEREMONY_MARKERS = (
@@ -46,6 +45,18 @@ EXECUTION_AND_REPORTING_CEREMONY_MARKERS = (
 class ContentMdHygieneTest(unittest.TestCase):
   def test_governed_content_files_do_not_reintroduce_ceremony_headings(self) -> None:
     for content_file in sorted((ROOT / "platform-packs").rglob("content.md")):
+      text = content_file.read_text(encoding="utf-8")
+      lines = text.splitlines()
+      for heading in CEREMONY_FREE_FORM_H2S:
+        with self.subTest(content_file=content_file, heading=heading):
+          self.assertNotIn(
+            heading,
+            lines,
+            f"{content_file} must not reintroduce scaffolder-owned ceremony heading '{heading}'.",
+          )
+
+  def test_skills_content_files_do_not_reintroduce_ceremony_headings(self) -> None:
+    for content_file in sorted((ROOT / "skills").rglob("content.md")):
       text = content_file.read_text(encoding="utf-8")
       lines = text.splitlines()
       for heading in CEREMONY_FREE_FORM_H2S:

@@ -52,6 +52,15 @@ class TelemetryService(
     )
   }
 
+  fun autoSync(dbOverride: String? = null) {
+    val settings = telemetrySettingsOrNull(settingsProvider) ?: return
+    if (!settings.enabled) return
+    if (!database.databaseExists(dbOverride)) return
+    database.transaction(dbOverride) { unitOfWork ->
+      TelemetrySyncRuntime.autoSyncTelemetry(settings, unitOfWork.telemetryOutbox, telemetryClient)
+    }
+  }
+
   fun setLevel(level: String, dbOverride: String?): Map<String, Any?> {
     val (settings, clearedEvents) = setTelemetryLevel(level, dbOverride)
     return telemetryMutationPayload(settings, clearedEvents)

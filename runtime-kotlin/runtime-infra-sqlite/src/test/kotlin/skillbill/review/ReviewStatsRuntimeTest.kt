@@ -60,6 +60,8 @@ class ReviewStatsRuntimeTest {
       assertEquals("L-001", anonymousLearnings["applied_summary"])
       assertEquals("bill-kotlin-code-review", anonymousPayload["routed_skill"])
       assertEquals("unstaged changes", anonymousPayload["review_scope"])
+      assertEquals(review.reviewRunId, anonymousPayload["review_run_id"])
+      assertEquals(review.reviewRunId, fullPayload["review_run_id"])
       assertTrue((anonymousPayload["accepted_finding_details"] as List<*>).isNotEmpty())
       val rejectedFindingDetails =
         (fullPayload["rejected_finding_details"] as? List<*>)

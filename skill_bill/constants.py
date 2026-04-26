@@ -116,6 +116,15 @@ FEATURE_VERIFY_WORKFLOW_STEP_IDS = (
   "verdict",
   "finish",
 )
+FEATURE_VERIFY_WORKFLOW_ARTIFACT_NAMES = (
+  "input_context",
+  "criteria_summary",
+  "diff_summary",
+  "feature_flag_audit_result",
+  "review_result",
+  "completeness_audit_result",
+  "verdict_result",
+)
 FEATURE_SIZES = ("SMALL", "MEDIUM", "LARGE")
 SPEC_INPUT_TYPES = ("raw_text", "pdf", "markdown_file", "image", "directory")
 ISSUE_KEY_TYPES = ("jira", "linear", "github", "other", "none")
@@ -162,6 +171,19 @@ FEATURE_IMPLEMENT_WORKFLOW_STEP_IDS = (
   "commit_push",
   "pr_description",
   "finish",
+)
+FEATURE_IMPLEMENT_WORKFLOW_ARTIFACT_NAMES = (
+  "assessment",
+  "branch",
+  "preplan_digest",
+  "plan",
+  "implementation_summary",
+  "review_result",
+  "audit_report",
+  "validation_result",
+  "history_result",
+  "commit_push_result",
+  "pr_result",
 )
 MEANINGFUL_NOTE_PATTERN = re.compile(r"[A-Za-z0-9]")
 

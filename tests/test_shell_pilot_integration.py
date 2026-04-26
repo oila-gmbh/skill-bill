@@ -31,16 +31,16 @@ class ShellPilotIntegrationTest(unittest.TestCase):
 
   def test_shell_declares_contract_and_sidecar(self) -> None:
     shell_path = ROOT / "skills" / "bill-code-review" / "SKILL.md"
-    text = shell_path.read_text(encoding="utf-8")
-    # The shell references the shell+content contract sidecar.
-    self.assertIn("[shell-content-contract.md](shell-content-contract.md)", text)
-    # The shell declares the current contract version.
-    self.assertIn(f"`{SHELL_CONTRACT_VERSION}`", text)
-    # The shell no longer hardcodes per-platform delegation lines.
+    content_path = ROOT / "skills" / "bill-code-review" / "content.md"
+    skill_text = shell_path.read_text(encoding="utf-8")
+    content_text = content_path.read_text(encoding="utf-8")
+    combined = f"{skill_text}\n{content_text}"
+    self.assertIn("[shell-content-contract.md](shell-content-contract.md)", skill_text)
+    self.assertIn(f"`{SHELL_CONTRACT_VERSION}`", combined)
     for slug in self._live_slugs():
       self.assertNotIn(
         f"signals dominate, delegate to `bill-{slug}-code-review`.",
-        text,
+        combined,
         f"shell still hardcodes routing for {slug}",
       )
 
@@ -113,8 +113,8 @@ class ShellPilotIntegrationTest(unittest.TestCase):
         re.compile(r"current shell contract version is \*\*`([^`]+)`\*\*"),
       ),
       (
-        "skills/bill-code-review/SKILL.md",
-        re.compile(r"shell contract version \*\*`([^`]+)`\*\*"),
+        "skills/bill-code-review/content.md",
+        re.compile(r"shell contract version `([^`]+)`"),
       ),
     )
 

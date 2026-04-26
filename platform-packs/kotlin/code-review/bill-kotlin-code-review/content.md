@@ -86,3 +86,15 @@ This is a lightweight file-level classification (names + imports), not a full re
 - Keep findings attributed to each specialist before merging and deduplicating them into the final review.
 
 ---
+
+## Run Context
+
+`Review session ID: <review-session-id>`
+`Review run ID: <review-run-id>`
+`Applied learnings: none | <learning references>`
+
+
+## Scope Resolution
+
+Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
+

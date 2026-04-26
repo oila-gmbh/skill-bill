@@ -47,9 +47,15 @@ FEATURE_IMPLEMENT = (
   + "\n"
   + read("skills/bill-feature-implement/reference.md")
 )
-CODE_REVIEW = read("skills/bill-code-review/SKILL.md")
-QUALITY_CHECK = read("skills/bill-quality-check/SKILL.md")
-PR_DESCRIPTION = read("skills/bill-pr-description/SKILL.md")
+CODE_REVIEW_SHELL = read("skills/bill-code-review/SKILL.md")
+CODE_REVIEW_CONTENT = read("skills/bill-code-review/content.md")
+CODE_REVIEW = CODE_REVIEW_SHELL + "\n" + CODE_REVIEW_CONTENT
+QUALITY_CHECK_SHELL = read("skills/bill-quality-check/SKILL.md")
+QUALITY_CHECK_CONTENT = read("skills/bill-quality-check/content.md")
+QUALITY_CHECK = QUALITY_CHECK_SHELL + "\n" + QUALITY_CHECK_CONTENT
+PR_DESCRIPTION_SHELL = read("skills/bill-pr-description/SKILL.md")
+PR_DESCRIPTION_CONTENT = read("skills/bill-pr-description/content.md")
+PR_DESCRIPTION = PR_DESCRIPTION_SHELL + "\n" + PR_DESCRIPTION_CONTENT
 KOTLIN_CODE_REVIEW = (
   read("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
   + "\n"
@@ -140,9 +146,9 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     )
 
   def test_shared_router_skills_reference_local_stack_routing_sidecars(self) -> None:
-    self.assertIn("[stack-routing.md](stack-routing.md)", CODE_REVIEW)
-    self.assertIn("[review-delegation.md](review-delegation.md)", CODE_REVIEW)
-    self.assertIn("[stack-routing.md](stack-routing.md)", QUALITY_CHECK)
+    self.assertIn("[stack-routing.md](stack-routing.md)", CODE_REVIEW_SHELL)
+    self.assertIn("[review-delegation.md](review-delegation.md)", CODE_REVIEW_SHELL)
+    self.assertIn("[stack-routing.md](stack-routing.md)", QUALITY_CHECK_SHELL)
     self.assertNotIn(".bill-shared/orchestration/", CODE_REVIEW)
     self.assertNotIn(".bill-shared/orchestration/", QUALITY_CHECK)
     self.assertNotIn("orchestration/stack-routing/PLAYBOOK.md", CODE_REVIEW)
@@ -209,27 +215,27 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
   def test_feature_implement_shell_points_to_authored_content(self) -> None:
     self.assertIn("## Execution", FEATURE_IMPLEMENT_SHELL)
     self.assertIn("[content.md](content.md)", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("## Workflow State", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("## Step 1: Collect Design Doc + Assess Size (orchestrator)", FEATURE_IMPLEMENT_SHELL)
-    self.assertNotIn("## Workflow State", FEATURE_IMPLEMENT_CONTENT)
-    self.assertNotIn("## Continuation Mode", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("## Workflow State", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT_CONTENT)
     self.assertIn("## Step 1: Collect Design Doc + Assess Size (orchestrator)", FEATURE_IMPLEMENT_CONTENT)
-    self.assertIn("## Finalization sequence (Steps 6b -> 9)", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("## Finalization Sequence (Steps 6b through 9)", FEATURE_IMPLEMENT_CONTENT)
+    self.assertNotIn("## Workflow State", FEATURE_IMPLEMENT_SHELL)
+    self.assertNotIn("## Continuation Mode", FEATURE_IMPLEMENT_SHELL)
+    self.assertNotIn("## Step 1: Collect Design Doc + Assess Size (orchestrator)", FEATURE_IMPLEMENT_SHELL)
 
   def test_feature_implement_uses_workflow_state_tools(self) -> None:
     self.assertIn("feature_implement_workflow_open", FEATURE_IMPLEMENT)
     self.assertIn("feature_implement_workflow_update", FEATURE_IMPLEMENT)
     self.assertIn("feature_implement_workflow_continue", FEATURE_IMPLEMENT)
     self.assertIn("## Continuation Mode", FEATURE_IMPLEMENT)
-    self.assertIn("`branch`", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("`branch`", FEATURE_IMPLEMENT_CONTENT)
     self.assertIn("`assessment`", FEATURE_IMPLEMENT)
     self.assertIn("`preplan_digest`", FEATURE_IMPLEMENT)
     self.assertIn("`implementation_summary`", FEATURE_IMPLEMENT)
-    self.assertIn("`audit_report`", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("`validation_result`", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("`history_result`", FEATURE_IMPLEMENT_SHELL)
-    self.assertIn("`commit_push_result`", FEATURE_IMPLEMENT_SHELL)
+    self.assertIn("`audit_report`", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("`validation_result`", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("`history_result`", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("`commit_push_result`", FEATURE_IMPLEMENT_CONTENT)
     self.assertIn("`pr_result`", FEATURE_IMPLEMENT)
 
   def test_pr_description_prefers_repo_native_templates(self) -> None:
@@ -258,10 +264,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     # declared_quality_check_file manifest key and falls back to kotlin.
     self.assertIn("manifest-driven", CODE_REVIEW)
     self.assertIn("manifest-driven", QUALITY_CHECK)
-    self.assertIn(
-      "dominant pack is `kmp`, route\n  quality-check work to the `kotlin` pack",
-      QUALITY_CHECK,
-    )
+    self.assertIn("When the dominant pack is `kmp`, route quality-check work to the `kotlin` pack", QUALITY_CHECK)
     self.assertIn(
       "- Use `bill-kotlin-code-review`",
       KMP_CODE_REVIEW,
