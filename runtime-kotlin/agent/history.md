@@ -1,3 +1,11 @@
+## [2026-04-30] runtime-green-gate-and-python-ownership
+Areas: runtime-application lifecycle validation, telemetry sync, SKILL-27 cutover checklist
+- Split lifecycle telemetry validation into feature-implement, feature-verify, quality-check, and shared validator files so each lifecycle family owns its validation rules and the runtime-application Detekt `TooManyFunctions` gate stays green. reusable
+- Collapsed `TelemetryService.autoSync` into a single guard predicate to satisfy the return-count rule without changing sync behavior.
+- Added the Python retirement ownership inventory to the SKILL-27 cutover checklist, classifying CLI commands, MCP tools, scaffold/authoring commands, install primitives, validation scripts, and release/support scripts before any Python deletion starts.
+Feature flag: N/A
+Acceptance criteria: runtime green gate restored, Python ownership inventory published
+
 ## [2026-04-30] runtime-mcp-test-telemetry-loopback
 Areas: runtime-mcp tests, lifecycle telemetry fixtures, MCP stdio tests
 - PostHog inspection found `test-install-id` lifecycle/review events from Kotlin MCP tests because enabled test configs left `proxy_url` blank, which correctly resolves to the hosted relay in production settings.

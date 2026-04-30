@@ -7,7 +7,7 @@ description: Use when doing end-to-end feature implementation from design doc to
 
 Governed skill: `bill-feature-implement`
 Family: `workflow`
-Description: Use when implementing a feature end-to-end from design doc to verified code.
+Description: Use for feature implement work.
 
 ## Execution
 
@@ -18,5 +18,3 @@ Follow the instructions in [content.md](content.md).
 Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).
 
 When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).
-
-When detailed briefings, return contracts, or substeps apply, follow [reference.md](reference.md).
