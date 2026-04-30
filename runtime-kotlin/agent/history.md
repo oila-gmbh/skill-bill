@@ -1,3 +1,11 @@
+## [2026-04-30] runtime-mcp-test-telemetry-loopback
+Areas: runtime-mcp tests, lifecycle telemetry fixtures, MCP stdio tests
+- PostHog inspection found `test-install-id` lifecycle/review events from Kotlin MCP tests because enabled test configs left `proxy_url` blank, which correctly resolves to the hosted relay in production settings.
+- Added a loopback telemetry proxy override to enabled MCP test environments, including the user-home config coverage path and stdio tool-call fixture, so auto-sync cannot emit test events to production telemetry. reusable
+- Reusable pattern: tests that enable telemetry should either inject a fake requester or set an explicit test-only proxy; do not rely on blank proxy config when the runtime treats blank as hosted relay.
+Feature flag: N/A
+Acceptance criteria: test telemetry cannot target hosted relay, runtime-mcp check passes
+
 ## [2026-04-30] runtime-mcp-feature-implement-lifecycle-schemas
 Areas: runtime-mcp tool registry, MCP stdio tools/list contract, lifecycle telemetry tools
 - Added explicit MCP input schemas for `feature_implement_started` and `feature_implement_finished`; the previous open schema made Codex expose these mandatory lifecycle tools as no-argument tools even though handlers required fields. reusable
