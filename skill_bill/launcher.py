@@ -7,14 +7,47 @@ import subprocess
 import sys
 
 
+# Installed Kotlin runs through packaged Gradle application distributions:
+# runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
+# runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp.
+# Local development can still override those paths with SKILL_BILL_KOTLIN_CLI
+# or SKILL_BILL_KOTLIN_MCP while the Python shim is still present.
 RUNTIME_ENV = "SKILL_BILL_RUNTIME"
 MCP_RUNTIME_ENV = "SKILL_BILL_MCP_RUNTIME"
 KOTLIN_CLI_ENV = "SKILL_BILL_KOTLIN_CLI"
 KOTLIN_MCP_ENV = "SKILL_BILL_KOTLIN_MCP"
 
 
+class MissingKotlinDistributionError(RuntimeError):
+  pass
+
+
 def repo_root() -> Path:
   return Path(__file__).resolve().parents[1]
+
+
+def runtime_kotlin_root() -> Path:
+  return repo_root() / "runtime-kotlin"
+
+
+def packaged_cli_bin(root: Path | None = None) -> Path:
+  base = root or repo_root()
+  return base / "runtime-kotlin" / "runtime-cli" / "build" / "install" / "runtime-cli" / "bin" / "runtime-cli"
+
+
+def packaged_mcp_bin(root: Path | None = None) -> Path:
+  base = root or repo_root()
+  return base / "runtime-kotlin" / "runtime-mcp" / "build" / "install" / "runtime-mcp" / "bin" / "runtime-mcp"
+
+
+def require_packaged_bin(path: Path, gradle_task: str) -> Path:
+  if path.is_file() and os.access(path, os.X_OK):
+    return path
+  raise MissingKotlinDistributionError(
+    "Packaged Kotlin runtime distribution not found: "
+    f"{path}. Run '(cd runtime-kotlin && ./gradlew {gradle_task})' "
+    "or set the local development override environment variable."
+  )
 
 
 def selected_runtime(environment: dict[str, str] | None = None) -> str:
@@ -27,15 +60,7 @@ def kotlin_cli_command(argv: list[str], environment: dict[str, str] | None = Non
   override = env.get(KOTLIN_CLI_ENV, "").strip()
   if override:
     return shlex.split(override) + argv
-  root = repo_root()
-  gradlew = root / "runtime-kotlin" / "gradlew"
-  return [
-    str(gradlew),
-    "-q",
-    ":runtime-cli:run",
-    "--args",
-    shlex.join(argv),
-  ]
+  return [str(require_packaged_bin(packaged_cli_bin(), ":runtime-cli:installDist"))] + argv
 
 
 def selected_mcp_runtime(environment: dict[str, str] | None = None) -> str:
@@ -48,9 +73,7 @@ def kotlin_mcp_command(environment: dict[str, str] | None = None) -> list[str]:
   override = env.get(KOTLIN_MCP_ENV, "").strip()
   if override:
     return shlex.split(override)
-  root = repo_root()
-  gradlew = root / "runtime-kotlin" / "gradlew"
-  return [str(gradlew), "-q", ":runtime-mcp:run"]
+  return [str(require_packaged_bin(packaged_mcp_bin(), ":runtime-mcp:installDist"))]
 
 
 def python_cli_main(argv: list[str] | None = None) -> int:
@@ -65,7 +88,7 @@ def kotlin_cli_main(argv: list[str], environment: dict[str, str] | None = None) 
   if not sys.stdin.isatty():
     stdin_payload = sys.stdin.buffer.read()
   run_kwargs: dict[str, object] = {
-    "cwd": repo_root() / "runtime-kotlin",
+    "cwd": runtime_kotlin_root(),
     "text": False,
     "check": False,
   }
@@ -73,8 +96,19 @@ def kotlin_cli_main(argv: list[str], environment: dict[str, str] | None = None) 
     run_kwargs["stdin"] = subprocess.DEVNULL
   else:
     run_kwargs["input"] = stdin_payload
-  process = subprocess.run(kotlin_cli_command(argv, env), **run_kwargs)
+  try:
+    command = kotlin_cli_command(argv, env)
+  except MissingKotlinDistributionError as error:
+    print(str(error), file=sys.stderr)
+    return 2
+  process = subprocess.run(command, **run_kwargs)
   return int(process.returncode)
+
+
+def python_mcp_main() -> None:
+  from skill_bill.mcp_server import main as python_main
+
+  python_main()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,13 +134,16 @@ def mcp_main() -> None:
     )
     raise SystemExit(2)
   if runtime == "kotlin":
+    try:
+      command = kotlin_mcp_command()
+    except MissingKotlinDistributionError as error:
+      print(str(error), file=sys.stderr)
+      raise SystemExit(2)
     raise SystemExit(subprocess.run(
-      kotlin_mcp_command(),
-      cwd=repo_root() / "runtime-kotlin",
+      command,
+      cwd=runtime_kotlin_root(),
       check=False,
     ).returncode)
-
-  from skill_bill.mcp_server import main as python_mcp_main
 
   python_mcp_main()
 

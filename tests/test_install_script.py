@@ -125,7 +125,44 @@ class InstallScriptTest(unittest.TestCase):
         config["mcp"]["skill-bill"]["command"][1:],
         ["-c", "from skill_bill.launcher import mcp_main; mcp_main()"],
       )
+      self.assertNotIn("gradlew", json.dumps(config["mcp"]["skill-bill"]))
       self.assertTrue(config["mcp"]["skill-bill"]["enabled"])
+
+  def test_install_script_builds_and_locates_packaged_runtime_distributions(self) -> None:
+    source = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    self.assertIn(
+      "runtime-cli/build/install/runtime-cli/bin/runtime-cli",
+      source,
+    )
+    self.assertIn(
+      "runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp",
+      source,
+    )
+    self.assertIn(
+      "./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist",
+      source,
+    )
+    self.assertIn('locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"', source)
+    self.assertIn('locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"', source)
+
+  def test_install_script_documents_packaged_and_development_runtime_paths(self) -> None:
+    source = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    self.assertIn("Installed runtime path: Gradle application installDist bin scripts", source)
+    self.assertIn("Development fallback: point SKILL_BILL_KOTLIN_CLI", source)
+    self.assertIn("SKILL_BILL_KOTLIN_MCP", source)
+
+  def test_install_script_mcp_registration_uses_launcher_for_packaged_default(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      result = self.run_installer(temp_home, "opencode\nKotlin\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
+      command = config["mcp"]["skill-bill"]["command"]
+      self.assertEqual(command[1:], ["-c", "from skill_bill.launcher import mcp_main; mcp_main()"])
+      self.assertNotIn(":runtime-mcp:run", json.dumps(command))
+      self.assertNotIn("gradlew", json.dumps(command))
 
   def test_installer_merges_opencode_jsonc_config_when_registering_mcp(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -356,6 +393,7 @@ class InstallScriptTest(unittest.TestCase):
   ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["HOME"] = temp_home
+    env.setdefault("SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD", "1")
     if extra_env is not None:
       env.update(extra_env)
     return subprocess.run(

@@ -1,3 +1,12 @@
+## [2026-04-30] packaged-runtime-installer
+Areas: skill_bill.launcher, install.sh, runtime-cli installDist, runtime-mcp installDist, launcher/installer tests
+- Switched default Kotlin CLI/MCP launch commands from Gradle `run` tasks to packaged application `installDist` bin scripts; missing distributions now loud-fail with installDist guidance. reusable
+- `install.sh` now builds runtime-cli/runtime-mcp distributions and verifies both packaged bin scripts before registering MCP shims.
+- Kept Kotlin development override env vars for local commands; the Python launcher shim is transitional and should not shape new runtime acceptance gates.
+- Regression coverage locks packaged CLI/MCP path resolution, missing-distribution messaging, installer build/location behavior, and no-Gradle MCP registration.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (Python rollback criteria superseded by Kotlin-only runtime direction)
+
 ## [2026-04-30] runtime-green-gate-and-python-ownership
 Areas: runtime-application lifecycle validation, telemetry sync, SKILL-27 cutover checklist
 - Split lifecycle telemetry validation into feature-implement, feature-verify, quality-check, and shared validator files so each lifecycle family owns its validation rules and the runtime-application Detekt `TooManyFunctions` gate stays green. reusable

@@ -5,6 +5,9 @@ PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
+RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
+RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
+RUNTIME_MCP_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -827,7 +830,44 @@ ensure_skill_bill_venv() {
   return 0
 }
 
+locate_packaged_runtime_bin() {
+  local path="$1"
+  local label="$2"
+  if [[ ! -x "$path" ]]; then
+    err "Missing packaged Kotlin $label runtime: $path"
+    return 1
+  fi
+}
+
+build_kotlin_runtime_distributions() {
+  # Installed runtime path: Gradle application installDist bin scripts at:
+  # runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
+  # runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp
+  # Development fallback: point SKILL_BILL_KOTLIN_CLI or
+  # SKILL_BILL_KOTLIN_MCP at a local command such as a Gradle run wrapper.
+  if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
+    warn "Skipping packaged Kotlin runtime distribution build because SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1."
+    return 0
+  fi
+
+  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
+  if [[ ! -x "$gradlew" ]]; then
+    err "Missing Gradle wrapper: $gradlew"
+    return 1
+  fi
+
+  info "Building packaged Kotlin runtime distributions..."
+  (
+    cd "$RUNTIME_KOTLIN_DIR"
+    ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
+  )
+  locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
+  locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+  ok "Kotlin runtime distributions ready"
+}
+
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
+  build_kotlin_runtime_distributions
   info "Installing skill-bill CLI and MCP server..."
   if SKILL_BILL_PYTHON="$(ensure_skill_bill_venv)"; then
     ok "skill-bill CLI installed"
@@ -847,6 +887,9 @@ servers['skill-bill'] = {
     'command': sys.executable,
     'args': ['-c', 'from skill_bill.launcher import mcp_main; mcp_main()']
 }
+# MCP registration intentionally calls the Python launcher shim until that
+# entrypoint is retired. The launcher resolves default MCP execution to the
+# packaged runtime-mcp bin script above.
 settings['mcpServers'] = servers
 os.makedirs(os.path.dirname(path), exist_ok=True)
 open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
@@ -886,6 +929,9 @@ filtered.append('')
 filtered.append(section)
 filtered.append(f'command = \"{python_cmd}\"')
 filtered.append('args = [\"-c\", \"from skill_bill.launcher import mcp_main; mcp_main()\"]')
+# MCP registration intentionally calls the Python launcher shim until that
+# entrypoint is retired. The launcher resolves default MCP execution to the
+# packaged runtime-mcp bin script above.
 filtered.append('')
 os.makedirs(os.path.dirname(path), exist_ok=True)
 open(path, 'w').write('\n'.join(filtered))
@@ -1007,6 +1053,9 @@ mcp['skill-bill'] = {
     'command': [sys.executable, '-c', 'from skill_bill.launcher import mcp_main; mcp_main()'],
     'enabled': True,
 }
+# MCP registration intentionally calls the Python launcher shim until that
+# entrypoint is retired. The launcher resolves default MCP execution to the
+# packaged runtime-mcp bin script above.
 settings['mcp'] = mcp
 os.makedirs(os.path.dirname(path), exist_ok=True)
 open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
