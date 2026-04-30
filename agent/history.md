@@ -1,3 +1,12 @@
+## [2026-04-30] feature-implement-large-work-decomposition
+Areas: skills/bill-feature-implement/, runtime-kotlin/runtime-domain/, tests/
+- Added a planning-stage decomposition mode for oversized `bill-feature-implement` runs: Step 3 now returns either `mode: "implement"` or terminal `mode: "decompose"` with ordered subtask specs and acceptance criteria. reusable
+- Decomposition writes resumable `.feature-specs/.../spec_subtask_<n>_<slug>.md` handoff specs, presents dependency order, and closes before implementation as intentional planning-stage scope governance.
+- Updated the Kotlin workflow definition so the primary runtime resume/continue text treats the plan artifact as either an implementation plan or a terminal decomposition package. reusable
+- Known limit: full runtime-kotlin `check` still fails on an unrelated `runtime-application` detekt ReturnCount issue in `TelemetryService.autoSync`; affected `runtime-domain` checks pass.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-04-26] canonical-skill-md-shape
 Areas: skills/, platform-packs/, scripts/validate_agent_configs.py, skill_bill/, tests/, orchestration/shell-content-contract/
 - Locked SKILL.md to a single canonical shape across every skill: frontmatter + `## Descriptor` + `## Execution` + `## Ceremony` only, with a body banlist (fenced code, tables, `## Step N:` headings, embedded templates, install gates, telemetry instructions, routing rules, run-context placeholders). All substantive prose moves to content.md. reusable

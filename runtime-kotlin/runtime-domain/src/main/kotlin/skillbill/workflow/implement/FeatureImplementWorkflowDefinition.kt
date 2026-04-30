@@ -33,7 +33,7 @@ object FeatureImplementWorkflowDefinition {
       "assess" to "Step 1: Collect Design Doc + Assess Size",
       "create_branch" to "Step 1b: Create Feature Branch",
       "preplan" to "Step 2: Pre-Planning",
-      "plan" to "Step 3: Create Implementation Plan",
+      "plan" to "Step 3: Create Implementation Plan or Decompose",
       "implement" to "Step 4: Execute Plan",
       "review" to "Step 5: Code Review",
       "audit" to "Step 6: Completeness Audit",
@@ -64,7 +64,9 @@ object FeatureImplementWorkflowDefinition {
       "create_branch" to "Create or verify the feature branch, persist the branch artifact, then continue to preplan.",
       "preplan" to
         "Re-run the pre-planning phase using the assessment and branch artifacts, then persist preplan_digest.",
-      "plan" to "Re-run the planning phase using assessment and preplan_digest, then persist the plan artifact.",
+      "plan" to
+        "Re-run the planning phase using assessment and preplan_digest. Persist either the implementation plan " +
+        "or the terminal decomposition package.",
       "implement" to
         "Resume implementation from the persisted plan and preplan_digest, then refresh implementation_summary.",
       "review" to
@@ -150,7 +152,8 @@ object FeatureImplementWorkflowDefinition {
         "then spawn the pre-planning subagent with those recovered inputs.",
       "plan" to
         "Skip the discovery steps. Reuse the saved assessment and preplan_digest artifacts, then spawn the planning " +
-        "subagent from that recovered context.",
+        "subagent from that recovered context. If it returns mode: \"decompose\", persist the subtask specs and " +
+        "close the workflow at planning instead of proceeding to implementation.",
       "implement" to
         "Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan and preplan_digest artifacts, " +
         "then resume the implementation subagent from Step 4.",

@@ -238,6 +238,14 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`commit_push_result`", FEATURE_IMPLEMENT_CONTENT)
     self.assertIn("`pr_result`", FEATURE_IMPLEMENT)
 
+  def test_feature_implement_decomposes_oversized_work_at_planning(self) -> None:
+    self.assertIn('`mode: "decompose"`', FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn('"mode": "decompose"', FEATURE_IMPLEMENT)
+    self.assertIn("spec_subtask_1_foundation.md", FEATURE_IMPLEMENT)
+    self.assertIn("Once decomposition mode is selected, do not implement anything", FEATURE_IMPLEMENT)
+    self.assertIn('completion_status: "abandoned_at_planning"', FEATURE_IMPLEMENT)
+    self.assertIn("decomposed into N subtasks", FEATURE_IMPLEMENT)
+
   def test_pr_description_prefers_repo_native_templates(self) -> None:
     self.assertIn("## Repo-Native PR Template Search (mandatory)", PR_DESCRIPTION)
     self.assertIn("`.github/pull_request_template.md`", PR_DESCRIPTION)

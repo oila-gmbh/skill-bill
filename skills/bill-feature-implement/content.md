@@ -27,7 +27,7 @@ Workflow-state rules:
 
 Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
 
-Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan`; Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result` (reserved shell-owned artifact name; runtime behavior unchanged unless the workflow runtime already persists it); Step 9 -> `pr_result`.
+Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result` (reserved shell-owned artifact name; runtime behavior unchanged unless the workflow runtime already persists it); Step 9 -> `pr_result`.
 
 ## Continuation Mode
 
@@ -113,11 +113,20 @@ Primary artifact: `plan`
 
 Spawn a subagent with the planning briefing defined in [reference.md](reference.md) under `Planning subagent briefing`. The briefing includes acceptance criteria, non-goals, feature size, pre-planning digest (from Step 2), rollout info, feature-flag pattern (if any), and validation strategy.
 
-The subagent returns the planning return contract: an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). For MEDIUM/LARGE with more than 15 tasks, the plan must be split into phases with checkpoints.
+The subagent returns one of two planning return contracts:
 
-If the plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule in the plan it returns.
+- `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
+- `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-implement run.
 
-The orchestrator presents the plan, then proceeds to implementation — the plan is not a second approval gate. Persist `plan` before advancing to `implement`.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent writes subtask specs under `.feature-specs/{ISSUE_KEY}-{feature-name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`. Each subtask spec must contain its own acceptance criteria, non-goals, dependency notes, validation strategy, and a clear instruction to run `bill-feature-implement` on that subtask spec in a later session.
+
+If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
+
+The orchestrator presents the plan, then proceeds to implementation — the plan is not a second approval gate.
+
+If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
+
+Persist `plan` before advancing to `implement` or before closing on decomposition.
 
 ## Step 4: Execute Plan (subagent)
 

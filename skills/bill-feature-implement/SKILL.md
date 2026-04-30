@@ -1,6 +1,6 @@
 ---
 name: bill-feature-implement
-description: Use when doing end-to-end feature implementation from design doc to verified code. Automatically scales ceremony based on feature size - lightweight for small changes, full orchestration for large features. Runs each heavy phase (pre-planning, planning, implementation, completeness audit, quality check, PR description) inside its own subagent with a rich self-contained briefing, to keep the orchestrator context small. Code review stays in the orchestrator because it already spawns specialist subagents internally. Use when user mentions implement feature, build feature, implement spec, or feature from design doc.
+description: Use when doing end-to-end feature implementation from design doc to verified code. Automatically scales ceremony based on feature size - lightweight for small changes, full orchestration for medium features, and explicit decomposition into resumable subtask specs when work is too large for one reliable execution. Runs each heavy phase (pre-planning, planning, implementation, completeness audit, quality check, PR description) inside its own subagent with a rich self-contained briefing, to keep the orchestrator context small. Code review stays in the orchestrator because it already spawns specialist subagents internally. Use when user mentions implement feature, build feature, implement spec, or feature from design doc.
 ---
 
 ## Descriptor

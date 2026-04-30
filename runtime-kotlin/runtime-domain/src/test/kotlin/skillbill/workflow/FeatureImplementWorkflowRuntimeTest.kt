@@ -124,6 +124,22 @@ class FeatureImplementWorkflowRuntimeTest {
     )
   }
 
+  @Test
+  fun `implement planning step supports terminal decomposition branch`() {
+    assertEquals("Step 3: Create Implementation Plan or Decompose", definition.stepLabels["plan"])
+    assertEquals(
+      "Re-run the planning phase using assessment and preplan_digest. Persist either the implementation plan " +
+        "or the terminal decomposition package.",
+      definition.resumeActions["plan"],
+    )
+    assertEquals(
+      "Skip the discovery steps. Reuse the saved assessment and preplan_digest artifacts, then spawn the planning " +
+        "subagent from that recovered context. If it returns mode: \"decompose\", persist the subtask specs and " +
+        "close the workflow at planning instead of proceeding to implementation.",
+      definition.continuationDirectives["plan"],
+    )
+  }
+
   private fun completedAs(status: String) = WorkflowEngine.updateRecord(
     definition,
     WorkflowEngine.openRecord(definition, "wfl-terminal", "fis-001", "assess"),
