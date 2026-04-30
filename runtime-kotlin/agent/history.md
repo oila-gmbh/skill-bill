@@ -1,3 +1,11 @@
+## [2026-04-30] runtime-mcp-feature-implement-lifecycle-schemas
+Areas: runtime-mcp tool registry, MCP stdio tools/list contract, lifecycle telemetry tools
+- Added explicit MCP input schemas for `feature_implement_started` and `feature_implement_finished`; the previous open schema made Codex expose these mandatory lifecycle tools as no-argument tools even though handlers required fields. reusable
+- Locked the regression with an MCP stdio tools/list test that asserts required lifecycle fields such as `feature_size`, `issue_key`, `session_id`, and `completion_status` are advertised.
+- Operational symptom: a completed SKILL-32 feature-implement run committed successfully but initially missed `skillbill_feature_implement_started` and `skillbill_feature_implement_finished`; the missing pair was backfilled through the Kotlin MCP stdio server as session `fis-20260430-074408-b27m`.
+Feature flag: N/A
+Acceptance criteria: MCP lifecycle schemas exposed, focused runtime-mcp check passes, telemetry pair backfilled
+
 ## [2026-04-25] runtime-mcp-lifecycle-native
 Areas: runtime-application lifecycle telemetry service, runtime-infra-sqlite lifecycle telemetry store, runtime-mcp dispatcher, docs/migrations/SKILL-27-cutover-checklist.md
 - Ported the remaining MCP telemetry lifecycle tools to Kotlin-native services and SQLite persistence while preserving standalone session/outbox behavior and orchestrated child telemetry payloads.
