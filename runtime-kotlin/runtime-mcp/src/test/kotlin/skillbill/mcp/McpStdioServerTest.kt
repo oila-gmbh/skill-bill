@@ -3,6 +3,7 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -199,8 +200,11 @@ private fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String>
   return mapOf(
     "SKILL_BILL_REVIEW_DB" to tempDir.resolve("metrics.db").toString(),
     CONFIG_ENVIRONMENT_KEY to configPath.toString(),
+    TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL,
   )
 }
+
+private const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-test-telemetry"
 
 private fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>): String = JsonSupport.mapToJsonString(
   mapOf(

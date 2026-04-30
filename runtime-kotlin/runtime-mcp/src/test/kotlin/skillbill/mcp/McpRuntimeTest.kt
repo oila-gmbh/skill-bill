@@ -411,6 +411,7 @@ class McpRuntimeTest {
       """.trimIndent() + "\n",
     )
     val env = mapOf("SKILL_BILL_REVIEW_DB" to tempDir.resolve("metrics.db").toString())
+      .withTestTelemetryProxy()
 
     val result =
       McpRuntime.importReview(
@@ -569,7 +570,7 @@ private fun enabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
   return mapOf(
     "SKILL_BILL_REVIEW_DB" to tempDir.resolve("metrics.db").toString(),
     CONFIG_ENVIRONMENT_KEY to configPath.toString(),
-  )
+  ).withTestTelemetryProxy()
 }
 
 private fun disabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
@@ -592,6 +593,11 @@ private fun disabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
     CONFIG_ENVIRONMENT_KEY to configPath.toString(),
   )
 }
+
+private fun Map<String, String>.withTestTelemetryProxy(): Map<String, String> =
+  this + (TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL)
+
+private const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-test-telemetry"
 
 private fun writeMcpTelemetryConfig(tempDir: Path, level: String): Path {
   val configPath = tempDir.resolve("config.json")
