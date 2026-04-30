@@ -182,6 +182,55 @@ class McpRuntimeTest {
   }
 
   @Test
+  fun `feature implement lifecycle rejects defaulted incomplete telemetry fields`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-feature-implement-invalid")
+    val env = enabledTelemetryEnvironment(tempDir)
+    val context = McpRuntimeContext(environment = env, userHome = tempDir)
+
+    val started =
+      McpToolDispatcher.call(
+        "feature_implement_started",
+        mapOf(
+          "feature_size" to "SMALL",
+          "feature_name" to "read-path-config-variant-resolution",
+          "issue_key" to "SKILL-32",
+        ),
+        context,
+      )
+    val finished =
+      McpRuntime.featureImplementFinished(
+        FeatureImplementFinishedRequest(
+          sessionId = "fis-invalid",
+          completionStatus = "completed",
+          planCorrectionCount = 0,
+          planTaskCount = 1,
+          planPhaseCount = 1,
+          featureFlagUsed = false,
+          filesCreated = 0,
+          filesModified = 1,
+          tasksCompleted = 1,
+          reviewIterations = 0,
+          auditResult = "all_pass",
+          auditIterations = 1,
+          validationResult = "pass",
+          boundaryHistoryWritten = true,
+          prCreated = false,
+          featureFlagPattern = "none",
+          boundaryHistoryValue = "medium",
+          planDeviationNotes = "",
+          childSteps = emptyList(),
+        ),
+        context,
+      )
+
+    assertEquals("error", started["status"])
+    assertEquals("issue_key_type must not be 'none' when issue_key is provided.", started["error"])
+    assertEquals("error", finished["status"])
+    assertEquals("review_iterations must be greater than 0.", finished["error"])
+    assertFalse(Files.exists(tempDir.resolve("metrics.db")))
+  }
+
+  @Test
   fun `orchestrated lifecycle telemetry returns child payloads without outbox events`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-lifecycle-orchestrated")
     val env = enabledTelemetryEnvironment(tempDir)
