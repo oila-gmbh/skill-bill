@@ -1,3 +1,11 @@
+## [2026-04-30] packaging-schema-integration-validation
+Areas: skill_bill.launcher, install.sh, runtime-mcp schemas, repository validation gate
+- Confirmed the packaged Kotlin CLI/MCP installDist launch path and strict MCP schema boundary coexist through the full repository gate plus installer/stdio smoke checks. reusable
+- Reusable validation pattern: run the four-command repo gate, force `McpStdioServerTest` when schema behavior matters, then smoke `skill-bill doctor` and MCP `initialize`/`tools/list` with Kotlin runtime overrides unset.
+- Known limitation: `install.sh` is interactive and resets `~/.skill-bill` during reinstall, so workflow telemetry/state opened before an installer rehearsal is intentionally discarded.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (Python rollback criterion superseded by Kotlin-only runtime direction)
+
 ## [2026-04-30] runtime-mcp-strict-priority-schemas
 Areas: runtime-mcp tool registry, MCP stdio argument boundary, MCP schema tests
 - Published strict root input schemas for priority telemetry, review, learning, scaffold, and workflow MCP tools; zero-argument workflow tools now advertise empty strict object schemas instead of open objects. reusable
