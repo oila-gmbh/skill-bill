@@ -80,6 +80,29 @@ class McpStdioServerTest {
   }
 
   @Test
+  fun `feature implement lifecycle tools expose required input schemas`() {
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
+        ),
+      )
+    val tools = response.map("result")["tools"] as List<*>
+
+    val startedSchema = tools.schemaFor("feature_implement_started")
+    val finishedSchema = tools.schemaFor("feature_implement_finished")
+
+    assertEquals(false, startedSchema["additionalProperties"])
+    assertEquals(false, finishedSchema["additionalProperties"])
+    assertTrue((startedSchema["required"] as List<*>).contains("feature_size"))
+    assertTrue((startedSchema["required"] as List<*>).contains("issue_key"))
+    assertTrue(startedSchema.properties().containsKey("acceptance_criteria_count"))
+    assertTrue((finishedSchema["required"] as List<*>).contains("session_id"))
+    assertTrue((finishedSchema["required"] as List<*>).contains("completion_status"))
+    assertTrue(finishedSchema.properties().containsKey("boundary_history_written"))
+  }
+
+  @Test
   fun `tools call wraps native payloads as text content`() {
     val response =
       decodeResponse(
@@ -147,6 +170,16 @@ class McpStdioServerTest {
     assertEquals("fix_rejected", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[1]))["outcome_type"])
   }
 }
+
+private fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
+  val tool = first { item -> JsonSupport.anyToStringAnyMap(item)?.get("name") == toolName }
+  return requireNotNull(JsonSupport.anyToStringAnyMap(tool)?.get("inputSchema")).let { schema ->
+    requireNotNull(JsonSupport.anyToStringAnyMap(schema))
+  }
+}
+
+private fun Map<String, Any?>.properties(): Map<String, Any?> =
+  requireNotNull(JsonSupport.anyToStringAnyMap(this["properties"]))
 
 private fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String> {
   val configPath = tempDir.resolve("config.json")
