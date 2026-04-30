@@ -7,7 +7,9 @@ import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -104,6 +106,119 @@ class McpStdioServerTest {
   }
 
   @Test
+  fun `priority validating persisting and telemetry tools expose strict input schemas`() {
+    val tools = toolsList()
+
+    priorityStrictToolNames.forEach { toolName ->
+      val schema = tools.schemaFor(toolName)
+
+      assertEquals("object", schema["type"], toolName)
+      assertEquals(false, schema["additionalProperties"], toolName)
+      assertFalse(schema == McpToolSpec.openObjectSchema(), toolName)
+    }
+  }
+
+  @Test
+  fun `strict schema coverage publishes required arguments and enums`() {
+    val tools = toolsList()
+
+    tools.schemaFor("quality_check_finished").assertRequired(
+      "session_id",
+      "result",
+      "routed_skill",
+      "detected_stack",
+      "scope_type",
+    )
+    assertEquals(
+      listOf("pass", "fail", "skipped", "unsupported_stack"),
+      tools.schemaFor("quality_check_finished").properties().enumFor("result"),
+    )
+    assertEquals(
+      listOf("files", "working_tree", "branch_diff", "repo"),
+      tools.schemaFor("quality_check_started").properties().enumFor("scope_type"),
+    )
+    assertEquals(
+      listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error"),
+      tools.schemaFor("feature_verify_finished").properties().enumFor("completion_status"),
+    )
+    assertEquals(
+      listOf("all_pass", "had_gaps", "skipped"),
+      tools.schemaFor("feature_verify_finished").properties().enumFor("audit_result"),
+    )
+    assertEquals(
+      listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+      tools.schemaFor("feature_implement_workflow_update").properties().enumFor("workflow_status"),
+    )
+    tools.schemaFor("new_skill_scaffold").assertRequired("payload")
+    tools.schemaFor("import_review").assertRequired("review_text")
+    tools.schemaFor("triage_findings").assertRequired("review_run_id", "decisions")
+  }
+
+  @Test
+  fun `zero argument workflow tools expose strict empty objects`() {
+    val tools = toolsList()
+
+    listOf(
+      "feature_implement_workflow_latest",
+      "feature_verify_workflow_latest",
+    ).forEach { toolName ->
+      val schema = tools.schemaFor(toolName)
+
+      assertEquals(false, schema["additionalProperties"], toolName)
+      assertEquals(emptyMap<String, Any?>(), schema.properties(), toolName)
+      assertEquals(emptyList<String>(), schema["required"], toolName)
+    }
+  }
+
+  @Test
+  fun `strict tools reject unknown arguments at the stdio boundary`() {
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 99,
+            name = "resolve_learnings",
+            arguments = mapOf("repo" to "skill-bill", "unexpected" to true),
+          ),
+        ),
+      )
+    val error = response.map("error")
+
+    assertEquals(-32602, error["code"])
+    assertContains(error["message"].toString(), "Unknown argument(s) for resolve_learnings: unexpected")
+  }
+
+  @Test
+  fun `strict tools reject unknown nested arguments at the stdio boundary`() {
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 100,
+            name = "feature_implement_workflow_update",
+            arguments = mapOf(
+              "workflow_id" to "wfl-test",
+              "workflow_status" to "running",
+              "current_step_id" to "implement",
+              "step_updates" to listOf(
+                mapOf(
+                  "step_id" to "implement",
+                  "status" to "running",
+                  "attempt_count" to 1,
+                  "unexpected" to true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      )
+    val error = response.map("error")
+
+    assertEquals(-32602, error["code"])
+    assertContains(error["message"].toString(), "step_updates[0].unexpected")
+  }
+
+  @Test
   fun `tools call wraps native payloads as text content`() {
     val response =
       decodeResponse(
@@ -172,6 +287,45 @@ class McpStdioServerTest {
   }
 }
 
+private val priorityStrictToolNames =
+  listOf(
+    "feature_implement_started",
+    "feature_implement_finished",
+    "feature_verify_started",
+    "feature_verify_finished",
+    "quality_check_started",
+    "quality_check_finished",
+    "pr_description_generated",
+    "import_review",
+    "triage_findings",
+    "resolve_learnings",
+    "feature_implement_workflow_open",
+    "feature_implement_workflow_update",
+    "feature_implement_workflow_get",
+    "feature_implement_workflow_list",
+    "feature_implement_workflow_latest",
+    "feature_implement_workflow_resume",
+    "feature_implement_workflow_continue",
+    "feature_verify_workflow_open",
+    "feature_verify_workflow_update",
+    "feature_verify_workflow_get",
+    "feature_verify_workflow_list",
+    "feature_verify_workflow_latest",
+    "feature_verify_workflow_resume",
+    "feature_verify_workflow_continue",
+    "new_skill_scaffold",
+  )
+
+private fun toolsList(): List<*> {
+  val response =
+    decodeResponse(
+      McpStdioServer.handleLine(
+        """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
+      ),
+    )
+  return response.map("result")["tools"] as List<*>
+}
+
 private fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
   val tool = first { item -> JsonSupport.anyToStringAnyMap(item)?.get("name") == toolName }
   return requireNotNull(JsonSupport.anyToStringAnyMap(tool)?.get("inputSchema")).let { schema ->
@@ -181,6 +335,16 @@ private fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
 
 private fun Map<String, Any?>.properties(): Map<String, Any?> =
   requireNotNull(JsonSupport.anyToStringAnyMap(this["properties"]))
+
+private fun Map<String, Any?>.assertRequired(vararg names: String) {
+  val required = this["required"] as List<*>
+  names.forEach { name -> assertContains(required, name) }
+}
+
+private fun Map<String, Any?>.enumFor(propertyName: String): List<*> {
+  val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
+  return requireNotNull(property["enum"] as? List<*>)
+}
 
 private fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String> {
   val configPath = tempDir.resolve("config.json")

@@ -1,3 +1,11 @@
+## [2026-04-30] runtime-mcp-strict-priority-schemas
+Areas: runtime-mcp tool registry, MCP stdio argument boundary, MCP schema tests
+- Published strict root input schemas for priority telemetry, review, learning, scaffold, and workflow MCP tools; zero-argument workflow tools now advertise empty strict object schemas instead of open objects. reusable
+- Added stdio boundary validation that rejects undeclared top-level arguments for tools whose published schema sets `additionalProperties=false`, before handler dispatch.
+- Expanded `McpStdioServerTest` to lock strictness, required argument publication, enum publication, unknown argument rejection, and zero-argument strict schemas.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-04-30] packaged-runtime-installer
 Areas: skill_bill.launcher, install.sh, runtime-cli installDist, runtime-mcp installDist, launcher/installer tests
 - Switched default Kotlin CLI/MCP launch commands from Gradle `run` tasks to packaged application `installDist` bin scripts; missing distributions now loud-fail with installDist guidance. reusable
