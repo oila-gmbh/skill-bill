@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "db_path": "<DB_PATH>",
+  "db_exists": false,
+  "telemetry_enabled": false,
+  "telemetry_level": "off"
+}

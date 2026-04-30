@@ -1,3 +1,12 @@
+## [2026-04-30] kotlin-native-contract-tests
+Areas: runtime-cli golden fixtures, runtime-mcp golden fixtures, runtime architecture tests, runtime surface contracts
+- Added golden JSON contract coverage for Kotlin-native CLI/MCP surfaces while explicitly deferring Python-backed scaffold/authoring/install and `doctor <subject>` work to 3b.
+- Reusable pattern: normalize dynamic workflow ids/timestamps and scaffold paths only after asserting shape, prefixes, timestamp format, and path suffixes.
+- Strengthened architecture guardrails with source-reference bans for Python bridge markers and runtime-mcp FS/HTTP/SQL dependencies, with only the current `McpScaffoldRuntime` repo-root lookup exception.
+- Added active runtime surface locks for launcher, install, scaffold, feature-implement workflow, and feature-verify workflow; launcher Python fallback entries remain a TODO for 3c.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-04-30] packaging-schema-integration-validation
 Areas: skill_bill.launcher, install.sh, runtime-mcp schemas, repository validation gate
 - Confirmed the packaged Kotlin CLI/MCP installDist launch path and strict MCP schema boundary coexist through the full repository gate plus installer/stdio smoke checks. reusable

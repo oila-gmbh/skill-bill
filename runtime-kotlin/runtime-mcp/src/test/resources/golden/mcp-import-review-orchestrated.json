@@ -1,0 +1,11 @@
+{
+  "review_run_id": "rvw-20260402-001",
+  "review_session_id": "rvs-20260402-001",
+  "finding_count": 2,
+  "routed_skill": "bill-kotlin-code-review",
+  "detected_stack": "kotlin",
+  "detected_scope": "unstaged changes",
+  "execution_mode": "inline",
+  "db_path": "<DB_PATH>",
+  "mode": "orchestrated"
+}

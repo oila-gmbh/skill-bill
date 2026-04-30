@@ -1,0 +1,76 @@
+{
+  "artifacts": {},
+  "contract_version": "0.1",
+  "current_step_id": "assess",
+  "db_path": "<DB_PATH>",
+  "finished_at": "",
+  "session_id": "fis-20260425-000001-test",
+  "started_at": "<STARTED_AT>",
+  "status": "ok",
+  "steps": [
+    {
+      "attempt_count": 1,
+      "status": "running",
+      "step_id": "assess"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "create_branch"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "preplan"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "plan"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "implement"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "review"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "audit"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "validate"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "write_history"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "commit_push"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "pr_description"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "finish"
+    }
+  ],
+  "updated_at": "<UPDATED_AT>",
+  "workflow_id": "<WORKFLOW_ID>",
+  "workflow_name": "bill-feature-implement",
+  "workflow_status": "running"
+}

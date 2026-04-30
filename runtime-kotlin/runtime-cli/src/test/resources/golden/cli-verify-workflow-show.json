@@ -1,0 +1,56 @@
+{
+  "artifacts": {},
+  "contract_version": "0.1",
+  "current_step_id": "code_review",
+  "db_path": "<DB_PATH>",
+  "finished_at": "",
+  "session_id": "",
+  "started_at": "<STARTED_AT>",
+  "status": "ok",
+  "steps": [
+    {
+      "attempt_count": 1,
+      "status": "completed",
+      "step_id": "collect_inputs"
+    },
+    {
+      "attempt_count": 1,
+      "status": "completed",
+      "step_id": "extract_criteria"
+    },
+    {
+      "attempt_count": 1,
+      "status": "completed",
+      "step_id": "gather_diff"
+    },
+    {
+      "attempt_count": 1,
+      "status": "completed",
+      "step_id": "feature_flag_audit"
+    },
+    {
+      "attempt_count": 1,
+      "status": "running",
+      "step_id": "code_review"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "completeness_audit"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "verdict"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
+      "step_id": "finish"
+    }
+  ],
+  "updated_at": "<UPDATED_AT>",
+  "workflow_id": "<WORKFLOW_ID>",
+  "workflow_name": "bill-feature-verify",
+  "workflow_status": "running"
+}

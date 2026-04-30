@@ -1,0 +1,12 @@
+{
+  "db_path": "<DB_PATH>",
+  "recorded": [
+    {
+      "finding_id": "F-001",
+      "note": "patched",
+      "number": 1,
+      "outcome_type": "fix_applied"
+    }
+  ],
+  "review_run_id": "rvw-20260402-001"
+}

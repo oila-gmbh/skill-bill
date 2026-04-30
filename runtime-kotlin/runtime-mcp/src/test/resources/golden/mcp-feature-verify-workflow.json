@@ -1,0 +1,234 @@
+{
+  "open": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "code_review",
+    "steps": [
+      {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+      {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+      {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+      {"step_id": "feature_flag_audit", "status": "completed", "attempt_count": 1},
+      {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      {"step_id": "completeness_audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "verdict", "status": "pending", "attempt_count": 0},
+      {"step_id": "finish", "status": "pending", "attempt_count": 0}
+    ],
+    "artifacts": {},
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<STARTED_AT>",
+    "finished_at": "",
+    "status": "ok",
+    "db_path": "<DB_PATH>"
+  },
+  "update": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "verdict",
+    "steps": [
+      {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+      {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+      {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+      {"step_id": "feature_flag_audit", "status": "completed", "attempt_count": 1},
+      {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      {"step_id": "completeness_audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "verdict", "status": "blocked", "attempt_count": 1},
+      {"step_id": "finish", "status": "pending", "attempt_count": 0}
+    ],
+    "artifacts": {
+      "criteria_summary": {},
+      "diff_summary": {},
+      "review_result": {},
+      "completeness_audit_result": {}
+    },
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<UPDATED_AT>",
+    "finished_at": "",
+    "status": "ok",
+    "db_path": "<DB_PATH>"
+  },
+  "list": {
+    "status": "ok",
+    "db_path": "<DB_PATH>",
+    "workflow_count": 1,
+    "workflows": [
+      {
+        "workflow_id": "<WORKFLOW_ID>",
+        "session_id": "",
+        "workflow_name": "bill-feature-verify",
+        "contract_version": "0.1",
+        "workflow_status": "running",
+        "current_step_id": "verdict",
+        "started_at": "<STARTED_AT>",
+        "updated_at": "<UPDATED_AT>",
+        "finished_at": ""
+      }
+    ]
+  },
+  "latest": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "verdict",
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<UPDATED_AT>",
+    "finished_at": "",
+    "status": "ok",
+    "db_path": "<DB_PATH>"
+  },
+  "get": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "verdict",
+    "steps": [
+      {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+      {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+      {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+      {"step_id": "feature_flag_audit", "status": "completed", "attempt_count": 1},
+      {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      {"step_id": "completeness_audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "verdict", "status": "blocked", "attempt_count": 1},
+      {"step_id": "finish", "status": "pending", "attempt_count": 0}
+    ],
+    "artifacts": {
+      "criteria_summary": {},
+      "diff_summary": {},
+      "review_result": {},
+      "completeness_audit_result": {}
+    },
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<UPDATED_AT>",
+    "finished_at": "",
+    "status": "ok",
+    "db_path": "<DB_PATH>"
+  },
+  "resume": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "verdict",
+    "steps": [
+      {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+      {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+      {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+      {"step_id": "feature_flag_audit", "status": "completed", "attempt_count": 1},
+      {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      {"step_id": "completeness_audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "verdict", "status": "blocked", "attempt_count": 1},
+      {"step_id": "finish", "status": "pending", "attempt_count": 0}
+    ],
+    "artifacts": {
+      "criteria_summary": {},
+      "diff_summary": {},
+      "review_result": {},
+      "completeness_audit_result": {}
+    },
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<UPDATED_AT>",
+    "finished_at": "",
+    "resume_mode": "resume",
+    "resume_step_id": "verdict",
+    "last_completed_step_id": "feature_flag_audit",
+    "available_artifacts": [
+      "completeness_audit_result",
+      "criteria_summary",
+      "diff_summary",
+      "review_result"
+    ],
+    "required_artifacts": [
+      "criteria_summary",
+      "review_result",
+      "completeness_audit_result"
+    ],
+    "missing_artifacts": [],
+    "can_resume": true,
+    "next_action": "Reuse saved review and audit artifacts, then write the final verdict without rerunning earlier phases.",
+    "status": "ok",
+    "db_path": "<DB_PATH>"
+  },
+  "continue": {
+    "workflow_id": "<WORKFLOW_ID>",
+    "session_id": "",
+    "workflow_name": "bill-feature-verify",
+    "contract_version": "0.1",
+    "workflow_status": "running",
+    "current_step_id": "verdict",
+    "steps": [
+      {"step_id": "collect_inputs", "status": "completed", "attempt_count": 1},
+      {"step_id": "extract_criteria", "status": "completed", "attempt_count": 1},
+      {"step_id": "gather_diff", "status": "completed", "attempt_count": 1},
+      {"step_id": "feature_flag_audit", "status": "completed", "attempt_count": 1},
+      {"step_id": "code_review", "status": "running", "attempt_count": 1},
+      {"step_id": "completeness_audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "verdict", "status": "running", "attempt_count": 2},
+      {"step_id": "finish", "status": "pending", "attempt_count": 0}
+    ],
+    "artifacts": {
+      "criteria_summary": {},
+      "diff_summary": {},
+      "review_result": {},
+      "completeness_audit_result": {}
+    },
+    "started_at": "<STARTED_AT>",
+    "updated_at": "<CONTINUED_AT>",
+    "finished_at": "",
+    "resume_mode": "resume",
+    "resume_step_id": "verdict",
+    "last_completed_step_id": "feature_flag_audit",
+    "available_artifacts": [
+      "completeness_audit_result",
+      "criteria_summary",
+      "diff_summary",
+      "review_result"
+    ],
+    "required_artifacts": [
+      "criteria_summary",
+      "review_result",
+      "completeness_audit_result"
+    ],
+    "missing_artifacts": [],
+    "can_resume": true,
+    "next_action": "Reuse saved review and audit artifacts, then write the final verdict without rerunning earlier phases.",
+    "skill_name": "bill-feature-verify",
+    "continuation_mode": "resume_existing_workflow",
+    "workflow_status_before_continue": "running",
+    "continue_status": "reopened",
+    "continue_step_id": "verdict",
+    "continue_step_label": "Step 7: Consolidated Verdict",
+    "continue_step_directive": "Reuse the saved review and audit artifacts to produce the final verdict without rerunning earlier steps unless recovery made them stale.",
+    "reference_sections": [
+      "SKILL.md :: Continuation Mode",
+      "SKILL.md :: Step 7: Consolidated Verdict",
+      "audit-rubrics.md :: Consolidated Verdict"
+    ],
+    "step_artifact_keys": [
+      "criteria_summary",
+      "diff_summary",
+      "review_result",
+      "completeness_audit_result"
+    ],
+    "step_artifacts": {
+      "criteria_summary": {},
+      "diff_summary": {},
+      "review_result": {},
+      "completeness_audit_result": {}
+    },
+    "session_summary": {},
+    "continuation_brief": "Resume `bill-feature-verify` workflow `<WORKFLOW_ID>` from `Step 7: Consolidated Verdict` (`verdict`). Follow the normal step instructions in `skills/bill-feature-verify/SKILL.md`. Use the recovered `step_artifacts` in this payload (criteria_summary, diff_summary, review_result, completeness_audit_result) instead of reconstructing prior context from chat history. Workflow activation status: `already_running`. Next action: Reuse saved review and audit artifacts, then write the final verdict without rerunning earlier phases.",
+    "continuation_entry_prompt": "Use `bill-feature-verify` in continuation mode.\nWorkflow id: <WORKFLOW_ID>\nSession id: (none)\nContinue status: already_running\nResume step: verdict (Step 7: Consolidated Verdict)\nRecovered artifacts: criteria_summary, diff_summary, review_result, completeness_audit_result\nAcceptance criteria count: 0\nRollout relevant: false\nSpec summary: (none saved)\nReference sections: SKILL.md :: Continuation Mode; SKILL.md :: Step 7: Consolidated Verdict; audit-rubrics.md :: Consolidated Verdict\nRules: do not rerun completed steps unless the workflow sends work backwards; treat artifacts as authoritative.\nKeep the same workflow_id and session_id, then continue `bill-feature-verify`.\nStep directive: Reuse the saved review and audit artifacts to produce the final verdict without rerunning earlier steps unless recovery made them stale.\nImmediate next action: Reuse saved review and audit artifacts, then write the final verdict without rerunning earlier phases.",
+    "db_path": "<DB_PATH>",
+    "status": "ok"
+  }
+}

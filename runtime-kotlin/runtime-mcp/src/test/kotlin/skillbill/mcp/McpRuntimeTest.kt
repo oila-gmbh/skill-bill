@@ -55,6 +55,11 @@ class McpRuntimeTest {
 
     val result = McpRuntime.doctor(McpRuntimeContext(environment = env, userHome = tempDir))
 
+    assertGoldenPayload(
+      "mcp-doctor.json",
+      result,
+      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+    )
     assertEquals("0.1.0", result["version"])
     assertEquals(tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(), result["db_path"])
     assertFalse(result["db_exists"] as Boolean)
@@ -90,6 +95,11 @@ class McpRuntimeTest {
     val implementStats = McpRuntime.featureImplementStats(context)
     val verifyStats = McpRuntime.featureVerifyStats(context)
 
+    assertGoldenPayload(
+      "mcp-import-review.json",
+      importResult,
+      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+    )
     assertEquals("rvw-20260402-001", importResult["review_run_id"])
     assertEquals("rvs-20260402-001", importResult["review_session_id"])
     assertEquals(2, importResult["finding_count"])
@@ -147,7 +157,21 @@ class McpRuntimeTest {
 
     val standalone = McpRuntime.newSkillScaffold(payload, dryRun = true, orchestrated = false, context = context)
     val orchestrated = McpRuntime.newSkillScaffold(payload, dryRun = true, orchestrated = true, context = context)
+    val standaloneSessionId = standalone["session_id"] as String
+    val standaloneSkillPath = standalone["skill_path"] as String
 
+    assertMatchesPattern(Regex("""^nss-\d{8}-[0-9a-f]{4}$"""), standaloneSessionId, "session_id")
+    assertTrue(Path.of(standaloneSkillPath).isAbsolute, "Expected absolute skill_path but got $standaloneSkillPath")
+    assertTrue(
+      standaloneSkillPath.endsWith("/skills/bill-horizontal-mcp"),
+      "Expected skill_path to target skills/bill-horizontal-mcp but got $standaloneSkillPath",
+    )
+    assertGoldenPayload(
+      "mcp-new-skill-scaffold.json",
+      standalone,
+      "<SESSION_ID>" to standaloneSessionId,
+      "<SKILL_PATH>" to standaloneSkillPath,
+    )
     assertEquals("ok", standalone["status"])
     assertTrue("session_id" in standalone)
     assertTrue("skill_path" in standalone)
@@ -160,6 +184,9 @@ class McpRuntimeTest {
     val telemetryPayload = orchestrated["telemetry_payload"] as Map<*, *>
     assertEquals("bill-create-skill", telemetryPayload["skill"])
     assertEquals("dry-run", telemetryPayload["result"])
+    assertEquals("horizontal", telemetryPayload["kind"])
+    assertEquals("bill-horizontal-mcp", telemetryPayload["skill_name"])
+    assertEquals(standaloneSkillPath, orchestrated["skill_path"])
     assertTrue("skill_path" in orchestrated)
     assertTrue("notes" in orchestrated)
   }
@@ -295,6 +322,7 @@ class McpRuntimeTest {
         context = context,
       )
 
+    assertOrchestratedReviewGoldens(dbPath, importResult, triageResult)
     assertEquals("orchestrated", importResult["mode"])
     assertEquals("orchestrated", triageResult["mode"])
     assertTrue("telemetry_payload" in triageResult)
@@ -483,6 +511,9 @@ class McpRuntimeTest {
       context = context,
     )
     val workflowId = opened["workflow_id"] as String
+    assertWorkflowIdShape(workflowId, "wfl")
+    assertSqliteTimestampShape(opened["started_at"].toString(), "implement started_at")
+    assertEquals(opened["started_at"], opened["updated_at"])
 
     val updated =
       McpWorkflowRuntime.update(
@@ -501,7 +532,28 @@ class McpRuntimeTest {
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
+    val updatedAt = updated["updated_at"].toString()
 
+    assertSqliteTimestampShape(updatedAt, "implement updated_at")
+    assertEquals(opened["started_at"], updated["started_at"])
+    assertTrue(updatedAt >= opened["started_at"].toString())
+
+    assertGoldenPayload(
+      "mcp-feature-implement-workflow.json",
+      mapOf(
+        "open" to opened,
+        "update" to updated,
+        "list" to listed,
+        "latest" to latest,
+        "get" to got,
+        "resume" to resumed,
+        "continue" to continued,
+      ),
+      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+      "<WORKFLOW_ID>" to workflowId,
+      "<STARTED_AT>" to opened["started_at"].toString(),
+      "<UPDATED_AT>" to updated["updated_at"].toString(),
+    )
     assertEquals("blocked", updated["workflow_status"])
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
@@ -518,31 +570,41 @@ class McpRuntimeTest {
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
     val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.VERIFY, currentStepId = "code_review", context = context)
     val workflowId = opened["workflow_id"] as String
+    assertWorkflowIdShape(workflowId, "wfv")
+    assertSqliteTimestampShape(opened["started_at"].toString(), "verify started_at")
+    assertEquals(opened["started_at"], opened["updated_at"])
 
-    McpWorkflowRuntime.update(
-      WorkflowFamilyKind.VERIFY,
-      WorkflowUpdateRequest(
-        workflowId = workflowId,
-        workflowStatus = "running",
-        currentStepId = "verdict",
-        stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
-        artifactsPatch =
-        mapOf(
-          "criteria_summary" to emptyMap<String, Any?>(),
-          "diff_summary" to emptyMap(),
-          "review_result" to emptyMap(),
-          "completeness_audit_result" to emptyMap(),
-        ),
-      ),
-      context = context,
-    )
+    val updated = markVerifyWorkflowVerdictBlocked(workflowId, context)
 
     val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.VERIFY, context = context)
     val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.VERIFY, context)
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.VERIFY, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.VERIFY, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, context)
+    val continuedAt = continued["updated_at"].toString()
 
+    assertSqliteTimestampShape(got["updated_at"].toString(), "verify updated_at")
+    assertSqliteTimestampShape(continuedAt, "verify continued_at")
+    assertEquals(opened["started_at"], got["started_at"])
+    assertTrue(continuedAt >= got["updated_at"].toString())
+
+    assertGoldenPayload(
+      "mcp-feature-verify-workflow.json",
+      mapOf(
+        "open" to opened,
+        "update" to updated,
+        "list" to listed,
+        "latest" to latest,
+        "get" to got,
+        "resume" to resumed,
+        "continue" to continued,
+      ),
+      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+      "<WORKFLOW_ID>" to workflowId,
+      "<STARTED_AT>" to opened["started_at"].toString(),
+      "<UPDATED_AT>" to got["updated_at"].toString(),
+      "<CONTINUED_AT>" to continued["updated_at"].toString(),
+    )
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals("verdict", got["current_step_id"])
@@ -551,6 +613,25 @@ class McpRuntimeTest {
     assertEquals("reopened", continued["continue_status"])
   }
 }
+
+private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRuntimeContext): Map<String, *> =
+  McpWorkflowRuntime.update(
+    WorkflowFamilyKind.VERIFY,
+    WorkflowUpdateRequest(
+      workflowId = workflowId,
+      workflowStatus = "running",
+      currentStepId = "verdict",
+      stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
+      artifactsPatch =
+      mapOf(
+        "criteria_summary" to emptyMap<String, Nothing?>(),
+        "diff_summary" to emptyMap(),
+        "review_result" to emptyMap(),
+        "completeness_audit_result" to emptyMap(),
+      ),
+    ),
+    context = context,
+  )
 
 private fun enabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
   val configPath = tempDir.resolve("config.json")
@@ -885,4 +966,35 @@ private fun goldenJson(fileName: String, vararg replacements: Pair<String, Strin
     expected = expected.replace(placeholder, value)
   }
   return expected
+}
+
+private fun assertGoldenPayload(fileName: String, payload: Map<String, *>, vararg replacements: Pair<String, String>) {
+  assertEquals(decodeJsonObject(goldenJson(fileName, *replacements)), payload)
+}
+
+private fun assertWorkflowIdShape(workflowId: String, prefix: String) {
+  assertMatchesPattern(Regex("""^$prefix-\d{8}-\d{6}-[a-z0-9]{4}$"""), workflowId, "workflow_id")
+}
+
+private fun assertSqliteTimestampShape(timestamp: String, label: String) {
+  assertMatchesPattern(Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"""), timestamp, label)
+}
+
+private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
+  assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern} but got $value")
+}
+
+private fun assertOrchestratedReviewGoldens(dbPath: Path, importResult: Map<String, *>, triageResult: Map<String, *>) {
+  val telemetryPayload = triageResult["telemetry_payload"] as Map<*, *>
+  assertGoldenPayload(
+    "mcp-import-review-orchestrated.json",
+    importResult,
+    "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
+  )
+  assertGoldenPayload(
+    "mcp-triage-findings-orchestrated.json",
+    triageResult,
+    "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
+    "<REVIEW_FINISHED_AT>" to telemetryPayload["review_finished_at"].toString(),
+  )
 }

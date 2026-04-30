@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "session_id": "<SESSION_ID>",
+  "skill_path": "<SKILL_PATH>",
+  "notes": [
+    "Dry run - no filesystem changes applied."
+  ]
+}

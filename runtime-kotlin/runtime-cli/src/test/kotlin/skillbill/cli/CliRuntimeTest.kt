@@ -51,6 +51,34 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `verified native json commands match golden fixtures`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-native-golden")
+    val dbPath = tempDir.resolve("metrics.db")
+    val configPath = writeTelemetryConfig(tempDir, "off")
+    val context =
+      CliRuntimeContext(
+        environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()),
+        userHome = tempDir,
+      )
+
+    val version = CliRuntime.run(listOf("version", "--format", "json"), context)
+    assertEquals(0, version.exitCode, version.stdout)
+    assertEquals(goldenJson("cli-version.json"), version.stdout)
+
+    val doctor = CliRuntime.run(listOf("--db", dbPath.toString(), "doctor", "--format", "json"), context)
+    assertEquals(0, doctor.exitCode, doctor.stdout)
+    assertEquals(
+      goldenJson("cli-doctor.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
+      doctor.stdout,
+    )
+
+    assertNativeReviewGolden(dbPath, context)
+    assertNativeLearningGolden(tempDir, context)
+    assertNativeWorkflowGolden(dbPath, context)
+    assertNativeVerifyWorkflowGolden(dbPath, context)
+  }
+
+  @Test
   fun `triage text output mirrors numbered decision lines`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-triage")
     val dbPath = tempDir.resolve("metrics.db")
@@ -831,3 +859,156 @@ private fun expectedCliRemoteStatsRequests(): List<Map<String, Any?>> = listOf(
     "authorization" to "Bearer stats-token-123",
   ),
 )
+
+private fun assertNativeReviewGolden(dbPath: Path, context: CliRuntimeContext) {
+  importSampleReview(dbPath)
+  val triage =
+    CliRuntime.run(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "triage",
+        "--run-id",
+        "rvw-20260402-001",
+        "--decision",
+        "1 fix - patched",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+  assertEquals(0, triage.exitCode, triage.stdout)
+  assertEquals(
+    goldenJson("cli-triage.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
+    triage.stdout,
+  )
+}
+
+private fun assertNativeLearningGolden(tempDir: Path, context: CliRuntimeContext) {
+  val dbPath = tempDir.resolve("learnings.db")
+  seedLearningScenario(dbPath)
+  val learnings =
+    CliRuntime.run(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "learnings",
+        "resolve",
+        "--skill",
+        "bill-kotlin-code-review",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+  assertEquals(0, learnings.exitCode, learnings.stdout)
+  assertEquals(
+    goldenJson("cli-learnings-resolve.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
+    learnings.stdout,
+  )
+}
+
+private fun assertNativeWorkflowGolden(dbPath: Path, context: CliRuntimeContext) {
+  val opened =
+    runJson(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "workflow",
+        "open",
+        "--session-id",
+        "fis-20260425-000001-test",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+  val workflowId = opened["workflow_id"] as String
+  val shown =
+    CliRuntime.run(
+      listOf("--db", dbPath.toString(), "workflow", "show", workflowId, "--format", "json"),
+      context,
+    )
+  val shownPayload = decodeJsonObject(shown.stdout)
+
+  assertEquals(0, shown.exitCode, shown.stdout)
+  assertWorkflowIdShape(workflowId, "wfl")
+  assertNewWorkflowTimestamps(opened, shownPayload, "implement")
+  assertEquals(
+    goldenJson(
+      "cli-workflow-show.json",
+      "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
+      "<WORKFLOW_ID>" to workflowId,
+      "<STARTED_AT>" to shownPayload["started_at"].toString(),
+      "<UPDATED_AT>" to shownPayload["updated_at"].toString(),
+    ),
+    shown.stdout,
+  )
+}
+
+private fun assertNativeVerifyWorkflowGolden(dbPath: Path, context: CliRuntimeContext) {
+  val opened =
+    runJson(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "verify-workflow",
+        "open",
+        "--current-step-id",
+        "code_review",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+  val workflowId = opened["workflow_id"] as String
+  val shown =
+    CliRuntime.run(
+      listOf("--db", dbPath.toString(), "verify-workflow", "show", workflowId, "--format", "json"),
+      context,
+    )
+  val shownPayload = decodeJsonObject(shown.stdout)
+
+  assertEquals(0, shown.exitCode, shown.stdout)
+  assertWorkflowIdShape(workflowId, "wfv")
+  assertNewWorkflowTimestamps(opened, shownPayload, "verify")
+  assertEquals(
+    goldenJson(
+      "cli-verify-workflow-show.json",
+      "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
+      "<WORKFLOW_ID>" to workflowId,
+      "<STARTED_AT>" to shownPayload["started_at"].toString(),
+      "<UPDATED_AT>" to shownPayload["updated_at"].toString(),
+    ),
+    shown.stdout,
+  )
+}
+
+private fun assertNewWorkflowTimestamps(opened: Map<String, *>, shown: Map<String, *>, workflowLabel: String) {
+  val startedAt = shown["started_at"].toString()
+  val updatedAt = shown["updated_at"].toString()
+
+  assertSqliteTimestampShape(opened["started_at"].toString(), "$workflowLabel opened started_at")
+  assertSqliteTimestampShape(opened["updated_at"].toString(), "$workflowLabel opened updated_at")
+  assertSqliteTimestampShape(startedAt, "$workflowLabel shown started_at")
+  assertSqliteTimestampShape(updatedAt, "$workflowLabel shown updated_at")
+  assertEquals(opened["started_at"], opened["updated_at"])
+  assertEquals(opened["started_at"], shown["started_at"])
+  assertEquals(opened["updated_at"], shown["updated_at"])
+  assertEquals(shown["started_at"], shown["updated_at"])
+  assertTrue(updatedAt >= startedAt)
+}
+
+private fun assertWorkflowIdShape(workflowId: String, prefix: String) {
+  assertMatchesPattern(Regex("""^$prefix-\d{8}-\d{6}-[a-z0-9]{4}$"""), workflowId, "workflow_id")
+}
+
+private fun assertSqliteTimestampShape(timestamp: String, label: String) {
+  assertMatchesPattern(Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"""), timestamp, label)
+}
+
+private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
+  assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern} but got $value")
+}

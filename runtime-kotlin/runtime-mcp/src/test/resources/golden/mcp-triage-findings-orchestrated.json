@@ -1,0 +1,63 @@
+{
+  "review_run_id": "rvw-20260402-001",
+  "recorded": [
+    {
+      "finding_id": "F-001",
+      "outcome_type": "fix_applied",
+      "note": "",
+      "number": 1
+    },
+    {
+      "finding_id": "F-002",
+      "outcome_type": "fix_applied",
+      "note": "",
+      "number": 2
+    }
+  ],
+  "db_path": "<DB_PATH>",
+  "mode": "orchestrated",
+  "telemetry_payload": {
+    "total_findings": 2,
+    "accepted_findings": 2,
+    "unresolved_findings": 0,
+    "accepted_rate": 1.0,
+    "accepted_finding_details": [
+      {
+        "finding_id": "F-001",
+        "severity": "Major",
+        "confidence": "High",
+        "outcome_type": "fix_applied"
+      },
+      {
+        "finding_id": "F-002",
+        "severity": "Minor",
+        "confidence": "Medium",
+        "outcome_type": "fix_applied"
+      }
+    ],
+    "rejected_finding_details": [],
+    "review_run_id": "rvw-20260402-001",
+    "review_session_id": "rvs-20260402-001",
+    "routed_skill": "bill-kotlin-code-review",
+    "review_subskills": [
+      "architecture",
+      "testing"
+    ],
+    "review_scope": "unstaged changes",
+    "review_platform": "kotlin",
+    "execution_mode": "inline",
+    "review_finished_at": "<REVIEW_FINISHED_AT>",
+    "learnings": {
+      "applied_count": 0,
+      "applied_references": [],
+      "applied_summary": "none",
+      "scope_counts": {
+        "global": 0,
+        "repo": 0,
+        "skill": 0
+      },
+      "entries": []
+    },
+    "skill": "bill-code-review"
+  }
+}

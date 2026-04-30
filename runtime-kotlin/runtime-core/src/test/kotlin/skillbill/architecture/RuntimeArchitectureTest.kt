@@ -222,6 +222,55 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `python bridge markers stay isolated to deferred cli bridge files`() {
+    val allowedBridgeFiles =
+      setOf(
+        "runtime-cli/src/main/kotlin/skillbill/cli/ScaffoldCliCommands.kt",
+        "runtime-cli/src/main/kotlin/skillbill/cli/SystemCliCommands.kt",
+      )
+    assertNoBannedSourceReferences(
+      files = sourceFiles().filter { file -> file.relativePath !in allowedBridgeFiles },
+      bannedReferences =
+      listOf(
+        "runPythonCli",
+        "runPythonScaffoldCli",
+        "pythonProcess",
+        "ProcessBuilder",
+        "\"python3\"",
+        "skill_bill.cli",
+        "skill_bill.mcp_server",
+        "PYTHONPATH",
+      ),
+      description = "deferred Python bridge marker",
+    )
+  }
+
+  @Test
+  fun `mcp adapter avoids direct filesystem http sql dependencies except scaffold root discovery`() {
+    val mcpFiles =
+      sourceFiles()
+        .filter { file -> file.relativePath.startsWith("runtime-mcp/src/main/kotlin/") }
+
+    assertNoBannedSourceReferences(
+      files = mcpFiles,
+      bannedReferences = listOf("java.net.http", "java.sql"),
+      description = "direct HTTP or SQL dependency",
+    )
+
+    // McpScaffoldRuntime keeps a temporary Files-based repo-root lookup for new_skill_scaffold.
+    // TODO(3b): promote the matching runtime-cli FS/HTTP/SQL ban after deleting pythonProcess().
+    assertNoBannedSourceReferences(
+      files =
+      mcpFiles.filterNot { file ->
+        file.relativePath == "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+      },
+      bannedReferences = listOf("java.nio.file.Files", "Files."),
+      description = "direct filesystem dependency",
+    )
+    assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles)
+  }
+
+  @Test
   fun `learning service exposes typed results instead of map payloads`() {
     val serviceSource = Files.readString(sourcePath("skillbill/application/LearningService.kt"))
     val mapReturningLearningFunctions =
@@ -427,6 +476,44 @@ class RuntimeArchitectureTest {
     assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
   }
 
+  private fun assertNoBannedSourceReferences(
+    files: List<SourceFile>,
+    bannedReferences: List<String>,
+    description: String,
+  ) {
+    val violations =
+      files.flatMap { file ->
+        file.source.lines().flatMapIndexed { index, line ->
+          bannedReferences
+            .filter(line::contains)
+            .map { reference ->
+              "${file.relativePath}:${index + 1} contains $description $reference"
+            }
+        }
+      }
+    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+  }
+
+  private fun assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles: List<SourceFile>) {
+    val scaffoldFile =
+      mcpFiles.first { file ->
+        file.relativePath == "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+      }
+    val filesReferenceLines =
+      scaffoldFile.source.lines()
+        .filter { line -> "java.nio.file.Files" in line || "Files." in line }
+        .map(String::trim)
+
+    assertEquals(
+      listOf(
+        "import java.nio.file.Files",
+        "if (Files.isDirectory(current.resolve(\"skill_bill\")) && " +
+          "Files.isDirectory(current.resolve(\"runtime-kotlin\"))) {",
+      ),
+      filesReferenceLines,
+    )
+  }
+
   private fun sourceFiles(): List<SourceFile> = sourceRoots.flatMap { sourceRoot ->
     Files.walk(sourceRoot).use { stream ->
       stream
@@ -442,6 +529,7 @@ class RuntimeArchitectureTest {
       relativePath = runtimeRoot.relativize(path).toString().replace('\\', '/'),
       packageName = packagePattern.find(source)?.groupValues?.get(1).orEmpty(),
       imports = importPattern.findAll(source).map { it.groupValues[1].substringBefore(" as ") }.toList(),
+      source = source,
     )
   }
 
@@ -487,6 +575,7 @@ class RuntimeArchitectureTest {
     val relativePath: String,
     val packageName: String,
     val imports: List<String>,
+    val source: String,
   )
 
   private companion object {
