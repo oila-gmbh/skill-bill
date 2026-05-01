@@ -3,10 +3,10 @@
 ## Status
 
 - Issue: `SKILL-27`
-- Phase: `10 - MCP stdio cutover`
-- Runtime source of truth: Kotlin defaults with Python fallback
+- Phase: `10 - MCP stdio cutover` (superseded by SKILL-32 runtime retirement)
+- Runtime source of truth: Packaged Kotlin CLI and MCP
 - Kotlin ownership: build foundation, shared scaffolding, persistence core, review-domain services, workflow runtime, governed loader/scaffold/install primitives, and in-module CLI/MCP surface adapters
-- Last updated: `2026-04-25`
+- Last updated: `2026-05-01`
 
 ## Purpose
 
@@ -14,22 +14,23 @@ This note is the carryover document for the multi-session Kotlin runtime port.
 It exists so future sessions do not need to re-discover the Python runtime
 surface, the frozen contracts, or the test boundaries before starting work.
 
-The Python runtime remains available as the behavioral oracle for unported leaf
-paths and as the rollback path, but the installed CLI and MCP entrypoints now
-default to Kotlin.
+The Python runtime fallback has been retired by SKILL-32. The installed CLI and
+MCP entrypoints use packaged Kotlin.
 
-Recent adapter work has already moved the scaffold loader/install bridge and
-the CLI/MCP scaffold envelopes onto the Kotlin runtime modules, while keeping
-the broader Python runtime available as the reference oracle for the rest of
-the port.
+Recent adapter work moved the scaffold loader/install bridge and the CLI/MCP
+scaffold envelopes onto the Kotlin runtime modules.
 
-Phase 9 flipped the `skill-bill` CLI script to a Kotlin-default launcher while
-keeping Python available through `SKILL_BILL_RUNTIME=python`. Phase 10 flips
-the MCP server to the Kotlin stdio MCP server, with Python fallback retained.
+Phase 9 flipped the `skill-bill` CLI script to a Kotlin-default launcher.
+Phase 10 flipped the MCP server to the Kotlin stdio MCP server. SKILL-32 later
+removed the Python fallback paths.
 The maintained cutover checklist lives in
 `docs/migrations/SKILL-27-cutover-checklist.md`.
 
-## Current Runtime Inventory
+## Historical Python Runtime Inventory
+
+The table below records the Python module inventory that existed during the
+SKILL-27 port. It is retained as migration history; active CLI and MCP runtime
+ownership now lives in packaged Kotlin modules.
 
 ### Entry points
 
@@ -37,7 +38,7 @@ The maintained cutover checklist lives in
   - `skill-bill = "skill_bill.launcher:main"`
   - `skill-bill-mcp = "skill_bill.launcher:mcp_main"`
 
-### Primary runtime modules
+### Former primary Python runtime modules
 
 | Area | Python modules | Responsibility |
 | --- | --- | --- |
@@ -641,7 +642,7 @@ Start with `Phase 8 - Cutover preparation`.
 
 The next session should:
 
-1. add the cutover checklist and keep Python as the default/fallback runtime
+1. add the cutover checklist for the then-current transitional runtime split
 2. update runtime surface contracts so scaffold and install reflect the
    completed Kotlin port rather than placeholder status
 3. keep launcher/default-runtime switching reserved for Phase 9
@@ -693,17 +694,15 @@ What changed in this phase:
 - added `skill_bill.launcher` as the installed entrypoint layer
 - changed `pyproject.toml` so `skill-bill` routes through the launcher and
   defaults to the Kotlin CLI
-- kept `SKILL_BILL_RUNTIME=python` as the explicit Python CLI rollback path
+- kept the Python CLI rollback path during the Phase 9 transition
 - added a Kotlin CLI `main` and Gradle application packaging path
-- kept `skill-bill-mcp` Python-backed by default and made
-  `SKILL_BILL_MCP_RUNTIME=kotlin` fail loudly because no Kotlin stdio MCP
-  server is packaged yet
+- kept `skill-bill-mcp` Python-backed by default during the Phase 9 transition
+  because no Kotlin stdio MCP server was packaged yet
 
 Runtime source of truth after Phase 9:
 
 - Kotlin is the default CLI runtime for the installed `skill-bill` command
-- Python remains the fallback CLI runtime and production MCP runtime
-- Python runtime code is intentionally retained
+- This was a transitional state before SKILL-32 retired the Python fallback
 
 Validation run in this session:
 
@@ -712,7 +711,7 @@ Validation run in this session:
 - `npx --yes agnix --strict .`
 - `.venv/bin/python3 scripts/validate_agent_configs.py`
 - `python3 -m skill_bill.launcher version --format json`
-- `SKILL_BILL_RUNTIME=python python3 -m skill_bill.launcher version --format json`
+- historical Python fallback smoke command for the Phase 9 transition
 - `printf ... | python3 -m skill_bill.launcher new-skill --payload - --dry-run --format json`
 
 ## Phase 9 Exit Result
@@ -721,10 +720,9 @@ Checkpoint status:
 
 - `skill-bill` now routes through `skill_bill.launcher:main` and defaults to
   the Kotlin CLI
-- `SKILL_BILL_RUNTIME=python` remains the explicit Python CLI rollback path
-- `skill-bill-mcp` remains Python-backed; requesting
-  `SKILL_BILL_MCP_RUNTIME=kotlin` fails loudly until a Kotlin stdio MCP server
-  is packaged
+- The Phase 9 Python CLI rollback path was transitional and is now retired
+- `skill-bill-mcp` remained Python-backed until the Phase 10 Kotlin stdio MCP
+  server cutover
 
 ## Next Session Start
 
@@ -743,16 +741,16 @@ What changed in this phase:
 - routed ported MCP tools through Kotlin runtime services
 - temporarily routed still-Python-owned telemetry lifecycle tools through
   `skill_bill.mcp_tool_bridge`; Phase 11 removes this bridge
-- changed `skill-bill-mcp` so Kotlin is the default MCP runtime and
-  `SKILL_BILL_MCP_RUNTIME=python` is the explicit rollback path
-- updated installer MCP registrations and `scripts/mcp_server_start.sh` to
-  invoke the launcher-backed MCP entrypoint
+- changed `skill-bill-mcp` so Kotlin is the default MCP runtime
+- updated installer MCP registrations to invoke the launcher-backed MCP
+  entrypoint
 
 Runtime source of truth after Phase 10:
 
 - Kotlin is the default CLI runtime for `skill-bill`
 - Kotlin is the default stdio MCP server runtime for `skill-bill-mcp`
-- Python remains available for CLI and MCP rollback
+- This was a transitional state before SKILL-32 retired the Python rollback
+  path
 - MCP telemetry lifecycle tools are Kotlin-native as of Phase 11
 
 Validation added in this phase:
@@ -769,8 +767,7 @@ Checkpoint status:
 
 - `skill-bill-mcp` now routes through `skill_bill.launcher:mcp_main` and
   defaults to the Kotlin stdio MCP server
-- `SKILL_BILL_MCP_RUNTIME=python` remains the explicit Python MCP rollback path
-- Python runtime code is intentionally retained for rollback
+- The Phase 10 Python MCP rollback path was transitional and is now retired
 
 ## Phase 11 - MCP Lifecycle Native Kotlin
 

@@ -1,5 +1,5 @@
 ---
-Status: Not Started
+Status: Complete
 Issue: SKILL-32
 Parent spec: [spec.md](spec.md)
 ---

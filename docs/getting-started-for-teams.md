@@ -1,262 +1,200 @@
 # Getting Started for Teams
 
-A practical guide for teams evaluating or rolling out Skill Bill.
+A team adoption guide for Skill Bill. Use [Getting Started](getting-started.md) for install details and full CLI/MCP command coverage.
 
-Use this document for:
+## Team Adoption Model
 
-- rollout strategy
-- customization boundaries
-- trust-vs-verify guidance
-- adoption patterns and expectations
+Skill Bill gives a team governed agent workflows, not just prompt files. The useful adoption unit is:
 
-Use [Getting Started](getting-started.md) for:
+- stable slash commands for review, quality checks, feature work, verification, PR descriptions, and skill authoring
+- a packaged Kotlin CLI and MCP runtime
+- manifest-driven platform packs
+- strict validation around generated wrappers, manifests, and MCP schemas
+- model-mediated reasoning for code review, planning, audits, and prose
 
-- installation
-- supported agents
-- stable skill surfaces
-- full `skill-bill` CLI coverage
-- full MCP tool coverage
+The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` enter packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to Python.
 
-## Who this is for
+## Before Inviting The Team
 
-Engineers and tech leads deciding whether to adopt Skill Bill on a team. It focuses on **what to expect**, **how to customize**, and **when to trust the output** — the parts that matter once install is done.
+One maintainer should do this first:
 
-## Before you roll it out
+1. Install from the branch or release the team will use.
+2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-code-review`.
+3. Decide which reference packs matter for the team.
+4. Add project guidance in `AGENTS.md` or `.agents/skill-overrides.md`.
+5. Run the validation gate before asking others to install.
 
-Complete install and operator setup live in [Getting Started](getting-started.md).
+Validation gate:
 
-Before involving a team, one person should:
-
-1. Install Skill Bill locally.
-2. Run the stable commands on recent real work.
-3. Decide which shipped platform packs are relevant.
-4. Decide whether the team will start with defaults, override files, or a forked platform pack.
-
-## The three commands that matter
-
-Most daily use still comes down to three base commands. They auto-detect your stack and route to specialist skills.
-
-| Command | Use it when | Expected output |
-|---------|-------------|-----------------|
-| `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Structured report: Summary, Risk Register, Action Items, Verdict |
-| `/bill-feature-implement` | Building a feature end-to-end from a design doc | Branch + atomic commits + review + quality-check + PR description |
-| `/bill-quality-check` | Verifying lint/tests/format before opening a PR | Pass/fail report per check, with fixes applied where possible |
-
-Everything else (`bill-feature-verify`, `bill-pr-description`, `bill-grill-plan`, etc.) is useful but sits on top of these three.
-
-## Customizing for your team
-
-Two customization files, applied in order of precedence:
-
-1. **`.agents/skill-overrides.md`** — per-skill rule overrides (project root)
-2. **`AGENTS.md`** — repo-wide guidance for all skills (project root)
-3. **built-in skill defaults** (lowest priority)
-
-### `.agents/skill-overrides.md` format
-
-Strict structure, enforced by the validator:
-
-- First line must be `# Skill Overrides`
-- Each section must be `## <existing-skill-name>`
-- Each section body must be a bullet list
-- Freeform text outside sections is invalid
-
-### Three realistic examples
-
-**Example 1 — Treat Kotlin warnings as blocking in your monorepo**
-
-```md
-# Skill Overrides
-
-## bill-kotlin-quality-check
-- Treat warnings as blocking work.
-- Skip formatting-only rewrites unless the user explicitly asks for them.
+```bash
+.venv/bin/python3 -m unittest discover -s tests
+(cd runtime-kotlin && ./gradlew check)
+npx --yes agnix --strict .
+.venv/bin/python3 scripts/validate_agent_configs.py
 ```
 
-**Example 2 — Align PR descriptions with your team's template**
+The Gradle command validates the Kotlin runtime for maintainers. It is not how installed users normally launch the CLI or MCP server.
 
-```md
-# Skill Overrides
+## Commands Most Teams Start With
 
-## bill-pr-description
-- Always include the Jira ticket link when the branch name matches `SKILL-\d+`.
-- Include a "Rollout notes" section for changes behind feature flags.
-- Keep QA steps concise unless the user asks for a full matrix.
-```
+| Command | Use it when | What to expect |
+|---------|-------------|----------------|
+| `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Routed review with summary, risk register, action items, and verdict |
+| `/bill-quality-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
+| `/bill-feature-implement` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
+| `/bill-feature-verify` | Checking a teammate PR against a spec | Criteria-based verification plus review and validation guidance |
 
-**Example 3 — Bias reviews toward your team's priorities**
+The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
+
+## Runtime Expectations
+
+Team members should not need to know migration history. Current behavior is:
+
+- `skill-bill` is the packaged Kotlin CLI.
+- `skill-bill-mcp` is the packaged Kotlin stdio MCP server.
+- Missing packaged distributions fail closed with install/build guidance.
+- Agent skills are symlinked back to the repo checkout.
+- Python scripts still exist for repo validation and maintainer tooling, but Python is not the active CLI/MCP runtime.
+- Runtime rollback means installing a previous release, not toggling a Python fallback.
+
+## Fallback And Failure Boundaries
+
+Explain this boundary during rollout so engineers know what failed and what merely degraded.
+
+Fail closed:
+
+- invalid MCP arguments for strict tools
+- missing packaged Kotlin CLI/MCP distributions
+- missing platform manifests or declared files
+- wrong shell contract version
+- missing required `SKILL.md` sections or sibling `content.md`/`shell-ceremony.md`
+- invalid scaffold payloads
+- generated wrapper or agent-config drift
+
+Degrade or report explicitly:
+
+- telemetry can stay off, queue locally, or fail remote sync without blocking local work
+- remote metrics can report capability/network limits
+- no detected agent directories means install needs an explicit target path
+- routed review can return lower confidence where code context is thin
+- learnings may resolve to `none` until the team has enough triage history
+
+## What To Trust
+
+Strict guarantees are runtime and contract boundaries:
+
+- MCP schemas are strict where declared and reject unknown top-level arguments.
+- Contract fixtures enforce manifest shape, contract version, declared files, required wrapper sections, and sidecars.
+- Scaffold and validation commands use structured payloads and loud-fail on invalid state.
+- Install primitives create real symlinks and can be tested against temporary agent paths.
+
+Model-mediated output is still judgement:
+
+- review findings
+- severity and confidence labels
+- implementation plans
+- completeness audits
+- PR description prose
+- explanations of unfamiliar library behavior
+
+Treat model-mediated output as a second opinion. Act quickly on findings with clear file:line evidence; verify high-risk security, performance, data-loss, or migration claims against the code and real tool output.
+
+## Governance System vs Reference Packs
+
+This distinction matters for team ownership.
+
+Skill Bill is the governance system: routing, shell contracts, scaffold rules, validation, workflow state, telemetry, installer behavior, and MCP/CLI runtime boundaries.
+
+The shipped `kotlin` and `kmp` packs are reference packs. They are production-usable examples, not a hardcoded platform limit. A team can fork an existing pack or add a new conforming pack when behavior materially differs. The governance system should keep discovering packs from manifests instead of relying on a fixed platform list.
+
+Start from reference packs when they fit:
+
+- `kotlin`: Kotlin baseline review and quality-check behavior
+- `kmp`: Kotlin plus Android/KMP depth and governed add-ons
+
+Create or fork a pack when team-specific architecture, framework, API, persistence, reliability, UI, or accessibility expectations need their own maintained behavior.
+
+## Customization Layers
+
+Use the lightest customization that solves the problem:
+
+| Layer | Best for | Owner |
+|-------|----------|-------|
+| `AGENTS.md` | Repo-wide facts every skill should know | Project team |
+| `.agents/skill-overrides.md` | Skill-specific preferences and local policy | Project team |
+| Learnings | Repeated false positives or accepted review patterns | Team using review telemetry |
+| Forked platform pack | Durable platform behavior that differs from the reference pack | Platform owner |
+| New platform pack | A materially different stack or review/quality model | Platform owner |
+
+`.agents/skill-overrides.md` is validator-enforced:
+
+- first line must be `# Skill Overrides`
+- each section must be `## <existing-skill-name>`
+- section bodies must be bullet lists
+- freeform text outside sections is invalid
+
+Example:
 
 ```md
 # Skill Overrides
 
 ## bill-kotlin-code-review
 - Prioritize platform-correctness and testing over performance for this service.
-- Flag any new dependency additions as at minimum Minor severity.
+- Flag new dependencies as at least Minor severity.
 
-## bill-kmp-code-review-ux-accessibility
-- Treat missing localization or accessibility labels as at minimum Major severity for user-facing surfaces.
+## bill-pr-description
+- Include the Jira ticket when the branch name contains `SKILL-\d+`.
+- Keep QA steps concise unless the user asks for the full matrix.
 ```
 
-`AGENTS.md` at the repo root applies to all skills. Use it for cross-cutting context like "this service writes to both Postgres and DynamoDB" — context every review skill benefits from knowing.
+## External Author Dry Run
 
-## Forking a platform pack
+Before a team maintains its own pack, rehearse the external-author flow in a temporary checkout or disposable branch:
 
-`/bill-code-review` uses a shell + content split. The shell at `skills/bill-code-review/` is governed and shared; the reviewer reasoning lives in **platform packs** under `platform-packs/<platform>/`. Teams that need platform-specific customization beyond `.agents/skill-overrides.md` can fork a pack:
+1. Scaffold a temporary platform pack.
+2. Validate the generated state.
+3. Link a generated skill to a temporary agent path.
+4. Remove the generated link and temporary pack.
 
-Important policy:
-- Skill Bill allows any platform that can be expressed as a conforming governed pack.
-- Shipped packs are discovered from `platform-packs/`; the repo is not pinned to a hardcoded shortlist.
-- You can still fork an existing pack when that is the fastest way to start.
-
-1. Copy `platform-packs/<platform>/` (e.g. `platform-packs/kotlin/`) into your team's own checkout.
-2. Edit the `platform.yaml` manifest to declare the `routing_signals`, `declared_code_review_areas`, and `declared_files` you want to ship. Keep `contract_version: "1.1"` in lockstep with the shell.
-3. Edit or add per-area governed skill directories. Each declared `SKILL.md` must stay a thin wrapper with the three required H2 sections `Descriptor`, `Execution`, and `Ceremony`, and each governed directory must also contain sibling `content.md` and `shell-ceremony.md`. The shell refuses to run with a named error if any required piece is missing — no silent fallback.
-4. Point your local install at the forked pack and re-run `./install.sh`.
-
-The contract is documented in `orchestration/shell-content-contract/PLAYBOOK.md`.
-
-### Scaffolding a new platform
-
-If you are starting from scratch instead of forking an existing pack, use the scaffolder to create the new platform pack in one step. For known platforms such as `java`, the payload only needs the platform slug plus any optional display metadata; the scaffolder fills in routing defaults from a built-in preset and generates the manifest, the baseline code-review skill, and the default quality-check skill automatically.
+Command shape:
 
 ```bash
-cat > /tmp/payload.json <<'JSON'
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "platform-pack",
-  "platform": "java",
-  "skeleton_mode": "starter",
-  "display_name": "Java",
-  "description": "Use when reviewing Java server and library changes."
-}
-JSON
-skill-bill new-skill --payload /tmp/payload.json
+skill-bill new --payload /tmp/skill-bill-pack.json
+skill-bill validate
+skill-bill install link-skill \
+  --source platform-packs/java/code-review/bill-java-code-review \
+  --target-dir /tmp/skill-bill-agent/skills \
+  --agent codex
+rm /tmp/skill-bill-agent/skills/bill-java-code-review
+rm -rf platform-packs/java
 ```
 
-The scaffolder:
+The Kotlin CLI has an integration test for this flow using temporary directories and an isolated `user.home`, so the dry run cannot touch real agent directories.
 
-- creates `platform-packs/java/platform.yaml` plus governed baseline `code-review` and `quality-check` skill directories (`SKILL.md` + `content.md` + `shell-ceremony.md`), and thin `skills/java/bill-java-feature-implement/` / `skills/java/bill-java-feature-verify/` stubs.
-- applies the built-in Java routing preset automatically, including the governed manifest fields and required H2 sections.
-- wires the sibling supporting files needed by the generated skills.
-- installs the new skills into every detected agent.
-- does not require a manual docs catalog update.
+## Rolling Out
 
-If you want a bare-bones Java skill set up front instead of just the starter pack, use:
+Suggested rollout:
 
-```bash
-cat > /tmp/payload.json <<'JSON'
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "platform-pack",
-  "platform": "java",
-  "skeleton_mode": "full"
-}
-JSON
-skill-bill new-skill --payload /tmp/payload.json
-```
+1. One maintainer calibrates on recent real PRs and records obvious overrides.
+2. Two or three engineers install from the same branch or tag and run review plus quality check on live work.
+3. The team triages false positives and adds learnings or overrides.
+4. Platform owners fork or create packs only when overrides are no longer enough.
+5. The team makes the validation gate part of release or pack-maintenance work.
 
-That generates the starter pack plus stubs for every approved code-review area so you can fill them in afterwards.
+## Operating Rules
 
-### Scaffolding an area in an existing pack
+- Keep platform discovery manifest-driven.
+- Keep `contract_version: "1.1"` in lockstep with the shell.
+- Add platform behavior as manifest-declared overrides, approved code-review areas, or pack-owned add-ons.
+- Do not edit generated `SKILL.md` wrappers during normal authoring; edit `content.md` through `skill-bill fill` or the documented scaffolder path.
+- Treat missing manifests, missing declared files, and wrong contract versions as product bugs, not soft warnings.
 
-Once a pack exists, use the scaffolder to add new code-review areas and their sibling supporting files in one step. For example, to add an `api-contracts` area to a forked `kotlin` pack:
+## Getting Unstuck
 
-```bash
-cat > /tmp/payload.json <<'JSON'
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "code-review-area",
-  "name": "bill-kotlin-code-review-api-contracts",
-  "platform": "kotlin",
-  "area": "api-contracts",
-  "description": "Kotlin API-contracts reviewer."
-}
-JSON
-skill-bill new-skill --payload /tmp/payload.json
-```
-
-The scaffolder:
-
-- creates `platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/SKILL.md` as a governed three-section wrapper plus sibling `content.md` and `shell-ceremony.md`. The authored execution body lives in `content.md`; the ceremony sidecar is shared.
-- appends `api-contracts` to `declared_code_review_areas` and to `declared_files.areas` in `platform-packs/kotlin/platform.yaml`, preserving key order and best-effort comments.
-- wires sibling supporting-file symlinks for the skill (stack-routing, review-orchestrator, review-delegation, telemetry-contract) from `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`.
-- runs `scripts/validate_agent_configs.py`. If validation fails, every change is rolled back and the validator error is surfaced verbatim.
-- installs the new skill into every detected agent. If none is detected, the scaffolder notes that you should run `./install.sh` to bootstrap agent paths.
-
-Use `skill-bill edit bill-kotlin-code-review-api-contracts` for follow-up changes to the authored `content.md`. Keep the generated `SKILL.md` wrapper and `shell-ceremony.md` sidecar intact unless you are intentionally changing the shared contract. Bulk migration through `scripts/migrate_to_content_md.py` is maintainer-only.
-
-The full payload schema, including the new `platform-pack` kind, lives in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
-
-SKILL-14 piloted the shell+content split on `bill-code-review`. SKILL-16 piloted it on `bill-quality-check` via an additive optional `declared_quality_check_file` manifest key (the shell contract version stays `1.1`). `bill-feature-implement` already follows the split as a top-level workflow shell, and `bill-feature-verify` now follows the same shell/content split while platform-specific `feature-implement` and `feature-verify` overrides still land under `skills/<platform>/` when scaffolded.
-
-## What to expect from review output
-
-A typical `/bill-code-review` run produces four sections:
-
-```text
-Routed to: bill-kotlin-code-review
-Review session ID: rvs-...
-Review run ID: rvw-...
-Detected stack: kotlin
-Execution mode: inline | delegated
-Applied learnings: none | L-001, L-002
-
-### 1. Summary
-<prose overview of the change>
-
-### 2. Risk Register
-- [F-001] Blocker | High | path/to/file.kt:42 | <description>
-- [F-002] Major | Medium | path/to/file.kt:88 | <description>
-
-### 3. Action Items
-<prioritized, max 10>
-
-### 4. Verdict
-Pass | Fail — <reason>
-```
-
-Severity is one of `Blocker | Major | Minor`. Confidence is `High | Medium | Low`. Every finding has a file:line reference.
-
-## When to trust it vs verify
-
-Treat every review as a **second opinion**, not a gate. It's calibrated for signal-to-noise, not for replacing human judgment.
-
-### Trust more
-
-- **Correctness findings with file:line references that you can open and verify in seconds.** The locations are accurate; the reasoning is usually worth reading.
-- **Specialist depth** on Deep-tier platforms (Kotlin family). Multi-layer routing means multiple specialist passes reinforce each other.
-- **Quality-check results.** These run real tools (for the built-in packs, Gradle and related Kotlin checks) and report actual exit codes.
-- **Structural findings** — dependency direction, boundary violations, missing error paths. The model is good at spotting these.
-
-### Verify before acting
-
-- **Performance claims without benchmarks.** Review output will sometimes label a change "performance risk" based on pattern recognition alone. Confirm with a profile or benchmark before rewriting.
-- **Security findings on unfamiliar code paths.** High severity + confidence is a signal to look, not a signal to accept. Check the actual threat model.
-- **Findings on custom packs without pack-owned add-ons** that reference framework-specific behavior. Without governed add-ons, framework-specific reasoning can be less reliable.
-- **Findings about library behavior.** The model may confidently describe an API that has changed between versions. Check your actual dependency version.
-- **Anything labeled "Confidence: Low."** This is the model flagging its own uncertainty — treat as a prompt to investigate, not a conclusion.
-
-### Expect these false positives
-
-- Wording nits on user-facing strings that your product team has already decided on.
-- Style suggestions that your linter/formatter already handles.
-- "Missing error handling" in paths where the error genuinely cannot occur.
-
-Use the triage workflow (`/bill-code-review` → respond to findings) or create a learning via `skill-bill learnings add` to stop flagging recurring false positives. Learnings apply automatically on future reviews in the same scope.
-
-## Rolling out to a team
-
-A suggested sequence:
-
-1. **Week 1 — one person.** Install on your own machine. Run `/bill-code-review` on 5-10 recent PRs and see what it catches and misses. Calibrate.
-2. **Week 2 — commit `.agents/skill-overrides.md`.** Encode the team's non-obvious preferences so new installs get the same behavior.
-3. **Week 3 — invite 2-3 engineers.** Have them install from the committed branch. Collect feedback on false positives; add learnings.
-4. **Week 4+ — open it up.** Once the override file is stable, the team can install independently.
-
-## Getting unstuck
-
-- Need to verify repo docs and governed metadata still line up? Run `.venv/bin/python3 scripts/validate_agent_configs.py` — it fails loudly on catalog and contract drift.
-- Review output won't parse into telemetry? See the exact required format in [review-telemetry.md](review-telemetry.md).
-- A skill routed to the wrong stack? Open an issue with the detected signals and scope; stack routing is the most commonly tuned part of the system.
-
-For the broader direction of the project, see [ROADMAP.md](ROADMAP.md).
+- Install health: `skill-bill doctor`
+- Runtime version: `skill-bill version`
+- Agent paths: `skill-bill install detect-agents`
+- Skill state: `skill-bill show <skill> --content preview`
+- Repo validation: `skill-bill validate`
+- Full maintainer gate: run the four validation commands above
+- Telemetry format: [Review Telemetry](review-telemetry.md)

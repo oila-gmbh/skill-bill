@@ -14,10 +14,16 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
+import skillbill.error.SkillBillRuntimeException
 import skillbill.install.InstallOperations
-import java.io.File
-import java.nio.file.Files
+import skillbill.scaffold.AuthoringOperations
+import skillbill.scaffold.scaffold
 import java.nio.file.Path
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.UUID
+
+private const val SCAFFOLD_SESSION_SUFFIX_LENGTH = 4
 
 @Inject
 class ScaffoldTopLevelCommands(
@@ -93,15 +99,9 @@ class ListSkillsCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("list")
-          addAll(listOf("--repo-root", repoRoot))
-          skillNames.forEach { skillName -> addAll(listOf("--skill-name", skillName)) }
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-      )
+      authoringResult(format) {
+        AuthoringOperations.list(Path.of(repoRoot), skillNames)
+      }
   }
 }
 
@@ -125,19 +125,9 @@ class ShowSkillCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        listOf(
-          "show",
-          skillName,
-          "--repo-root",
-          repoRoot,
-          "--content",
-          content,
-          "--format",
-          format.wireName,
-        ),
-        state,
-      )
+      authoringResult(format) {
+        AuthoringOperations.show(Path.of(repoRoot), skillName, content)
+      }
   }
 }
 
@@ -154,15 +144,9 @@ class ExplainSkillCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("explain")
-          skillName?.let { add(it) }
-          addAll(listOf("--repo-root", repoRoot))
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-      )
+      authoringResult(format) {
+        AuthoringOperations.explain(Path.of(repoRoot), skillName)
+      }
   }
 }
 
@@ -183,15 +167,9 @@ class ValidateSkillCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("validate")
-          addAll(listOf("--repo-root", repoRoot))
-          skillNames.forEach { skillName -> addAll(listOf("--skill-name", skillName)) }
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-      )
+      authoringResult(format, successExitCode = { payload -> if (payload["status"] == "pass") 0 else 1 }) {
+        AuthoringOperations.validate(Path.of(repoRoot), skillNames)
+      }
   }
 }
 
@@ -208,7 +186,6 @@ class RenderSkillsCommand(
 open class WrapperRegenerationCommand(
   name: String,
   private val state: CliRunState,
-  private val pythonCommandName: String = name,
 ) : DocumentedCliCommand(name, "Regenerate scaffold-managed SKILL.md wrappers.") {
   private val repoRoot by option(
     "--repo-root",
@@ -225,16 +202,9 @@ open class WrapperRegenerationCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add(pythonCommandName)
-          addAll(listOf("--repo-root", repoRoot))
-          if (skipValidate) add("--skip-validate")
-          skillNames.forEach { skillName -> addAll(listOf("--skill-name", skillName)) }
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-      )
+      authoringResult(format) {
+        AuthoringOperations.upgrade(Path.of(repoRoot), skillNames, validate = !skipValidate)
+      }
   }
 }
 
@@ -252,19 +222,33 @@ class EditSkillCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("edit")
-          add(skillName)
-          addAll(listOf("--repo-root", repoRoot))
-          bodyFile?.let { addAll(listOf("--body-file", it)) }
-          if (editor) add("--editor")
-          section?.let { addAll(listOf("--section", it)) }
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-        stdinText = if (bodyFile == "-") state.stdinText else null,
-      )
+      when {
+        editor ->
+          unsupportedNativeScaffoldResult(
+            AuthoringOperations.retiredEditorMessage(
+              "edit --editor",
+              "skill-bill fill $skillName --body-file <file>",
+            ),
+            format,
+          )
+        bodyFile != null ->
+          authoringResult(format) {
+            AuthoringOperations.editWithBodyFile(
+              Path.of(repoRoot),
+              skillName,
+              readCliTextFile(bodyFile.orEmpty(), state),
+              section,
+            )
+          }
+        else ->
+          unsupportedNativeScaffoldResult(
+            AuthoringOperations.retiredInteractiveMessage(
+              "edit",
+              "skill-bill fill $skillName --body-file <file>",
+            ),
+            format,
+          )
+      }
   }
 }
 
@@ -282,19 +266,19 @@ class FillSkillCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("fill")
-          add(skillName)
-          addAll(listOf("--repo-root", repoRoot))
-          body?.let { addAll(listOf("--body", it)) }
-          bodyFile?.let { addAll(listOf("--body-file", it)) }
-          section?.let { addAll(listOf("--section", it)) }
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-        stdinText = if (bodyFile == "-") state.stdinText else null,
-      )
+      when {
+        body != null && bodyFile != null -> errorResult("--body and --body-file are mutually exclusive.", format)
+        body == null && bodyFile == null -> errorResult("Either --body or --body-file is required.", format)
+        else ->
+          authoringResult(format) {
+            AuthoringOperations.fill(
+              Path.of(repoRoot),
+              skillName,
+              body ?: readCliTextFile(bodyFile.orEmpty(), state),
+              section,
+            )
+          }
+      }
   }
 }
 
@@ -312,19 +296,15 @@ class NewSkillCommand(
   override fun run() {
     state.result =
       if (interactive) {
-        runPythonCli(
-          buildList {
-            add("new-skill")
-            payload?.let { addAll(listOf("--payload", it)) }
-            if (interactive) add("--interactive")
-            if (dryRun) add("--dry-run")
-            addAll(listOf("--format", format.wireName))
-          },
-          state,
-          stdinText = if (payload == "-") state.stdinText else null,
+        unsupportedNativeScaffoldResult(
+          AuthoringOperations.retiredInteractiveMessage(
+            "new-skill --interactive",
+            "skill-bill new-skill --payload <file>",
+          ),
+          format,
         )
       } else {
-        runPythonScaffoldCli("new-skill", payload, dryRun, format, state)
+        runNativeScaffoldPayload(payload, dryRun, format, state)
       }
   }
 }
@@ -343,19 +323,15 @@ class NewCommand(
   override fun run() {
     state.result =
       if (interactive) {
-        runPythonCli(
-          buildList {
-            add("new")
-            payload?.let { addAll(listOf("--payload", it)) }
-            if (interactive) add("--interactive")
-            if (dryRun) add("--dry-run")
-            addAll(listOf("--format", format.wireName))
-          },
-          state,
-          stdinText = if (payload == "-") state.stdinText else null,
+        unsupportedNativeScaffoldResult(
+          AuthoringOperations.retiredInteractiveMessage(
+            "new --interactive",
+            "skill-bill new --payload <file>",
+          ),
+          format,
         )
       } else {
-        runPythonScaffoldCli("new", payload, dryRun, format, state)
+        runNativeScaffoldPayload(payload, dryRun, format, state)
       }
   }
 }
@@ -379,25 +355,7 @@ class CreateAndFillCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.result =
-      runPythonCli(
-        buildList {
-          add("create-and-fill")
-          payload?.let { addAll(listOf("--payload", it)) }
-          if (interactive) add("--interactive")
-          if (dryRun) add("--dry-run")
-          body?.let { addAll(listOf("--body", it)) }
-          bodyFile?.let { addAll(listOf("--body-file", it)) }
-          if (editor) add("--editor")
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-        stdinText = when {
-          payload == "-" -> state.stdinText
-          bodyFile == "-" -> state.stdinText
-          else -> null
-        },
-      )
+    state.result = createAndFillResult(payload, interactive, dryRun, body, bodyFile, editor, format, state)
   }
 }
 
@@ -420,20 +378,19 @@ class NewAddonCommand(
 
   override fun run() {
     state.result =
-      runPythonCli(
-        buildList {
-          add("new-addon")
-          platform?.let { addAll(listOf("--platform", it)) }
-          name?.let { addAll(listOf("--name", it)) }
-          body?.let { addAll(listOf("--body", it)) }
-          bodyFile?.let { addAll(listOf("--body-file", it)) }
-          if (interactive) add("--interactive")
-          if (dryRun) add("--dry-run")
-          addAll(listOf("--format", format.wireName))
-        },
-        state,
-        stdinText = if (bodyFile == "-") state.stdinText else null,
-      )
+      if (interactive) {
+        unsupportedNativeScaffoldResult(
+          AuthoringOperations.retiredInteractiveMessage(
+            "new-addon --interactive",
+            "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
+          ),
+          format,
+        )
+      } else if (body != null && bodyFile != null) {
+        errorResult("--body and --body-file are mutually exclusive.", format)
+      } else {
+        runNativeScaffoldPayload(newAddonPayload(platform, name, body, bodyFile, state), dryRun, format)
+      }
   }
 }
 
@@ -482,110 +439,138 @@ class InstallLinkSkillCommand(
   }
 }
 
-internal fun runPythonCli(arguments: List<String>, state: CliRunState, stdinText: String? = null): CliExecutionResult {
-  val process = pythonProcess(arguments, state)
-  if (stdinText != null) {
-    process.outputStream.use { outputStream ->
-      outputStream.write(stdinText.toByteArray(Charsets.UTF_8))
-      outputStream.flush()
-    }
-  } else {
-    process.outputStream.close()
-  }
-  return collectCliResult(process)
-}
-
-private fun runPythonScaffoldCli(
-  commandName: String,
+private fun runNativeScaffoldPayload(
   payloadPath: String?,
   dryRun: Boolean,
   format: CliFormat,
   state: CliRunState,
-): CliExecutionResult {
+  transform: (Map<String, *>) -> Map<String, *> = { it },
+): CliExecutionResult = runNativeScaffoldPayload(transform(readScaffoldPayload(payloadPath, state)), dryRun, format)
+
+private fun runNativeScaffoldPayload(payload: Map<String, *>, dryRun: Boolean, format: CliFormat): CliExecutionResult {
+  val sessionId = generateScaffoldSessionId()
   val repoRoot = findRepoRoot()
-  val payload = readScaffoldPayload(payloadPath, state)
-  val payloadText = JsonSupport.mapToJsonString(payload + ("repo_root" to repoRoot.toString()))
-  val result = runPythonCli(
-    buildList {
-      add(commandName)
-      add("--payload")
-      add("-")
-      if (dryRun) add("--dry-run")
-      addAll(listOf("--format", format.wireName))
-    },
-    state,
-    stdinText = payloadText,
-  )
-  return normalizeScaffoldCliResult(result, payload)
-}
-
-private fun normalizeScaffoldCliResult(result: CliExecutionResult, payload: Map<String, Any?>): CliExecutionResult {
-  if (result.exitCode != 0) {
-    return result
-  }
-  val parsed = result.payload?.toMutableMap() ?: return result
-  val skillName = parsed["skill_name"] as? String ?: scaffoldSkillName(payload)
-  val sessionId = parsed["session_id"] as? String ?: generateScaffoldSessionId()
-  parsed["started_payload"] = normalizeStartedPayload(parsed["started_payload"], payload, sessionId, skillName)
-  parsed["finished_payload"] = normalizeFinishedPayload(
-    parsed["finished_payload"],
-    payload,
-    sessionId,
-    skillName,
-    parsed["kind"] as? String ?: payload["kind"].orEmpty(),
-    parsed["dry_run"] as? Boolean ?: false,
-  )
+  val result =
+    try {
+      scaffold(payload + ("repo_root" to repoRoot.toString()), dryRun = dryRun)
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
+    }
+  val presentation =
+    mapOf(
+      "status" to "ok",
+      "session_id" to sessionId,
+      "skill_path" to result.skillPath.toString(),
+      "notes" to result.notes,
+    )
   return CliExecutionResult(
-    exitCode = result.exitCode,
-    stdout = JsonSupport.mapToJsonString(parsed),
-    payload = parsed,
+    exitCode = 0,
+    stdout = CliOutput.emit(presentation, format),
+    payload = presentation,
   )
 }
 
-private fun normalizeStartedPayload(
-  startedPayload: Any?,
-  payload: Map<String, Any?>,
-  sessionId: String,
-  skillName: String,
-): Map<String, Any?> {
-  val normalized = (startedPayload as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }?.toMutableMap()
-    ?: mutableMapOf()
-  normalized["session_id"] = sessionId
-  normalized["kind"] = payload["kind"].orEmpty()
-  normalized["skill_name"] = skillName
-  normalized["platform"] = payload["platform"].orEmpty()
-  normalized["family"] = payload["family"].orEmpty()
-  normalized["area"] = payload["area"].orEmpty()
-  return normalized
+private fun createAndFillResult(
+  payload: String?,
+  interactive: Boolean,
+  dryRun: Boolean,
+  body: String?,
+  bodyFile: String?,
+  editor: Boolean,
+  format: CliFormat,
+  state: CliRunState,
+): CliExecutionResult = when {
+  interactive || payload == null -> unsupportedNativeScaffoldResult(
+    AuthoringOperations.retiredInteractiveMessage(
+      "create-and-fill",
+      "skill-bill create-and-fill --payload <file> --body-file <file>",
+    ),
+    format,
+  )
+  editor -> unsupportedNativeScaffoldResult(
+    "create-and-fill --payload --editor is not supported by the native Kotlin scaffold path yet.",
+    format,
+  )
+  body != null && bodyFile != null -> errorResult("--body and --body-file are mutually exclusive.", format)
+  else -> runNativeScaffoldPayload(payload, dryRun, format, state) { scaffoldPayload ->
+    scaffoldPayload + createAndFillContentPayload(body, bodyFile, state)
+  }
 }
 
-private fun normalizeFinishedPayload(
-  finishedPayload: Any?,
-  payload: Map<String, Any?>,
-  sessionId: String,
-  skillName: String,
-  kind: String,
-  dryRun: Boolean,
-): Map<String, Any?> {
-  val normalized = (finishedPayload as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }?.toMutableMap()
-    ?: mutableMapOf()
-  normalized["session_id"] = sessionId
-  normalized["kind"] = kind
-  normalized["skill_name"] = skillName
-  normalized["platform"] = payload["platform"].orEmpty()
-  normalized["family"] = payload["family"].orEmpty()
-  normalized["area"] = payload["area"].orEmpty()
-  normalized["result"] = if (dryRun) "dry-run" else "success"
-  normalized["duration_seconds"] = 0
-  return normalized
+private fun errorResult(message: String, format: CliFormat): CliExecutionResult {
+  val presentation =
+    mapOf(
+      "status" to "error",
+      "error" to message,
+    )
+  return CliExecutionResult(
+    exitCode = 1,
+    stdout = CliOutput.emit(presentation, format),
+    payload = presentation,
+  )
 }
+
+private fun authoringResult(
+  format: CliFormat,
+  successExitCode: (Map<String, Any?>) -> Int = { 0 },
+  block: () -> Map<String, Any?>,
+): CliExecutionResult = try {
+  val payload = block()
+  CliExecutionResult(
+    exitCode = successExitCode(payload),
+    stdout = CliOutput.emit(payload, format),
+    payload = payload,
+  )
+} catch (error: SkillBillRuntimeException) {
+  errorResult(error.message.orEmpty(), format)
+} catch (error: IllegalArgumentException) {
+  errorResult(error.message.orEmpty(), format)
+}
+
+private fun unsupportedNativeScaffoldResult(message: String, format: CliFormat): CliExecutionResult {
+  val presentation =
+    mapOf(
+      "status" to "unsupported",
+      "error" to message,
+    )
+  return CliExecutionResult(
+    exitCode = 1,
+    stdout = CliOutput.emit(presentation, format),
+    payload = presentation,
+  )
+}
+
+private fun createAndFillContentPayload(body: String?, bodyFile: String?, state: CliRunState): Map<String, String> {
+  val contentBody =
+    body ?: bodyFile?.let { path ->
+      readCliTextFile(path, state)
+    }
+  return if (contentBody == null) emptyMap() else mapOf("content_body" to contentBody)
+}
+
+private fun newAddonPayload(
+  platform: String?,
+  name: String?,
+  body: String?,
+  bodyFile: String?,
+  state: CliRunState,
+): Map<String, String> = mapOf(
+  "scaffold_payload_version" to "1.0",
+  "kind" to "add-on",
+  "platform" to platform.orEmpty(),
+  "name" to name.orEmpty(),
+  "body" to (body ?: bodyFile?.let { path -> readCliTextFile(path, state) }).orEmpty(),
+)
+
+private fun readCliTextFile(path: String, state: CliRunState): String =
+  if (path == "-") state.stdinText.orEmpty() else Path.of(path).toFile().readText()
 
 private fun readScaffoldPayload(payloadPath: String?, state: CliRunState): Map<String, Any?> {
   val payloadText =
     when {
       payloadPath == null -> throw IllegalArgumentException("Either --payload or --interactive is required.")
       payloadPath == "-" -> state.stdinText.orEmpty()
-      else -> Files.readString(Path.of(payloadPath))
+      else -> Path.of(payloadPath).toFile().readText()
     }
   val parsed =
     JsonSupport.parseObjectOrNull(payloadText)
@@ -598,62 +583,18 @@ private fun readScaffoldPayload(payloadPath: String?, state: CliRunState): Map<S
   }
 }
 
-private fun scaffoldSkillName(payload: Map<String, Any?>): String = payload["name"].orEmpty()
-
-private fun generateScaffoldSessionId(): String = "nss-${System.currentTimeMillis()}"
+private fun generateScaffoldSessionId(): String {
+  val date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+  val suffix = UUID.randomUUID().toString().take(SCAFFOLD_SESSION_SUFFIX_LENGTH)
+  return "nss-$date-$suffix"
+}
 
 private fun Any?.orEmpty(): String = this as? String ?: ""
-
-private fun pythonProcess(arguments: List<String>, state: CliRunState): Process {
-  val repoRoot = findRepoRoot()
-  val command =
-    buildList {
-      add("python3")
-      add("-m")
-      add("skill_bill.cli")
-      state.dbOverride?.let {
-        add("--db")
-        add(it)
-      }
-      addAll(arguments)
-    }
-  val processBuilder =
-    ProcessBuilder(command)
-      .directory(repoRoot.toFile())
-      .redirectErrorStream(false)
-  val environment = processBuilder.environment()
-  environment.putAll(System.getenv())
-  environment.putAll(state.environment)
-  environment["HOME"] = state.userHome.toString()
-  environment["PYTHONPATH"] = buildPythonPath(repoRoot, environment["PYTHONPATH"])
-  return processBuilder.start()
-}
-
-private fun collectCliResult(process: Process): CliExecutionResult {
-  val stdout = process.inputStream.bufferedReader().readText()
-  val stderr = process.errorStream.bufferedReader().readText()
-  val exitCode = process.waitFor()
-  val output = if (exitCode == 0) stdout else stderr.ifBlank { stdout }
-  val payload =
-    if (exitCode == 0) {
-      JsonSupport.parseObjectOrNull(output)?.let { parsed ->
-        JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-      }
-    } else {
-      null
-    }
-  return CliExecutionResult(exitCode = exitCode, stdout = output, payload = payload)
-}
-
-private fun buildPythonPath(repoRoot: Path, existing: String?): String = listOf(repoRoot.toString(), existing)
-  .filterNotNull()
-  .filter { it.isNotBlank() }
-  .joinToString(File.pathSeparator)
 
 private fun findRepoRoot(start: Path = Path.of("").toAbsolutePath().normalize()): Path {
   var current = start
   while (true) {
-    if (Files.isDirectory(current.resolve("skill_bill")) && Files.isDirectory(current.resolve("runtime-kotlin"))) {
+    if (current.resolve("skill_bill").toFile().isDirectory && current.resolve("runtime-kotlin").toFile().isDirectory) {
       return current
     }
     val parent = current.parent ?: break

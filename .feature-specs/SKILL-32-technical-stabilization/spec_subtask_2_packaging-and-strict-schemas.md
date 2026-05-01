@@ -1,10 +1,15 @@
 ---
-Status: Not Started
+Status: Superseded by 2a / 2b / 2c
 Issue: SKILL-32
 Parent spec: [spec.md](spec.md)
 ---
 
 # Subtask 2: Packaged Kotlin Runtime + Strict MCP Schemas
+
+> Superseded by focused subtasks 2a, 2b, and 2c. The combined packaging and
+> schema scope was decomposed so packaged runtime installer work, strict MCP
+> schemas, and integration validation could be implemented and validated
+> independently.
 
 ## Goal
 

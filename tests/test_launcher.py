@@ -19,8 +19,13 @@ class LauncherTest(unittest.TestCase):
   def test_selected_runtime_defaults_to_kotlin(self):
     self.assertEqual("kotlin", launcher.selected_runtime({}))
 
-  def test_selected_runtime_accepts_python_fallback(self):
-    self.assertEqual("python", launcher.selected_runtime({"SKILL_BILL_RUNTIME": "python"}))
+  def test_retired_cli_runtime_env_has_no_effect(self):
+    retired_env = "SKILL_BILL_" + "RUNTIME"
+    self.assertEqual("kotlin", launcher.selected_runtime({retired_env: "python"}))
+    with mock.patch.object(launcher, "kotlin_cli_main", return_value=7) as kotlin_main:
+      with mock.patch.dict("os.environ", {retired_env: "python"}):
+        self.assertEqual(7, launcher.main(["version"]))
+    kotlin_main.assert_called_once_with(["version"])
 
   def test_kotlin_cli_command_uses_override_when_provided(self):
     command = launcher.kotlin_cli_command(
@@ -31,6 +36,10 @@ class LauncherTest(unittest.TestCase):
       ["/tmp/skill-bill-kotlin", "--flag", "version", "--format", "json"],
       command,
     )
+
+  def test_kotlin_process_environment_forwards_home_to_packaged_java_runtime(self):
+    env = launcher.kotlin_process_environment({"HOME": "/tmp/skill-bill-home"})
+    self.assertIn("-Duser.home=/tmp/skill-bill-home", env["JAVA_OPTS"])
 
   def test_kotlin_cli_command_uses_packaged_distribution_by_default(self):
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -60,6 +69,17 @@ class LauncherTest(unittest.TestCase):
 
   def test_selected_mcp_runtime_defaults_to_kotlin(self):
     self.assertEqual("kotlin", launcher.selected_mcp_runtime({}))
+
+  def test_retired_mcp_runtime_env_has_no_effect(self):
+    retired_env = "SKILL_BILL_MCP_" + "RUNTIME"
+    completed = mock.Mock(returncode=7)
+    with mock.patch.dict("os.environ", {retired_env: "python"}):
+      with mock.patch.object(launcher.subprocess, "run", return_value=completed) as run:
+        with mock.patch.object(launcher, "kotlin_mcp_command", return_value=["/tmp/runtime-mcp"]):
+          with self.assertRaises(SystemExit) as raised:
+            launcher.mcp_main()
+    self.assertEqual(7, raised.exception.code)
+    run.assert_called_once()
 
   def test_kotlin_mcp_command_uses_override_when_provided(self):
     command = launcher.kotlin_mcp_command({"SKILL_BILL_KOTLIN_MCP": "/tmp/skill-bill-mcp-kotlin"})
@@ -91,32 +111,24 @@ class LauncherTest(unittest.TestCase):
     self.assertIn("runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp", message)
     self.assertIn(":runtime-mcp:installDist", message)
 
-  def test_main_routes_python_runtime_to_python_cli(self):
-    with mock.patch.object(launcher, "python_cli_main", return_value=7) as python_main:
-      with mock.patch.object(launcher, "selected_runtime", return_value="python"):
-        self.assertEqual(7, launcher.main(["version"]))
-    python_main.assert_called_once_with(["version"])
-
   def test_mcp_kotlin_runtime_routes_to_kotlin_command(self):
     completed = mock.Mock(returncode=7)
-    with mock.patch.dict("os.environ", {"SKILL_BILL_MCP_RUNTIME": "kotlin"}):
-      with mock.patch.object(launcher.subprocess, "run", return_value=completed) as run:
-        with mock.patch.object(launcher, "kotlin_mcp_command", return_value=["/tmp/runtime-mcp"]):
-          with self.assertRaises(SystemExit) as raised:
-            launcher.mcp_main()
+    with mock.patch.object(launcher.subprocess, "run", return_value=completed) as run:
+      with mock.patch.object(launcher, "kotlin_mcp_command", return_value=["/tmp/runtime-mcp"]):
+        with self.assertRaises(SystemExit) as raised:
+          launcher.mcp_main()
     self.assertEqual(7, raised.exception.code)
     run.assert_called_once()
 
   def test_mcp_kotlin_runtime_routes_missing_distribution_to_exit_code_2(self):
-    with mock.patch.dict("os.environ", {"SKILL_BILL_MCP_RUNTIME": "kotlin"}):
-      with mock.patch.object(
-        launcher,
-        "kotlin_mcp_command",
-        side_effect=launcher.MissingKotlinDistributionError("missing packaged runtime"),
-      ):
-        with mock.patch("sys.stderr"):
-          with self.assertRaises(SystemExit) as raised:
-            launcher.mcp_main()
+    with mock.patch.object(
+      launcher,
+      "kotlin_mcp_command",
+      side_effect=launcher.MissingKotlinDistributionError("missing packaged runtime"),
+    ):
+      with mock.patch("sys.stderr"):
+        with self.assertRaises(SystemExit) as raised:
+          launcher.mcp_main()
     self.assertEqual(2, raised.exception.code)
 
 

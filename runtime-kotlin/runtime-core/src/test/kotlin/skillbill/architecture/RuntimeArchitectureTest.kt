@@ -9,6 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class RuntimeArchitectureTest {
+  private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/ReadianMcpRuntime.kt"
+  private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {
@@ -222,25 +224,24 @@ class RuntimeArchitectureTest {
   }
 
   @Test
-  fun `python bridge markers stay isolated to deferred cli bridge files`() {
-    val allowedBridgeFiles =
-      setOf(
-        "runtime-cli/src/main/kotlin/skillbill/cli/ScaffoldCliCommands.kt",
-        "runtime-cli/src/main/kotlin/skillbill/cli/SystemCliCommands.kt",
-      )
+  fun `python bridge markers are absent from runtime sources`() {
     assertNoBannedSourceReferences(
-      files = sourceFiles().filter { file -> file.relativePath !in allowedBridgeFiles },
+      files = sourceFiles(),
       bannedReferences =
       listOf(
         "runPythonCli",
         "runPythonScaffoldCli",
         "pythonProcess",
-        "ProcessBuilder",
         "\"python3\"",
         "skill_bill.cli",
         "skill_bill.mcp_server",
         "PYTHONPATH",
       ),
+      description = "deferred Python bridge marker",
+    )
+    assertNoBannedSourceReferences(
+      files = sourceFiles().filterNot { file -> file.relativePath == readianMcpRuntime },
+      bannedReferences = listOf("ProcessBuilder"),
       description = "deferred Python bridge marker",
     )
   }
@@ -250,24 +251,32 @@ class RuntimeArchitectureTest {
     val mcpFiles =
       sourceFiles()
         .filter { file -> file.relativePath.startsWith("runtime-mcp/src/main/kotlin/") }
+    val cliFiles =
+      sourceFiles()
+        .filter { file -> file.relativePath.startsWith("runtime-cli/src/main/kotlin/") }
 
     assertNoBannedSourceReferences(
       files = mcpFiles,
       bannedReferences = listOf("java.net.http", "java.sql"),
       description = "direct HTTP or SQL dependency",
     )
+    assertNoBannedSourceReferences(
+      files = cliFiles,
+      bannedReferences = listOf("java.net.http", "java.sql", "java.nio.file.Files", "Files."),
+      description = "direct filesystem, HTTP, or SQL dependency",
+    )
 
     // McpScaffoldRuntime keeps a temporary Files-based repo-root lookup for new_skill_scaffold.
-    // TODO(3b): promote the matching runtime-cli FS/HTTP/SQL ban after deleting pythonProcess().
     assertNoBannedSourceReferences(
       files =
       mcpFiles.filterNot { file ->
-        file.relativePath == "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+        file.relativePath in setOf(mcpScaffoldRuntime, readianMcpRuntime)
       },
       bannedReferences = listOf("java.nio.file.Files", "Files."),
       description = "direct filesystem dependency",
     )
     assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles)
+    assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles)
   }
 
   @Test
@@ -497,7 +506,7 @@ class RuntimeArchitectureTest {
   private fun assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles: List<SourceFile>) {
     val scaffoldFile =
       mcpFiles.first { file ->
-        file.relativePath == "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+        file.relativePath == mcpScaffoldRuntime
       }
     val filesReferenceLines =
       scaffoldFile.source.lines()
@@ -509,6 +518,26 @@ class RuntimeArchitectureTest {
         "import java.nio.file.Files",
         "if (Files.isDirectory(current.resolve(\"skill_bill\")) && " +
           "Files.isDirectory(current.resolve(\"runtime-kotlin\"))) {",
+      ),
+      filesReferenceLines,
+    )
+  }
+
+  private fun assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles: List<SourceFile>) {
+    val readianFile =
+      mcpFiles.first { file ->
+        file.relativePath == readianMcpRuntime
+      }
+    val filesReferenceLines =
+      readianFile.source.lines()
+        .filter { line -> "java.nio.file.Files" in line || "Files." in line }
+        .map(String::trim)
+
+    assertEquals(
+      listOf(
+        "import java.nio.file.Files",
+        "if (!Files.isDirectory(versions)) return null",
+        "return Files.list(versions).use { paths ->",
       ),
       filesReferenceLines,
     )

@@ -1,3 +1,47 @@
+## [2026-05-01] adoption-docs-and-external-author-dry-run
+Areas: runtime-cli external-author tests, runtime-core scaffold manifest paths, docs adoption guides
+- Rewrote adoption docs around packaged Kotlin-only CLI/MCP behavior, fail-closed vs degraded boundaries, strict contract guarantees, and model-mediated review/planning limits.
+- Added a Kotlin CLI external-author dry run that scaffolds a temporary platform pack through `new --payload`, validates it, links a generated skill into a temp agent path, removes it, and validates cleanup. reusable
+- Fixed scaffold manifest writes to use pack-root-relative declared file paths for new platform packs, code-review-area edits, and quality-check overrides. reusable
+- Reusable guardrail: external-author validation should exercise CLI payload parsing plus manifest-loader resolution, not call the scaffold core directly.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-05-01] python-runtime-retirement
+Areas: skill_bill.launcher, runtime-core launcher contract, runtime-mcp launch path, runtime docs
+- Removed the TODO(3c) launcher surface entries for `python-fallback` and `mcp-python-fallback`; the contract now locks only packaged Kotlin CLI/MCP selection. reusable
+- The 3b bridge teardown is now complete at the outer launcher boundary: retired runtime env vars no longer select Python and the Python MCP bootstrap script is gone.
+- Future runtime rollback guidance should install the previous release instead of preserving Python runtime ownership.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
+## [2026-05-01] port-or-retire-python-backed-cli-closeout
+Areas: runtime-cli authoring tests, SKILL-32 3b specs, runtime validation gate
+- Closed the broad 3b parent spec after 3b_1 through 3b_4 landed by marking stale 3b/3b_2/3b_3 specs complete and adding parent close-out evidence.
+- Added missing Kotlin CLI coverage for `upgrade`, `render`, `edit --body-file`, and `fill` using isolated temp authoring repos so mutating commands never touch the real workspace. reusable
+- Reusable guardrail: broad close-out should audit every ported command for a concrete Kotlin CLI test, not only source-level Python-bridge removal.
+- Validation gate passed after extracting authoring test helpers to satisfy Detekt `LongMethod` without suppressions.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-01] bridge-teardown-and-arch-ban
+Areas: runtime-cli bridge teardown, runtime architecture tests, runtime scaffold authoring helpers
+- Deleted the remaining Kotlin CLI Python bridge helpers after 3b_1/3b_2/3b_3 ported their callers; native payload reads now avoid `java.nio.file.Files` in runtime-cli main sources.
+- Promoted the deferred runtime-cli FS/HTTP/SQL architecture bans and removed the temporary Python bridge allowlist. reusable
+- Split `AuthoringOperations` helper groups into focused sibling files to satisfy the validation gate without Detekt suppressions. reusable
+- Python CLI/scaffold tests remain intentionally for 3c/fallback while `skill_bill/cli.py` and `skill_bill/scaffold` still exist.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-04-30] scaffold-payload-ports
+Areas: runtime-cli scaffold commands, runtime scaffold adapter, CLI golden fixtures
+- Ported payload-mode `new-skill`, `new`, `new-addon`, and `create-and-fill` CLI paths to the native scaffold runtime while leaving interactive prompt modes on the Python bridge.
+- Reusable pattern: keep bridge helpers present during staged retirement, but source-test ported command blocks and their native helper so payload paths cannot silently shell back to Python.
+- Locked `new-skill --dry-run --format json` with a golden fixture using dynamic session/path normalization, and split scaffold CLI tests out of the broad runtime test class.
+- Known limitation: editor-backed `create-and-fill` and broader inspection/authoring command ports remain deferred to later 3b subtasks.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-04-30] install-and-doctor-ports
 Areas: runtime-cli install commands, runtime-core install facade, runtime-cli doctor subject routing, CLI source-reference tests
 - Ported `install agent-path`, `install detect-agents`, and `install link-skill` from Python bridge calls to a public `InstallOperations` facade over internal install primitives. reusable

@@ -176,7 +176,10 @@ private fun parseDeclaredFiles(
   declaredAreas: List<String>,
 ): DeclaredFiles {
   val rawFiles = requireMappingField(manifest, slug, "declared_files")
-  val baselineRaw = requireStringField(rawFiles, slug, "declared_files.baseline")
+  val baselineRaw = rawFiles["baseline"] as? String
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': manifest is missing required field 'declared_files.baseline'.",
+    )
   if (baselineRaw.isBlank()) {
     throw InvalidManifestSchemaError(
       "Platform pack '$slug': 'declared_files.baseline' must be a non-empty path string.",

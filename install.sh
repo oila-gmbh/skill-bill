@@ -866,6 +866,22 @@ build_kotlin_runtime_distributions() {
   ok "Kotlin runtime distributions ready"
 }
 
+configure_telemetry_level() {
+  local level="$1"
+  python3 - "$level" "$SKILL_BILL_REVIEW_DB" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+from skill_bill.config import set_telemetry_level
+
+level = sys.argv[1]
+db_path = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+set_telemetry_level(level, db_path=db_path)
+PY
+}
+
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   build_kotlin_runtime_distributions
   info "Installing skill-bill CLI and MCP server..."
@@ -1080,12 +1096,12 @@ open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
 fi
 
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
-  if ! python3 -m skill_bill telemetry set-level "$TELEMETRY_LEVEL" --format json >/dev/null 2>&1; then
+  if ! configure_telemetry_level "$TELEMETRY_LEVEL" >/dev/null 2>&1; then
     warn "Telemetry setup failed."
     TELEMETRY_LEVEL="setup_failed"
   fi
 elif [[ -e "$SKILL_BILL_CONFIG_PATH" || -e "$SKILL_BILL_REVIEW_DB" ]]; then
-  python3 -m skill_bill telemetry disable --format json >/dev/null 2>&1 || warn "Telemetry setup failed."
+  configure_telemetry_level "off" >/dev/null 2>&1 || warn "Telemetry setup failed."
 fi
 
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"

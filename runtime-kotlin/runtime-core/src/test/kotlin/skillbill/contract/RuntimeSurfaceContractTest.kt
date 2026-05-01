@@ -20,11 +20,7 @@ class RuntimeSurfaceContractTest {
       supportedOperations =
       listOf(
         "select-cli-runtime",
-        // TODO(3c): remove python-fallback after the Python runtime retirement lands.
-        "python-fallback",
         "select-mcp-runtime",
-        // TODO(3c): remove mcp-python-fallback after the Python runtime retirement lands.
-        "mcp-python-fallback",
       ),
     )
   }

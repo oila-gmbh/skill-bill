@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 
 class CliAuthoringParityTest {
   @Test
-  fun `python-backed authoring inspection commands stay available through the kotlin cli`() {
+  fun `native authoring inspection commands stay available through the kotlin cli`() {
     val repoRoot = outerRepoRoot()
     val tempDir = Files.createTempDirectory("skillbill-cli-python-backed")
     val context = CliRuntimeContext(userHome = tempDir)
@@ -59,7 +59,7 @@ class CliAuthoringParityTest {
   }
 
   @Test
-  fun `python-backed authoring validation command stays available through the kotlin cli`() {
+  fun `native authoring validation command stays available through the kotlin cli`() {
     val repoRoot = outerRepoRoot()
     val tempDir = Files.createTempDirectory("skillbill-cli-python-backed-validation")
     val context = CliRuntimeContext(userHome = tempDir)
@@ -79,6 +79,51 @@ class CliAuthoringParityTest {
 
     assertEquals("pass", validated["status"])
   }
+
+  @Test
+  fun `native wrapper regeneration and content mutation commands stay available through the kotlin cli`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-mutation")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    assertWrapperCommandRegenerates("upgrade", tempDir, context)
+    assertWrapperCommandRegenerates("render", tempDir, context)
+    assertEditBodyFileUpdatesContent(tempDir, context)
+    assertFillBodyUpdatesContent(tempDir, context)
+  }
+
+  @Test
+  fun `interactive authoring modes are retired with stable replacements`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-retired-authoring")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    listOf(
+      listOf("new-skill", "--interactive", "--format", "json") to "skill-bill new-skill --payload <file>",
+      listOf("new", "--interactive", "--format", "json") to "skill-bill new --payload <file>",
+      listOf("new-addon", "--interactive", "--format", "json") to
+        "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
+      listOf("create-and-fill", "--interactive", "--format", "json") to
+        "skill-bill create-and-fill --payload <file> --body-file <file>",
+      listOf("edit", "bill-feature-implement", "--repo-root", outerRepoRoot().toString(), "--format", "json") to
+        "skill-bill fill bill-feature-implement --body-file <file>",
+      listOf(
+        "edit",
+        "bill-feature-implement",
+        "--repo-root",
+        outerRepoRoot().toString(),
+        "--editor",
+        "--format",
+        "json",
+      ) to "skill-bill fill bill-feature-implement --body-file <file>",
+    ).forEach { (arguments, replacement) ->
+      val result = CliRuntime.run(arguments, context)
+      val payload = decodeJsonObject(result.stdout)
+
+      assertEquals(1, result.exitCode, result.stdout)
+      assertEquals("unsupported", payload["status"])
+      assertEquals(true, payload["error"].toString().contains("retired in SKILL-32"))
+      assertEquals(true, payload["error"].toString().contains(replacement))
+    }
+  }
 }
 
 private fun runJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
@@ -96,6 +141,107 @@ private fun outerRepoRoot(): Path {
     current = current.parent
   }
   error("Could not locate skill-bill repository root from ${Path.of("").toAbsolutePath().normalize()}")
+}
+
+private fun authoringFixtureRepo(repoRoot: Path, skillName: String): Path {
+  val skillDir = repoRoot.resolve("skills").resolve(skillName)
+  Files.createDirectories(skillDir)
+  Files.writeString(
+    skillDir.resolve("SKILL.md"),
+    """
+    ---
+    name: $skillName
+    description: Fixture skill for CLI authoring tests.
+    ---
+
+    ## Descriptor
+
+    Stale descriptor that should be regenerated.
+
+    ## Execution
+
+    Stale execution section.
+
+    ## Ceremony
+
+    Stale ceremony section.
+    """.trimIndent() + "\n",
+  )
+  Files.writeString(
+    skillDir.resolve("content.md"),
+    """
+    # Fixture Content
+
+    Initial authored content.
+    """.trimIndent() + "\n",
+  )
+  return repoRoot
+}
+
+private fun assertWrapperCommandRegenerates(command: String, tempDir: Path, context: CliRuntimeContext) {
+  val skillName = "bill-$command-fixture"
+  val repoRoot = authoringFixtureRepo(tempDir.resolve("$command-repo"), skillName)
+  val payload =
+    runJson(
+      listOf(
+        command,
+        "--repo-root",
+        repoRoot.toString(),
+        "--skill-name",
+        skillName,
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+  assertEquals(1, payload["regenerated_count"])
+  assertEquals(true, payload["validator_ran"])
+}
+
+private fun assertEditBodyFileUpdatesContent(tempDir: Path, context: CliRuntimeContext) {
+  val repoRoot = authoringFixtureRepo(tempDir.resolve("edit-repo"), "bill-edit-fixture")
+  val bodyFile = tempDir.resolve("edit-body.md")
+  Files.writeString(bodyFile, "Edited body from a file.")
+  val payload =
+    runJson(
+      listOf(
+        "edit",
+        "bill-edit-fixture",
+        "--repo-root",
+        repoRoot.toString(),
+        "--body-file",
+        bodyFile.toString(),
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+  assertEquals(false, payload["used_editor"])
+  assertEquals("complete", payload["completion_status"])
+  assertEquals(true, payload["validator_ran"])
+}
+
+private fun assertFillBodyUpdatesContent(tempDir: Path, context: CliRuntimeContext) {
+  val repoRoot = authoringFixtureRepo(tempDir.resolve("fill-repo"), "bill-fill-fixture")
+  val payload =
+    runJson(
+      listOf(
+        "fill",
+        "bill-fill-fixture",
+        "--repo-root",
+        repoRoot.toString(),
+        "--body",
+        "Filled body from inline CLI input.",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+  assertEquals("complete", payload["completion_status"])
+  assertEquals(true, payload["validator_ran"])
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {

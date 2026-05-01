@@ -2,7 +2,7 @@
 
 ## Status
 
-- Status: In Progress
+- Status: Complete
 - Issue: `SKILL-32`
 - Purpose: stabilize the Kotlin-default runtime and remove the technical risks
   surfaced during the project assessment.

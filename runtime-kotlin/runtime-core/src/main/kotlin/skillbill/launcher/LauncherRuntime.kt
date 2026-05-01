@@ -3,15 +3,15 @@ package skillbill.launcher
 import skillbill.contracts.surface.RuntimeSurfaceContract
 import skillbill.contracts.surface.RuntimeSurfaceStatus
 
-/** Active runtime-selection surface for Python/Kotlin handoff. */
+/** Active launcher surface for packaged Kotlin runtime entrypoints. */
 object LauncherRuntime {
   val contract: RuntimeSurfaceContract = RuntimeSurfaceContract(
     name = "launcher",
     ownerPackage = "skillbill.launcher",
     contractVersion = "0.1",
     status = RuntimeSurfaceStatus.ACTIVE,
-    summary = "Runtime launcher and Python/Kotlin selection surface.",
+    summary = "Runtime launcher for packaged Kotlin CLI and MCP entrypoints.",
     placeholderReason = "",
-    supportedOperations = listOf("select-cli-runtime", "python-fallback", "select-mcp-runtime", "mcp-python-fallback"),
+    supportedOperations = listOf("select-cli-runtime", "select-mcp-runtime"),
   )
 }

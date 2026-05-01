@@ -8,15 +8,9 @@ and Phase 11 native MCP lifecycle telemetry cutover.
 Current default runtime:
 
 - `skill-bill` resolves to `skill_bill.launcher:main` from `pyproject.toml`.
-  The launcher defaults to the Kotlin CLI.
-- `SKILL_BILL_RUNTIME=python skill-bill ...` is the explicit Python CLI
-  fallback.
+  The launcher enters the packaged Kotlin CLI.
 - `skill-bill-mcp` resolves to `skill_bill.launcher:mcp_main`. The launcher
-  defaults to the Kotlin stdio MCP server.
-- `SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` is the explicit Python MCP
-  fallback.
-- `scripts/mcp_server_start.sh` bootstraps the Python package and starts the
-  launcher-backed MCP server.
+  enters the packaged Kotlin stdio MCP server.
 
 Current Kotlin runtime:
 
@@ -25,13 +19,14 @@ Current Kotlin runtime:
 - Kotlin owns durable workflow runtime behavior, review/learnings/stats/
   telemetry service behavior, governed loader/scaffold primitives, and install
   primitives.
-- Python remains the MCP fallback and the CLI rollback path.
+- Python runtime fallback has been retired; rollback installs a previous
+  release.
 - MCP telemetry lifecycle tools are Kotlin-native.
 
-Still reserved after this stage:
+Completed in SKILL-32:
 
-- deleting or weakening Python fallback behavior
-- retiring Python runtime code before normal-use confidence exists
+- retired Python fallback behavior after packaged Kotlin confidence existed
+- removed Python runtime entry files while retaining Python repo tooling
 
 ## Cutover Gates
 
@@ -100,10 +95,9 @@ need Kotlin-first contract tests before the Python fallback can be removed.
 
 1. `skill-bill` now routes through `skill_bill.launcher:main`.
 2. The launcher defaults to Kotlin for CLI commands.
-3. `SKILL_BILL_RUNTIME=python` routes the same command name to the Python CLI.
+3. The Python CLI runtime fallback has since been retired by SKILL-32.
 4. `skill-bill-mcp` defaults to the Kotlin stdio MCP server.
-5. `SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` routes to the Python MCP
-   server.
+5. The Python MCP runtime fallback has since been retired by SKILL-32.
 
 ## Phase 10 MCP Switch Result
 
@@ -112,8 +106,7 @@ need Kotlin-first contract tests before the Python fallback can be removed.
    line-delimited stdio JSON-RPC.
 3. Ported tools route through Kotlin runtime services.
 4. Telemetry lifecycle tools route through Kotlin-native services.
-5. Installer MCP registrations and `scripts/mcp_server_start.sh` invoke the
-   launcher-backed MCP entrypoint.
+5. Installer MCP registrations invoke the launcher-backed MCP entrypoint.
 
 ## Phase 11 MCP Lifecycle Result
 
@@ -129,12 +122,11 @@ need Kotlin-first contract tests before the Python fallback can be removed.
 
 If the Kotlin-default CLI or MCP path fails:
 
-1. Run CLI commands with `SKILL_BILL_RUNTIME=python`.
-2. Run MCP with `SKILL_BILL_MCP_RUNTIME=python`.
-3. Re-run `skill-bill doctor --format json` and the MCP `doctor` tool through
-   the Python path.
-4. Re-run the Python unit suite and agent-config validation.
-5. Leave Kotlin artifacts in place for diagnosis; do not delete Python runtime
-   code as part of rollback.
-6. Record the failure and fix-forward criteria in
+1. Install the previous Skill Bill release that still carries the retired
+   runtime path.
+2. Re-run `skill-bill doctor --format json` and the MCP `doctor` tool through
+   that previous release.
+3. Re-run the repository validation gate and agent-config validation.
+4. Leave Kotlin artifacts in place for diagnosis.
+5. Record the failure and fix-forward criteria in
    `docs/migrations/SKILL-27-kotlin-runtime-port.md`.

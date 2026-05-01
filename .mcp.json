@@ -2,8 +2,11 @@
   "mcpServers": {
     "skill-bill": {
       "type": "stdio",
-      "command": "scripts/mcp_server_start.sh",
-      "args": []
+      "command": "python3",
+      "args": [
+        "-c",
+        "from skill_bill.launcher import mcp_main; mcp_main()"
+      ]
     }
   }
 }

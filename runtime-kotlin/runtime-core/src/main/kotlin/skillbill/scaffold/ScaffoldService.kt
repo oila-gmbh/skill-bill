@@ -600,7 +600,7 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     SKILL_KIND_CODE_REVIEW_AREA -> {
       val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
       snapshotManifest(txn, manifestPath)
-      val declaredAreaPath = repoRoot.relativize(plan.skillFile).toString().replace('\\', '/')
+      val declaredAreaPath = manifestPath.parent.relativize(plan.skillFile).toString().replace('\\', '/')
       appendCodeReviewArea(manifestPath, plan.area, declaredAreaPath, defaultAreaFocus(plan.area))
       listOf(manifestPath)
     }
@@ -608,7 +608,7 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
       if (plan.isShelled && plan.family == "quality-check") {
         val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
         snapshotManifest(txn, manifestPath)
-        val declaredPath = repoRoot.relativize(plan.skillFile).toString().replace('\\', '/')
+        val declaredPath = manifestPath.parent.relativize(plan.skillFile).toString().replace('\\', '/')
         setDeclaredQualityCheckFile(manifestPath, declaredPath)
         listOf(manifestPath)
       } else {
@@ -810,23 +810,26 @@ private fun renderPlatformPackManifestContent(
   repoRoot: Path,
   baselineSkillPath: Path,
   qualityCheckSkillPath: Path,
-): String = renderPlatformPackManifest(
-  platform = plan.platform,
-  displayName = plan.displayName,
-  strongSignals = plan.routingSignals,
-  tieBreakers = plan.tieBreakers,
-  declaredCodeReviewAreas = plan.specialistAreas,
-  baselineContentPath = repoRoot.relativize(baselineSkillPath.resolve("SKILL.md"))
-    .toString()
-    .replace('\\', '/'),
-  declaredAreaFiles = plan.specialistSkillPaths.mapValues { (_, path) ->
-    repoRoot.relativize(path.resolve("SKILL.md")).toString().replace('\\', '/')
-  },
-  declaredQualityCheckFile = repoRoot.relativize(qualityCheckSkillPath.resolve("SKILL.md"))
-    .toString()
-    .replace('\\', '/'),
-  areaMetadata = plan.specialistAreaMetadata,
-)
+): String {
+  val packRoot = plan.manifestPath?.parent ?: repoRoot.resolve("platform-packs").resolve(plan.platform)
+  return renderPlatformPackManifest(
+    platform = plan.platform,
+    displayName = plan.displayName,
+    strongSignals = plan.routingSignals,
+    tieBreakers = plan.tieBreakers,
+    declaredCodeReviewAreas = plan.specialistAreas,
+    baselineContentPath = packRoot.relativize(baselineSkillPath.resolve("SKILL.md"))
+      .toString()
+      .replace('\\', '/'),
+    declaredAreaFiles = plan.specialistSkillPaths.mapValues { (_, path) ->
+      packRoot.relativize(path.resolve("SKILL.md")).toString().replace('\\', '/')
+    },
+    declaredQualityCheckFile = packRoot.relativize(qualityCheckSkillPath.resolve("SKILL.md"))
+      .toString()
+      .replace('\\', '/'),
+    areaMetadata = plan.specialistAreaMetadata,
+  )
+}
 
 private fun stagePlatformPackSkills(
   txn: ScaffoldTransaction,

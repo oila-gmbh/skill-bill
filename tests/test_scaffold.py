@@ -23,8 +23,6 @@ Covered cases (SKILL-15 AC16 + SKILL-19 follow-on):
 from __future__ import annotations
 
 from pathlib import Path
-import contextlib
-import io
 import sys
 import tempfile
 import unittest
@@ -278,10 +276,10 @@ def _build_seed_repo(tmp_path: Path) -> Path:
     (kmp_addons / addon_name).write_text(f"# {addon_name}\n", encoding="utf-8")
   # Seed a minimal base capability directory so the repo-level validator
   # (``validate_platform_skill_name``) can resolve pre-shell platform
-  # overrides like ``bill-kotlin-feature-verify`` without tripping on missing
+  # overrides like ``bill-java-feature-verify`` without tripping on missing
   # base capabilities.
   (repo / "skills" / "bill-feature-verify").mkdir(parents=True)
-  (repo / "skills" / "kotlin").mkdir(parents=True)
+  (repo / "skills" / "java").mkdir(parents=True)
   kotlin_pack_root = repo / "platform-packs" / "kotlin"
   kotlin_pack_root.mkdir(parents=True)
   (kotlin_pack_root / "platform.yaml").write_text(_KOTLIN_MANIFEST, encoding="utf-8")
@@ -671,16 +669,16 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-kotlin-feature-implement",
-        platform="kotlin",
+        name="bill-java-feature-implement",
+        platform="java",
         family="feature-implement",
       )
     )
     feature_body = (
-      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-implement" / "SKILL.md"
+      self.repo / "skills" / "java" / "bill-java-feature-implement" / "SKILL.md"
     ).read_text(encoding="utf-8")
     self.assertNotIn("TODO: author the description", feature_body)
-    self.assertIn("Kotlin", feature_body)
+    self.assertIn("Java", feature_body)
 
     scaffold(self._payload(kind="horizontal", name="bill-horizontal-new"))
     horizontal_body = (
@@ -775,19 +773,19 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-kotlin-feature-verify",
-        platform="kotlin",
+        name="bill-java-feature-verify",
+        platform="java",
         family="feature-verify",
       )
     )
     verify_body = (
-      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "SKILL.md"
+      self.repo / "skills" / "java" / "bill-java-feature-verify" / "SKILL.md"
     ).read_text(encoding="utf-8")
     self.assertIn("## Descriptor", verify_body)
     self.assertIn("## Execution", verify_body)
     self.assertIn("## Ceremony", verify_body)
     verify_content = (
-      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "content.md"
+      self.repo / "skills" / "java" / "bill-java-feature-verify" / "content.md"
     ).read_text(encoding="utf-8")
     self.assertNotIn("TODO: author the specialist scope", verify_content)
     self.assertNotIn("TODO: author the inputs", verify_content)
@@ -822,13 +820,13 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     result = scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-kotlin-feature-implement",
-        platform="kotlin",
+        name="bill-java-feature-implement",
+        platform="java",
         family="feature-implement",
       )
     )
     self.assertEqual(result.kind, "platform-override-piloted")
-    skill_md = self.repo / "skills" / "kotlin" / "bill-kotlin-feature-implement" / "SKILL.md"
+    skill_md = self.repo / "skills" / "java" / "bill-java-feature-implement" / "SKILL.md"
     self.assertTrue(skill_md.is_file())
     self.assertTrue(any("will move when" in note for note in result.notes))
     body = skill_md.read_text(encoding="utf-8")
@@ -940,20 +938,20 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     scaffold(
       self._payload(
         kind="platform-override-piloted",
-        name="bill-kotlin-feature-verify",
-        platform="kotlin",
+        name="bill-java-feature-verify",
+        platform="java",
         family="feature-verify",
       )
     )
     skill_md = (
-      self.repo / "skills" / "kotlin" / "bill-kotlin-feature-verify" / "SKILL.md"
+      self.repo / "skills" / "java" / "bill-java-feature-verify" / "SKILL.md"
     )
     self.assertTrue((skill_md.parent / "shell-ceremony.md").exists())
     self.assertTrue((skill_md.parent / "telemetry-contract.md").exists())
 
     validate_skill_file = _load_validate_skill_file()
     issues: list[str] = []
-    validate_skill_file("bill-kotlin-feature-verify", skill_md, issues)
+    validate_skill_file("bill-java-feature-verify", skill_md, issues)
     self.assertEqual(issues, [])
 
 
@@ -1222,320 +1220,6 @@ class ScaffolderOwnedSectionsIdenticalTest(unittest.TestCase):
     owned_b = extract_scaffolder_owned(body_b)
     self.assertEqual(set(owned_a), {"## Execution", "## Ceremony"})
     self.assertEqual(owned_a, owned_b)
-
-
-class NewSkillCliErrorMappingTest(unittest.TestCase):
-  """F-006: ``new_skill_command`` maps ScaffoldError subclasses to exit codes.
-
-  Previously the handler wrapped every scaffolder failure in ``ValueError``,
-  collapsing typed failure modes into exit code 1. The fix catches
-  :class:`skill_bill.scaffold_exceptions.ScaffoldError` specifically, prints
-  the message to stderr, and returns a stable exit code per concrete
-  subclass. This test drives the real handler through an ``argparse.Namespace``
-  and asserts the exit code for at least one path.
-  """
-
-  def setUp(self) -> None:
-    self._tmpdir = tempfile.TemporaryDirectory()
-    self.addCleanup(self._tmpdir.cleanup)
-    self.tmp_path = Path(self._tmpdir.name)
-    self.repo = _build_seed_repo(self.tmp_path)
-    self._no_agents = _NoAgentsPatch()
-    self._no_agents.__enter__()
-    self.addCleanup(self._no_agents.__exit__, None, None, None)
-
-  def test_invalid_payload_returns_exit_code_2(self) -> None:
-    import argparse
-    import json as _json
-    from skill_bill.cli import new_skill_command
-
-    payload_path = self.tmp_path / "payload.json"
-    # Missing ``kind`` triggers InvalidScaffoldPayloadError, which must map
-    # to exit code 2 per the exit_code_map in new_skill_command.
-    payload_path.write_text(
-      _json.dumps(
-        {
-          "scaffold_payload_version": "1.0",
-          "name": "bill-cli-invalid",
-          "repo_root": str(self.repo),
-        }
-      ),
-      encoding="utf-8",
-    )
-
-    args = argparse.Namespace(
-      payload=str(payload_path),
-      interactive=False,
-      dry_run=False,
-      format="json",
-    )
-    stderr = io.StringIO()
-    with contextlib.redirect_stderr(stderr):
-      code = new_skill_command(args)
-    self.assertEqual(code, 2)
-
-
-class NewSkillInteractivePromptTest(unittest.TestCase):
-  @contextlib.contextmanager
-  def _quiet_prompt_output(self):
-    stdout = io.StringIO()
-    with contextlib.redirect_stdout(stdout):
-      yield
-
-  def test_platform_pack_prompt_defaults_new_platform_to_full(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",   # platform
-            "",       # specialist mode -> all
-            "",       # display name
-            "",       # description
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "java")
-    self.assertNotIn("skeleton_mode", payload)
-
-  def test_platform_pack_prompt_uses_php_preset_without_signal_prompt(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",    # platform
-            "",       # specialist mode -> all
-            "",       # display name
-            "",       # description
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "java")
-    self.assertNotIn("skeleton_mode", payload)
-    self.assertNotIn("routing_signals", payload)
-
-  def test_platform_pack_prompt_collects_custom_routing_for_unknown_platform(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "python",    # platform
-            "",          # specialist mode -> all
-            "Python",    # display name
-            "",          # description
-            "pyproject.toml,setup.py",  # strong signals
-            "",          # tie-breakers
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "python")
-    self.assertNotIn("skeleton_mode", payload)
-    self.assertEqual(
-      payload["routing_signals"]["strong"],
-      ["pyproject.toml", "setup.py"],
-    )
-
-  def test_platform_pack_prompt_can_choose_custom_specialist_subset(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",                 # platform
-            "2",                    # specialist mode -> custom
-            "architecture,security,testing,reliability",
-            "",                     # display name
-            "",                     # description
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "java")
-    self.assertEqual(
-      payload["specialist_areas"],
-      ["architecture", "reliability", "security", "testing"],
-    )
-    self.assertNotIn("skeleton_mode", payload)
-
-  def test_platform_pack_prompt_can_choose_no_specialists(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",   # platform
-            "1",      # specialist mode -> none
-            "",       # display name
-            "",       # description
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-pack")
-    self.assertEqual(payload["platform"], "java")
-    self.assertEqual(payload["skeleton_mode"], "starter")
-    self.assertNotIn("specialist_areas", payload)
-
-  def test_existing_platform_prompt_branches_to_specialist(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "java").mkdir(parents=True)
-      (repo_root / "platform-packs" / "java" / "platform.yaml").write_text(
-        "shell_contract_version: '1.0'\n",
-        encoding="utf-8",
-      )
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",          # platform
-            "1",             # code-review specialist
-            "security",      # area
-            "",              # derived name
-            "Review Java security risks.",  # description
-            "END",           # optional content body
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "code-review-area")
-    self.assertEqual(payload["platform"], "java")
-    self.assertEqual(payload["area"], "security")
-    self.assertEqual(payload["description"], "Review Java security risks.")
-
-  def test_existing_platform_prompt_branches_to_platform_override(self) -> None:
-    from skill_bill.cli import _prompt_new_skill_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "java").mkdir(parents=True)
-      (repo_root / "platform-packs" / "java" / "platform.yaml").write_text(
-        "shell_contract_version: '1.0'\n",
-        encoding="utf-8",
-      )
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "java",           # platform
-            "2",              # platform override
-            "quality-check",  # family
-            "",               # derived name
-            "Run Java quality checks.",  # description
-            "END",            # optional content body
-          ],
-        ),
-      ):
-        payload = _prompt_new_skill_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "platform-override-piloted")
-    self.assertEqual(payload["platform"], "java")
-    self.assertEqual(payload["family"], "quality-check")
-    self.assertEqual(payload["description"], "Run Java quality checks.")
-
-  def test_new_addon_prompt_builds_markdown_body(self) -> None:
-    from skill_bill.cli import _prompt_new_addon_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "kmp").mkdir(parents=True)
-      (repo_root / "platform-packs" / "kmp" / "platform.yaml").write_text(
-        "contract_version: '1.1'\n",
-        encoding="utf-8",
-      )
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "kmp",                 # platform
-            "android-compose",     # add-on slug
-            "Compose guidance.",   # description
-            "First body line.",    # body
-            "Second body line.",   # body
-            "END",                 # terminator
-          ],
-        ),
-      ):
-        payload = _prompt_new_addon_interactively(repo_root=repo_root)
-
-    self.assertEqual(payload["kind"], "add-on")
-    self.assertEqual(payload["platform"], "kmp")
-    self.assertEqual(payload["name"], "android-compose")
-    self.assertEqual(
-      payload["body"],
-      "# android-compose\n\nCompose guidance.\n\nFirst body line.\nSecond body line.\n",
-    )
-
-  def test_new_addon_prompt_reprompts_until_body_is_non_empty(self) -> None:
-    from skill_bill.cli import _prompt_new_addon_interactively
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-      repo_root = Path(tmpdir)
-      (repo_root / "platform-packs" / "kmp").mkdir(parents=True)
-      (repo_root / "platform-packs" / "kmp" / "platform.yaml").write_text(
-        "contract_version: '1.1'\n",
-        encoding="utf-8",
-      )
-      with (
-        self._quiet_prompt_output(),
-        mock.patch(
-          "builtins.input",
-          side_effect=[
-            "kmp",              # platform
-            "android-compose",  # add-on slug
-            "",                 # description
-            "END",              # empty body attempt
-            "Real body line.",  # second body attempt
-            "END",              # terminator
-          ],
-        ),
-      ):
-        payload = _prompt_new_addon_interactively(repo_root=repo_root)
-
-    self.assertEqual(
-      payload["body"],
-      "# android-compose\n\nReal body line.\n",
-    )
 
 
 class AgentDetectionTest(unittest.TestCase):

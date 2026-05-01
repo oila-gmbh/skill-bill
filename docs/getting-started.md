@@ -1,53 +1,45 @@
 # Getting Started
 
-A practical guide to installing Skill Bill, understanding the shipped surfaces, and using the full local CLI and MCP server without having to reverse-engineer the repo.
+Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use the built distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a Python runtime selector.
 
-## What Skill Bill ships
+Use this guide when you want to install Skill Bill, understand the runtime model, and know which behavior is enforced by contracts versus model reasoning.
 
-Skill Bill has three primary operator surfaces:
+## What Ships
 
-- slash-command skills installed into your coding agent
+Skill Bill has three operator surfaces:
+
+- installed slash-command skills such as `/bill-code-review` and `/bill-quality-check`
 - the local `skill-bill` CLI
-- the local `skill-bill-mcp` server
+- the local `skill-bill-mcp` stdio MCP server
 
-Those surfaces sit on top of the same governed system:
+Those surfaces use the same governed repo structure:
 
-- canonical skills in `skills/`
-- manifest-driven platform packs in `platform-packs/`
-- shared contracts in `orchestration/`
-- runtime code in `skill_bill/`
+- `skills/` contains canonical user-facing skills
+- `platform-packs/` contains manifest-declared platform packs
+- `orchestration/` contains shared contracts and playbooks
+- `runtime-kotlin/` contains the packaged CLI and MCP runtime
+- `scripts/` and `tests/` contain repo validation and maintainer tooling
 
 ## Install
-
-### 1. Clone the repo
 
 ```bash
 git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
 cd ~/Development/skill-bill
+./install.sh
 ```
 
-For a pinned install instead of `main`:
+For a pinned install:
 
 ```bash
 TAG=v0.x.y
 git clone --branch "$TAG" --depth 1 https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
 cd ~/Development/skill-bill
-```
-
-### 2. Run the installer
-
-```bash
 ./install.sh
 ```
 
-The installer asks for:
+The installer builds the Kotlin CLI and MCP distributions, verifies the packaged bin scripts, then links selected skills into detected agent directories.
 
-- which agents to install into
-- which platform packs to install
-
-Canonical skills in `skills/` are always installed. Platform packs are selected from the manifests discovered under `platform-packs/`.
-
-### 3. Supported agent targets
+Supported install targets:
 
 | Agent | Install path |
 |-------|--------------|
@@ -57,262 +49,198 @@ Canonical skills in `skills/` are always installed. Platform packs are selected 
 | OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenCode | `~/.config/opencode/skills/` |
 
-Installed skills are symlinks back to this repo, so a `git pull` updates installed behavior without reinstalling.
+Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
 
-### 4. Optional local runtime entry points
+## Runtime Model
 
-The package exposes:
+Normal use is Kotlin-only:
 
-- `skill-bill`
-- `skill-bill-mcp`
+- `skill-bill` launches the packaged Kotlin CLI distribution.
+- `skill-bill-mcp` launches the packaged Kotlin stdio MCP distribution.
+- The installer registers MCP shims to the packaged Kotlin server.
+- Gradle is only used by maintainers to build and validate the runtime, not by installed commands during normal use.
+- Python remains for explicit repo tooling such as validation scripts. It is not a normal CLI or MCP runtime fallback.
 
-If you want the local entry points available directly, install the package in
-your environment:
+If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to Python.
 
-```bash
-pip install -e .
-```
+## First Checks
 
-`skill-bill` defaults to the Kotlin CLI runtime. Use
-`SKILL_BILL_RUNTIME=python skill-bill ...` as the Python fallback. The
-`skill-bill-mcp` server defaults to the Kotlin stdio runtime. Use
-`SKILL_BILL_MCP_RUNTIME=python skill-bill-mcp` as the Python MCP fallback.
-
-## First run
-
-The fastest way to confirm the install is healthy:
+After install:
 
 ```bash
+skill-bill version
 skill-bill doctor
 skill-bill telemetry status --format json
 ```
 
-Then use the stable skill entry points from your agent:
+Then try the stable skill entry points in your agent:
 
 - `/bill-code-review`
 - `/bill-quality-check`
 - `/bill-feature-implement`
 - `/bill-feature-verify`
 
-## Shipped skill surfaces
+## Runtime Fallback Boundary
 
-### Stable base skills
+Skill Bill separates fail-closed contract behavior from best-effort operational behavior.
 
-These are the main user-facing entry points:
+Fail closed:
 
-- `/bill-code-review`
-- `/bill-quality-check`
-- `/bill-feature-implement`
-- `/bill-feature-verify`
-- `/bill-pr-description`
-- `/bill-create-skill`
-- `/bill-grill-plan`
-- `/bill-boundary-decisions`
-- `/bill-boundary-history`
-- `/bill-feature-guard`
-- `/bill-feature-guard-cleanup`
-- `/bill-unit-test-value-check`
-- `/bill-skill-remove`
+- missing packaged CLI or MCP distributions
+- malformed MCP arguments for strict schemas
+- wrong shell contract versions
+- missing platform manifests
+- missing declared platform-pack content files
+- missing required governed `SKILL.md` sections
+- invalid scaffold payloads
+- validation drift in generated wrappers or agent configs
 
-### Reference platform packs
+Degrade or report explicitly:
 
-The shipped reference packs are:
+- telemetry can be off or queued locally when sync is unavailable
+- remote telemetry reads report capability or network failures without blocking local work
+- agent detection may find no local agent directories; install/link commands can still target explicit paths
+- learnings may resolve to `none`
+- model-mediated review output can be uncertain and should mark confidence accordingly
+
+Rollback for a broken runtime is to install a previous release. Do not expect a Python runtime selector to recover current CLI or MCP execution.
+
+## Strict vs Model-Mediated Guarantees
+
+Strict and loud-fail guarantees:
+
+- MCP tools publish strict schemas for priority workflow, telemetry, review, learning, scaffold, and workflow-state tools. Unknown top-level arguments are rejected before handler dispatch when the schema is strict.
+- Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, required wrapper sections, and sibling sidecars.
+- Scaffold and validation commands operate on structured manifests and generated wrappers; invalid payloads or drift fail the command.
+- `install link-skill` creates real symlinks to explicit directories and is covered by Kotlin CLI tests.
+
+Model-mediated guarantees:
+
+- review reasoning, implementation planning, audit reasoning, and PR description prose are produced by the active model using the governed instructions
+- finding severity and confidence are signals, not proof
+- workflow handoffs and audits are structured, but the judgement inside them still needs human review for high-risk changes
+
+Use strict guarantees for compatibility and safety boundaries. Use model-mediated output as an expert second opinion that should be checked against the code.
+
+## Governance System vs Reference Packs
+
+Skill Bill is the governance system: routing, manifests, shell contracts, validation, installer behavior, workflow state, telemetry, and authoring rules.
+
+The shipped `kotlin` and `kmp` platform packs are reference packs. They are real, validated, ready to use, and useful examples, but they are not the product boundary. Teams can fork, replace, or add conforming packs as long as discovery stays manifest-driven and the shell contract version remains locked.
+
+Reference packs currently shipped:
 
 - `kotlin`: Kotlin baseline review and quality-check behavior
-- `kmp`: KMP review depth layered on top of Kotlin, including Android/KMP add-ons
+- `kmp`: Kotlin baseline plus Android/KMP review depth and governed add-ons
 
-The platform-specific skill implementations live under `platform-packs/<platform>/`.
+## Common CLI Surfaces
 
-### Skills vs workflows
-
-Skill Bill keeps these separate on purpose:
-
-- skills are reusable, user-facing units such as routed code review or quality check
-- workflows are top-level orchestrators that need durable step state, artifact handoff, and resume semantics
-
-Current workflow families:
-
-- `bill-feature-implement`
-- `bill-feature-verify`
-
-Those workflows are exposed both as skills and through local CLI/MCP workflow-state surfaces.
-
-## The `skill-bill` CLI
-
-The local CLI is the operator and maintainer surface for telemetry, workflow state, learnings, governed skill authoring, validation, and install primitives.
-
-### Review import and triage
+Review and telemetry:
 
 | Command | Purpose |
 |---------|---------|
-| `skill-bill import-review` | Import a review output file or stdin into the local SQLite store |
-| `skill-bill record-feedback` | Record explicit feedback for one or more imported findings |
-| `skill-bill triage` | List numbered findings and record triage decisions |
-| `skill-bill stats` | Show aggregate or per-run review acceptance metrics |
-| `skill-bill implement-stats` | Show aggregate `bill-feature-implement` local metrics |
-| `skill-bill verify-stats` | Show aggregate `bill-feature-verify` local metrics |
+| `skill-bill import-review` | Import review output into the local SQLite store |
+| `skill-bill record-feedback` | Record feedback for imported findings |
+| `skill-bill triage` | Record triage decisions |
+| `skill-bill stats` | Show review acceptance metrics |
+| `skill-bill implement-stats` | Show local `bill-feature-implement` metrics |
+| `skill-bill verify-stats` | Show local `bill-feature-verify` metrics |
+| `skill-bill telemetry status` | Show telemetry configuration and pending sync state |
+| `skill-bill telemetry sync` | Flush queued telemetry |
 
-### Learnings management
-
-| Command | Purpose |
-|---------|---------|
-| `skill-bill learnings add` | Create a learning from a rejected review finding |
-| `skill-bill learnings list` | List stored learnings |
-| `skill-bill learnings show` | Show one learning entry |
-| `skill-bill learnings resolve` | Resolve active learnings for a repo or skill context |
-| `skill-bill learnings edit` | Edit a learning entry |
-| `skill-bill learnings disable` | Disable a learning entry |
-| `skill-bill learnings enable` | Re-enable a learning entry |
-| `skill-bill learnings delete` | Delete a learning entry |
-
-### Telemetry
+Workflow state:
 
 | Command | Purpose |
 |---------|---------|
-| `skill-bill telemetry status` | Show local telemetry configuration and pending sync state |
-| `skill-bill telemetry sync` | Flush pending telemetry events to the active proxy target |
-| `skill-bill telemetry capabilities` | Show proxy/relay read-write capabilities |
-| `skill-bill telemetry stats verify` | Fetch remote org-wide `bill-feature-verify` metrics |
-| `skill-bill telemetry stats implement` | Fetch remote org-wide `bill-feature-implement` metrics |
-| `skill-bill telemetry enable` | Enable telemetry at `anonymous` or `full` level |
-| `skill-bill telemetry disable` | Disable telemetry |
-| `skill-bill telemetry set-level` | Set telemetry to `off`, `anonymous`, or `full` |
+| `skill-bill workflow list` | List persisted implement workflows |
+| `skill-bill workflow show` | Show one implement workflow |
+| `skill-bill workflow resume` | Build a resume/recovery explanation |
+| `skill-bill workflow continue` | Reopen a resumable implement workflow |
+| `skill-bill verify-workflow list` | List persisted verify workflows |
+| `skill-bill verify-workflow show` | Show one verify workflow |
+| `skill-bill verify-workflow resume` | Build a verify resume/recovery explanation |
+| `skill-bill verify-workflow continue` | Reopen a resumable verify workflow |
 
-### Workflow state
-
-`bill-feature-implement` workflow state:
+Authoring and install:
 
 | Command | Purpose |
 |---------|---------|
-| `skill-bill workflow list` | List recent persisted implement workflows |
-| `skill-bill workflow show` | Show raw persisted workflow state |
-| `skill-bill workflow resume` | Explain how to resume or recover a workflow |
-| `skill-bill workflow continue` | Reopen a resumable workflow and emit a continuation brief |
-
-`bill-feature-verify` workflow state:
-
-| Command | Purpose |
-|---------|---------|
-| `skill-bill verify-workflow list` | List recent persisted verify workflows |
-| `skill-bill verify-workflow show` | Show raw persisted verify workflow state |
-| `skill-bill verify-workflow resume` | Explain how to resume or recover a verify workflow |
-| `skill-bill verify-workflow continue` | Reopen a resumable verify workflow and emit a continuation brief |
-
-### Governed skill authoring and maintenance
-
-| Command | Purpose |
-|---------|---------|
-| `skill-bill list` | List content-managed skills and authoring status |
-| `skill-bill show <skill>` | Show one governed skill, its content status, and next commands |
-| `skill-bill explain [skill]` | Explain the governed authoring boundary and workflow |
-| `skill-bill validate` | Run full repo validation or targeted skill validation |
-| `skill-bill upgrade` | Regenerate scaffold-managed wrappers without touching sidecars |
-| `skill-bill render` | Alias for `upgrade` |
-| `skill-bill edit <skill>` | Edit `content.md` and regenerate the wrapper |
-| `skill-bill fill <skill>` | Write authored body text into `content.md` and validate |
-| `skill-bill new-skill` | Scaffold a new skill from JSON payload or interactive prompts |
-| `skill-bill new` | Alias for `new-skill` |
-| `skill-bill create-and-fill` | Scaffold one skill, then immediately author `content.md` |
-| `skill-bill new-addon` | Create a governed add-on file in an existing platform pack |
-
-### Install and health primitives
-
-| Command | Purpose |
-|---------|---------|
+| `skill-bill list` | List content-managed skills |
+| `skill-bill show <skill>` | Inspect one governed skill |
+| `skill-bill explain [skill]` | Explain the governed authoring boundary |
+| `skill-bill validate` | Run repo or targeted governed-skill validation |
+| `skill-bill render` | Regenerate scaffold-managed wrappers |
+| `skill-bill fill <skill>` | Write authored `content.md` text and validate |
+| `skill-bill new --payload <file>` | Scaffold a governed skill or platform pack |
+| `skill-bill new-addon` | Create a pack-owned add-on |
 | `skill-bill doctor` | Show local install and telemetry health |
-| `skill-bill version` | Show the installed Skill Bill version |
-| `skill-bill install agent-path <agent>` | Print the canonical install path for one agent |
-| `skill-bill install detect-agents` | List detected agents and install paths |
-| `skill-bill install link-skill` | Symlink one skill directory into a target agent path |
+| `skill-bill install agent-path <agent>` | Print an agent install path |
+| `skill-bill install detect-agents` | List detected agents |
+| `skill-bill install link-skill` | Symlink one skill directory into a target path |
 
-## The `skill-bill-mcp` server
+## External Author Dry Run
 
-The MCP server exposes Skill Bill’s local primitives as agent tools. This is the primary integration path when an agent can call local MCP tools directly.
+The supported external-author flow is:
 
-The installed `skill-bill-mcp` entrypoint launches the Kotlin stdio server by
-default. MCP telemetry lifecycle tools are Kotlin-native; direct Python MCP
-fallback remains available with `SKILL_BILL_MCP_RUNTIME=python`.
+1. Scaffold a platform pack from a payload.
+2. Validate the generated repo state.
+3. Link one generated skill into an explicit agent path.
+4. Remove the generated link and temporary pack artifacts.
 
-### Review telemetry and learnings tools
+Example payload:
 
-| MCP tool | Purpose |
-|----------|---------|
-| `import_review` | Import code-review output into the local store |
-| `triage_findings` | Record triage decisions for imported findings |
-| `resolve_learnings` | Resolve active learnings for a repo or skill context |
-| `review_stats` | Show aggregate or per-run review metrics |
-| `feature_implement_stats` | Show aggregate local implement metrics |
-| `feature_verify_stats` | Show aggregate local verify metrics |
-| `telemetry_remote_stats` | Fetch remote org-wide workflow metrics |
-| `telemetry_proxy_capabilities` | Show proxy/relay capability support |
-| `doctor` | Show local install and telemetry health |
+```bash
+cat > /tmp/skill-bill-pack.json <<'JSON'
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "platform-pack",
+  "platform": "java",
+  "skeleton_mode": "starter",
+  "display_name": "Java",
+  "description": "Use when reviewing Java server and library changes."
+}
+JSON
 
-### `bill-feature-implement` workflow tools
+skill-bill new --payload /tmp/skill-bill-pack.json
+skill-bill validate
+skill-bill install link-skill \
+  --source platform-packs/java/code-review/bill-java-code-review \
+  --target-dir /tmp/skill-bill-agent/skills \
+  --agent codex
+rm /tmp/skill-bill-agent/skills/bill-java-code-review
+rm -rf platform-packs/java
+```
 
-| MCP tool | Purpose |
-|----------|---------|
-| `feature_implement_started` | Emit the started lifecycle event |
-| `feature_implement_workflow_open` | Create a persisted workflow record |
-| `feature_implement_workflow_update` | Update workflow state, steps, and artifacts |
-| `feature_implement_workflow_get` | Get one workflow by id |
-| `feature_implement_workflow_list` | List recent implement workflows |
-| `feature_implement_workflow_latest` | Fetch the most recently updated implement workflow |
-| `feature_implement_workflow_resume` | Build a resume/recovery payload |
-| `feature_implement_workflow_continue` | Reopen a resumable workflow and build a continuation brief |
-| `feature_implement_finished` | Emit the finished lifecycle event |
+In normal team usage, remove generated artifacts with your usual VCS workflow instead of deleting committed pack files by hand.
 
-### Quality-check, verify, and PR-description tools
+## MCP Server
 
-| MCP tool | Purpose |
-|----------|---------|
-| `quality_check_started` | Emit quality-check started telemetry |
-| `quality_check_finished` | Emit quality-check finished telemetry |
-| `feature_verify_started` | Emit feature-verify started telemetry |
-| `feature_verify_finished` | Emit feature-verify finished telemetry |
-| `feature_verify_workflow_open` | Create a persisted verify workflow record |
-| `feature_verify_workflow_update` | Update verify workflow state |
-| `feature_verify_workflow_get` | Get one verify workflow by id |
-| `feature_verify_workflow_list` | List recent verify workflows |
-| `feature_verify_workflow_latest` | Fetch the most recently updated verify workflow |
-| `feature_verify_workflow_resume` | Build a verify resume/recovery payload |
-| `feature_verify_workflow_continue` | Reopen a resumable verify workflow and build a continuation brief |
-| `pr_description_generated` | Emit PR-description telemetry |
+`skill-bill-mcp` exposes the same local runtime primitives as structured MCP tools. It is useful when an agent can call local tools directly and should not parse CLI text.
 
-### Scaffolding tool
+Primary MCP groups:
 
-| MCP tool | Purpose |
-|----------|---------|
-| `new_skill_scaffold` | Scaffold a new governed skill from a validated payload |
+- review and learning tools: `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`
+- telemetry tools: `telemetry_proxy_capabilities`, `telemetry_remote_stats`
+- implement workflow tools: `feature_implement_started`, `feature_implement_workflow_open`, `feature_implement_workflow_update`, `feature_implement_workflow_get`, `feature_implement_workflow_continue`, `feature_implement_finished`
+- verify workflow tools: `feature_verify_started`, `feature_verify_workflow_open`, `feature_verify_workflow_update`, `feature_verify_workflow_get`, `feature_verify_workflow_continue`, `feature_verify_finished`
+- quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
+- scaffold tool: `new_skill_scaffold`
+- health tool: `doctor`
 
-## When to use each surface
+## Validation Gate
 
-Use slash-command skills when:
+Maintainers should run the full gate before shipping runtime, scaffold, contract, docs, or agent-config changes:
 
-- you want the stable end-user workflow inside your coding agent
-- you want routed platform behavior rather than raw local primitives
+```bash
+.venv/bin/python3 -m unittest discover -s tests
+(cd runtime-kotlin && ./gradlew check)
+npx --yes agnix --strict .
+.venv/bin/python3 scripts/validate_agent_configs.py
+```
 
-Use the CLI when:
+`./gradlew check` is a maintainer validation command inside `runtime-kotlin/`; it is not part of normal installed command execution.
 
-- you are operating on local files, telemetry, validation, or workflow state directly
-- you are authoring, editing, scaffolding, or validating governed skills
-- you want text or JSON output outside the agent runtime
-
-Use MCP when:
-
-- your agent can call local tools directly
-- you want agent-accessible workflow state, telemetry, or scaffolding without shelling out
-- you want orchestration code to consume structured tool outputs rather than parsing CLI text
-
-## Customization
-
-Project-local customization flows through:
-
-- `AGENTS.md` for repo-wide guidance
-- `.agents/skill-overrides.md` for skill-specific overrides
-
-For rollout strategy, trust-vs-verify guidance, and team customization patterns, use [Getting Started for Teams](getting-started-for-teams.md).
-
-## Reference docs
+## Reference Docs
 
 - [Getting Started for Teams](getting-started-for-teams.md)
 - [Review Telemetry](review-telemetry.md)

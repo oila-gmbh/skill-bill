@@ -90,12 +90,10 @@ di
 - `skillbill.scaffold`: active Kotlin-owned governed loader and scaffold
   mutation surface, including manifest discovery, scaffold planning, symlink
   wiring, and rollback primitives.
-- `skillbill.launcher`: active runtime-selection surface. The installed
-  `skill-bill` script defaults to the Kotlin CLI through the launcher and
-  supports `SKILL_BILL_RUNTIME=python` as the rollback path. `skill-bill-mcp`
-  defaults to the Kotlin stdio server and supports
-  `SKILL_BILL_MCP_RUNTIME=python` as the rollback path. MCP telemetry
-  lifecycle tools are Kotlin-native.
+- `skillbill.launcher`: active packaged-runtime launch surface. The installed
+  `skill-bill` script enters the Kotlin CLI through the launcher, and
+  `skill-bill-mcp` enters the Kotlin stdio server. MCP telemetry lifecycle
+  tools are Kotlin-native.
 
 ## Boundary Rules
 
@@ -171,7 +169,7 @@ useful for the next refactors:
 - runtime surfaces must expose a documented `RuntimeSurfaceContract`; active
   workflow surfaces declare open/update/get/list/latest/resume/continue,
   scaffold/install declare their supported operations, and the launcher
-  declares the Python/Kotlin selection and fallback operations
+  declares packaged Kotlin CLI/MCP selection operations
 - `RuntimeContext` lives in `skillbill.model` and must not import
   infrastructure defaults; concrete adapters are provided by CLI/MCP contexts
   or DI composition roots
@@ -186,9 +184,9 @@ useful for the next refactors:
 
 ## Near-Term Refactor Order
 
-1. Prepare Phase 9 cutover by keeping
-   `docs/migrations/SKILL-27-cutover-checklist.md` current with the default
-   runtime, Kotlin opt-in path, validation gates, and rollback path.
+1. Keep `docs/migrations/SKILL-27-cutover-checklist.md` current with the
+   packaged Kotlin runtime, validation gates, and previous-release rollback
+   path.
 2. Continue replacing non-learning application-layer `Map<String, Any?>`
    results with typed results.
 3. Add contract DTOs and golden output fixtures for the remaining JSON

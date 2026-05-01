@@ -10,6 +10,27 @@ The release contract is:
 
 Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub prereleases.
 
+## Release notes
+
+### SKILL-32 Python Runtime Retirement
+
+Skill Bill now uses packaged Kotlin as the only normal CLI and MCP runtime.
+Rollback is to install the previous Skill Bill release, not to select a Python
+runtime.
+
+Removed environment variables:
+
+- `SKILL_BILL_RUNTIME`
+- `SKILL_BILL_MCP_RUNTIME`
+
+Removed files:
+
+- `skill_bill/cli.py`
+- `skill_bill/mcp_server.py`
+- `scripts/mcp_server_start.sh`
+- legacy Python runtime modules for review, learnings, workflow telemetry,
+  quality-check, PR description, and SQLite runtime support
+
 ## Versioning policy
 
 Skill Bill should stay on pre-1.0 SemVer until the install surface, taxonomy, and stable entry points feel settled.

@@ -1,3 +1,11 @@
+## [2026-05-01] python-runtime-retirement
+Areas: skill_bill.launcher, pyproject entrypoints, docs/migrations, tests
+- Retired Python CLI/MCP runtime selection: `skill-bill` and `skill-bill-mcp` now enter packaged Kotlin through `skill_bill.launcher`, and removed runtime env vars have no effect.
+- Deleted the Python runtime entry files and their active Python-side runtime tests after the Kotlin CLI/MCP contract net and 3b bridge teardown covered normal-use paths. reusable
+- Rollback guidance changed to install the previous release; do not reintroduce a Python runtime selector for rollback.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-04-30] feature-implement-large-work-decomposition
 Areas: skills/bill-feature-implement/, runtime-kotlin/runtime-domain/, tests/
 - Added a planning-stage decomposition mode for oversized `bill-feature-implement` runs: Step 3 now returns either `mode: "implement"` or terminal `mode: "decompose"` with ordered subtask specs and acceptance criteria. reusable
