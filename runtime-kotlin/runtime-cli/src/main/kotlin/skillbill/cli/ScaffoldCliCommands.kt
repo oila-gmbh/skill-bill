@@ -14,6 +14,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
+import skillbill.install.InstallOperations
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -443,7 +444,8 @@ class InstallAgentPathCommand(
   private val agent by argument(help = "Agent name.")
 
   override fun run() {
-    state.result = runPythonCli(listOf("install", "agent-path", agent), state)
+    val path = InstallOperations.agentPath(agent, state.userHome)
+    state.result = CliExecutionResult(exitCode = 0, stdout = "$path\n")
   }
 }
 
@@ -452,7 +454,10 @@ class InstallDetectAgentsCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("detect-agents", "List detected agents as 'name\\tpath' lines.") {
   override fun run() {
-    state.result = runPythonCli(listOf("install", "detect-agents"), state)
+    val output =
+      InstallOperations.detectAgentTargets(state.userHome)
+        .joinToString(separator = "") { target -> "${target.name}\t${target.path}\n" }
+    state.result = CliExecutionResult(exitCode = 0, stdout = output)
   }
 }
 
@@ -468,15 +473,12 @@ class InstallLinkSkillCommand(
   private val agent by option("--agent", help = "Optional agent name to label the install.").default("")
 
   override fun run() {
-    val args =
-      buildList {
-        add("install")
-        add("link-skill")
-        addAll(listOf("--source", source))
-        addAll(listOf("--target-dir", targetDir))
-        if (agent.isNotEmpty()) addAll(listOf("--agent", agent))
-      }
-    state.result = runPythonCli(args, state)
+    InstallOperations.linkSkill(
+      source = Path.of(source),
+      targetDir = Path.of(targetDir),
+      agent = agent,
+    )
+    state.result = CliExecutionResult(exitCode = 0, stdout = "")
   }
 }
 

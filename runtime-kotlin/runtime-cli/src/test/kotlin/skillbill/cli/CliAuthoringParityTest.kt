@@ -59,7 +59,7 @@ class CliAuthoringParityTest {
   }
 
   @Test
-  fun `python-backed authoring validation commands stay available through the kotlin cli`() {
+  fun `python-backed authoring validation command stays available through the kotlin cli`() {
     val repoRoot = outerRepoRoot()
     val tempDir = Files.createTempDirectory("skillbill-cli-python-backed-validation")
     val context = CliRuntimeContext(userHome = tempDir)
@@ -76,24 +76,8 @@ class CliAuthoringParityTest {
         ),
         context,
       )
-    val doctorSkill =
-      runJson(
-        listOf(
-          "doctor",
-          "skill",
-          "bill-feature-implement",
-          "--repo-root",
-          repoRoot.toString(),
-          "--content",
-          "none",
-          "--format",
-          "json",
-        ),
-        context,
-      )
 
     assertEquals("pass", validated["status"])
-    assertEquals("pass", doctorSkill["status"])
   }
 }
 

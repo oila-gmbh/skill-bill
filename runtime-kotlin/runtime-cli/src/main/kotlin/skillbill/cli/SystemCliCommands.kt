@@ -38,18 +38,25 @@ class DoctorCliCommand(
     if (subject == null) {
       state.complete(service.doctor(state.dbOverride), format)
     } else {
-      state.result =
-        runPythonCli(
-          buildList {
-            add("doctor")
-            add(subject.orEmpty())
-            skillName?.let { add(it) }
-            addAll(listOf("--repo-root", repoRoot))
-            addAll(listOf("--content", content))
-            addAll(listOf("--format", format.wireName))
-          },
-          state,
-        )
+      state.result = retiredSubjectResult(subject.orEmpty(), skillName.orEmpty(), repoRoot, content)
     }
   }
+}
+
+private fun retiredSubjectResult(
+  subject: String,
+  skillName: String,
+  repoRoot: String,
+  content: String,
+): CliExecutionResult {
+  val replacementSkillName = skillName.ifBlank { "<skill-name>" }
+  val replacement = when (subject) {
+    "skill" -> "skill-bill show $replacementSkillName --repo-root $repoRoot --content $content"
+    else -> "skill-bill doctor"
+  }
+  val message = when (subject) {
+    "skill" -> "doctor skill was retired in SKILL-32; use `$replacement` instead."
+    else -> "doctor subject '$subject' is unsupported; use `$replacement` instead."
+  }
+  return CliExecutionResult(exitCode = 1, stdout = message)
 }
