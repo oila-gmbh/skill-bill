@@ -475,6 +475,7 @@ class CliRuntimeTest {
   @Test
   fun `install commands expose agent path lookup and link-skill`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install")
+    Files.createDirectories(tempDir.resolve(".claude"))
     val context = CliRuntimeContext(userHome = tempDir)
 
     val agentPathResult = CliRuntime.run(listOf("install", "agent-path", "codex"), context)
@@ -502,10 +503,52 @@ class CliRuntimeTest {
     assertEquals(0, agentPathResult.exitCode, agentPathResult.stdout)
     assertEquals(tempDir.resolve(".agents/skills").toString(), agentPathResult.stdout.trim())
     assertEquals(0, detectAgentsResult.exitCode, detectAgentsResult.stdout)
-    assertEquals("", detectAgentsResult.stdout.trim())
+    assertEquals("claude\t${tempDir.resolve(".claude/commands")}", detectAgentsResult.stdout.trim())
     assertEquals(0, linkResult.exitCode, linkResult.stdout)
     assertTrue(Files.isSymbolicLink(targetDir.resolve("skill-source")))
     assertEquals(sourceSkill.toRealPath(), targetDir.resolve("skill-source").toRealPath())
+  }
+
+  @Test
+  fun `doctor skill subject is retired with stable replacement`() {
+    val result =
+      CliRuntime.run(
+        listOf(
+          "doctor",
+          "skill",
+          "bill-feature-implement",
+          "--repo-root",
+          ".",
+          "--content",
+          "none",
+          "--format",
+          "json",
+        ),
+      )
+
+    assertEquals(1, result.exitCode)
+    assertEquals(
+      "doctor skill was retired in SKILL-32; use " +
+        "`skill-bill show bill-feature-implement --repo-root . --content none` instead.",
+      result.stdout,
+    )
+  }
+
+  @Test
+  fun `install and doctor subject commands do not call python bridge helpers`() {
+    val scaffoldSource = Files.readString(Path.of("src/main/kotlin/skillbill/cli/ScaffoldCliCommands.kt"))
+    val systemSource = Files.readString(Path.of("src/main/kotlin/skillbill/cli/SystemCliCommands.kt"))
+
+    listOf(
+      commandBlock(scaffoldSource, "class InstallAgentPathCommand", "class InstallDetectAgentsCommand"),
+      commandBlock(scaffoldSource, "class InstallDetectAgentsCommand", "class InstallLinkSkillCommand"),
+      commandBlock(scaffoldSource, "class InstallLinkSkillCommand", "internal fun runPythonCli"),
+      commandBlock(systemSource, "class DoctorCliCommand", "private fun retiredSubjectResult"),
+    ).forEach { commandSource ->
+      assertFalse(commandSource.contains("runPythonCli"), commandSource)
+      assertFalse(commandSource.contains("runPythonScaffoldCli"), commandSource)
+      assertFalse(commandSource.contains("pythonProcess"), commandSource)
+    }
   }
 
   @Test
@@ -677,6 +720,14 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
+}
+
+private fun commandBlock(source: String, startMarker: String, endMarker: String): String {
+  val startIndex = source.indexOf(startMarker)
+  val endIndex = source.indexOf(endMarker, startIndex + startMarker.length)
+  require(startIndex >= 0) { "Missing source marker: $startMarker" }
+  require(endIndex > startIndex) { "Missing source marker: $endMarker" }
+  return source.substring(startIndex, endIndex)
 }
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {

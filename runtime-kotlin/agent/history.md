@@ -1,3 +1,12 @@
+## [2026-04-30] install-and-doctor-ports
+Areas: runtime-cli install commands, runtime-core install facade, runtime-cli doctor subject routing, CLI source-reference tests
+- Ported `install agent-path`, `install detect-agents`, and `install link-skill` from Python bridge calls to a public `InstallOperations` facade over internal install primitives. reusable
+- Retired `doctor skill` on the Kotlin CLI with a stable replacement message while leaving subjectless `doctor` on the native `SystemService` path.
+- Reusable guardrail: when bridge helpers must remain for deferred commands, add targeted source-reference tests around the newly ported command blocks instead of promoting broad architecture bans early.
+- Known limitation: scaffold/authoring commands and launcher Python fallback remain owned by later 3b/3c subtasks.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-04-30] kotlin-native-contract-tests
 Areas: runtime-cli golden fixtures, runtime-mcp golden fixtures, runtime architecture tests, runtime surface contracts
 - Added golden JSON contract coverage for Kotlin-native CLI/MCP surfaces while explicitly deferring Python-backed scaffold/authoring/install and `doctor <subject>` work to 3b.
