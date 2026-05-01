@@ -17,11 +17,12 @@ descriptions, and skill authoring. The same governance model is useful outside
 coding, especially in journalism, where the workflow has noisy inputs, high
 verification cost, and strong traceability requirements.
 
-Readian is a news recommendation service with proper authentication. It can
-surface relevant news items, but a gaming journalist needs more than a ranked
-feed. They need an editorial assignment desk that can:
+Readian is a news recommendation service with proper authentication. Its MCP
+client can fetch Spotlight articles and articles for subscribed topics, but a
+gaming journalist needs more than a ranked feed. They need an editorial
+assignment desk that can:
 
-- fetch today's relevant recommendations
+- fetch today's relevant Spotlight and subscribed-topic articles
 - cluster related stories
 - identify what is actually worth writing about
 - verify claims against primary and reputable sources
@@ -111,23 +112,32 @@ profiles or add-ons.
 
 ### Readian MCP server
 
-The Readian MCP server is the only component that talks directly to Readian's
-authenticated API.
+The `readian-mcp-client` is ready and should be the initial integration point.
+It is the only component that talks directly to Readian's authenticated API.
+The editorial workflow should consume its tools instead of adding a separate
+Readian API adapter inside Skill Bill.
 
-Minimum tool surface:
+Known available fetch modes:
+
+- fetch articles from Spotlight
+- fetch articles for a topic when the user is subscribed to that topic
+
+Minimum required tool surface:
 
 ```text
 readian_auth_status
-readian_get_today_feed
-readian_get_recommendations
+readian_get_spotlight
+readian_get_articles_for_topic_query
 readian_get_article
-readian_save_candidate
-readian_mark_story_status
 ```
 
-Later tool surface:
+Optional/later tool surface:
 
 ```text
+readian_get_subscribed_topics
+readian_search_topics
+readian_save_candidate
+readian_mark_story_status
 readian_search_archive
 readian_get_related_articles
 readian_get_source_metadata
@@ -363,23 +373,30 @@ Exit criteria:
 - Workflow artifacts are stable enough to validate.
 - No Readian secrets can cross the agent boundary by design.
 
-### Phase 2 - Readian MCP MVP
+### Phase 2 - Readian MCP client integration
 
-Create the minimal Readian MCP server/tooling needed by the workflow.
+Integrate the existing `readian-mcp-client` into the workflow. Do not build a
+new Readian client unless the existing MCP client lacks a required capability.
 
 Tasks:
 
-- Implement `readian_auth_status`.
-- Implement `readian_get_today_feed`.
-- Implement `readian_get_recommendations`.
-- Implement `readian_get_article`.
-- Implement `readian_save_candidate` if Readian supports candidate saves.
-- Add auth-required behavior and token-redaction tests.
-- Add fixture-backed tests for feed/recommendation payload normalization.
+- Confirm the installed MCP client exposes `readian_auth_status`.
+- Confirm Spotlight article fetching and map it to the workflow's daily feed
+  source.
+- Confirm topic article fetching through subscription-aware topic queries and
+  map it to explicit beat/topic runs.
+- Confirm article detail fetch behavior for selected candidates.
+- Add or update fixture-backed tests for Spotlight and topic-query payload
+  normalization.
+- Keep auth-required behavior and token-redaction tests as integration
+  requirements.
+- Treat save/status tools as optional unless the existing client already
+  supports them.
 
 Exit criteria:
 
-- MCP tools can fetch today's authenticated recommendation data.
+- MCP tools can fetch authenticated Spotlight articles.
+- MCP tools can fetch authenticated subscribed-topic articles.
 - Expired sessions refresh without exposing tokens.
 - Missing auth returns a clear `auth_required` error.
 
@@ -487,6 +504,9 @@ Exit criteria:
 4. The Readian MCP integration returns a clear `auth_required` error when
    necessary and keeps refresh/session material out of tool responses, logs,
    workflow artifacts, and telemetry.
+   It exposes the real initial article fetch tools:
+   `readian_get_spotlight` and
+   `readian_get_articles_for_topic_query`.
 
 5. The candidate board ranks story candidates using a structured rubric that
    includes at least newsworthiness, timeliness, source confidence, audience
@@ -534,8 +554,10 @@ Exit criteria:
    should it start as a governed skill-only MVP and add persistence after the
    workflow proves useful?
 
-   Recommendation: start with the skill-only MVP if Readian MCP work is the
-   biggest unknown; add workflow-state in Phase 5.
+   Recommendation: start with the skill-only MVP even though
+   `readian-mcp-client` is ready. The highest remaining uncertainty is the
+   editorial contract and candidate-board usefulness, not the basic Readian
+   fetch path. Add workflow-state in Phase 5.
 
 2. Should the first workflow be named `bill-gaming-editorial-desk` or the more
    generic `bill-news-editorial-desk` with a gaming profile?

@@ -17,6 +17,15 @@ Areas: skills/, platform-packs/, scripts/validate_agent_configs.py, skill_bill/,
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
 
+## [2026-04-25] editorial-workflows-readian
+Areas: skills/bill-editorial-assignment-desk/, runtime-kotlin/runtime-mcp/, scripts/, tests/, README.md
+- Added the first non-coding governed workflow as `bill-editorial-assignment-desk`: a skill-only Readian-backed editorial assignment desk with stable step ids/artifacts, candidate-board pause, and story-pack boundary. reusable
+- Established editorial contracts for ranking, source verification, social signal, ethics/risk, and selected story packs without introducing platform packs or durable editorial workflow state yet. reusable
+- Aligned Readian MCP boundary tools with the real client fetch modes (`readian_get_spotlight`, `readian_get_articles_for_topic_query`) plus recursive secret redaction so auth/session material stays below MCP and unauthenticated calls return `auth_required`. reusable
+- Validator and tests now pin editorial workflow markers, source/ranking contract markers, Readian auth-required behavior, token redaction, and README catalog presence.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented
+
 ## [2026-04-23] kotlin-runtime-port phase 4
 Areas: runtime-kotlin/, docs/migrations/SKILL-27-kotlin-runtime-port.md, .feature-specs/SKILL-27-surface-integration/
 - Replaced the marker-only `runtime-kotlin` CLI and MCP surfaces with real adapters for the review/learnings/stats/telemetry slice while keeping command/tool names, payload fields, and orchestrated review semantics aligned with the Python oracle. reusable

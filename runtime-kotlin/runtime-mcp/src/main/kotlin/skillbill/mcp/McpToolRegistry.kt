@@ -58,6 +58,12 @@ object McpToolRegistry {
       "pr_description_generated",
       "quality_check_finished",
       "quality_check_started",
+      "readian_auth_status",
+      "readian_get_article",
+      "readian_get_articles_for_topic_query",
+      "readian_get_spotlight",
+      "readian_mark_story_status",
+      "readian_save_candidate",
       "resolve_learnings",
       "review_stats",
       "telemetry_proxy_capabilities",
@@ -93,6 +99,13 @@ object McpToolRegistry {
       "pr_description_generated" to "Record PR description generation telemetry.",
       "quality_check_finished" to "Record completion of a quality-check session.",
       "quality_check_started" to "Record start of a quality-check session.",
+      "readian_auth_status" to "Report whether the Readian MCP boundary has an authenticated session.",
+      "readian_get_article" to "Fetch a Readian article through the authenticated MCP boundary.",
+      "readian_get_articles_for_topic_query" to
+        "Fetch Readian articles for a topic query through the authenticated MCP boundary.",
+      "readian_get_spotlight" to "Fetch Readian Spotlight articles through the authenticated MCP boundary.",
+      "readian_mark_story_status" to "Mark story status through the authenticated Readian MCP boundary.",
+      "readian_save_candidate" to "Save an editorial candidate through the authenticated Readian MCP boundary.",
       "resolve_learnings" to "Resolve active learnings for a review context.",
       "review_stats" to "Show review acceptance metrics.",
       "telemetry_proxy_capabilities" to "Show configured telemetry proxy capabilities.",
@@ -345,6 +358,43 @@ object McpToolRegistry {
           "review_run_id" to stringSchema(),
           "decisions" to arraySchema(stringSchema()),
           "orchestrated" to booleanSchema,
+        ),
+      ),
+      "readian_get_article" to passthroughObjectSchema(
+        required = listOf("article_id"),
+        properties = mapOf(
+          "article_id" to stringSchema(),
+        ),
+      ),
+      "readian_get_articles_for_topic_query" to passthroughObjectSchema(
+        required = listOf("topic_query"),
+        properties = mapOf(
+          "topic_query" to stringSchema(),
+          "date" to stringSchema(),
+          "start_date" to stringSchema(),
+          "end_date" to stringSchema(),
+          "subscribed_only" to booleanSchema,
+          "limit" to integerSchema,
+        ),
+      ),
+      "readian_get_spotlight" to passthroughObjectSchema(
+        properties = mapOf(
+          "date" to stringSchema(),
+          "limit" to integerSchema,
+        ),
+      ),
+      "readian_save_candidate" to passthroughObjectSchema(
+        required = listOf("candidate_id"),
+        properties = mapOf(
+          "candidate_id" to stringSchema(),
+          "notes" to stringSchema(),
+        ),
+      ),
+      "readian_mark_story_status" to passthroughObjectSchema(
+        required = listOf("story_id", "status"),
+        properties = mapOf(
+          "story_id" to stringSchema(),
+          "status" to stringSchema(),
         ),
       ),
     )

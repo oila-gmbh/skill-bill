@@ -156,6 +156,7 @@ RUNTIME_SUPPORTING_FILES: dict[str, tuple[str, ...]] = {
   "bill-feature-guard": ("shell-ceremony.md",),
   "bill-feature-guard-cleanup": ("shell-ceremony.md",),
   "bill-grill-plan": ("shell-ceremony.md",),
+  "bill-editorial-assignment-desk": ("shell-ceremony.md",),
   "bill-skill-remove": ("shell-ceremony.md",),
   "bill-create-skill": ("shell-ceremony.md",),
   "bill-unit-test-value-check": ("shell-ceremony.md",),
