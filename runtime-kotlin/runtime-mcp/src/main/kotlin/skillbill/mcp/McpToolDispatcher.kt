@@ -48,6 +48,17 @@ object McpToolDispatcher {
       "pr_description_generated" to ::prDescriptionGenerated,
       "quality_check_finished" to ::qualityCheckFinished,
       "quality_check_started" to ::qualityCheckStarted,
+      "readian_auth_status" to { _, context -> ReadianMcpRuntime.authStatus(context) },
+      "readian_get_article" to
+        { arguments, context -> ReadianMcpRuntime.call("readian_get_article", arguments, context) },
+      "readian_get_articles_for_topic_query" to
+        { arguments, context -> ReadianMcpRuntime.call("readian_get_articles_for_topic_query", arguments, context) },
+      "readian_get_spotlight" to
+        { arguments, context -> ReadianMcpRuntime.call("readian_get_spotlight", arguments, context) },
+      "readian_mark_story_status" to
+        { arguments, context -> ReadianMcpRuntime.call("readian_mark_story_status", arguments, context) },
+      "readian_save_candidate" to
+        { arguments, context -> ReadianMcpRuntime.call("readian_save_candidate", arguments, context) },
       "resolve_learnings" to ::resolveLearnings,
       "review_stats" to
         { arguments, context -> McpRuntime.reviewStats(arguments.optionalString("review_run_id"), context) },

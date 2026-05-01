@@ -72,6 +72,12 @@ class McpStdioServerTest {
         "pr_description_generated",
         "quality_check_finished",
         "quality_check_started",
+        "readian_auth_status",
+        "readian_get_article",
+        "readian_get_articles_for_topic_query",
+        "readian_get_spotlight",
+        "readian_mark_story_status",
+        "readian_save_candidate",
         "resolve_learnings",
         "review_stats",
         "telemetry_proxy_capabilities",
@@ -285,6 +291,148 @@ class McpStdioServerTest {
     assertEquals("fix_applied", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[0]))["outcome_type"])
     assertEquals("fix_rejected", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[1]))["outcome_type"])
   }
+
+  @Test
+  fun `readian spotlight tool reports unavailable when standalone boundary cannot launch`() {
+    val tempDir = Files.createTempDirectory("skillbill-readian-auth-required")
+    val context =
+      McpRuntimeContext(
+        environment = mapOf("SKILL_BILL_READIAN_MCP_COMMAND" to tempDir.resolve("missing-readian-mcp").toString()),
+        userHome = tempDir,
+      )
+
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 1,
+            name = "readian_get_spotlight",
+            arguments = mapOf("beat" to "pc-games"),
+          ),
+          context,
+        ),
+      )
+    val result = response.map("result")
+    val payload = toolPayload(result)
+
+    assertEquals(false, result["isError"], payload.toString())
+    assertEquals("error", payload["status"])
+    assertEquals("readian_mcp_unavailable", payload["error_type"])
+  }
+
+  @Test
+  fun `readian topic query bridges skill bill arguments to standalone mcp query arguments`() {
+    val tempDir = Files.createTempDirectory("skillbill-readian-bridge")
+    val capturedInput = tempDir.resolve("captured-stdin.jsonl")
+    val bridgeResponse =
+      """{"jsonrpc":"2.0","id":2,"result":{"isError":false,"structuredContent":""" +
+        """{"status":"ok","tool":"readian_get_articles_for_topic_query","query":"pc gaming"}}}"""
+    val script = fakeReadianMcpScript(
+      tempDir,
+      bridgeResponse,
+    )
+    val context =
+      McpRuntimeContext(
+        environment = mapOf(
+          "SKILL_BILL_READIAN_MCP_COMMAND" to script.toString(),
+          "CAPTURE_FILE" to capturedInput.toString(),
+        ),
+        userHome = tempDir,
+      )
+
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 2,
+            name = "readian_get_articles_for_topic_query",
+            arguments = mapOf(
+              "topic_query" to "pc gaming",
+              "date" to "2026-04-26",
+              "subscribed_only" to true,
+            ),
+          ),
+          context,
+        ),
+      )
+    val payload = toolPayload(response.map("result"))
+    val captured = Files.readString(capturedInput)
+
+    assertEquals("ok", payload["status"])
+    assertEquals("pc gaming", payload["query"])
+    assertTrue(captured.contains(""""query":"pc gaming""""))
+    assertFalse(captured.contains(""""topic_query":"""))
+  }
+
+  @Test
+  fun `readian topic query tool exposes authenticated topic arguments`() {
+    val tempDir = Files.createTempDirectory("skillbill-readian-topic-query")
+    val context =
+      McpRuntimeContext(
+        environment = mapOf("SKILL_BILL_READIAN_AUTHENTICATED" to "true"),
+        userHome = tempDir,
+      )
+
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 2,
+            name = "readian_get_articles_for_topic_query",
+            arguments = mapOf(
+              "topic_query" to "pc gaming",
+              "date" to "2026-04-26",
+              "subscribed_only" to true,
+            ),
+          ),
+          context,
+        ),
+      )
+    val payload = toolPayload(response.map("result"))
+    val data = requireNotNull(JsonSupport.anyToStringAnyMap(payload["data"]))
+
+    assertEquals("ok", payload["status"])
+    assertEquals("readian_get_articles_for_topic_query", payload["tool"])
+    assertEquals("topic_query", data["feed_source"])
+    assertEquals("pc gaming", data["topic_query"])
+    assertEquals(true, data["subscribed_only"])
+  }
+
+  @Test
+  fun `readian tool responses redact token and session material from log safe payloads`() {
+    val tempDir = Files.createTempDirectory("skillbill-readian-redaction")
+    val context =
+      McpRuntimeContext(
+        environment = mapOf("SKILL_BILL_READIAN_AUTHENTICATED" to "true"),
+        userHome = tempDir,
+      )
+
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 2,
+            name = "readian_save_candidate",
+            arguments = mapOf(
+              "candidate_id" to "candidate-1",
+              "refresh_token" to "readian_rt_supersecret",
+              "notes" to "authorization=readian_token_should_not_leak Bearer abc.def.ghi",
+              "nested" to mapOf("session_cookie" to "readian_session_supersecret"),
+            ),
+          ),
+          context,
+        ),
+      )
+    val payload = toolPayload(response.map("result"))
+    val serialized = JsonSupport.mapToJsonString(payload)
+
+    assertEquals("ok", payload["status"])
+    assertFalse(serialized.contains("readian_rt_supersecret"), serialized)
+    assertFalse(serialized.contains("readian_token_should_not_leak"), serialized)
+    assertFalse(serialized.contains("readian_session_supersecret"), serialized)
+    assertFalse(serialized.contains("abc.def.ghi"), serialized)
+    assertTrue(serialized.contains("[REDACTED]"), serialized)
+  }
 }
 
 private val priorityStrictToolNames =
@@ -381,6 +529,25 @@ private fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>)
     ),
   ),
 )
+
+private fun fakeReadianMcpScript(directory: Path, response: String): Path {
+  val script = directory.resolve("fake-readian-mcp")
+  Files.writeString(
+    script,
+    """
+    #!/bin/sh
+    : > "${'$'}CAPTURE_FILE"
+    count=0
+    while [ "${'$'}count" -lt 3 ] && IFS= read -r line; do
+      printf '%s\n' "${'$'}line" >> "${'$'}CAPTURE_FILE"
+      count="${'$'}((count + 1))"
+    done
+    printf '%s\n' '$response'
+    """.trimIndent() + "\n",
+  )
+  script.toFile().setExecutable(true)
+  return script
+}
 
 private fun toolPayload(result: Map<String, Any?>): Map<String, Any?> {
   val content = result["content"] as List<*>

@@ -174,9 +174,7 @@ UNRESOLVED_PLACEHOLDER_PATTERN = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)
 CANONICAL_SKILL_MD_LEGACY_MARKERS: tuple[str, ...] = ()
 
 CANONICAL_SKILL_MD_ENFORCEMENT_DISABLED = False
-CANONICAL_SKILL_MD_FORCE_SKIP_DIRECTORIES: tuple[str, ...] = (
-  "skills/bill-editorial-assignment-desk",
-)
+CANONICAL_SKILL_MD_FORCE_SKIP_DIRECTORIES: tuple[str, ...] = ()
 
 
 def validate_skill_md_shape(skill_md_path: Path, *, enforce: bool = True) -> None:
@@ -324,6 +322,7 @@ def main() -> int:
   validate_skill_references(root, skill_names, issues)
   validate_orchestrator_passthrough(root, issues)
   validate_workflow_driven_skills(root, issues)
+  validate_editorial_workflow_skills(root, issues)
   validate_feature_implement_shell_contract(root, issues)
   validate_feature_verify_shell_contract(root, issues)
   validate_skill_override_markdown(
@@ -615,6 +614,86 @@ WORKFLOW_DRIVEN_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
     ),
   ),
 )
+EDITORIAL_WORKFLOW_SKILLS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
+  (
+    "skills/bill-editorial-assignment-desk",
+    ("SKILL.md", "content.md"),
+    (
+      "## Readian MCP Boundary",
+      "## Stable Step Ids",
+      "## Stable Artifact Names",
+      "## Candidate Selection Pause",
+      "## Story Pack Boundary",
+      "`collect_editorial_profile`",
+      "`fetch_feed_candidates`",
+      "`cluster_stories`",
+      "`rank_candidates`",
+      "`verify_sources`",
+      "`social_signal_check`",
+      "`ethics_risk_check`",
+      "`present_candidate_board`",
+      "`build_selected_story_pack`",
+      "`finish`",
+      "`editorial_profile`",
+      "`raw_feed_digest`",
+      "`story_clusters`",
+      "`ranked_candidates`",
+      "`source_verification_report`",
+      "`social_signal_report`",
+      "`ethics_risk_report`",
+      "`candidate_board`",
+      "`selected_story_pack`",
+      "readian_auth_status",
+      "readian_get_spotlight",
+      "readian_get_articles_for_topic_query",
+      "readian_get_article",
+      "readian_save_candidate",
+      "readian_mark_story_status",
+      "auth_required",
+      "@readian/mcp-client",
+      "npm install -g @readian/mcp-client",
+      "readian-mcp status",
+      "\"mcpServers\"",
+      "\"args\": [\"stdio\"]",
+      "which readian-mcp",
+      "Do not publish, tag, or release",
+    ),
+    (
+      "candidate_ranking_contract_v1",
+      "source_verification_contract_v1",
+      "social_signal_contract_v1",
+      "ethics_risk_contract_v1",
+      "selected_story_pack_contract_v1",
+      "newsworthiness",
+      "timeliness",
+      "source_confidence",
+      "audience_fit",
+      "angle_strength",
+      "coverage_gap",
+      "social_signal",
+      "effort",
+      "risk",
+      "confirmed_fact",
+      "reputable_reporting",
+      "community_claim",
+      "rumor",
+      "leak",
+      "speculation",
+      "unsupported_claims",
+      "missing_primary_sources",
+      "sentiment",
+      "evidence",
+      "breadth_caveats",
+      "confidence_caveats",
+      "blocked",
+      "warning",
+      "clear",
+      "verified_fact_table",
+      "unanswered_questions",
+      "suggested_structure",
+    ),
+  ),
+)
 FEATURE_IMPLEMENT_SHELL_REQUIRED_MARKERS: tuple[str, ...] = (
   "Step id: `assess`",
   "Step id: `create_branch`",
@@ -686,6 +765,46 @@ def validate_workflow_driven_skills(root: Path, issues: list[str]) -> None:
       if marker not in combined_text:
         issues.append(
           f"{skill_dir}: workflow-driven skill must include '{marker}'"
+        )
+
+
+def validate_editorial_workflow_skills(root: Path, issues: list[str]) -> None:
+  """Editorial workflow skills must retain evidence and selection contracts.
+
+  Editorial workflows are intentionally not platform packs. The validator pins
+  their skill-only MVP contract so future edits cannot silently drop the
+  Readian MCP boundary, source classification, candidate ranking rubric, social
+  caveats, risk statuses, or journalist selection pause.
+  """
+  for skill_dir_rel, shell_files, shell_markers, contract_markers in EDITORIAL_WORKFLOW_SKILLS:
+    skill_dir = root / skill_dir_rel
+    if not skill_dir.exists():
+      continue
+
+    shell_text = ""
+    for file_name in shell_files:
+      file_path = skill_dir / file_name
+      if file_path.exists():
+        shell_text += file_path.read_text(encoding="utf-8") + "\n"
+
+    for marker in shell_markers:
+      if marker not in shell_text:
+        issues.append(
+          f"{skill_dir}: editorial workflow skill must include '{marker}'"
+        )
+
+    contract_text = ""
+    for file_name in ("content.md", "reference.md"):
+      file_path = skill_dir / file_name
+      if file_path.exists():
+        contract_text += file_path.read_text(encoding="utf-8") + "\n"
+      else:
+        issues.append(f"{skill_dir}: editorial workflow skill is missing '{file_name}'")
+
+    for marker in contract_markers:
+      if marker not in contract_text:
+        issues.append(
+          f"{skill_dir}: editorial workflow contract must include '{marker}'"
         )
 
 

@@ -14,6 +14,16 @@ internal fun objectSchema(
   properties: Map<String, Map<String, Any?>> = emptyMap(),
 ): Map<String, Any?> = McpToolSpec.strictObjectSchema(required = required, properties = properties)
 
+internal fun passthroughObjectSchema(
+  required: List<String> = emptyList(),
+  properties: Map<String, Map<String, Any?>> = emptyMap(),
+): Map<String, Any?> = linkedMapOf<String, Any?>(
+  "type" to "object",
+  "additionalProperties" to true,
+  "properties" to properties,
+  "required" to required,
+)
+
 internal fun workflowIdSchema(): Map<String, Any?> = objectSchema(
   required = listOf("workflow_id"),
   properties = mapOf("workflow_id" to stringSchema()),
