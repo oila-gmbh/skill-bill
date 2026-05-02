@@ -420,6 +420,7 @@ class InstallScriptTest(unittest.TestCase):
       ".codex",
       ".codex/agents",
       ".config/opencode",
+      ".config/opencode/agents",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
 
@@ -448,6 +449,32 @@ class InstallScriptTest(unittest.TestCase):
         link_path = agents_dir / toml_name
         self.assertTrue(link_path.is_symlink(), f"{link_path} should be a symlink")
         self.assertEqual(link_path.resolve(), pack_root / toml_name)
+
+  def test_install_links_opencode_native_subagent_markdown(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      result = self.run_installer(temp_home, "opencode\nKMP\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      agents_dir = Path(temp_home) / ".config" / "opencode" / "agents"
+      self.assertTrue(agents_dir.is_dir(), agents_dir)
+
+      pilot_mds = (
+        "bill-kmp-code-review-ui.md",
+        "bill-kmp-code-review-ux-accessibility.md",
+      )
+      pack_root = (
+        ROOT
+        / "platform-packs"
+        / "kmp"
+        / "code-review"
+        / "bill-kmp-code-review"
+        / "opencode-agents"
+      )
+      for md_name in pilot_mds:
+        link_path = agents_dir / md_name
+        self.assertTrue(link_path.is_symlink(), f"{link_path} should be a symlink")
+        self.assertEqual(link_path.resolve(), pack_root / md_name)
 
   def telemetry_config(self, config_path: Path) -> dict[str, object]:
     return json.loads(config_path.read_text(encoding="utf-8"))

@@ -48,11 +48,12 @@ Supported install targets:
 | GLM | `~/.glm/commands/` |
 | OpenAI Codex (skills) | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` or `~/.agents/agents/` |
-| OpenCode | `~/.config/opencode/skills/` |
+| OpenCode (skills) | `~/.config/opencode/skills/` |
+| OpenCode (native subagent markdown) | `~/.config/opencode/agents/` |
 
 Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
 
-On Codex, orchestrators that delegate to specialists also install native subagent TOML defs into `~/.codex/agents/` (with `~/.agents/agents/` fallback). Codex spawns these subagents via natural language, resolving the spawn instruction by `name` against the installed TOMLs. Today this covers the `bill-kmp-code-review` specialists; other orchestrators continue to run as a single Codex conversation until their TOML defs ship in follow-up issues.
+On Codex and OpenCode, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Codex installs TOMLs discovered from `platform-packs/<slug>/**/codex-agents/*.toml` into `~/.codex/agents/` (with `~/.agents/agents/` fallback) and resolves spawn instructions by TOML `name`. OpenCode installs markdown agents discovered from `platform-packs/<slug>/**/opencode-agents/*.md` into `~/.config/opencode/agents/` and resolves by filename-derived agent name; operators can also invoke them manually with `@<name>`. Today this covers the `bill-kmp-code-review` specialists; other orchestrators continue to run as a single conversation until their native subagent definitions ship in follow-up issues.
 
 ## Runtime Model
 
