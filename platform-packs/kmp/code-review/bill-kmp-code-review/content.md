@@ -119,7 +119,8 @@ Resolve the scope before reviewing. If the caller asks for staged changes, inspe
 
 ## Subagent Spawn Runtime Notes
 
-Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kmp-code-review-ui` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in `~/.codex/agents/` (with `~/.agents/agents/` fallback), respecting `agents.max_threads` and `agents.max_depth`.
+Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kmp-code-review-ui` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. On OpenCode, the spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-ui` or `@bill-kmp-code-review-ux-accessibility`.
 
 KMP fan-out is at most 2 specialists per wave (`bill-kmp-code-review-ui`, `bill-kmp-code-review-ux-accessibility`), which fits comfortably within Codex's `agents.max_threads = 6` default.
 
+OpenCode does not document a different native concurrency cap for these markdown subagents, so keep the Skill Bill conservative limit of 6 or fewer specialists per wave.

@@ -1,3 +1,12 @@
+## [2026-05-02] opencode-native-subagents
+Areas: skill_bill/install.py, skill_bill/__main__.py, install.sh, uninstall.sh, platform-packs/kmp/code-review/bill-kmp-code-review/, README.md, docs/, tests/
+- Mirrored the SKILL-33 Codex native subagent precedent for OpenCode: added `~/.config/opencode/agents/` markdown-agent install primitives, CLI delegates, and shell fallbacks that discover `platform-packs/<slug>/**/opencode-agents/*.md` without hardcoding pack slugs. reusable
+- Authored OpenCode markdown agents for the 2 KMP specialist reviewers with filename/name parity, required `mode: subagent` frontmatter, and the shared F-XXX Risk Register contract inlined because global OpenCode agents cannot rely on sibling repo sidecars. reusable
+- Kept `bill-kmp-code-review` runtime-neutral and documented that OpenCode resolves specialists by installed markdown name, including manual `@<name>` invocation; OpenCode has no documented conflicting concurrency cap, so the conservative <=6 specialist-wave limit remains.
+- Extended install/uninstall and markdown validation coverage alongside README/getting-started docs; baseline Kotlin and other orchestrators remain out of scope.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-02] codex-native-subagents
 Areas: skill_bill/install.py, skill_bill/__main__.py, install.sh, uninstall.sh, platform-packs/kmp/code-review/bill-kmp-code-review/, README.md, docs/, tests/
 - Added a `_codex_agents_path` primitive in `skill_bill/install.py` that mirrors the existing `_codex_path` skills primitive: prefers `~/.codex/agents/`, falls back to `~/.agents/agents/`. Exposed it as a secondary Codex install surface (`detect_codex_agents_target`) and added manifest-driven discovery (`discover_codex_agent_tomls`) plus install/uninstall helpers that walk `platform-packs/<slug>/**/codex-agents/*.toml` rather than hardcoding any pack slug. Reuses the same `InstallTransaction` model rather than introducing a parallel transaction system. reusable, follows [2026-04-17] new-skill-scaffolder precedent.

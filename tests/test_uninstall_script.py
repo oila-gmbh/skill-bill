@@ -107,6 +107,7 @@ class UninstallScriptTest(unittest.TestCase):
       ".agents/skills",
       ".agents/agents",
       ".config/opencode/skills",
+      ".config/opencode/agents",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
 
@@ -135,6 +136,36 @@ class UninstallScriptTest(unittest.TestCase):
           link_path = parent / toml_name
           link_path.symlink_to(pack_root / toml_name)
           seeded_links.append(link_path)
+
+      uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
+      self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)
+
+      for link_path in seeded_links:
+        self.assertFalse(link_path.exists(), f"{link_path} should have been removed")
+        self.assertFalse(link_path.is_symlink(), f"{link_path} should have been unlinked")
+
+  def test_uninstall_removes_opencode_native_subagent_markdown(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      pack_root = (
+        ROOT
+        / "platform-packs"
+        / "kmp"
+        / "code-review"
+        / "bill-kmp-code-review"
+        / "opencode-agents"
+      )
+      pilot_mds = (
+        "bill-kmp-code-review-ui.md",
+        "bill-kmp-code-review-ux-accessibility.md",
+      )
+
+      seeded_links: list[Path] = []
+      parent = Path(temp_home) / ".config" / "opencode" / "agents"
+      for md_name in pilot_mds:
+        link_path = parent / md_name
+        link_path.symlink_to(pack_root / md_name)
+        seeded_links.append(link_path)
 
       uninstall = self.run_script(UNINSTALL_SCRIPT, temp_home)
       self.assertEqual(uninstall.returncode, 0, uninstall.stdout + uninstall.stderr)

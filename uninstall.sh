@@ -289,6 +289,38 @@ remove_codex_agents_tomls() {
 info "Removing Codex subagent TOML installs."
 remove_codex_agents_tomls
 
+remove_opencode_agent_mds() {
+  # Uninstall OpenCode native subagent markdown symlinks from
+  # ~/.config/opencode/agents. Manifest-driven: walks
+  # platform-packs/<slug>/**/opencode-agents/*.md and removes any matching
+  # filename in the OpenCode agents directory. Idempotent.
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if "$python_cmd" -m skill_bill install unlink-opencode-agents \
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      ok "  OpenCode subagent markdown removed via skill_bill"
+      return 0
+    fi
+  fi
+
+  local md_file link_path target_dir
+  target_dir="$HOME/.config/opencode/agents"
+  shopt -s nullglob globstar
+  for md_file in "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md; do
+    [[ -f "$md_file" ]] || continue
+    link_path="$target_dir/$(basename "$md_file")"
+    if [[ -L "$link_path" ]]; then
+      rm -f "$link_path"
+      REMOVED_TARGETS+=("$link_path")
+      ok "  removed $(basename "$link_path")"
+    fi
+  done
+  shopt -u nullglob globstar
+}
+
+info "Removing OpenCode subagent markdown installs."
+remove_opencode_agent_mds
+
 info "Removing MCP server registrations."
 unregister_mcp_json "$HOME/.claude.json" "claude"
 unregister_mcp_json "$HOME/.copilot/mcp-config.json" "copilot"
