@@ -564,6 +564,26 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
         self.assertTrue(sidecar_path.is_symlink())
         self.assertEqual(sidecar_path.resolve(), ROOT / "orchestration" / "review-delegation" / "PLAYBOOK.md")
 
+  def test_skill_override_enforcement_contract(self) -> None:
+    ceremony = read("orchestration/shell-content-contract/shell-ceremony.md")
+    self.assertIn("orchestrator-owned ceremony step", ceremony)
+    self.assertIn("Do not delegate this read to a", ceremony)
+    self.assertIn("Action mandate detection", ceremony)
+    self.assertIn("Lifecycle positions", ceremony)
+    self.assertIn("Before applying the skill body", ceremony)
+    self.assertIn("At end of skill", ceremony)
+    self.assertIn("Subagent boundary", ceremony)
+    self.assertIn("never to execute them", ceremony)
+
+    reference = read("skills/bill-feature-implement/reference.md")
+    self.assertIn("override_action_mandates", reference)
+    self.assertIn("raw_override_block", reference)
+    self.assertIn("must_call_tools", reference)
+    self.assertIn("Copy every bullet under that heading verbatim", reference)
+
+    decisions = read("agent/decisions.md")
+    self.assertIn("[2026-05-02] orchestrator-owned-skill-override-enforcement", decisions)
+
   def test_specialist_contracts_match_orchestrator_subset(self) -> None:
     expected = "\n\n".join(
       (

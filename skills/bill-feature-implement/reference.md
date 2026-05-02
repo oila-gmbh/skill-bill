@@ -197,7 +197,10 @@ Non-goals:
 {bullet_list_of_non_goals}
 
 Instructions:
-1. Read `CLAUDE.md`, `AGENTS.md`, and any `.agents/skill-overrides.md` section matching `bill-feature-implement`. Treat all standards as mandatory.
+1. Read `CLAUDE.md`, `AGENTS.md`, and `.agents/skill-overrides.md`. If `.agents/skill-overrides.md` has a section whose H2 heading matches this skill's name (e.g. `## bill-feature-implement`), you MUST:
+   a. Copy every bullet under that heading verbatim into the `override_action_mandates.raw_override_block` field of your `RESULT:` JSON. Do not summarise, paraphrase, or drop punctuation.
+   b. Extract action mandates (sentences directing an agent to call a specific MCP tool, read a specific file, or write to a specific path/node) into the structured `override_action_mandates` sub-fields: `must_call_tools`, `must_read_files`, `must_write_paths`, `lifecycle_position_notes`.
+   c. Do NOT execute the mandates — surfacing them is the orchestrator's responsibility (Step 0 / Step 9b). Treat all other standards as mandatory.
 2. For MEDIUM/LARGE, save the spec to `.feature-specs/{issue_key}-{feature_name}/spec.md` with status "In Progress", sources, acceptance criteria, and consolidated spec content. Preserve code blocks, schemas, and enums verbatim.
 3. Read `agent/history.md` in each boundary likely to be touched (newest first; stop when no longer relevant). Rate boundary-history value using one of the following anchored definitions:
    - `none` — no `agent/history.md` file existed at pre-read time in any touched boundary (nothing was read because nothing was there).
@@ -231,7 +234,14 @@ RESULT:
     "flag_name": "<name or empty>",
     "switch_point": "<where the switch lives, or empty>"
   },
-  "standards_notes": "<anything from CLAUDE.md/AGENTS.md/skill-overrides.md the planner must honor>"
+  "standards_notes": "<anything from CLAUDE.md/AGENTS.md/skill-overrides.md the planner must honor>",
+  "override_action_mandates": {
+    "must_call_tools": ["<mcp_tool_name>", ...],
+    "must_read_files": ["<path>", ...],
+    "must_write_paths": ["<path or graph node>", ...],
+    "lifecycle_position_notes": "<concise — when each mandate fires>",
+    "raw_override_block": "<verbatim copy of the matched section, empty string if none>"
+  }
 }
 ```
 

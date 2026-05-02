@@ -15,10 +15,80 @@ the sibling `shell-ceremony.md` file instead.
 
 ## Project Overrides
 
+This is an orchestrator-owned ceremony step. The current skill's main agent
+reads `.agents/skill-overrides.md` directly. Do not delegate this read to a
+subagent — mandates that target the orchestrator's own lifecycle (e.g. tools
+to call before applying the skill body, writes to make at the end of the
+skill body) cannot be fulfilled by a subagent that runs at a different
+lifecycle position.
+
 If `.agents/skill-overrides.md` exists in the project root and contains a
-section whose heading matches this skill's `name` from the frontmatter, read
-that section and apply it as the highest-priority instruction for this skill.
-The matching section may refine or replace parts of the default workflow.
+section whose H2 heading matches this skill's `name` from the frontmatter,
+read every bullet under that heading verbatim and treat the section as the
+highest-priority instruction for this skill. The matching section may refine
+or replace parts of the default workflow.
+
+### Action mandate detection
+
+Inside the matched section, any bullet that names a concrete action is an
+**action mandate** that the orchestrator MUST execute at the lifecycle
+position the bullet specifies. Detect mandates by simple substring match:
+
+- A token starting with `mcp__` names a tool the orchestrator MUST call.
+- A phrase like `read \`{path}\`` or "read the file `{path}`" names a file
+  the orchestrator MUST read.
+- A phrase mentioning `write_state`, `write_episode`, or "write to `{path}`"
+  names a write the orchestrator MUST perform.
+
+### Lifecycle positions
+
+Action mandates land at one of two ceremony positions:
+
+- **Before applying the skill body** (preflight): bullets containing phrases
+  such as "before applying the skill body", "at session start", or naming a
+  `*_session_start`-style tool. Execute these BEFORE the skill's first
+  authored step runs.
+- **At end of skill** (postflight): bullets containing phrases such as "at
+  the end of the skill work", "before finishing", or naming `write_state` /
+  `write_episode`. Execute these AFTER the skill's last authored step but
+  BEFORE the skill emits its terminal `*_finished` telemetry event.
+
+### Recording the result
+
+Record both passes in a structured form so audit and review can verify the
+mandates fired. Recommended shape:
+
+```
+{
+  "file_present": <bool>,
+  "section_found": <bool>,
+  "section_heading": "<heading or empty>",
+  "actions_executed": [
+    {"tool": "<name>", "status": "ok|error", "summary": "<short>"}
+  ]
+}
+```
+
+Skills with structured workflow state (e.g. `bill-feature-implement`)
+persist preflight under the assess-phase artifact and postflight under the
+finalization-phase artifact. Skills without structured state may report the
+result inline in their final summary.
+
+### Subagent boundary
+
+When a skill's pre-planning or briefing step delegates reading
+`.agents/skill-overrides.md` to a subagent, the subagent's job is to
+**surface** the matched section verbatim and surface action mandates as
+structured fields — never to execute them. Execution is the orchestrator's
+responsibility regardless of which subagent surfaced the mandate.
+
+### Skipping when no override applies
+
+If `.agents/skill-overrides.md` is missing, or the file exists but has no
+section matching this skill's name, record `file_present` / `section_found`
+as `false` and proceed without action.
+
+### Other project guidance
 
 If an `AGENTS.md` file exists in the project root, apply it as project-wide
 guidance.
