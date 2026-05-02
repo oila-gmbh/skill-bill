@@ -1,6 +1,6 @@
 ---
 name: bill-create-skill
-description: Use when scaffolding a new skill or platform skill set and syncing it to all detected local AI agents (Claude, Copilot, GLM, Codex, Opencode). Use when user mentions scaffold skill, create skill set, create skill, new skill, add skill, or sync skill to agents.
+description: Use when scaffolding a new skill or platform skill set and syncing it to all detected local AI agents (Claude, Copilot, Codex, Opencode). Use when user mentions scaffold skill, create skill set, create skill, new skill, add skill, or sync skill to agents.
 ---
 
 ## Descriptor

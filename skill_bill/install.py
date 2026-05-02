@@ -11,7 +11,6 @@ Supported agents (mirrors ``install.sh::get_agent_path``):
 
 - ``copilot``  -> ``~/.copilot/skills``
 - ``claude``   -> ``~/.claude/commands``
-- ``glm``      -> ``~/.glm/commands``
 - ``opencode`` -> ``~/.config/opencode/skills``;
    ``~/.config/opencode/agents`` for OpenCode markdown subagents
 - ``codex``    -> ``~/.codex/skills`` with ``~/.agents/skills`` fallback (skills);
@@ -28,7 +27,6 @@ from typing import Iterable
 SUPPORTED_AGENTS: tuple[str, ...] = (
   "copilot",
   "claude",
-  "glm",
   "codex",
   "opencode",
 )
@@ -114,7 +112,6 @@ def agent_paths(home: Path | None = None) -> dict[str, Path]:
   return {
     "copilot": resolved_home / ".copilot" / "skills",
     "claude": resolved_home / ".claude" / "commands",
-    "glm": resolved_home / ".glm" / "commands",
     "opencode": resolved_home / ".config" / "opencode" / "skills",
     "codex": _codex_path(resolved_home),
   }
@@ -186,7 +183,6 @@ def _agent_is_present(home: Path, agent: str, install_path: Path) -> bool:
   roots_by_agent: dict[str, tuple[Path, ...]] = {
     "copilot": (home / ".copilot",),
     "claude": (home / ".claude",),
-    "glm": (home / ".glm",),
     "opencode": (home / ".config" / "opencode",),
     "codex": (home / ".codex", home / ".agents"),
   }

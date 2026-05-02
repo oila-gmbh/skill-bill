@@ -1420,8 +1420,8 @@ class AgentDetectionTest(unittest.TestCase):
       ),
     )
 
-  def test_all_five_agents_detected(self) -> None:
-    for subdir in (".copilot", ".claude", ".glm", ".codex", ".config/opencode"):
+  def test_all_four_agents_detected(self) -> None:
+    for subdir in (".copilot", ".claude", ".codex", ".config/opencode"):
       (self.fake_home / subdir).mkdir(parents=True)
     detected = install_module.detect_agents(home=self.fake_home)
     self.assertEqual(

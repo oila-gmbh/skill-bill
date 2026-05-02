@@ -166,7 +166,6 @@ REVIEW_DELEGATION_REQUIRED_SECTIONS = (
   "## GitHub Copilot CLI",
   "## Claude Code",
   "## OpenAI Codex",
-  "## GLM",
 )
 
 PORTABLE_REVIEW_SKILLS = (

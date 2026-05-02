@@ -7,14 +7,13 @@ import skillbill.install.model.InstallTransaction
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "glm", "codex", "opencode")
+internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode")
 
 internal fun agentPaths(home: Path? = null): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return mapOf(
     "copilot" to resolvedHome.resolve(".copilot/skills"),
     "claude" to resolvedHome.resolve(".claude/commands"),
-    "glm" to resolvedHome.resolve(".glm/commands"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "codex" to codexPath(resolvedHome),
   )
@@ -103,7 +102,6 @@ private fun agentIsPresent(home: Path, agent: String, installPath: Path): Boolea
   val roots = when (agent) {
     "copilot" -> listOf(home.resolve(".copilot"))
     "claude" -> listOf(home.resolve(".claude"))
-    "glm" -> listOf(home.resolve(".glm"))
     "opencode" -> listOf(home.resolve(".config/opencode"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
     else -> emptyList()
