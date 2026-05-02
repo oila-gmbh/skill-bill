@@ -28,15 +28,19 @@ def install_main(argv: list[str]) -> int:
 
   link_codex_agents = subcommands.add_parser("link-codex-agents")
   link_codex_agents.add_argument("--platform-packs", required=True)
+  link_codex_agents.add_argument("--skills", required=False, default=None)
 
   unlink_codex_agents = subcommands.add_parser("unlink-codex-agents")
   unlink_codex_agents.add_argument("--platform-packs", required=True)
+  unlink_codex_agents.add_argument("--skills", required=False, default=None)
 
   link_opencode_agents = subcommands.add_parser("link-opencode-agents")
   link_opencode_agents.add_argument("--platform-packs", required=True)
+  link_opencode_agents.add_argument("--skills", required=False, default=None)
 
   unlink_opencode_agents = subcommands.add_parser("unlink-opencode-agents")
   unlink_opencode_agents.add_argument("--platform-packs", required=True)
+  unlink_opencode_agents.add_argument("--skills", required=False, default=None)
 
   args = parser.parse_args(argv)
   if args.command == "agent-path":
@@ -75,23 +79,39 @@ def install_main(argv: list[str]) -> int:
     target = install.detect_codex_agents_target()
     if target is None:
       return 0
-    toml_files = install.discover_codex_agent_tomls(Path(args.platform_packs))
+    skills_root = Path(args.skills) if args.skills else None
+    toml_files = install.discover_codex_agent_tomls(
+      Path(args.platform_packs),
+      skills_root,
+    )
     for toml_file in toml_files:
       install.install_codex_agent_toml(toml_file, target)
     return 0
   if args.command == "unlink-codex-agents":
-    install.uninstall_codex_agent_tomls(Path(args.platform_packs))
+    skills_root = Path(args.skills) if args.skills else None
+    install.uninstall_codex_agent_tomls(
+      Path(args.platform_packs),
+      skills_root=skills_root,
+    )
     return 0
   if args.command == "link-opencode-agents":
     target = install.detect_opencode_agents_target()
     if target is None:
       return 0
-    md_files = install.discover_opencode_agent_mds(Path(args.platform_packs))
+    skills_root = Path(args.skills) if args.skills else None
+    md_files = install.discover_opencode_agent_mds(
+      Path(args.platform_packs),
+      skills_root,
+    )
     for md_file in md_files:
       install.install_opencode_agent_md(md_file, target)
     return 0
   if args.command == "unlink-opencode-agents":
-    install.uninstall_opencode_agent_mds(Path(args.platform_packs))
+    skills_root = Path(args.skills) if args.skills else None
+    install.uninstall_opencode_agent_mds(
+      Path(args.platform_packs),
+      skills_root=skills_root,
+    )
     return 0
   parser.error("Unknown install command.")
   return 2

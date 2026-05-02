@@ -1,3 +1,13 @@
+## [2026-05-02] multi-runtime-subagents-feature-implement-foundation
+Areas: skill_bill/install.py, skill_bill/__main__.py, install.sh, uninstall.sh, skills/bill-feature-implement/
+- Extended `discover_codex_agent_tomls` and `discover_opencode_agent_mds` (plus their uninstall counterparts) with an additive optional `skills_root: Path | None = None` so subagent definitions co-located with author-owned skills (e.g. `skills/bill-feature-implement/codex-agents/`) are picked up alongside platform packs. Dedup via `dict[Path, None]` insertion order then `sorted()`. reusable
+- Wired the new `--skills` CLI argument through all four agent subcommands in `__main__.py`, and extended the `install.sh` / `uninstall.sh` shell fallbacks to walk `$SKILLS_DIR/**/{codex,opencode}-agents/*` in lockstep with the Python primitive — Python invocation always passes `--skills "$SKILLS_DIR"`, the discover_* primitives tolerate non-existent dirs.
+- Rewrote the one remaining Claude-specific spawn instruction in `skills/bill-feature-implement/reference.md:180` to runtime-neutral spawn-by-name. Greps confirm zero remaining `Agent tool` / `subagent_type=` / `general-purpose` occurrences in `reference.md` or `content.md`.
+- Authored `skills/bill-feature-implement/parsing_tolerance.md` adopting Resolution A (best-effort recovery, single corrective re-spawn, then escalation) and cross-linked it from the Error Recovery section in `reference.md`. Documents that the orchestrator parses `RESULT:` blocks inline; no machine parser exists in `skill_bill/`. reusable
+- Foundation for SKILL-33 follow-up 3 subtasks 2 (authoring 14 native subagent files) and 3 (test extensions + Codex smoke test). Existing tests still pass (220 OK); no regression in Kotlin/KMP pack discovery.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-02] multi-runtime-kotlin-review-feature-verify-subagents
 Areas: platform-packs/kotlin/code-review/bill-kotlin-code-review/, skills/bill-feature-verify/, README.md, docs/, agent/history.md
 - Extended the SKILL-33 Codex/OpenCode native-subagent precedent from KMP into `bill-kotlin-code-review`: eight Kotlin specialist definitions now ship as Codex TOML and OpenCode markdown under the Kotlin pack, each inlining the specialist content plus the shared F-XXX Risk Register contract because installed native agents cannot rely on repo-local sibling sidecars. reusable
