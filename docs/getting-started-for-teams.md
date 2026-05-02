@@ -57,6 +57,8 @@ Team members should not need to know migration history. Current behavior is:
 - Python scripts still exist for repo validation and maintainer tooling, but Python is not the active CLI/MCP runtime.
 - Runtime rollback means installing a previous release, not toggling a Python fallback.
 
+On Codex, `bill-kmp-code-review` ships native subagent TOML defs under `~/.codex/agents/` (with `~/.agents/agents/` fallback). The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent" and so on) is runtime-neutral: Codex resolves each name against the installed TOMLs as a natural-language steering directive, while Claude maps the same prose to its native subagent tool. Other orchestrators (`bill-feature-implement`, `bill-feature-verify`, the Kotlin baseline) still run inline on Codex until their TOMLs land in follow-up issues.
+
 ## Fallback And Failure Boundaries
 
 Explain this boundary during rollout so engineers know what failed and what merely degraded.

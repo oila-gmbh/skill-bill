@@ -117,3 +117,9 @@ If no KMP-only triggers match but Android/KMP signals are clearly present, keep 
 
 Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
+## Subagent Spawn Runtime Notes
+
+Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kmp-code-review-ui` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in `~/.codex/agents/` (with `~/.agents/agents/` fallback), respecting `agents.max_threads` and `agents.max_depth`.
+
+KMP fan-out is at most 2 specialists per wave (`bill-kmp-code-review-ui`, `bill-kmp-code-review-ux-accessibility`), which fits comfortably within Codex's `agents.max_threads = 6` default.
+

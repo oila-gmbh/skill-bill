@@ -66,7 +66,7 @@ Supported install targets today:
 - GitHub Copilot
 - Claude Code
 - GLM
-- OpenAI Codex
+- OpenAI Codex (skills under `~/.codex/skills/`; native subagent TOMLs under `~/.codex/agents/`, both with `~/.agents/...` fallback)
 - OpenCode
 
 ## Start here
