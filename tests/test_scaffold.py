@@ -812,6 +812,164 @@ class ScaffoldHappyPathsTest(unittest.TestCase):
     self.assertIn("## Execution Steps", quality_body)
     self.assertIn("## Fix Strategy", quality_body)
 
+  def _validate_codex_stub(self, toml_path: Path) -> None:
+    import tomllib
+
+    self.assertTrue(toml_path.is_file(), f"missing codex stub at {toml_path}")
+    with toml_path.open("rb") as handle:
+      parsed = tomllib.load(handle)
+    for field in ("name", "description", "developer_instructions"):
+      self.assertIn(field, parsed)
+      self.assertIsInstance(parsed[field], str)
+      self.assertTrue(parsed[field].strip())
+    self.assertEqual(parsed["name"], toml_path.stem)
+    self.assertNotIn("\n", parsed["description"])
+    forbidden = (
+      "Agent(subagent_type=",
+      "Task tool",
+      "subagent_type=",
+      "Agent tool",
+      "general-purpose",
+      "@agent-",
+    )
+    instructions = parsed["developer_instructions"]
+    for token in forbidden:
+      self.assertNotIn(token, instructions, f"{toml_path} contains forbidden token '{token}'")
+
+  def _validate_opencode_stub(self, md_path: Path) -> None:
+    self.assertTrue(md_path.is_file(), f"missing opencode stub at {md_path}")
+    text = md_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    self.assertEqual(lines[0], "---", f"{md_path} missing frontmatter open")
+    end_index = None
+    for i, line in enumerate(lines[1:], start=1):
+      if line == "---":
+        end_index = i
+        break
+    self.assertIsNotNone(end_index, f"{md_path} unclosed frontmatter")
+    frontmatter: dict[str, str] = {}
+    for line in lines[1:end_index]:
+      if not line.strip() or line.lstrip().startswith("#"):
+        continue
+      key, _, value = line.partition(":")
+      frontmatter[key.strip()] = value.strip().strip('"').strip("'")
+    for field in ("name", "description", "mode"):
+      self.assertIn(field, frontmatter, f"{md_path} missing {field}")
+      self.assertTrue(frontmatter[field].strip())
+    self.assertEqual(frontmatter["mode"], "subagent")
+    self.assertEqual(frontmatter["name"], md_path.stem)
+    self.assertNotIn("\n", frontmatter["description"])
+    body = "\n".join(lines[end_index + 1 :])
+    self.assertTrue(body.strip())
+    forbidden = (
+      "Agent(subagent_type=",
+      "Task tool",
+      "subagent_type=",
+      "Agent tool",
+      "general-purpose",
+      "@agent-",
+    )
+    for token in forbidden:
+      self.assertNotIn(token, text, f"{md_path} contains forbidden token '{token}'")
+
+  def test_horizontal_with_subagent_specialists_emits_stubs_and_notes(self) -> None:
+    result = scaffold(
+      self._payload(
+        kind="horizontal",
+        name="bill-foo-orchestrator",
+        subagent_specialists=["foo-arch", "foo-perf"],
+      )
+    )
+    self.assertEqual(result.kind, "horizontal")
+    skill_dir = self.repo / "skills" / "bill-foo-orchestrator"
+    content_md = skill_dir / "content.md"
+    self.assertTrue(content_md.is_file())
+    content_text = content_md.read_text(encoding="utf-8")
+    self.assertIn("## Subagent Spawn Runtime Notes", content_text)
+    self.assertIn("`@foo-arch`", content_text)
+    self.assertIn("`@foo-perf`", content_text)
+
+    self._validate_codex_stub(skill_dir / "codex-agents" / "foo-arch.toml")
+    self._validate_codex_stub(skill_dir / "codex-agents" / "foo-perf.toml")
+    self._validate_opencode_stub(skill_dir / "opencode-agents" / "foo-arch.md")
+    self._validate_opencode_stub(skill_dir / "opencode-agents" / "foo-perf.md")
+
+    self.assertTrue(
+      any("Subagent stubs emitted: 2." in note for note in result.notes),
+      result.notes,
+    )
+
+  def test_platform_pack_with_subagent_specialists_attaches_to_baseline_only(self) -> None:
+    result = scaffold(
+      self._payload(
+        kind="platform-pack",
+        platform="java",
+        subagent_specialists=["arch", "perf"],
+      )
+    )
+    self.assertEqual(result.kind, "platform-pack")
+    pack_root = self.repo / "platform-packs" / "java"
+    baseline_dir = pack_root / "code-review" / "bill-java-code-review"
+    quality_check_dir = pack_root / "quality-check" / "bill-java-quality-check"
+
+    self._validate_codex_stub(baseline_dir / "codex-agents" / "arch.toml")
+    self._validate_codex_stub(baseline_dir / "codex-agents" / "perf.toml")
+    self._validate_opencode_stub(baseline_dir / "opencode-agents" / "arch.md")
+    self._validate_opencode_stub(baseline_dir / "opencode-agents" / "perf.md")
+
+    self.assertFalse((quality_check_dir / "codex-agents").exists())
+    self.assertFalse((quality_check_dir / "opencode-agents").exists())
+    for area in scaffold_module.APPROVED_CODE_REVIEW_AREAS:
+      specialist_dir = pack_root / "code-review" / f"bill-java-code-review-{area}"
+      self.assertFalse((specialist_dir / "codex-agents").exists())
+      self.assertFalse((specialist_dir / "opencode-agents").exists())
+
+    baseline_content = (baseline_dir / "content.md").read_text(encoding="utf-8")
+    self.assertIn("## Subagent Spawn Runtime Notes", baseline_content)
+
+  def test_horizontal_no_subagents_opt_out_skips_emission(self) -> None:
+    scaffold(
+      self._payload(
+        kind="horizontal",
+        name="bill-bar-orchestrator",
+        no_subagents=True,
+      )
+    )
+    skill_dir = self.repo / "skills" / "bill-bar-orchestrator"
+    self.assertFalse((skill_dir / "codex-agents").exists())
+    self.assertFalse((skill_dir / "opencode-agents").exists())
+    content_text = (skill_dir / "content.md").read_text(encoding="utf-8")
+    self.assertNotIn("## Subagent Spawn Runtime Notes", content_text)
+
+  def test_no_subagents_with_specialists_rejected(self) -> None:
+    with self.assertRaisesRegex(
+      InvalidScaffoldPayloadError,
+      "no_subagents=true",
+    ):
+      scaffold(
+        self._payload(
+          kind="horizontal",
+          name="bill-mixed-orchestrator",
+          subagent_specialists=["foo"],
+          no_subagents=True,
+        )
+      )
+
+  def test_subagent_specialists_rejected_for_code_review_area(self) -> None:
+    with self.assertRaisesRegex(
+      InvalidScaffoldPayloadError,
+      "subagent_specialists is only valid for orchestrator kinds",
+    ):
+      scaffold(
+        self._payload(
+          kind="code-review-area",
+          name="bill-kotlin-code-review-performance",
+          platform="kotlin",
+          area="performance",
+          subagent_specialists=["x"],
+        )
+      )
+
   def test_pre_shell_family_emits_interim_note(self) -> None:
     # SKILL-16 promoted quality-check onto the shell+content contract, so the
     # pre-shell acceptance case now exercises feature-implement (the other

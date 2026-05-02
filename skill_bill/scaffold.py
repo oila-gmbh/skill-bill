@@ -31,6 +31,7 @@ an interim-location note.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,10 +57,13 @@ from skill_bill.scaffold_template import (
   ScaffoldTemplateContext,
   default_area_focus,
   infer_skill_description,
-  render_default_section,
+  render_codex_agent_toml_stub,
   render_content_body,
+  render_default_section,
   render_descriptor_section,
+  render_opencode_agent_md_stub,
   render_skill_frontmatter,
+  render_subagent_spawn_runtime_notes,
 )
 from skill_bill.shell_content_contract import (
   APPROVED_CODE_REVIEW_AREAS,
@@ -302,6 +306,68 @@ def _require_string_list(value: object, *, field_name: str) -> list[str]:
   return result
 
 
+_SUBAGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+_ORCHESTRATOR_KINDS_FOR_SUBAGENTS: frozenset[str] = frozenset(
+  {
+    SKILL_KIND_HORIZONTAL,
+    SKILL_KIND_PLATFORM_OVERRIDE_PILOTED,
+    SKILL_KIND_PLATFORM_PACK,
+  }
+)
+
+
+def _optional_specialist_subagents(payload: dict, *, kind: str) -> tuple[list[str], bool]:
+  raw_specialists = payload.get("subagent_specialists", [])
+  raw_suppress = payload.get("no_subagents", False)
+
+  if raw_specialists is None:
+    raw_specialists = []
+  if not isinstance(raw_specialists, list):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'subagent_specialists' must be a list of strings."
+    )
+
+  specialists: list[str] = []
+  seen: set[str] = set()
+  for entry in raw_specialists:
+    if not isinstance(entry, str) or not entry:
+      raise InvalidScaffoldPayloadError(
+        "Scaffold payload field 'subagent_specialists' must contain only non-empty strings."
+      )
+    if not _SUBAGENT_NAME_PATTERN.match(entry):
+      raise InvalidScaffoldPayloadError(
+        f"Scaffold payload field 'subagent_specialists' contains invalid name '{entry}'; "
+        "names must match '^[a-z][a-z0-9-]*$'."
+      )
+    if entry in seen:
+      raise InvalidScaffoldPayloadError(
+        f"Scaffold payload field 'subagent_specialists' contains duplicate name '{entry}'."
+      )
+    seen.add(entry)
+    specialists.append(entry)
+
+  if not isinstance(raw_suppress, bool):
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload field 'no_subagents' must be a boolean when provided."
+    )
+
+  if raw_suppress and specialists:
+    raise InvalidScaffoldPayloadError(
+      "Scaffold payload may not set 'no_subagents=true' together with a non-empty "
+      "'subagent_specialists' list."
+    )
+
+  if specialists and kind not in _ORCHESTRATOR_KINDS_FOR_SUBAGENTS:
+    raise InvalidScaffoldPayloadError(
+      f"subagent_specialists is only valid for orchestrator kinds (horizontal, "
+      f"platform-override-piloted, platform-pack); got {kind}"
+    )
+
+  return specialists, raw_suppress
+
+
 def _optional_string_list_from_mapping(mapping: object, key: str) -> list[str]:
   if not isinstance(mapping, dict):
     raise InvalidScaffoldPayloadError(
@@ -462,6 +528,9 @@ def _resolve_repo_root(payload: dict) -> Path:
 def _plan_horizontal(payload: dict, repo_root: Path) -> dict[str, Any]:
   name = _require_string(payload, "name")
   skill_path = repo_root / "skills" / name
+  specialists, suppressed = _optional_specialist_subagents(
+    payload, kind=SKILL_KIND_HORIZONTAL
+  )
   return {
     "kind": SKILL_KIND_HORIZONTAL,
     "skill_name": name,
@@ -472,6 +541,8 @@ def _plan_horizontal(payload: dict, repo_root: Path) -> dict[str, Any]:
     "area": "",
     "is_shelled": False,
     "notes": [],
+    "subagent_specialists": specialists,
+    "subagents_suppressed": suppressed,
   }
 
 
@@ -479,6 +550,9 @@ def _plan_platform_override_piloted(payload: dict, repo_root: Path) -> dict[str,
   platform = _require_string(payload, "platform")
   family = _require_string(payload, "family")
   name = _require_canonical_name(payload, default_name=f"bill-{platform}-{family}")
+  specialists, suppressed = _optional_specialist_subagents(
+    payload, kind=SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+  )
 
   if family not in FAMILY_REGISTRY:
     raise InvalidScaffoldPayloadError(
@@ -526,11 +600,16 @@ def _plan_platform_override_piloted(payload: dict, repo_root: Path) -> dict[str,
     "descriptor_metadata": {"area_focus": ""},
     "notes": notes,
     "content_file": skill_path / "content.md" if is_shelled else None,
+    "subagent_specialists": specialists,
+    "subagents_suppressed": suppressed,
   }
 
 
 def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
   platform = _require_string(payload, "platform")
+  specialists, suppressed = _optional_specialist_subagents(
+    payload, kind=SKILL_KIND_PLATFORM_PACK
+  )
   defaults = _resolve_platform_pack_defaults(payload, platform)
   skeleton_mode = _platform_pack_skeleton_mode(payload)
   selected_specialist_areas = _platform_pack_specialist_areas(payload)
@@ -627,6 +706,8 @@ def _plan_platform_pack(payload: dict, repo_root: Path) -> dict[str, Any]:
     "specialist_area_metadata": specialist_area_metadata,
     "specialist_skill_names": specialist_skill_names,
     "specialist_skill_paths": specialist_skill_paths,
+    "subagent_specialists": specialists,
+    "subagents_suppressed": suppressed,
     "install_paths": [
       baseline_skill_path,
       quality_check_skill_path,
@@ -681,6 +762,8 @@ def _plan_code_review_area(payload: dict, repo_root: Path) -> dict[str, Any]:
     "descriptor_metadata": {"area_focus": default_area_focus(area)},
     "notes": [GOVERNED_CONTENT_AUTHORING_NOTE],
     "content_file": skill_path / "content.md",
+    "subagent_specialists": [],
+    "subagents_suppressed": False,
   }
 
 
@@ -706,6 +789,8 @@ def _plan_add_on(payload: dict, repo_root: Path) -> dict[str, Any]:
     "area": "",
     "is_shelled": False,
     "notes": [],
+    "subagent_specialists": [],
+    "subagents_suppressed": False,
   }
 
 
@@ -876,6 +961,44 @@ def _stage_file(txn: _ScaffoldTransaction, path: Path, content: str) -> None:
 
   path.write_text(content, encoding="utf-8")
   txn.created_paths.append(path)
+
+
+def _append_runtime_notes_to_content_md(content_path: Path, runtime_notes: str) -> None:
+  if not runtime_notes:
+    return
+  existing = content_path.read_text(encoding="utf-8")
+  separator = "" if existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+  content_path.write_text(existing + separator + runtime_notes + "\n", encoding="utf-8")
+
+
+def _stage_subagent_stubs(
+  txn: _ScaffoldTransaction,
+  *,
+  orchestrator_skill_path: Path,
+  orchestrator_name: str,
+  specialists: list[str],
+) -> list[Path]:
+  staged: list[Path] = []
+  if not specialists:
+    return staged
+  codex_dir = orchestrator_skill_path / "codex-agents"
+  opencode_dir = orchestrator_skill_path / "opencode-agents"
+  for specialist in specialists:
+    codex_path = codex_dir / f"{specialist}.toml"
+    _stage_file(
+      txn,
+      codex_path,
+      render_codex_agent_toml_stub(specialist, orchestrator_name),
+    )
+    staged.append(codex_path)
+    opencode_path = opencode_dir / f"{specialist}.md"
+    _stage_file(
+      txn,
+      opencode_path,
+      render_opencode_agent_md_stub(specialist, orchestrator_name),
+    )
+    staged.append(opencode_path)
+  return staged
 
 
 def _snapshot_manifest(txn: _ScaffoldTransaction, manifest_path: Path) -> None:
@@ -1388,6 +1511,14 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
   kind = _detect_kind(payload)
   repo_root = _resolve_repo_root(payload)
 
+  if kind not in _ORCHESTRATOR_KINDS_FOR_SUBAGENTS:
+    raw_specialists = payload.get("subagent_specialists")
+    if raw_specialists:
+      raise InvalidScaffoldPayloadError(
+        "subagent_specialists is only valid for orchestrator kinds (horizontal, "
+        f"platform-override-piloted, platform-pack); got {kind}"
+      )
+
   planner = _PLANNERS[kind]
   plan = planner(payload, repo_root)
 
@@ -1442,6 +1573,16 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
       symlinks_preview = []
     else:
       symlinks_preview = []
+    specialists_preview = list(plan.get("subagent_specialists") or [])
+    suppressed_preview = bool(plan.get("subagents_suppressed"))
+    if specialists_preview and not suppressed_preview:
+      if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+        stub_dir = plan["baseline_skill_path"]
+      else:
+        stub_dir = plan["skill_path"]
+      for specialist in specialists_preview:
+        created_files_preview.append(stub_dir / "codex-agents" / f"{specialist}.toml")
+        created_files_preview.append(stub_dir / "opencode-agents" / f"{specialist}.md")
     result = ScaffoldResult(
       kind=plan["kind"],
       skill_name=plan["skill_name"],
@@ -1457,12 +1598,29 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
 
   txn = _ScaffoldTransaction()
 
+  specialists = list(plan.get("subagent_specialists") or [])
+  suppressed = bool(plan.get("subagents_suppressed"))
+  emit_subagents = bool(specialists) and not suppressed
+
   try:
     if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
       created_files = list(plan["created_files"])
       manifest_edits = []
       _created_files, symlinks = _create_platform_pack(txn, plan, repo_root)
       created_files = _created_files
+      if emit_subagents:
+        baseline_content_path = plan["baseline_skill_path"] / "content.md"
+        runtime_notes = render_subagent_spawn_runtime_notes(
+          plan["baseline_skill_name"], specialists
+        )
+        _append_runtime_notes_to_content_md(baseline_content_path, runtime_notes)
+        stub_paths = _stage_subagent_stubs(
+          txn,
+          orchestrator_skill_path=plan["baseline_skill_path"],
+          orchestrator_name=plan["baseline_skill_name"],
+          specialists=specialists,
+        )
+        created_files.extend(stub_paths)
       _run_validator(repo_root, plan)
       install_targets, install_notes = _perform_install(txn, plan)
     else:
@@ -1474,14 +1632,25 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
       _stage_file(txn, plan["skill_file"], body)
       if plan["kind"] != SKILL_KIND_ADD_ON:
         content_path = plan.get("content_file") or plan["skill_file"].with_name("content.md")
-        _stage_file(
-          txn,
-          content_path,
-          _render_governed_content_body(plan, payload),
-        )
+        content_body = _render_governed_content_body(plan, payload)
+        if emit_subagents:
+          runtime_notes = render_subagent_spawn_runtime_notes(plan["skill_name"], specialists)
+          if not content_body.endswith("\n"):
+            content_body += "\n"
+          content_body = content_body + "\n" + runtime_notes + "\n"
+        _stage_file(txn, content_path, content_body)
 
       manifest_edits = _apply_manifest_edits(txn, plan, repo_root)
       symlinks = _stage_sidecar_symlinks(txn, plan, repo_root)
+
+      if emit_subagents:
+        _stage_subagent_stubs(
+          txn,
+          orchestrator_skill_path=plan["skill_path"],
+          orchestrator_name=plan["skill_name"],
+          specialists=specialists,
+        )
+
       created_files = list(txn.created_paths)
 
       _run_validator(repo_root, plan)
@@ -1493,6 +1662,18 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
     _rollback(txn)
     raise
 
+  notes = list(plan["notes"]) + install_notes
+  if emit_subagents:
+    if plan["kind"] == SKILL_KIND_PLATFORM_PACK:
+      stub_dir = plan["baseline_skill_path"]
+    else:
+      stub_dir = plan["skill_path"]
+    notes.append(
+      f"Subagent stubs emitted: {len(specialists)}. "
+      f"Fill in the TODO placeholders in {stub_dir}/codex-agents/ and "
+      f"{stub_dir}/opencode-agents/ before shipping."
+    )
+
   return ScaffoldResult(
     kind=plan["kind"],
     skill_name=plan["skill_name"],
@@ -1501,7 +1682,7 @@ def scaffold(payload: dict, *, dry_run: bool = False) -> ScaffoldResult:
     manifest_edits=manifest_edits,
     symlinks=symlinks,
     install_targets=install_targets,
-    notes=list(plan["notes"]) + install_notes,
+    notes=notes,
   )
 
 

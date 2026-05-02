@@ -684,9 +684,91 @@ def extract_scaffolder_owned(markdown_text: str) -> dict[str, str]:
   }
 
 
+def _title_case_specialist(name: str) -> str:
+  return " ".join(part.capitalize() for part in name.split("-") if part)
+
+
+def render_codex_agent_toml_stub(name: str, parent_skill: str) -> str:
+  description = (
+    f"TODO: one-line description for the {name} specialist subagent. Fill in before shipping."
+  )
+  body_lines = [
+    f"name = \"{name}\"",
+    f"description = \"{description}\"",
+    "",
+    "developer_instructions = \"\"\"",
+    f"# {_title_case_specialist(name)} Specialist",
+    "",
+    "TODO: replace this placeholder with the specialist briefing.",
+    "",
+    (
+      "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk "
+      f"Register format used by this orchestrator's review specialists (parent skill: {parent_skill})."
+    ),
+    "\"\"\"",
+    "",
+  ]
+  return "\n".join(body_lines)
+
+
+def render_opencode_agent_md_stub(name: str, parent_skill: str) -> str:
+  description = (
+    f"TODO: one-line description for the {name} specialist subagent. Fill in before shipping."
+  )
+  return (
+    "---\n"
+    f"name: {name}\n"
+    f"description: {description}\n"
+    "mode: subagent\n"
+    "---\n"
+    "\n"
+    f"# {_title_case_specialist(name)} Specialist\n"
+    "\n"
+    "TODO: replace this placeholder with the specialist briefing.\n"
+    "\n"
+    "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk "
+    f"Register format used by this orchestrator's review specialists (parent skill: {parent_skill}).\n"
+  )
+
+
+def render_subagent_spawn_runtime_notes(orchestrator_name: str, specialists: list[str]) -> str:
+  if not specialists:
+    return ""
+  example_specialist = specialists[0]
+  backticked = ", ".join(f"`@{name}`" for name in specialists)
+
+  paragraphs: list[str] = ["## Subagent Spawn Runtime Notes"]
+  paragraphs.append(
+    "Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase "
+    f"such as \"spawn the `{example_specialist}` subagent\" maps to the native subagent "
+    f"surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call "
+    f"against a matching subagent definition for `{orchestrator_name}`. On Codex, the "
+    "spawn is a natural-language directive and Codex resolves it by `name` against the "
+    "installed TOML files in the Codex user agents directory (with the legacy Agents "
+    "agents fallback), respecting `agents.max_threads` and `agents.max_depth`. On "
+    "OpenCode, the spawn resolves by filename-derived `name` against markdown agents "
+    "installed in the OpenCode user agents directory; operators can also invoke the same "
+    f"specialists manually with {backticked}."
+  )
+  if len(specialists) > 6:
+    paragraphs.append(
+      "Selected fan-out exceeds Codex's `agents.max_threads = 6` default; run waves of "
+      "at most 6 specialists, with the orchestrator merging wave outputs before final review."
+    )
+  paragraphs.append(
+    "OpenCode does not document a different native concurrency cap; keep the conservative "
+    "limit of 6 or fewer specialists per wave."
+  )
+
+  return "\n\n".join(paragraphs)
+
+
 __all__ = [
+  "render_codex_agent_toml_stub",
   "render_content_body",
+  "render_opencode_agent_md_stub",
   "render_skill_frontmatter",
+  "render_subagent_spawn_runtime_notes",
   "ScaffoldTemplateContext",
   "CANONICAL_CEREMONY_SECTION",
   "CANONICAL_EXECUTION_SECTION",

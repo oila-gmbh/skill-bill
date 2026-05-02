@@ -92,6 +92,33 @@ Every payload MUST include:
   rendering the default placeholder template.
 - `repo_root` — absolute path override used by tests. Defaults to the
   current working directory.
+- `subagent_specialists` — list of specialist subagent names to scaffold
+  alongside an orchestrator skill. Each name must match
+  `^[a-z][a-z0-9-]*$`, be non-empty, and unique within the list. Honored
+  ONLY for orchestrator kinds: `horizontal`, `platform-override-piloted`,
+  and `platform-pack`. For `platform-pack`, stubs are attached to the
+  baseline orchestrator skill (`bill-<platform>-code-review`) only — never
+  to the per-area specialist skills or the quality-check skill. Supplying
+  this field for `code-review-area` or `add-on` raises
+  `InvalidScaffoldPayloadError`. Default: `[]`.
+- `no_subagents` — boolean opt-out. When `true`, the scaffolder skips the
+  default subagent stub emission for an orchestrator kind even when
+  `subagent_specialists` is empty. Setting `no_subagents: true` together
+  with a non-empty `subagent_specialists` raises
+  `InvalidScaffoldPayloadError`. Default: `false`.
+
+When `subagent_specialists` is non-empty (and not suppressed), the
+scaffolder emits one Codex TOML stub at
+`<orchestrator-skill-dir>/codex-agents/<name>.toml` and one OpenCode
+markdown stub at
+`<orchestrator-skill-dir>/opencode-agents/<name>.md` per specialist. It
+also injects a `## Subagent Spawn Runtime Notes` section into the
+orchestrator's `content.md` that documents how Claude, Codex, and
+OpenCode each resolve specialist spawns. Stubs ship with a `TODO:`
+description and body plus a free-text pointer to
+`specialist-contract.md` for the F-XXX Risk Register format used by
+review specialists; they do NOT include literal `F-XXX` markers.
+Authors fill in the TODO placeholders before shipping.
 
 ## Worked Examples
 

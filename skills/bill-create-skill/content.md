@@ -95,9 +95,13 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
        "tie_breakers": ["..."]
      },
      "description": "...",
-     "content_body": "..."
+     "content_body": "...",
+     "subagent_specialists": ["foo-arch", "foo-perf"],
+     "no_subagents": false
    }
    ```
+
+   For orchestrator kinds (`horizontal`, `platform-override-piloted`, `platform-pack`), the scaffolder emits one Codex TOML stub and one OpenCode markdown stub per name listed in `subagent_specialists`. Stubs land at `<orchestrator-skill-dir>/codex-agents/<name>.toml` and `<orchestrator-skill-dir>/opencode-agents/<name>.md`, and the scaffolder injects a `## Subagent Spawn Runtime Notes` section into the orchestrator's `content.md`. Set `no_subagents: true` to opt out explicitly when an orchestrator should not delegate to native subagents (the two flags cannot both be set together). Specialist names must match `^[a-z][a-z0-9-]*$`, must be unique, and are NOT valid for leaf kinds such as `code-review-area` or `add-on`. After scaffolding, fill in the TODO placeholders in each generated stub before shipping.
 
    Omit `routing_signals` for known platforms with built-in presets. Include it only when overriding a preset or introducing an unknown platform whose routing signals cannot be inferred confidently. The full schema (required keys, worked examples per kind, the loud-fail exception catalog) lives in the repo at `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
