@@ -113,7 +113,8 @@ install_codex_agents_tomls() {
   local python_cmd
   if python_cmd="$(command -v python3 2>/dev/null)"; then
     if "$python_cmd" -m skill_bill install link-codex-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      --platform-packs "$PLATFORM_PACKS_DIR" \
+      --skills "$SKILLS_DIR" 2>/dev/null; then
       ok "  Codex subagent TOMLs linked via skill_bill"
       return 0
     fi
@@ -121,7 +122,9 @@ install_codex_agents_tomls() {
 
   local toml_file link_path
   shopt -s nullglob globstar
-  for toml_file in "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml; do
+  for toml_file in \
+    "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml \
+    "$SKILLS_DIR"/**/codex-agents/*.toml; do
     [[ -f "$toml_file" ]] || continue
     link_path="$target_dir/$(basename "$toml_file")"
     if [[ -L "$link_path" || -e "$link_path" ]]; then
@@ -145,7 +148,8 @@ install_opencode_agent_mds() {
   local python_cmd
   if python_cmd="$(command -v python3 2>/dev/null)"; then
     if "$python_cmd" -m skill_bill install link-opencode-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      --platform-packs "$PLATFORM_PACKS_DIR" \
+      --skills "$SKILLS_DIR" 2>/dev/null; then
       ok "  OpenCode subagent markdown linked via skill_bill"
       return 0
     fi
@@ -153,7 +157,9 @@ install_opencode_agent_mds() {
 
   local md_file link_path
   shopt -s nullglob globstar
-  for md_file in "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md; do
+  for md_file in \
+    "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md \
+    "$SKILLS_DIR"/**/opencode-agents/*.md; do
     [[ -f "$md_file" ]] || continue
     link_path="$target_dir/$(basename "$md_file")"
     if [[ -L "$link_path" || -e "$link_path" ]]; then
