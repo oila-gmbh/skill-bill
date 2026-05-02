@@ -69,7 +69,7 @@ Supported install targets today:
 - OpenAI Codex (skills under `~/.codex/skills/`; native subagent TOMLs under `~/.codex/agents/`, both with `~/.agents/...` fallback)
 - OpenCode (skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`)
 
-Native subagent definitions are installed only for orchestrators that ship them. Discovery is manifest-driven under `platform-packs/<slug>/**/codex-agents/*.toml` for Codex and `platform-packs/<slug>/**/opencode-agents/*.md` for OpenCode. Codex resolves runtime-neutral spawn prose by TOML `name`; OpenCode resolves by filename-derived markdown agent name and also supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` KMP specialists.
+Native subagent definitions are installed only for orchestrators that ship them. Discovery is manifest-driven under `platform-packs/<slug>/**/codex-agents/*.toml` for Codex and `platform-packs/<slug>/**/opencode-agents/*.md` for OpenCode. Codex resolves runtime-neutral spawn prose by TOML `name`; OpenCode resolves by filename-derived markdown agent name and also supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` KMP specialists and the `bill-kotlin-code-review` Kotlin specialists. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline.
 
 ## Start here
 

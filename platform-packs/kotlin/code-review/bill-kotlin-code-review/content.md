@@ -81,9 +81,10 @@ This is a lightweight file-level classification (names + imports), not a full re
 
 ### Step 6: Run selected specialist reviews
 
-- Run each selected specialist lane against its scoped files.
+- Spawn each selected specialist lane against its scoped files.
 - Read each specialist skill file as the primary rubric for that lane.
 - Keep findings attributed to each specialist before merging and deduplicating them into the final review.
+- When the selected set is larger than the host runtime can run concurrently, run specialists in deterministic waves and merge all wave outputs before the final review.
 
 ---
 
@@ -98,3 +99,10 @@ This is a lightweight file-level classification (names + imports), not a full re
 
 Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
 
+## Subagent Spawn Runtime Notes
+
+Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kotlin-code-review-architecture` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. On OpenCode, the spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kotlin-code-review-architecture`, `@bill-kotlin-code-review-platform-correctness`, `@bill-kotlin-code-review-security`, `@bill-kotlin-code-review-performance`, `@bill-kotlin-code-review-testing`, `@bill-kotlin-code-review-api-contracts`, `@bill-kotlin-code-review-persistence`, or `@bill-kotlin-code-review-reliability`.
+
+Kotlin fan-out can select up to 8 specialists, which exceeds Codex's `agents.max_threads = 6` default. Run selected specialists in stable waves of at most 6 specialists. Wave 1 should keep the shared baseline first (`bill-kotlin-code-review-architecture`, `bill-kotlin-code-review-platform-correctness`) and then continue in routing-table order; Wave 2 handles any remaining specialists. Do not drop backend/server specialists just to fit a single wave.
+
+OpenCode does not document a different native concurrency cap for these markdown subagents, so keep the Skill Bill conservative limit of 6 or fewer specialists per wave.
