@@ -16,11 +16,19 @@ def install_main(argv: list[str]) -> int:
   agent_path.add_argument("agent")
 
   subcommands.add_parser("detect-agents")
+  subcommands.add_parser("codex-agents-path")
+  subcommands.add_parser("detect-codex-agents")
 
   link_skill = subcommands.add_parser("link-skill")
   link_skill.add_argument("--source", required=True)
   link_skill.add_argument("--target-dir", required=True)
   link_skill.add_argument("--agent", default="manual")
+
+  link_codex_agents = subcommands.add_parser("link-codex-agents")
+  link_codex_agents.add_argument("--platform-packs", required=True)
+
+  unlink_codex_agents = subcommands.add_parser("unlink-codex-agents")
+  unlink_codex_agents.add_argument("--platform-packs", required=True)
 
   args = parser.parse_args(argv)
   if args.command == "agent-path":
@@ -33,11 +41,30 @@ def install_main(argv: list[str]) -> int:
     for target in install.detect_agents():
       print(f"{target.name}\t{target.path}")
     return 0
+  if args.command == "codex-agents-path":
+    print(install.codex_agents_path())
+    return 0
+  if args.command == "detect-codex-agents":
+    target = install.detect_codex_agents_target()
+    if target is not None:
+      print(f"{target.name}\t{target.path}")
+    return 0
   if args.command == "link-skill":
     install.install_skill(
       Path(args.source),
       [install.AgentTarget(name=args.agent, path=Path(args.target_dir))],
     )
+    return 0
+  if args.command == "link-codex-agents":
+    target = install.detect_codex_agents_target()
+    if target is None:
+      return 0
+    toml_files = install.discover_codex_agent_tomls(Path(args.platform_packs))
+    for toml_file in toml_files:
+      install.install_codex_agent_toml(toml_file, target)
+    return 0
+  if args.command == "unlink-codex-agents":
+    install.uninstall_codex_agent_tomls(Path(args.platform_packs))
     return 0
   parser.error("Unknown install command.")
   return 2

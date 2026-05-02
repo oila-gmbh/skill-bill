@@ -46,10 +46,13 @@ Supported install targets:
 | GitHub Copilot | `~/.copilot/skills/` |
 | Claude Code | `~/.claude/commands/` |
 | GLM | `~/.glm/commands/` |
-| OpenAI Codex | `~/.codex/skills/` or `~/.agents/skills/` |
+| OpenAI Codex (skills) | `~/.codex/skills/` or `~/.agents/skills/` |
+| OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` or `~/.agents/agents/` |
 | OpenCode | `~/.config/opencode/skills/` |
 
 Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
+
+On Codex, orchestrators that delegate to specialists also install native subagent TOML defs into `~/.codex/agents/` (with `~/.agents/agents/` fallback). Codex spawns these subagents via natural language, resolving the spawn instruction by `name` against the installed TOMLs. Today this covers the `bill-kmp-code-review` specialists; other orchestrators continue to run as a single Codex conversation until their TOML defs ship in follow-up issues.
 
 ## Runtime Model
 

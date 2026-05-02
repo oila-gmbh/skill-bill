@@ -13,7 +13,8 @@ Supported agents (mirrors ``install.sh::get_agent_path``):
 - ``claude``   -> ``~/.claude/commands``
 - ``glm``      -> ``~/.glm/commands``
 - ``opencode`` -> ``~/.config/opencode/skills``
-- ``codex``    -> ``~/.codex/skills`` with ``~/.agents/skills`` fallback
+- ``codex``    -> ``~/.codex/skills`` with ``~/.agents/skills`` fallback (skills);
+   ``~/.codex/agents`` with ``~/.agents/agents`` fallback (TOML subagents)
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ SUPPORTED_AGENTS: tuple[str, ...] = (
   "codex",
   "opencode",
 )
+
+
+CODEX_AGENTS_KIND: str = "codex-agents"
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,21 @@ def _codex_path(home: Path) -> Path:
   return home / ".agents" / "skills"
 
 
+def _codex_agents_path(home: Path) -> Path:
+  """Resolve the Codex native subagents TOML directory.
+
+  Prefers ``~/.codex/agents`` when ``~/.codex`` or ``~/.codex/agents``
+  exists; otherwise falls back to ``~/.agents/agents``. Mirrors the skills
+  fallback model so older codex layouts keep working without duplicate
+  path rules.
+  """
+  codex_root = home / ".codex"
+  codex_agents = codex_root / "agents"
+  if codex_root.exists() or codex_agents.exists():
+    return codex_agents
+  return home / ".agents" / "agents"
+
+
 def agent_paths(home: Path | None = None) -> dict[str, Path]:
   """Return the canonical agent -> install-directory mapping.
 
@@ -94,6 +113,12 @@ def agent_paths(home: Path | None = None) -> dict[str, Path]:
   }
 
 
+def codex_agents_path(home: Path | None = None) -> Path:
+  """Public accessor for the resolved Codex agents TOML directory."""
+  resolved_home = home if home is not None else Path.home()
+  return _codex_agents_path(resolved_home)
+
+
 def detect_agents(home: Path | None = None) -> list[AgentTarget]:
   """Return the list of agents whose parent directories already exist.
 
@@ -110,6 +135,20 @@ def detect_agents(home: Path | None = None) -> list[AgentTarget]:
     if _agent_is_present(resolved_home, agent, path):
       detected.append(AgentTarget(name=agent, path=path))
   return detected
+
+
+def detect_codex_agents_target(home: Path | None = None) -> AgentTarget | None:
+  """Return the Codex agents-directory target when Codex is detected.
+
+  Codex-specific: this is the secondary install surface alongside the
+  skills directory. Returns ``None`` when no Codex install is detected so
+  callers can short-circuit cleanly.
+  """
+  resolved_home = home if home is not None else Path.home()
+  agents_dir = _codex_agents_path(resolved_home)
+  if _agent_is_present(resolved_home, "codex", agents_dir):
+    return AgentTarget(name=CODEX_AGENTS_KIND, path=agents_dir)
+  return None
 
 
 def _agent_is_present(home: Path, agent: str, install_path: Path) -> bool:
@@ -202,6 +241,84 @@ def uninstall_skill(skill_path: Path, agent_targets: Iterable[AgentTarget]) -> l
   return removed
 
 
+def discover_codex_agent_tomls(platform_packs_root: Path) -> list[Path]:
+  """Return every ``codex-agents/*.toml`` under ``platform-packs/``.
+
+  Manifest-driven: walks ``platform-packs/<slug>/**/codex-agents/*.toml``
+  rather than hardcoding any particular pack slug, so future packs that
+  ship native Codex subagent definitions are picked up automatically.
+  """
+  root = Path(platform_packs_root)
+  if not root.is_dir():
+    return []
+  results: list[Path] = []
+  for toml_file in root.rglob("codex-agents/*.toml"):
+    if toml_file.is_file():
+      results.append(toml_file.resolve())
+  return sorted(results)
+
+
+def install_codex_agent_toml(
+  toml_path: Path,
+  agent_target: AgentTarget,
+  *,
+  transaction: InstallTransaction | None = None,
+) -> Path | None:
+  """Symlink a single TOML subagent file into the Codex agents directory.
+
+  Returns the created symlink path, or ``None`` when the existing symlink
+  already points at the same source.
+  """
+  toml_path = Path(toml_path).resolve()
+  if not toml_path.is_file():
+    raise FileNotFoundError(f"TOML file '{toml_path}' does not exist.")
+  agent_target.path.mkdir(parents=True, exist_ok=True)
+  link_path = agent_target.path / toml_path.name
+  if link_path.is_symlink() and link_path.resolve(strict=False) == toml_path:
+    return None
+  if link_path.is_symlink() or link_path.exists():
+    link_path.unlink()
+  link_path.symlink_to(toml_path)
+  if transaction is not None:
+    transaction.created_symlinks.append(link_path)
+  return link_path
+
+
+def uninstall_codex_agent_tomls(
+  platform_packs_root: Path,
+  home: Path | None = None,
+) -> list[Path]:
+  """Remove every TOML symlink under both candidate Codex agents dirs.
+
+  Iterates through the manifest-driven list of authored TOML filenames and
+  removes any matching symlink in ``~/.codex/agents`` and
+  ``~/.agents/agents``. Idempotent: missing or non-symlink entries are
+  silently skipped.
+  """
+  resolved_home = home if home is not None else Path.home()
+  toml_files = discover_codex_agent_tomls(platform_packs_root)
+  if not toml_files:
+    return []
+  candidate_dirs = (
+    resolved_home / ".codex" / "agents",
+    resolved_home / ".agents" / "agents",
+  )
+  removed: list[Path] = []
+  for toml_path in toml_files:
+    for candidate_dir in candidate_dirs:
+      link_path = candidate_dir / toml_path.name
+      if not link_path.is_symlink():
+        continue
+      try:
+        if link_path.resolve(strict=False) != toml_path:
+          continue
+      except OSError:
+        continue
+      link_path.unlink()
+      removed.append(link_path)
+  return removed
+
+
 def uninstall_targets(created_symlinks: Iterable[Path]) -> list[Path]:
   """Remove the exact symlinks recorded in an :class:`InstallTransaction`.
 
@@ -220,11 +337,17 @@ def uninstall_targets(created_symlinks: Iterable[Path]) -> list[Path]:
 
 __all__ = [
   "AgentTarget",
+  "CODEX_AGENTS_KIND",
   "InstallTransaction",
   "SUPPORTED_AGENTS",
   "agent_paths",
+  "codex_agents_path",
   "detect_agents",
+  "detect_codex_agents_target",
+  "discover_codex_agent_tomls",
+  "install_codex_agent_toml",
   "install_skill",
+  "uninstall_codex_agent_tomls",
   "uninstall_skill",
   "uninstall_targets",
 ]

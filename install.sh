@@ -71,6 +71,55 @@ get_agent_path() {
   esac
 }
 
+get_codex_agents_path() {
+  # Mirrors get_agent_path for the native Codex subagents directory.
+  # Source of truth lives in skill_bill/install.py::_codex_agents_path.
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if output="$("$python_cmd" -m skill_bill install codex-agents-path 2>/dev/null)"; then
+      echo "$output"
+      return 0
+    fi
+  fi
+  if [[ -d "$HOME/.codex" || -d "$HOME/.codex/agents" ]]; then
+    echo "$HOME/.codex/agents"
+  else
+    echo "$HOME/.agents/agents"
+  fi
+}
+
+install_codex_agents_tomls() {
+  # Install Codex native subagent TOML defs under the resolved agents dir.
+  # Walks platform-packs/<slug>/**/codex-agents/*.toml — manifest-driven,
+  # never hardcodes a slug. Runs only when codex was selected by the user.
+  local target_dir
+  target_dir="$(get_codex_agents_path)"
+  mkdir -p "$target_dir"
+  info "Installing Codex subagent TOMLs to: $target_dir"
+
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if "$python_cmd" -m skill_bill install link-codex-agents \
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      ok "  Codex subagent TOMLs linked via skill_bill"
+      return 0
+    fi
+  fi
+
+  local toml_file link_path
+  shopt -s nullglob globstar
+  for toml_file in "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml; do
+    [[ -f "$toml_file" ]] || continue
+    link_path="$target_dir/$(basename "$toml_file")"
+    if [[ -L "$link_path" || -e "$link_path" ]]; then
+      rm -f "$link_path"
+    fi
+    ln -s "$toml_file" "$link_path"
+    ok "  $(basename "$toml_file") → $toml_file"
+  done
+  shopt -u nullglob globstar
+}
+
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
 # same (for example, moving
 # skills/kotlin/bill-kotlin-quality-check/ to
@@ -783,6 +832,10 @@ for i in "${!AGENT_NAMES[@]}"; do
     skill="${INSTALL_SKILL_NAMES[$idx]}"
     install_skill "$agent_dir/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
   done
+
+  if [[ "$agent" == "codex" ]]; then
+    install_codex_agents_tomls
+  fi
   echo ""
 done
 

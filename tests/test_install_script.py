@@ -418,9 +418,36 @@ class InstallScriptTest(unittest.TestCase):
       ".claude",
       ".glm",
       ".codex",
+      ".codex/agents",
       ".config/opencode",
     ):
       (Path(temp_home) / relative_dir).mkdir(parents=True, exist_ok=True)
+
+  def test_install_links_codex_native_subagent_tomls(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      result = self.run_installer(temp_home, "codex\nKMP\n")
+      self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+      agents_dir = Path(temp_home) / ".codex" / "agents"
+      self.assertTrue(agents_dir.is_dir(), agents_dir)
+
+      pilot_tomls = (
+        "bill-kmp-code-review-ui.toml",
+        "bill-kmp-code-review-ux-accessibility.toml",
+      )
+      pack_root = (
+        ROOT
+        / "platform-packs"
+        / "kmp"
+        / "code-review"
+        / "bill-kmp-code-review"
+        / "codex-agents"
+      )
+      for toml_name in pilot_tomls:
+        link_path = agents_dir / toml_name
+        self.assertTrue(link_path.is_symlink(), f"{link_path} should be a symlink")
+        self.assertEqual(link_path.resolve(), pack_root / toml_name)
 
   def telemetry_config(self, config_path: Path) -> dict[str, object]:
     return json.loads(config_path.read_text(encoding="utf-8"))

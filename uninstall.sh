@@ -256,6 +256,39 @@ remove_from_agent_dir "codex" "$HOME/.codex/skills"
 remove_from_agent_dir "codex" "$HOME/.agents/skills"
 remove_from_agent_dir "opencode" "$HOME/.config/opencode/skills"
 
+remove_codex_agents_tomls() {
+  # Uninstall Codex native subagent TOML symlinks from both candidate
+  # directories. Manifest-driven: walks platform-packs/<slug>/**/codex-agents/*.toml
+  # and removes any matching filename in $HOME/.codex/agents and
+  # $HOME/.agents/agents. Idempotent.
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if "$python_cmd" -m skill_bill install unlink-codex-agents \
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      ok "  Codex subagent TOMLs removed via skill_bill"
+      return 0
+    fi
+  fi
+
+  local toml_file link_path candidate_dir
+  shopt -s nullglob globstar
+  for toml_file in "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml; do
+    [[ -f "$toml_file" ]] || continue
+    for candidate_dir in "$HOME/.codex/agents" "$HOME/.agents/agents"; do
+      link_path="$candidate_dir/$(basename "$toml_file")"
+      if [[ -L "$link_path" ]]; then
+        rm -f "$link_path"
+        REMOVED_TARGETS+=("$link_path")
+        ok "  removed $(basename "$link_path")"
+      fi
+    done
+  done
+  shopt -u nullglob globstar
+}
+
+info "Removing Codex subagent TOML installs."
+remove_codex_agents_tomls
+
 info "Removing MCP server registrations."
 unregister_mcp_json "$HOME/.claude.json" "claude"
 unregister_mcp_json "$HOME/.copilot/mcp-config.json" "copilot"
