@@ -21,6 +21,19 @@ exclude = [
   # pre-migration SKILL.md files; their sidecar symlinks are not copied,
   # so the validator must not flag the missing sibling files as errors.
   "_migration_backup/**",
+  # SKILL-33 follow-up 3: these OpenCode subagent .md files inline
+  # orchestrator-substituted placeholder tokens (e.g. <concise summary>,
+  # <path>, <name>) that the orchestrator templates at spawn time. The
+  # xml_balance rule treats these placeholders as unclosed XML tags.
+  # Excluding the directory keeps the briefings byte-identical to
+  # reference.md without rewriting placeholder syntax.
+  "skills/bill-feature-implement/opencode-agents/**",
+  # Feature spec narratives are author-facing design docs that legitimately
+  # reference absolute repo paths and runtime install dirs (e.g.
+  # /Users/.../skill-bill, ~/.codex/agents) when describing the work to
+  # be done. They are not shipped to end users; agnix portability rules
+  # do not apply.
+  ".feature-specs/**",
 ]
 
 # SKILL-21: skill-bill deliberately extends the Agent Skills frontmatter
