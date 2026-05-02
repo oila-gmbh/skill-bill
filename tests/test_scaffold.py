@@ -1223,7 +1223,7 @@ class ScaffolderOwnedSectionsIdenticalTest(unittest.TestCase):
 
 
 class AgentDetectionTest(unittest.TestCase):
-  """Exercise :func:`detect_agents` with 0 / 1 / all five agent dirs present."""
+  """Exercise normal skill-target and explicit native subagent detection."""
 
   def setUp(self) -> None:
     self._tmpdir = tempfile.TemporaryDirectory()
@@ -1238,6 +1238,29 @@ class AgentDetectionTest(unittest.TestCase):
     (self.fake_home / ".claude").mkdir()
     detected = install_module.detect_agents(home=self.fake_home)
     self.assertEqual([target.name for target in detected], ["claude"])
+
+  def test_opencode_detect_agents_returns_only_skill_target(self) -> None:
+    (self.fake_home / ".config/opencode").mkdir(parents=True)
+    detected = install_module.detect_agents(home=self.fake_home)
+    self.assertEqual(
+      detected,
+      [
+        AgentTarget(
+          name="opencode",
+          path=self.fake_home / ".config" / "opencode" / "skills",
+        ),
+      ],
+    )
+
+  def test_opencode_agents_target_detected_explicitly(self) -> None:
+    (self.fake_home / ".config/opencode").mkdir(parents=True)
+    self.assertEqual(
+      install_module.detect_opencode_agents_target(home=self.fake_home),
+      AgentTarget(
+        name=install_module.OPENCODE_AGENTS_KIND,
+        path=self.fake_home / ".config" / "opencode" / "agents",
+      ),
+    )
 
   def test_all_five_agents_detected(self) -> None:
     for subdir in (".copilot", ".claude", ".glm", ".codex", ".config/opencode"):

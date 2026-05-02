@@ -57,7 +57,7 @@ Team members should not need to know migration history. Current behavior is:
 - Python scripts still exist for repo validation and maintainer tooling, but Python is not the active CLI/MCP runtime.
 - Runtime rollback means installing a previous release, not toggling a Python fallback.
 
-On Codex, `bill-kmp-code-review` ships native subagent TOML defs under `~/.codex/agents/` (with `~/.agents/agents/` fallback). The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent" and so on) is runtime-neutral: Codex resolves each name against the installed TOMLs as a natural-language steering directive, while Claude maps the same prose to its native subagent tool. Other orchestrators (`bill-feature-implement`, `bill-feature-verify`, the Kotlin baseline) still run inline on Codex until their TOMLs land in follow-up issues.
+On Codex and OpenCode, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists. Codex installs TOMLs under `~/.codex/agents/` (with `~/.agents/agents/` fallback) from `platform-packs/<slug>/**/codex-agents/*.toml`; OpenCode installs markdown agents under `~/.config/opencode/agents/` from `platform-packs/<slug>/**/opencode-agents/*.md`. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent" and so on) is runtime-neutral: Codex resolves each TOML by `name`, OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation, while Claude maps the same prose to its native subagent tool. Other orchestrators (`bill-feature-implement`, `bill-feature-verify`, the Kotlin baseline) still run inline on Codex and OpenCode until their native subagent definitions land in follow-up issues.
 
 ## Fallback And Failure Boundaries
 

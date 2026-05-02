@@ -12,7 +12,8 @@ Supported agents (mirrors ``install.sh::get_agent_path``):
 - ``copilot``  -> ``~/.copilot/skills``
 - ``claude``   -> ``~/.claude/commands``
 - ``glm``      -> ``~/.glm/commands``
-- ``opencode`` -> ``~/.config/opencode/skills``
+- ``opencode`` -> ``~/.config/opencode/skills``;
+   ``~/.config/opencode/agents`` for OpenCode markdown subagents
 - ``codex``    -> ``~/.codex/skills`` with ``~/.agents/skills`` fallback (skills);
    ``~/.codex/agents`` with ``~/.agents/agents`` fallback (TOML subagents)
 """
@@ -34,6 +35,7 @@ SUPPORTED_AGENTS: tuple[str, ...] = (
 
 
 CODEX_AGENTS_KIND: str = "codex-agents"
+OPENCODE_AGENTS_KIND: str = "opencode-agents"
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,11 @@ def _codex_agents_path(home: Path) -> Path:
   return home / ".agents" / "agents"
 
 
+def _opencode_agents_path(home: Path) -> Path:
+  """Resolve the OpenCode native markdown subagents directory."""
+  return home / ".config" / "opencode" / "agents"
+
+
 def agent_paths(home: Path | None = None) -> dict[str, Path]:
   """Return the canonical agent -> install-directory mapping.
 
@@ -117,6 +124,12 @@ def codex_agents_path(home: Path | None = None) -> Path:
   """Public accessor for the resolved Codex agents TOML directory."""
   resolved_home = home if home is not None else Path.home()
   return _codex_agents_path(resolved_home)
+
+
+def opencode_agents_path(home: Path | None = None) -> Path:
+  """Public accessor for the resolved OpenCode agents markdown directory."""
+  resolved_home = home if home is not None else Path.home()
+  return _opencode_agents_path(resolved_home)
 
 
 def detect_agents(home: Path | None = None) -> list[AgentTarget]:
@@ -148,6 +161,15 @@ def detect_codex_agents_target(home: Path | None = None) -> AgentTarget | None:
   agents_dir = _codex_agents_path(resolved_home)
   if _agent_is_present(resolved_home, "codex", agents_dir):
     return AgentTarget(name=CODEX_AGENTS_KIND, path=agents_dir)
+  return None
+
+
+def detect_opencode_agents_target(home: Path | None = None) -> AgentTarget | None:
+  """Return the OpenCode agents-directory target when OpenCode is detected."""
+  resolved_home = home if home is not None else Path.home()
+  agents_dir = _opencode_agents_path(resolved_home)
+  if _agent_is_present(resolved_home, "opencode", agents_dir):
+    return AgentTarget(name=OPENCODE_AGENTS_KIND, path=agents_dir)
   return None
 
 
@@ -258,6 +280,23 @@ def discover_codex_agent_tomls(platform_packs_root: Path) -> list[Path]:
   return sorted(results)
 
 
+def discover_opencode_agent_mds(platform_packs_root: Path) -> list[Path]:
+  """Return every ``opencode-agents/*.md`` under ``platform-packs/``.
+
+  Manifest-driven: walks ``platform-packs/<slug>/**/opencode-agents/*.md``
+  rather than hardcoding any particular pack slug, so future packs that
+  ship native OpenCode subagent definitions are picked up automatically.
+  """
+  root = Path(platform_packs_root)
+  if not root.is_dir():
+    return []
+  results: list[Path] = []
+  for md_file in root.rglob("opencode-agents/*.md"):
+    if md_file.is_file():
+      results.append(md_file.resolve())
+  return sorted(results)
+
+
 def install_codex_agent_toml(
   toml_path: Path,
   agent_target: AgentTarget,
@@ -279,6 +318,32 @@ def install_codex_agent_toml(
   if link_path.is_symlink() or link_path.exists():
     link_path.unlink()
   link_path.symlink_to(toml_path)
+  if transaction is not None:
+    transaction.created_symlinks.append(link_path)
+  return link_path
+
+
+def install_opencode_agent_md(
+  md_path: Path,
+  agent_target: AgentTarget,
+  *,
+  transaction: InstallTransaction | None = None,
+) -> Path | None:
+  """Symlink a single markdown subagent file into the OpenCode agents directory.
+
+  Returns the created symlink path, or ``None`` when the existing symlink
+  already points at the same source.
+  """
+  md_path = Path(md_path).resolve()
+  if not md_path.is_file():
+    raise FileNotFoundError(f"Markdown file '{md_path}' does not exist.")
+  agent_target.path.mkdir(parents=True, exist_ok=True)
+  link_path = agent_target.path / md_path.name
+  if link_path.is_symlink() and link_path.resolve(strict=False) == md_path:
+    return None
+  if link_path.is_symlink() or link_path.exists():
+    link_path.unlink()
+  link_path.symlink_to(md_path)
   if transaction is not None:
     transaction.created_symlinks.append(link_path)
   return link_path
@@ -319,6 +384,36 @@ def uninstall_codex_agent_tomls(
   return removed
 
 
+def uninstall_opencode_agent_mds(
+  platform_packs_root: Path,
+  home: Path | None = None,
+) -> list[Path]:
+  """Remove every OpenCode markdown-agent symlink from the agents dir.
+
+  Iterates through the manifest-driven list of authored markdown filenames and
+  removes any matching symlink in ``~/.config/opencode/agents``. Idempotent:
+  missing or non-symlink entries are silently skipped.
+  """
+  resolved_home = home if home is not None else Path.home()
+  md_files = discover_opencode_agent_mds(platform_packs_root)
+  if not md_files:
+    return []
+  agents_dir = _opencode_agents_path(resolved_home)
+  removed: list[Path] = []
+  for md_path in md_files:
+    link_path = agents_dir / md_path.name
+    if not link_path.is_symlink():
+      continue
+    try:
+      if link_path.resolve(strict=False) != md_path:
+        continue
+    except OSError:
+      continue
+    link_path.unlink()
+    removed.append(link_path)
+  return removed
+
+
 def uninstall_targets(created_symlinks: Iterable[Path]) -> list[Path]:
   """Remove the exact symlinks recorded in an :class:`InstallTransaction`.
 
@@ -339,15 +434,22 @@ __all__ = [
   "AgentTarget",
   "CODEX_AGENTS_KIND",
   "InstallTransaction",
+  "OPENCODE_AGENTS_KIND",
   "SUPPORTED_AGENTS",
+  "_opencode_agents_path",
   "agent_paths",
   "codex_agents_path",
   "detect_agents",
   "detect_codex_agents_target",
+  "detect_opencode_agents_target",
   "discover_codex_agent_tomls",
+  "discover_opencode_agent_mds",
   "install_codex_agent_toml",
+  "install_opencode_agent_md",
   "install_skill",
+  "opencode_agents_path",
   "uninstall_codex_agent_tomls",
+  "uninstall_opencode_agent_mds",
   "uninstall_skill",
   "uninstall_targets",
 ]

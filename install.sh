@@ -88,6 +88,19 @@ get_codex_agents_path() {
   fi
 }
 
+get_opencode_agents_path() {
+  # Mirrors get_agent_path for the native OpenCode markdown subagents
+  # directory. Source of truth lives in skill_bill/install.py::_opencode_agents_path.
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if output="$("$python_cmd" -m skill_bill install opencode-agents-path 2>/dev/null)"; then
+      echo "$output"
+      return 0
+    fi
+  fi
+  echo "$HOME/.config/opencode/agents"
+}
+
 install_codex_agents_tomls() {
   # Install Codex native subagent TOML defs under the resolved agents dir.
   # Walks platform-packs/<slug>/**/codex-agents/*.toml — manifest-driven,
@@ -116,6 +129,38 @@ install_codex_agents_tomls() {
     fi
     ln -s "$toml_file" "$link_path"
     ok "  $(basename "$toml_file") → $toml_file"
+  done
+  shopt -u nullglob globstar
+}
+
+install_opencode_agent_mds() {
+  # Install OpenCode native subagent markdown defs under ~/.config/opencode/agents.
+  # Walks platform-packs/<slug>/**/opencode-agents/*.md — manifest-driven,
+  # never hardcodes a slug. Runs only when opencode was selected by the user.
+  local target_dir
+  target_dir="$(get_opencode_agents_path)"
+  mkdir -p "$target_dir"
+  info "Installing OpenCode subagent markdown to: $target_dir"
+
+  local python_cmd
+  if python_cmd="$(command -v python3 2>/dev/null)"; then
+    if "$python_cmd" -m skill_bill install link-opencode-agents \
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      ok "  OpenCode subagent markdown linked via skill_bill"
+      return 0
+    fi
+  fi
+
+  local md_file link_path
+  shopt -s nullglob globstar
+  for md_file in "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md; do
+    [[ -f "$md_file" ]] || continue
+    link_path="$target_dir/$(basename "$md_file")"
+    if [[ -L "$link_path" || -e "$link_path" ]]; then
+      rm -f "$link_path"
+    fi
+    ln -s "$md_file" "$link_path"
+    ok "  $(basename "$md_file") → $md_file"
   done
   shopt -u nullglob globstar
 }
@@ -835,6 +880,9 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   if [[ "$agent" == "codex" ]]; then
     install_codex_agents_tomls
+  fi
+  if [[ "$agent" == "opencode" ]]; then
+    install_opencode_agent_mds
   fi
   echo ""
 done

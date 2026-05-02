@@ -10,11 +10,11 @@
 
 ## Background
 
-Skill-bill already installs skills to Codex (`~/.codex/skills/` with `~/.agents/skills/` fallback) but has no integration with Codex's native subagent feature. As a result, every multi-step orchestrator that uses Claude's `Agent` tool collapses into a single Codex conversation, blowing the context window and serializing work that should run in parallel.
+Skill-bill already installs skills to the Codex user skills directory with the existing legacy Agents skills fallback, but has no integration with Codex's native subagent feature. As a result, every multi-step orchestrator that uses Claude's `Agent` tool collapses into a single Codex conversation, blowing the context window and serializing work that should run in parallel.
 
 Codex native subagents differ from Claude's `Agent` tool in three load-bearing ways the implementation must respect:
 
-1. **Definition format.** TOML files in `~/.codex/agents/` (user) or `.codex/agents/` (project). Required fields: `name`, `description`, `developer_instructions`. Optional: `model`, `model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `nickname_candidates`, `skills.config`.
+1. **Definition format.** TOML files in the Codex user agents directory or the Codex project agents directory. Required fields: `name`, `description`, `developer_instructions`. Optional: `model`, `model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `nickname_candidates`, `skills.config`.
 2. **Invocation model.** Codex spawns subagents via natural-language steering, not a programmatic tool call. There is no equivalent of `Agent(subagent_type=…)` with structured args. Parent agents say "spawn the X agent" and Codex resolves by `name`.
 3. **Runtime constraints.** `agents.max_threads` defaults to 6, `agents.max_depth` defaults to 1 (no nesting). Subagents inherit the parent's sandbox policy unless overridden per-agent.
 
@@ -22,7 +22,7 @@ This phase establishes the foundation (install path, TOML authoring) and validat
 
 ## Acceptance criteria
 
-1. `skill_bill/install.py` resolves a Codex agents directory at `~/.codex/agents/` (with `~/.agents/agents/` fallback, mirroring the existing skills-path fallback model) and exposes it through the same install/uninstall primitives that already handle skills.
+1. `skill_bill/install.py` resolves a Codex agents directory with the legacy Agents agents fallback, mirroring the existing skills-path fallback model, and exposes it through the same install/uninstall primitives that already handle skills.
 2. `install.sh` and `uninstall.sh` install and remove Codex subagent TOML files alongside skill installs when Codex is a selected agent.
 3. `bill-kmp-code-review` ships TOML subagent definitions for every specialist it delegates to, authored under a canonical repo location (e.g. `platform-packs/kmp/code-review/bill-kmp-code-review/codex-agents/*.toml`), and those files are valid Codex agent files (required fields present, names unique, no Claude-only references in `developer_instructions`).
 4. `bill-kmp-code-review`'s orchestrator skill content describes spawning subagents in runtime-neutral language (e.g. "spawn the `review-architecture` subagent") so both Claude (which maps the spawn to `Agent(subagent_type=…)`) and Codex (which resolves the name against an installed TOML) execute the same prose correctly.
@@ -37,7 +37,7 @@ This phase establishes the foundation (install path, TOML authoring) and validat
 - Codex subagent support for `bill-kotlin-code-review`, `bill-feature-verify`, `bill-feature-implement`, or any other orchestrator skill — separate follow-up issues.
 - Scaffolding subagent TOML files from `bill-create-skill` — separate follow-up issue.
 - Changing the Claude-side `Agent` tool integration or the existing `RESULT:` JSON contracts.
-- Restructuring the existing skills install path (`~/.codex/skills/`).
+- Restructuring the existing Codex skills install path.
 - Adding a runtime-detection helper that tries to identify whether the orchestrator is running on Claude or Codex. The skill prose stays runtime-neutral; each runtime interprets it natively.
 - Enforcing the `RESULT:` contract on Codex with deterministic parsing guarantees beyond what `developer_instructions` can elicit. Codex's natural-language spawn model means contract adherence is best-effort, not tool-enforced.
 
@@ -49,7 +49,7 @@ None at draft time. All resolved via the linked Codex docs read on 2026-05-02.
 
 ### Install path
 
-Extend `skill_bill/install.py` so the agent registry for Codex returns both a skills directory (existing) and an agents directory (new). The agents directory uses the same fallback pattern as skills: prefer `~/.codex/agents/`, fall back to `~/.agents/agents/`. Both `install.sh` and `uninstall.sh` must be able to symlink TOML files from the repo into that directory and remove them on uninstall. The install transaction model already used for skills should be reused — do not introduce a parallel transaction system.
+Extend `skill_bill/install.py` so the agent registry for Codex returns both a skills directory (existing) and an agents directory (new). The agents directory uses the same fallback pattern as skills: prefer the Codex user agents directory, then fall back to the legacy Agents agents directory. Both `install.sh` and `uninstall.sh` must be able to symlink TOML files from the repo into that directory and remove them on uninstall. The install transaction model already used for skills should be reused — do not introduce a parallel transaction system.
 
 ### Subagent definition authoring
 
@@ -79,13 +79,13 @@ The pilot orchestrator already fans out to specialists in parallel where the pro
 
 Update `README.md` and `docs/getting-started.md` to:
 
-- List `~/.codex/agents/` (and the `~/.agents/agents/` fallback) as a supported install target.
+- List the Codex user agents directory and legacy Agents agents fallback as supported install targets.
 - Describe in one paragraph that Codex spawns subagents via natural language and that skill-bill's TOML defs make the orchestrators work natively.
 - Clarify that this phase covers `bill-kmp-code-review` only and that other orchestrators will follow.
 
 ### Tests
 
-- Extend the install/uninstall tests (`tests/test_install_script.py`, `tests/test_uninstall_script.py`) to cover the Codex agents directory: detection, symlinking on install, cleanup on uninstall, and the `~/.agents/agents/` fallback when `~/.codex/` is absent.
+- Extend the install/uninstall tests (`tests/test_install_script.py`, `tests/test_uninstall_script.py`) to cover the Codex agents directory: detection, symlinking on install, cleanup on uninstall, and the legacy fallback when the primary Codex config directory is absent.
 - Validate that every TOML file in `platform-packs/kmp/code-review/bill-kmp-code-review/codex-agents/` is parseable TOML and has the required fields. A minimal repo-side validator script is acceptable; no need for a full schema-validation framework.
 
 ### Out of scope (follow-ups)
