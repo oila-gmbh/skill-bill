@@ -263,37 +263,55 @@ def uninstall_skill(skill_path: Path, agent_targets: Iterable[AgentTarget]) -> l
   return removed
 
 
-def discover_codex_agent_tomls(platform_packs_root: Path) -> list[Path]:
-  """Return every ``codex-agents/*.toml`` under ``platform-packs/``.
+def discover_codex_agent_tomls(
+  platform_packs_root: Path,
+  skills_root: Path | None = None,
+) -> list[Path]:
+  """Return every ``codex-agents/*.toml`` under both discovery roots.
 
   Manifest-driven: walks ``platform-packs/<slug>/**/codex-agents/*.toml``
-  rather than hardcoding any particular pack slug, so future packs that
-  ship native Codex subagent definitions are picked up automatically.
+  and, when ``skills_root`` is provided, ``skills/<slug>/**/codex-agents/*.toml``
+  so subagent definitions co-located with author-owned skills (such as
+  ``skills/bill-feature-implement/codex-agents/``) are picked up alongside
+  the platform packs. Results are deduplicated by resolved path and sorted
+  for stable ordering.
   """
-  root = Path(platform_packs_root)
-  if not root.is_dir():
-    return []
-  results: list[Path] = []
-  for toml_file in root.rglob("codex-agents/*.toml"):
-    if toml_file.is_file():
-      results.append(toml_file.resolve())
+  results: dict[Path, None] = {}
+  for root_candidate in (platform_packs_root, skills_root):
+    if root_candidate is None:
+      continue
+    root = Path(root_candidate)
+    if not root.is_dir():
+      continue
+    for toml_file in root.rglob("codex-agents/*.toml"):
+      if toml_file.is_file():
+        results[toml_file.resolve()] = None
   return sorted(results)
 
 
-def discover_opencode_agent_mds(platform_packs_root: Path) -> list[Path]:
-  """Return every ``opencode-agents/*.md`` under ``platform-packs/``.
+def discover_opencode_agent_mds(
+  platform_packs_root: Path,
+  skills_root: Path | None = None,
+) -> list[Path]:
+  """Return every ``opencode-agents/*.md`` under both discovery roots.
 
   Manifest-driven: walks ``platform-packs/<slug>/**/opencode-agents/*.md``
-  rather than hardcoding any particular pack slug, so future packs that
-  ship native OpenCode subagent definitions are picked up automatically.
+  and, when ``skills_root`` is provided, ``skills/<slug>/**/opencode-agents/*.md``
+  so subagent definitions co-located with author-owned skills (such as
+  ``skills/bill-feature-implement/opencode-agents/``) are picked up alongside
+  the platform packs. Results are deduplicated by resolved path and sorted
+  for stable ordering.
   """
-  root = Path(platform_packs_root)
-  if not root.is_dir():
-    return []
-  results: list[Path] = []
-  for md_file in root.rglob("opencode-agents/*.md"):
-    if md_file.is_file():
-      results.append(md_file.resolve())
+  results: dict[Path, None] = {}
+  for root_candidate in (platform_packs_root, skills_root):
+    if root_candidate is None:
+      continue
+    root = Path(root_candidate)
+    if not root.is_dir():
+      continue
+    for md_file in root.rglob("opencode-agents/*.md"):
+      if md_file.is_file():
+        results[md_file.resolve()] = None
   return sorted(results)
 
 
@@ -352,6 +370,7 @@ def install_opencode_agent_md(
 def uninstall_codex_agent_tomls(
   platform_packs_root: Path,
   home: Path | None = None,
+  skills_root: Path | None = None,
 ) -> list[Path]:
   """Remove every TOML symlink under both candidate Codex agents dirs.
 
@@ -361,7 +380,7 @@ def uninstall_codex_agent_tomls(
   silently skipped.
   """
   resolved_home = home if home is not None else Path.home()
-  toml_files = discover_codex_agent_tomls(platform_packs_root)
+  toml_files = discover_codex_agent_tomls(platform_packs_root, skills_root)
   if not toml_files:
     return []
   candidate_dirs = (
@@ -387,6 +406,7 @@ def uninstall_codex_agent_tomls(
 def uninstall_opencode_agent_mds(
   platform_packs_root: Path,
   home: Path | None = None,
+  skills_root: Path | None = None,
 ) -> list[Path]:
   """Remove every OpenCode markdown-agent symlink from the agents dir.
 
@@ -395,7 +415,7 @@ def uninstall_opencode_agent_mds(
   missing or non-symlink entries are silently skipped.
   """
   resolved_home = home if home is not None else Path.home()
-  md_files = discover_opencode_agent_mds(platform_packs_root)
+  md_files = discover_opencode_agent_mds(platform_packs_root, skills_root)
   if not md_files:
     return []
   agents_dir = _opencode_agents_path(resolved_home)

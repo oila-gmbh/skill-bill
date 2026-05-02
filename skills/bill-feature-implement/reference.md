@@ -177,7 +177,7 @@ Re-entry rules:
 
 ## Pre-planning subagent briefing
 
-Launch via the `Agent` tool with `subagent_type: "general-purpose"`.
+Spawn the subagent by name using the active runtime's native subagent invocation. Use the runtime-neutral spawn-by-name pattern: select the subagent that matches this skill's pre-planning role and pass the briefing below as its prompt.
 
 ```
 You are the pre-planning subagent for feature implementation. Do not re-read the raw spec; operate only on the briefing below and on the files you explore in the repo.
@@ -528,6 +528,8 @@ SMALL and MEDIUM implementation runs: feature flag if required, code review (inl
 LARGE decomposition runs stop after Step 3, persist the decomposition package as `plan`, write subtask specs, and close with `completion_status: "abandoned_at_planning"` plus `plan_deviation_notes: "decomposed into N subtasks"`. This is an intentional planning-stage terminal state. The next implementation run starts from the first generated subtask spec.
 
 ## Error Recovery
+
+For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, single corrective re-spawn, escalation), see [parsing_tolerance.md](parsing_tolerance.md). Treat that artifact as authoritative for any runtime-level malformed-payload handling referenced below.
 
 - **Pre-planning subagent fails** — report the error and ask the user whether to retry, adjust scope, or abandon. If abandoned, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.

@@ -264,7 +264,8 @@ remove_codex_agents_tomls() {
   local python_cmd
   if python_cmd="$(command -v python3 2>/dev/null)"; then
     if "$python_cmd" -m skill_bill install unlink-codex-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      --platform-packs "$PLATFORM_PACKS_DIR" \
+      --skills "$SKILLS_DIR" 2>/dev/null; then
       ok "  Codex subagent TOMLs removed via skill_bill"
       return 0
     fi
@@ -272,7 +273,9 @@ remove_codex_agents_tomls() {
 
   local toml_file link_path candidate_dir
   shopt -s nullglob globstar
-  for toml_file in "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml; do
+  for toml_file in \
+    "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml \
+    "$SKILLS_DIR"/**/codex-agents/*.toml; do
     [[ -f "$toml_file" ]] || continue
     for candidate_dir in "$HOME/.codex/agents" "$HOME/.agents/agents"; do
       link_path="$candidate_dir/$(basename "$toml_file")"
@@ -297,7 +300,8 @@ remove_opencode_agent_mds() {
   local python_cmd
   if python_cmd="$(command -v python3 2>/dev/null)"; then
     if "$python_cmd" -m skill_bill install unlink-opencode-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" 2>/dev/null; then
+      --platform-packs "$PLATFORM_PACKS_DIR" \
+      --skills "$SKILLS_DIR" 2>/dev/null; then
       ok "  OpenCode subagent markdown removed via skill_bill"
       return 0
     fi
@@ -306,7 +310,9 @@ remove_opencode_agent_mds() {
   local md_file link_path target_dir
   target_dir="$HOME/.config/opencode/agents"
   shopt -s nullglob globstar
-  for md_file in "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md; do
+  for md_file in \
+    "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md \
+    "$SKILLS_DIR"/**/opencode-agents/*.md; do
     [[ -f "$md_file" ]] || continue
     link_path="$target_dir/$(basename "$md_file")"
     if [[ -L "$link_path" ]]; then
