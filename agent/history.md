@@ -1,3 +1,12 @@
+## [2026-05-02] multi-runtime-kotlin-review-feature-verify-subagents
+Areas: platform-packs/kotlin/code-review/bill-kotlin-code-review/, skills/bill-feature-verify/, README.md, docs/, agent/history.md
+- Extended the SKILL-33 Codex/OpenCode native-subagent precedent from KMP into `bill-kotlin-code-review`: eight Kotlin specialist definitions now ship as Codex TOML and OpenCode markdown under the Kotlin pack, each inlining the specialist content plus the shared F-XXX Risk Register contract because installed native agents cannot rely on repo-local sibling sidecars. reusable
+- Kept the restored Kotlin backend review depth from [2026-04-18] intact: architecture and platform-correctness remain the baseline specialists, while security, performance, testing, api-contracts, persistence, and reliability can all be selected without collapsing backend/server coverage to fit one native wave.
+- Added runtime-neutral Kotlin orchestrator notes for Claude/Codex/OpenCode spawning and documented stable fan-out chunking: Kotlin can select up to 8 specialists, so Codex/OpenCode runs should use waves of at most 6 specialists and never drop backend/server specialists just to fit one wave.
+- Verified `bill-feature-verify` has no verify-specific specialist delegates; it continues to run `bill-code-review` as the child review path while feature-flag, completeness, and verdict audits stay inline through `audit-rubrics.md`. No verify-specific native agent files were created.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-02] opencode-native-subagents
 Areas: skill_bill/install.py, skill_bill/__main__.py, install.sh, uninstall.sh, platform-packs/kmp/code-review/bill-kmp-code-review/, README.md, docs/, tests/
 - Mirrored the SKILL-33 Codex native subagent precedent for OpenCode: added `~/.config/opencode/agents/` markdown-agent install primitives, CLI delegates, and shell fallbacks that discover `platform-packs/<slug>/**/opencode-agents/*.md` without hardcoding pack slugs. reusable
