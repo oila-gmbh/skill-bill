@@ -65,9 +65,10 @@ Supported install targets today:
 
 - GitHub Copilot
 - Claude Code
-- GLM
 - OpenAI Codex (skills under `~/.codex/skills/`; native subagent TOMLs under `~/.codex/agents/`, both with `~/.agents/...` fallback)
 - OpenCode (skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`)
+
+Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
 Native subagent definitions are installed only for orchestrators that ship them. Discovery is manifest-driven under `platform-packs/<slug>/**/codex-agents/*.toml` and `skills/<slug>/**/codex-agents/*.toml` for Codex, and the matching `opencode-agents/*.md` walks for OpenCode. Codex resolves runtime-neutral spawn prose by TOML `name`; OpenCode resolves by filename-derived markdown agent name and also supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](skills/bill-feature-implement/parsing_tolerance.md).
 

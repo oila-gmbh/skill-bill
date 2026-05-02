@@ -58,7 +58,6 @@ get_agent_path() {
   case "$1" in
     copilot) echo "$HOME/.copilot/skills" ;;
     claude)  echo "$HOME/.claude/commands" ;;
-    glm)     echo "$HOME/.glm/commands" ;;
     opencode) echo "$HOME/.config/opencode/skills" ;;
     codex)
       if [[ -d "$HOME/.codex" || -d "$HOME/.codex/skills" ]]; then
@@ -209,7 +208,7 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-new-skill-all-agents:bill-create-skill'
 )
 
-declare -a SUPPORTED_AGENTS=(copilot claude glm codex opencode)
+declare -a SUPPORTED_AGENTS=(copilot claude codex opencode)
 declare -a SKILL_NAMES=()
 declare -a SKILL_PATHS=()
 declare -a INSTALL_SKILL_NAMES=()
@@ -852,7 +851,7 @@ build_platform_packages
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
-info "Supported agents: copilot, claude, glm, codex, opencode"
+info "Supported agents: copilot, claude, codex, opencode"
 info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
 prompt_for_agent_selection
 prompt_for_platform_selection
@@ -1193,7 +1192,6 @@ open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
         claude)  register_mcp_json "$HOME/.claude.json" "claude" ;;
         copilot) register_mcp_json "$HOME/.copilot/mcp-config.json" "copilot" ;;
         codex)   register_mcp_toml "$HOME/.codex/config.toml" "codex" ;;
-        glm)     register_mcp_json "$HOME/.glm/mcp-config.json" "glm" ;;
         opencode) register_mcp_jsonc_opencode "$HOME/.config/opencode/opencode.json" "opencode" ;;
       esac
     done

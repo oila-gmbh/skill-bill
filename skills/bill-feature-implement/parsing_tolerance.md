@@ -13,7 +13,7 @@ This artifact records the parsing posture for the JSON `RESULT:` block returned 
 
 ## Runtime Posture
 
-- **All supported runtimes** (Claude, Codex, OpenCode, Copilot, GLM) are treated as best-effort emitters. No runtime is granted strict-only treatment. Subagents target strict JSON; the orchestrator absorbs minor noise.
+- **All supported runtimes** (Claude, Codex, OpenCode, Copilot) are treated as best-effort emitters. No runtime is granted strict-only treatment. Subagents target strict JSON; the orchestrator absorbs minor noise.
 - Subagents MUST still emit exactly one `RESULT:` block as their final message. Multiple `RESULT:` blocks, missing blocks, or non-JSON payloads remain failure conditions.
 
 ## Orchestrator Behavior on Malformed RESULT

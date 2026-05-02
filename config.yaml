@@ -14,7 +14,5 @@ agents:
     skills_dir: ~/.copilot/skills
   claude:
     skills_dir: ~/.claude/commands
-  glm:
-    skills_dir: ~/.glm/commands
   codex:
     skills_dir: ~/.agents/skills

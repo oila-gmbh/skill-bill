@@ -45,11 +45,12 @@ Supported install targets:
 |-------|--------------|
 | GitHub Copilot | `~/.copilot/skills/` |
 | Claude Code | `~/.claude/commands/` |
-| GLM | `~/.glm/commands/` |
 | OpenAI Codex (skills) | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` or `~/.agents/agents/` |
 | OpenCode (skills) | `~/.config/opencode/skills/` |
 | OpenCode (native subagent markdown) | `~/.config/opencode/agents/` |
+
+Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
 Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
 

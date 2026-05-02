@@ -76,7 +76,6 @@ class InstallScriptTest(unittest.TestCase):
       for relative_path in (
         ".copilot/skills/bill-code-review",
         ".claude/commands/bill-code-review",
-        ".glm/commands/bill-code-review",
         ".codex/skills/bill-code-review",
         ".config/opencode/skills/bill-code-review",
       ):
@@ -416,7 +415,6 @@ class InstallScriptTest(unittest.TestCase):
     for relative_dir in (
       ".copilot",
       ".claude",
-      ".glm",
       ".codex",
       ".codex/agents",
       ".config/opencode",

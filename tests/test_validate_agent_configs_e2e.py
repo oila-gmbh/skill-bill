@@ -954,7 +954,6 @@ class ValidateAgentConfigsE2ETest(unittest.TestCase):
         ## GitHub Copilot CLI
         ## Claude Code
         ## OpenAI Codex
-        ## GLM
 
         Every delegated worker must receive the current `review_session_id` and `review_run_id` when they already exist.
         """
