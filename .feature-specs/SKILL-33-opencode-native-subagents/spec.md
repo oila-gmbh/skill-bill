@@ -1,9 +1,10 @@
 # OpenCode native subagent support (Phase 1 pilot)
 
 - Issue key: SKILL-33
-- Status: In Progress
+- Status: Complete
 - Date: 2026-05-02
 - Parent: SKILL-33 (Codex native subagent support -- shipped in PR #91)
+- Implementation: PR #92
 - Sources:
   - `.feature-specs/SKILL-33-followups/spec_followup_1_opencode-native-subagents.md`
   - Discovery during SKILL-33 follow-up review on 2026-05-02 -- OpenCode is the second skill-bill-supported agent that has a native subagent feature with no current integration.

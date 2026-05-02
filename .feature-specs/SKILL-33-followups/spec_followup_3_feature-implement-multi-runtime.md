@@ -1,9 +1,11 @@
 # Multi-runtime subagents for bill-feature-implement
 
-- Issue key: TBD (file as a Linear issue and rename when assigned)
-- Status: Draft
+- Issue key: SKILL-33
+- Status: Complete
 - Date: 2026-05-02
 - Parent: SKILL-33 (install primitive) and follow-ups 1–2
+- Implementation: PR #94 (foundation + authoring), PR #95 (validation)
+- Verification: `.feature-specs/SKILL-33-multi-runtime-subagents-feature-implement/smoke_test_results.md`
 - Sources:
   - SKILL-33 spec, non-goals: bill-feature-implement is named as "the hardest" — sequential phases and structured-return parsing are load-bearing.
   - bill-feature-implement reference contract in the user's Claude command directory — defines the per-phase briefing templates and `RESULT: { … }` JSON return contracts for pre-planning, planning, implementation, completeness audit, quality-check, and PR-description subagents.

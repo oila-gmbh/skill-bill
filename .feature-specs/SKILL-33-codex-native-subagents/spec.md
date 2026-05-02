@@ -1,8 +1,9 @@
 # Codex native subagent support (Phase 1: foundation + pilot)
 
 - Issue key: SKILL-33
-- Status: In Progress
+- Status: Complete
 - Date: 2026-05-02
+- Implementation: PR #91
 - Sources:
   - User request: "are we using native subagents for codex?" → "lets support proper coded subagents"
   - User decision: pilot with `bill-kmp-code-review` first, defer feature-implement and other orchestrators to follow-up issues

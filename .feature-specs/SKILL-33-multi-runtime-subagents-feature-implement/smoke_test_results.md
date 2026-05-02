@@ -109,3 +109,7 @@ Posture (chosen for AC6):
 ## Conclusion
 
 Smoke test passes. All 14 native subagent definitions install correctly under both Codex and OpenCode, all symlinks resolve to the `skills/bill-feature-implement/{codex,opencode}-agents/` source tree, and Codex 0.128.0 boots and runs a non-interactive prompt successfully with the new agents on disk. Fix-loop and parsing-tolerance behavior verified structurally; full end-to-end review respawn execution remains a follow-up.
+
+## Final Verification Posture
+
+Accepted for SKILL-33 follow-up 3: install/load smoke coverage plus structural verification of the fix-loop and parsing-tolerance contracts is the final verification bar for this issue. A full Codex/OpenCode feature-implement run that intentionally produces Blocker/Major review findings and respawns the fix subagent is useful future hardening work, but it is not remaining work for SKILL-33.

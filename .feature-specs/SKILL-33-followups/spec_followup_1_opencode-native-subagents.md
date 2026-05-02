@@ -1,9 +1,10 @@
 # OpenCode native subagent support (Phase 1 pilot)
 
-- Issue key: TBD (file as a Linear issue and rename this directory when assigned)
-- Status: Draft
+- Issue key: SKILL-33
+- Status: Complete
 - Date: 2026-05-02
 - Parent: SKILL-33 (Codex native subagent support — shipped in PR #91)
+- Implementation: PR #92
 - Sources:
   - Discovery during SKILL-33 follow-up review on 2026-05-02 — OpenCode is the second skill-bill-supported agent that has a native subagent feature with no current integration.
   - OpenCode docs: subagent definitions live in the OpenCode user agents directory (global) and the OpenCode project agents directory (per-project), as either markdown files (filename becomes agent name) or JSON entries under an `"agent"` key in `opencode.json`. Subagents can be invoked automatically by primary agents or manually by `@<name>` mention. Subagents create child sessions with their own context.
