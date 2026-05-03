@@ -5,7 +5,7 @@ This skill is a governed shell. It owns ceremony, stack routing, and contract en
 Keep this shell thin:
 
 - detect the dominant stack in the current unit of work via manifest-driven discovery
-- load the matching platform pack through the shell+content contract and resolve its declared quality-check file through `skill_bill.shell_content_contract.load_quality_check_content`
+- load the matching platform pack through the shell+content contract and resolve its declared quality-check file through `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`
 - pass through the same scope and relevant context to the routed skill
 - refuse to run when a routed pack declares a quality-check file that does not exist or is missing a required section — never silently fall back
 
@@ -37,7 +37,7 @@ This supporting file lives beside `SKILL.md`; keep the routing rules in this she
 
 Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using the tie-breakers declared in [stack-routing.md](stack-routing.md). The shell does not enumerate platform names inline.
 
-- For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skill_bill.shell_content_contract.load_quality_check_content`.
+- For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`.
 - The routed skill name is the `name:` of the SKILL.md at `platform-packs/<slug>/quality-check/<name>/`. This contract preserves the existing `bill-<slug>-quality-check` user-facing commands.
 - Explicit fallback rule: the `kmp` pack intentionally does NOT declare `declared_quality_check_file`. When the dominant pack is `kmp`, route quality-check work to the `kotlin` pack's quality-check skill instead. Any other pack that does not declare the key loud-fails via `MissingContentFileError` — the shell never silently substitutes another pack.
 - If multiple supported stacks appear in one repo, run the matching stack-specific quality checks sequentially, not in parallel, so fixes stay deterministic.
@@ -47,8 +47,8 @@ Stack detection and routing are manifest-driven. The shell discovers every `plat
 
 Before executing a routed quality-check, the shell validates the chosen pack's quality-check file against the shell+content contract. Any failure stops the run immediately and prints a specific error naming the failing artifact:
 
-- `MissingContentFileError` — the pack declares `declared_quality_check_file` but the referenced file does not exist, or the caller invoked `load_quality_check_content` on a pack whose `declared_quality_check_file` is `None` without applying the explicit `kmp` → `kotlin` fallback.
-- `MissingRequiredSectionError` — the declared quality-check content file is missing one of the required H2 sections.
+- `ShellContentContractException(MISSING_CONTENT_FILE)` from `runtime-contracts` — the pack declares `declared_quality_check_file` but the referenced file does not exist, or the caller invoked `loadQualityCheckContent` on a pack whose `declared_quality_check_file` is null without applying the explicit `kmp` → `kotlin` fallback.
+- `ShellContentContractException(MISSING_REQUIRED_SECTION)` from `runtime-contracts` — the declared quality-check content file is missing one of the required H2 sections.
 
 The shell never silently substitutes a default checker. A broken pack must be repaired before `/bill-quality-check` can complete.
 

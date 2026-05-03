@@ -21,12 +21,12 @@ Resolve the scope before routing. If the caller asks for staged changes, route a
 
 The shell owns learnings resolution for the current review context.
 
-- When a local learnings resolver is available, resolve active learnings for the current repo and routed review skill before final routed review execution.
+- When the `skill-bill` MCP server is registered, call its `resolve_learnings` tool to resolve active learnings for the current repo and routed review skill before final routed review execution. Do not improvise alternative invocations (no `python3 -m skill_bill.cli`, no `PYTHONPATH` shims, no shelling out to a globally installed `skill-bill` binary) — the Python package was retired and only the MCP tool is supported.
+- If the `resolve_learnings` MCP tool is not registered in the current runtime, report `Applied learnings: none` instead of improvising another resolver path.
 - Routed and delegated reviewers should reuse applied learnings passed by the caller instead of re-resolving them independently.
 - Apply only active learnings.
 - Prefer more specific scopes in this order: `skill`, `repo`, `global`.
 - Treat learnings as explicit context, not as hidden suppression rules.
-- If no learnings can be resolved, report `Applied learnings: none`.
 - Pass the applied learning references forward to routed review layers and report them in the review summary.
 
 ## Routing Rules

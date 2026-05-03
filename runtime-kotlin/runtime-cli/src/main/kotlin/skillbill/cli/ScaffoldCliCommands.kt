@@ -635,7 +635,9 @@ private fun Any?.orEmpty(): String = this as? String ?: ""
 private fun findRepoRoot(start: Path = Path.of("").toAbsolutePath().normalize()): Path {
   var current = start
   while (true) {
-    if (current.resolve("skill_bill").toFile().isDirectory && current.resolve("runtime-kotlin").toFile().isDirectory) {
+    val hasSettings = current.resolve("runtime-kotlin/settings.gradle.kts").toFile().isFile
+    val hasSkills = current.resolve("skills").toFile().isDirectory
+    if (hasSettings && hasSkills) {
       return current
     }
     val parent = current.parent ?: break

@@ -233,8 +233,7 @@ class RuntimeArchitectureTest {
         "runPythonScaffoldCli",
         "pythonProcess",
         "\"python3\"",
-        "skill_bill.cli",
-        "skill_bill.mcp_server",
+        "skill_bill",
         "PYTHONPATH",
       ),
       description = "deferred Python bridge marker",
@@ -516,8 +515,8 @@ class RuntimeArchitectureTest {
     assertEquals(
       listOf(
         "import java.nio.file.Files",
-        "if (Files.isDirectory(current.resolve(\"skill_bill\")) && " +
-          "Files.isDirectory(current.resolve(\"runtime-kotlin\"))) {",
+        "val hasSettings = Files.isRegularFile(current.resolve(\"runtime-kotlin/settings.gradle.kts\"))",
+        "val hasSkills = Files.isDirectory(current.resolve(\"skills\"))",
       ),
       filesReferenceLines,
     )

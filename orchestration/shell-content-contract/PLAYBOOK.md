@@ -186,7 +186,7 @@ Loader precedence is authoritative and must stay stable:
 ### Loud-Fail Rules (quality-check)
 
 The `bill-quality-check` shell resolves the per-platform quality-check file
-through a dedicated loader (`skill_bill.shell_content_contract.load_quality_check_content`).
+through a dedicated loader (`skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`).
 The loader enforces two additional loud-fail rules when a pack declares the
 optional `declared_quality_check_file` key:
 

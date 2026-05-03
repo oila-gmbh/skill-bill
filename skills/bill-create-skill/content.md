@@ -10,7 +10,7 @@ Use the CLI as the source of truth:
 - `skill-bill new` for horizontal skills, pre-shell overrides, platform packs, and any case where `create-and-fill` is not supported.
 - `skill-bill show`, `edit`, `fill`, `doctor skill`, `validate`, and `render` when the user is refining or inspecting an existing governed skill.
 
-All filesystem work happens in the CLI/scaffolder implementation; this skill never edits `SKILL.md`, `content.md`, `platform.yaml`, or symlinks directly. If an agent path changes, the source of truth is `skill_bill/install.py` — not this skill.
+All filesystem work happens in the CLI/scaffolder implementation; this skill never edits `SKILL.md`, `content.md`, `platform.yaml`, or symlinks directly. If an agent path changes, the source of truth is `skillbill.install` in `runtime-core` (driven by `runtime-cli` install commands) — not this skill.
 
 ## Decision Tree
 
@@ -31,7 +31,7 @@ Internally, the scaffolder maps skill requests to exactly one of four kinds:
 
 Governed add-ons are pack-owned supporting files, not skills. Author them through the dedicated `skill-bill new-addon` CLI flow rather than this skill.
 
-Refuse to invent a new family or code-review area inline. New platforms are allowed only through the `platform-pack` kind. If the user asks for a new family or unapproved area, ask them to first update `skill_bill/constants.py::PRE_SHELL_FAMILIES` or the approved-area list in the same change they submit the skill in.
+Refuse to invent a new family or code-review area inline. New platforms are allowed only through the `platform-pack` kind. If the user asks for a new family or unapproved area, ask them to first update the pre-shell family registry in `skillbill.scaffold` (`runtime-core`) or the approved-area list in the same change they submit the skill in.
 
 ## Workflow
 
@@ -130,4 +130,4 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
 - Do not front-load the full decision tree into the first reply. The user should not have to read the entire taxonomy before answering the first question.
 - Governed review-family and quality-check skills use the same wrapper contract: `SKILL.md` must keep `## Descriptor`, the canonical Execution pointer, and the canonical Ceremony pointer, with sibling `content.md` and `shell-ceremony.md` beside it. The shared ceremony sidecar is not customizable per skill; it comes from the stored template and stays identical across governed skills in the family.
 - When reporting a successful governed scaffold, explicitly say that authored skill instructions belong only in `content.md`. `SKILL.md` and `shell-ceremony.md` are scaffold-managed contract files.
-- Adding a new pre-shell family requires updating `skill_bill/constants.py::PRE_SHELL_FAMILIES` and `skill_bill/scaffold.py::FAMILY_REGISTRY` in the same change.
+- Adding a new pre-shell family requires updating the pre-shell family registry and family registry under `skillbill.scaffold` in `runtime-core` in the same change.

@@ -1,6 +1,6 @@
 # SKILL-36 retire-python-tooling
 
-Status: In Progress
+Status: Complete
 
 ## Sources
 

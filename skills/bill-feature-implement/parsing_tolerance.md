@@ -1,6 +1,6 @@
 # RESULT: Block Parsing Tolerance
 
-This artifact records the parsing posture for the JSON `RESULT:` block returned by every `bill-feature-implement` subagent. The orchestrator parses these blocks inline; no machine parser exists in `skill_bill/`. The choice below governs what subagents may emit and how the orchestrator behaves when a subagent's final message deviates from the strict contract.
+This artifact records the parsing posture for the JSON `RESULT:` block returned by every `bill-feature-implement` subagent. The orchestrator parses these blocks inline; no machine parser exists in the Kotlin runtime modules. The choice below governs what subagents may emit and how the orchestrator behaves when a subagent's final message deviates from the strict contract.
 
 ## Resolutions Considered
 
@@ -40,5 +40,5 @@ When parsing escalates to the user:
 ## Non-Goals
 
 - Replacing the JSON `RESULT:` contract with a different return shape.
-- Adding schema validation in `skill_bill/` runtime code.
+- Adding schema validation in the Kotlin runtime modules (`runtime-core` / `runtime-cli`).
 - Changing the per-phase return contracts in [reference.md](reference.md).

@@ -182,7 +182,9 @@ private fun <T> withTemporaryUserHome(userHome: Path, block: () -> T): T {
 private fun currentRepoRootForTest(): Path {
   var current = Path.of("").toAbsolutePath().normalize()
   while (true) {
-    if (Files.isDirectory(current.resolve("skill_bill")) && Files.isDirectory(current.resolve("runtime-kotlin"))) {
+    val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
+    val hasSkills = Files.isDirectory(current.resolve("skills"))
+    if (hasSettings && hasSkills) {
       return current
     }
     current = current.parent ?: return Path.of("").toAbsolutePath().normalize()
