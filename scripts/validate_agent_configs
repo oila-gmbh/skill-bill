@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+cd "$repo_root/runtime-kotlin"
+./gradlew --quiet :runtime-cli:run --args="validate-agent-configs --repo-root $repo_root"
+

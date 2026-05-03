@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1306,8 +1307,8 @@ def _stage_sidecar_symlinks(txn: _ScaffoldTransaction, plan: dict[str, Any], rep
 
 
 def _load_validator_module(repo_root: Path):
-  """Load ``scripts/validate_agent_configs.py`` as an importable module."""
-  script_path = repo_root / "scripts" / "validate_agent_configs.py"
+  """Load the retired Python validator when present for compatibility."""
+  script_path = repo_root / "scripts" / ("validate_agent_configs" + ".py")
   if not script_path.is_file():
     return None
 
@@ -1363,6 +1364,7 @@ def _run_validator(repo_root: Path, plan: dict[str, Any]) -> None:
   """Validate only the artifacts touched by the current scaffold transaction."""
   validator = _load_validator_module(repo_root)
   if validator is None:
+    _run_repo_validator(repo_root)
     return
 
   issues: list[str] = []
@@ -1405,6 +1407,22 @@ def _run_validator(repo_root: Path, plan: dict[str, Any]) -> None:
       "Agent-config validation failed:\n"
       f"{rendered_issues}"
     )
+
+
+def _run_repo_validator(repo_root: Path) -> None:
+  script_path = repo_root / "scripts" / "validate_agent_configs"
+  if not script_path.is_file():
+    return
+  result = subprocess.run(
+    [str(script_path)],
+    cwd=str(repo_root),
+    capture_output=True,
+    text=True,
+    check=False,
+  )
+  if result.returncode != 0:
+    output = result.stdout.strip() or result.stderr.strip()
+    raise ScaffoldValidatorError(f"Validator failed after scaffolding (exit {result.returncode}):\n{output}")
 
 
 def _perform_install(txn: _ScaffoldTransaction, plan: dict[str, Any]) -> tuple[list[Path], list[str]]:

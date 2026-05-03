@@ -53,7 +53,7 @@ class SkillAlreadyExistsError(ScaffoldError):
 
 
 class ScaffoldValidatorError(ScaffoldError):
-  """Raised when ``scripts/validate_agent_configs.py`` fails post-scaffold.
+  """Raised when repo validation fails post-scaffold.
 
   The validator's stderr is attached verbatim so operators see the exact
   contract violation. The scaffolder rolls back all staged changes before

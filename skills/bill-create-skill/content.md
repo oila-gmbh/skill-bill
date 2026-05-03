@@ -112,13 +112,13 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
    skill-bill new --payload <tempfile>
    ```
 
-   Choose `create-and-fill` only for the supported single-skill governed path described above. Otherwise use `new`. The CLI/scaffolder handles file creation, manifest edits with best-effort comment preservation, sibling supporting-file symlinks (driven by `scripts/skill_repo_contracts.py::RUNTIME_SUPPORTING_FILES`), the validator run, and auto-install to every detected agent.
+   Choose `create-and-fill` only for the supported single-skill governed path described above. Otherwise use `new`. The CLI/scaffolder handles file creation, manifest edits with best-effort comment preservation, sibling supporting-file symlinks, the validator run, and auto-install to every detected agent.
 
 8. Report. Surface the CLI output verbatim — it tells the user the final skill path, any manifest edits, sidecar symlinks, install targets, and any interim-location or skipped-agent notes. Never paraphrase the validator's loud-fail errors; copy them through.
 
 ## Rules
 
-- Never duplicate content across agents — only the Python installer creates symlinks.
+- Never duplicate content across agents; the installer creates symlinks.
 - The scaffolder is atomic. If the validator fails, every staged change is rolled back and the error is surfaced verbatim; do not try to "keep partial work."
 - If no agents are detected, the scaffolder skips the install step and notes that the user should run `./install.sh` to set up agent paths. Do not synthesize agent paths by hand.
 - Default to conversational guidance. The raw field template and JSON payload are implementation details, not the primary UX.

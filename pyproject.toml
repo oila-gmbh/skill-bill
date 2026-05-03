@@ -5,7 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "skill-bill"
 version = "0.1.0"
-description = "Governed cross-agent skills, workflows, validation, and telemetry for AI-assisted engineering."
+# Historical Python package metadata retained until the final cleanup subtask.
+# Current install, validation, and maintainer workflows are Kotlin-backed.
+description = "Retired Python compatibility package for Skill Bill historical tooling."
 requires-python = ">=3.10"
 dependencies = ["mcp", "pyyaml>=6"]
 

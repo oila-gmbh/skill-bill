@@ -2,36 +2,135 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from skill_repo_contracts import (  # noqa: E402
-  ADDON_REPORTING_LINE,
-  APPLIED_LEARNINGS_PLACEHOLDER,
-  CHILD_METADATA_HANDOFF_RULE,
-  CHILD_NO_IMPORT_RULE,
-  CHILD_NO_TRIAGE_RULE,
-  NO_FINDINGS_TRIAGE_RULE,
-  PARENT_IMPORT_RULE,
-  PARENT_TRIAGE_RULE,
-  PORTABLE_REVIEW_SKILLS,
-  REVIEW_DELEGATION_REQUIRED_SECTIONS,
-  REVIEW_RUN_ID_FORMAT,
-  REVIEW_RUN_ID_PLACEHOLDER,
-  REVIEW_SESSION_ID_FORMAT,
-  REVIEW_SESSION_ID_PLACEHOLDER,
-  RISK_REGISTER_FINDING_FORMAT,
-  RUNTIME_SUPPORTING_FILES,
-  TELEMETRY_OWNERSHIP_HEADING,
-  TRIAGE_OWNERSHIP_HEADING,
-  governed_addon_slugs_for_stack,
-  supporting_file_targets,
-  skills_requiring_supporting_file,
+ADDON_REPORTING_LINE = "Selected add-ons: none | <add-on slugs>"
+APPLIED_LEARNINGS_PLACEHOLDER = "Applied learnings: none | <learning references>"
+CHILD_METADATA_HANDOFF_RULE = (
+  "Return the complete review output plus summary metadata (`review_session_id`, `review_run_id`, "
+  "detected scope/stack, execution mode, specialist reviews) to the parent review instead."
 )
+CHILD_NO_IMPORT_RULE = "If this review is delegated or layered under another review, do not call `import_review`."
+CHILD_NO_TRIAGE_RULE = (
+  "If this review is delegated or layered under another review, do not call `triage_findings`;"
+)
+NO_FINDINGS_TRIAGE_RULE = "Skip triage recording when the final parent-owned review produced no findings."
+PARENT_IMPORT_RULE = (
+  "If this review owns the final merged review output for the current review lifecycle, call the "
+  "`import_review` MCP tool:"
+)
+PARENT_TRIAGE_RULE = (
+  "If this review owns the final merged review output for the current review lifecycle and the user "
+  "responds to findings, call the `triage_findings` MCP tool:"
+)
+PORTABLE_REVIEW_SKILLS = ("bill-kotlin-code-review", "bill-kmp-code-review")
+REVIEW_DELEGATION_REQUIRED_SECTIONS = (
+  "## GitHub Copilot CLI",
+  "## Claude Code",
+  "## OpenAI Codex",
+)
+REVIEW_RUN_ID_FORMAT = "rvw-YYYYMMDD-HHMMSS-XXXX"
+REVIEW_RUN_ID_PLACEHOLDER = "Review run ID: <review-run-id>"
+REVIEW_SESSION_ID_FORMAT = "rvs-<uuid4>"
+REVIEW_SESSION_ID_PLACEHOLDER = "Review session ID: <review-session-id>"
+RISK_REGISTER_FINDING_FORMAT = "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
+TELEMETRY_OWNERSHIP_HEADING = "Telemetry Ownership"
+TRIAGE_OWNERSHIP_HEADING = "Triage Ownership"
+GOVERNED_STACK_ADDONS = {
+  "kmp": (
+    "android-compose",
+    "android-navigation",
+    "android-interop",
+    "android-design-system",
+    "android-r8",
+  ),
+}
+SUPPORTING_FILE_TARGETS = {
+  "review-scope.md": "orchestration/review-scope/PLAYBOOK.md",
+  "stack-routing.md": "orchestration/stack-routing/PLAYBOOK.md",
+  "review-orchestrator.md": "orchestration/review-orchestrator/PLAYBOOK.md",
+  "specialist-contract.md": "orchestration/review-orchestrator/specialist-contract.md",
+  "review-delegation.md": "orchestration/review-delegation/PLAYBOOK.md",
+  "telemetry-contract.md": "orchestration/telemetry-contract/PLAYBOOK.md",
+  "shell-content-contract.md": "orchestration/shell-content-contract/PLAYBOOK.md",
+  "shell-ceremony.md": "orchestration/shell-content-contract/shell-ceremony.md",
+  "android-compose-implementation.md": "platform-packs/kmp/addons/android-compose-implementation.md",
+  "android-navigation-implementation.md": "platform-packs/kmp/addons/android-navigation-implementation.md",
+  "android-interop-implementation.md": "platform-packs/kmp/addons/android-interop-implementation.md",
+  "android-design-system-implementation.md": "platform-packs/kmp/addons/android-design-system-implementation.md",
+  "android-r8-implementation.md": "platform-packs/kmp/addons/android-r8-implementation.md",
+  "android-compose-edge-to-edge.md": "platform-packs/kmp/addons/android-compose-edge-to-edge.md",
+  "android-compose-adaptive-layouts.md": "platform-packs/kmp/addons/android-compose-adaptive-layouts.md",
+}
+RUNTIME_SUPPORTING_FILES = {
+  "bill-code-review": (
+    "review-scope.md",
+    "stack-routing.md",
+    "review-delegation.md",
+    "telemetry-contract.md",
+    "shell-content-contract.md",
+    "shell-ceremony.md",
+  ),
+  "bill-quality-check": ("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
+  "bill-kotlin-quality-check": ("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
+  "bill-kotlin-code-review": (
+    "review-scope.md",
+    "stack-routing.md",
+    "review-orchestrator.md",
+    "specialist-contract.md",
+    "review-delegation.md",
+    "telemetry-contract.md",
+    "shell-ceremony.md",
+  ),
+  "bill-kmp-code-review": (
+    "review-scope.md",
+    "stack-routing.md",
+    "review-orchestrator.md",
+    "specialist-contract.md",
+    "review-delegation.md",
+    "telemetry-contract.md",
+    "shell-ceremony.md",
+    "android-compose-review.md",
+    "android-navigation-review.md",
+    "android-interop-review.md",
+    "android-design-system-review.md",
+    "android-r8-review.md",
+    "android-compose-edge-to-edge.md",
+    "android-compose-adaptive-layouts.md",
+  ),
+  "bill-feature-implement": (
+    "shell-ceremony.md",
+    "telemetry-contract.md",
+    "android-compose-implementation.md",
+    "android-navigation-implementation.md",
+    "android-interop-implementation.md",
+    "android-design-system-implementation.md",
+    "android-r8-implementation.md",
+    "android-compose-edge-to-edge.md",
+    "android-compose-adaptive-layouts.md",
+  ),
+  "bill-feature-verify": ("shell-ceremony.md", "telemetry-contract.md"),
+  "bill-pr-description": ("shell-ceremony.md", "telemetry-contract.md"),
+}
+
+
+def governed_addon_slugs_for_stack(stack: str) -> tuple[str, ...]:
+  return GOVERNED_STACK_ADDONS.get(stack, ())
+
+
+def supporting_file_targets(root: Path) -> dict[str, Path]:
+  return {file_name: root / relative_path for file_name, relative_path in SUPPORTING_FILE_TARGETS.items()}
+
+
+def skills_requiring_supporting_file(file_name: str) -> tuple[str, ...]:
+  return tuple(
+    skill_name
+    for skill_name, supporting_files in RUNTIME_SUPPORTING_FILES.items()
+    if file_name in supporting_files
+  )
 
 
 def read(relative_path: str) -> str:
@@ -292,7 +391,7 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
 
   def test_kmp_governed_addons_apply_only_after_stack_routing(self) -> None:
     # SKILL-14 leaves GOVERNED_STACK_ADDONS hardcoded with a TODO (see
-    # scripts/skill_repo_contracts.py). Discovery of add-on governance is
+    # scripts/skill_repo_contracts.md). Discovery of add-on governance is
     # scheduled for SKILL-15. The rest of the add-on contract moved to the
     # discovery-driven stack-routing playbook.
     self.assertEqual(
