@@ -1,3 +1,12 @@
+## [2026-05-03] repo-script-validation-migration
+Areas: runtime-core repo validation, runtime-cli validation commands, scripts/, workflows, docs, feature specs
+- Moved repo validation and release-ref checks off standalone Python scripts into Kotlin CLI/runtime commands, with shell wrappers kept at `scripts/validate_agent_configs` and `scripts/validate_release_ref`. reusable
+- Retired one-off `migrate_to_content_md.py` and `skill_repo_contracts.py` as markdown notes; current docs/workflows now call Kotlin-backed validation and no maintainer workflow requires Python scripts.
+- Strengthened Kotlin repo validation for manifest-loaded platform packs, pack-owned add-ons, sibling supporting sidecar symlinks, README/catalog references, workflow markers, telemetry contract drift, plugin metadata, and SemVer release refs.
+- Regression coverage now lives in Kotlin CLI/core tests plus the remaining self-contained Python contract test; no current test imports the retired script modules.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-03] installer-runtime-cutover
 Areas: install.sh, uninstall.sh, runtime-cli install commands, runtime-core install primitives, runtime-core launcher MCP config mutation, pyproject.toml, installer tests
 - Moved installer/uninstaller runtime ownership off Python: shell scripts now build/use packaged Kotlin `installDist` bin shims and call `skill-bill install ...` commands for agent paths, link/unlink, cleanup, MCP registration/removal, and telemetry level mutation. reusable

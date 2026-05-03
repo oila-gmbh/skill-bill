@@ -26,11 +26,12 @@ class ScaffoldCliCommandGroup(
 @Inject
 class UtilityCliCommandGroup(
   workflowCommands: WorkflowTopLevelCommands,
+  repoValidationCommands: RepoValidationCliCommands,
   versionCommand: VersionCommand,
   doctorCommand: DoctorCliCommand,
 ) {
   val commands: List<CliktCommand> =
-    workflowCommands.commands + listOf(
+    workflowCommands.commands + repoValidationCommands.commands + listOf(
       versionCommand,
       doctorCommand,
     )

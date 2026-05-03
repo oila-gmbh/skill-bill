@@ -55,11 +55,6 @@ private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
       strongSignals = listOf("pom.xml", "build.gradle", "src/main/java"),
       tieBreakers = listOf("Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."),
     ),
-    "php" to PlatformPackPreset(
-      displayName = "PHP",
-      strongSignals = listOf("composer.json", ".php", "phpunit.xml"),
-      tieBreakers = listOf("Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."),
-    ),
   )
 
 private data class PlatformPackPreset(

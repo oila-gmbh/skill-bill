@@ -60,21 +60,21 @@ class ScaffoldServiceParityTest {
     val repo = seedRepo()
     val result =
       scaffold(
-        payload(repo, "platform-pack", "platform" to "php") +
+        payload(repo, "platform-pack", "platform" to "java") +
           mapOf("specialist_areas" to listOf("security", "architecture")),
       )
-    val manifest = Files.readString(repo.resolve("platform-packs/php/platform.yaml"))
+    val manifest = Files.readString(repo.resolve("platform-packs/java/platform.yaml"))
 
     assertEquals("platform-pack", result.kind)
     assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-architecture/SKILL.md")),
+      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-architecture/SKILL.md")),
     )
     assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-security/SKILL.md")),
+      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-security/SKILL.md")),
     )
     assertTrue(manifest.indexOf("  - \"architecture\"") < manifest.indexOf("  - \"security\""))
-    assertContains(manifest, "architecture: \"code-review/bill-php-code-review-architecture/SKILL.md\"")
-    assertContains(manifest, "security: \"code-review/bill-php-code-review-security/SKILL.md\"")
+    assertContains(manifest, "architecture: \"code-review/bill-java-code-review-architecture/SKILL.md\"")
+    assertContains(manifest, "security: \"code-review/bill-java-code-review-security/SKILL.md\"")
   }
 
   @Test

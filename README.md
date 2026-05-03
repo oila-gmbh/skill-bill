@@ -108,8 +108,8 @@ The main governed layers are:
 - `platform-packs/`: manifest-driven platform review and quality-check depth
 - `orchestration/`: routing, delegation, workflow, telemetry, and shell-content contracts
 - `runtime-kotlin/`: packaged Kotlin CLI, MCP server, workflow state, telemetry, scaffolding, and install primitives
-- `skill_bill/`: Python maintainer tooling and compatibility code retained during the remaining retirement subtasks
-- `scripts/`: repo validators and migration helpers
+- `skill_bill/`: retired Python package surface retained only until final cleanup removes historical compatibility files
+- `scripts/`: Kotlin-backed repo validation wrappers and retirement notes for obsolete migration helpers
 
 Governed pack skills use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md`. Workflow shells such as `bill-feature-implement`, `bill-feature-verify`, and `bill-editorial-assignment-desk` follow the same split: shell-owned orchestration in `SKILL.md`, authored execution guidance in `content.md`, and stable contracts in sibling references when needed.
 
@@ -127,10 +127,9 @@ Routing, validation, and installation are manifest-driven, so the system is desi
 Core validation commands:
 
 ```bash
-.venv/bin/python3 -m unittest discover -s tests
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
-.venv/bin/python3 scripts/validate_agent_configs.py
+scripts/validate_agent_configs
 ```
 
 ## License

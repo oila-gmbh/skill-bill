@@ -45,8 +45,7 @@ def _import_yaml():
   except ImportError as error:
     raise PyYAMLMissingError(
       "PyYAML is required to load platform packs. Install it via the project "
-      "venv (`./.venv/bin/pip install pyyaml>=6`) or run the validator through "
-      "`.venv/bin/python3 scripts/validate_agent_configs.py`."
+      "venv (`./.venv/bin/pip install pyyaml>=6`) or run `scripts/validate_agent_configs`."
     ) from error
   return yaml
 

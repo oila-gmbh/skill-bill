@@ -276,12 +276,12 @@ def _infer_family(skill_name: str) -> str:
 
 
 def _run_validator(repo_root: Path) -> None:
-  script_path = repo_root / "scripts" / "validate_agent_configs.py"
+  script_path = repo_root / "scripts" / "validate_agent_configs"
   if not script_path.is_file():
     return
 
   result = subprocess.run(
-    [sys.executable, str(script_path)],
+    [str(script_path)],
     cwd=str(repo_root),
     capture_output=True,
     text=True,

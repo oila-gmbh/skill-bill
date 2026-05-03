@@ -73,8 +73,8 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
   - `code-review-area`: create the specialist in the selected pack and register the area.
   - `add-on`: create a flat add-on file in the selected platform pack's `addons/` directory.
 - For `platform-pack`, payloads may either use `skeleton_mode=starter|full` or provide `specialist_areas=[...]` for a custom approved subset, but not both.
-- Pre-shell families are defined in `skill_bill/constants.py`; add the family there and in `skill_bill/scaffold.py` together.
-- Entry point: `skill_bill/scaffold.py`. Payload schema and exception catalog live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+- Pre-shell families are defined in the Kotlin scaffold/runtime contract. Keep payload schema and exception catalog aligned with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+- Entry point: the Kotlin `skill-bill new` / `create-and-fill` commands. Payload schema and exception catalog live in `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 - The scaffolder is atomic. Validator, manifest-write, or symlink failures must roll the repo back byte-for-byte.
 - Keep it byte-identical across governed skills on the same shell contract.
 
@@ -93,8 +93,7 @@ Prefer routing through `bill-quality-check`. If a platform-specific checker does
 ## Validation commands
 
 ```bash
-.venv/bin/python3 -m unittest discover -s tests
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
-.venv/bin/python3 scripts/validate_agent_configs.py
+scripts/validate_agent_configs
 ```

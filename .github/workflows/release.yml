@@ -27,8 +27,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run validator e2e tests
-        run: python3 -m unittest discover -s tests
+      - name: Run Kotlin runtime checks
+        run: (cd runtime-kotlin && ./gradlew check)
 
       - name: Run agnix
         run: |
@@ -43,11 +43,11 @@ jobs:
           exit "$status"
 
       - name: Run repo-native validation
-        run: python3 scripts/validate_agent_configs.py
+        run: scripts/validate_agent_configs
 
       - name: Validate release tag
         id: release_meta
-        run: python3 scripts/validate_release_ref.py "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
+        run: scripts/validate_release_ref "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         env:

@@ -64,7 +64,7 @@ Normal use is Kotlin-only:
 - `skill-bill-mcp` launches the packaged Kotlin stdio MCP distribution.
 - The installer registers MCP shims to the packaged Kotlin server.
 - Gradle is only used by maintainers to build and validate the runtime, not by installed commands during normal use.
-- Python remains for explicit repo tooling such as validation scripts. It is not a normal CLI or MCP runtime fallback.
+- Repo validation commands are Kotlin-backed. Python is no longer required for current install, validation, or maintainer workflows.
 
 If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to Python.
 
@@ -237,10 +237,9 @@ Primary MCP groups:
 Maintainers should run the full gate before shipping runtime, scaffold, contract, docs, or agent-config changes:
 
 ```bash
-.venv/bin/python3 -m unittest discover -s tests
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
-.venv/bin/python3 scripts/validate_agent_configs.py
+scripts/validate_agent_configs
 ```
 
 `./gradlew check` is a maintainer validation command inside `runtime-kotlin/`; it is not part of normal installed command execution.

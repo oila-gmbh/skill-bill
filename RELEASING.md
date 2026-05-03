@@ -45,9 +45,9 @@ Skill Bill should stay on pre-1.0 SemVer until the install surface, taxonomy, an
 2. Run the local checks:
 
    ```bash
-   python3 -m unittest discover -s tests
+   (cd runtime-kotlin && ./gradlew check)
    npx --yes agnix --strict .
-   python3 scripts/validate_agent_configs.py
+   scripts/validate_agent_configs
    ```
 
 3. Pick the next version tag.

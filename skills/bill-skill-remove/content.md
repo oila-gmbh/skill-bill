@@ -60,10 +60,10 @@ When a platform slug is given, the default delete set is:
 - `skills/<platform>/`
 - matching agent symlinks for skill directories that live under those trees
 
-Use the repo-local interpreter for helper commands and validation:
+Use repo-local Kotlin-backed commands for helper commands and validation:
 
-- prefer `PYTHONPATH="$PWD" .venv/bin/python3 ...`
-- do not rely on a globally installed `skill-bill` entrypoint having the right dependencies
+- prefer repo-local scripts such as `scripts/validate_agent_configs`
+- for Skill Bill CLI operations, use the repo-provided `skill-bill` launcher path already active in the working tree
 
 ## Outputs Contract
 
@@ -89,7 +89,7 @@ When the request is ambiguous, stop before deletion and ask one focused clarifyi
    - code-review area: remove the area from `declared_code_review_areas` and `declared_files.areas` in the owning `platform.yaml`
    - quality-check override: remove `declared_quality_check_file` from the owning `platform.yaml`
    - platform pack: remove the `platform-packs/<platform>/` tree and the paired `skills/<platform>/` tree; only update docs if that platform is documented as shipped
-6. Run `PYTHONPATH="$PWD" .venv/bin/python3 scripts/validate_agent_configs.py`.
+6. Run `scripts/validate_agent_configs`.
 7. If available and relevant, run targeted tests for the touched validation or scaffold paths.
 
 Guardrails:
