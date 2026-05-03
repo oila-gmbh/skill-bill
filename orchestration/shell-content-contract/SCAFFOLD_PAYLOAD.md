@@ -6,7 +6,7 @@ description: Payload schema for the new-skill scaffolder (SKILL-15). Documents t
 # Scaffold Payload Contract
 
 This is the canonical payload schema for the new-skill scaffolder. Every
-caller of `skill_bill.scaffold.scaffold(payload)` — the CLI, the MCP tool,
+caller of `skillbill.scaffold.ScaffoldService.scaffold(payload)` (in `runtime-core`) — the `runtime-cli` `new-skill` command, the `runtime-mcp` `new_skill_scaffold` tool,
 and the `bill-create-skill` skill — ships a payload that conforms to
 this schema. Mismatches raise specific named exceptions and abort the run;
 no silent coercion.
@@ -57,10 +57,10 @@ Every payload MUST include:
 - `family` — required for `platform-override-piloted`. One of the known
   families:
   - Shelled: `code-review`, `quality-check`.
-  - Pre-shell (see :data:`skill_bill.constants.PRE_SHELL_FAMILIES`):
+  - Pre-shell (see the pre-shell family registry in `skillbill.scaffold` (`runtime-core`)):
     `feature-implement`, `feature-verify`.
 - `area` — required for `code-review-area`. Must be one of the approved
-  areas in :data:`skill_bill.shell_content_contract.APPROVED_CODE_REVIEW_AREAS`:
+  areas in the approved code-review area set declared in `skillbill.scaffold` (`runtime-core`):
   `architecture`, `performance`, `platform-correctness`, `security`,
   `testing`, `api-contracts`, `persistence`, `reliability`, `ui`,
   `ux-accessibility`.
@@ -237,7 +237,7 @@ sidecars afterwards.
 
 ## Loud-Fail Exception Catalog
 
-All exceptions derive from `skill_bill.scaffold_exceptions.ScaffoldError`:
+All exceptions derive from `skillbill.contracts.ShellContentContractException` and the scaffold error types declared in `runtime-contracts`:
 
 - `ScaffoldPayloadVersionMismatchError` — `scaffold_payload_version`
   disagrees with the scaffolder.

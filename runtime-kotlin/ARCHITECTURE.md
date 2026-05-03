@@ -184,12 +184,9 @@ useful for the next refactors:
 
 ## Near-Term Refactor Order
 
-1. Keep `docs/migrations/SKILL-27-cutover-checklist.md` current with the
-   packaged Kotlin runtime, validation gates, and previous-release rollback
-   path.
-2. Continue replacing non-learning application-layer `Map<String, Any?>`
+1. Continue replacing non-learning application-layer `Map<String, Any?>`
    results with typed results.
-3. Add contract DTOs and golden output fixtures for the remaining JSON
+2. Add contract DTOs and golden output fixtures for the remaining JSON
    surfaces.
-4. Continue tightening public APIs so each physical module exposes only the
+3. Continue tightening public APIs so each physical module exposes only the
    contracts needed by downstream modules.

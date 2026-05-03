@@ -191,7 +191,9 @@ private fun runJson(arguments: List<String>, context: CliRuntimeContext): Map<St
 private fun outerRepoRoot(): Path {
   var current = Path.of("").toAbsolutePath().normalize()
   while (current.parent != null) {
-    if (Files.isDirectory(current.resolve("skill_bill")) && Files.isDirectory(current.resolve("runtime-kotlin"))) {
+    val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
+    val hasSkills = Files.isDirectory(current.resolve("skills"))
+    if (hasSettings && hasSkills) {
       return current
     }
     current = current.parent

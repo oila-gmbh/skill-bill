@@ -82,7 +82,7 @@ When the request is ambiguous, stop before deletion and ask one focused clarifyi
 
 1. Resolve scope from the target and inspect the real files before deleting anything. If the target is a bare platform slug, first check for `platform-packs/<platform>/` and `skills/<platform>/`. If both are absent, stop and report that nothing matching that platform exists.
 2. Build the exact delete set.
-3. Remove agent symlinks for every deleted skill directory: supported install roots are managed through `skill_bill/install.py`. Remove only symlinks matching the deleted skill directory names.
+3. Remove agent symlinks for every deleted skill directory: supported install roots are managed through `skillbill.install` in `runtime-core` and exposed by the `runtime-cli` install commands. Remove only symlinks matching the deleted skill directory names.
 4. Remove repo content with `apply_patch` for tracked files and directories.
 5. Update owning metadata:
    - horizontal skill: remove its README catalog row and section count
