@@ -7,7 +7,7 @@ description: Enable feature flag mode - all code changes will be guarded by feat
 
 Governed skill: `bill-feature-guard`
 Family: `advisor`
-Description: Use when guarding new features behind flags for gradual rollout, A/B testing, or safe rollback.
+Description: Use for feature guard work.
 
 ## Execution
 

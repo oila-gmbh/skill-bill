@@ -7,7 +7,7 @@ description: Use when removing an existing skill or platform skill set and clean
 
 Governed skill: `bill-skill-remove`
 Family: `advisor`
-Description: Use when removing an existing skill or platform skill set and cleaning up agent installs.
+Description: Use for skill remove work.
 
 ## Execution
 

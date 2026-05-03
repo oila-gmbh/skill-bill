@@ -12,6 +12,7 @@ data class AuthoringTarget(
   val skillName: String,
   val packageName: String,
   val platform: String,
+  val displayName: String,
   val family: String,
   val area: String,
   val skillFile: Path,
@@ -77,7 +78,10 @@ object AuthoringOperations {
   fun validate(repoRoot: Path, skillNames: List<String>): Map<String, Any?> {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     if (skillNames.isEmpty()) {
-      val issues = discoverTargets(resolvedRoot).values.flatMap { target -> validateTarget(target) }
+      val issues =
+        discoverTargets(resolvedRoot).values.flatMap { target ->
+          validateTarget(target)
+        }
       return mapOf(
         "repo_root" to resolvedRoot.toString(),
         "mode" to "repo",

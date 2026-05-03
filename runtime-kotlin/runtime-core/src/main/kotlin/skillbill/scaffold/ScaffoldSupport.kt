@@ -37,10 +37,10 @@ internal val REQUIRED_CONTENT_SECTIONS: List<String> =
   )
 
 internal const val CANONICAL_EXECUTION_SECTION: String =
-  "## Execution\n\nRead the sibling `content.md` for authored execution guidance.\n"
+  "## Execution\n\nFollow the instructions in [content.md](content.md).\n"
 
 internal const val CANONICAL_CEREMONY_SECTION: String =
-  "## Ceremony\n\nKeep `shell-ceremony.md` as the shared ceremony sidecar.\n"
+  "## Ceremony\n\nFollow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).\n"
 
 internal data class TemplateContext(
   val skillName: String,
@@ -50,94 +50,10 @@ internal data class TemplateContext(
   val displayName: String,
 )
 
-internal fun defaultAreaFocus(area: String): String = "Review ${area.replace('-', ' ')} regressions."
-
-internal fun inferSkillDescription(context: TemplateContext): String = when {
-  context.family == "code-review" && context.area.isNotBlank() ->
-    "Use when reviewing ${context.displayName} changes for ${context.area} risks."
-  context.family == "code-review" ->
-    "Use when reviewing changes in ${context.displayName} codebases."
-  context.family == "quality-check" ->
-    "Use when validating ${context.displayName} changes with the shared quality-check contract."
-  context.family == "feature-implement" ->
-    "Use when implementing ${context.displayName} changes end to end."
-  context.family == "feature-verify" ->
-    "Use when verifying ${context.displayName} changes before release."
-  else ->
-    "Use for ${context.displayName} work."
-}
-
-internal fun renderFrontmatter(skillName: String, description: String): String = buildString {
-  appendLine("---")
-  appendLine("name: $skillName")
-  appendLine("description: $description")
-  appendLine("---")
-}
-
-internal fun renderDescriptorSection(context: TemplateContext, areaFocus: String): String = buildString {
-  appendLine("## Descriptor")
-  appendLine()
-  appendLine("- Skill: ${context.skillName}")
-  appendLine("- Family: ${context.family}")
-  appendLine("- Platform: ${context.platform}")
-  if (context.area.isNotBlank()) {
-    appendLine("- Area: ${context.area}")
-    appendLine("- Focus: $areaFocus")
+internal fun displayNameFromSlug(slug: String): String = slug.split('-').joinToString(" ") { part ->
+  part.replaceFirstChar {
+    if (it.isLowerCase()) it.titlecase() else it.toString()
   }
-}
-
-internal fun renderContentBody(context: TemplateContext, description: String, contentBody: String? = null): String {
-  val specialistScope =
-    contentBody?.trimEnd().takeUnless { it.isNullOrBlank() }
-      ?: "Use this content surface to author the ${context.displayName} execution guidance."
-  return buildString {
-    append(renderFrontmatter(context.skillName, description))
-    appendLine("## Description")
-    appendLine()
-    appendLine(description)
-    appendLine()
-    appendLine("## Specialist Scope")
-    appendLine()
-    appendLine(specialistScope)
-    appendLine()
-    appendLine("## Inputs")
-    appendLine()
-    appendLine("- Repo context")
-    appendLine("- Relevant diffs or scope")
-    appendLine()
-    appendLine("## Outputs Contract")
-    appendLine()
-    appendLine("- Structured execution output")
-    appendLine()
-    appendLine("## Execution Mode Reporting")
-    appendLine()
-    appendLine("- Report the chosen execution mode in the wrapper.")
-    appendLine()
-    appendLine("## Telemetry Ceremony Hooks")
-    appendLine()
-    appendLine("- Keep telemetry hooks in the shared sidecar.")
-  }
-}
-
-internal fun renderSkillBody(context: TemplateContext, description: String, areaFocus: String = ""): String =
-  buildString {
-    append(renderFrontmatter(context.skillName, description))
-    append(renderDescriptorSection(context, areaFocus))
-    appendLine()
-    append(CANONICAL_EXECUTION_SECTION)
-    appendLine()
-    append(CANONICAL_CEREMONY_SECTION)
-  }
-
-internal fun renderAddonBody(skillName: String, description: String, explicitBody: String?): String {
-  val body = explicitBody?.takeIf { it.isNotBlank() } ?: buildString {
-    appendLine("# $skillName")
-    appendLine()
-    appendLine(description)
-    appendLine()
-    appendLine("TODO: author the add-on body.")
-  }
-  return if (body.endsWith('\n')) body else "$body\n"
 }
 
 internal val ORCHESTRATION_PLAYBOOKS: Map<String, String> =
@@ -163,6 +79,7 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   "telemetry-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("telemetry-contract")),
   "shell-content-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("shell-content-contract")),
   "shell-ceremony.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("shell-ceremony")),
+  "audit-rubrics.md" to repoRoot.resolve("skills/bill-feature-verify/audit-rubrics.md"),
   "android-compose-implementation.md" to repoRoot.resolve(
     "platform-packs/kmp/addons/android-compose-implementation.md",
   ),
@@ -224,7 +141,11 @@ internal fun requiredSupportingFilesForSkill(skillName: String): List<String> = 
   )
   skillName.startsWith(
     "bill-",
-  ) && skillName.endsWith("-feature-verify") -> listOf("shell-ceremony.md", "telemetry-contract.md")
+  ) && skillName.endsWith("-feature-verify") -> listOf(
+    "shell-ceremony.md",
+    "telemetry-contract.md",
+    "audit-rubrics.md",
+  )
   skillName == "bill-pr-description" -> listOf("shell-ceremony.md", "telemetry-contract.md")
   else -> emptyList()
 }

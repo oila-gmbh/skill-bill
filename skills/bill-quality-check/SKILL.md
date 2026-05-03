@@ -7,7 +7,7 @@ description: Use when you want a generic quality-check entry point that detects 
 
 Governed skill: `bill-quality-check`
 Family: `advisor`
-Description: Use when validating changes with the shared quality-check contract.
+Description: Use for quality check work.
 
 ## Execution
 

@@ -81,6 +81,62 @@ class CliAuthoringParityTest {
   }
 
   @Test
+  fun `native authoring validation reports render drift and skill shape issues`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validate-drift")
+    val repoRoot = authoringFixtureRepo(tempDir.resolve("drift-repo"), "bill-drift-fixture")
+    val skillFile = repoRoot.resolve("skills/bill-drift-fixture/SKILL.md")
+    Files.writeString(skillFile, Files.readString(skillFile) + "\n### Invalid nested heading\n")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    val result =
+      CliRuntime.run(
+        listOf(
+          "validate",
+          "--repo-root",
+          repoRoot.toString(),
+          "--skill-name",
+          "bill-drift-fixture",
+          "--format",
+          "json",
+        ),
+        context,
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val issues = payload["issues"] as List<*>
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals("fail", payload["status"])
+    assertEquals(true, issues.any { issue -> issue.toString().contains("render drift") })
+    assertEquals(true, issues.any { issue -> issue.toString().contains("H3+ heading") })
+  }
+
+  @Test
+  fun `native repo wide authoring validation reports render drift`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validate-repo-drift")
+    val repoRoot = authoringFixtureRepo(tempDir.resolve("repo-drift"), "bill-repo-drift-fixture")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    val result =
+      CliRuntime.run(
+        listOf(
+          "validate",
+          "--repo-root",
+          repoRoot.toString(),
+          "--format",
+          "json",
+        ),
+        context,
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val issues = payload["issues"] as List<*>
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals("fail", payload["status"])
+    assertEquals("repo", payload["mode"])
+    assertEquals(true, issues.any { issue -> issue.toString().contains("render drift") })
+  }
+
+  @Test
   fun `native wrapper regeneration and content mutation commands stay available through the kotlin cli`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-authoring-mutation")
     val context = CliRuntimeContext(userHome = tempDir)

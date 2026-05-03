@@ -7,7 +7,7 @@ description: Use when recording architectural or implementation decisions in a m
 
 Governed skill: `bill-boundary-decisions`
 Family: `advisor`
-Description: Use when recording architectural or implementation decisions in a boundary `agent/decisions.md` file.
+Description: Use for boundary decisions work.
 
 ## Execution
 

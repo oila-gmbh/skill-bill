@@ -7,7 +7,7 @@ description: Use when scaffolding a new skill or platform skill set and syncing 
 
 Governed skill: `bill-create-skill`
 Family: `advisor`
-Description: Use when scaffolding a new skill or platform skill set through the `skill-bill` CLI.
+Description: Use for create skill work.
 
 ## Execution
 

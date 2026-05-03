@@ -48,6 +48,39 @@ class CliScaffoldRuntimeTest {
   }
 
   @Test
+  fun `create-and-fill rejects multi artifact scaffold kinds with json diagnostics`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-fill-reject")
+    listOf(
+      """
+      {
+        "scaffold_payload_version": "1.0",
+        "kind": "platform-pack",
+        "platform": "java"
+      }
+      """.trimIndent(),
+      """
+      {
+        "scaffold_payload_version": "1.0",
+        "kind": "add-on",
+        "platform": "kotlin",
+        "name": "review-helper"
+      }
+      """.trimIndent(),
+    ).forEach { stdin ->
+      val result =
+        CliRuntime.run(
+          listOf("create-and-fill", "--payload", "-", "--body", "Authored content.", "--dry-run", "--format", "json"),
+          CliRuntimeContext(stdinText = stdin, userHome = tempDir),
+        )
+      val payload = decodeJsonObject(result.stdout)
+
+      assertEquals(1, result.exitCode)
+      assertEquals("error", payload.stringValue("status"))
+      assertContains(payload.stringValue("error"), "one content-managed skill")
+    }
+  }
+
+  @Test
   fun `new addon dry run preserves scaffold payload contract`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-addon")
     val bodyFile = tempDir.resolve("addon-body.md")
@@ -91,6 +124,24 @@ class CliScaffoldRuntimeTest {
       listOf("new-addon", "--platform", "kmp", "--name", "android-conflict-addon"),
       CliRuntimeContext(userHome = tempDir),
     )
+  }
+
+  @Test
+  fun `native scaffold payload errors are reported as structured cli errors`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-errors")
+    val result =
+      CliRuntime.run(
+        listOf("new-skill", "--payload", "-", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = """{"scaffold_payload_version":"9.99","kind":"horizontal"}""",
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(1, result.exitCode)
+    assertEquals("error", payload.stringValue("status"))
+    assertContains(payload.stringValue("error"), "scaffold_payload_version")
   }
 
   @Test

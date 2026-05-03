@@ -7,7 +7,7 @@ description: Remove feature flags and legacy code after a feature is fully rolle
 
 Governed skill: `bill-feature-guard-cleanup`
 Family: `advisor`
-Description: Use when removing a fully rolled-out feature flag and inlining the winning code path.
+Description: Use for feature guard cleanup work.
 
 ## Execution
 

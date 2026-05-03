@@ -445,7 +445,17 @@ private fun runNativeScaffoldPayload(
   format: CliFormat,
   state: CliRunState,
   transform: (Map<String, *>) -> Map<String, *> = { it },
-): CliExecutionResult = runNativeScaffoldPayload(transform(readScaffoldPayload(payloadPath, state)), dryRun, format)
+): CliExecutionResult {
+  val payload =
+    try {
+      transform(readScaffoldPayload(payloadPath, state))
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
+    } catch (error: IllegalArgumentException) {
+      return errorResult(error.message.orEmpty(), format)
+    }
+  return runNativeScaffoldPayload(payload, dryRun, format)
+}
 
 private fun runNativeScaffoldPayload(payload: Map<String, *>, dryRun: Boolean, format: CliFormat): CliExecutionResult {
   val sessionId = generateScaffoldSessionId()
@@ -493,7 +503,7 @@ private fun createAndFillResult(
   )
   body != null && bodyFile != null -> errorResult("--body and --body-file are mutually exclusive.", format)
   else -> runNativeScaffoldPayload(payload, dryRun, format, state) { scaffoldPayload ->
-    scaffoldPayload + createAndFillContentPayload(body, bodyFile, state)
+    createAndFillScaffoldPayload(scaffoldPayload, body, bodyFile, state)
   }
 }
 
@@ -546,6 +556,19 @@ private fun createAndFillContentPayload(body: String?, bodyFile: String?, state:
       readCliTextFile(path, state)
     }
   return if (contentBody == null) emptyMap() else mapOf("content_body" to contentBody)
+}
+
+private fun createAndFillScaffoldPayload(
+  scaffoldPayload: Map<String, *>,
+  body: String?,
+  bodyFile: String?,
+  state: CliRunState,
+): Map<String, *> {
+  val kind = scaffoldPayload["kind"]?.toString().orEmpty()
+  require(kind !in setOf("platform-pack", "add-on")) {
+    "create-and-fill can only scaffold one content-managed skill; kind '$kind' is not supported."
+  }
+  return scaffoldPayload + createAndFillContentPayload(body, bodyFile, state)
 }
 
 private fun newAddonPayload(

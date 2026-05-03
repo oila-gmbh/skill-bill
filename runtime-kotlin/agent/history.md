@@ -1,3 +1,13 @@
+## [2026-05-03] kotlin-contract-parity
+Areas: runtime-core scaffold/shell-content loader, runtime-cli scaffold commands, runtime-contracts errors, governed skill wrappers
+- Ported remaining scaffold, shell-content-contract loading, render/fill/upgrade, and authoring validation behavior onto Kotlin-owned APIs/CLI while keeping `skill_bill/` as reference-only for later subtasks.
+- Added canonical SKILL.md shape validation, render-drift validation, regular-file sidecar validation, feature-verify `audit-rubrics.md` ceremony support, and shared display-name derivation from manifest/fallback sources. reusable
+- Implemented Kotlin scaffold parity for `subagent_specialists` / `no_subagents`, Codex/OpenCode stub emission, create-and-fill multi-artifact rejection, quality-check manifest registration, and byte-identical rollback tests. reusable
+- Guardrail: feature-verify sidecars need both `requiredSupportingFilesForSkill` and `supportingFileTargets` entries; missing the target breaks newly scaffolded platform verify overrides even if existing wrappers render correctly.
+- Validation gate passed: focused scaffold/CLI tests, `runtime-kotlin ./gradlew check`, Python unittest suite, `agnix --strict`, and agent-config validation.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-05-01] adoption-docs-and-external-author-dry-run
 Areas: runtime-cli external-author tests, runtime-core scaffold manifest paths, docs adoption guides
 - Rewrote adoption docs around packaged Kotlin-only CLI/MCP behavior, fail-closed vs degraded boundaries, strict contract guarantees, and model-mediated review/planning limits.

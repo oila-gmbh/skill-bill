@@ -13,9 +13,7 @@ internal fun renderWrapper(target: AuthoringTarget): String {
       family = target.family,
       platform = target.platform,
       area = target.area,
-      displayName = target.platform.ifBlank {
-        target.skillName.removePrefix("bill-").replace("-", " ").replaceFirstChar { it.titlecase() }
-      },
+      displayName = target.displayName,
     )
   return buildString {
     append(frontmatter.trimEnd())
@@ -27,7 +25,7 @@ internal fun renderWrapper(target: AuthoringTarget): String {
     append(CANONICAL_EXECUTION_SECTION.trimEnd())
     appendLine()
     appendLine()
-    append(CANONICAL_CEREMONY_SECTION.trimEnd())
+    append(renderCeremonySection(context).trimEnd())
     appendLine()
   }
 }

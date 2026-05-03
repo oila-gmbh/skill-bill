@@ -7,7 +7,7 @@ description: Use when updating module/package/area agent/history.md files with r
 
 Governed skill: `bill-boundary-history`
 Family: `advisor`
-Description: Use when updating boundary `agent/history.md` files with reusable, high-signal feature history entries.
+Description: Use for boundary history work.
 
 ## Execution
 

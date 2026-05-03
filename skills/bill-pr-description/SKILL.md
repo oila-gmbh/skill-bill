@@ -7,7 +7,7 @@ description: Use when generating a PR title, description, and QA steps from the 
 
 Governed skill: `bill-pr-description`
 Family: `advisor`
-Description: Use when generating a PR title, description, and QA steps from the current branch changes.
+Description: Use for pr description work.
 
 ## Execution
 

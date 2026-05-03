@@ -64,11 +64,13 @@ private fun restoreFiles(originalBytes: Map<Path, ByteArray>) {
 
 private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, pack: PlatformManifest) {
   val baseline = pack.declaredFiles.baseline
+  val displayName = pack.displayName ?: displayNameFromSlug(pack.slug)
   discovered[baseline.parent.name] =
     AuthoringTarget(
       baseline.parent.name,
       pack.slug,
       pack.slug,
+      displayName,
       "code-review",
       "",
       baseline,
@@ -80,6 +82,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         skillFile.parent.name,
         pack.slug,
         pack.slug,
+        displayName,
         "code-review",
         area,
         skillFile,
@@ -92,6 +95,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         skillFile.parent.name,
         pack.slug,
         pack.slug,
+        displayName,
         "quality-check",
         "",
         skillFile,
@@ -112,8 +116,20 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
   val platform = platformFromSkillPath(repoRoot.relativize(skillFile))
   val packageName = platform.ifBlank { "base" }
   val family = inferFamily(skillName)
+  val displayName =
+    platform.takeIf { it.isNotBlank() }?.let(::displayNameFromSlug)
+      ?: displayNameFromSlug(skillName.removePrefix("bill-"))
   discovered[skillName] =
-    AuthoringTarget(skillName, packageName, platform, family, inferArea(skillName, family), skillFile, contentFile)
+    AuthoringTarget(
+      skillName,
+      packageName,
+      platform,
+      displayName,
+      family,
+      inferArea(skillName, family),
+      skillFile,
+      contentFile,
+    )
 }
 
 private fun platformFromSkillPath(relative: Path): String = if (

@@ -7,7 +7,7 @@ description: Verify a PR against a task spec — extract acceptance criteria, de
 
 Governed skill: `bill-feature-verify`
 Family: `workflow`
-Description: Use when verifying a PR against its task spec.
+Description: Use for feature verify work.
 
 ## Execution
 
@@ -19,4 +19,4 @@ Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).
 
 When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).
 
-When audit rubrics or PR comment formats apply, follow [audit-rubrics.md](audit-rubrics.md).
+When feature verification audit rules apply, follow [audit-rubrics.md](audit-rubrics.md).

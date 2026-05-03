@@ -7,7 +7,7 @@ description: Stress-test a plan or design by walking every branch of the decisio
 
 Governed skill: `bill-grill-plan`
 Family: `advisor`
-Description: Use when stress-testing a plan or design by walking every branch of the decision tree.
+Description: Use for grill plan work.
 
 ## Execution
 

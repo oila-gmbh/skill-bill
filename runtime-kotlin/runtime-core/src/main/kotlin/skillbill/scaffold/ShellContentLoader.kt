@@ -309,6 +309,7 @@ private fun validateGovernedSkill(
 
   val sections = collectTopLevelH2Sections(Files.readString(skillPath))
   ensureRequiredSections(pack.slug, skillPath, sections)
+  validateSkillMdShape(skillPath)
   ensureSiblingFiles(pack.slug, slot, skillPath)
 
   val context = governedContext(pack, skillPath.parent.fileName.toString(), family, area)
@@ -319,7 +320,7 @@ private fun validateGovernedSkill(
       "Platform pack '${pack.slug}': skill file '$skillPath' has a drifted ## Execution section.",
     )
   }
-  if (sections.getValue("## Ceremony") != CANONICAL_CEREMONY_SECTION) {
+  if (sections.getValue("## Ceremony") != renderCeremonySection(context)) {
     throw InvalidCeremonySectionError(
       "Platform pack '${pack.slug}': skill file '$skillPath' has a drifted ## Ceremony section.",
     )
@@ -413,5 +414,5 @@ private fun governedContext(pack: PlatformManifest, skillName: String, family: S
     family = family,
     platform = pack.slug,
     area = area,
-    displayName = pack.displayName ?: pack.slug.replace('-', ' ').replaceFirstChar { it.uppercaseChar() },
+    displayName = pack.displayName ?: displayNameFromSlug(pack.slug),
   )

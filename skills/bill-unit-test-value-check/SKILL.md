@@ -7,7 +7,7 @@ description: Use when reviewing unit tests in a file, current changes, or a comm
 
 Governed skill: `bill-unit-test-value-check`
 Family: `advisor`
-Description: Use when reviewing unit tests for low-value, tautological, or coverage-only patterns.
+Description: Use for unit test value check work.
 
 ## Execution
 

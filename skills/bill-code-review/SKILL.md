@@ -7,7 +7,7 @@ description: Use when you want a generic code-review entry point that detects th
 
 Governed skill: `bill-code-review`
 Family: `advisor`
-Description: Use when reviewing code changes across stack-specific review specialists.
+Description: Use for code review work.
 
 ## Execution
 

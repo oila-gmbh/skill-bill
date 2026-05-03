@@ -44,6 +44,9 @@ private val SUPPORTED_SKILL_KINDS =
 
 private val SHELLED_FAMILIES = setOf("code-review", "quality-check")
 private val PRE_SHELL_FAMILIES = setOf("feature-implement", "feature-verify")
+private val ORCHESTRATOR_KINDS_FOR_SUBAGENTS =
+  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_PLATFORM_PACK)
+private val SUBAGENT_NAME_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 
 private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
   mapOf(
@@ -106,6 +109,8 @@ private data class ScaffoldPlan(
   val createdFiles: List<Path> = emptyList(),
   val contentBody: String? = null,
   val addonBody: String? = null,
+  val subagentSpecialists: List<String> = emptyList(),
+  val subagentsSuppressed: Boolean = false,
 )
 
 private data class ScaffoldExecutionResult(
@@ -171,7 +176,10 @@ private fun executeScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRo
     }
   validateScaffold(plan, repoRoot)
   val (installTargets, installNotes) = performInstall(txn, plan)
-  return execution.copy(installTargets = installTargets, notes = execution.notes + installNotes)
+  return execution.copy(
+    installTargets = installTargets,
+    notes = execution.notes + installNotes + subagentEmissionNotes(plan),
+  )
 }
 
 private fun validatePayloadVersion(payload: Map<String, Any?>) {
@@ -223,6 +231,7 @@ private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: Strin
 private fun planHorizontal(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val name = requireString(payload, "name")
   val skillPath = repoRoot.resolve("skills").resolve(name)
+  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_HORIZONTAL)
   return ScaffoldPlan(
     kind = SKILL_KIND_HORIZONTAL,
     skillName = name,
@@ -235,6 +244,8 @@ private fun planHorizontal(payload: Map<String, Any?>, repoRoot: Path): Scaffold
     isShelled = false,
     notes = emptyList(),
     contentBody = payload["content_body"] as? String,
+    subagentSpecialists = subagents.specialists,
+    subagentsSuppressed = subagents.suppressed,
   )
 }
 
@@ -242,6 +253,7 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
   val platform = requireString(payload, "platform")
   val family = requireString(payload, "family")
   val name = canonicalName(payload, defaultName = "bill-$platform-$family")
+  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED)
   val isShelled = family in SHELLED_FAMILIES
   val notes = mutableListOf<String>()
   if (!isShelled) {
@@ -267,6 +279,8 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
       isShelled = false,
       notes = notes,
       contentBody = payload["content_body"] as? String,
+      subagentSpecialists = subagents.specialists,
+      subagentsSuppressed = subagents.suppressed,
     )
   }
 
@@ -296,11 +310,14 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
     isShelled = true,
     notes = notes,
     displayName = pack.displayName ?: deriveDisplayName(platform),
+    subagentSpecialists = subagents.specialists,
+    subagentsSuppressed = subagents.suppressed,
   )
 }
 
 private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val platform = requireString(payload, "platform")
+  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_PACK)
   val defaults = resolvePlatformPackDefaults(payload, platform)
   val packRoot = repoRoot.resolve("platform-packs").resolve(platform)
   if (Files.exists(packRoot)) {
@@ -355,12 +372,76 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
       selectedAreas = selectedAreas,
     ),
     contentBody = payload["content_body"] as? String,
+    subagentSpecialists = subagents.specialists,
+    subagentsSuppressed = subagents.suppressed,
   )
 }
 
 private data class PlatformPackSelection(
   val selectedAreas: List<String>,
 )
+
+private data class OptionalSubagents(
+  val specialists: List<String>,
+  val suppressed: Boolean,
+)
+
+private fun optionalSpecialistSubagents(payload: Map<String, Any?>, kind: String): OptionalSubagents {
+  val rawSpecialists = payload["subagent_specialists"] ?: emptyList<String>()
+  val rawSuppressed = payload["no_subagents"] ?: false
+  if (rawSpecialists !is List<*>) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'subagent_specialists' must be a list of strings.",
+    )
+  }
+  val specialists = mutableListOf<String>()
+  val seen = mutableSetOf<String>()
+  rawSpecialists.forEach { raw ->
+    val specialist = raw as? String
+      ?: throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'subagent_specialists' must contain only non-empty strings.",
+      )
+    if (specialist.isBlank()) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'subagent_specialists' must contain only non-empty strings.",
+      )
+    }
+    if (!SUBAGENT_NAME_PATTERN.matches(specialist)) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'subagent_specialists' contains invalid name '$specialist'; " +
+          "names must match '^[a-z][a-z0-9-]*$'.",
+      )
+    }
+    if (!seen.add(specialist)) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'subagent_specialists' contains duplicate name '$specialist'.",
+      )
+    }
+    specialists += specialist
+  }
+  val suppressed = rawSuppressed as? Boolean
+    ?: throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'no_subagents' must be a boolean when provided.",
+    )
+  if (suppressed && specialists.isNotEmpty()) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload may not set 'no_subagents=true' together with a non-empty 'subagent_specialists' list.",
+    )
+  }
+  if (specialists.isNotEmpty() && kind !in ORCHESTRATOR_KINDS_FOR_SUBAGENTS) {
+    throw InvalidScaffoldPayloadError(
+      "subagent_specialists is only valid for orchestrator kinds " +
+        "(horizontal, platform-override-piloted, platform-pack); got $kind",
+    )
+  }
+  return OptionalSubagents(specialists = specialists, suppressed = suppressed)
+}
+
+private fun rejectLeafSubagentSpecialists(payload: Map<String, Any?>, kind: String) {
+  if (payload["subagent_specialists"] != null) {
+    optionalSpecialistSubagents(payload, kind)
+  }
+}
 
 private fun resolvePlatformPackSelection(payload: Map<String, Any?>): PlatformPackSelection {
   val skeletonMode = requireStringOrDefault(payload, "skeleton_mode", "full")
@@ -387,7 +468,9 @@ private fun resolvePlatformPackSelection(payload: Map<String, Any?>): PlatformPa
     )
   }
   val selectedAreas =
-    specialistAreas
+    specialistAreas?.let { requested ->
+      APPROVED_CODE_REVIEW_AREAS.sorted().filter { area -> area in requested.toSet() }
+    }
       ?: if (skeletonMode == "full") APPROVED_CODE_REVIEW_AREAS.sorted() else emptyList()
   return PlatformPackSelection(selectedAreas = selectedAreas)
 }
@@ -410,6 +493,7 @@ private fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAre
 }
 
 private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
+  rejectLeafSubagentSpecialists(payload, SKILL_KIND_CODE_REVIEW_AREA)
   val platform = requireString(payload, "platform")
   val area = requireString(payload, "area")
   if (area !in APPROVED_CODE_REVIEW_AREAS) {
@@ -446,6 +530,7 @@ private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): Scaf
 }
 
 private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
+  rejectLeafSubagentSpecialists(payload, SKILL_KIND_ADD_ON)
   val name = requireString(payload, "name")
   val platform = requireString(payload, "platform")
   val packRoot = repoRoot.resolve("platform-packs").resolve(platform)
@@ -522,6 +607,18 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     ),
   )
   val symlinks = stagePlatformPackSkills(txn, plan, repoRoot, baselineSkillPath, qualityCheckSkillPath)
+  if (plan.shouldEmitSubagents()) {
+    appendRuntimeNotesToContent(
+      baselineSkillPath.resolve("content.md"),
+      renderSubagentSpawnRuntimeNotes(plan.baselineSkillName, plan.subagentSpecialists),
+    )
+    stageSubagentStubs(
+      txn,
+      orchestratorSkillPath = baselineSkillPath,
+      orchestratorName = plan.baselineSkillName,
+      specialists = plan.subagentSpecialists,
+    )
+  }
   return ScaffoldExecutionResult(
     createdFiles = txn.createdPaths.toList(),
     manifestEdits = listOf(manifestPath),
@@ -542,6 +639,19 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
   }
   val manifestEdits = applyManifestEdits(txn, plan, repoRoot)
   val symlinks = stageSidecarSymlinks(txn, plan, repoRoot)
+  if (plan.shouldEmitSubagents()) {
+    val contentPath = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME)
+    appendRuntimeNotesToContent(
+      contentPath,
+      renderSubagentSpawnRuntimeNotes(plan.skillName, plan.subagentSpecialists),
+    )
+    stageSubagentStubs(
+      txn,
+      orchestratorSkillPath = plan.skillPath,
+      orchestratorName = plan.skillName,
+      specialists = plan.subagentSpecialists,
+    )
+  }
   return ScaffoldExecutionResult(
     createdFiles = txn.createdPaths.toList(),
     manifestEdits = manifestEdits,
@@ -552,11 +662,11 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
 }
 
 private fun renderSkillWrapper(plan: ScaffoldPlan): String =
-  renderSkillBody(skillContext(plan), plan.description, areaFocus(plan))
+  renderSkillBody(skillContext(plan), effectiveDescription(plan), areaFocus(plan))
 
 private fun renderContentSheet(plan: ScaffoldPlan): String = renderContentBody(
   skillContext(plan),
-  description = plan.description,
+  description = effectiveDescription(plan),
   contentBody = plan.contentBody,
 )
 
@@ -570,6 +680,11 @@ private fun skillContext(plan: ScaffoldPlan): TemplateContext = TemplateContext(
 
 private fun areaFocus(plan: ScaffoldPlan): String =
   plan.area.takeIf { it.isNotBlank() }?.let(::defaultAreaFocus).orEmpty()
+
+private fun effectiveDescription(plan: ScaffoldPlan): String {
+  val context = skillContext(plan)
+  return plan.description.ifBlank { inferSkillDescription(context, areaFocus(plan)) }
+}
 
 private fun stageFile(txn: ScaffoldTransaction, path: Path, content: String) {
   if (Files.exists(path)) {
@@ -589,6 +704,37 @@ private fun stageFile(txn: ScaffoldTransaction, path: Path, content: String) {
   }
   Files.writeString(path, content)
   txn.createdPaths.add(path)
+}
+
+private fun appendRuntimeNotesToContent(contentPath: Path, runtimeNotes: String) {
+  if (runtimeNotes.isBlank()) {
+    return
+  }
+  val existing = Files.readString(contentPath)
+  val separator = when {
+    existing.endsWith("\n\n") -> ""
+    existing.endsWith("\n") -> "\n"
+    else -> "\n\n"
+  }
+  Files.writeString(contentPath, existing + separator + runtimeNotes.trimEnd() + "\n")
+}
+
+private fun stageSubagentStubs(
+  txn: ScaffoldTransaction,
+  orchestratorSkillPath: Path,
+  orchestratorName: String,
+  specialists: List<String>,
+): List<Path> {
+  val staged = mutableListOf<Path>()
+  specialists.forEach { specialist ->
+    val codexPath = orchestratorSkillPath.resolve("codex-agents").resolve("$specialist.toml")
+    stageFile(txn, codexPath, renderCodexAgentTomlStub(specialist, orchestratorName))
+    staged.add(codexPath)
+    val opencodePath = orchestratorSkillPath.resolve("opencode-agents").resolve("$specialist.md")
+    stageFile(txn, opencodePath, renderOpencodeAgentMdStub(specialist, orchestratorName))
+    staged.add(opencodePath)
+  }
+  return staged
 }
 
 private fun snapshotManifest(txn: ScaffoldTransaction, manifestPath: Path) {
@@ -648,11 +794,12 @@ private fun stageSidecarSymlinksForSkill(
 }
 
 private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kind) {
-  SKILL_KIND_PLATFORM_PACK -> previewPlatformPackCreatedFiles(plan)
+  SKILL_KIND_PLATFORM_PACK -> previewPlatformPackCreatedFiles(plan) + previewSubagentStubFiles(plan)
   SKILL_KIND_ADD_ON -> listOf(plan.skillFile)
   else -> buildList {
     add(plan.skillFile)
     plan.contentFile?.let(::add)
+    addAll(previewSubagentStubFiles(plan))
   }
 }
 
@@ -783,11 +930,7 @@ private fun requireStringList(value: Any?, fieldName: String): List<String> {
   }
 }
 
-private fun deriveDisplayName(platform: String): String = platform.split('-').joinToString(" ") { part ->
-  part.replaceFirstChar {
-    if (it.isLowerCase()) it.titlecase() else it.toString()
-  }
-}
+private fun deriveDisplayName(platform: String): String = displayNameFromSlug(platform)
 
 private fun defaultRepoRoot(): Path = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
 
@@ -911,6 +1054,42 @@ private fun previewPlatformPackCreatedFiles(plan: ScaffoldPlan): List<Path> = bu
     add(path.resolve("content.md"))
   }
 }
+
+private fun previewSubagentStubFiles(plan: ScaffoldPlan): List<Path> {
+  if (!plan.shouldEmitSubagents()) {
+    return emptyList()
+  }
+  val stubDir =
+    if (plan.kind == SKILL_KIND_PLATFORM_PACK) {
+      plan.baselineSkillPath ?: return emptyList()
+    } else {
+      plan.skillPath
+    }
+  return plan.subagentSpecialists.flatMap { specialist ->
+    listOf(
+      stubDir.resolve("codex-agents").resolve("$specialist.toml"),
+      stubDir.resolve("opencode-agents").resolve("$specialist.md"),
+    )
+  }
+}
+
+private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
+  if (!plan.shouldEmitSubagents()) {
+    return emptyList()
+  }
+  val stubDir =
+    if (plan.kind == SKILL_KIND_PLATFORM_PACK) {
+      plan.baselineSkillPath ?: plan.skillPath
+    } else {
+      plan.skillPath
+    }
+  return listOf(
+    "Subagent stubs emitted: ${plan.subagentSpecialists.size}. " +
+      "Fill in the TODO placeholders in $stubDir/codex-agents/ and $stubDir/opencode-agents/ before shipping.",
+  )
+}
+
+private fun ScaffoldPlan.shouldEmitSubagents(): Boolean = subagentSpecialists.isNotEmpty() && !subagentsSuppressed
 
 private fun rollbackInstallTargets(txn: ScaffoldTransaction, errors: MutableList<String>) {
   try {

@@ -50,6 +50,11 @@ class MissingShellCeremonyFileError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidSkillMdShapeError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
 open class ScaffoldError(
   message: String,
   cause: Throwable? = null,

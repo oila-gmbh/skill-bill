@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.error.ShellContentContractException
 import skillbill.error.SkillBillRuntimeException
 import java.io.IOException
 import java.nio.file.Files
@@ -18,12 +19,12 @@ internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementT
   }
 }
 
-internal fun validateTarget(target: AuthoringTarget): List<String> {
+internal fun validateTarget(target: AuthoringTarget, checkRenderDrift: Boolean = true): List<String> {
   val issues = mutableListOf<String>()
   when {
     !Files.isRegularFile(target.skillFile) -> issues += "${target.skillFile}: SKILL.md is missing"
     !Files.isRegularFile(target.contentFile) -> issues += "${target.contentFile}: content.md is missing"
-    else -> collectTargetIssues(target, issues)
+    else -> collectTargetIssues(target, issues, checkRenderDrift)
   }
   return issues
 }
@@ -51,7 +52,7 @@ private fun restoreContentFiles(target: AuthoringTarget, contentBefore: ByteArra
   Files.write(target.skillFile, wrapperBefore)
 }
 
-private fun collectTargetIssues(target: AuthoringTarget, issues: MutableList<String>) {
+private fun collectTargetIssues(target: AuthoringTarget, issues: MutableList<String>, checkRenderDrift: Boolean) {
   val skillText = Files.readString(target.skillFile)
   if (!skillText.contains("name: ${target.skillName}\n")) {
     issues += "${target.skillFile}: frontmatter name does not match directory '${target.skillName}'"
@@ -60,6 +61,20 @@ private fun collectTargetIssues(target: AuthoringTarget, issues: MutableList<Str
     if (!skillText.contains("$heading\n")) {
       issues += "${target.skillFile}: SKILL.md is missing required section '$heading'"
     }
+  }
+  requiredSupportingFilesForSkill(target.skillName).forEach { fileName ->
+    val sidecar = target.skillFile.resolveSibling(fileName)
+    if (!Files.isRegularFile(sidecar)) {
+      issues += "${target.skillFile}: required ceremony sidecar '$fileName' is missing"
+    }
+  }
+  try {
+    validateSkillMdShape(target.skillFile)
+  } catch (error: ShellContentContractException) {
+    issues += error.message.orEmpty()
+  }
+  if (checkRenderDrift && hasGenerationDrift(target)) {
+    issues += "${target.skillFile}: SKILL.md has scaffold-managed render drift"
   }
   val contentText = Files.readString(target.contentFile)
   if (contentText.isBlank()) {
