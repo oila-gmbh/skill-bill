@@ -10,7 +10,7 @@ Skill Bill is a governance product, not a prompt dump. The product is the framew
 - runtime surfaces in the `skill-bill` CLI and `skill-bill-mcp` server
 - validator-backed authoring and scaffolding flows
 
-The first shipped workflow family is engineering-focused, but the same governed shape now supports editorial workflows. `/bill-editorial-assignment-desk` runs a Readian-backed assignment desk for journalism: fetch Spotlight and topic articles through MCP tools, verify sources, rank candidates, pause for journalist selection, and produce evidence-first story packs without drafting or publishing the article.
+The shipped workflow family is engineering-focused, with stable entry points for review, quality, feature implementation, and PR description.
 
 ## Why it exists
 
@@ -38,7 +38,6 @@ Most daily use comes through a small set of stable commands:
 - `/bill-feature-implement` orchestrates spec-to-PR work
 - `/bill-feature-verify` verifies a PR against a spec or design doc
 - `/bill-pr-description` generates PR text and QA steps
-- `/bill-editorial-assignment-desk` runs a governed editorial candidate desk backed by the Readian MCP boundary
 
 Skill Bill also ships:
 
@@ -81,7 +80,7 @@ Native subagent definitions are installed only for orchestrators that ship them.
 
 ## Reference skill catalog
 
-### Canonical Skills (14 skills)
+### Canonical Skills (13 skills)
 
 | Skill | Purpose |
 |-------|---------|
@@ -93,7 +92,6 @@ Native subagent definitions are installed only for orchestrators that ship them.
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
 | `/bill-feature-implement` | End-to-end feature workflow from spec through review and validation |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
-| `/bill-editorial-assignment-desk` | Run a governed Readian-backed editorial assignment desk |
 | `/bill-grill-plan` | Stress-test a plan or design by walking the decision tree |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-quality-check` | Stable quality-check entry point that routes to the matching checker |
@@ -110,7 +108,7 @@ The main governed layers are:
 - `runtime-kotlin/`: packaged Kotlin CLI, MCP server, workflow state, telemetry, scaffolding, and install primitives
 - `scripts/`: Kotlin-backed repo validation wrappers and retirement notes for obsolete migration helpers
 
-Governed pack skills use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md`. Workflow shells such as `bill-feature-implement`, `bill-feature-verify`, and `bill-editorial-assignment-desk` follow the same split: shell-owned orchestration in `SKILL.md`, authored execution guidance in `content.md`, and stable contracts in sibling references when needed.
+Governed pack skills use a thin `SKILL.md` wrapper plus sibling `content.md` and `shell-ceremony.md`. Workflow shells such as `bill-feature-implement` and `bill-feature-verify` follow the same split: shell-owned orchestration in `SKILL.md`, authored execution guidance in `content.md`, and stable contracts in sibling references when needed.
 
 ## Reference packs
 
