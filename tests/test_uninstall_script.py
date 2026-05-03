@@ -31,6 +31,13 @@ class UninstallScriptTest(unittest.TestCase):
       self.assertFalse((Path(temp_home) / ".claude" / "commands" / "bill-code-review").exists())
       self.assertFalse((Path(temp_home) / ".copilot" / "skills" / ".bill-shared").exists())
 
+  def test_uninstall_script_builds_packaged_runtime_when_missing(self) -> None:
+    source = UNINSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    self.assertIn("./gradlew -q :runtime-cli:installDist", source)
+    self.assertIn("Building packaged Kotlin CLI runtime distribution", source)
+    self.assertNotIn("Run './install.sh' to build the packaged runtime before uninstalling.", source)
+
   def test_uninstall_removes_legacy_managed_install_directories(self) -> None:
     """Earlier installer versions supported a custom prefix that generated
     real directories marked with .skill-bill-install. The uninstaller must

@@ -1,3 +1,20 @@
+## [2026-05-03] installer-test-runtime-bootstrap
+Areas: tests/test_install_script.py, install.sh, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
+- Fixed clean-CI installer tests after SKILL-36 moved `install.sh` to strict packaged Kotlin runtime bins: `test_install_script` still set `SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1`, but a fresh GitHub Actions checkout had no `runtime-cli`/`runtime-mcp` installDist outputs. reusable
+- The installer remains strict: skipped builds still require executable packaged CLI/MCP bins. The test suite now builds both distributions once in `InstallScriptTest.setUpClass` only when those bins are absent, so per-test installer runs continue exercising the skipped-build path deterministically.
+- Verified the fix by temporarily moving local installDist outputs away and running an installer test from that clean state; setup rebuilt the distributions and the test passed.
+Feature flag: N/A
+Acceptance criteria: CI installer unittest failure fixed
+
+## [2026-05-03] feature-implement-telemetry-fallback
+Areas: skills/bill-feature-implement/content.md, skills/bill-feature-implement/reference.md, tests/test_feature_implement_routing_contract.py, Codex MCP registration
+- Added a feature-implement finalization guard after SKILL-36 exposed two flow failures: in-session Skill Bill MCP returned `Transport closed`, and review telemetry import was attempted with prose-only text missing `Review run ID`. reusable
+- New workflow rule: health-check Skill Bill MCP before owned review/final telemetry; if the session transport is closed, call the same tool through packaged Kotlin `runtime-mcp` direct stdio and record the fallback in step artifacts. reusable
+- New review telemetry guardrail: only import complete `bill-code-review` output containing metadata header lines, especially `Review run ID: <review-run-id>`; re-run/reformat the real review output instead of synthesizing a summary.
+- Local Codex MCP registration was corrected from the retired Python launcher shim to direct packaged `runtime-mcp`; future installer registrations already use this path.
+Feature flag: N/A
+Acceptance criteria: flow reliability follow-up implemented
+
 ## [2026-05-02] enforce-skill-overrides
 Areas: orchestration/shell-content-contract/shell-ceremony.md, skills/bill-feature-implement/reference.md, agent/decisions.md, tests/test_feature_implement_routing_contract.py
 - Closed the structural gap that allowed `.agents/skill-overrides.md` mandates to be silently skipped across four 2026-05-02 runs (SKILL-33 FU2/FU3/FU4 + SKILL-34). Triggered by user feedback during SKILL-34 retrospective: "looks like a miss, we need to make sure that skill-override is always respected." The mandate was correctly written into `.agents/skill-overrides.md`'s `## bill-feature-implement` section since SKILL-21, but the shared `shell-ceremony.md` rule that pointed skills at the override file was underspecified — it did not say the read is orchestrator-owned, did not require executing action mandates contained within the section, and did not name the lifecycle positions where mandates fire. Skills that delegated the read to a subagent (e.g. `bill-feature-implement`'s pre-planning subagent) saw the action mandates paraphrased into a free-form `standards_notes` string and effectively dropped. Personal-graph `session_start` was never called; `write_state`/`write_episode` were never called at finish across any of the four runs. reusable

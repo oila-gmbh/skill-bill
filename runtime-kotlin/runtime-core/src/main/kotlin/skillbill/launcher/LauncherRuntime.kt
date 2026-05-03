@@ -12,6 +12,11 @@ object LauncherRuntime {
     status = RuntimeSurfaceStatus.ACTIVE,
     summary = "Runtime launcher for packaged Kotlin CLI and MCP entrypoints.",
     placeholderReason = "",
-    supportedOperations = listOf("select-cli-runtime", "select-mcp-runtime"),
+    supportedOperations = listOf(
+      "select-cli-runtime",
+      "select-mcp-runtime",
+      "register-mcp",
+      "unregister-mcp",
+    ),
   )
 }

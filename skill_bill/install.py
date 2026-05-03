@@ -1,11 +1,8 @@
-"""Agent-detection and skill-install primitives (SKILL-15).
+"""Legacy Python agent-detection and skill-install primitives.
 
-Shared install logic so both ``install.sh`` and the new-skill scaffolder can
-symlink skills into detected local AI agents without duplicating path rules.
-
-The agent paths here are the canonical source of truth — ``install.sh`` shells
-out to this module via ``python3 -m skill_bill install ...`` rather than
-redefining them inline. Keeping one owner for the path table prevents drift.
+The packaged Kotlin runtime is the installer source of truth. This module is
+retained for remaining Python scaffolder/tests until the final Python package
+removal subtask; installer scripts must not execute it.
 
 Supported agents (mirrors ``install.sh::get_agent_path``):
 

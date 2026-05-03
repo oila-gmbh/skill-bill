@@ -5,6 +5,8 @@ PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
+RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
+RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -16,6 +18,39 @@ info()  { printf "${CYAN}▸${NC} %s\n" "$1"; }
 ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 err()   { printf "${RED}✗${NC} %s\n" "$1"; }
+
+locate_packaged_runtime_bin() {
+  if [[ ! -x "$RUNTIME_CLI_BIN" ]]; then
+    err "Missing packaged Kotlin CLI runtime: $RUNTIME_CLI_BIN"
+    return 1
+  fi
+}
+
+build_kotlin_runtime_distribution() {
+  if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
+    warn "Skipping packaged Kotlin runtime distribution build because SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1."
+    locate_packaged_runtime_bin
+    return 0
+  fi
+
+  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
+  if [[ ! -x "$gradlew" ]]; then
+    err "Missing Gradle wrapper: $gradlew"
+    exit 1
+  fi
+
+  info "Building packaged Kotlin CLI runtime distribution..."
+  (
+    cd "$RUNTIME_KOTLIN_DIR"
+    ./gradlew -q :runtime-cli:installDist
+  )
+  locate_packaged_runtime_bin
+  ok "Kotlin CLI runtime distribution ready"
+}
+
+run_runtime_cli() {
+  "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+}
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
 # same (for example, moving
@@ -79,7 +114,7 @@ build_skill_names() {
   while IFS= read -r skill_file; do
     skill_dir="$(dirname "$skill_file")"
     skill_name="$(basename "$skill_dir")"
-    if ! array_contains "$skill_name" "${SKILL_NAMES[@]:-}"; then
+    if [[ ${#SKILL_NAMES[@]} -eq 0 ]] || ! array_contains "$skill_name" "${SKILL_NAMES[@]}"; then
       SKILL_NAMES+=("$skill_name")
     fi
   done < <(
@@ -94,7 +129,7 @@ build_skill_names() {
 
 add_legacy_name() {
   local candidate="$1"
-  if ! array_contains "$candidate" "${LEGACY_SKILL_NAMES[@]:-}"; then
+  if [[ ${#LEGACY_SKILL_NAMES[@]} -eq 0 ]] || ! array_contains "$candidate" "${LEGACY_SKILL_NAMES[@]}"; then
     LEGACY_SKILL_NAMES+=("$candidate")
   fi
 }
@@ -146,101 +181,48 @@ remove_skill_target() {
 remove_from_agent_dir() {
   local label="$1"
   local target_dir="$2"
-  local before_removed
-  local before_skipped
+  local output
+  local status=0
   local skill_name
+  local args=()
 
   if [[ ! -d "$target_dir" ]]; then
     return 0
   fi
 
-  before_removed=${#REMOVED_TARGETS[@]}
-  before_skipped=${#SKIPPED_TARGETS[@]}
-
-  info "Checking $label: $target_dir"
-  shopt -s nullglob
-  for managed_target in "$target_dir"/*; do
-    if [[ -d "$managed_target" && -f "$managed_target/$MANAGED_INSTALL_MARKER" ]]; then
-      remove_skill_target "$managed_target"
-    fi
-  done
-  shopt -u nullglob
   for skill_name in "${SKILL_NAMES[@]}"; do
-    remove_skill_target "$target_dir/$skill_name"
+    args+=(--skill-name "$skill_name")
   done
   for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
-    remove_skill_target "$target_dir/$skill_name"
+    args+=(--legacy-name "$skill_name")
   done
 
-  if [[ ${#REMOVED_TARGETS[@]} -eq "$before_removed" && ${#SKIPPED_TARGETS[@]} -eq "$before_skipped" ]]; then
+  info "Checking $label: $target_dir"
+  output="$(run_runtime_cli install cleanup-agent-target \
+    --target-dir "$target_dir" \
+    --marker "$MANAGED_INSTALL_MARKER" \
+    "${args[@]}" || status=$?)"
+  if [[ "${status:-0}" -ne 0 ]]; then
+    warn "  cleanup failed"
+    return 0
+  fi
+  if [[ -z "$output" ]]; then
     info "  nothing to remove"
-  fi
-}
-
-unregister_mcp_json() {
-  local config_path="$1"
-  local label="$2"
-  if [[ ! -f "$config_path" ]]; then
     return 0
   fi
-  if python3 -c "
-import json, sys
-path = sys.argv[1]
-try:
-    settings = json.loads(open(path).read())
-except (FileNotFoundError, json.JSONDecodeError):
-    sys.exit(0)
-servers = settings.get('mcpServers', {})
-if 'skill-bill' not in servers:
-    sys.exit(0)
-del servers['skill-bill']
-if not servers:
-    del settings['mcpServers']
-open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
-" "$config_path" 2>/dev/null; then
-    ok "  removed skill-bill MCP server ($label)"
-  fi
+  while IFS=$'\t' read -r status skill_name; do
+    [[ -n "$status" && -n "$skill_name" ]] || continue
+    if [[ "$status" == "removed" ]]; then
+      REMOVED_TARGETS+=("$skill_name")
+      ok "  removed $(basename "$skill_name")"
+    elif [[ "$status" == "skipped" ]]; then
+      SKIPPED_TARGETS+=("$skill_name")
+      warn "  skipped $(basename "$skill_name") (not a symlink)"
+    fi
+  done <<< "$output"
 }
 
-unregister_mcp_toml() {
-  local config_path="$1"
-  local label="$2"
-  if [[ ! -f "$config_path" ]]; then
-    return 0
-  fi
-  if python3 -c "
-import sys, os
-path = sys.argv[1]
-if not os.path.exists(path):
-    sys.exit(0)
-lines = open(path).read().splitlines()
-section = '[mcp_servers.skill-bill]'
-filtered = []
-skip = False
-found = False
-for line in lines:
-    if line.strip() == section:
-        skip = True
-        found = True
-        continue
-    if skip and (line.startswith('[') or not line.strip()):
-        if line.startswith('['):
-            skip = False
-            filtered.append(line)
-        continue
-    if not skip:
-        filtered.append(line)
-if not found:
-    sys.exit(0)
-while filtered and not filtered[-1].strip():
-    filtered.pop()
-filtered.append('')
-open(path, 'w').write('\n'.join(filtered))
-" "$config_path" 2>/dev/null; then
-    ok "  removed skill-bill MCP server ($label)"
-  fi
-}
-
+build_kotlin_runtime_distribution
 build_skill_names
 build_legacy_skill_names
 
@@ -263,32 +245,19 @@ remove_codex_agents_tomls() {
   # directories. Manifest-driven: walks platform-packs/<slug>/**/codex-agents/*.toml
   # and removes any matching filename in $HOME/.codex/agents and
   # $HOME/.agents/agents. Idempotent.
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if "$python_cmd" -m skill_bill install unlink-codex-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" \
-      --skills "$SKILLS_DIR" 2>/dev/null; then
-      ok "  Codex subagent TOMLs removed via skill_bill"
-      return 0
-    fi
+  local output
+  output="$(run_runtime_cli install unlink-codex-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  nothing to remove"
+    return 0
   fi
-
-  local toml_file link_path candidate_dir
-  shopt -s nullglob globstar
-  for toml_file in \
-    "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml \
-    "$SKILLS_DIR"/**/codex-agents/*.toml; do
-    [[ -f "$toml_file" ]] || continue
-    for candidate_dir in "$HOME/.codex/agents" "$HOME/.agents/agents"; do
-      link_path="$candidate_dir/$(basename "$toml_file")"
-      if [[ -L "$link_path" ]]; then
-        rm -f "$link_path"
-        REMOVED_TARGETS+=("$link_path")
-        ok "  removed $(basename "$link_path")"
-      fi
-    done
-  done
-  shopt -u nullglob globstar
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    REMOVED_TARGETS+=("$link_path")
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
 }
 
 info "Removing Codex subagent TOML installs."
@@ -299,167 +268,32 @@ remove_opencode_agent_mds() {
   # ~/.config/opencode/agents. Manifest-driven: walks
   # platform-packs/<slug>/**/opencode-agents/*.md and removes any matching
   # filename in the OpenCode agents directory. Idempotent.
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if "$python_cmd" -m skill_bill install unlink-opencode-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" \
-      --skills "$SKILLS_DIR" 2>/dev/null; then
-      ok "  OpenCode subagent markdown removed via skill_bill"
-      return 0
-    fi
+  local output
+  output="$(run_runtime_cli install unlink-opencode-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  nothing to remove"
+    return 0
   fi
-
-  local md_file link_path target_dir
-  target_dir="$HOME/.config/opencode/agents"
-  shopt -s nullglob globstar
-  for md_file in \
-    "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md \
-    "$SKILLS_DIR"/**/opencode-agents/*.md; do
-    [[ -f "$md_file" ]] || continue
-    link_path="$target_dir/$(basename "$md_file")"
-    if [[ -L "$link_path" ]]; then
-      rm -f "$link_path"
-      REMOVED_TARGETS+=("$link_path")
-      ok "  removed $(basename "$link_path")"
-    fi
-  done
-  shopt -u nullglob globstar
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    REMOVED_TARGETS+=("$link_path")
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
 }
 
 info "Removing OpenCode subagent markdown installs."
 remove_opencode_agent_mds
 
 info "Removing MCP server registrations."
-unregister_mcp_json "$HOME/.claude.json" "claude"
-unregister_mcp_json "$HOME/.copilot/mcp-config.json" "copilot"
-unregister_mcp_toml "$HOME/.codex/config.toml" "codex"
-unregister_mcp_json "$HOME/.glm/mcp-config.json" "glm"
-unregister_mcp_jsonc_opencode() {
-  local config_path="$1"
-  local label="$2"
-  if [[ ! -f "$config_path" ]]; then
-    return 0
+for agent in claude copilot codex glm opencode; do
+  if run_runtime_cli install unregister-mcp "$agent" >/dev/null 2>&1; then
+    ok "  removed skill-bill MCP server ($agent)"
+  else
+    warn "  could not remove skill-bill MCP server ($agent)"
   fi
-  if python3 -c "
-import json, sys, os
-
-path = sys.argv[1]
-
-def strip_jsonc(text):
-    result = []
-    in_string = False
-    escape = False
-    in_line_comment = False
-    in_block_comment = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        nxt = text[i + 1] if i + 1 < len(text) else ''
-        if in_line_comment:
-            if ch in '\r\n':
-                in_line_comment = False
-                result.append(ch)
-            i += 1
-            continue
-        if in_block_comment:
-            if ch == '*' and nxt == '/':
-                in_block_comment = False
-                i += 2
-            else:
-                i += 1
-            continue
-        if in_string:
-            result.append(ch)
-            if escape:
-                escape = False
-            elif ch == '\\\\':
-                escape = True
-            elif ch == '\"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '\"':
-            in_string = True
-            result.append(ch)
-            i += 1
-            continue
-        if ch == '/' and nxt == '/':
-            in_line_comment = True
-            i += 2
-            continue
-        if ch == '/' and nxt == '*':
-            in_block_comment = True
-            i += 2
-            continue
-        result.append(ch)
-        i += 1
-    return ''.join(result)
-
-def strip_trailing_commas(text):
-    result = []
-    in_string = False
-    escape = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if in_string:
-            result.append(ch)
-            if escape:
-                escape = False
-            elif ch == '\\\\':
-                escape = True
-            elif ch == '\"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '\"':
-            in_string = True
-            result.append(ch)
-            i += 1
-            continue
-        if ch == ',':
-            j = i + 1
-            while j < len(text) and text[j] in ' \t\r\n':
-                j += 1
-            if j < len(text) and text[j] in '}]':
-                i += 1
-                continue
-        result.append(ch)
-        i += 1
-    return ''.join(result)
-
-try:
-    raw = open(path).read()
-except FileNotFoundError:
-    sys.exit(0)
-
-if raw.strip():
-    try:
-        settings = json.loads(strip_trailing_commas(strip_jsonc(raw)))
-    except json.JSONDecodeError:
-        sys.exit(0)
-else:
-    settings = {}
-
-if not isinstance(settings, dict):
-    sys.exit(0)
-
-servers = settings.get('mcp', {})
-if not isinstance(servers, dict) or 'skill-bill' not in servers:
-    sys.exit(0)
-
-del servers['skill-bill']
-if servers:
-    settings['mcp'] = servers
-elif 'mcp' in settings:
-    del settings['mcp']
-
-open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
-" "$config_path" 2>/dev/null; then
-    ok "  removed skill-bill MCP server ($label)"
-  fi
-}
-unregister_mcp_jsonc_opencode "$HOME/.config/opencode/opencode.json" "opencode"
+done
 
 SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 if [[ -d "$SKILL_BILL_STATE_DIR" ]]; then

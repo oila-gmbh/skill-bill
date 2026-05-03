@@ -8,6 +8,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode")
+internal const val CODEX_AGENTS_KIND: String = "codex-agents"
+internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 
 internal fun agentPaths(home: Path? = null): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
@@ -17,6 +19,22 @@ internal fun agentPaths(home: Path? = null): Map<String, Path> {
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "codex" to codexPath(resolvedHome),
   )
+}
+
+internal fun codexAgentsPath(home: Path? = null): Path {
+  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+  val codexRoot = resolvedHome.resolve(".codex")
+  val codexAgents = codexRoot.resolve("agents")
+  return if (Files.exists(codexRoot) || Files.exists(codexAgents)) {
+    codexAgents
+  } else {
+    resolvedHome.resolve(".agents/agents")
+  }
+}
+
+internal fun opencodeAgentsPath(home: Path? = null): Path {
+  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+  return resolvedHome.resolve(".config/opencode/agents")
 }
 
 internal fun detectAgents(home: Path? = null): List<AgentTarget> {
@@ -29,6 +47,18 @@ internal fun detectAgents(home: Path? = null): List<AgentTarget> {
       null
     }
   }
+}
+
+internal fun detectCodexAgentsTarget(home: Path? = null): AgentTarget? {
+  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+  val path = codexAgentsPath(resolvedHome)
+  return if (agentIsPresent(resolvedHome, "codex", path)) AgentTarget(CODEX_AGENTS_KIND, path) else null
+}
+
+internal fun detectOpencodeAgentsTarget(home: Path? = null): AgentTarget? {
+  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+  val path = opencodeAgentsPath(resolvedHome)
+  return if (agentIsPresent(resolvedHome, "opencode", path)) AgentTarget(OPENCODE_AGENTS_KIND, path) else null
 }
 
 internal fun installSkill(
@@ -58,24 +88,6 @@ internal fun installSkill(
     transaction?.createdSymlinks?.add(linkPath)
   }
   return created
-}
-
-internal fun uninstallSkill(skillPath: Path, agentTargets: Iterable<AgentTarget>): List<Path> {
-  val resolvedSkill = skillPath.toAbsolutePath().normalize()
-  val removed = mutableListOf<Path>()
-  for (target in agentTargets) {
-    val linkPath = target.path.resolve(resolvedSkill.fileName)
-    if (!Files.isSymbolicLink(linkPath)) {
-      continue
-    }
-    val existingTarget = runCatching { Files.readSymbolicLink(linkPath).toAbsolutePath().normalize() }.getOrNull()
-    if (existingTarget != resolvedSkill) {
-      continue
-    }
-    Files.deleteIfExists(linkPath)
-    removed.add(linkPath)
-  }
-  return removed
 }
 
 internal fun uninstallTargets(createdSymlinks: Iterable<Path>): List<Path> {

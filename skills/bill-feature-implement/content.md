@@ -164,8 +164,10 @@ Review loop:
 Orchestrated child telemetry:
 
 - When this workflow invokes `import_review` and `triage_findings` for the review it owns, pass `orchestrated=true` to both tools.
+- Import only complete `bill-code-review` output. The review text passed to `import_review` must include the metadata header lines, especially `Review run ID: <review-run-id>`. If the final review summary lacks those lines, re-run or reformat the review output before importing instead of synthesizing a prose-only review.
 - Collect the `telemetry_payload` returned by `triage_findings` (or by `import_review` when the review has no findings) and append it to the local `child_steps` list.
 - The review will not emit `skillbill_review_finished` on its own — its payload will be embedded in the `skillbill_feature_implement_finished` event instead.
+- Before the first review telemetry call, do a lightweight Skill Bill MCP health check such as `feature_implement_workflow_latest`. If the MCP tool path returns `Transport closed`, call the same Skill Bill MCP tool through the packaged Kotlin `runtime-mcp` stdio binary from the repo (`runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp`) with a JSON-RPC `tools/call` payload and parse the returned text content. Use this direct-stdio fallback for subsequent owned telemetry/workflow calls in the run, and record that fallback in `review_result`.
 
 Persist `review_result`, then advance to `audit`.
 
@@ -250,6 +252,8 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `child_steps`: list of `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session
 
 For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.
+
+Before terminal workflow-state or telemetry writes, repeat the Skill Bill MCP health check. If the in-session MCP tool path returns `Transport closed`, use the packaged Kotlin `runtime-mcp` direct-stdio fallback for `feature_implement_workflow_update`, `feature_implement_finished`, and any remaining orchestrated child telemetry calls. Workflow state must not be left `running` solely because the session MCP transport died when the packaged runtime is available.
 
 Before or immediately after `feature_implement_finished`, call `feature_implement_workflow_update` one final time to:
 

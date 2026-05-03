@@ -10,3 +10,9 @@ data class AgentTarget(
 data class InstallTransaction(
   val createdSymlinks: MutableList<Path> = mutableListOf(),
 )
+
+data class McpMutationResult(
+  val agent: String,
+  val configPath: Path,
+  val changed: Boolean,
+)

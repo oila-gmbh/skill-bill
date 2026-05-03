@@ -1,3 +1,13 @@
+## [2026-05-03] installer-runtime-cutover
+Areas: install.sh, uninstall.sh, runtime-cli install commands, runtime-core install primitives, runtime-core launcher MCP config mutation, pyproject.toml, installer tests
+- Moved installer/uninstaller runtime ownership off Python: shell scripts now build/use packaged Kotlin `installDist` bin shims and call `skill-bill install ...` commands for agent paths, link/unlink, cleanup, MCP registration/removal, and telemetry level mutation. reusable
+- Added Kotlin install parity for Codex/OpenCode native agent path/link/unlink, selected-platform discovery (base skills plus selected pack roots), user-file-preserving target handling, symlinked-source rejection, and cleanup operations that propagate filesystem delete failures. reusable
+- Added Kotlin MCP config mutation for Claude/Copilot JSON, Codex TOML, and OpenCode JSONC using packaged `runtime-mcp` commands and atomic writes; invalid OpenCode JSONC now loud-fails without overwriting user config. reusable
+- Pitfall: Bash `${array[@]:-}` under `set -u` can inject an empty platform slug; use explicit length guards before iterating selected/required platform arrays.
+- `pyproject.toml` remains for remaining Python maintainer tooling, but Python console scripts are gone; Python package deletion remains a later SKILL-36 subtask.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-03] kotlin-contract-parity
 Areas: runtime-core scaffold/shell-content loader, runtime-cli scaffold commands, runtime-contracts errors, governed skill wrappers
 - Ported remaining scaffold, shell-content-contract loading, render/fill/upgrade, and authoring validation behavior onto Kotlin-owned APIs/CLI while keeping `skill_bill/` as reference-only for later subtasks.

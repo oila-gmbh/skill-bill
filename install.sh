@@ -42,62 +42,56 @@ parse_args() {
   done
 }
 
-get_agent_path() {
-  # Source of truth is skill_bill/install.py::agent_paths. We shell out to
-  # the Python module so the bash installer and the new-skill scaffolder
-  # agree on every supported-agent path without duplicating the table.
-  # Falls back to the inline case block when python3 is missing, so a
-  # first-run install on a fresh machine still bootstraps correctly.
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if output="$("$python_cmd" -m skill_bill install agent-path "$1" 2>/dev/null)"; then
-      echo "$output"
-      return 0
-    fi
+locate_packaged_runtime_bin() {
+  local path="$1"
+  local label="$2"
+  if [[ ! -x "$path" ]]; then
+    err "Missing packaged Kotlin $label runtime: $path"
+    return 1
   fi
-  case "$1" in
-    copilot) echo "$HOME/.copilot/skills" ;;
-    claude)  echo "$HOME/.claude/commands" ;;
-    opencode) echo "$HOME/.config/opencode/skills" ;;
-    codex)
-      if [[ -d "$HOME/.codex" || -d "$HOME/.codex/skills" ]]; then
-        echo "$HOME/.codex/skills"
-      else
-        echo "$HOME/.agents/skills"
-      fi
-      ;;
-    *)       return 1 ;;
-  esac
+}
+
+build_kotlin_runtime_distributions() {
+  # Installed runtime path: Gradle application installDist bin scripts at:
+  # runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
+  # runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp
+  if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
+    warn "Skipping packaged Kotlin runtime distribution build because SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1."
+    locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
+    locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+    return 0
+  fi
+
+  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
+  if [[ ! -x "$gradlew" ]]; then
+    err "Missing Gradle wrapper: $gradlew"
+    return 1
+  fi
+
+  info "Building packaged Kotlin runtime distributions..."
+  (
+    cd "$RUNTIME_KOTLIN_DIR"
+    ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
+  )
+  locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
+  locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+  ok "Kotlin runtime distributions ready"
+}
+
+run_runtime_cli() {
+  "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+}
+
+get_agent_path() {
+  run_runtime_cli install agent-path "$1"
 }
 
 get_codex_agents_path() {
-  # Mirrors get_agent_path for the native Codex subagents directory.
-  # Source of truth lives in skill_bill/install.py::_codex_agents_path.
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if output="$("$python_cmd" -m skill_bill install codex-agents-path 2>/dev/null)"; then
-      echo "$output"
-      return 0
-    fi
-  fi
-  if [[ -d "$HOME/.codex" || -d "$HOME/.codex/agents" ]]; then
-    echo "$HOME/.codex/agents"
-  else
-    echo "$HOME/.agents/agents"
-  fi
+  run_runtime_cli install codex-agents-path
 }
 
 get_opencode_agents_path() {
-  # Mirrors get_agent_path for the native OpenCode markdown subagents
-  # directory. Source of truth lives in skill_bill/install.py::_opencode_agents_path.
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if output="$("$python_cmd" -m skill_bill install opencode-agents-path 2>/dev/null)"; then
-      echo "$output"
-      return 0
-    fi
-  fi
-  echo "$HOME/.config/opencode/agents"
+  run_runtime_cli install opencode-agents-path
 }
 
 install_codex_agents_tomls() {
@@ -109,30 +103,19 @@ install_codex_agents_tomls() {
   mkdir -p "$target_dir"
   info "Installing Codex subagent TOMLs to: $target_dir"
 
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if "$python_cmd" -m skill_bill install link-codex-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" \
-      --skills "$SKILLS_DIR" 2>/dev/null; then
-      ok "  Codex subagent TOMLs linked via skill_bill"
-      return 0
-    fi
+  local args=()
+  local platform
+  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
+    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
+      args+=(--platform "$platform")
+    done
   fi
 
-  local toml_file link_path
-  shopt -s nullglob globstar
-  for toml_file in \
-    "$PLATFORM_PACKS_DIR"/**/codex-agents/*.toml \
-    "$SKILLS_DIR"/**/codex-agents/*.toml; do
-    [[ -f "$toml_file" ]] || continue
-    link_path="$target_dir/$(basename "$toml_file")"
-    if [[ -L "$link_path" || -e "$link_path" ]]; then
-      rm -f "$link_path"
-    fi
-    ln -s "$toml_file" "$link_path"
-    ok "  $(basename "$toml_file") → $toml_file"
-  done
-  shopt -u nullglob globstar
+  run_runtime_cli install link-codex-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR" \
+    "${args[@]}" >/dev/null
+  ok "  Codex subagent TOMLs linked"
 }
 
 install_opencode_agent_mds() {
@@ -144,30 +127,19 @@ install_opencode_agent_mds() {
   mkdir -p "$target_dir"
   info "Installing OpenCode subagent markdown to: $target_dir"
 
-  local python_cmd
-  if python_cmd="$(command -v python3 2>/dev/null)"; then
-    if "$python_cmd" -m skill_bill install link-opencode-agents \
-      --platform-packs "$PLATFORM_PACKS_DIR" \
-      --skills "$SKILLS_DIR" 2>/dev/null; then
-      ok "  OpenCode subagent markdown linked via skill_bill"
-      return 0
-    fi
+  local args=()
+  local platform
+  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
+    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
+      args+=(--platform "$platform")
+    done
   fi
 
-  local md_file link_path
-  shopt -s nullglob globstar
-  for md_file in \
-    "$PLATFORM_PACKS_DIR"/**/opencode-agents/*.md \
-    "$SKILLS_DIR"/**/opencode-agents/*.md; do
-    [[ -f "$md_file" ]] || continue
-    link_path="$target_dir/$(basename "$md_file")"
-    if [[ -L "$link_path" || -e "$link_path" ]]; then
-      rm -f "$link_path"
-    fi
-    ln -s "$md_file" "$link_path"
-    ok "  $(basename "$md_file") → $md_file"
-  done
-  shopt -u nullglob globstar
+  run_runtime_cli install link-opencode-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR" \
+    "${args[@]}" >/dev/null
+  ok "  OpenCode subagent markdown linked"
 }
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
@@ -457,8 +429,8 @@ build_platform_packages() {
   fi
 
   PLATFORM_PACKAGES=()
-  for package in "${discovered[@]:-}"; do
-    if ! array_contains "$package" "${PLATFORM_PACKAGES[@]:-}"; then
+  for package in "${discovered[@]}"; do
+    if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
   done
@@ -538,12 +510,16 @@ format_platform_list() {
 append_required_platform_packages() {
   local package
 
-  for package in "${REQUIRED_PLATFORM_PACKAGES[@]:-}"; do
+  if [[ ${#REQUIRED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  for package in "${REQUIRED_PLATFORM_PACKAGES[@]}"; do
     # A required package is present if it exists under skills/ OR under
     # platform-packs/. The check spans both trees so future required packs
     # continue to work if they live under platform-packs/.
     if { [[ -d "$SKILLS_DIR/$package" ]] || [[ -d "$PLATFORM_PACKS_DIR/$package" ]]; } \
-      && ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+      && { [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]}"; }; then
       SELECTED_PLATFORM_PACKAGES+=("$package")
     fi
   done
@@ -602,7 +578,7 @@ prompt_for_platform_selection() {
         SELECTED_PLATFORM_PACKAGES=("${PLATFORM_PACKAGES[@]}")
         break
       fi
-      if ! array_contains "$resolved" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+      if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$resolved" "${SELECTED_PLATFORM_PACKAGES[@]}"; then
         SELECTED_PLATFORM_PACKAGES+=("$resolved")
       fi
     done
@@ -731,7 +707,7 @@ build_install_skill_names() {
     package_name="$(resolve_package_name_for_skill_path "$skill_dir")"
     canonical_name="${SKILL_NAMES[$idx]}"
 
-    if [[ "$package_name" == "base" ]] || array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]:-}"; then
+    if [[ "$package_name" == "base" ]] || { [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]] && array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]}"; }; then
       INSTALL_SKILL_NAMES+=("$canonical_name")
       INSTALL_SKILL_PATHS+=("$skill_dir")
     fi
@@ -741,11 +717,13 @@ build_install_skill_names() {
 add_legacy_name() {
   local candidate="$1"
   local existing
-  for existing in "${LEGACY_SKILL_NAMES[@]:-}"; do
-    if [[ "$existing" == "$candidate" ]]; then
-      return
-    fi
-  done
+  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
+    for existing in "${LEGACY_SKILL_NAMES[@]}"; do
+      if [[ "$existing" == "$candidate" ]]; then
+        return
+      fi
+    done
+  fi
   LEGACY_SKILL_NAMES+=("$candidate")
 }
 
@@ -804,6 +782,93 @@ remove_legacy_skill_paths() {
   done
 }
 
+cleanup_selected_agent_target() {
+  local agent="$1"
+  local target_dir="$2"
+  local output
+  local status=0
+  local skill_name
+  local args=()
+
+  for skill_name in "${SKILL_NAMES[@]}"; do
+    args+=(--skill-name "$skill_name")
+  done
+  for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
+    args+=(--legacy-name "$skill_name")
+  done
+
+  output="$(run_runtime_cli install cleanup-agent-target \
+    --target-dir "$target_dir" \
+    --marker "$MANAGED_INSTALL_MARKER" \
+    "${args[@]}" || status=$?)"
+  if [[ "${status:-0}" -ne 0 ]]; then
+    err "Failed to clean existing Skill Bill installs for $agent: $target_dir"
+    return "$status"
+  fi
+  if [[ -z "$output" ]]; then
+    info "  no existing Skill Bill installs found for $agent"
+    return 0
+  fi
+  while IFS=$'\t' read -r cleanup_status cleanup_path; do
+    [[ -n "$cleanup_status" && -n "$cleanup_path" ]] || continue
+    if [[ "$cleanup_status" == "removed" ]]; then
+      ok "  removed $(basename "$cleanup_path")"
+    elif [[ "$cleanup_status" == "skipped" ]]; then
+      warn "  skipped $(basename "$cleanup_path") (not a Skill Bill link)"
+    fi
+  done <<< "$output"
+}
+
+cleanup_selected_codex_agents() {
+  local output
+  output="$(run_runtime_cli install unlink-codex-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  no existing Codex subagent TOMLs found"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
+cleanup_selected_opencode_agents() {
+  local output
+  output="$(run_runtime_cli install unlink-opencode-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  no existing OpenCode subagent markdown found"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
+cleanup_selected_agent_installs() {
+  local i
+  local agent
+  local agent_dir
+
+  info "Removing existing Skill Bill installs for selected agents before reinstalling selected platforms."
+  for i in "${!AGENT_NAMES[@]}"; do
+    agent="${AGENT_NAMES[$i]}"
+    agent_dir="${AGENT_PATHS[$i]}"
+    info "Checking $agent: $agent_dir"
+    cleanup_selected_agent_target "$agent" "$agent_dir"
+    if [[ "$agent" == "codex" ]]; then
+      cleanup_selected_codex_agents
+    fi
+    if [[ "$agent" == "opencode" ]]; then
+      cleanup_selected_opencode_agents
+    fi
+  done
+}
+
 install_skill() {
   local target="$1"
   local source="$2"
@@ -818,14 +883,10 @@ install_skill() {
   # every detected agent without per-file plumbing. Adding new files to a
   # governed skill (e.g. the v1.1 content.md sibling) needs no installer
   # changes.
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -m skill_bill install link-skill \
-      --source "$source" \
-      --target-dir "$(dirname "$target")" \
-      --agent manual
-  else
-    ln -s "$source" "$target"
-  fi
+  run_runtime_cli install link-skill \
+    --source "$source" \
+    --target-dir "$(dirname "$target")" \
+    --agent manual >/dev/null
   ok "  $label"
 }
 
@@ -844,6 +905,7 @@ path_has_matching_skill_name() {
 }
 
 parse_args "$@"
+build_kotlin_runtime_distributions
 build_skill_names
 build_legacy_skill_names
 build_platform_packages
@@ -866,8 +928,7 @@ info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list
 info "Telemetry:      $TELEMETRY_LEVEL"
 echo ""
 
-info "Removing existing Skill Bill installs before reinstalling the selected platforms."
-bash "$PLUGIN_DIR/uninstall.sh"
+cleanup_selected_agent_installs
 echo ""
 
 for i in "${!AGENT_NAMES[@]}"; do
@@ -896,309 +957,19 @@ SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 
-find_python_310_plus() {
-  local candidate
-  for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-      if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
-        echo "$candidate"
-        return 0
-      fi
-    fi
-  done
-  return 1
-}
-
-ensure_skill_bill_venv() {
-  local venv_dir="$PLUGIN_DIR/.venv"
-  local venv_python="$venv_dir/bin/python"
-  local system_python
-  if ! system_python="$(find_python_310_plus)"; then
-    return 1
-  fi
-  if [ -x "$venv_python" ] && "$venv_python" -c 'import mcp' >/dev/null 2>&1; then
-    echo "$venv_python"
-    return 0
-  fi
-  if [ -d "$venv_dir" ] && [ ! -x "$venv_python" ]; then
-    rm -rf "$venv_dir"
-  fi
-  if [ ! -d "$venv_dir" ]; then
-    if ! "$system_python" -m venv "$venv_dir" >/dev/null 2>&1; then
-      return 1
-    fi
-  fi
-  "$venv_python" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
-  if ! "$venv_python" -m pip install --quiet -e "$PLUGIN_DIR" >/dev/null 2>&1; then
-    return 1
-  fi
-  echo "$venv_python"
-  return 0
-}
-
-locate_packaged_runtime_bin() {
-  local path="$1"
-  local label="$2"
-  if [[ ! -x "$path" ]]; then
-    err "Missing packaged Kotlin $label runtime: $path"
-    return 1
-  fi
-}
-
-build_kotlin_runtime_distributions() {
-  # Installed runtime path: Gradle application installDist bin scripts at:
-  # runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
-  # runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp
-  # Development fallback: point SKILL_BILL_KOTLIN_CLI or
-  # SKILL_BILL_KOTLIN_MCP at a local command such as a Gradle run wrapper.
-  if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
-    warn "Skipping packaged Kotlin runtime distribution build because SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1."
-    return 0
-  fi
-
-  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
-  if [[ ! -x "$gradlew" ]]; then
-    err "Missing Gradle wrapper: $gradlew"
-    return 1
-  fi
-
-  info "Building packaged Kotlin runtime distributions..."
-  (
-    cd "$RUNTIME_KOTLIN_DIR"
-    ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
-  )
-  locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
-  locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
-  ok "Kotlin runtime distributions ready"
-}
-
 configure_telemetry_level() {
   local level="$1"
-  python3 - "$level" "$SKILL_BILL_REVIEW_DB" <<'PY'
-from __future__ import annotations
-
-from pathlib import Path
-import sys
-
-from skill_bill.config import set_telemetry_level
-
-level = sys.argv[1]
-db_path = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
-set_telemetry_level(level, db_path=db_path)
-PY
+  run_runtime_cli --db "$SKILL_BILL_REVIEW_DB" telemetry set-level "$level" >/dev/null
 }
 
-if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
-  build_kotlin_runtime_distributions
-  info "Installing skill-bill CLI and MCP server..."
-  if SKILL_BILL_PYTHON="$(ensure_skill_bill_venv)"; then
-    ok "skill-bill CLI installed"
-    register_mcp_json() {
-      local config_path="$1"
-      local label="$2"
-      if "$SKILL_BILL_PYTHON" -c "
-import json, sys, os
-path = sys.argv[1]
-try:
-    settings = json.loads(open(path).read())
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-servers = settings.get('mcpServers', {})
-servers['skill-bill'] = {
-    'type': 'stdio',
-    'command': sys.executable,
-    'args': ['-c', 'from skill_bill.launcher import mcp_main; mcp_main()']
-}
-# MCP registration intentionally calls the Python launcher shim until that
-# entrypoint is retired. The launcher resolves default MCP execution to the
-# packaged runtime-mcp bin script above.
-settings['mcpServers'] = servers
-os.makedirs(os.path.dirname(path), exist_ok=True)
-open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
-" "$config_path" 2>/dev/null; then
-        ok "  skill-bill MCP server registered ($label)"
-      else
-        warn "  Could not register MCP server ($label)."
-      fi
-    }
-    register_mcp_toml() {
-      local config_path="$1"
-      local label="$2"
-      if "$SKILL_BILL_PYTHON" -c "
-import sys, os
-path = sys.argv[1]
-python_cmd = sys.executable
-section = '[mcp_servers.skill-bill]'
-lines = []
-if os.path.exists(path):
-    lines = open(path).read().splitlines()
-filtered = []
-skip = False
-for line in lines:
-    if line.strip() == section:
-        skip = True
-        continue
-    if skip and (line.startswith('[') or not line.strip()):
-        if line.startswith('['):
-            skip = False
-            filtered.append(line)
-        continue
-    if not skip:
-        filtered.append(line)
-while filtered and not filtered[-1].strip():
-    filtered.pop()
-filtered.append('')
-filtered.append(section)
-filtered.append(f'command = \"{python_cmd}\"')
-filtered.append('args = [\"-c\", \"from skill_bill.launcher import mcp_main; mcp_main()\"]')
-# MCP registration intentionally calls the Python launcher shim until that
-# entrypoint is retired. The launcher resolves default MCP execution to the
-# packaged runtime-mcp bin script above.
-filtered.append('')
-os.makedirs(os.path.dirname(path), exist_ok=True)
-open(path, 'w').write('\n'.join(filtered))
-" "$config_path" 2>/dev/null; then
-        ok "  skill-bill MCP server registered ($label)"
-      else
-        warn "  Could not register MCP server ($label)."
-      fi
-    }
-    register_mcp_jsonc_opencode() {
-      local config_path="$1"
-      local label="$2"
-      if "$SKILL_BILL_PYTHON" -c "
-import json, sys, os
-
-path = sys.argv[1]
-
-def strip_jsonc(text):
-    result = []
-    in_string = False
-    escape = False
-    in_line_comment = False
-    in_block_comment = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        nxt = text[i + 1] if i + 1 < len(text) else ''
-        if in_line_comment:
-            if ch in '\r\n':
-                in_line_comment = False
-                result.append(ch)
-            i += 1
-            continue
-        if in_block_comment:
-            if ch == '*' and nxt == '/':
-                in_block_comment = False
-                i += 2
-            else:
-                i += 1
-            continue
-        if in_string:
-            result.append(ch)
-            if escape:
-                escape = False
-            elif ch == '\\\\':
-                escape = True
-            elif ch == '\"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '\"':
-            in_string = True
-            result.append(ch)
-            i += 1
-            continue
-        if ch == '/' and nxt == '/':
-            in_line_comment = True
-            i += 2
-            continue
-        if ch == '/' and nxt == '*':
-            in_block_comment = True
-            i += 2
-            continue
-        result.append(ch)
-        i += 1
-    return ''.join(result)
-
-def strip_trailing_commas(text):
-    result = []
-    in_string = False
-    escape = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if in_string:
-            result.append(ch)
-            if escape:
-                escape = False
-            elif ch == '\\\\':
-                escape = True
-            elif ch == '\"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '\"':
-            in_string = True
-            result.append(ch)
-            i += 1
-            continue
-        if ch == ',':
-            j = i + 1
-            while j < len(text) and text[j] in ' \t\r\n':
-                j += 1
-            if j < len(text) and text[j] in '}]':
-                i += 1
-                continue
-        result.append(ch)
-        i += 1
-    return ''.join(result)
-
-try:
-    raw = open(path).read()
-except FileNotFoundError:
-    settings = {}
-else:
-    if raw.strip():
-        settings = json.loads(strip_trailing_commas(strip_jsonc(raw)))
-    else:
-        settings = {}
-
-if not isinstance(settings, dict):
-    sys.exit(1)
-
-mcp = settings.get('mcp', {})
-if not isinstance(mcp, dict):
-    mcp = {}
-mcp['skill-bill'] = {
-    'type': 'local',
-    'command': [sys.executable, '-c', 'from skill_bill.launcher import mcp_main; mcp_main()'],
-    'enabled': True,
-}
-# MCP registration intentionally calls the Python launcher shim until that
-# entrypoint is retired. The launcher resolves default MCP execution to the
-# packaged runtime-mcp bin script above.
-settings['mcp'] = mcp
-os.makedirs(os.path.dirname(path), exist_ok=True)
-open(path, 'w').write(json.dumps(settings, indent=2, sort_keys=True) + '\n')
-" "$config_path" 2>/dev/null; then
-        ok "  skill-bill MCP server registered ($label)"
-      else
-        warn "  Could not register MCP server ($label)."
-      fi
-    }
-    for i in "${!AGENT_NAMES[@]}"; do
-      case "${AGENT_NAMES[$i]}" in
-        claude)  register_mcp_json "$HOME/.claude.json" "claude" ;;
-        copilot) register_mcp_json "$HOME/.copilot/mcp-config.json" "copilot" ;;
-        codex)   register_mcp_toml "$HOME/.codex/config.toml" "codex" ;;
-        opencode) register_mcp_jsonc_opencode "$HOME/.config/opencode/opencode.json" "opencode" ;;
-      esac
-    done
+info "Registering Skill Bill MCP server."
+for i in "${!AGENT_NAMES[@]}"; do
+  if run_runtime_cli install register-mcp "${AGENT_NAMES[$i]}" --runtime-mcp-bin "$RUNTIME_MCP_BIN" >/dev/null 2>&1; then
+    ok "  skill-bill MCP server registered (${AGENT_NAMES[$i]})"
   else
-    warn "Could not install skill-bill CLI (python3 or pip may be unavailable)."
+    warn "  Could not register MCP server (${AGENT_NAMES[$i]})."
   fi
-fi
+done
 
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   if ! configure_telemetry_level "$TELEMETRY_LEVEL" >/dev/null 2>&1; then
@@ -1214,7 +985,7 @@ echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
 if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
-  info "Telemetry:       setup failed (python3 may be unavailable)"
+  info "Telemetry:       setup failed"
 else
   info "Telemetry:       $TELEMETRY_LEVEL"
 fi

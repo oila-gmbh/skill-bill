@@ -11,7 +11,3 @@ dependencies = ["mcp", "pyyaml>=6"]
 
 [tool.setuptools.packages.find]
 include = ["skill_bill*"]
-
-[project.scripts]
-skill-bill = "skill_bill.launcher:main"
-skill-bill-mcp = "skill_bill.launcher:mcp_main"

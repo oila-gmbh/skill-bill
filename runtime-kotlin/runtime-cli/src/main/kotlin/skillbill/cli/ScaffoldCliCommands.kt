@@ -69,16 +69,34 @@ class InstallTopLevelCommands(
   agentPathCommand: InstallAgentPathCommand,
   detectAgentsCommand: InstallDetectAgentsCommand,
   linkSkillCommand: InstallLinkSkillCommand,
+  codexAgentsPathCommand: InstallCodexAgentsPathCommand,
+  opencodeAgentsPathCommand: InstallOpencodeAgentsPathCommand,
+  cleanupAgentTargetCommand: InstallCleanupAgentTargetCommand,
+  linkCodexAgentsCommand: InstallLinkCodexAgentsCommand,
+  unlinkCodexAgentsCommand: InstallUnlinkCodexAgentsCommand,
+  linkOpencodeAgentsCommand: InstallLinkOpencodeAgentsCommand,
+  unlinkOpencodeAgentsCommand: InstallUnlinkOpencodeAgentsCommand,
+  registerMcpCommand: InstallRegisterMcpCommand,
+  unregisterMcpCommand: InstallUnregisterMcpCommand,
 ) {
   val command: DocumentedNoOpCliCommand =
     object : DocumentedNoOpCliCommand(
       "install",
-      "Install-side primitives (agent-path lookup, agent detection, skill symlinking).",
+      "Install-side primitives (agent paths, symlinks, native subagents, MCP registration).",
     ) {}
       .subcommands(
         agentPathCommand,
         detectAgentsCommand,
         linkSkillCommand,
+        codexAgentsPathCommand,
+        opencodeAgentsPathCommand,
+        cleanupAgentTargetCommand,
+        linkCodexAgentsCommand,
+        unlinkCodexAgentsCommand,
+        linkOpencodeAgentsCommand,
+        unlinkOpencodeAgentsCommand,
+        registerMcpCommand,
+        unregisterMcpCommand,
       )
 }
 

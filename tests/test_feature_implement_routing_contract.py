@@ -238,6 +238,18 @@ class FeatureImplementRoutingContractTest(unittest.TestCase):
     self.assertIn("`commit_push_result`", FEATURE_IMPLEMENT_CONTENT)
     self.assertIn("`pr_result`", FEATURE_IMPLEMENT)
 
+  def test_feature_implement_finalization_handles_closed_mcp_transport(self) -> None:
+    self.assertIn("feature_implement_workflow_latest", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("Transport closed", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("direct-stdio fallback", FEATURE_IMPLEMENT)
+    self.assertIn("Workflow state must not be left `running`", FEATURE_IMPLEMENT_CONTENT)
+
+  def test_feature_implement_review_telemetry_requires_review_run_id(self) -> None:
+    self.assertIn("Review run ID: <review-run-id>", FEATURE_IMPLEMENT)
+    self.assertIn("complete `bill-code-review` output", FEATURE_IMPLEMENT_CONTENT)
+    self.assertIn("prose-only review", FEATURE_IMPLEMENT)
+
   def test_feature_implement_decomposes_oversized_work_at_planning(self) -> None:
     self.assertIn('`mode: "decompose"`', FEATURE_IMPLEMENT_CONTENT)
     self.assertIn('"mode": "decompose"', FEATURE_IMPLEMENT)

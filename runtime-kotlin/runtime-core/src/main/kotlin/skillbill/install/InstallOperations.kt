@@ -15,6 +15,10 @@ object InstallOperations {
 
   fun detectAgentTargets(home: Path? = null): List<AgentTarget> = detectAgents(home)
 
+  fun codexAgentsPath(home: Path? = null): Path = skillbill.install.codexAgentsPath(home)
+
+  fun opencodeAgentsPath(home: Path? = null): Path = skillbill.install.opencodeAgentsPath(home)
+
   fun linkSkill(source: Path, targetDir: Path, agent: String): List<Path> {
     val resolvedTargetDir = targetDir.toAbsolutePath().normalize()
     Files.createDirectories(resolvedTargetDir)

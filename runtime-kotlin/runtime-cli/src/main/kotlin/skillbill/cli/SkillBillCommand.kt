@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.completion.completionOption
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
+import java.nio.file.Path
 
 @Inject
 class SkillBillCommand(
@@ -20,6 +21,10 @@ class SkillBillCommand(
     "--db",
     help = "Optional SQLite path. Defaults to SKILL_BILL_DB or the standard local state path.",
   )
+  private val homeOverride by option(
+    "--home",
+    help = "User home directory for install/runtime path detection.",
+  )
 
   init {
     completionOption()
@@ -33,5 +38,6 @@ class SkillBillCommand(
 
   override fun run() {
     state.dbOverride = dbOverride
+    homeOverride?.let { state.userHome = Path.of(it) }
   }
 }

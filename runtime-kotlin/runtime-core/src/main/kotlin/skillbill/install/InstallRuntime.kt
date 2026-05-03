@@ -12,6 +12,18 @@ object InstallRuntime {
     status = RuntimeSurfaceStatus.ACTIVE,
     summary = "Agent-path detection, skill symlink installation, and install rollback primitives.",
     placeholderReason = "",
-    supportedOperations = listOf("agent-path", "detect-agents", "link-skill", "rollback-links"),
+    supportedOperations = listOf(
+      "agent-path",
+      "detect-agents",
+      "codex-agents-path",
+      "opencode-agents-path",
+      "link-skill",
+      "cleanup-agent-target",
+      "link-codex-agents",
+      "unlink-codex-agents",
+      "link-opencode-agents",
+      "unlink-opencode-agents",
+      "rollback-links",
+    ),
   )
 }

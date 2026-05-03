@@ -9,6 +9,15 @@ from skill_bill.launcher import main as launcher_main
 
 
 def install_main(argv: list[str]) -> int:
+  print(
+    "python -m skill_bill install is retired; use the packaged Kotlin "
+    "`skill-bill install ...` command built by ./install.sh.",
+    file=sys.stderr,
+  )
+  return 2
+
+
+def legacy_install_main(argv: list[str]) -> int:
   parser = argparse.ArgumentParser(prog="python -m skill_bill install")
   subcommands = parser.add_subparsers(dest="command", required=True)
 

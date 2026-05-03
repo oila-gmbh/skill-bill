@@ -21,6 +21,8 @@ class RuntimeSurfaceContractTest {
       listOf(
         "select-cli-runtime",
         "select-mcp-runtime",
+        "register-mcp",
+        "unregister-mcp",
       ),
     )
   }
@@ -31,7 +33,20 @@ class RuntimeSurfaceContractTest {
       contract = InstallRuntime.contract,
       name = "install",
       ownerPackage = "skillbill.install",
-      supportedOperations = listOf("agent-path", "detect-agents", "link-skill", "rollback-links"),
+      supportedOperations =
+      listOf(
+        "agent-path",
+        "detect-agents",
+        "codex-agents-path",
+        "opencode-agents-path",
+        "link-skill",
+        "cleanup-agent-target",
+        "link-codex-agents",
+        "unlink-codex-agents",
+        "link-opencode-agents",
+        "unlink-opencode-agents",
+        "rollback-links",
+      ),
     )
   }
 

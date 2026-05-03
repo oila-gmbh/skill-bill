@@ -14,6 +14,26 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = ROOT / "install.sh"
 SKILLS_DIR = ROOT / "skills"
 PLATFORM_PACKS_DIR = ROOT / "platform-packs"
+RUNTIME_CLI_BIN = (
+  ROOT
+  / "runtime-kotlin"
+  / "runtime-cli"
+  / "build"
+  / "install"
+  / "runtime-cli"
+  / "bin"
+  / "runtime-cli"
+)
+RUNTIME_MCP_BIN = (
+  ROOT
+  / "runtime-kotlin"
+  / "runtime-mcp"
+  / "build"
+  / "install"
+  / "runtime-mcp"
+  / "bin"
+  / "runtime-mcp"
+)
 
 
 def skill_names(package_name: str) -> set[str]:
@@ -58,8 +78,27 @@ PLATFORM_PACKAGES = platform_package_names()
 ALL_PLATFORM_SKILLS = set().union(*(skill_names(package) for package in PLATFORM_PACKAGES))
 
 
+def is_executable_file(path: Path) -> bool:
+  return path.is_file() and os.access(path, os.X_OK)
+
+
 class InstallScriptTest(unittest.TestCase):
   maxDiff = None
+
+  @classmethod
+  def setUpClass(cls) -> None:
+    if is_executable_file(RUNTIME_CLI_BIN) and is_executable_file(RUNTIME_MCP_BIN):
+      return
+
+    result = subprocess.run(
+      ["./gradlew", "-q", ":runtime-cli:installDist", ":runtime-mcp:installDist"],
+      cwd=ROOT / "runtime-kotlin",
+      capture_output=True,
+      text=True,
+      check=False,
+    )
+    if result.returncode != 0:
+      raise AssertionError(result.stdout + result.stderr)
 
   def test_accepts_multi_agent_selection_without_primary_prompt(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -121,8 +160,8 @@ class InstallScriptTest(unittest.TestCase):
       config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
       self.assertEqual(config["mcp"]["skill-bill"]["type"], "local")
       self.assertEqual(
-        config["mcp"]["skill-bill"]["command"][1:],
-        ["-c", "from skill_bill.launcher import mcp_main; mcp_main()"],
+        config["mcp"]["skill-bill"]["command"],
+        [str(ROOT / "runtime-kotlin" / "runtime-mcp" / "build" / "install" / "runtime-mcp" / "bin" / "runtime-mcp")],
       )
       self.assertNotIn("gradlew", json.dumps(config["mcp"]["skill-bill"]))
       self.assertTrue(config["mcp"]["skill-bill"]["enabled"])
@@ -145,21 +184,54 @@ class InstallScriptTest(unittest.TestCase):
     self.assertIn('locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"', source)
     self.assertIn('locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"', source)
 
+  def test_install_and_uninstall_scripts_pass_home_as_cli_argument(self) -> None:
+    combined_source = (
+      INSTALL_SCRIPT.read_text(encoding="utf-8")
+      + "\n"
+      + (ROOT / "uninstall.sh").read_text(encoding="utf-8")
+    )
+
+    self.assertIn('"$RUNTIME_CLI_BIN" --home "$HOME" "$@"', combined_source)
+    self.assertNotIn("-Duser.home", combined_source)
+    self.assertNotIn("JAVA_OPTS", combined_source)
+
+  def test_installer_and_uninstaller_do_not_execute_python_runtime_paths(self) -> None:
+    combined_source = (
+      INSTALL_SCRIPT.read_text(encoding="utf-8")
+      + "\n"
+      + (ROOT / "uninstall.sh").read_text(encoding="utf-8")
+    )
+
+    self.assertNotIn("python3", combined_source)
+    self.assertNotIn("python -m skill_bill", combined_source)
+    self.assertNotIn("skill_bill.launcher", combined_source)
+    self.assertNotIn(".venv", combined_source)
+
+  def test_pyproject_does_not_expose_python_console_scripts(self) -> None:
+    pyproject_source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    self.assertNotIn("[project.scripts]", pyproject_source)
+    self.assertNotIn("skill_bill.launcher:main", pyproject_source)
+    self.assertNotIn("skill_bill.launcher:mcp_main", pyproject_source)
+
   def test_install_script_documents_packaged_and_development_runtime_paths(self) -> None:
     source = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
     self.assertIn("Installed runtime path: Gradle application installDist bin scripts", source)
-    self.assertIn("Development fallback: point SKILL_BILL_KOTLIN_CLI", source)
-    self.assertIn("SKILL_BILL_KOTLIN_MCP", source)
+    self.assertIn("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli", source)
+    self.assertIn("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp", source)
 
-  def test_install_script_mcp_registration_uses_launcher_for_packaged_default(self) -> None:
+  def test_install_script_mcp_registration_uses_packaged_mcp_bin(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
       result = self.run_installer(temp_home, "opencode\nKotlin\n")
       self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
       config = json.loads((Path(temp_home) / ".config" / "opencode" / "opencode.json").read_text(encoding="utf-8"))
       command = config["mcp"]["skill-bill"]["command"]
-      self.assertEqual(command[1:], ["-c", "from skill_bill.launcher import mcp_main; mcp_main()"])
+      self.assertEqual(
+        command,
+        [str(ROOT / "runtime-kotlin" / "runtime-mcp" / "build" / "install" / "runtime-mcp" / "bin" / "runtime-mcp")],
+      )
       self.assertNotIn(":runtime-mcp:run", json.dumps(command))
       self.assertNotIn("gradlew", json.dumps(command))
 
@@ -224,10 +296,25 @@ class InstallScriptTest(unittest.TestCase):
         "copilot\nKotlin\n",
       )
       self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-      self.assertIn("Skill Bill Uninstaller", second.stdout)
+      self.assertIn("Removing existing Skill Bill installs for selected agents", second.stdout)
 
       installed = self.installed_skills(temp_home)
       self.assertEqual(installed, BASE_SKILLS | KOTLIN_SKILLS)
+
+  def test_rerun_for_selected_agent_preserves_unselected_agent_mcp_registration(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_home:
+      self.prepare_agent_homes(temp_home)
+      first = self.run_installer(temp_home, "all\nKotlin\n")
+      self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+      opencode_config_path = Path(temp_home) / ".config" / "opencode" / "opencode.json"
+      first_config = json.loads(opencode_config_path.read_text(encoding="utf-8"))
+      self.assertIn("skill-bill", first_config["mcp"])
+
+      second = self.run_installer(temp_home, "copilot\nKotlin\n")
+      self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+
+      second_config = json.loads(opencode_config_path.read_text(encoding="utf-8"))
+      self.assertIn("skill-bill", second_config["mcp"])
 
   def test_rerun_replaces_existing_skill_directory_and_restores_sidecars(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -447,6 +534,7 @@ class InstallScriptTest(unittest.TestCase):
         link_path = agents_dir / toml_name
         self.assertTrue(link_path.is_symlink(), f"{link_path} should be a symlink")
         self.assertEqual(link_path.resolve(), pack_root / toml_name)
+      self.assertFalse((agents_dir / "bill-kotlin-code-review-testing.toml").exists())
 
   def test_install_links_opencode_native_subagent_markdown(self) -> None:
     with tempfile.TemporaryDirectory() as temp_home:
@@ -473,6 +561,7 @@ class InstallScriptTest(unittest.TestCase):
         link_path = agents_dir / md_name
         self.assertTrue(link_path.is_symlink(), f"{link_path} should be a symlink")
         self.assertEqual(link_path.resolve(), pack_root / md_name)
+      self.assertFalse((agents_dir / "bill-kotlin-code-review-testing.md").exists())
 
   def telemetry_config(self, config_path: Path) -> dict[str, object]:
     return json.loads(config_path.read_text(encoding="utf-8"))

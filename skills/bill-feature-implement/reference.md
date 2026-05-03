@@ -549,6 +549,8 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 - **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_implement_finished` accordingly.
 - **Quality-check subagent returns `validation_result: "fail"`** — escalate to the user (do not silently commit). If the user abandons, call `feature_implement_finished` with `completion_status: "error"`.
 - **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_implement_finished` with `completion_status: "error"`.
+- **Skill Bill MCP transport closes** — do not treat `Transport closed` as telemetry disabled. First run a lightweight health check such as `feature_implement_workflow_latest`; if the tool path is still closed, call the same Skill Bill tool through the packaged Kotlin `runtime-mcp` stdio binary with a JSON-RPC `tools/call` payload. Use that direct-stdio fallback for owned review telemetry, workflow-state updates, and `feature_implement_finished`. Record the fallback in the current step artifact. If the packaged runtime is unavailable too, report the telemetry failure explicitly and preserve the terminal artifact in the final user summary.
+- **Review telemetry import is rejected** — inspect the import error. If the review text is missing required `bill-code-review` metadata such as `Review run ID: <review-run-id>`, re-run or reformat the review output from the actual review result and retry import once. Do not pass a prose-only review summary to `import_review`.
 
 In all early-exit cases, close the telemetry session with the appropriate `completion_status` so the run is not orphaned.
 
