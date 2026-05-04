@@ -46,7 +46,7 @@ Do not reference this repo-relative path directly from installable skills — us
 
 - The top-level review caller owns learnings resolution for the current review context
 - When applied learnings are already passed in by the caller, reuse them instead of re-resolving them independently in nested review layers
-- For a top-level or standalone review, when the `skill-bill` MCP server is registered, call its `resolve_learnings` tool to resolve active learnings for the current repo and routed review skill before running the review. Do not improvise alternative invocations (no `python3 -m skill_bill.cli`, no `PYTHONPATH` shims, no shelling out to a globally installed `skill-bill` binary) — the Python package was retired and only the MCP tool is supported.
+- For a top-level or standalone review, when the `skill-bill` MCP server is registered, call its `resolve_learnings` tool to resolve active learnings for the current repo and routed review skill before running the review. Do not improvise alternate launch paths or a globally installed `skill-bill` binary; the MCP tool is the only supported path.
 - Apply only active learnings; do not use disabled learnings as review context
 - Prefer more specific scopes in this order: `skill`, `repo`, `global`
 - Treat learnings as explicit context, not as hidden suppression rules; do not let them override evidence-based correctness, security, or contract findings

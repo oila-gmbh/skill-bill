@@ -1,5 +1,7 @@
 package skillbill.mcp
 
+import skillbill.application.specInputTypes
+
 data class McpToolSpec(
   val name: String,
   val description: String,
@@ -131,7 +133,7 @@ object McpToolRegistry {
           "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
           "acceptance_criteria_count" to integerSchema,
           "open_questions_count" to integerSchema,
-          "spec_input_types" to arraySchema(stringSchema()),
+          "spec_input_types" to arraySchema(stringSchema(enum = specInputTypes)),
           "spec_word_count" to integerSchema,
           "rollout_needed" to booleanSchema,
           "feature_name" to stringSchema(),

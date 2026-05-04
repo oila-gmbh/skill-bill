@@ -10,7 +10,7 @@ class CliAuthoringParityTest {
   @Test
   fun `native authoring inspection commands stay available through the kotlin cli`() {
     val repoRoot = outerRepoRoot()
-    val tempDir = Files.createTempDirectory("skillbill-cli-python-backed")
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring")
     val context = CliRuntimeContext(userHome = tempDir)
 
     val listed =
@@ -61,7 +61,7 @@ class CliAuthoringParityTest {
   @Test
   fun `native authoring validation command stays available through the kotlin cli`() {
     val repoRoot = outerRepoRoot()
-    val tempDir = Files.createTempDirectory("skillbill-cli-python-backed-validation")
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validation")
     val context = CliRuntimeContext(userHome = tempDir)
     val validated =
       runJson(

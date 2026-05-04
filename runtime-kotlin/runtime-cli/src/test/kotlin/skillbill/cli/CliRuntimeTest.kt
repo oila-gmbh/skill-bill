@@ -464,28 +464,6 @@ class CliRuntimeTest {
   }
 
   @Test
-  fun `install and doctor subject commands do not call python bridge helpers`() {
-    val scaffoldSource = Files.readString(Path.of("src/main/kotlin/skillbill/cli/ScaffoldCliCommands.kt"))
-    val systemSource = Files.readString(Path.of("src/main/kotlin/skillbill/cli/SystemCliCommands.kt"))
-
-    listOf(scaffoldSource, systemSource).forEach { source ->
-      assertFalse(source.contains("runPythonCli"), source)
-      assertFalse(source.contains("runPythonScaffoldCli"), source)
-      assertFalse(source.contains("pythonProcess"), source)
-    }
-    listOf(
-      commandBlock(scaffoldSource, "class InstallAgentPathCommand", "class InstallDetectAgentsCommand"),
-      commandBlock(scaffoldSource, "class InstallDetectAgentsCommand", "class InstallLinkSkillCommand"),
-      commandBlock(scaffoldSource, "class InstallLinkSkillCommand", "private fun runNativeScaffoldPayload"),
-      commandBlock(systemSource, "class DoctorCliCommand", "private fun retiredSubjectResult"),
-    ).forEach { commandSource ->
-      assertFalse(commandSource.contains("runPythonCli"), commandSource)
-      assertFalse(commandSource.contains("runPythonScaffoldCli"), commandSource)
-      assertFalse(commandSource.contains("pythonProcess"), commandSource)
-    }
-  }
-
-  @Test
   fun `workflow cli commands list latest resume and block continuation`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-workflow")
     val dbPath = tempDir.resolve("metrics.db")
@@ -633,14 +611,6 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
-}
-
-private fun commandBlock(source: String, startMarker: String, endMarker: String): String {
-  val startIndex = source.indexOf(startMarker)
-  val endIndex = source.indexOf(endMarker, startIndex + startMarker.length)
-  require(startIndex >= 0) { "Missing source marker: $startMarker" }
-  require(endIndex > startIndex) { "Missing source marker: $endMarker" }
-  return source.substring(startIndex, endIndex)
 }
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {

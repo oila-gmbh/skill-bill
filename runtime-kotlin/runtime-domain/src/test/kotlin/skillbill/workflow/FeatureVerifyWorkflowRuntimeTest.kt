@@ -73,7 +73,7 @@ class FeatureVerifyWorkflowRuntimeTest {
   }
 
   @Test
-  fun `verify validation preserves Python workflow status contract`() {
+  fun `verify validation preserves workflow status contract`() {
     val pending =
       WorkflowUpdateInput(
         workflowStatus = "pending",
@@ -94,7 +94,7 @@ class FeatureVerifyWorkflowRuntimeTest {
   }
 
   @Test
-  fun `verify continuation directives preserve Python oracle text`() {
+  fun `verify continuation directives preserve oracle text`() {
     assertEquals(
       "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
         "and store the returned telemetry payload with the review result.",

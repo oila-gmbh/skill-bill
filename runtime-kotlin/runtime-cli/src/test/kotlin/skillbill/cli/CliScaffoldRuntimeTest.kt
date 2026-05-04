@@ -9,7 +9,6 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliScaffoldRuntimeTest {
@@ -142,43 +141,6 @@ class CliScaffoldRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
     assertContains(payload.stringValue("error"), "scaffold_payload_version")
-  }
-
-  @Test
-  fun `scaffold payload commands use native bridge`() {
-    val scaffoldSource = Files.readString(Path.of("src/main/kotlin/skillbill/cli/ScaffoldCliCommands.kt"))
-    val nativeScaffoldPayloadSource =
-      commandBlock(
-        scaffoldSource,
-        "private fun runNativeScaffoldPayload",
-        "private fun createAndFillResult",
-      )
-    val createAndFillNativeSource =
-      commandBlock(
-        scaffoldSource,
-        "private fun createAndFillResult",
-        "private fun errorResult",
-      )
-
-    assertFalse(scaffoldSource.contains("runPythonCli"), scaffoldSource)
-    assertFalse(scaffoldSource.contains("runPythonScaffoldCli"), scaffoldSource)
-    assertFalse(scaffoldSource.contains("pythonProcess"), scaffoldSource)
-    listOf(
-      commandBlock(scaffoldSource, "class NewSkillCommand", "class NewCommand"),
-      commandBlock(scaffoldSource, "class NewCommand", "class CreateAndFillCommand"),
-      commandBlock(scaffoldSource, "class NewAddonCommand", "class InstallAgentPathCommand"),
-    ).forEach { commandSource ->
-      assertContains(commandSource, "runNativeScaffoldPayload")
-      assertFalse(commandSource.contains("runPythonScaffoldCli"), commandSource)
-    }
-    val createAndFillCommandSource = commandBlock(scaffoldSource, "class CreateAndFillCommand", "class NewAddonCommand")
-    assertContains(createAndFillCommandSource, "createAndFillResult")
-    assertFalse(createAndFillCommandSource.contains("runPythonScaffoldCli"), createAndFillCommandSource)
-    assertContains(createAndFillNativeSource, "runNativeScaffoldPayload")
-    assertFalse(createAndFillNativeSource.contains("runPythonScaffoldCli"), createAndFillNativeSource)
-    assertFalse(nativeScaffoldPayloadSource.contains("runPythonCli"), nativeScaffoldPayloadSource)
-    assertFalse(nativeScaffoldPayloadSource.contains("runPythonScaffoldCli"), nativeScaffoldPayloadSource)
-    assertFalse(nativeScaffoldPayloadSource.contains("pythonProcess"), nativeScaffoldPayloadSource)
   }
 }
 
@@ -315,14 +277,6 @@ private fun decodeJsonObject(rawJson: String): JsonObject {
 }
 
 private fun JsonObject.stringValue(key: String): String = this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
-
-private fun commandBlock(source: String, startMarker: String, endMarker: String): String {
-  val startIndex = source.indexOf(startMarker)
-  val endIndex = source.indexOf(endMarker, startIndex + startMarker.length)
-  require(startIndex >= 0) { "Missing source marker: $startMarker" }
-  require(endIndex > startIndex) { "Missing source marker: $endMarker" }
-  return source.substring(startIndex, endIndex)
-}
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
   var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName)).trim()

@@ -90,7 +90,7 @@ class FeatureImplementWorkflowRuntimeTest {
   }
 
   @Test
-  fun `implement validation preserves Python workflow status contract`() {
+  fun `implement validation preserves workflow status contract`() {
     val pending =
       WorkflowUpdateInput(
         workflowStatus = "pending",
@@ -111,7 +111,7 @@ class FeatureImplementWorkflowRuntimeTest {
   }
 
   @Test
-  fun `implement continuation directives preserve Python oracle text`() {
+  fun `implement continuation directives preserve oracle text`() {
     assertEquals(
       "Do not rerun Step 1 discovery. Reuse the saved assessment artifact, create or verify the feature branch, " +
         "persist the branch artifact, then continue into preplan.",

@@ -85,8 +85,7 @@ di
   backed by the existing SQLite tables.
 - `skillbill.install`: active Kotlin-owned install primitives for agent-path
   detection, skill symlink installation, and install rollback support. The
-  shell installer remains Python-owned until cutover packaging changes
-  intentionally move it.
+  shell installer is Kotlin-owned and handled by the packaged runtime.
 - `skillbill.scaffold`: active Kotlin-owned governed loader and scaffold
   mutation surface, including manifest discovery, scaffold planning, symlink
   wiring, and rollback primitives.

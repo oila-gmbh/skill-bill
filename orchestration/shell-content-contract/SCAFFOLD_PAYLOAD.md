@@ -277,7 +277,7 @@ loader and surfaced by the validator, not by the scaffolder itself):
 
 - `ContractVersionMismatchError` — pack declares an outdated
   `contract_version`; the message points at
-  `scripts/migrate_to_content_md.md`.
+  the historical migration notes in `docs/migrations/`.
 - `MissingContentFileError` — sibling `content.md` is missing for a
   governed skill.
 - `InvalidExecutionSectionError` — the `## Execution` section body is not

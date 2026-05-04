@@ -25,7 +25,7 @@ Removed environment variables:
 
 Removed files:
 
-- the entire historical `skill_bill/` Python package and `pyproject.toml`
+- the entire historical runtime package and its packaging manifest
 - `scripts/mcp_server_start.sh`
 - legacy Python runtime modules for review, learnings, workflow telemetry,
   quality-check, PR description, and SQLite runtime support

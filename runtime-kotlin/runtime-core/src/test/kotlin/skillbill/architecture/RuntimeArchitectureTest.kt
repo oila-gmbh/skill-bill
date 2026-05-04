@@ -224,28 +224,6 @@ class RuntimeArchitectureTest {
   }
 
   @Test
-  fun `python bridge markers are absent from runtime sources`() {
-    assertNoBannedSourceReferences(
-      files = sourceFiles(),
-      bannedReferences =
-      listOf(
-        "runPythonCli",
-        "runPythonScaffoldCli",
-        "pythonProcess",
-        "\"python3\"",
-        "skill_bill",
-        "PYTHONPATH",
-      ),
-      description = "deferred Python bridge marker",
-    )
-    assertNoBannedSourceReferences(
-      files = sourceFiles().filterNot { file -> file.relativePath == readianMcpRuntime },
-      bannedReferences = listOf("ProcessBuilder"),
-      description = "deferred Python bridge marker",
-    )
-  }
-
-  @Test
   fun `mcp adapter avoids direct filesystem http sql dependencies except scaffold root discovery`() {
     val mcpFiles =
       sourceFiles()

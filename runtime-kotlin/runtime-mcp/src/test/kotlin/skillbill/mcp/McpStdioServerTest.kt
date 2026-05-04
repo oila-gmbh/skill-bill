@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.application.specInputTypes
 import skillbill.contracts.JsonSupport
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -34,7 +35,7 @@ class McpStdioServerTest {
   }
 
   @Test
-  fun `tools list exposes the Python-compatible inventory`() {
+  fun `tools list exposes the expected inventory`() {
     val response =
       decodeResponse(
         McpStdioServer.handleLine(
@@ -106,6 +107,7 @@ class McpStdioServerTest {
     assertTrue((startedSchema["required"] as List<*>).contains("feature_size"))
     assertTrue((startedSchema["required"] as List<*>).contains("issue_key"))
     assertTrue(startedSchema.properties().containsKey("acceptance_criteria_count"))
+    assertEquals(specInputTypes, startedSchema.properties().arrayItemsEnumFor("spec_input_types"))
     assertTrue((finishedSchema["required"] as List<*>).contains("session_id"))
     assertTrue((finishedSchema["required"] as List<*>).contains("completion_status"))
     assertTrue(finishedSchema.properties().containsKey("boundary_history_written"))
@@ -492,6 +494,12 @@ private fun Map<String, Any?>.assertRequired(vararg names: String) {
 private fun Map<String, Any?>.enumFor(propertyName: String): List<*> {
   val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
   return requireNotNull(property["enum"] as? List<*>)
+}
+
+private fun Map<String, Any?>.arrayItemsEnumFor(propertyName: String): List<*> {
+  val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
+  val items = requireNotNull(JsonSupport.anyToStringAnyMap(property["items"]))
+  return requireNotNull(items["enum"] as? List<*>)
 }
 
 private fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String> {

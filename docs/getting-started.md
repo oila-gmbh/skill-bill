@@ -1,6 +1,6 @@
 # Getting Started
 
-Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use the built distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a Python runtime selector.
+Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use the built distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
 
 Use this guide when you want to install Skill Bill, understand the runtime model, and know which behavior is enforced by contracts versus model reasoning.
 
@@ -64,9 +64,9 @@ Normal use is Kotlin-only:
 - `skill-bill-mcp` launches the packaged Kotlin stdio MCP distribution.
 - The installer registers MCP shims to the packaged Kotlin server.
 - Gradle is only used by maintainers to build and validate the runtime, not by installed commands during normal use.
-- Repo validation commands are Kotlin-backed. Python is no longer required for current install, validation, or maintainer workflows.
+- Repo validation commands are Kotlin-backed. The legacy maintainer stack is no longer required for current install, validation, or maintainer workflows.
 
-If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to Python.
+If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to a legacy runtime.
 
 ## First Checks
 
@@ -108,7 +108,7 @@ Degrade or report explicitly:
 - learnings may resolve to `none`
 - model-mediated review output can be uncertain and should mark confidence accordingly
 
-Rollback for a broken runtime is to install a previous release. Do not expect a Python runtime selector to recover current CLI or MCP execution.
+Rollback for a broken runtime is to install a previous release. Do not expect a legacy runtime selector to recover current CLI or MCP execution.
 
 ## Strict vs Model-Mediated Guarantees
 

@@ -3,7 +3,7 @@ package skillbill.application
 import skillbill.application.model.FeatureImplementStartedRequest
 
 internal val issueKeyTypes = listOf("jira", "linear", "github", "other", "none")
-internal val specInputTypes = listOf("raw_text", "pdf", "markdown_file", "image", "directory")
+val specInputTypes = listOf("raw_text", "pdf", "markdown_file", "image", "directory")
 internal val featureSizes = listOf("SMALL", "MEDIUM", "LARGE")
 internal val featureFlagPatterns = listOf("simple_conditional", "di_switch", "legacy", "none")
 internal val historySignalValues = listOf("none", "irrelevant", "low", "medium", "high")

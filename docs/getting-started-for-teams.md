@@ -12,7 +12,7 @@ Skill Bill gives a team governed agent workflows, not just prompt files. The use
 - strict validation around generated wrappers, manifests, and MCP schemas
 - model-mediated reasoning for code review, planning, audits, and prose
 
-The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` enter packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to Python.
+The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` enter packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
 
 ## Before Inviting The Team
 
@@ -53,8 +53,8 @@ Team members should not need to know migration history. Current behavior is:
 - `skill-bill-mcp` is the packaged Kotlin stdio MCP server.
 - Missing packaged distributions fail closed with install/build guidance.
 - Agent skills are symlinked back to the repo checkout.
-- Repo validation and maintainer commands are Kotlin-backed; Python is no longer required for current team workflows.
-- Runtime rollback means installing a previous release, not toggling a Python fallback.
+- Repo validation and maintainer commands are Kotlin-backed; the legacy maintainer stack is no longer required for current team workflows.
+- Runtime rollback means installing a previous release, not toggling a legacy fallback.
 
 On Codex and OpenCode, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, and `bill-feature-implement` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Codex installs TOMLs under `~/.codex/agents/` (with `~/.agents/agents/` fallback) from `platform-packs/<slug>/**/codex-agents/*.toml` and `skills/<slug>/**/codex-agents/*.toml`; OpenCode installs markdown agents under `~/.config/opencode/agents/` from the matching `opencode-agents/*.md` walks. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-feature-implement-planning` subagent", and so on) is runtime-neutral: Codex resolves each TOML by `name`, OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation, while Claude maps the same prose to its native subagent tool. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](../skills/bill-feature-implement/parsing_tolerance.md).
 

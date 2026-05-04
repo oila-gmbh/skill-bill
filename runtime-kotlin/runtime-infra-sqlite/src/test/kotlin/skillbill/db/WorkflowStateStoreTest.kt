@@ -143,7 +143,7 @@ class WorkflowStateStoreTest {
   }
 
   @Test
-  fun `workflow session summaries preserve Python started payload shape`() {
+  fun `workflow session summaries preserve started payload shape`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-sessions").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
