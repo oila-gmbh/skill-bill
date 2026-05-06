@@ -1,0 +1,7 @@
+* text=auto
+
+*.sh text eol=lf
+gradlew text eol=lf
+scripts/validate_agent_configs text eol=lf
+
+*.bat text eol=crlf
