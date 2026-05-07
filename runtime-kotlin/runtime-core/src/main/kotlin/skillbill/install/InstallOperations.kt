@@ -19,6 +19,11 @@ object InstallOperations {
 
   fun opencodeAgentsPath(home: Path? = null): Path = skillbill.install.opencodeAgentsPath(home)
 
+  fun junieAgentsPath(home: Path? = null): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return resolvedHome.resolve(".junie/agents")
+  }
+
   fun linkSkill(source: Path, targetDir: Path, agent: String): List<Path> {
     val resolvedTargetDir = targetDir.toAbsolutePath().normalize()
     Files.createDirectories(resolvedTargetDir)

@@ -57,6 +57,15 @@ class InstallOpencodeAgentsPathCommand(
 }
 
 @Inject
+class InstallJunieAgentsPathCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("junie-agents-path", "Print the Junie native subagent markdown directory.") {
+  override fun run() {
+    state.completeText(InstallOperations.junieAgentsPath(state.userHome).toString(), emptyMap())
+  }
+}
+
+@Inject
 class InstallLinkCodexAgentsCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("link-codex-agents", "Link Codex native subagent TOMLs from repo discovery roots.") {
@@ -127,6 +136,46 @@ class InstallUnlinkOpencodeAgentsCommand(
   override fun run() {
     val removed =
       InstallNativeAgentOperations.unlinkOpencodeAgents(
+        platformPacksRoot = Path.of(platformPacks),
+        skillsRoot = skills?.let(Path::of),
+        home = state.userHome,
+        selectedPlatforms = platforms.ifEmpty { null },
+      )
+    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
+  }
+}
+
+@Inject
+class InstallLinkJunieAgentsCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("link-junie-agents", "Link Junie native subagent markdown from repo discovery roots.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    val links =
+      InstallNativeAgentOperations.linkJunieAgents(
+        platformPacksRoot = Path.of(platformPacks),
+        skillsRoot = skills?.let(Path::of),
+        home = state.userHome,
+        selectedPlatforms = platforms.ifEmpty { null },
+      )
+    state.completeText(links.joinToString("\n"), mapOf("linked" to links.map(Path::toString)))
+  }
+}
+
+@Inject
+class InstallUnlinkJunieAgentsCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("unlink-junie-agents", "Remove Junie native subagent markdown symlinks.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    val removed =
+      InstallNativeAgentOperations.unlinkJunieAgents(
         platformPacksRoot = Path.of(platformPacks),
         skillsRoot = skills?.let(Path::of),
         home = state.userHome,

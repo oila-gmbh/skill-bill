@@ -94,10 +94,57 @@ class RepoValidationRuntimeTest {
     )
   }
 
+  @Test
+  fun `repo validation accepts git symlink placeholder sidecars`() {
+    val repoRoot = Files.createTempDirectory("skillbill-placeholder-sidecar")
+    createRepoValidationSkillFixture(repoRoot, sidecarMode = SidecarMode.GitPlaceholder)
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.issues.any { it.contains("must be a symlink") }, report.issues.joinToString("\n"))
+    assertFalse(report.issues.any { it.contains("points to") }, report.issues.joinToString("\n"))
+  }
+
+  @Test
+  fun `repo validation rejects regular sidecars that are not git symlink placeholders`() {
+    val repoRoot = Files.createTempDirectory("skillbill-regular-sidecar")
+    createRepoValidationSkillFixture(repoRoot)
+    val sidecar = repoRoot.resolve("skills/bill-code-review/review-scope.md")
+    Files.delete(sidecar)
+    Files.writeString(sidecar, "copied markdown\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("required supporting sidecar 'review-scope.md' must be a symlink")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation skips native agent markdown skill references`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-refs")
+    createRepoValidationSkillFixture(repoRoot)
+    val junieAgent = repoRoot.resolve("skills/bill-code-review/junie-agents/bill-code-review-worker.md")
+    Files.createDirectories(junieAgent.parent)
+    Files.writeString(junieAgent, "---\ndescription: mentions bill-code-review-worker\n---\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(
+      report.issues.any { it.contains("references unknown skill 'bill-code-review-worker'") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
   private fun createRepoValidationSkillFixture(
     repoRoot: java.nio.file.Path,
     skipSidecar: String? = null,
     overrideTargets: Map<String, java.nio.file.Path> = emptyMap(),
+    sidecarMode: SidecarMode = SidecarMode.SymbolicLink,
   ) {
     supportingFileTargets(repoRoot).values.forEach { target ->
       Files.createDirectories(target.parent)
@@ -125,7 +172,16 @@ class RepoValidationRuntimeTest {
     requiredFiles.filterNot { it == skipSidecar }.forEach { fileName ->
       val sidecar = skillDir.resolve(fileName)
       val target = overrideTargets[fileName] ?: targets.getValue(fileName)
-      Files.createSymbolicLink(sidecar, sidecar.parent.relativize(target))
+      val relativeTarget = sidecar.parent.relativize(target).toString()
+      when (sidecarMode) {
+        SidecarMode.SymbolicLink -> Files.createSymbolicLink(sidecar, java.nio.file.Path.of(relativeTarget))
+        SidecarMode.GitPlaceholder -> Files.writeString(sidecar, relativeTarget)
+      }
     }
+  }
+
+  private enum class SidecarMode {
+    SymbolicLink,
+    GitPlaceholder,
   }
 }

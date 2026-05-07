@@ -60,7 +60,7 @@ internal fun uninstallOpencodeAgentMarkdown(
   )
 }
 
-private fun discoverNativeAgentFiles(
+internal fun discoverNativeAgentFiles(
   platformPacksRoot: Path,
   skillsRoot: Path?,
   selectedPlatforms: List<String>?,
@@ -128,7 +128,7 @@ internal fun installNativeAgentFile(source: Path, agentTarget: AgentTarget, mana
   return linkPath.takeIf { shouldCreate }
 }
 
-private fun uninstallNativeAgentFiles(sources: List<Path>, candidateDirs: List<Path>): List<Path> {
+internal fun uninstallNativeAgentFiles(sources: List<Path>, candidateDirs: List<Path>): List<Path> {
   val removed = mutableListOf<Path>()
   sources.forEach { source ->
     val resolvedSource = source.toAbsolutePath().normalize()
