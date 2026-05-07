@@ -28,6 +28,12 @@ exclude = [
   # Excluding the directory keeps the briefings byte-identical to
   # reference.md without rewriting placeholder syntax.
   "skills/bill-feature-implement/opencode-agents/**",
+  # Junie consumes independent Markdown/YAML subagent files and the
+  # feature-implement Junie definitions intentionally preserve the same
+  # orchestrator placeholder tokens in their briefings. The xml_balance
+  # rule treats those placeholders as unclosed XML tags, so this native
+  # agent directory is excluded rather than rewriting the runtime prompt.
+  "skills/bill-feature-implement/junie-agents/**",
   # Feature spec narratives are author-facing design docs that legitimately
   # reference absolute repo paths and runtime install dirs (e.g.
   # /Users/.../skill-bill, ~/.codex/agents) when describing the work to

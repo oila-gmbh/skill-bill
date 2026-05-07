@@ -7,9 +7,10 @@ import skillbill.install.model.InstallTransaction
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode")
+internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode", "junie")
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
+internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
 
 internal fun agentPaths(home: Path? = null): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
@@ -17,6 +18,7 @@ internal fun agentPaths(home: Path? = null): Map<String, Path> {
     "copilot" to resolvedHome.resolve(".copilot/skills"),
     "claude" to resolvedHome.resolve(".claude/commands"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
+    "junie" to resolvedHome.resolve(".junie/skills"),
     "codex" to codexPath(resolvedHome),
   )
 }
@@ -115,6 +117,7 @@ private fun agentIsPresent(home: Path, agent: String, installPath: Path): Boolea
     "copilot" -> listOf(home.resolve(".copilot"))
     "claude" -> listOf(home.resolve(".claude"))
     "opencode" -> listOf(home.resolve(".config/opencode"))
+    "junie" -> listOf(home.resolve(".junie"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
     else -> emptyList()
   }

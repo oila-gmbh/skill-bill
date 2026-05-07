@@ -12,6 +12,7 @@ object McpRegistrationOperations {
       "copilot" -> McpJsonConfig.register(agent, resolvedHome.resolve(".copilot/mcp-config.json"), command)
       "codex" -> McpTomlConfig.register(agent, resolvedHome.resolve(".codex/config.toml"), command)
       "opencode" -> McpOpenCodeConfig.register(agent, resolvedHome.resolve(".config/opencode/opencode.json"), command)
+      "junie" -> McpJsonConfig.register(agent, resolvedHome.resolve(".junie/mcp/mcp.json"), command)
       "glm" -> McpJsonConfig.register(agent, resolvedHome.resolve(".glm/mcp-config.json"), command)
       else -> throw IllegalArgumentException("Unknown MCP agent '$agent'.")
     }
@@ -24,6 +25,7 @@ object McpRegistrationOperations {
       "copilot" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".copilot/mcp-config.json"))
       "codex" -> McpTomlConfig.unregister(agent, resolvedHome.resolve(".codex/config.toml"))
       "opencode" -> McpOpenCodeConfig.unregister(agent, resolvedHome.resolve(".config/opencode/opencode.json"))
+      "junie" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".junie/mcp/mcp.json"))
       "glm" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".glm/mcp-config.json"))
       else -> throw IllegalArgumentException("Unknown MCP agent '$agent'.")
     }

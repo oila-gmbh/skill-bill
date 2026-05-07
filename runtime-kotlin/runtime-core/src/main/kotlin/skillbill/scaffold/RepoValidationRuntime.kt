@@ -284,10 +284,24 @@ object RepoValidationRuntime {
       !Files.exists(sidecar, LinkOption.NOFOLLOW_LINKS) ->
         issues += "$skillFile: required supporting sidecar '$fileName' is missing beside the skill"
       sidecarPath == expectedPath -> Unit
-      !Files.isSymbolicLink(sidecar) ->
+      !Files.isSymbolicLink(sidecar) && !isGitSymlinkPlaceholder(sidecar, expectedTarget) ->
         issues += "$skillFile: required supporting sidecar '$fileName' must be a symlink"
+      !Files.isSymbolicLink(sidecar) -> Unit
       else -> supportingSymlinkTargetIssue(skillFile, fileName, sidecar, expectedTarget, root)?.let(issues::add)
     }
+  }
+
+  private fun isGitSymlinkPlaceholder(sidecar: Path, expectedTarget: Path): Boolean {
+    var matches = false
+    if (Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS)) {
+      val rawTarget = Files.readString(sidecar).trim()
+      if (rawTarget.isNotBlank()) {
+        val actualTarget = sidecar.parent.resolve(rawTarget).normalize().toAbsolutePath()
+        val expected = expectedTarget.normalize().toAbsolutePath()
+        matches = actualTarget == expected
+      }
+    }
+    return matches
   }
 
   private fun supportingSymlinkTargetIssue(
@@ -330,11 +344,16 @@ object RepoValidationRuntime {
           .filter {
             it.isRegularFile() &&
               it.fileName.toString().endsWith(".md") &&
-              "opencode-agents" !in it.relativeTo(root).map(Path::toString)
+              isSkillReferenceScanTarget(it.relativeTo(root))
           }
           .forEach { file -> validateSkillReferencesInFile(file, root, skillNames, issues) }
       }
     }
+  }
+
+  private fun isSkillReferenceScanTarget(relativePath: Path): Boolean {
+    val parts = relativePath.map(Path::toString)
+    return "opencode-agents" !in parts && "junie-agents" !in parts
   }
 
   private fun validateSkillReferencesInFile(

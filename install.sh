@@ -94,6 +94,10 @@ get_opencode_agents_path() {
   run_runtime_cli install opencode-agents-path
 }
 
+get_junie_agents_path() {
+  run_runtime_cli install junie-agents-path
+}
+
 install_codex_agents_tomls() {
   # Install Codex native subagent TOML defs under the resolved agents dir.
   # Walks platform-packs/<slug>/**/codex-agents/*.toml — manifest-driven,
@@ -142,6 +146,23 @@ install_opencode_agent_mds() {
   ok "  OpenCode subagent markdown linked"
 }
 
+install_junie_agent_mds() {
+  # Install Junie native subagent markdown defs under ~/.junie/agents.
+  # Walks platform-packs/<slug>/**/junie-agents/*.md and
+  # skills/<slug>/**/junie-agents/*.md — manifest-driven, independent from
+  # other agent setup choices.
+  local target_dir
+  target_dir="$(get_junie_agents_path)"
+  mkdir -p "$target_dir"
+  info "Installing Junie subagent markdown to: $target_dir"
+
+  run_runtime_cli install link-junie-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR" \
+    "${SELECTED_PLATFORM_ARGS[@]}"
+  ok "  Junie subagent markdown installed"
+}
+
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
 # same (for example, moving
 # skills/kotlin/bill-kotlin-quality-check/ to
@@ -180,7 +201,7 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-new-skill-all-agents:bill-create-skill'
 )
 
-declare -a SUPPORTED_AGENTS=(copilot claude codex opencode)
+declare -a SUPPORTED_AGENTS=(copilot claude codex opencode junie)
 declare -a SKILL_NAMES=()
 declare -a SKILL_PATHS=()
 declare -a INSTALL_SKILL_NAMES=()
@@ -849,6 +870,21 @@ cleanup_selected_opencode_agents() {
   done <<< "$output"
 }
 
+cleanup_selected_junie_agents() {
+  local output
+  output="$(run_runtime_cli install unlink-junie-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  no existing Junie subagent markdown found"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
 cleanup_selected_agent_installs() {
   local i
   local agent
@@ -865,6 +901,9 @@ cleanup_selected_agent_installs() {
     fi
     if [[ "$agent" == "opencode" ]]; then
       cleanup_selected_opencode_agents
+    fi
+    if [[ "$agent" == "junie" ]]; then
+      cleanup_selected_junie_agents
     fi
   done
 }
@@ -913,7 +952,7 @@ build_platform_packages
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
-info "Supported agents: copilot, claude, codex, opencode"
+info "Supported agents: copilot, claude, codex, opencode, junie"
 info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
 prompt_for_agent_selection
 prompt_for_platform_selection
@@ -949,6 +988,9 @@ for i in "${!AGENT_NAMES[@]}"; do
   fi
   if [[ "$agent" == "opencode" ]]; then
     install_opencode_agent_mds
+  fi
+  if [[ "$agent" == "junie" ]]; then
+    install_junie_agent_mds
   fi
   echo ""
 done

@@ -279,7 +279,9 @@ private fun decodeJsonObject(rawJson: String): JsonObject {
 private fun JsonObject.stringValue(key: String): String = this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
-  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName)).trim()
+  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName))
+    .replace("\r\n", "\n")
+    .trim()
   replacements.forEach { (placeholder, value) ->
     expected = expected.replace(placeholder, value)
   }

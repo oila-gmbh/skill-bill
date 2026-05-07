@@ -405,6 +405,7 @@ class CliRuntimeTest {
   fun `install commands expose agent path lookup and link-skill`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install")
     Files.createDirectories(tempDir.resolve(".claude"))
+    Files.createDirectories(tempDir.resolve(".junie"))
     val context = CliRuntimeContext(userHome = tempDir)
 
     val agentPathResult = CliRuntime.run(listOf("install", "agent-path", "codex"), context)
@@ -432,7 +433,13 @@ class CliRuntimeTest {
     assertEquals(0, agentPathResult.exitCode, agentPathResult.stdout)
     assertEquals(tempDir.resolve(".agents/skills").toString(), agentPathResult.stdout.trim())
     assertEquals(0, detectAgentsResult.exitCode, detectAgentsResult.stdout)
-    assertEquals("claude\t${tempDir.resolve(".claude/commands")}", detectAgentsResult.stdout.trim())
+    assertEquals(
+      """
+      claude	${tempDir.resolve(".claude/commands")}
+      junie	${tempDir.resolve(".junie/skills")}
+      """.trimIndent(),
+      detectAgentsResult.stdout.trim(),
+    )
     assertEquals(0, linkResult.exitCode, linkResult.stdout)
     assertTrue(Files.isSymbolicLink(targetDir.resolve("skill-source")))
     assertEquals(sourceSkill.toRealPath(), targetDir.resolve("skill-source").toRealPath())
@@ -614,7 +621,9 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
 }
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
-  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName)).trim()
+  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName))
+    .replace("\r\n", "\n")
+    .trim()
   replacements.forEach { (placeholder, value) ->
     expected = expected.replace(placeholder, value)
   }
