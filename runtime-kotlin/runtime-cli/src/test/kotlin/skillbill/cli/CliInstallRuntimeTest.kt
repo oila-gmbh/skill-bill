@@ -4,7 +4,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.nativeagent.NativeAgentProvider
 import skillbill.nativeagent.NativeAgentSource
 import skillbill.nativeagent.parseNativeAgentSource
-import skillbill.nativeagent.renderNativeAgent
 import skillbill.nativeagent.renderNativeAgentSource
 import java.nio.file.Files
 import java.nio.file.Path
@@ -48,7 +47,7 @@ class CliInstallRuntimeTest {
     assertEquals(0, runInstall(fixture, "link-claude-agents").exitCode)
 
     assertGeneratedAgentLinked(target, expected = null)
-    assertEquals(renderNativeAgent(source, NativeAgentProvider.Claude), Files.readString(target))
+    assertEquals(NativeAgentProvider.Claude.render(source), Files.readString(target))
 
     assertEquals(0, runInstall(fixture, "unlink-claude-agents").exitCode)
     assertFalse(Files.exists(target))
@@ -447,7 +446,7 @@ class CliInstallRuntimeTest {
       }
       val name = expected.fileName.toString().removeSuffix(".${provider.extension}")
       val source = parseNativeAgentSource(expected.parent.parent.resolve("native-agents/$name.md"))
-      assertEquals(renderNativeAgent(source, provider), Files.readString(path))
+      assertEquals(provider.render(source), Files.readString(path))
     }
   }
 

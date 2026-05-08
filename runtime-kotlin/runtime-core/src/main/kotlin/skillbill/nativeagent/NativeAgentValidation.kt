@@ -51,13 +51,35 @@ private fun validateNativeAgentSources(root: Path, sources: List<Path>, issues: 
       issues += "${displayPath(root, sourcePath)}: native agent source name '${source.name}' duplicates " +
         displayPath(root, duplicate)
     }
+    if (containsProviderConditional(source.body)) {
+      issues += "${displayPath(root, sourcePath)}: " +
+        "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
+    }
     NativeAgentProvider.entries.forEach { provider ->
-      runCatching { renderNativeAgent(source, provider) }.getOrElse { error ->
+      runCatching { provider.render(source) }.getOrElse { error ->
         issues += "${displayPath(root, sourcePath)}: cannot render ${provider.directoryName}: " +
           error.message.orEmpty()
       }
     }
   }
+}
+
+private val PROVIDER_CONDITIONAL_HANDLEBARS_REGEX: Regex = Regex(
+  "\\{\\{\\s*#\\s*(${NativeAgentProvider.entries.joinToString("|") { it.name.lowercase() }})\\s*\\}\\}",
+  RegexOption.IGNORE_CASE,
+)
+
+private val PROVIDER_CONDITIONAL_CASE_INSENSITIVE: List<String> = listOf(
+  "if provider ==",
+  "if (provider",
+)
+
+private fun containsProviderConditional(body: String): Boolean {
+  if (PROVIDER_CONDITIONAL_HANDLEBARS_REGEX.containsMatchIn(body)) {
+    return true
+  }
+  val lowered = body.lowercase()
+  return PROVIDER_CONDITIONAL_CASE_INSENSITIVE.any { token -> token in lowered }
 }
 
 private fun validateNoCheckedInGeneratedArtifacts(root: Path, issues: MutableList<String>) {

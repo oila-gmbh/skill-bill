@@ -9,6 +9,7 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 
 private const val NATIVE_AGENT_CACHE_KEY_BYTES = 8
+private const val NATIVE_AGENT_SLUG_MAX_CHARS = 32
 
 data class NativeAgentRegenerationResult(
   val regeneratedFiles: List<Path>,
@@ -40,7 +41,7 @@ object NativeAgentOperations {
         val source = parseNativeAgentSource(sourcePath)
         RegenerationEntry(
           target = cacheRoot.resolve(provider.directoryName).resolve("${source.name}.${provider.extension}"),
-          contents = renderNativeAgent(source, provider).toByteArray(Charsets.UTF_8),
+          contents = provider.render(source).toByteArray(Charsets.UTF_8),
         )
       }
     }
@@ -86,7 +87,7 @@ object NativeAgentOperations {
       val source = parseNativeAgentSource(sourcePath)
       RenderedAgent(
         targetName = "${source.name}.${provider.extension}",
-        contents = renderNativeAgent(source, provider).toByteArray(Charsets.UTF_8),
+        contents = provider.render(source).toByteArray(Charsets.UTF_8),
       )
     }
     val staging = Files.createTempDirectory("skill-bill-native-agent-render-")
@@ -159,8 +160,21 @@ object NativeAgentOperations {
   }
 
   fun installCacheRoot(home: Path, platformPacksRoot: Path, skillsRoot: Path?): Path {
-    val key = stableRepoKey(platformPacksRoot, skillsRoot)
-    return home.toAbsolutePath().normalize().resolve(".skill-bill/native-agents/$key")
+    val hash = stableRepoKey(platformPacksRoot, skillsRoot)
+    val slug = repoSlug(platformPacksRoot)
+    val leaf = if (slug.isEmpty()) hash else "$slug-$hash"
+    return home.toAbsolutePath().normalize().resolve(".skill-bill/native-agents/$leaf")
+  }
+
+  private fun repoSlug(platformPacksRoot: Path): String {
+    val raw = platformPacksRoot.toAbsolutePath().normalize().parent?.fileName?.toString().orEmpty()
+    if (raw.isEmpty()) {
+      return ""
+    }
+    val collapsed = raw.lowercase()
+      .replace(Regex("[^a-z0-9-]+"), "-")
+      .trim('-')
+    return collapsed.take(NATIVE_AGENT_SLUG_MAX_CHARS)
   }
 
   private fun stableRepoKey(platformPacksRoot: Path, skillsRoot: Path?): String {

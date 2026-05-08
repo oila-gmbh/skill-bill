@@ -8,52 +8,56 @@ enum class NativeAgentProvider(
   val directoryName: String,
   val extension: String,
 ) {
-  Claude("claude-agents", "md"),
-  Codex("codex-agents", "toml"),
-  Opencode("opencode-agents", "md"),
-  Junie("junie-agents", "md"),
+  Claude("claude-agents", "md") {
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".claude/agents"))
+  },
+  Codex("codex-agents", "toml") {
+    override fun render(source: NativeAgentSource): String = renderCodexAgentToml(source)
+    override fun homeAgentDirs(home: Path): List<Path> =
+      listOf(home.resolve(".codex/agents"), home.resolve(".agents/agents"))
+  },
+  Opencode("opencode-agents", "md") {
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = "subagent")
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".config/opencode/agents"))
+  },
+  Junie("junie-agents", "md") {
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
+  },
   ;
 
-  fun homeAgentDirs(home: Path): List<Path> = when (this) {
-    Claude -> listOf(home.resolve(".claude/agents"))
-    Codex -> listOf(home.resolve(".codex/agents"), home.resolve(".agents/agents"))
-    Opencode -> listOf(home.resolve(".config/opencode/agents"))
-    Junie -> listOf(home.resolve(".junie/agents"))
-  }
-}
+  abstract fun render(source: NativeAgentSource): String
 
-fun renderNativeAgent(agent: NativeAgentSource, provider: NativeAgentProvider): String = when (provider) {
-  NativeAgentProvider.Claude -> renderFrontmatterAgent(agent, mode = null)
-  NativeAgentProvider.Codex -> renderCodexAgentToml(agent)
-  NativeAgentProvider.Opencode -> renderFrontmatterAgent(agent, mode = "subagent")
-  NativeAgentProvider.Junie -> renderFrontmatterAgent(agent, mode = null)
+  abstract fun homeAgentDirs(home: Path): List<Path>
 }
 
 private fun renderCodexAgentToml(agent: NativeAgentSource): String = buildString {
-  appendLine("""name = "${tomlBasicString(agent.name)}"""")
-  appendLine("""description = "${tomlBasicString(agent.description)}"""")
-  appendLine()
-  appendLine("developer_instructions = \"\"\"")
-  appendLine(tomlMultilineString(agent.body.trimEnd()))
-  appendLine("\"\"\"")
+  append("""name = "${tomlBasicString(agent.name)}"""").append('\n')
+  append("""description = "${tomlBasicString(agent.description)}"""").append('\n')
+  append('\n')
+  append("developer_instructions = \"\"\"").append('\n')
+  append(tomlMultilineString(agent.body.trimEnd())).append('\n')
+  append("\"\"\"").append('\n')
 }
 
 private fun renderFrontmatterAgent(agent: NativeAgentSource, mode: String?): String = buildString {
-  appendLine("---")
-  appendLine("name: ${yamlScalar(agent.name)}")
-  appendLine("description: ${yamlScalar(agent.description)}")
+  append("---").append('\n')
+  append("name: ${yamlScalar(agent.name)}").append('\n')
+  append("description: ${yamlScalar(agent.description)}").append('\n')
   if (mode != null) {
-    appendLine("mode: $mode")
+    append("mode: $mode").append('\n')
   }
-  appendLine("---")
-  appendLine()
-  appendLine(agent.body.trimEnd())
+  append("---").append('\n')
+  append('\n')
+  append(agent.body.trimEnd()).append('\n')
 }
 
 private val YAML_RESERVED_LEADING_CHARS: Set<Char> =
   setOf('-', '?', ':', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`')
 private val YAML_RESERVED_INLINE_CHARS: Set<Char> = setOf('\n', '\r', '\t')
-private val YAML_DOUBLE_QUOTE_ESCAPES: Map<Char, String> = mapOf(
+
+internal val YAML_DOUBLE_QUOTE_ESCAPES: Map<Char, String> = mapOf(
   '\\' to "\\\\",
   '"' to "\\\"",
   '\n' to "\\n",

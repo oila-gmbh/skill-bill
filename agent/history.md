@@ -1,3 +1,15 @@
+## [2026-05-08] native-agent-rendering-followups
+Areas: runtime-kotlin/runtime-core/src/main/kotlin/skillbill/nativeagent/, runtime-kotlin/runtime-core/src/test/kotlin/skillbill/nativeagent/
+- SKILL-38 hardened the native-agent rendering pipeline introduced by SKILL-37: render dispatch (and `homeAgentDirs`) now lives as per-constant overrides on `NativeAgentProvider`, so adding a fifth provider is one enum entry plus its own renderer/agent-dir overrides — no central `when` switch to update. reusable
+- Parser now strict: `decodeYamlScalar`/`decodeYamlDoubleQuoted` honor the renderer's YAML escape table (sourced from a single `internal val` shared by encode and decode) and `require(...)` reject unterminated quotes, embedded unescaped `"`, trailing `\`, and unknown `\X` escapes. New round-trip test walks every repo `native-agents/*.md` to lock the contract. reusable
+- Renderer is platform-independent: every `appendLine` was replaced with explicit `append('\n')` so byte-exact snapshots and the `regenerate` skip-if-equal check do not drift on Windows hosts. Snapshot tests pin one plain and one quoting-triggering fixture across all four providers. reusable
+- Validator (`validateNativeAgentSources`) gained a provider-agnostic body rule: a single case-insensitive regex built from `NativeAgentProvider.entries` rejects `{{#claude}}`/`{{#codex}}`/`{{#opencode}}`/`{{#junie}}` (with whitespace/case tolerance), and lowercased substrings catch `if provider ==` / `if (provider`. Rule auto-extends with the enum.
+- Install cache root now `~/.skill-bill/native-agents/<slug>-<8byte-hash>/` where slug is the platform-packs parent basename sanitized to `[a-z0-9-]+ ≤32 chars` (empty slug falls back to hash-only). Hash math unchanged; existing CLI tests using a synthetic stale key remain green. reusable
+- Pitfall: the public `renderNativeAgentSource` writes name/description raw (no `yamlScalar`) — round-trip is correct only because all 17 in-repo sources use plain ASCII. Future hand-edited sources with reserved chars need either yamlScalar emission here or a constraint test.
+- New README at `runtime-core/.../nativeagent/README.md` documents source format, the body-provider-agnostic rule, and the install/symlink fallback (`InstallNativeAgentResult.{Linked,Skipped}` plus the Windows-developer-mode hint).
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-07] native-agent-codegen
 Areas: runtime-kotlin/runtime-core/src/main/kotlin/skillbill/nativeagent/, runtime-kotlin/runtime-core/src/main/kotlin/skillbill/install/, runtime-kotlin/runtime-core/src/main/kotlin/skillbill/scaffold/, runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/, skills/*/native-agents/, platform-packs/*/**/native-agents/, install.sh, README.md, docs/
 - SKILL-37 moved native subagent authoring to one provider-neutral `native-agents/<name>.md` source per subagent, with deterministic install-time generation for Codex TOML, OpenCode markdown, and Junie markdown. `skill-bill render` validates source renderability; `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. reusable

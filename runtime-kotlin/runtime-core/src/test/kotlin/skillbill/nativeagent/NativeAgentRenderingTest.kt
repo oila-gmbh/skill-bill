@@ -57,10 +57,10 @@ class NativeAgentRenderingTest {
       body = "# Worker\n\nDo the work.",
     )
 
-    val claude = renderNativeAgent(source, NativeAgentProvider.Claude)
-    val codex = renderNativeAgent(source, NativeAgentProvider.Codex)
-    val opencode = renderNativeAgent(source, NativeAgentProvider.Opencode)
-    val junie = renderNativeAgent(source, NativeAgentProvider.Junie)
+    val claude = NativeAgentProvider.Claude.render(source)
+    val codex = NativeAgentProvider.Codex.render(source)
+    val opencode = NativeAgentProvider.Opencode.render(source)
+    val junie = NativeAgentProvider.Junie.render(source)
 
     assertContains(claude, "name: bill-test-worker")
     assertContains(claude, "description: Test worker.")
@@ -87,10 +87,10 @@ class NativeAgentRenderingTest {
       body = "# Edge\n\nBody with \"\"\" triple quotes and a back\\slash.",
     )
 
-    val claude = renderNativeAgent(source, NativeAgentProvider.Claude)
-    val codex = renderNativeAgent(source, NativeAgentProvider.Codex)
-    val opencode = renderNativeAgent(source, NativeAgentProvider.Opencode)
-    val junie = renderNativeAgent(source, NativeAgentProvider.Junie)
+    val claude = NativeAgentProvider.Claude.render(source)
+    val codex = NativeAgentProvider.Codex.render(source)
+    val opencode = NativeAgentProvider.Opencode.render(source)
+    val junie = NativeAgentProvider.Junie.render(source)
 
     assertFalse(
       claude.lines().any { line -> line.startsWith("description: Edge: case") },
@@ -128,8 +128,8 @@ class NativeAgentRenderingTest {
     )
 
     NativeAgentProvider.entries.forEach { provider ->
-      val first = renderNativeAgent(source, provider)
-      val second = renderNativeAgent(source, provider)
+      val first = provider.render(source)
+      val second = provider.render(source)
       assertEquals(first.toByteArray(Charsets.UTF_8).toList(), second.toByteArray(Charsets.UTF_8).toList())
     }
   }
