@@ -136,6 +136,12 @@ object AuthoringOperations {
         createdPaths = createdPaths,
       )
       regenerated += nativeRegeneration.regeneratedFiles
+      val pointerRegeneration = PointerOperations.regenerate(
+        resolvedRoot,
+        originalBytes = originalBytes,
+        createdPaths = createdPaths,
+      )
+      regenerated += pointerRegeneration.regeneratedFiles
       if (validate) {
         val issues = targets.flatMap { target -> validateTarget(target) }
         if (issues.isNotEmpty()) {

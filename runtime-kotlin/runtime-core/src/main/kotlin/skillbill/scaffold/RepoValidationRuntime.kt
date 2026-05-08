@@ -109,6 +109,8 @@ object RepoValidationRuntime {
     validateNoInlineTelemetryContractDrift(root, issues)
     validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
     issues += validateRepoNativeAgents(root).issues
+    issues += validatePlatformPackPointers(root).issues
+    issues += validatePointerTargetParityIssues(root)
 
     return RepoValidationReport(
       issues = issues.sorted(),
@@ -567,6 +569,26 @@ object RepoValidationRuntime {
         it == "android-compose-adaptive-layouts.md"
     }
     .toSet()
+
+  private fun validatePointerTargetParityIssues(root: Path): List<String> {
+    val packsRoot = root.resolve("platform-packs")
+    if (!Files.isDirectory(packsRoot)) {
+      return emptyList()
+    }
+    val packs = mutableListOf<skillbill.scaffold.model.PlatformManifest>()
+    Files.list(packsRoot).use { stream ->
+      stream
+        .filter { it.isDirectory() && !it.name.startsWith(".") }
+        .forEach { packRoot ->
+          try {
+            packs += loadPlatformManifest(packRoot)
+          } catch (_: ShellContentContractException) {
+            // Surfaced by validatePlatformPacks above.
+          }
+        }
+    }
+    return validatePointerTargetParity(root, packs)
+  }
 
   private fun isDocumentedExampleReference(file: Path, root: Path, referenced: String): Boolean {
     val relative = file.relativeTo(root).toString()

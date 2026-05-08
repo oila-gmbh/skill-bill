@@ -12,6 +12,12 @@ data class DeclaredFiles(
   val areas: Map<String, Path>,
 )
 
+data class PointerSpec(
+  val skillRelativeDir: String,
+  val name: String,
+  val target: String,
+)
+
 data class PlatformManifest(
   val slug: String,
   val packRoot: Path,
@@ -23,6 +29,7 @@ data class PlatformManifest(
   val displayName: String? = null,
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,
+  val pointers: List<PointerSpec> = emptyList(),
 ) {
   val routedSkillName: String = "bill-$slug-code-review"
 }

@@ -4,6 +4,7 @@ package skillbill.scaffold
 
 import skillbill.error.MissingSupportingFileTargetError
 import java.nio.file.Path
+import kotlin.io.path.relativeTo
 
 internal const val SHELL_CONTRACT_VERSION: String = "1.1"
 internal const val SCAFFOLD_PAYLOAD_VERSION: String = "1.0"
@@ -56,6 +57,18 @@ internal fun displayNameFromSlug(slug: String): String = slug.split('-').joinToS
   }
 }
 
+/**
+ * Static lookup of orchestration playbook target paths used by scaffolding when a brand-new skill
+ * is created and there is no `pointers:` block to consult yet.
+ *
+ * AUTHORITATIVE SOURCE: Each platform pack's `platform.yaml` `pointers:` block is the source of
+ * truth for which target a pointer file resolves to AT REGENERATION TIME. This map is intentionally
+ * kept aligned with those manifests; [validatePointerTargetParity] asserts the agreement at
+ * pack-load time so the two sources cannot drift silently.
+ *
+ * TODO(SKILL-39 follow-up): drive [supportingFileTargets] directly from the matching pack's
+ * `pointers:` block (load the manifest, look up by name) so this map can be deleted.
+ */
 internal val ORCHESTRATION_PLAYBOOKS: Map<String, String> =
   mapOf(
     "review-scope" to "orchestration/review-scope/PLAYBOOK.md",
@@ -154,3 +167,34 @@ internal fun requireSupportingFileTarget(skillName: String, fileName: String, re
   supportingFileTargets(repoRoot)[fileName] ?: throw MissingSupportingFileTargetError(
     "Runtime supporting file '$fileName' is not registered for '$skillName'.",
   )
+
+/**
+ * Cross-validates the static [supportingFileTargets] map against every pack's `pointers:` block.
+ *
+ * For every (pointerName -> target) declared by any pack, the corresponding entry in
+ * [supportingFileTargets] (when present) MUST resolve to the same repo-relative path. This is the
+ * guard that keeps the legacy static map honest while it still exists.
+ *
+ * Returns a (sorted) list of issue strings; an empty list means parity holds.
+ */
+internal fun validatePointerTargetParity(
+  repoRoot: Path,
+  packs: List<skillbill.scaffold.model.PlatformManifest>,
+): List<String> {
+  val staticTargets = supportingFileTargets(repoRoot)
+  val resolvedRoot = repoRoot.toAbsolutePath().normalize()
+  val issues = mutableListOf<String>()
+  packs.forEach { pack ->
+    pack.pointers.forEach { spec ->
+      val staticTarget = staticTargets[spec.name] ?: return@forEach
+      val staticAbs = staticTarget.toAbsolutePath().normalize()
+      val pointerAbs = resolvedRoot.resolve(spec.target).normalize()
+      if (staticAbs != pointerAbs) {
+        issues += "platform-packs/${pack.slug}: pointer '${spec.name}' target '${spec.target}' " +
+          "disagrees with static supportingFileTargets which points at " +
+          "'${runCatching { staticAbs.relativeTo(resolvedRoot) }.getOrDefault(staticAbs)}'"
+      }
+    }
+  }
+  return issues.sorted()
+}

@@ -32,3 +32,64 @@ area_metadata:
     focus: "UI correctness and framework usage"
   ux-accessibility:
     focus: "UX correctness and accessibility"
+
+# Pointer files (single-line markdown files containing only a relative path) are generated
+# from this block. Targets are repo-rooted; the renderer computes the correct ../-prefixed
+# relative path. Never hand-edit pointer files — add or modify entries here and run
+# `skill-bill upgrade`.
+pointers:
+  code-review/bill-kmp-code-review:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: review-delegation.md
+      target: orchestration/review-delegation/PLAYBOOK.md
+    - name: review-scope.md
+      target: orchestration/review-scope/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: android-compose-adaptive-layouts.md
+      target: platform-packs/kmp/addons/android-compose-adaptive-layouts.md
+    - name: android-compose-edge-to-edge.md
+      target: platform-packs/kmp/addons/android-compose-edge-to-edge.md
+    - name: android-compose-review.md
+      target: platform-packs/kmp/addons/android-compose-review.md
+    - name: android-design-system-review.md
+      target: platform-packs/kmp/addons/android-design-system-review.md
+    - name: android-interop-review.md
+      target: platform-packs/kmp/addons/android-interop-review.md
+    - name: android-navigation-review.md
+      target: platform-packs/kmp/addons/android-navigation-review.md
+    - name: android-r8-review.md
+      target: platform-packs/kmp/addons/android-r8-review.md
+  code-review/bill-kmp-code-review-ui:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: android-compose-adaptive-layouts.md
+      target: platform-packs/kmp/addons/android-compose-adaptive-layouts.md
+    - name: android-compose-edge-to-edge.md
+      target: platform-packs/kmp/addons/android-compose-edge-to-edge.md
+    - name: android-compose-review.md
+      target: platform-packs/kmp/addons/android-compose-review.md
+    - name: android-design-system-review.md
+      target: platform-packs/kmp/addons/android-design-system-review.md
+    - name: android-interop-review.md
+      target: platform-packs/kmp/addons/android-interop-review.md
+    - name: android-navigation-review.md
+      target: platform-packs/kmp/addons/android-navigation-review.md
+  code-review/bill-kmp-code-review-ux-accessibility:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
