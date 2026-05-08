@@ -10,7 +10,7 @@ Validation strategy: {validation_strategy}  # 'bill-quality-check' or a repo-nat
 Scope: branch diff since main for MEDIUM/LARGE, current unit of work for SMALL.
 
 Instructions:
-1. If validation_strategy is `bill-quality-check`, read `bill-quality-check` and apply inline; it auto-routes to the matching stack-specific quality-check skill.
+1. If validation_strategy is `bill-quality-check`, invoke the `bill-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
 3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.

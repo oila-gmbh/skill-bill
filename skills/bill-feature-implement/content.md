@@ -101,7 +101,7 @@ Spawn a subagent with the pre-planning briefing defined in [reference.md](refere
 - Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies for affected boundaries, reusable components.
 - When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning and pattern discovery.
 - Confirm `bill-quality-check` can route this repo; if not, pick a repo-native validation command.
-- If the rollout uses a feature flag, read `bill-feature-guard` inline and choose a pattern (Legacy / DI Switch / Simple Conditional).
+- If the rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool (do not search the filesystem to locate skill files) and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
 The subagent returns the pre-planning return contract from [reference.md](reference.md). The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent. Persist `preplan_digest` before advancing to `plan`.
 
@@ -229,7 +229,7 @@ Step id: `pr_description`
 
 Primary artifact: `pr_result`
 
-Spawn a subagent with the PR-description briefing defined in [reference.md](reference.md) under `PR-description subagent briefing`. The subagent runs `bill-pr-description` (read its skill file and apply inline), creates the PR, and must call `pr_description_generated` with `orchestrated=true` itself. The subagent returns: PR URL, PR title, and the `telemetry_payload` returned by `pr_description_generated`.
+Spawn a subagent with the PR-description briefing defined in [reference.md](reference.md) under `PR-description subagent briefing`. The subagent invokes `bill-pr-description` via the Skill tool (do not search the filesystem to locate skill files), creates the PR, and must call `pr_description_generated` with `orchestrated=true` itself. The subagent returns: PR URL, PR title, and the `telemetry_payload` returned by `pr_description_generated`.
 
 The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `pr_result`, then advance to `finish`.
 
