@@ -213,7 +213,7 @@ Instructions:
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
    When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
 6. Confirm `bill-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
-7. If rollout uses a feature flag, read `bill-feature-guard` inline and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
+7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
@@ -467,7 +467,7 @@ Validation strategy: {validation_strategy}  # 'bill-quality-check' or a repo-nat
 Scope: branch diff since main for MEDIUM/LARGE, current unit of work for SMALL.
 
 Instructions:
-1. If validation_strategy is `bill-quality-check`, read `bill-quality-check` and apply inline; it auto-routes to the matching stack-specific quality-check skill.
+1. If validation_strategy is `bill-quality-check`, invoke the `bill-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
 3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.
@@ -504,7 +504,7 @@ Implementation summary (from Step 4):
 {implementation_return_json}
 
 Instructions:
-1. Read `bill-pr-description` and apply inline. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
+1. Invoke `bill-pr-description` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
 2. Create the PR with `gh pr create` using a HEREDOC for the body.
 3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
 4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.

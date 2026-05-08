@@ -17,7 +17,7 @@ Implementation summary (from Step 4):
 {implementation_return_json}
 
 Instructions:
-1. Read `bill-pr-description` and apply inline. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
+1. Invoke `bill-pr-description` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
 2. Create the PR with `gh pr create` using a HEREDOC for the body.
 3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
 4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.

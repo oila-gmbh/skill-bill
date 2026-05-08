@@ -33,7 +33,7 @@ Instructions:
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
    When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
 6. Confirm `bill-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
-7. If rollout uses a feature flag, read `bill-feature-guard` inline and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
+7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
