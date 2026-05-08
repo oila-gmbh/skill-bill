@@ -1,1 +1,1 @@
-../../../../platform-packs/kmp/addons/android-compose-adaptive-layouts.md
+../../addons/android-compose-adaptive-layouts.md

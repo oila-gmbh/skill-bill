@@ -1,1 +1,1 @@
-../../../..//orchestration/review-orchestrator/PLAYBOOK.md
+../../../../orchestration/review-orchestrator/PLAYBOOK.md

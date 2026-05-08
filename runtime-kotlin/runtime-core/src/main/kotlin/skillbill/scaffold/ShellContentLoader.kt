@@ -15,6 +15,7 @@ import skillbill.error.MissingShellCeremonyFileError
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Files
 import java.nio.file.Path
@@ -119,6 +120,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val displayName = parseOptionalString(manifest, slug, "display_name")
   val notes = parseOptionalString(manifest, slug, "notes")
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
+  val pointers = parsePointers(manifest, slug)
 
   return PlatformManifest(
     slug = slug,
@@ -131,6 +133,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     displayName = displayName,
     notes = notes,
     declaredQualityCheckFile = declaredQualityCheckFile,
+    pointers = pointers,
   )
 }
 
@@ -250,6 +253,135 @@ private fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas: 
 
 private fun parseOptionalString(manifest: Map<*, *>, slug: String, key: String): String? = manifest[key]?.let {
   it as? String ?: throw InvalidManifestSchemaError("Platform pack '$slug': '$key' must be a string when provided.")
+}
+
+private fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec> {
+  val raw = manifest["pointers"] ?: return emptyList()
+  val pointersMap = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'pointers' must be a mapping of skill-relative-dir to a list of pointer entries.",
+    )
+  val seen = mutableSetOf<Pair<String, String>>()
+  val collected = mutableListOf<PointerSpec>()
+  for ((dirKey, entriesRaw) in pointersMap) {
+    val skillRelativeDir = dirKey as? String
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'pointers' keys must be strings (skill-relative directory paths).",
+      )
+    if (skillRelativeDir.isBlank()) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'pointers' skill-relative directory must be a non-empty string.",
+      )
+    }
+    requireSafePointerSubpath(slug, skillRelativeDir, "pointers skill-relative directory")
+    val entriesList = entriesRaw as? List<*>
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'pointers[$skillRelativeDir]' must be a list of {name, target} entries.",
+      )
+    for (entry in entriesList) {
+      val entryMap = entry as? Map<*, *>
+        ?: throw InvalidManifestSchemaError(
+          "Platform pack '$slug': 'pointers[$skillRelativeDir]' entries must be mappings with name and target.",
+        )
+      val spec = parsePointerEntry(slug, skillRelativeDir, entryMap)
+      val key = spec.skillRelativeDir to spec.name
+      if (!seen.add(key)) {
+        throw InvalidManifestSchemaError(
+          "Platform pack '$slug': duplicate pointer entry '${spec.name}' under '${spec.skillRelativeDir}'.",
+        )
+      }
+      collected += spec
+    }
+  }
+  return collected
+}
+
+private fun parsePointerEntry(slug: String, skillRelativeDir: String, entry: Map<*, *>): PointerSpec {
+  val name = entry["name"] as? String
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'pointers[$skillRelativeDir]' entry is missing string field 'name'.",
+    )
+  val target = entry["target"] as? String
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'pointers[$skillRelativeDir]' entry '$name' is missing string field 'target'.",
+    )
+  if (!name.endsWith(".md")) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer name '$name' under '$skillRelativeDir' must end with '.md'.",
+    )
+  }
+  if (".." in name || "/" in name) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer name '$name' under '$skillRelativeDir' must be a bare filename (no '..' or '/').",
+    )
+  }
+  if (target.isBlank()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' must declare a non-empty 'target'.",
+    )
+  }
+  requireSafePointerTarget(slug, skillRelativeDir, name, target)
+  return PointerSpec(skillRelativeDir = skillRelativeDir, name = name, target = target)
+}
+
+private fun requireSafePointerSubpath(slug: String, value: String, label: String) {
+  if (value.startsWith("/") || value.startsWith("\\")) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': $label '$value' must be a relative path (no leading '/').",
+    )
+  }
+  val asPath = try {
+    java.nio.file.Path.of(value)
+  } catch (error: java.nio.file.InvalidPathException) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': $label '$value' is not a valid path: ${error.message}",
+      error,
+    )
+  }
+  if (asPath.isAbsolute) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': $label '$value' must be relative, not absolute.",
+    )
+  }
+  asPath.iterator().forEachRemaining { segment ->
+    if (segment.toString() == "..") {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': $label '$value' must not contain '..' segments.",
+      )
+    }
+  }
+}
+
+private fun requireSafePointerTarget(slug: String, skillRelativeDir: String, name: String, target: String) {
+  if (target.startsWith("/") || target.startsWith("\\")) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' target '$target' must be a " +
+        "repo-relative path (no leading '/').",
+    )
+  }
+  val asPath = try {
+    java.nio.file.Path.of(target)
+  } catch (error: java.nio.file.InvalidPathException) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' target '$target' is not a valid path: " +
+        "${error.message}",
+      error,
+    )
+  }
+  if (asPath.isAbsolute) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' target '$target' must be a " +
+        "repo-relative path, not absolute.",
+    )
+  }
+  asPath.iterator().forEachRemaining { segment ->
+    if (segment.toString() == "..") {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' target '$target' must not contain " +
+          "'..' segments.",
+      )
+    }
+  }
 }
 
 private fun parseOptionalPath(manifest: Map<*, *>, slug: String, key: String, packRoot: Path): Path? {
