@@ -17,6 +17,11 @@ object InstallOperations {
 
   fun codexAgentsPath(home: Path? = null): Path = skillbill.install.codexAgentsPath(home)
 
+  fun claudeAgentsPath(home: Path? = null): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return resolvedHome.resolve(".claude/agents")
+  }
+
   fun opencodeAgentsPath(home: Path? = null): Path = skillbill.install.opencodeAgentsPath(home)
 
   fun junieAgentsPath(home: Path? = null): Path {

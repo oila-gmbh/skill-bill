@@ -79,6 +79,7 @@ class RuntimeArchitectureTest {
         "skillbill.learnings",
         "skillbill.mcp",
         "skillbill.model",
+        "skillbill.nativeagent",
         "skillbill.ports",
         "skillbill.review",
         "skillbill.scaffold",

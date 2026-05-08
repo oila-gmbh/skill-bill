@@ -63,14 +63,14 @@ The installer:
 Supported install targets today:
 
 - GitHub Copilot
-- Claude Code
+- Claude Code (skills under `~/.claude/commands/`; native subagent markdown under `~/.claude/agents/`)
 - OpenAI Codex (skills under `~/.codex/skills/`; native subagent TOMLs under `~/.codex/agents/`, both with `~/.agents/...` fallback)
 - OpenCode (skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`)
 - JetBrains Junie (skills under `~/.junie/skills/`; native subagent markdown under `~/.junie/agents/`; MCP config under `~/.junie/mcp/mcp.json`)
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
-Native subagent definitions are installed only for orchestrators that ship them. Discovery is manifest-driven under `platform-packs/<slug>/**/codex-agents/*.toml` and `skills/<slug>/**/codex-agents/*.toml` for Codex, the matching `opencode-agents/*.md` walks for OpenCode, and `junie-agents/*.md` walks for Junie. Codex resolves runtime-neutral spawn prose by TOML `name`; OpenCode resolves by filename-derived markdown agent name and also supports manual `@<name>` invocation; Junie consumes Markdown/YAML subagent files from `~/.junie/agents` for automatic delegation. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](skills/bill-feature-implement/parsing_tolerance.md).
+Native subagent definitions are installed only for orchestrators that ship them. The source of truth is one provider-neutral markdown file per subagent under `native-agents/<name>.md`; provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. `skill-bill render` validates those source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](skills/bill-feature-implement/parsing_tolerance.md).
 
 ## Start here
 

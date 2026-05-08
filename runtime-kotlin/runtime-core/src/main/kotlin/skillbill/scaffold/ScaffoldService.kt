@@ -722,12 +722,10 @@ private fun stageSubagentStubs(
 ): List<Path> {
   val staged = mutableListOf<Path>()
   specialists.forEach { specialist ->
-    val codexPath = orchestratorSkillPath.resolve("codex-agents").resolve("$specialist.toml")
-    stageFile(txn, codexPath, renderCodexAgentTomlStub(specialist, orchestratorName))
-    staged.add(codexPath)
-    val opencodePath = orchestratorSkillPath.resolve("opencode-agents").resolve("$specialist.md")
-    stageFile(txn, opencodePath, renderOpencodeAgentMdStub(specialist, orchestratorName))
-    staged.add(opencodePath)
+    val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("$specialist.md")
+    val sourceText = renderNativeAgentSourceStub(specialist, orchestratorName)
+    stageFile(txn, sourcePath, sourceText)
+    staged.add(sourcePath)
   }
   return staged
 }
@@ -1062,8 +1060,7 @@ private fun previewSubagentStubFiles(plan: ScaffoldPlan): List<Path> {
     }
   return plan.subagentSpecialists.flatMap { specialist ->
     listOf(
-      stubDir.resolve("codex-agents").resolve("$specialist.toml"),
-      stubDir.resolve("opencode-agents").resolve("$specialist.md"),
+      stubDir.resolve("native-agents").resolve("$specialist.md"),
     )
   }
 }
@@ -1080,7 +1077,7 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
     }
   return listOf(
     "Subagent stubs emitted: ${plan.subagentSpecialists.size}. " +
-      "Fill in the TODO placeholders in $stubDir/codex-agents/ and $stubDir/opencode-agents/ before shipping.",
+      "Fill in the TODO placeholders in $stubDir/native-agents/ before shipping; install renders provider artifacts.",
   )
 }
 

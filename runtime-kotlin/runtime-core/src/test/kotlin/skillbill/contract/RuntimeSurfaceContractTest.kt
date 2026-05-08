@@ -4,6 +4,7 @@ import skillbill.contracts.surface.RuntimeSurfaceContract
 import skillbill.contracts.surface.RuntimeSurfaceStatus
 import skillbill.install.InstallRuntime
 import skillbill.launcher.LauncherRuntime
+import skillbill.nativeagent.NativeAgentRuntime
 import skillbill.scaffold.ScaffoldRuntime
 import skillbill.workflow.implement.FeatureImplementWorkflowRuntime
 import skillbill.workflow.verify.FeatureVerifyWorkflowRuntime
@@ -38,10 +39,13 @@ class RuntimeSurfaceContractTest {
         "agent-path",
         "detect-agents",
         "codex-agents-path",
+        "claude-agents-path",
         "opencode-agents-path",
         "junie-agents-path",
         "link-skill",
         "cleanup-agent-target",
+        "link-claude-agents",
+        "unlink-claude-agents",
         "link-codex-agents",
         "unlink-codex-agents",
         "link-opencode-agents",
@@ -60,6 +64,22 @@ class RuntimeSurfaceContractTest {
       name = "scaffold",
       ownerPackage = "skillbill.scaffold",
       supportedOperations = listOf("load-pack", "discover-packs", "discover-addons", "scaffold", "dry-run"),
+    )
+  }
+
+  @Test
+  fun `native agent runtime contract locks current surface`() {
+    assertSurfaceContract(
+      contract = NativeAgentRuntime.contract,
+      name = "native-agent",
+      ownerPackage = "skillbill.nativeagent",
+      supportedOperations = listOf(
+        "parse-source",
+        "render-source",
+        "render-install-artifacts",
+        "validate-repo",
+        "regenerate",
+      ),
     )
   }
 

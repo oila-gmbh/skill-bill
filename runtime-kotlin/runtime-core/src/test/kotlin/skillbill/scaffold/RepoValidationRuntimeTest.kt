@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import skillbill.nativeagent.NativeAgentSource
+import skillbill.nativeagent.renderNativeAgentSource
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -128,14 +130,82 @@ class RepoValidationRuntimeTest {
   fun `repo validation skips native agent markdown skill references`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-refs")
     createRepoValidationSkillFixture(repoRoot)
-    val junieAgent = repoRoot.resolve("skills/bill-code-review/junie-agents/bill-code-review-worker.md")
-    Files.createDirectories(junieAgent.parent)
-    Files.writeString(junieAgent, "---\ndescription: mentions bill-code-review-worker\n---\n")
+    val nativeAgent = repoRoot.resolve("skills/bill-code-review/native-agents/bill-code-review-worker.md")
+    Files.createDirectories(nativeAgent.parent)
+    Files.writeString(
+      nativeAgent,
+      renderNativeAgentSource(
+        NativeAgentSource(
+          name = "bill-code-review-worker",
+          description = "Review changed code.",
+          body = "Mentions bill-code-review-worker inside native agent prose.",
+        ),
+      ),
+    )
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertFalse(
       report.issues.any { it.contains("references unknown skill 'bill-code-review-worker'") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects checked-in generated native agent artifact with source`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-checked-in-artifact")
+    createRepoValidationSkillFixture(repoRoot)
+    writeNativeAgentFixture(repoRoot.resolve("skills/bill-code-review"), "bill-code-review-worker")
+    val generatedArtifact = repoRoot.resolve("skills/bill-code-review/opencode-agents/bill-code-review-worker.md")
+    Files.createDirectories(generatedArtifact.parent)
+    Files.writeString(generatedArtifact, "checked-in generated file\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("opencode-agents/bill-code-review-worker.md") &&
+          it.contains("must not be checked in")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects checked-in generated native agent artifact without source`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-orphan")
+    createRepoValidationSkillFixture(repoRoot)
+    val orphan = repoRoot.resolve("skills/bill-code-review/codex-agents/orphan.toml")
+    Files.createDirectories(orphan.parent)
+    Files.writeString(orphan, "name = \"orphan\"\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { it.contains("codex-agents/orphan.toml") && it.contains("must not be checked in") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects checked-in generated junie native agent artifact`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-junie-checked-in")
+    createRepoValidationSkillFixture(repoRoot)
+    writeNativeAgentFixture(repoRoot.resolve("skills/bill-code-review"), "bill-code-review-worker")
+    val generatedJunie = repoRoot.resolve("skills/bill-code-review/junie-agents/bill-code-review-worker.md")
+    Files.createDirectories(generatedJunie.parent)
+    Files.writeString(generatedJunie, "checked-in junie file\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("junie-agents/bill-code-review-worker.md") &&
+          it.contains("must not be checked in")
+      },
       report.issues.joinToString("\n"),
     )
   }
@@ -178,6 +248,13 @@ class RepoValidationRuntimeTest {
         SidecarMode.GitPlaceholder -> Files.writeString(sidecar, relativeTarget)
       }
     }
+  }
+
+  private fun writeNativeAgentFixture(skillDir: java.nio.file.Path, name: String) {
+    val source = NativeAgentSource(name = name, description = "Review changed code.", body = "# Worker\n\nReview it.")
+    val sourcePath = skillDir.resolve("native-agents/$name.md")
+    Files.createDirectories(sourcePath.parent)
+    Files.writeString(sourcePath, renderNativeAgentSource(source))
   }
 
   private enum class SidecarMode {

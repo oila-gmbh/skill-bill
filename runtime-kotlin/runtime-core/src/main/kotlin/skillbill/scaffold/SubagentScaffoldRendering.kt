@@ -1,14 +1,12 @@
 package skillbill.scaffold
 
+import skillbill.nativeagent.NativeAgentSource
+import skillbill.nativeagent.renderNativeAgentSource
+
 private const val DEFAULT_CODEX_MAX_THREADS = 6
 
-internal fun renderCodexAgentTomlStub(name: String, parentSkill: String): String {
-  val description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping."
-  return buildString {
-    appendLine("name = \"$name\"")
-    appendLine("description = \"$description\"")
-    appendLine()
-    appendLine("developer_instructions = \"\"\"")
+internal fun renderNativeAgentSourceStub(name: String, parentSkill: String): String {
+  val body = buildString {
     appendLine("# ${titleCaseSpecialist(name)} Specialist")
     appendLine()
     appendLine("TODO: replace this placeholder with the specialist briefing.")
@@ -17,28 +15,14 @@ internal fun renderCodexAgentTomlStub(name: String, parentSkill: String): String
       "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk Register format used by " +
         "this orchestrator's review specialists (parent skill: $parentSkill).",
     )
-    appendLine("\"\"\"")
-  }
-}
-
-internal fun renderOpencodeAgentMdStub(name: String, parentSkill: String): String {
-  val description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping."
-  return buildString {
-    appendLine("---")
-    appendLine("name: $name")
-    appendLine("description: $description")
-    appendLine("mode: subagent")
-    appendLine("---")
-    appendLine()
-    appendLine("# ${titleCaseSpecialist(name)} Specialist")
-    appendLine()
-    appendLine("TODO: replace this placeholder with the specialist briefing.")
-    appendLine()
-    appendLine(
-      "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk Register format used by " +
-        "this orchestrator's review specialists (parent skill: $parentSkill).",
-    )
-  }
+  }.trimEnd()
+  return renderNativeAgentSource(
+    NativeAgentSource(
+      name = name,
+      description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
+      body = body,
+    ),
+  )
 }
 
 internal fun renderSubagentSpawnRuntimeNotes(orchestratorName: String, specialists: List<String>): String {

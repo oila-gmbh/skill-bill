@@ -1,56 +1,52 @@
 ---
 name: bill-kmp-code-review-ui
 description: KMP/Compose UI specialist code reviewer. Runs against Compose @Composable functions, UI state, Modifier chains, recomposition handling, theming, accessibility, previews, and Android UI add-ons. Returns a Risk Register in the F-XXX bullet format.
-mode: subagent
 ---
 
 # KMP UI Best Practices
-
 ## Compose Review Rubric
 
 The canonical KMP UI review command stays `bill-kmp-code-review-ui`. Governed add-ons apply only after the parent review has already routed to `kmp`.
 
-When the parent KMP review selects the `android-compose` add-on, apply Android Compose risks alongside the base Compose review rubric. If the add-on is split into topic files, use only the linked topic files whose cues match the diff, such as edge-to-edge and adaptive-layout concerns.
+When the parent KMP review selects the `android-compose` add-on, apply Android Compose risks alongside the base rubric: system bar and IME insets, edge-to-edge drawing, adaptive window sizes, Android resource and lifecycle boundaries, preview fidelity, and Compose performance concerns that are specific to Android runtime behavior.
 
-When the parent KMP review selects `android-navigation`, apply Android-specific navigation UI risks alongside the base Compose review rubric.
+When the parent KMP review selects `android-navigation`, apply Android-specific navigation UI risks alongside the base rubric: back stack correctness, deep link behavior, state restoration, multiple entry points, route argument stability, and UI ownership of navigation lambdas instead of passing `NavController` into screen composables.
 
-When the parent KMP review selects `android-interop`, apply Android host-boundary UI risks alongside the base Compose review rubric.
+When the parent KMP review selects `android-interop`, apply Android host-boundary UI risks alongside the base rubric: `AndroidView` lifecycle, view reuse and update blocks, fragment/view ownership, focus and accessibility handoff, disposal, and avoiding duplicated state between Compose and the hosted Android view.
 
-When the parent KMP review selects `android-design-system`, apply Android design-system and theme risks alongside the base Compose review rubric.
+When the parent KMP review selects `android-design-system`, apply Android design-system and theme risks alongside the base rubric: Material theme token use, typography and color roles, component variants, dark mode, dynamic color, density/font-scale behavior, and avoiding one-off visual constants.
 
 When no governed add-on applies, use the base Compose review rubric by itself.
 
-For review enforcement, apply the Compose review rubric covering state hoisting, signature conventions, recomposition and performance, theming, string resources, composable structure, side effects, navigation, previews, error/loading states, UI element selection, modifier best practices, and ViewModel integration.
+For review enforcement, use this Compose review rubric: state hoisting, signature conventions, recomposition & performance, theming, string resources, composable structure, side effects, navigation, previews, error/loading states, UI element selection, modifier best practices, and ViewModel integration.
 
-Apply every section from the Compose review rubric as a review checklist when reviewing `@Composable` code. Use governed add-ons only to extend the routed KMP review with transferable Android/Compose concerns; do not treat an add-on as a standalone review command.
+Apply every section from this rubric as a review checklist when reviewing `@Composable` code. Use the governed add-on only to extend the routed KMP review with transferable Android/Compose concerns; do not treat it as a standalone review command.
 
 ## Checklist
 
 Before considering a composable done, verify:
 
-- State is hoisted: composable is stateless with a stateful wrapper
+- State is hoisted — composable is stateless with a stateful wrapper
 - `modifier: Modifier = Modifier` on every public/internal composable below screen level
 - `modifier` applied only to root element
-- No hardcoded strings: all user-facing text uses `stringResource`
-- No hardcoded colors, sizes, or spacing: uses theme tokens
-- Stable types only: uses `@Immutable` / `ImmutableList` / primitives
+- No hardcoded strings — all user-facing text uses `stringResource`
+- No hardcoded colors, sizes, or spacing — uses theme tokens
+- Stable types only — uses `@Immutable` / `ImmutableList` / primitives
 - `collectAsStateWithLifecycle()` for flow collection
 - `rememberSaveable` for state surviving config changes
 - `LazyColumn` / `LazyRow` items have `key` and `contentType`
 - Accessibility: all images/icons have appropriate `contentDescription`
 - Side effects use correct API (`LaunchedEffect`, `DisposableEffect`, etc.)
-- No `NavController` in screen composables: navigation via lambdas
+- No `NavController` in screen composables — navigation via lambdas
 - Preview annotations: light + dark mode minimum
 - All states handled: loading, content, error, empty
 - `Modifier.testTag` on key interactive elements
-- No unnecessary decomposition: extractions have a reason
-- File organization: screen, helpers, previews, from top to bottom
+- No unnecessary decomposition — extractions have a reason
+- File organization: screen → helpers → previews (top to bottom)
 
 # Shared Specialist Contract
 
-This is the delegated-worker subset of the full review-orchestrator contract. Orchestrators read the full `review-orchestrator.md`; delegated specialist subagents read this file instead.
-
-Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
+This is the delegated-worker subset of the full review-orchestrator contract. Orchestrators read the full review-orchestrator contract; delegated specialist subagents read this content instead.
 
 ## Shared Contract For Every Specialist
 

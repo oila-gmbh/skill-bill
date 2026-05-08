@@ -1,45 +1,44 @@
 ---
-name: bill-kotlin-code-review-persistence
-description: Kotlin backend persistence specialist code reviewer. Runs against transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Returns a Risk Register in the F-XXX bullet format.
-mode: subagent
+name: bill-kmp-code-review-ux-accessibility
+description: KMP UX & accessibility specialist code reviewer. Runs against user-facing UX states, accessibility semantics, screen-reader/keyboard usability, validation feedback, localization, and error/loading/empty state coverage. Returns a Risk Register in the F-XXX bullet format.
 ---
 
-# Backend Persistence Review Specialist
+# UX & Accessibility Review Specialist
 
-Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
+Review only user-impacting UX/accessibility issues.
 
 ## Focus
-- Transaction boundaries and atomicity
-- Query correctness and tenant/filter scoping
-- Lost updates, race-prone write patterns, and idempotent persistence behavior
-- Migration/schema compatibility risks
-- ORM/SQL mapping mismatches that break reads or writes
+- Broken/ambiguous UX states and recovery flows
+- Accessibility semantics, labels, focus order, and keyboard/talkback usability
+- Validation/error visibility and actionable feedback
+- Read-only/editable behavior mismatches
+- User-facing inconsistency with product intent
+
+## UI Delegation
+- If KMP UI files are in scope, run `bill-kmp-code-review-ui` and merge relevant findings.
 
 ## Ignore
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or production impact
-
-## Applicability
-
-Use this specialist for backend/server persistence code routed through the built-in Kotlin pack: repositories, DAOs, SQL, migrations, jOOQ, Exposed, JDBC, Hibernate/JPA, R2DBC, or similar layers.
+- Pure visual preference debates without usability impact
 ## Project-Specific Rules
 
-- Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
-- Avoid load-modify-save patterns that can lose concurrent updates when atomic SQL or version checks are required
-- Repository methods must apply required tenant/account/ownership filters consistently
-- Upserts, deduplication, and unique-constraint behavior should match the intended idempotency contract
-- Migrations must account for existing data, nullability transitions, indexes, and rollout compatibility
-- Connection pools, database sessions, cursors, ResultSets, and Statements must be closed reliably; use `use {}` or the framework equivalent consistently
-- Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
-- Do not hold persistence transactions open while waiting on remote I/O
-- Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-- For Major or Blocker findings, explain the data-loss, stale-write, or consistency consequence explicitly.
+### Localization
+- All user-facing strings must use `stringResource(R.string.xxx)` — no hardcoded strings
+- Never delete existing translations or `strings.xml` files
+- Check for existing matching strings before creating new ones — reuse
+- When removing UI components, verify orphaned string resources are cleaned up
+
+### Previews
+- Screens and components must have `@Preview` annotations
+- Previews must use the project's theme composable
+
+### Error States
+- Screens must handle loading, content, error, and empty states
+- Error messages come from UI (string resources), not ViewModel
+- In findings, make the user-visible accessibility or UX consequence explicit.
 
 # Shared Specialist Contract
 
-This is the delegated-worker subset of the full review-orchestrator contract. Orchestrators read the full `review-orchestrator.md`; delegated specialist subagents read this file instead.
-
-Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
+This is the delegated-worker subset of the full review-orchestrator contract. Orchestrators read the full review-orchestrator contract; delegated specialist subagents read this content instead.
 
 ## Shared Contract For Every Specialist
 

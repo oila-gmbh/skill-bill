@@ -9,8 +9,25 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.install.InstallCleanupOperations
 import skillbill.install.InstallNativeAgentOperations
 import skillbill.install.InstallOperations
+import skillbill.install.NativeAgentLinkOutcome
 import skillbill.launcher.McpRegistrationOperations
 import java.nio.file.Path
+
+internal fun completeNativeAgentLinkOutcome(state: CliRunState, outcome: NativeAgentLinkOutcome) {
+  val text = (
+    outcome.linked.map { path -> "linked\t$path" } +
+      outcome.skipped.map { entry -> "skipped\t${entry.path}\t${entry.reason}" }
+    ).joinToString("\n")
+  state.completeText(
+    text,
+    mapOf(
+      "linked" to outcome.linked.map(Path::toString),
+      "skipped" to outcome.skipped.map { skip ->
+        mapOf("path" to skip.path.toString(), "reason" to skip.reason)
+      },
+    ),
+  )
+}
 
 @Inject
 class InstallCleanupAgentTargetCommand(
@@ -48,6 +65,15 @@ class InstallCodexAgentsPathCommand(
 }
 
 @Inject
+class InstallClaudeAgentsPathCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("claude-agents-path", "Print the Claude native subagent markdown directory.") {
+  override fun run() {
+    state.completeText(InstallOperations.claudeAgentsPath(state.userHome).toString(), emptyMap())
+  }
+}
+
+@Inject
 class InstallOpencodeAgentsPathCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("opencode-agents-path", "Print the OpenCode native subagent markdown directory.") {
@@ -66,22 +92,64 @@ class InstallJunieAgentsPathCommand(
 }
 
 @Inject
-class InstallLinkCodexAgentsCommand(
+class InstallLinkClaudeAgentsCommand(
   private val state: CliRunState,
-) : DocumentedCliCommand("link-codex-agents", "Link Codex native subagent TOMLs from repo discovery roots.") {
+) : DocumentedCliCommand("link-claude-agents", "Render and link Claude native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
-    val links =
-      InstallNativeAgentOperations.linkCodexAgents(
+    completeNativeAgentLinkOutcome(
+      state,
+      InstallNativeAgentOperations.linkClaudeAgents(
+        platformPacksRoot = Path.of(platformPacks),
+        skillsRoot = skills?.let(Path::of),
+        home = state.userHome,
+        selectedPlatforms = platforms.ifEmpty { null },
+      ),
+    )
+  }
+}
+
+@Inject
+class InstallUnlinkClaudeAgentsCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("unlink-claude-agents", "Remove Claude native subagent markdown symlinks.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    val removed =
+      InstallNativeAgentOperations.unlinkClaudeAgents(
         platformPacksRoot = Path.of(platformPacks),
         skillsRoot = skills?.let(Path::of),
         home = state.userHome,
         selectedPlatforms = platforms.ifEmpty { null },
       )
-    state.completeText(links.joinToString("\n"), mapOf("linked" to links.map(Path::toString)))
+    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
+  }
+}
+
+@Inject
+class InstallLinkCodexAgentsCommand(
+  private val state: CliRunState,
+) : DocumentedCliCommand("link-codex-agents", "Render and link Codex native subagent TOMLs from source agents.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    completeNativeAgentLinkOutcome(
+      state,
+      InstallNativeAgentOperations.linkCodexAgents(
+        platformPacksRoot = Path.of(platformPacks),
+        skillsRoot = skills?.let(Path::of),
+        home = state.userHome,
+        selectedPlatforms = platforms.ifEmpty { null },
+      ),
+    )
   }
 }
 
@@ -108,20 +176,24 @@ class InstallUnlinkCodexAgentsCommand(
 @Inject
 class InstallLinkOpencodeAgentsCommand(
   private val state: CliRunState,
-) : DocumentedCliCommand("link-opencode-agents", "Link OpenCode native subagent markdown from repo discovery roots.") {
+) : DocumentedCliCommand(
+  "link-opencode-agents",
+  "Render and link OpenCode native subagent markdown from source agents.",
+) {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
-    val links =
+    completeNativeAgentLinkOutcome(
+      state,
       InstallNativeAgentOperations.linkOpencodeAgents(
         platformPacksRoot = Path.of(platformPacks),
         skillsRoot = skills?.let(Path::of),
         home = state.userHome,
         selectedPlatforms = platforms.ifEmpty { null },
-      )
-    state.completeText(links.joinToString("\n"), mapOf("linked" to links.map(Path::toString)))
+      ),
+    )
   }
 }
 
@@ -148,20 +220,21 @@ class InstallUnlinkOpencodeAgentsCommand(
 @Inject
 class InstallLinkJunieAgentsCommand(
   private val state: CliRunState,
-) : DocumentedCliCommand("link-junie-agents", "Link Junie native subagent markdown from repo discovery roots.") {
+) : DocumentedCliCommand("link-junie-agents", "Render and link Junie native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
-    val links =
+    completeNativeAgentLinkOutcome(
+      state,
       InstallNativeAgentOperations.linkJunieAgents(
         platformPacksRoot = Path.of(platformPacks),
         skillsRoot = skills?.let(Path::of),
         home = state.userHome,
         selectedPlatforms = platforms.ifEmpty { null },
-      )
-    state.completeText(links.joinToString("\n"), mapOf("linked" to links.map(Path::toString)))
+      ),
+    )
   }
 }
 

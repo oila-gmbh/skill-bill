@@ -4,6 +4,9 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.ShellContentContractException
+import skillbill.nativeagent.NATIVE_AGENT_SOURCE_DIR
+import skillbill.nativeagent.NativeAgentOperations
+import skillbill.nativeagent.validateRepoNativeAgents
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -17,6 +20,7 @@ data class RepoValidationReport(
   val skillCount: Int,
   val addonCount: Int,
   val platformPackCount: Int,
+  val nativeAgentCount: Int,
 ) {
   val passed: Boolean = issues.isEmpty()
 
@@ -25,6 +29,7 @@ data class RepoValidationReport(
     "skill_count" to skillCount,
     "governed_addon_count" to addonCount,
     "platform_pack_count" to platformPackCount,
+    "native_agent_count" to nativeAgentCount,
     "issues" to issues,
   )
 }
@@ -82,6 +87,7 @@ object RepoValidationRuntime {
     val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
     val addonFiles = discoverAllAddonFiles(root)
     val platformPacks = validatePlatformPacks(root, issues)
+    val nativeAgentSources = NativeAgentOperations.discoverRepoNativeAgentSources(root)
 
     skillFiles.forEach { (skillName, skillFile) ->
       validateInstallableSkill(skillName, skillFile, root, issues)
@@ -102,12 +108,14 @@ object RepoValidationRuntime {
     validateOrchestrationPlaybooks(root, issues)
     validateNoInlineTelemetryContractDrift(root, issues)
     validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
+    issues += validateRepoNativeAgents(root).issues
 
     return RepoValidationReport(
       issues = issues.sorted(),
       skillCount = skillNames.size,
       addonCount = addonFiles.size,
       platformPackCount = platformPacks,
+      nativeAgentCount = nativeAgentSources.size,
     )
   }
 
@@ -353,7 +361,10 @@ object RepoValidationRuntime {
 
   private fun isSkillReferenceScanTarget(relativePath: Path): Boolean {
     val parts = relativePath.map(Path::toString)
-    return "opencode-agents" !in parts && "junie-agents" !in parts
+    if (NATIVE_AGENT_SOURCE_DIR in parts) {
+      return false
+    }
+    return skillbill.nativeagent.NativeAgentProvider.entries.none { provider -> provider.directoryName in parts }
   }
 
   private fun validateSkillReferencesInFile(

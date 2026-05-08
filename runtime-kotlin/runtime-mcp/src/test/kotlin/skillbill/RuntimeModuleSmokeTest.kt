@@ -8,6 +8,7 @@ import skillbill.install.InstallRuntime
 import skillbill.launcher.LauncherRuntime
 import skillbill.learnings.LearningsRuntime
 import skillbill.mcp.McpRuntime
+import skillbill.nativeagent.NativeAgentRuntime
 import skillbill.review.ReviewParser
 import skillbill.scaffold.ScaffoldRuntime
 import skillbill.telemetry.TelemetryRuntime
@@ -83,7 +84,7 @@ class RuntimeModuleSmokeTest {
       )
     }
     assertEquals(
-      setOf("install", "launcher", "scaffold"),
+      setOf("install", "launcher", "native-agent", "scaffold"),
       activeRuntimeContracts.map(RuntimeSurfaceContract::name).toSet(),
     )
     activeRuntimeContracts.forEach { contract ->
@@ -114,6 +115,7 @@ class RuntimeModuleSmokeTest {
         "skillbill.scaffold",
         "skillbill.contracts",
         "skillbill.install",
+        "skillbill.nativeagent",
         "skillbill.error",
       )
     val runtimeSurfaces =
@@ -126,11 +128,17 @@ class RuntimeModuleSmokeTest {
         ReviewParser::class,
         LearningsRuntime::class,
         InstallRuntime::class,
+        NativeAgentRuntime::class,
         ScaffoldRuntime::class,
       )
     val reservedContracts =
       emptyList<RuntimeSurfaceContract>()
-    val activeRuntimeContracts = listOf(InstallRuntime.contract, LauncherRuntime.contract, ScaffoldRuntime.contract)
+    val activeRuntimeContracts = listOf(
+      InstallRuntime.contract,
+      LauncherRuntime.contract,
+      NativeAgentRuntime.contract,
+      ScaffoldRuntime.contract,
+    )
     val workflowContracts = listOf(FeatureImplementWorkflowRuntime.contract, FeatureVerifyWorkflowRuntime.contract)
     val runtimeSurfacePackages: Set<String> =
       runtimeSurfaces

@@ -108,17 +108,20 @@ Every payload MUST include:
   `InvalidScaffoldPayloadError`. Default: `false`.
 
 When `subagent_specialists` is non-empty (and not suppressed), the
-scaffolder emits one Codex TOML stub at
-`<orchestrator-skill-dir>/codex-agents/<name>.toml` and one OpenCode
-markdown stub at
-`<orchestrator-skill-dir>/opencode-agents/<name>.md` per specialist. It
-also injects a `## Subagent Spawn Runtime Notes` section into the
-orchestrator's `content.md` that documents how Claude, Codex, and
-OpenCode each resolve specialist spawns. Stubs ship with a `TODO:`
-description and body plus a free-text pointer to
-`specialist-contract.md` for the F-XXX Risk Register format used by
-review specialists; they do NOT include literal `F-XXX` markers.
-Authors fill in the TODO placeholders before shipping.
+scaffolder emits one provider-neutral source stub at
+`<orchestrator-skill-dir>/native-agents/<name>.md` per specialist.
+Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are
+self-contained install-cache outputs generated from those sources during
+install. Authors edit `native-agents/<name>.md`, then run
+`skill-bill render` to validate source renderability. The scaffolder also
+injects a `## Subagent Spawn Runtime Notes` section into the
+orchestrator's `content.md` that documents how Claude, Codex, OpenCode,
+and Junie resolve specialist spawns. Source stubs ship with a `TODO:`
+description and body plus a free-text pointer to `specialist-contract.md`
+for the F-XXX Risk Register format used by review specialists; they do
+NOT include literal `F-XXX` markers. Authors fill in the TODO placeholders
+before shipping, and repo validation fails if generated provider artifacts
+are checked into the repo.
 
 ## Worked Examples
 

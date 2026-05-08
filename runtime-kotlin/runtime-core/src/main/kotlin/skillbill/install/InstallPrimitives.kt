@@ -9,6 +9,7 @@ import java.nio.file.Path
 
 internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode", "junie")
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
+internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
 

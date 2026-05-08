@@ -40,7 +40,8 @@ class ValidateAgentConfigsCommand(
         appendLine("Agent-config validation passed.")
         appendLine(
           "Validated ${report.skillCount} skills, ${report.addonCount} governed add-on files, " +
-            "${report.platformPackCount} platform packs, README catalog, skill references, and workflow contracts.",
+            "${report.platformPackCount} platform packs, ${report.nativeAgentCount} native agents, README catalog, " +
+            "skill references, and workflow contracts.",
         )
       }
     } else {

@@ -1,6 +1,11 @@
 package skillbill.cli
 
 import skillbill.contracts.JsonSupport
+import skillbill.nativeagent.NativeAgentProvider
+import skillbill.nativeagent.NativeAgentSource
+import skillbill.nativeagent.parseNativeAgentSource
+import skillbill.nativeagent.renderNativeAgent
+import skillbill.nativeagent.renderNativeAgentSource
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -17,9 +22,12 @@ class CliInstallRuntimeTest {
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")))
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")))
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}"), fixture.junieMd)
+    assertGeneratedAgentLinked(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}"), fixture.codexToml)
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}"),
+      fixture.opencodeMd,
+    )
+    assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}"), fixture.junieMd)
 
     assertEquals(0, runInstall(fixture, "unlink-codex-agents").exitCode)
     assertEquals(0, runInstall(fixture, "unlink-opencode-agents").exitCode)
@@ -30,6 +38,23 @@ class CliInstallRuntimeTest {
   }
 
   @Test
+  fun `claude native subagent commands link and unlink authored agent files`() {
+    val fixture = installFixture()
+    val sourcePath = fixture.codexToml.parent.parent
+      .resolve("native-agents/${fixture.codexToml.fileName.toString().removeSuffix(".toml")}.md")
+    val source = parseNativeAgentSource(sourcePath)
+    val target = fixture.home.resolve(".claude/agents/${source.name}.md")
+
+    assertEquals(0, runInstall(fixture, "link-claude-agents").exitCode)
+
+    assertGeneratedAgentLinked(target, expected = null)
+    assertEquals(renderNativeAgent(source, NativeAgentProvider.Claude), Files.readString(target))
+
+    assertEquals(0, runInstall(fixture, "unlink-claude-agents").exitCode)
+    assertFalse(Files.exists(target))
+  }
+
+  @Test
   fun `native subagent commands only link selected platforms`() {
     val fixture = installFixture()
 
@@ -37,12 +62,27 @@ class CliInstallRuntimeTest {
     assertEquals(0, runInstall(fixture, "link-opencode-agents", "--platform", "kmp").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents", "--platform", "kmp").exitCode)
 
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".codex/agents/${fixture.baseCodexToml.fileName}")))
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".config/opencode/agents/${fixture.baseOpencodeMd.fileName}")))
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"), fixture.baseJunieMd)
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".codex/agents/${fixture.kmpCodexToml.fileName}")))
-    assertTrue(Files.isSymbolicLink(fixture.home.resolve(".config/opencode/agents/${fixture.kmpOpencodeMd.fileName}")))
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".codex/agents/${fixture.baseCodexToml.fileName}"),
+      fixture.baseCodexToml,
+    )
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".config/opencode/agents/${fixture.baseOpencodeMd.fileName}"),
+      fixture.baseOpencodeMd,
+    )
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"),
+      fixture.baseJunieMd,
+    )
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".codex/agents/${fixture.kmpCodexToml.fileName}"),
+      fixture.kmpCodexToml,
+    )
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".config/opencode/agents/${fixture.kmpOpencodeMd.fileName}"),
+      fixture.kmpOpencodeMd,
+    )
+    assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
     assertFalse(Files.exists(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")))
     assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")))
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")))
@@ -53,16 +93,22 @@ class CliInstallRuntimeTest {
     val fixture = installFixture()
 
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"), fixture.baseJunieMd)
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}"), fixture.junieMd)
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"),
+      fixture.baseJunieMd,
+    )
+    assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}"), fixture.junieMd)
+    assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
 
     assertEquals(0, runInstall(fixture, "unlink-junie-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents", "--platform", "kmp").exitCode)
 
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"), fixture.baseJunieMd)
+    assertGeneratedAgentLinked(
+      fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"),
+      fixture.baseJunieMd,
+    )
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")))
-    assertJunieAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
+    assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
   }
 
   @Test
@@ -91,28 +137,150 @@ class CliInstallRuntimeTest {
   }
 
   @Test
-  fun `native subagent discovery ignores symlinked source files`() {
+  fun `native subagent commands replace legacy repository artifact symlinks`() {
     val fixture = installFixture()
-    val outsideCodexSource = fixture.home.resolve("outside-codex.toml")
-    val outsideOpencodeSource = fixture.home.resolve("outside-opencode.md")
-    val outsideJunieSource = fixture.home.resolve("outside-junie.md")
-    Files.writeString(outsideCodexSource, "name = \"outside\"\n")
-    Files.writeString(outsideOpencodeSource, "---\nname: outside\n---\n")
-    Files.writeString(outsideJunieSource, "---\ndescription: outside\n---\n")
-    val codexSymlink = fixture.codexToml.parent.resolve("bill-symlinked.toml")
-    val opencodeSymlink = fixture.opencodeMd.parent.resolve("bill-symlinked.md")
-    val junieSymlink = fixture.junieMd.parent.resolve("bill-symlinked.md")
-    Files.createSymbolicLink(codexSymlink, outsideCodexSource)
-    Files.createSymbolicLink(opencodeSymlink, outsideOpencodeSource)
-    Files.createSymbolicLink(junieSymlink, outsideJunieSource)
+    val codexTarget = fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")
+    val opencodeTarget = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
+    val junieTarget = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
+    val legacyRoot = fixture.home.resolve("old-repo")
+    val legacyCodex = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/codex-agents")
+      .resolve(fixture.codexToml.fileName)
+    val legacyOpencode = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/opencode-agents")
+      .resolve(fixture.opencodeMd.fileName)
+    val legacyJunie = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/junie-agents")
+      .resolve(fixture.junieMd.fileName)
+    listOf(legacyCodex, legacyOpencode, legacyJunie).forEach { legacy ->
+      Files.createDirectories(legacy.parent)
+      Files.writeString(legacy, "legacy generated artifact\n")
+    }
+    Files.createDirectories(codexTarget.parent)
+    Files.createDirectories(opencodeTarget.parent)
+    Files.createDirectories(junieTarget.parent)
+    Files.createSymbolicLink(codexTarget, legacyCodex)
+    Files.createSymbolicLink(opencodeTarget, legacyOpencode)
+    Files.createSymbolicLink(junieTarget, legacyJunie)
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
-    assertFalse(Files.exists(fixture.home.resolve(".codex/agents/${codexSymlink.fileName}")))
-    assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/${opencodeSymlink.fileName}")))
-    assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${junieSymlink.fileName}")))
+    assertGeneratedAgentLinked(codexTarget, fixture.codexToml)
+    assertGeneratedAgentLinked(opencodeTarget, fixture.opencodeMd)
+    assertGeneratedAgentLinked(junieTarget, fixture.junieMd)
+    assertFalse(Files.readString(codexTarget).contains("legacy generated artifact"))
+    assertFalse(Files.readString(opencodeTarget).contains("legacy generated artifact"))
+    assertFalse(Files.readString(junieTarget).contains("legacy generated artifact"))
+  }
+
+  @Test
+  fun `native subagent commands replace stale install cache symlinks`() {
+    val fixture = installFixture()
+    val codexTarget = fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")
+    val opencodeTarget = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
+    val junieTarget = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
+    val oldCache = fixture.home.resolve(".skill-bill/native-agents/old-cache-key")
+    val oldCodex = oldCache.resolve("codex-agents/${fixture.codexToml.fileName}")
+    val oldOpencode = oldCache.resolve("opencode-agents/${fixture.opencodeMd.fileName}")
+    val oldJunie = oldCache.resolve("junie-agents/${fixture.junieMd.fileName}")
+    listOf(oldCodex, oldOpencode, oldJunie).forEach { stale ->
+      Files.createDirectories(stale.parent)
+      Files.writeString(stale, "stale cache artifact\n")
+    }
+    Files.createDirectories(codexTarget.parent)
+    Files.createDirectories(opencodeTarget.parent)
+    Files.createDirectories(junieTarget.parent)
+    Files.createSymbolicLink(codexTarget, oldCodex)
+    Files.createSymbolicLink(opencodeTarget, oldOpencode)
+    Files.createSymbolicLink(junieTarget, oldJunie)
+
+    assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
+
+    assertGeneratedAgentLinked(codexTarget, fixture.codexToml)
+    assertGeneratedAgentLinked(opencodeTarget, fixture.opencodeMd)
+    assertGeneratedAgentLinked(junieTarget, fixture.junieMd)
+    assertFalse(codexTarget.toRealPath().startsWith(oldCache))
+    assertFalse(opencodeTarget.toRealPath().startsWith(oldCache))
+    assertFalse(junieTarget.toRealPath().startsWith(oldCache))
+  }
+
+  @Test
+  fun `native subagent discovery ignores symlinked source files`() {
+    val fixture = installFixture()
+    val outsideSource = fixture.home.resolve("outside-native.md")
+    Files.writeString(
+      outsideSource,
+      renderNativeAgentSource(
+        NativeAgentSource(name = "bill-symlinked", description = "Outside source.", body = "# Outside\n"),
+      ),
+    )
+    val sourceSymlink = fixture.codexToml.parent.parent.resolve("native-agents/bill-symlinked.md")
+    Files.createSymbolicLink(sourceSymlink, outsideSource)
+
+    assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
+
+    assertFalse(Files.exists(fixture.home.resolve(".codex/agents/bill-symlinked.toml")))
+    assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/bill-symlinked.md")))
+    assertFalse(Files.exists(fixture.home.resolve(".junie/agents/bill-symlinked.md")))
+  }
+
+  @Test
+  fun `native subagent install renders from source without rewriting stale repository artifacts`() {
+    val fixture = installFixture()
+    val stale = "stale generated file\n"
+    Files.createDirectories(fixture.opencodeMd.parent)
+    Files.writeString(fixture.opencodeMd, stale)
+
+    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
+
+    assertEquals(stale, Files.readString(fixture.opencodeMd))
+    val installed = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
+    assertGeneratedAgentLinked(installed, expected = null)
+    assertContains(Files.readString(installed), "mode: subagent")
+    assertFalse(Files.readString(installed).contains(stale))
+  }
+
+  @Test
+  fun `link claude agents fails atomically when one source has invalid frontmatter`() {
+    val fixture = installFixture()
+    val skillDir = fixture.codexToml.parent.parent
+    val malformedSourcePath = skillDir.resolve("native-agents/bill-malformed-source.md")
+    Files.writeString(
+      malformedSourcePath,
+      """
+      ---
+      name: bill-malformed-source
+      ---
+
+      # Body
+      """.trimIndent(),
+    )
+
+    val result = runInstall(fixture, "link-claude-agents")
+
+    assertEquals(1, result.exitCode, result.stdout)
+    val claudeAgentsDir = fixture.home.resolve(".claude/agents")
+    if (Files.exists(claudeAgentsDir)) {
+      val partialFiles = Files.list(claudeAgentsDir).use { stream ->
+        stream.filter { path -> path.fileName.toString().startsWith("bill-") }.toList()
+      }
+      assertTrue(partialFiles.isEmpty(), "Expected no partial Claude agent files but found $partialFiles")
+    }
+  }
+
+  @Test
+  fun `native subagent install does not modify repository source files`() {
+    val fixture = installFixture()
+    val before = snapshotInstallRepo(fixture)
+
+    assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
+
+    assertEquals(before, snapshotInstallRepo(fixture))
   }
 
   @Test
@@ -216,6 +384,7 @@ class CliInstallRuntimeTest {
 
   private fun installFixture(): InstallFixture {
     val home = Files.createTempDirectory("skillbill-cli-install-native")
+    Files.createDirectories(home.resolve(".claude"))
     Files.createDirectories(home.resolve(".codex"))
     Files.createDirectories(home.resolve(".config/opencode"))
     Files.createDirectories(home.resolve(".junie"))
@@ -224,21 +393,18 @@ class CliInstallRuntimeTest {
     val baseCodexAgents = skills.resolve("bill-code-review/codex-agents")
     val baseOpencodeAgents = skills.resolve("bill-code-review/opencode-agents")
     val baseJunieAgents = skills.resolve("bill-code-review/junie-agents")
+    val baseNativeAgents = skills.resolve("bill-code-review/native-agents")
     val codexAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/codex-agents")
     val opencodeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/opencode-agents")
     val junieAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/junie-agents")
+    val nativeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/native-agents")
     val kmpCodexAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/codex-agents")
     val kmpOpencodeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/opencode-agents")
     val kmpJunieAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/junie-agents")
-    Files.createDirectories(baseCodexAgents)
-    Files.createDirectories(baseOpencodeAgents)
-    Files.createDirectories(baseJunieAgents)
-    Files.createDirectories(codexAgents)
-    Files.createDirectories(opencodeAgents)
-    Files.createDirectories(junieAgents)
-    Files.createDirectories(kmpCodexAgents)
-    Files.createDirectories(kmpOpencodeAgents)
-    Files.createDirectories(kmpJunieAgents)
+    val kmpNativeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/native-agents")
+    Files.createDirectories(baseNativeAgents)
+    Files.createDirectories(nativeAgents)
+    Files.createDirectories(kmpNativeAgents)
     val baseCodexToml = baseCodexAgents.resolve("bill-code-review-worker.toml")
     val baseOpencodeMd = baseOpencodeAgents.resolve("bill-code-review-worker.md")
     val baseJunieMd = baseJunieAgents.resolve("bill-code-review-worker.md")
@@ -267,44 +433,40 @@ class CliInstallRuntimeTest {
   }
 
   private fun writeInstallFixtureFiles(fixture: InstallFixture) {
-    Files.writeString(fixture.baseCodexToml, "name = \"bill-code-review-worker\"\n")
-    Files.writeString(
-      fixture.baseOpencodeMd,
-      opencodeAgentMarkdown("bill-code-review-worker", "Review changed code."),
-    )
-    Files.writeString(
-      fixture.baseJunieMd,
-      junieAgentMarkdown("bill-code-review-worker", "Review changed code."),
-    )
-    Files.writeString(fixture.codexToml, "name = \"bill-kotlin-code-review-testing\"\n")
-    Files.writeString(
-      fixture.opencodeMd,
-      opencodeAgentMarkdown("bill-kotlin-code-review-testing", "Review Kotlin tests."),
-    )
-    Files.writeString(
-      fixture.junieMd,
-      junieAgentMarkdown("bill-kotlin-code-review-testing", "Review Kotlin tests."),
-    )
-    Files.writeString(fixture.kmpCodexToml, "name = \"bill-kmp-code-review-ui\"\n")
-    Files.writeString(
-      fixture.kmpOpencodeMd,
-      opencodeAgentMarkdown("bill-kmp-code-review-ui", "Review KMP UI."),
-    )
-    Files.writeString(fixture.kmpJunieMd, junieAgentMarkdown("bill-kmp-code-review-ui", "Review KMP UI."))
+    writeNativeAgentSet(fixture.baseCodexToml, "bill-code-review-worker", "Review changed code.")
+    writeNativeAgentSet(fixture.codexToml, "bill-kotlin-code-review-testing", "Review Kotlin tests.")
+    writeNativeAgentSet(fixture.kmpCodexToml, "bill-kmp-code-review-ui", "Review KMP UI.")
   }
 
-  private fun assertJunieAgentLinked(path: Path, source: Path) {
+  private fun assertGeneratedAgentLinked(path: Path, expected: Path?) {
     assertTrue(Files.isSymbolicLink(path))
-    assertEquals(source.toRealPath(), path.toRealPath())
-    assertContains(Files.readString(source), "description:")
-    assertFalse("mode: subagent" in Files.readString(source))
+    assertContains(path.toRealPath().toString(), ".skill-bill")
+    if (expected != null) {
+      val provider = NativeAgentProvider.entries.first { provider ->
+        provider.directoryName == expected.parent.fileName.toString()
+      }
+      val name = expected.fileName.toString().removeSuffix(".${provider.extension}")
+      val source = parseNativeAgentSource(expected.parent.parent.resolve("native-agents/$name.md"))
+      assertEquals(renderNativeAgent(source, provider), Files.readString(path))
+    }
   }
 
-  private fun opencodeAgentMarkdown(name: String, description: String): String =
-    "---\nname: $name\ndescription: $description\n---\n"
+  private fun writeNativeAgentSet(codexPath: Path, name: String, description: String) {
+    val skillDir = codexPath.parent.parent
+    val source = NativeAgentSource(name = name, description = description, body = "# $name\n\nDo the work.")
+    Files.writeString(skillDir.resolve("native-agents/$name.md"), renderNativeAgentSource(source))
+  }
 
-  private fun junieAgentMarkdown(name: String, description: String): String =
-    "---\nname: $name\ndescription: $description\n---\n"
+  private fun snapshotInstallRepo(fixture: InstallFixture): Map<String, String> =
+    listOf(fixture.skills, fixture.platformPacks).flatMap { root ->
+      Files.walk(root).use { stream ->
+        stream
+          .filter(Files::isRegularFile)
+          .sorted()
+          .toList()
+          .map { path -> root.relativize(path).toString() to Files.readString(path) }
+      }
+    }.toMap()
 }
 
 private data class InstallFixture(

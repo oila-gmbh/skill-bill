@@ -90,6 +90,10 @@ get_codex_agents_path() {
   run_runtime_cli install codex-agents-path
 }
 
+get_claude_agents_path() {
+  run_runtime_cli install claude-agents-path
+}
+
 get_opencode_agents_path() {
   run_runtime_cli install opencode-agents-path
 }
@@ -100,8 +104,8 @@ get_junie_agents_path() {
 
 install_codex_agents_tomls() {
   # Install Codex native subagent TOML defs under the resolved agents dir.
-  # Walks platform-packs/<slug>/**/codex-agents/*.toml — manifest-driven,
-  # never hardcodes a slug. Runs only when codex was selected by the user.
+  # Renders provider-neutral native-agents/*.md sources into the user cache,
+  # then links the generated TOMLs. Runs only when codex was selected by the user.
   local target_dir
   target_dir="$(get_codex_agents_path)"
   mkdir -p "$target_dir"
@@ -122,10 +126,34 @@ install_codex_agents_tomls() {
   ok "  Codex subagent TOMLs linked"
 }
 
+install_claude_agent_mds() {
+  # Install Claude native subagent markdown defs under ~/.claude/agents.
+  # Renders provider-neutral native-agents/*.md sources into the user cache,
+  # then links the generated markdown. Runs only when claude was selected by the user.
+  local target_dir
+  target_dir="$(get_claude_agents_path)"
+  mkdir -p "$target_dir"
+  info "Installing Claude subagent markdown to: $target_dir"
+
+  local args=()
+  local platform
+  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
+    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
+      args+=(--platform "$platform")
+    done
+  fi
+
+  run_runtime_cli install link-claude-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR" \
+    "${args[@]}" >/dev/null
+  ok "  Claude subagent markdown linked"
+}
+
 install_opencode_agent_mds() {
   # Install OpenCode native subagent markdown defs under ~/.config/opencode/agents.
-  # Walks platform-packs/<slug>/**/opencode-agents/*.md — manifest-driven,
-  # never hardcodes a slug. Runs only when opencode was selected by the user.
+  # Renders provider-neutral native-agents/*.md sources into the user cache,
+  # then links the generated markdown. Runs only when opencode was selected by the user.
   local target_dir
   target_dir="$(get_opencode_agents_path)"
   mkdir -p "$target_dir"
@@ -148,9 +176,8 @@ install_opencode_agent_mds() {
 
 install_junie_agent_mds() {
   # Install Junie native subagent markdown defs under ~/.junie/agents.
-  # Walks platform-packs/<slug>/**/junie-agents/*.md and
-  # skills/<slug>/**/junie-agents/*.md — manifest-driven, independent from
-  # other agent setup choices.
+  # Renders provider-neutral native-agents/*.md sources into the user cache,
+  # then links the generated markdown.
   local target_dir
   target_dir="$(get_junie_agents_path)"
   mkdir -p "$target_dir"
@@ -855,6 +882,21 @@ cleanup_selected_codex_agents() {
   done <<< "$output"
 }
 
+cleanup_selected_claude_agents() {
+  local output
+  output="$(run_runtime_cli install unlink-claude-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  no existing Claude subagent markdown found"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
 cleanup_selected_opencode_agents() {
   local output
   output="$(run_runtime_cli install unlink-opencode-agents \
@@ -896,6 +938,9 @@ cleanup_selected_agent_installs() {
     agent_dir="${AGENT_PATHS[$i]}"
     info "Checking $agent: $agent_dir"
     cleanup_selected_agent_target "$agent" "$agent_dir"
+    if [[ "$agent" == "claude" ]]; then
+      cleanup_selected_claude_agents
+    fi
     if [[ "$agent" == "codex" ]]; then
       cleanup_selected_codex_agents
     fi
@@ -985,6 +1030,9 @@ for i in "${!AGENT_NAMES[@]}"; do
 
   if [[ "$agent" == "codex" ]]; then
     install_codex_agents_tomls
+  fi
+  if [[ "$agent" == "claude" ]]; then
+    install_claude_agent_mds
   fi
   if [[ "$agent" == "opencode" ]]; then
     install_opencode_agent_mds

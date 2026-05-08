@@ -38,6 +38,7 @@ object RuntimeModule {
       "skillbill.scaffold",
       "skillbill.contracts",
       "skillbill.install",
+      "skillbill.nativeagent",
       "skillbill.error",
     )
 }

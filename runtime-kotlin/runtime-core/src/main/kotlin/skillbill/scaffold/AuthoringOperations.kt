@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.SkillBillRuntimeException
+import skillbill.nativeagent.NativeAgentOperations
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -115,8 +116,9 @@ object AuthoringOperations {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val targets = selectedTargets(resolvedRoot, skillNames)
     val originalBytes = mutableMapOf<Path, ByteArray>()
+    val createdPaths = mutableListOf<Path>()
     val regenerated = mutableListOf<Path>()
-    return runWithUpgradeRollback(originalBytes) {
+    return runWithUpgradeRollback(originalBytes, createdPaths) {
       targets.forEach { target ->
         val rendered = renderWrapper(target)
         val renderedBytes = rendered.toByteArray(Charsets.UTF_8)
@@ -127,6 +129,13 @@ object AuthoringOperations {
           regenerated.add(target.skillFile)
         }
       }
+      val nativeRegeneration = NativeAgentOperations.regenerate(
+        resolvedRoot,
+        skillNames,
+        originalBytes = originalBytes,
+        createdPaths = createdPaths,
+      )
+      regenerated += nativeRegeneration.regeneratedFiles
       if (validate) {
         val issues = targets.flatMap { target -> validateTarget(target) }
         if (issues.isNotEmpty()) {

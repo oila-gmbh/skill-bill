@@ -45,6 +45,7 @@ Supported install targets:
 |-------|--------------|
 | GitHub Copilot | `~/.copilot/skills/` |
 | Claude Code | `~/.claude/commands/` |
+| Claude Code (native subagent markdown) | `~/.claude/agents/` |
 | OpenAI Codex (skills) | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` or `~/.agents/agents/` |
 | OpenCode (skills) | `~/.config/opencode/skills/` |
@@ -56,7 +57,7 @@ Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code comm
 
 Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
 
-On Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Codex installs TOMLs discovered from `platform-packs/<slug>/**/codex-agents/*.toml` and `skills/<slug>/**/codex-agents/*.toml` into `~/.codex/agents/` (with `~/.agents/agents/` fallback) and resolves spawn instructions by TOML `name`. OpenCode installs markdown agents discovered from the matching `opencode-agents/*.md` walks into `~/.config/opencode/agents/` and resolves by filename-derived agent name; operators can also invoke them manually with `@<name>`. Junie installs independent Markdown/YAML agents from `junie-agents/*.md` walks into `~/.junie/agents/` and uses Junie's documented custom-subagent frontmatter. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](../skills/bill-feature-implement/parsing_tolerance.md).
+On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/<name>.md` files. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/` (with `~/.agents/agents/` fallback), OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](../skills/bill-feature-implement/parsing_tolerance.md).
 
 ## Runtime Model
 
@@ -218,7 +219,7 @@ rm /tmp/skill-bill-agent/skills/bill-java-code-review
 rm -rf platform-packs/java
 ```
 
-In normal team usage, remove generated artifacts with your usual VCS workflow instead of deleting committed pack files by hand.
+In normal team usage, remove scaffolded example files with your usual VCS workflow instead of deleting committed pack files by hand.
 
 ## MCP Server
 

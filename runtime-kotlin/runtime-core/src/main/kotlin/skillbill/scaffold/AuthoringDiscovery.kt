@@ -21,17 +21,30 @@ internal fun selectedTargets(repoRoot: Path, skillNames: List<String>): List<Aut
   return skillNames.map { skillName -> targets.getValue(skillName) }
 }
 
-internal fun <T> runWithUpgradeRollback(originalBytes: Map<Path, ByteArray>, block: () -> T): T = try {
+internal fun <T> runWithUpgradeRollback(
+  originalBytes: Map<Path, ByteArray>,
+  createdPaths: List<Path> = emptyList(),
+  block: () -> T,
+): T = try {
   block()
 } catch (error: SkillBillRuntimeException) {
-  restoreFiles(originalBytes)
+  rollbackUpgrade(originalBytes, createdPaths)
   throw error
 } catch (error: IOException) {
-  restoreFiles(originalBytes)
+  rollbackUpgrade(originalBytes, createdPaths)
   throw error
 } catch (error: IllegalArgumentException) {
-  restoreFiles(originalBytes)
+  rollbackUpgrade(originalBytes, createdPaths)
   throw error
+}
+
+private fun rollbackUpgrade(originalBytes: Map<Path, ByteArray>, createdPaths: List<Path>) {
+  restoreFiles(originalBytes)
+  createdPaths.asReversed().forEach { path ->
+    if (path !in originalBytes) {
+      Files.deleteIfExists(path)
+    }
+  }
 }
 
 internal fun resolveTarget(repoRoot: Path, skillName: String): AuthoringTarget = discoverTargets(repoRoot)[skillName]

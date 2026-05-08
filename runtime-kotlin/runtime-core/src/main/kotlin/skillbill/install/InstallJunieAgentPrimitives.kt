@@ -1,17 +1,19 @@
 package skillbill.install
 
+import skillbill.nativeagent.NativeAgentProvider
+import skillbill.nativeagent.discoverNativeAgentFilesByDir
 import java.nio.file.Path
 
 internal fun discoverJunieAgentMarkdown(
   platformPacksRoot: Path,
   skillsRoot: Path? = null,
   selectedPlatforms: List<String>? = null,
-): List<Path> = discoverNativeAgentFiles(
+): List<Path> = discoverNativeAgentFilesByDir(
   platformPacksRoot = platformPacksRoot,
   skillsRoot = skillsRoot,
   selectedPlatforms = selectedPlatforms,
-  directoryName = "junie-agents",
-  extension = "md",
+  directoryName = NativeAgentProvider.Junie.directoryName,
+  extension = NativeAgentProvider.Junie.extension,
 )
 
 internal fun uninstallJunieAgentMarkdown(
@@ -23,6 +25,6 @@ internal fun uninstallJunieAgentMarkdown(
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return uninstallNativeAgentFiles(
     discoverJunieAgentMarkdown(platformPacksRoot, skillsRoot, selectedPlatforms),
-    listOf(resolvedHome.resolve(".junie/agents")),
+    NativeAgentProvider.Junie.homeAgentDirs(resolvedHome),
   )
 }

@@ -28,10 +28,11 @@ class ScaffoldServiceParityTest {
     assertContains(content, "## Subagent Spawn Runtime Notes")
     assertContains(content, "`@foo-arch`")
     assertContains(content, "`@foo-perf`")
-    assertCodexStub(skillDir.resolve("codex-agents/foo-arch.toml"), "foo-arch")
-    assertCodexStub(skillDir.resolve("codex-agents/foo-perf.toml"), "foo-perf")
-    assertOpencodeStub(skillDir.resolve("opencode-agents/foo-arch.md"), "foo-arch")
-    assertOpencodeStub(skillDir.resolve("opencode-agents/foo-perf.md"), "foo-perf")
+    assertSourceStub(skillDir.resolve("native-agents/foo-arch.md"), "foo-arch")
+    assertSourceStub(skillDir.resolve("native-agents/foo-perf.md"), "foo-perf")
+    assertFalse(Files.exists(skillDir.resolve("codex-agents")))
+    assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
+    assertFalse(Files.exists(skillDir.resolve("junie-agents")))
     assertTrue(result.notes.any { note -> "Subagent stubs emitted: 2." in note }, result.notes.toString())
   }
 
@@ -48,10 +49,15 @@ class ScaffoldServiceParityTest {
     val qualityCheck = packRoot.resolve("quality-check/bill-java-quality-check")
 
     assertEquals("platform-pack", result.kind)
-    assertCodexStub(baseline.resolve("codex-agents/arch.toml"), "arch")
-    assertOpencodeStub(baseline.resolve("opencode-agents/perf.md"), "perf")
+    assertSourceStub(baseline.resolve("native-agents/arch.md"), "arch")
+    assertSourceStub(baseline.resolve("native-agents/perf.md"), "perf")
+    assertFalse(Files.exists(baseline.resolve("codex-agents")))
+    assertFalse(Files.exists(baseline.resolve("opencode-agents")))
+    assertFalse(Files.exists(baseline.resolve("junie-agents")))
     assertFalse(Files.exists(qualityCheck.resolve("codex-agents")))
     assertFalse(Files.exists(qualityCheck.resolve("opencode-agents")))
+    assertFalse(Files.exists(qualityCheck.resolve("junie-agents")))
+    assertFalse(Files.exists(qualityCheck.resolve("native-agents")))
     assertContains(Files.readString(baseline.resolve("content.md")), "## Subagent Spawn Runtime Notes")
   }
 
@@ -238,6 +244,8 @@ class ScaffoldServiceParityTest {
 
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
+    assertFalse(Files.exists(skillDir.resolve("junie-agents")))
+    assertFalse(Files.exists(skillDir.resolve("native-agents")))
     assertFalse("## Subagent Spawn Runtime Notes" in Files.readString(skillDir.resolve("content.md")))
   }
 
@@ -339,18 +347,14 @@ private fun seedKmpPack(repo: Path) {
   Files.writeString(baseline.resolve("shell-ceremony.md"), "# ceremony\n")
 }
 
-private fun assertCodexStub(path: Path, name: String) {
-  val text = Files.readString(path)
-  assertContains(text, "name = \"$name\"")
-  assertContains(text, "developer_instructions")
-  assertContains(text, "TODO: replace this placeholder")
-}
-
-private fun assertOpencodeStub(path: Path, name: String) {
+private fun assertSourceStub(path: Path, name: String) {
   val text = Files.readString(path)
   assertContains(text, "name: $name")
-  assertContains(text, "mode: subagent")
-  assertContains(text, "TODO: replace this placeholder")
+  assertContains(text, "description:")
+  assertContains(text, "TODO: replace this placeholder with the specialist briefing.")
+  val frontmatterEndIndex = text.indexOf("\n---\n", startIndex = 4)
+  assertTrue(frontmatterEndIndex > 0, "Expected closing frontmatter fence in $path")
+  assertFalse("mode: subagent" in text)
 }
 
 private fun withIsolatedUserHome(block: () -> Unit) {
