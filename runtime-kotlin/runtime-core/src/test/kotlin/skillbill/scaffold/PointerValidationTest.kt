@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import org.junit.jupiter.api.Assumptions
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
@@ -197,6 +199,44 @@ class PointerValidationTest {
     assertTrue(
       report.issues.any { "orphan pointer file" in it && "rogue.md" in it },
       "expected orphan issue, got ${report.issues}",
+    )
+  }
+
+  @Test
+  fun `passes when pointer is a symlink whose target string matches the rendered output`() {
+    val repoRoot = setupBasicPack()
+    val pointerFile = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/shell-ceremony.md",
+    )
+    Files.createDirectories(pointerFile.parent)
+    val symlinksSupported = runCatching {
+      Files.createSymbolicLink(pointerFile, Path.of("../../../../shared/shell.md"))
+    }.fold(onSuccess = { true }, onFailure = { it !is FileSystemException && it !is UnsupportedOperationException })
+    Assumptions.assumeTrue(symlinksSupported, "symlinks unsupported on this filesystem")
+
+    val report = validatePlatformPackPointers(repoRoot)
+
+    assertTrue(report.passed, "expected pass for matching symlink; got issues: ${report.issues}")
+  }
+
+  @Test
+  fun `flags drift when pointer is a symlink whose target string does not match`() {
+    val repoRoot = setupBasicPack()
+    val pointerFile = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/shell-ceremony.md",
+    )
+    Files.createDirectories(pointerFile.parent)
+    val symlinksSupported = runCatching {
+      Files.createSymbolicLink(pointerFile, Path.of("../../../wrong/shell.md"))
+    }.fold(onSuccess = { true }, onFailure = { it !is FileSystemException && it !is UnsupportedOperationException })
+    Assumptions.assumeTrue(symlinksSupported, "symlinks unsupported on this filesystem")
+
+    val report = validatePlatformPackPointers(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { "drifted from manifest" in it },
+      "expected drift issue for a wrong-target symlink, got ${report.issues}",
     )
   }
 

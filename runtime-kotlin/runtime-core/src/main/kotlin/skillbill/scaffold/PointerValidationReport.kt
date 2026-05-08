@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.ShellContentContractException
 import skillbill.scaffold.model.PlatformManifest
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -60,7 +61,12 @@ private fun validatePackPointersDriftAndMissing(
   pack.pointers.forEach { spec ->
     val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize()
     declaredFiles.add(pointerFile)
-    if (!Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)) {
+    // Pointer files are stored in git as symlinks (mode 120000); on Linux/macOS they materialize
+    // as real symlinks, on Windows fallback (core.symlinks=false) they materialize as regular
+    // text files containing the symlink target. Both forms count as "exists on disk".
+    val pointerExists = Files.isSymbolicLink(pointerFile) ||
+      Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)
+    if (!pointerExists) {
       issues += "${displayPointer(repoRoot, pointerFile)}: declared pointer is missing on disk"
       return@forEach
     }
@@ -71,7 +77,14 @@ private fun validatePackPointersDriftAndMissing(
       .onSuccess { rendered ->
         // Strip trailing CR/LF on both sides so Windows CRLF checkouts do not false-flag drift.
         val expected = rendered.trimEnd('\n', '\r')
-        val actual = Files.readString(pointerFile).trimEnd('\n', '\r')
+        // Read the pointer in a form comparable to the renderer's output: real symlinks expose
+        // their target string (with forward-slash normalization); regular files (Windows
+        // core.symlinks=false fallback) expose their text content with trailing newline trimmed.
+        val actual = if (Files.isSymbolicLink(pointerFile)) {
+          Files.readSymbolicLink(pointerFile).toString().replace(File.separatorChar, '/')
+        } else {
+          Files.readString(pointerFile).trimEnd('\n', '\r')
+        }
         if (expected != actual) {
           issues += "${displayPointer(repoRoot, pointerFile)}: pointer drifted from manifest " +
             "(expected '$expected', found '$actual')"
@@ -102,7 +115,9 @@ private fun discoverPointerCandidates(packDir: Path): List<Path> {
   val resolvedPackDir = packDir.toAbsolutePath().normalize()
   Files.walk(packDir).use { stream ->
     return stream
-      .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+      // Treat both regular files and symlinks as pointer candidates: on Linux/macOS the
+      // canonical pointer form is a symlink, on Windows fallback it's a regular text file.
+      .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(it) }
       .filter { it.fileName.toString().endsWith(".md") }
       .filter { !isInsideExcludedSubtree(resolvedPackDir, it) }
       .filter { looksLikePointerFile(it) }
@@ -126,6 +141,11 @@ private fun reportIfOrphan(repoRoot: Path, candidate: Path, declaredFiles: Set<P
 }
 
 private fun looksLikePointerFile(path: Path): Boolean {
+  // On Linux/macOS the pointer is materialized as a symbolic link; treat any symlink in a
+  // specialist directory as pointer-shaped by definition without sniffing its target bytes.
+  if (Files.isSymbolicLink(path)) {
+    return true
+  }
   val size = runCatching { Files.size(path) }.getOrNull() ?: 0L
   val text = if (size in 1..POINTER_FILE_MAX_BYTES) {
     runCatching { Files.readString(path) }.getOrNull().orEmpty()

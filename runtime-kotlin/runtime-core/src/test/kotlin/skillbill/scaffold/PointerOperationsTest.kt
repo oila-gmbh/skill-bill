@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import org.junit.jupiter.api.Assumptions
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
@@ -109,6 +111,116 @@ class PointerOperationsTest {
       veryFirstBytes,
       originalBytes[pointerA] ?: error("expected originalBytes still set after second regenerate"),
       "originalBytes must hold the FIRST pre-existing bytes, not the drifted bytes",
+    )
+  }
+
+  @Test
+  fun `regenerate replaces a stale symlink with one pointing at the correct target`() {
+    val repoRoot = setupRepoWithTwoPointers()
+    val pointerA = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/a.md",
+    ).normalize()
+    Files.createDirectories(pointerA.parent)
+    // Pre-create a SYMLINK with a deliberately wrong target. Skip on filesystems that refuse
+    // symbolic links so this test stays cross-platform safe.
+    val symlinksSupported = runCatching {
+      Files.createSymbolicLink(pointerA, Path.of("../../../wrong/target.md"))
+    }.fold(onSuccess = { true }, onFailure = { it !is FileSystemException && it !is UnsupportedOperationException })
+    Assumptions.assumeTrue(symlinksSupported, "symlinks unsupported on this filesystem")
+
+    val result = PointerOperations.regenerate(repoRoot)
+
+    assertTrue(
+      pointerA in result.regeneratedFiles,
+      "expected stale symlink to be regenerated; got ${result.regeneratedFiles}",
+    )
+    assertTrue(
+      Files.isSymbolicLink(pointerA),
+      "expected pointer to remain a symlink after regenerate",
+    )
+    val target = Files.readSymbolicLink(pointerA).toString().replace('\\', '/')
+    assertEquals("../../../../shared/a.md", target, "symlink should point at the rendered target")
+  }
+
+  @Test
+  fun `regenerate replaces a regular text file with a symlink when supported`() {
+    val repoRoot = setupRepoWithTwoPointers()
+    val pointerA = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/a.md",
+    ).normalize()
+    Files.createDirectories(pointerA.parent)
+    Files.writeString(pointerA, "../../../stale/a.md") // regular file, stale content
+
+    val originalBytes = mutableMapOf<Path, ByteArray>()
+    val createdPaths = mutableListOf<Path>()
+    val result = PointerOperations.regenerate(repoRoot, originalBytes, createdPaths)
+
+    assertTrue(
+      pointerA in result.regeneratedFiles,
+      "expected stale text-file pointer to be regenerated; got ${result.regeneratedFiles}",
+    )
+    assertFalse(pointerA in createdPaths, "pre-existing pointer must NOT be tracked as created")
+    val recovered = originalBytes[pointerA] ?: error("expected originalBytes for pointerA")
+    assertEquals(
+      "../../../stale/a.md",
+      String(recovered, Charsets.UTF_8),
+      "originalBytes must hold the pre-existing text-file bytes",
+    )
+    // Final form: a symlink on Linux/macOS, or a regular text file on filesystems where
+    // createSymbolicLink failed and we fell back to atomic-write.
+    if (Files.isSymbolicLink(pointerA)) {
+      val target = Files.readSymbolicLink(pointerA).toString().replace('\\', '/')
+      assertEquals("../../../../shared/a.md", target)
+    } else {
+      assertEquals("../../../../shared/a.md", Files.readString(pointerA).trimEnd('\n', '\r'))
+    }
+  }
+
+  @Test
+  fun `regenerate is a no-op when an existing symlink already points at the correct target`() {
+    val repoRoot = setupRepoWithTwoPointers()
+    val pointerA = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/a.md",
+    ).normalize()
+    Files.createDirectories(pointerA.parent)
+    val symlinksSupported = runCatching {
+      Files.createSymbolicLink(pointerA, Path.of("../../../../shared/a.md"))
+    }.fold(onSuccess = { true }, onFailure = { it !is FileSystemException && it !is UnsupportedOperationException })
+    Assumptions.assumeTrue(symlinksSupported, "symlinks unsupported on this filesystem")
+
+    val result = PointerOperations.regenerate(repoRoot)
+
+    assertFalse(
+      pointerA in result.regeneratedFiles,
+      "matching symlink must not be rewritten; got regenerated=${result.regeneratedFiles}",
+    )
+    assertTrue(Files.isSymbolicLink(pointerA), "matching symlink must be left untouched as a symlink")
+  }
+
+  @Test
+  fun `regenerate does NOT write through an existing symlink to corrupt its target`() {
+    // Latent-bug regression: prior implementation did Files.write(pointerFile, ...) which would
+    // follow a symlink and overwrite the orchestration playbook on Linux. This test asserts the
+    // shared target file is left alone even when the symlink is stale.
+    val repoRoot = setupRepoWithTwoPointers()
+    val pointerA = repoRoot.resolve(
+      "platform-packs/fixturepack/code-review/skill/a.md",
+    ).normalize()
+    val sharedA = repoRoot.resolve("shared/a.md").normalize()
+    Files.createDirectories(pointerA.parent)
+    val symlinksSupported = runCatching {
+      Files.createSymbolicLink(pointerA, Path.of("../../../wrong/target.md"))
+    }.fold(onSuccess = { true }, onFailure = { it !is FileSystemException && it !is UnsupportedOperationException })
+    Assumptions.assumeTrue(symlinksSupported, "symlinks unsupported on this filesystem")
+    val sharedABefore = Files.readAllBytes(sharedA)
+
+    PointerOperations.regenerate(repoRoot)
+
+    val sharedAAfter = Files.readAllBytes(sharedA)
+    assertContentEquals(
+      sharedABefore,
+      sharedAAfter,
+      "regenerate must never write through an existing symlink onto its target file",
     )
   }
 
