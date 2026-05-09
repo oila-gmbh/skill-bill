@@ -1,3 +1,31 @@
+## [2026-05-09] generated-skill-artifact-source-contract
+Areas: runtime-core scaffold loader/render/validation/install, runtime-cli validation, runtime-core tests
+- `ShellContentLoader` now treats platform.yaml-declared governed files as exact `content.md` paths with governed frontmatter plus Descriptor/Execution/Ceremony H2s; generated wrapper body-shape validation was removed from the declared-source path. reusable
+- `GeneratedArtifactGuard` no longer grandfather-lists committed wrappers/pointers, and `GovernedSkillDriftValidation` compares deterministic in-memory render output instead of requiring source `SKILL.md` files. reusable
+- Install staging excludes stale source generated artifacts on both rebuild and cache-hit paths, then renders `SKILL.md`/pointers into the install cache without mutating source. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-09] render-snapshots-final-validation
+Areas: runtime-core scaffold render snapshot tests, runtime-core test-support, runtime Gradle test wiring
+- Added resource-backed render snapshots for a standalone governed skill (`bill-pr-description`), `bill-kotlin-code-review`, and `bill-kmp-code-review-ui`; snapshots exercise `renderAuthoringTarget` output instead of duplicating wrapper/pointer formatting logic. reusable
+- `AuthoringRenderSnapshotTest` asserts repeated in-memory renders are byte-identical and derives expected platform pointer headers from `platform.yaml`, so pointer block order remains manifest-declaration order even though pointer write paths sort independently. reusable
+- Added `SnapshotAssertions` with deterministic `-Pupdate-snapshots` support, LF normalization, fixture-path failure messages, and containment checks that reject escaped `../` paths before read/write. reusable
+- KMP UI native-agent coverage snapshots the provider-neutral source at `platform-packs/kmp/code-review/bill-kmp-code-review/native-agents/bill-kmp-code-review-ui.md`, not the specialist directory, matching the governed native-agent source layout.
+- Validation note: stale Gradle configuration cache can false-fail this area; clearing cache and rerunning the gate produced a clean pass with no source edits.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-05-09] drift-and-agent-config-guards
+Areas: runtime-core scaffold validation/rendering, runtime-cli validation task, runtime Gradle lifecycle, agent-config validation
+- `RepoValidationRuntime.validateRepo` now runs `validateGovernedSkillDrift`: discovers content-managed targets once, renders each `AuthoringTarget` twice in memory, compares emitted SKILL.md bytes to disk, and fails on unresolved platform.yaml pointer targets. reusable
+- `renderAuthoringTarget(repoRoot, target)` overload avoids per-skill rediscovery during repeated-render checks; keep render stdout deterministic (`SKILL.md` block first, pointer blocks in manifest order) when adding future render surfaces. reusable
+- `GeneratedArtifactGuard` grandfather-lists the current committed generated SKILL.md wrappers and pointer files, uses `git ls-files` when available so untracked local fixtures stay ignored, and fails newly tracked governed SKILL.md/platform pointer outputs. reusable
+- `runtime-cli:check` depends on `validateAgentConfigs`, so `(cd runtime-kotlin && ./gradlew check)` exercises the same Kotlin-backed path as `scripts/validate_agent_configs`; tests pin repo-validation, CLI, Gradle wiring, git-index behavior, platform-pack wrapper coverage, and stale-wrapper drift.
+- Known limit: this is a guard for future deletion policy, not cleanup; current committed wrappers/pointers remain allowed until the retirement subtask removes them.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-09] render-cli-output
 Areas: runtime-cli scaffold commands, runtime-core scaffold rendering, runtime CLI/core tests
 - `skill-bill render <skill-id>` is now a read-only stdout surface, separate from `upgrade`; `--dry-run` is accepted as the same no-write preview path.

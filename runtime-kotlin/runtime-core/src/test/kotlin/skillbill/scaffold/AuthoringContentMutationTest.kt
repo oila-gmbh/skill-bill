@@ -66,10 +66,7 @@ class AuthoringContentMutationTest {
   }
 
   @Test
-  fun `mutateContent fails fast with explicit message when SKILL_md is missing`() {
-    // Regression for M-1 (architecture iter-2 F-001): orphaned content.md (no sibling SKILL.md)
-    // must fail with a clear "SKILL.md is missing" SkillBillRuntimeException, not the opaque
-    // NoSuchFileException raised by Files.readAllBytes when the wrapper rollback snapshot is read.
+  fun `mutateContent validates render output without requiring source SKILL_md`() {
     val dir = Files.createTempDirectory("mutate-content-orphan")
     val contentFile = dir.resolve("content.md")
     val skillFile = dir.resolve("SKILL.md")
@@ -98,12 +95,10 @@ class AuthoringContentMutationTest {
       contentFile = contentFile,
     )
 
-    val error = assertFailsWith<SkillBillRuntimeException> {
-      mutateContent(dir, target, "irrelevant replacement\n")
-    }
-    val message = error.message.orEmpty()
-    assertContains(message, "SKILL.md is missing")
-    assertContains(message, skillFile.toString())
+    mutateContent(dir, target, Files.readString(contentFile).replace("Authored body.", "Updated body."))
+
+    assertContains(Files.readString(contentFile), "Updated body.")
+    assertTrue(!Files.exists(skillFile), "mutating content must not create source SKILL.md")
   }
 
   @Test

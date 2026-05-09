@@ -7,5 +7,5 @@ routing_signals:
   tie_breakers: []
 declared_code_review_areas: "architecture"
 declared_files:
-  baseline: code-review/SKILL.md
+  baseline: code-review/content.md
   areas: {}

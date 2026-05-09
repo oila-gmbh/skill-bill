@@ -62,22 +62,23 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `repo validation rejects missing required skill sidecars`() {
+  fun `repo validation requires supporting sidecars beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-missing-sidecar")
     createRepoValidationSkillFixture(repoRoot, skipSidecar = "review-scope.md")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.passed)
     assertTrue(
       report.issues.any {
-        it.contains("required supporting sidecar 'review-scope.md' is missing beside the skill")
+        it.contains("skills/bill-code-review/content.md") &&
+          it.contains("required supporting sidecar 'review-scope.md' is missing beside the skill")
       },
+      report.issues.joinToString("\n"),
     )
   }
 
   @Test
-  fun `repo validation rejects supporting sidecars pointing to the wrong target`() {
+  fun `repo validation rejects wrong supporting sidecar target beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-wrong-sidecar")
     val wrongTarget = repoRoot.resolve("orchestration/wrong/PLAYBOOK.md")
     Files.createDirectories(wrongTarget.parent)
@@ -86,7 +87,6 @@ class RepoValidationRuntimeTest {
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.passed)
     assertTrue(
       report.issues.any {
         it.contains("supporting sidecar 'review-scope.md' points to") &&
@@ -97,7 +97,7 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `repo validation accepts git symlink placeholder sidecars`() {
+  fun `repo validation accepts git symlink placeholders beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-placeholder-sidecar")
     createRepoValidationSkillFixture(repoRoot, sidecarMode = SidecarMode.GitPlaceholder)
 
@@ -108,7 +108,7 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `repo validation rejects regular sidecars that are not git symlink placeholders`() {
+  fun `repo validation rejects regular copied sidecar files beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-regular-sidecar")
     createRepoValidationSkillFixture(repoRoot)
     val sidecar = repoRoot.resolve("skills/bill-code-review/review-scope.md")
@@ -117,10 +117,10 @@ class RepoValidationRuntimeTest {
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.passed)
     assertTrue(
       report.issues.any {
-        it.contains("required supporting sidecar 'review-scope.md' must be a symlink")
+        it.contains("review-scope.md") &&
+          it.contains("must be a symlink or git symlink placeholder")
       },
       report.issues.joinToString("\n"),
     )
@@ -196,7 +196,7 @@ class RepoValidationRuntimeTest {
   // ---------------------------------------------------------------------------------------------
 
   @Test
-  fun `repo validation reports skills content_md without sibling SKILL_md`() {
+  fun `repo validation accepts skills content_md without sibling SKILL_md`() {
     val repoRoot = Files.createTempDirectory("skillbill-orphan-skills-content")
     val orphanDir = repoRoot.resolve("skills/bill-orphan-content")
     Files.createDirectories(orphanDir)
@@ -205,25 +205,18 @@ class RepoValidationRuntimeTest {
       """
       ---
       name: bill-orphan-content
-      description: Authored content with no sibling wrapper to surface the orphan.
+      description: Authored content with no sibling generated wrapper.
       ---
 
       # Orphan Content
 
-      Body that exists without a wrapper SKILL.md so the validator must flag it.
+      Body that exists without a generated wrapper SKILL.md.
       """.trimIndent() + "\n",
     )
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.passed)
-    assertTrue(
-      report.issues.any {
-        it.contains("skills/bill-orphan-content") &&
-          it.contains("content.md found without sibling SKILL.md")
-      },
-      report.issues.joinToString("\n"),
-    )
+    assertFalse(report.issues.any { it.contains("content.md found without sibling SKILL.md") })
   }
 
   @Test
@@ -260,7 +253,7 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `repo validation reports platform pack content_md without sibling SKILL_md`() {
+  fun `repo validation accepts platform pack content_md without sibling SKILL_md`() {
     val repoRoot = Files.createTempDirectory("skillbill-orphan-pack-content")
     val orphanDir = repoRoot.resolve("platform-packs/orphanpack/code-review/bill-orphanpack-code-review")
     Files.createDirectories(orphanDir)
@@ -280,14 +273,7 @@ class RepoValidationRuntimeTest {
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.passed)
-    assertTrue(
-      report.issues.any {
-        it.contains("platform-packs/orphanpack/code-review/bill-orphanpack-code-review") &&
-          it.contains("content.md found without sibling SKILL.md")
-      },
-      report.issues.joinToString("\n"),
-    )
+    assertFalse(report.issues.any { it.contains("content.md found without sibling SKILL.md") })
   }
 
   @Test
@@ -359,6 +345,59 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation does not require governed SKILL_md drift files on disk`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-drift-wiring")
+    val skillDir = repoRoot.resolve("skills/bill-runtime-drift")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-runtime-drift
+      description: Runtime drift wiring fixture.
+      ---
+
+      # Runtime Drift Fixture
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.issues.any { it.contains("governed SKILL.md output drifted") }, report.issues.joinToString("\n"))
+  }
+
+  @Test
+  fun `repo validation includes generated artifact guard issues`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-guard-wiring")
+    createRepoValidationSkillFixture(repoRoot)
+    val generatedSkillDir = repoRoot.resolve("skills/bill-new-generated")
+    Files.createDirectories(generatedSkillDir)
+    Files.writeString(
+      generatedSkillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-new-generated
+      description: New generated wrapper fixture.
+      ---
+
+      # New Generated Fixture
+      """.trimIndent() + "\n",
+    )
+    Files.writeString(generatedSkillDir.resolve("SKILL.md"), "generated wrapper\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("skills/bill-new-generated/SKILL.md") &&
+          it.contains("committed governed SKILL.md output is not allowed")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation rejects checked-in generated junie native agent artifact`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-junie-checked-in")
     createRepoValidationSkillFixture(repoRoot)
@@ -391,25 +430,6 @@ class RepoValidationRuntimeTest {
     }
     val skillDir = repoRoot.resolve("skills/bill-code-review")
     Files.createDirectories(skillDir)
-    val requiredFiles = requiredSupportingFilesForSkill("bill-code-review")
-    // Intentionally retains the SKILL.md filename literal until SKILL-40 subtask 4 deletes
-    // the wrapper. A sibling content.md is added so this fixture is discovered by the
-    // post-SKILL-40 marker scan.
-    Files.writeString(
-      skillDir.resolve("SKILL.md"),
-      """
-      ---
-      name: bill-code-review
-      description: Review code.
-      ---
-      ## Descriptor
-      ${requiredFiles.joinToString(" ")}
-      ## Execution
-      Run the review.
-      ## Ceremony
-      Report findings.
-      """.trimIndent(),
-    )
     Files.writeString(
       skillDir.resolve("content.md"),
       """
@@ -424,7 +444,7 @@ class RepoValidationRuntimeTest {
       """.trimIndent(),
     )
     val targets = supportingFileTargets(repoRoot)
-    requiredFiles.filterNot { it == skipSidecar }.forEach { fileName ->
+    requiredSupportingFilesForSkill("bill-code-review").filterNot { it == skipSidecar }.forEach { fileName ->
       val sidecar = skillDir.resolve(fileName)
       val target = overrideTargets[fileName] ?: targets.getValue(fileName)
       val relativeTarget = sidecar.parent.relativize(target).toString()

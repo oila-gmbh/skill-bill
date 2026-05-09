@@ -159,27 +159,6 @@ class AuthoringOperationsTest {
     val skillDir = repo.resolve("skills").resolve(skillName)
     Files.createDirectories(skillDir)
     Files.writeString(
-      skillDir.resolve("SKILL.md"),
-      """
-      ---
-      name: $skillName
-      description: Fixture skill for AuthoringOperations integration tests.
-      ---
-
-      ## Descriptor
-
-      Stub descriptor.
-
-      ## Execution
-
-      Stub execution.
-
-      ## Ceremony
-
-      Stub ceremony.
-      """.trimIndent() + "\n",
-    )
-    Files.writeString(
       skillDir.resolve("content.md"),
       """
       ---

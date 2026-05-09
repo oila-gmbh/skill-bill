@@ -292,8 +292,7 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
   val skillPath = packRoot.resolve(family).resolve(name)
   notes +=
     "Author skill instructions only in sibling `content.md` files. " +
-    "Keep scaffold-managed `SKILL.md` wrappers and `shell-ceremony.md` " +
-    "unchanged unless you are intentionally changing the shared contract."
+    "Generated `SKILL.md` wrappers and platform pointer files are render/install output."
   return ScaffoldPlan(
     kind = SKILL_KIND_PLATFORM_OVERRIDE_PILOTED,
     skillName = name,
@@ -628,13 +627,17 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
   if (plan.kind == SKILL_KIND_ADD_ON) {
     stageFile(txn, plan.skillFile, renderAddonBody(plan.skillName, plan.description, plan.addonBody))
   } else {
-    stageFile(txn, plan.skillFile, renderSkillWrapper(plan))
     plan.contentFile?.let { content ->
-      stageFile(txn, content, renderContentSheet(plan))
+      val contentText = if (plan.kind == SKILL_KIND_CODE_REVIEW_AREA || plan.isShelled) {
+        renderDeclaredPackContentSheet(plan)
+      } else {
+        renderContentSheet(plan)
+      }
+      stageFile(txn, content, contentText)
     }
   }
   val manifestEdits = applyManifestEdits(txn, plan, repoRoot)
-  val symlinks = stageSidecarSymlinks(txn, plan, repoRoot)
+  val symlinks = stageSourceSidecarSymlinks(txn, plan, repoRoot)
   if (plan.shouldEmitSubagents()) {
     val contentPath = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME)
     appendRuntimeNotesToContent(
@@ -657,13 +660,17 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
   )
 }
 
-private fun renderSkillWrapper(plan: ScaffoldPlan): String =
-  renderSkillBody(skillContext(plan), effectiveDescription(plan), areaFocus(plan))
-
 private fun renderContentSheet(plan: ScaffoldPlan): String = renderContentBody(
   skillContext(plan),
   description = effectiveDescription(plan),
   contentBody = plan.contentBody,
+)
+
+private fun renderDeclaredPackContentSheet(plan: ScaffoldPlan): String = renderContentBody(
+  skillContext(plan),
+  description = effectiveDescription(plan),
+  governedSections = true,
+  areaFocus = areaFocus(plan),
 )
 
 private fun skillContext(plan: ScaffoldPlan): TemplateContext = TemplateContext(
@@ -740,7 +747,9 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     SKILL_KIND_CODE_REVIEW_AREA -> {
       val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
       snapshotManifest(txn, manifestPath)
-      val declaredAreaPath = manifestPath.parent.relativize(plan.skillFile).toString().replace('\\', '/')
+      val declaredAreaPath = manifestPath.parent.relativize(
+        plan.contentFile ?: plan.skillPath.resolve("content.md"),
+      ).toString().replace('\\', '/')
       appendCodeReviewArea(manifestPath, plan.area, declaredAreaPath, defaultAreaFocus(plan.area))
       listOf(manifestPath)
     }
@@ -748,7 +757,9 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
       if (plan.isShelled && plan.family == "quality-check") {
         val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
         snapshotManifest(txn, manifestPath)
-        val declaredPath = manifestPath.parent.relativize(plan.skillFile).toString().replace('\\', '/')
+        val declaredPath = manifestPath.parent.relativize(
+          plan.contentFile ?: plan.skillPath.resolve("content.md"),
+        ).toString().replace('\\', '/')
         setDeclaredQualityCheckFile(manifestPath, declaredPath)
         listOf(manifestPath)
       } else {
@@ -759,39 +770,10 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
   }
 }
 
-private fun stageSidecarSymlinks(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): List<Path> =
-  stageSidecarSymlinksForSkill(txn, plan.skillName, plan.skillPath, repoRoot)
-
-private fun stageSidecarSymlinksForSkill(
-  txn: ScaffoldTransaction,
-  skillName: String,
-  skillPath: Path,
-  repoRoot: Path,
-): List<Path> {
-  val required = requiredSupportingFilesForSkill(skillName)
-  if (required.isEmpty()) {
-    return emptyList()
-  }
-  val targets = supportingFileTargets(repoRoot)
-  val created = mutableListOf<Path>()
-  for (fileName in required) {
-    val target = targets[fileName] ?: throw missingSupportingFileTargetError(fileName, skillName)
-    val linkPath = skillPath.resolve(fileName)
-    if (Files.isSymbolicLink(linkPath) || Files.exists(linkPath)) {
-      continue
-    }
-    Files.createSymbolicLink(linkPath, target)
-    txn.createdSymlinks.add(linkPath)
-    created.add(linkPath)
-  }
-  return created
-}
-
 private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kind) {
   SKILL_KIND_PLATFORM_PACK -> previewPlatformPackCreatedFiles(plan) + previewSubagentStubFiles(plan)
   SKILL_KIND_ADD_ON -> listOf(plan.skillFile)
   else -> buildList {
-    add(plan.skillFile)
     plan.contentFile?.let(::add)
     addAll(previewSubagentStubFiles(plan))
   }
@@ -803,35 +785,55 @@ private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path>
   else -> emptyList()
 }
 
-private fun previewSymlinks(plan: ScaffoldPlan, repoRoot: Path): List<Path> {
-  val preview = mutableListOf<Path>()
-  when (plan.kind) {
-    SKILL_KIND_PLATFORM_PACK -> {
-      val baselineSkillPath = plan.baselineSkillPath ?: return emptyList()
-      val qualityCheckSkillPath = plan.qualityCheckSkillPath ?: return emptyList()
-      preview += previewSidecars(plan.baselineSkillName, baselineSkillPath, repoRoot)
-      preview += previewSidecars(plan.qualityCheckSkillName, qualityCheckSkillPath, repoRoot)
-      plan.specialistAreas.forEach { area ->
-        preview += previewSidecars(
-          plan.specialistSkillNames.getValue(area),
-          plan.specialistSkillPaths.getValue(area),
-          repoRoot,
-        )
-      }
-    }
-    SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_CODE_REVIEW_AREA ->
-      preview += previewSidecars(plan.skillName, plan.skillPath, repoRoot)
-    else -> {}
+private fun previewSymlinks(plan: ScaffoldPlan, repoRoot: Path): List<Path> = when {
+  plan.kind == SKILL_KIND_PLATFORM_PACK -> emptyList()
+  plan.kind == SKILL_KIND_CODE_REVIEW_AREA -> emptyList()
+  plan.kind == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED && plan.isShelled -> emptyList()
+  plan.kind in setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED) ->
+    previewSidecars(plan.skillName, plan.skillPath, repoRoot)
+  else -> emptyList()
+}
+
+private fun stageSourceSidecarSymlinks(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): List<Path> {
+  if (!shouldStageSourceSidecars(plan)) {
+    return emptyList()
   }
-  return preview
+  return stageSidecarSymlinksForSkill(txn, plan.skillName, plan.skillPath, repoRoot)
+}
+
+private fun shouldStageSourceSidecars(plan: ScaffoldPlan): Boolean = plan.kind == SKILL_KIND_HORIZONTAL ||
+  (plan.kind == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED && !plan.isShelled)
+
+private fun stageSidecarSymlinksForSkill(
+  txn: ScaffoldTransaction,
+  skillName: String,
+  skillPath: Path,
+  repoRoot: Path,
+): List<Path> {
+  val required = requiredSupportingFilesForSkill(skillName)
+  if (required.isEmpty()) {
+    return emptyList()
+  }
+  val created = mutableListOf<Path>()
+  for (fileName in required) {
+    val target = supportingFileTargets(
+      repoRoot,
+    )[fileName] ?: throw missingSupportingFileTargetError(fileName, skillName)
+    val linkPath = skillPath.resolve(fileName)
+    if (Files.exists(linkPath) || Files.isSymbolicLink(linkPath)) {
+      continue
+    }
+    Files.createSymbolicLink(linkPath, target)
+    txn.createdSymlinks.add(linkPath)
+    created.add(linkPath)
+  }
+  return created
 }
 
 private fun previewSidecars(skillName: String, skillPath: Path, repoRoot: Path): List<Path> {
   val required = requiredSupportingFilesForSkill(skillName)
-  if (required.isEmpty()) return emptyList()
-  val targets = supportingFileTargets(repoRoot)
   required.forEach { fileName ->
-    if (fileName !in targets) {
+    if (fileName !in supportingFileTargets(repoRoot)) {
       throw missingSupportingFileTargetError(fileName, skillName)
     }
   }
@@ -966,13 +968,13 @@ private fun renderPlatformPackManifestContent(
     strongSignals = plan.routingSignals,
     tieBreakers = plan.tieBreakers,
     declaredCodeReviewAreas = plan.specialistAreas,
-    baselineContentPath = packRoot.relativize(baselineSkillPath.resolve("SKILL.md"))
+    baselineContentPath = packRoot.relativize(baselineSkillPath.resolve("content.md"))
       .toString()
       .replace('\\', '/'),
     declaredAreaFiles = plan.specialistSkillPaths.mapValues { (_, path) ->
-      packRoot.relativize(path.resolve("SKILL.md")).toString().replace('\\', '/')
+      packRoot.relativize(path.resolve("content.md")).toString().replace('\\', '/')
     },
-    declaredQualityCheckFile = packRoot.relativize(qualityCheckSkillPath.resolve("SKILL.md"))
+    declaredQualityCheckFile = packRoot.relativize(qualityCheckSkillPath.resolve("content.md"))
       .toString()
       .replace('\\', '/'),
     areaMetadata = plan.specialistAreaMetadata,
@@ -982,7 +984,7 @@ private fun renderPlatformPackManifestContent(
 private fun stagePlatformPackSkills(
   txn: ScaffoldTransaction,
   plan: ScaffoldPlan,
-  repoRoot: Path,
+  @Suppress("UNUSED_PARAMETER") repoRoot: Path,
   baselineSkillPath: Path,
   qualityCheckSkillPath: Path,
 ): List<Path> {
@@ -997,15 +999,9 @@ private fun stagePlatformPackSkills(
     }
   stageFile(
     txn,
-    baselineSkillPath.resolve("SKILL.md"),
-    renderSkillBody(baselineContext, baselineDescription, ""),
-  )
-  stageFile(
-    txn,
     baselineSkillPath.resolve("content.md"),
-    renderContentBody(baselineContext, baselineDescription),
+    renderContentBody(baselineContext, baselineDescription, governedSections = true),
   )
-  symlinks += stageSidecarSymlinksForSkill(txn, plan.baselineSkillName, baselineSkillPath, repoRoot)
 
   val qualityCheckContext =
     TemplateContext(plan.qualityCheckSkillName, "quality-check", plan.platform, "", plan.displayName)
@@ -1013,15 +1009,9 @@ private fun stagePlatformPackSkills(
     "Use when validating ${plan.displayName} changes with the shared quality-check contract."
   stageFile(
     txn,
-    qualityCheckSkillPath.resolve("SKILL.md"),
-    renderSkillBody(qualityCheckContext, qualityCheckDescription, ""),
-  )
-  stageFile(
-    txn,
     qualityCheckSkillPath.resolve("content.md"),
-    renderContentBody(qualityCheckContext, qualityCheckDescription),
+    renderContentBody(qualityCheckContext, qualityCheckDescription, governedSections = true),
   )
-  symlinks.addAll(stageSidecarSymlinksForSkill(txn, plan.qualityCheckSkillName, qualityCheckSkillPath, repoRoot))
 
   plan.specialistAreas.forEach { area ->
     symlinks.addAll(stagePlatformPackArea(txn, plan, area, repoRoot))
@@ -1033,29 +1023,29 @@ private fun stagePlatformPackArea(
   txn: ScaffoldTransaction,
   plan: ScaffoldPlan,
   area: String,
-  repoRoot: Path,
+  @Suppress("UNUSED_PARAMETER") repoRoot: Path,
 ): List<Path> {
   val areaPath = plan.specialistSkillPaths.getValue(area)
   val areaName = plan.specialistSkillNames.getValue(area)
   val areaContext = TemplateContext(areaName, "code-review", plan.platform, area, plan.displayName)
   val areaDescription = "Use when reviewing ${plan.displayName} changes for $area risks."
-  stageFile(txn, areaPath.resolve("SKILL.md"), renderSkillBody(areaContext, areaDescription, defaultAreaFocus(area)))
-  stageFile(txn, areaPath.resolve("content.md"), renderContentBody(areaContext, areaDescription))
-  return stageSidecarSymlinksForSkill(txn, areaName, areaPath, repoRoot)
+  stageFile(
+    txn,
+    areaPath.resolve("content.md"),
+    renderContentBody(areaContext, areaDescription, governedSections = true, areaFocus = defaultAreaFocus(area)),
+  )
+  return emptyList()
 }
 
 private fun previewPlatformPackCreatedFiles(plan: ScaffoldPlan): List<Path> = buildList {
   plan.manifestPath?.let(::add)
   plan.baselineSkillPath?.let {
-    add(it.resolve("SKILL.md"))
     add(it.resolve("content.md"))
   }
   plan.qualityCheckSkillPath?.let {
-    add(it.resolve("SKILL.md"))
     add(it.resolve("content.md"))
   }
   plan.specialistSkillPaths.values.forEach { path ->
-    add(path.resolve("SKILL.md"))
     add(path.resolve("content.md"))
   }
 }
@@ -1155,8 +1145,7 @@ private fun missingSupportingFileTargetError(fileName: String, skillName: String
   )
 
 private fun sharedContractNote(): String = "Author skill instructions only in sibling `content.md` files. " +
-  "Keep scaffold-managed `SKILL.md` wrappers and `shell-ceremony.md` unchanged unless " +
-  "you are intentionally changing the shared contract."
+  "Generated `SKILL.md` wrappers and platform pointer files are render/install output."
 
 private const val ADD_ON_INSTALL_NOTE: String =
   "Add-on shipped as a supporting asset of its owning platform package; auto-install does not apply."

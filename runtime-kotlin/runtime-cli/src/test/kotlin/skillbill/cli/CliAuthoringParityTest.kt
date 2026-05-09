@@ -118,7 +118,7 @@ class CliAuthoringParityTest {
   }
 
   @Test
-  fun `native wrapper regeneration and content mutation commands stay available through the kotlin cli`() {
+  fun `native render validation and content mutation commands stay available through the kotlin cli`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-authoring-mutation")
     val context = CliRuntimeContext(userHome = tempDir)
 
@@ -134,7 +134,6 @@ class CliAuthoringParityTest {
     val skillName = "bill-render-cli-fixture"
     val repoRoot = authoringFixtureRepo(tempDir.resolve("render-cli-repo"), skillName)
     val skillFile = repoRoot.resolve("skills").resolve(skillName).resolve("SKILL.md")
-    val before = Files.readString(skillFile)
     val expected = renderAuthoringTarget(repoRoot, skillName).stdout
 
     val normal =
@@ -163,7 +162,7 @@ class CliAuthoringParityTest {
     assertEquals(0, dryRun.exitCode, dryRun.stdout)
     assertEquals(expected, normal.stdout)
     assertEquals(normal.stdout, dryRun.stdout)
-    assertEquals(before, Files.readString(skillFile))
+    assertEquals(false, Files.exists(skillFile))
   }
 
   @Test
@@ -224,27 +223,6 @@ private fun authoringFixtureRepo(repoRoot: Path, skillName: String): Path {
   val skillDir = repoRoot.resolve("skills").resolve(skillName)
   Files.createDirectories(skillDir)
   Files.writeString(
-    skillDir.resolve("SKILL.md"),
-    """
-    ---
-    name: $skillName
-    description: Fixture skill for CLI authoring tests.
-    ---
-
-    ## Descriptor
-
-    Stale descriptor that should be regenerated.
-
-    ## Execution
-
-    Stale execution section.
-
-    ## Ceremony
-
-    Stale ceremony section.
-    """.trimIndent() + "\n",
-  )
-  Files.writeString(
     skillDir.resolve("content.md"),
     """
     ---
@@ -277,7 +255,7 @@ private fun assertWrapperCommandRegenerates(command: String, tempDir: Path, cont
       context,
     )
 
-  assertEquals(1, payload["regenerated_count"])
+  assertEquals(0, payload["regenerated_count"])
   assertEquals(true, payload["validator_ran"])
 }
 

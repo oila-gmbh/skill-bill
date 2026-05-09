@@ -1,7 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.error.MissingShellCeremonyFileError
+import skillbill.error.MissingContentFileError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -33,7 +33,20 @@ class ScaffoldServiceParityTest {
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
     assertFalse(Files.exists(skillDir.resolve("junie-agents")))
+    assertNoGeneratedWrapper(skillDir)
+    assertSourceSidecars(skillDir, "bill-foo-orchestrator", repo)
     assertTrue(result.notes.any { note -> "Subagent stubs emitted: 2." in note }, result.notes.toString())
+  }
+
+  @Test
+  fun `horizontal scaffold creates source sidecars without generated wrapper`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val result = scaffold(payload(repo, "horizontal", "name" to "bill-pr-description"))
+    val skillDir = repo.resolve("skills").resolve("bill-pr-description")
+
+    assertEquals("bill-pr-description", result.skillName)
+    assertNoGeneratedWrapper(skillDir)
+    assertSourceSidecars(skillDir, "bill-pr-description", repo)
   }
 
   @Test
@@ -59,6 +72,8 @@ class ScaffoldServiceParityTest {
     assertFalse(Files.exists(qualityCheck.resolve("junie-agents")))
     assertFalse(Files.exists(qualityCheck.resolve("native-agents")))
     assertContains(Files.readString(baseline.resolve("content.md")), "## Subagent Spawn Runtime Notes")
+    assertNoGeneratedWrapperOrSupportingFiles(baseline, "bill-java-code-review")
+    assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-quality-check")
   }
 
   @Test
@@ -73,14 +88,51 @@ class ScaffoldServiceParityTest {
 
     assertEquals("platform-pack", result.kind)
     assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-architecture/SKILL.md")),
+      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-architecture/content.md")),
     )
     assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-security/SKILL.md")),
+      Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-security/content.md")),
     )
     assertTrue(manifest.indexOf("  - \"architecture\"") < manifest.indexOf("  - \"security\""))
-    assertContains(manifest, "architecture: \"code-review/bill-java-code-review-architecture/SKILL.md\"")
-    assertContains(manifest, "security: \"code-review/bill-java-code-review-security/SKILL.md\"")
+    assertContains(manifest, "architecture: \"code-review/bill-java-code-review-architecture/content.md\"")
+    assertContains(manifest, "security: \"code-review/bill-java-code-review-security/content.md\"")
+    assertNoGeneratedWrapperOrSupportingFiles(
+      repo.resolve("platform-packs/java/code-review/bill-java-code-review-architecture"),
+      "bill-java-code-review-architecture",
+    )
+    assertNoGeneratedWrapperOrSupportingFiles(
+      repo.resolve("platform-packs/java/code-review/bill-java-code-review-security"),
+      "bill-java-code-review-security",
+    )
+    val pack = loadPlatformPack(repo.resolve("platform-packs/java"))
+    assertEquals(
+      repo.resolve("platform-packs/java/code-review/bill-java-code-review-architecture/content.md"),
+      pack.declaredFiles.areas.getValue("architecture"),
+    )
+    assertEquals(
+      repo.resolve("platform-packs/java/code-review/bill-java-code-review-security/content.md"),
+      pack.declaredFiles.areas.getValue("security"),
+    )
+  }
+
+  @Test
+  fun `code review area scaffold omits generated wrapper and supporting pointer files`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val result =
+      scaffold(
+        payload(
+          repo,
+          "code-review-area",
+          "platform" to "kotlin",
+          "area" to "performance",
+          "name" to "bill-kotlin-code-review-performance",
+        ),
+      )
+    val skillDir = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-performance")
+
+    assertEquals("bill-kotlin-code-review-performance", result.skillName)
+    assertTrue(Files.isRegularFile(skillDir.resolve("content.md")))
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-code-review-performance")
   }
 
   @Test
@@ -128,7 +180,7 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
-  fun `authoring render preserves platform display name and base shell ceremony sidecars`() = withIsolatedUserHome {
+  fun `authoring render preserves platform display name and base shell ceremony references`() = withIsolatedUserHome {
     val repo = seedRepo()
     val packSkill = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
     val packTarget =
@@ -145,19 +197,10 @@ class ScaffoldServiceParityTest {
     val baseSkill = repo.resolve("skills/bill-code-review")
     Files.createDirectories(baseSkill)
     Files.writeString(
-      baseSkill.resolve("SKILL.md"),
-      renderSkillBody(
-        TemplateContext("bill-code-review", "code-review", "", "", "code review"),
-        "Use when reviewing code changes across stack-specific review specialists.",
-      ),
-    )
-    Files.writeString(
       baseSkill.resolve("content.md"),
       "---\nname: bill-code-review\ndescription: Base shell content.\n---\n\n" +
         baselineReviewContent("Base shell content."),
     )
-    Files.writeString(baseSkill.resolve("shell-ceremony.md"), "# ceremony\n")
-    Files.writeString(baseSkill.resolve("shell-content-contract.md"), "# contract\n")
     val baseTarget =
       AuthoringTarget(
         skillName = "bill-code-review",
@@ -199,26 +242,29 @@ class ScaffoldServiceParityTest {
     val skillDir = repo.resolve("skills/bill-feature-verify")
     Files.createDirectories(skillDir)
     val context = TemplateContext("bill-feature-verify", "feature-verify", "", "", "feature verify")
-    Files.writeString(skillDir.resolve("SKILL.md"), renderSkillBody(context, inferSkillDescription(context)))
     Files.writeString(
       skillDir.resolve("content.md"),
       "---\nname: bill-feature-verify\ndescription: Feature verify content.\n---\n\n" +
         baselineReviewContent("Feature verify content."),
     )
-    Files.writeString(skillDir.resolve("shell-ceremony.md"), "# ceremony\n")
-    Files.writeString(skillDir.resolve("telemetry-contract.md"), "# telemetry\n")
+    Files.createSymbolicLink(
+      skillDir.resolve("shell-ceremony.md"),
+      repo.resolve("orchestration/shell-content-contract/shell-ceremony.md"),
+    )
+    Files.createSymbolicLink(
+      skillDir.resolve("telemetry-contract.md"),
+      repo.resolve("orchestration/telemetry-contract/PLAYBOOK.md"),
+    )
     Files.writeString(skillDir.resolve("audit-rubrics.md"), "# audit\n")
     val target = resolveTarget(repo, "bill-feature-verify")
     val rendered = renderWrapper(target)
 
     assertContains(rendered, "audit-rubrics.md")
-    Files.writeString(skillDir.resolve("SKILL.md"), rendered)
-    assertEquals(emptyList(), validateTarget(target))
+    assertEquals(emptyList(), validateTarget(target, repo))
 
     Files.delete(skillDir.resolve("audit-rubrics.md"))
-    Files.createDirectories(skillDir.resolve("audit-rubrics.md"))
 
-    assertTrue(validateTarget(target).any { issue -> "audit-rubrics.md" in issue })
+    assertTrue(validateTarget(target, repo).any { issue -> "audit-rubrics.md" in issue })
   }
 
   @Test
@@ -238,9 +284,10 @@ class ScaffoldServiceParityTest {
     val rubricLink = skillDir.resolve("audit-rubrics.md")
 
     assertEquals("bill-kmp-feature-verify", result.skillName)
-    assertContains(Files.readString(skillDir.resolve("SKILL.md")), "audit-rubrics.md")
+    assertContains(renderWrapper(resolveTarget(repo, "bill-kmp-feature-verify")), "audit-rubrics.md")
     assertTrue(Files.isSymbolicLink(rubricLink))
     assertEquals(repo.resolve("skills/bill-feature-verify/audit-rubrics.md"), Files.readSymbolicLink(rubricLink))
+    assertSourceSidecars(skillDir, "bill-kmp-feature-verify", repo)
   }
 
   @Test
@@ -272,7 +319,16 @@ class ScaffoldServiceParityTest {
     val manifest = Files.readString(repo.resolve("platform-packs/kotlin/platform.yaml"))
 
     assertEquals("bill-kotlin-quality-check", result.skillName)
-    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-quality-check/SKILL.md\"")
+    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-quality-check/content.md\"")
+    assertNoGeneratedWrapperOrSupportingFiles(
+      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-quality-check"),
+      "bill-kotlin-quality-check",
+    )
+    val pack = loadPlatformPack(repo.resolve("platform-packs/kotlin"))
+    assertEquals(
+      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-quality-check/content.md"),
+      loadQualityCheckContent(pack),
+    )
   }
 
   @Test
@@ -281,10 +337,10 @@ class ScaffoldServiceParityTest {
     val unrelated = repo.resolve("notes/unrelated.txt")
     Files.createDirectories(unrelated.parent)
     Files.writeString(unrelated, "keep me")
-    Files.delete(repo.resolve("orchestration/shell-content-contract/shell-ceremony.md"))
+    Files.delete(repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md"))
     val before = snapshotTree(repo)
 
-    assertFailsWith<MissingShellCeremonyFileError> {
+    assertFailsWith<MissingContentFileError> {
       scaffold(
         payload(
           repo,
@@ -327,12 +383,13 @@ private fun seedKotlinPack(repo: Path) {
       platform = "kotlin",
       displayName = "Kotlin",
       strongSignals = listOf(".kt"),
-      baselineContentPath = "code-review/bill-kotlin-code-review/SKILL.md",
+      baselineContentPath = "code-review/bill-kotlin-code-review/content.md",
     ),
   )
-  Files.writeString(baseline.resolve("SKILL.md"), renderSkillBody(context, inferSkillDescription(context)))
-  Files.writeString(baseline.resolve("content.md"), renderContentBody(context, inferSkillDescription(context)))
-  Files.writeString(baseline.resolve("shell-ceremony.md"), "# ceremony\n")
+  Files.writeString(
+    baseline.resolve("content.md"),
+    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+  )
 }
 
 private fun seedKmpPack(repo: Path) {
@@ -346,12 +403,13 @@ private fun seedKmpPack(repo: Path) {
       platform = "kmp",
       displayName = "KMP",
       strongSignals = listOf(".kt"),
-      baselineContentPath = "code-review/bill-kmp-code-review/SKILL.md",
+      baselineContentPath = "code-review/bill-kmp-code-review/content.md",
     ),
   )
-  Files.writeString(baseline.resolve("SKILL.md"), renderSkillBody(context, inferSkillDescription(context)))
-  Files.writeString(baseline.resolve("content.md"), renderContentBody(context, inferSkillDescription(context)))
-  Files.writeString(baseline.resolve("shell-ceremony.md"), "# ceremony\n")
+  Files.writeString(
+    baseline.resolve("content.md"),
+    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+  )
 }
 
 private fun assertSourceStub(path: Path, name: String) {
@@ -362,6 +420,28 @@ private fun assertSourceStub(path: Path, name: String) {
   val frontmatterEndIndex = text.indexOf("\n---\n", startIndex = 4)
   assertTrue(frontmatterEndIndex > 0, "Expected closing frontmatter fence in $path")
   assertFalse("mode: subagent" in text)
+}
+
+private fun assertNoGeneratedWrapperOrSupportingFiles(skillDir: Path, skillName: String) {
+  assertNoGeneratedWrapper(skillDir)
+  requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+    assertFalse(
+      Files.exists(skillDir.resolve(fileName)),
+      "scaffold must not create source pointer/supporting file '$fileName' at $skillDir",
+    )
+  }
+}
+
+private fun assertNoGeneratedWrapper(skillDir: Path) {
+  assertFalse(Files.exists(skillDir.resolve("SKILL.md")), "scaffold must not create source SKILL.md at $skillDir")
+}
+
+private fun assertSourceSidecars(skillDir: Path, skillName: String, repo: Path) {
+  requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+    val sidecar = skillDir.resolve(fileName)
+    assertTrue(Files.isSymbolicLink(sidecar), "scaffold must create source sidecar symlink '$fileName' at $skillDir")
+    assertEquals(supportingFileTargets(repo).getValue(fileName), Files.readSymbolicLink(sidecar))
+  }
 }
 
 private fun withIsolatedUserHome(block: () -> Unit) {

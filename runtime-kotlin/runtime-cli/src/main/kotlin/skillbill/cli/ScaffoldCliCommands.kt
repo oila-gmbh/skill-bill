@@ -230,7 +230,7 @@ class RenderSkillsCommand(
 open class WrapperRegenerationCommand(
   name: String,
   private val state: CliRunState,
-) : DocumentedCliCommand(name, "Regenerate scaffold-managed SKILL.md wrappers.") {
+) : DocumentedCliCommand(name, "Validate governed render output and regenerate native-agent artifacts.") {
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to upgrade. Defaults to the current working directory.",
@@ -255,7 +255,7 @@ open class WrapperRegenerationCommand(
 @Inject
 class EditSkillCommand(
   private val state: CliRunState,
-) : DocumentedCliCommand("edit", "Edit a content-managed skill's authored content.md and regenerate the wrapper.") {
+) : DocumentedCliCommand("edit", "Edit a content-managed skill's authored content.md and validate render output.") {
   private val skillName by argument(help = "Governed skill name to edit.")
   private val repoRoot by option("--repo-root", help = "Repo root to edit. Defaults to the current working directory.")
     .default(".")
@@ -299,7 +299,7 @@ class EditSkillCommand(
 @Inject
 class FillSkillCommand(
   private val state: CliRunState,
-) : DocumentedCliCommand("fill", "Write authored content into content.md, regenerate the wrapper, and validate it.") {
+) : DocumentedCliCommand("fill", "Write authored content into content.md and validate render output.") {
   private val skillName by argument(help = "Governed skill name to fill.")
   private val repoRoot by option("--repo-root", help = "Repo root to edit. Defaults to the current working directory.")
     .default(".")
@@ -472,12 +472,15 @@ class InstallLinkSkillCommand(
   private val source by option("--source", help = "Skill directory to install.").required()
   private val targetDir by option("--target-dir", help = "Target install directory.").required()
   private val agent by option("--agent", help = "Optional agent name to label the install.").default("")
+  private val repoRoot by option("--repo-root", help = "Repo root used to render content-managed installs.")
 
   override fun run() {
     InstallOperations.linkSkill(
       source = Path.of(source),
       targetDir = Path.of(targetDir),
       agent = agent,
+      repoRoot = repoRoot?.let(Path::of),
+      home = state.userHome,
     )
     state.result = CliExecutionResult(exitCode = 0, stdout = "")
   }

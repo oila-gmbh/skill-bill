@@ -152,12 +152,12 @@ internal fun stageInstalledSkill(
 
   // Idempotent reuse: same hash, marker present and intact, SKILL.md present -> reuse existing dir.
   if (isReusableInstallStaging(finalStagingDir, contentHash)) {
-    log.info(
+    log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
     )
-    return reuseInstallStaging(skillName, resolvedSource, finalStagingDir, contentHash)
+    return reuseInstallStaging(skillName, resolvedSource, finalStagingDir, contentHash, pointers)
   }
-  log.info(
+  log.fine(
     "stageInstalledSkill reuse=false skill=$skillName hash=$contentHash dir=$finalStagingDir",
   )
 

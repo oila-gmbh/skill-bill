@@ -3,6 +3,16 @@ name: bill-kotlin-code-review-persistence
 description: Use when reviewing Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, transaction boundaries, migration safety, ORM mapping, or query correctness in Kotlin backend.
 ---
 
+## Descriptor
+
+Governed skill: `bill-kotlin-code-review-persistence`
+Family: `code-review`
+Platform pack: `kotlin` (Kotlin)
+Area: `persistence`
+Description: Use when reviewing Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, transaction boundaries, migration safety, ORM mapping, or query correctness in Kotlin backend.
+
+## Execution
+
 # Backend Persistence Review Specialist
 
 Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
@@ -33,3 +43,7 @@ Use this specialist for backend/server persistence code routed through the built
 - Do not hold persistence transactions open while waiting on remote I/O
 - Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
 - For Major or Blocker findings, explain the data-loss, stale-write, or consistency consequence explicitly.
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

@@ -8,7 +8,7 @@ routing_signals:
   - Prefer quality_check_missing_section when fixture markers dominate.
 declared_code_review_areas: []
 declared_files:
-  baseline: code-review/SKILL.md
+  baseline: code-review/content.md
   areas: {}
-declared_quality_check_file: quality-check/SKILL.md
+declared_quality_check_file: quality-check/content.md
 area_metadata: {}

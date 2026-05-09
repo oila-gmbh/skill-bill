@@ -92,6 +92,29 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `runtime cli check task depends on validate agent configs`() {
+    val buildFile = Files.readString(runtimeRoot.resolve("runtime-cli/build.gradle.kts"))
+    assertContains(buildFile, "val validateAgentConfigs by tasks.registering(JavaExec::class)")
+    val validateAgentConfigsBlock =
+      Regex(
+        """val validateAgentConfigs by tasks\.registering\(JavaExec::class\) \{(?<body>.*?)\}""",
+        RegexOption.DOT_MATCHES_ALL,
+      )
+        .find(buildFile)
+    assertTrue(validateAgentConfigsBlock != null, "validateAgentConfigs task configuration is missing")
+    val validateAgentConfigsBody = validateAgentConfigsBlock.groups["body"]?.value.orEmpty()
+    assertContains(validateAgentConfigsBody, "mainClass.set(application.mainClass)")
+    assertContains(
+      validateAgentConfigsBody,
+      "args(\"validate-agent-configs\", \"--repo-root\", rootProject.projectDir.parentFile.absolutePath)",
+    )
+    val checkBlock = Regex("""tasks\.named\("check"\)\s*\{(?<body>.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+      .find(buildFile)
+    assertTrue(checkBlock != null, "runtime-cli check task configuration is missing")
+    assertContains(checkBlock.groups["body"]?.value.orEmpty(), "dependsOn(validateAgentConfigs)")
+  }
+
+  @Test
   fun `application layer stays independent of entrypoint frameworks`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.application") },

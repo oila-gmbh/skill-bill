@@ -2,6 +2,7 @@ package skillbill.install
 
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.AgentTarget
+import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.renderPointer
 import skillbill.scaffold.renderWrapper
 import skillbill.scaffold.resolveTarget
@@ -52,10 +53,6 @@ class InstallStagingTest {
       if (rel == "SKILL.md") {
         return@forEach
       }
-      // Pointer files in source are managed and replaced in staging by renderPointer; skip them.
-      if (fixture.pointerNames.contains(rel)) {
-        return@forEach
-      }
       if (entry !is TreeEntry.RegularFile) {
         return@forEach
       }
@@ -88,6 +85,40 @@ class InstallStagingTest {
       val expected = renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
       assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
     }
+  }
+
+  @Test
+  fun `stale source generated artifacts are excluded from authored copy and replaced in staging`() {
+    val fixture = setupFixture()
+    val staleSkill = fixture.skillDir.resolve("SKILL.md")
+    val stalePointer = fixture.skillDir.resolve(fixture.pointerNames.single())
+    Files.writeString(staleSkill, "stale wrapper from source\n")
+    Files.writeString(stalePointer, "stale pointer from source\n")
+    val sourceBefore = snapshotTree(fixture.repoRoot)
+
+    val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+    val reused = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+
+    val target = resolveTarget(fixture.repoRoot, fixture.skillName)
+    val expectedSkillBytes = renderWrapper(target).toByteArray(StandardCharsets.UTF_8)
+    assertContentEquals(expectedSkillBytes, Files.readAllBytes(rendered.renderedSkillFile))
+    assertContentEquals(expectedSkillBytes, Files.readAllBytes(reused.renderedSkillFile))
+    fixture.pointerSpecs.forEach { (manifest, spec) ->
+      val staged = rendered.stagingDir.resolve(spec.name)
+      val reusedStaged = reused.stagingDir.resolve(spec.name)
+      val expected = renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
+      assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
+      assertEquals(expected, String(Files.readAllBytes(reusedStaged), StandardCharsets.UTF_8))
+    }
+    assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered, fixture)
+    assertGeneratedArtifactsExcludedFromAuthoredCopy(reused, fixture)
+    val renderedPointers = reused.renderedPointerFiles
+      .map { path -> reused.stagingDir.relativize(path).toString().replace(java.io.File.separatorChar, '/') }
+      .toSet()
+    fixture.pointerNames.forEach { pointerName ->
+      assertTrue(pointerName in renderedPointers, "cache-hit result must classify $pointerName as rendered pointer")
+    }
+    assertEquals(sourceBefore, snapshotTree(fixture.repoRoot), "install staging must not mutate source tree")
   }
 
   @Test
@@ -288,7 +319,7 @@ class InstallStagingTest {
       |declared_code_review_areas: []
       |
       |declared_files:
-      |  baseline: "$skillRelativeDir/SKILL.md"
+      |  baseline: "$skillRelativeDir/content.md"
       |  areas: {}
       |area_metadata: {}
       |
@@ -308,17 +339,18 @@ class InstallStagingTest {
       |---
     """.trimMargin() + "\n\nAuthored body.\n"
     Files.writeString(skillDir.resolve("content.md"), frontmatter)
-    // SKILL.md committed in the source tree (today's behavior). Staging will overwrite it in the
-    // staging dir but never modify this source file.
-    Files.writeString(skillDir.resolve("SKILL.md"), "stale wrapper\n")
-    Files.writeString(skillDir.resolve("shell-ceremony.md"), "# ceremony\n")
-    // Pointer file as it exists in the source tree (committed).
-    Files.writeString(
-      skillDir.resolve("review-orchestrator.md"),
-      "../../../orchestration/review-orchestrator/PLAYBOOK.md",
-    )
     // A sibling authored file (e.g. a sidecar) that should be copied verbatim.
     Files.writeString(skillDir.resolve("notes.md"), "verbatim notes\n")
+  }
+
+  private fun assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered: RenderedSkill, fixture: Fixture) {
+    val copiedRelative = rendered.copiedAuthoredFiles
+      .map { path -> rendered.stagingDir.relativize(path).toString().replace(java.io.File.separatorChar, '/') }
+      .toSet()
+    assertFalse("SKILL.md" in copiedRelative, "stale source SKILL.md must not be part of authored copy set")
+    fixture.pointerNames.forEach { pointerName ->
+      assertFalse(pointerName in copiedRelative, "stale source pointer $pointerName must not be authored copy")
+    }
   }
 
   /**

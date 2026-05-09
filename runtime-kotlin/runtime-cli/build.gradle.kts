@@ -22,3 +22,16 @@ application {
 tasks.named<JavaExec>("run") {
   standardInput = System.`in`
 }
+
+val validateAgentConfigs by tasks.registering(JavaExec::class) {
+  group = "verification"
+  description = "Validate repository agent configuration and governed generated-output drift."
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set(application.mainClass)
+  args("validate-agent-configs", "--repo-root", rootProject.projectDir.parentFile.absolutePath)
+  mustRunAfter(tasks.withType<Test>())
+}
+
+tasks.named("check") {
+  dependsOn(validateAgentConfigs)
+}

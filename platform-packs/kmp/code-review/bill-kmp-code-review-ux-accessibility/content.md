@@ -3,6 +3,16 @@ name: bill-kmp-code-review-ux-accessibility
 description: Use when reviewing UX correctness and accessibility risks, delegating UI-framework-heavy checks to bill-kmp-code-review-ui. Use when user mentions UX review, accessibility, content description, screen reader, or localization review.
 ---
 
+## Descriptor
+
+Governed skill: `bill-kmp-code-review-ux-accessibility`
+Family: `code-review`
+Platform pack: `kmp` (KMP)
+Area: `ux-accessibility`
+Description: Use when reviewing UX correctness and accessibility risks, delegating UI-framework-heavy checks to bill-kmp-code-review-ui. Use when user mentions UX review, accessibility, content description, screen reader, or localization review.
+
+## Execution
+
 # UX & Accessibility Review Specialist
 
 Review only user-impacting UX/accessibility issues.
@@ -35,3 +45,7 @@ Review only user-impacting UX/accessibility issues.
 - Screens must handle loading, content, error, and empty states
 - Error messages come from UI (string resources), not ViewModel
 - In findings, make the user-visible accessibility or UX consequence explicit.
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

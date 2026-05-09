@@ -2,7 +2,13 @@
 
 Parent spec: [./spec.md](./spec.md)
 
-Status: Not started
+Status: Complete
+
+Completion note: This broad subtask was decomposed into
+`.feature-specs/SKILL-40-subtask-3-render-cli-and-snapshots/` and completed in
+dependency order. The render CLI surface landed in the first decomposed run,
+drift and generated-artifact guards landed in commit `bb44f8d`, and snapshot
+coverage plus final validation landed in commit `20b8d3c`.
 
 ## Scope
 

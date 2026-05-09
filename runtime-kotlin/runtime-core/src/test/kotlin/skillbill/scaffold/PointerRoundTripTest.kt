@@ -1,17 +1,14 @@
 package skillbill.scaffold
 
 import org.junit.jupiter.api.Assumptions
-import java.io.File
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PointerRoundTripTest {
   @Test
-  fun `every declared pointer round-trips byte-equal with the rendered output`() {
+  fun `every declared pointer renders without requiring source pointer files`() {
     val repoRoot = findRepoRoot() ?: run {
       Assumptions.assumeTrue(
         false,
@@ -30,25 +27,9 @@ class PointerRoundTripTest {
     packs.forEach { pack ->
       pack.pointers.forEach { spec ->
         val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name)
-        // Pointer files are checked in as symlinks (mode 120000); on Linux/macOS they are real
-        // symlinks, on Windows fallback (core.symlinks=false) they are regular text files
-        // containing the symlink target string. Both forms must round-trip the renderer output.
-        assertTrue(
-          Files.isSymbolicLink(pointerFile) ||
-            Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS),
-          "Declared pointer is missing on disk: $pointerFile",
-        )
         val rendered = renderPointer(repoRoot, pack.packRoot, spec)
-        val onDisk = if (Files.isSymbolicLink(pointerFile)) {
-          Files.readSymbolicLink(pointerFile).toString().replace(File.separatorChar, '/')
-        } else {
-          Files.readString(pointerFile).trimEnd('\n', '\r')
-        }
-        assertEquals(
-          rendered.trimEnd('\n'),
-          onDisk,
-          "Pointer drift at $pointerFile: declared target='${spec.target}'",
-        )
+        assertTrue(rendered.isNotBlank(), "Pointer render was blank at $pointerFile")
+        assertTrue(!Files.exists(pointerFile), "Declared pointer should not be committed on disk: $pointerFile")
         checked.add(pointerFile)
       }
     }

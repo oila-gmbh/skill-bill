@@ -24,7 +24,6 @@ class AuthoringRenderOutputTest {
     val repoRoot = tempRoot.resolve("horizontal-repo")
     val skillDir = repoRoot.resolve("skills/bill-render-fixture")
     Files.createDirectories(skillDir)
-    Files.writeString(skillDir.resolve("SKILL.md"), "stale wrapper\n")
     Files.writeString(
       skillDir.resolve("content.md"),
       """
@@ -37,7 +36,6 @@ class AuthoringRenderOutputTest {
       """.trimIndent() + "\n",
     )
     val target = resolveTarget(repoRoot, "bill-render-fixture")
-    val skillBytesBefore = Files.readAllBytes(skillDir.resolve("SKILL.md"))
     val expectedStdout =
       "===== SKILL.md: skills/bill-render-fixture/SKILL.md =====\n" +
         renderWrapper(target).trimEnd('\r', '\n') +
@@ -49,8 +47,7 @@ class AuthoringRenderOutputTest {
     assertEquals(expectedStdout, first.stdout)
     assertEquals(first.stdout, second.stdout)
     assertFalse('\r' in first.stdout, "render stdout must use LF line endings only")
-    assertEquals("stale wrapper\n", Files.readString(skillDir.resolve("SKILL.md")))
-    assertEquals(skillBytesBefore.toList(), Files.readAllBytes(skillDir.resolve("SKILL.md")).toList())
+    assertFalse(Files.exists(skillDir.resolve("SKILL.md")), "render must not create source SKILL.md")
   }
 
   @Test
@@ -81,7 +78,7 @@ class AuthoringRenderOutputTest {
     assertEquals(expectedA, rendered.blocks[2].content)
     assertFalse(Files.exists(fixture.zPointer), "render must not create pointer files")
     assertFalse(Files.exists(fixture.aPointer), "render must not create pointer files")
-    assertEquals("stale platform wrapper\n", Files.readString(fixture.skillDir.resolve("SKILL.md")))
+    assertFalse(Files.exists(fixture.skillDir.resolve("SKILL.md")), "render must not create source SKILL.md")
   }
 
   private fun writePlatformRenderFixture(): PlatformRenderFixture {
@@ -92,7 +89,6 @@ class AuthoringRenderOutputTest {
     Files.createDirectories(repoRoot.resolve("shared"))
     Files.writeString(repoRoot.resolve("shared/z.md"), "# z")
     Files.writeString(repoRoot.resolve("shared/a.md"), "# a")
-    Files.writeString(skillDir.resolve("SKILL.md"), "stale platform wrapper\n")
     Files.writeString(skillDir.resolve("content.md"), platformFixtureContent())
     Files.writeString(packRoot.resolve("platform.yaml"), platformFixtureManifest())
     return PlatformRenderFixture(
@@ -124,7 +120,7 @@ class AuthoringRenderOutputTest {
     declared_code_review_areas: []
 
     declared_files:
-      baseline: code-review/bill-fixturepack-code-review/SKILL.md
+      baseline: code-review/bill-fixturepack-code-review/content.md
 
     area_metadata: {}
 

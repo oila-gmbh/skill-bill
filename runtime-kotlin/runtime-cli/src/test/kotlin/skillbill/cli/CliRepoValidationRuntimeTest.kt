@@ -53,4 +53,38 @@ class CliRepoValidationRuntimeTest {
     assertContains(result.stdout, "\"status\": \"failed\"")
     assertTrue(result.stdout.contains("skills/ directory is missing"))
   }
+
+  @Test
+  fun `validate-agent-configs command emits generated artifact guard issues`() {
+    val repoRoot = Files.createTempDirectory("skillbill-cli-generated-guard")
+    val skillDir = repoRoot.resolve("skills/bill-new-generated")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-new-generated
+      description: New generated wrapper fixture.
+      ---
+
+      # New Generated Fixture
+      """.trimIndent() + "\n",
+    )
+    Files.writeString(skillDir.resolve("SKILL.md"), "generated wrapper\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "validate-agent-configs",
+        "--repo-root",
+        repoRoot.toString(),
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "\"status\": \"failed\"")
+    assertTrue(result.stdout.contains("committed governed SKILL.md output is not allowed"), result.stdout)
+  }
 }

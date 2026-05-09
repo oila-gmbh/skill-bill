@@ -248,7 +248,7 @@ class PointerOperationsTest {
       declared_code_review_areas: []
 
       declared_files:
-        baseline: code-review/skill/SKILL.md
+        baseline: code-review/skill/content.md
 
       area_metadata: {}
 

@@ -6,7 +6,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal const val AUTHORING_EXPLANATION =
-  "Governed skills split author-owned behavior into content.md and generated runtime wiring into SKILL.md. " +
+  "Governed skills split author-owned behavior into content.md and generated runtime wiring into " +
+    "render/install output. " +
     "Use CLI commands to keep that boundary intact."
 
 data class AuthoringTarget(
@@ -43,8 +44,8 @@ object AuthoringOperations {
       mutableMapOf<String, Any?>(
         "explanation" to AUTHORING_EXPLANATION,
         "editable_surface" to listOf("content.md"),
-        "generated_surface" to listOf("SKILL.md"),
-        "governed_sidecars" to listOf("shell-ceremony.md"),
+        "generated_surface" to listOf("SKILL.md", "platform.yaml pointer files"),
+        "governed_sidecars" to emptyList<String>(),
         "normal_workflow" to listOf(
           "skill-bill new --payload <file>",
           "skill-bill fill <skill-name>",
@@ -81,7 +82,7 @@ object AuthoringOperations {
     if (skillNames.isEmpty()) {
       val issues =
         discoverTargets(resolvedRoot).values.flatMap { target ->
-          validateTarget(target)
+          validateTarget(target, resolvedRoot)
         }
       return mapOf(
         "repo_root" to resolvedRoot.toString(),
@@ -90,7 +91,7 @@ object AuthoringOperations {
         "issues" to issues,
       )
     }
-    val issues = selectedTargets(resolvedRoot, skillNames).flatMap { target -> validateTarget(target) }
+    val issues = selectedTargets(resolvedRoot, skillNames).flatMap { target -> validateTarget(target, resolvedRoot) }
     val suggestedCommands =
       skillNames.flatMap { skillName ->
         val target = resolveTarget(resolvedRoot, skillName)
@@ -119,14 +120,7 @@ object AuthoringOperations {
     val regenerated = mutableListOf<Path>()
     return runWithUpgradeRollback(originalBytes, createdPaths) {
       targets.forEach { target ->
-        val rendered = renderWrapper(target)
-        val renderedBytes = rendered.toByteArray(Charsets.UTF_8)
-        val currentBytes = Files.readAllBytes(target.skillFile)
-        if (!currentBytes.contentEquals(renderedBytes)) {
-          originalBytes[target.skillFile] = currentBytes
-          Files.write(target.skillFile, renderedBytes)
-          regenerated.add(target.skillFile)
-        }
+        renderAuthoringTarget(resolvedRoot, target)
       }
       val nativeRegeneration = NativeAgentOperations.regenerate(
         resolvedRoot,
@@ -135,14 +129,8 @@ object AuthoringOperations {
         createdPaths = createdPaths,
       )
       regenerated += nativeRegeneration.regeneratedFiles
-      val pointerRegeneration = PointerOperations.regenerate(
-        resolvedRoot,
-        originalBytes = originalBytes,
-        createdPaths = createdPaths,
-      )
-      regenerated += pointerRegeneration.regeneratedFiles
       if (validate) {
-        val issues = targets.flatMap { target -> validateTarget(target) }
+        val issues = targets.flatMap { target -> validateTarget(target, resolvedRoot) }
         if (issues.isNotEmpty()) {
           throw SkillBillRuntimeException("Validator failed after upgrade:\n${issues.joinToString("\n")}")
         }

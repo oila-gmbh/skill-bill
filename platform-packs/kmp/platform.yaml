@@ -22,10 +22,10 @@ declared_code_review_areas:
   - ux-accessibility
 
 declared_files:
-  baseline: code-review/bill-kmp-code-review/SKILL.md
+  baseline: code-review/bill-kmp-code-review/content.md
   areas:
-    ui: code-review/bill-kmp-code-review-ui/SKILL.md
-    ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/SKILL.md
+    ui: code-review/bill-kmp-code-review-ui/content.md
+    ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
 area_metadata:
   ui:
@@ -34,9 +34,9 @@ area_metadata:
     focus: "UX correctness and accessibility"
 
 # Pointer files (single-line markdown files containing only a relative path) are generated
-# from this block. Targets are repo-rooted; the renderer computes the correct ../-prefixed
-# relative path. Never hand-edit pointer files — add or modify entries here and run
-# `skill-bill upgrade`.
+# from this block during render/install output. Targets are repo-rooted; the renderer computes
+# the correct ../-prefixed relative path. Never commit pointer files — add or modify entries here
+# and use `skill-bill render` or the install pipeline.
 pointers:
   code-review/bill-kmp-code-review:
     - name: review-orchestrator.md

@@ -77,50 +77,50 @@ private fun restoreFiles(originalBytes: Map<Path, ByteArray>) {
 
 private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, pack: PlatformManifest) {
   val baseline = pack.declaredFiles.baseline
+  val baselineContent = declaredContentFile(baseline)
   val displayName = pack.displayName ?: displayNameFromSlug(pack.slug)
-  discovered[baseline.parent.name] =
+  discovered[baselineContent.parent.name] =
     AuthoringTarget(
-      baseline.parent.name,
+      baselineContent.parent.name,
       pack.slug,
       pack.slug,
       displayName,
       "code-review",
       "",
-      baseline,
-      baseline.resolveSibling("content.md"),
+      baselineContent.resolveSibling("SKILL.md"),
+      baselineContent,
     )
-  pack.declaredFiles.areas.forEach { (area, skillFile) ->
-    discovered[skillFile.parent.name] =
+  pack.declaredFiles.areas.forEach { (area, declaredFile) ->
+    val contentFile = declaredContentFile(declaredFile)
+    discovered[contentFile.parent.name] =
       AuthoringTarget(
-        skillFile.parent.name,
+        contentFile.parent.name,
         pack.slug,
         pack.slug,
         displayName,
         "code-review",
         area,
-        skillFile,
-        skillFile.resolveSibling("content.md"),
+        contentFile.resolveSibling("SKILL.md"),
+        contentFile,
       )
   }
-  pack.declaredQualityCheckFile?.let { skillFile ->
-    discovered[skillFile.parent.name] =
+  pack.declaredQualityCheckFile?.let { declaredFile ->
+    val contentFile = declaredContentFile(declaredFile)
+    discovered[contentFile.parent.name] =
       AuthoringTarget(
-        skillFile.parent.name,
+        contentFile.parent.name,
         pack.slug,
         pack.slug,
         displayName,
         "quality-check",
         "",
-        skillFile,
-        skillFile.resolveSibling("content.md"),
+        contentFile.resolveSibling("SKILL.md"),
+        contentFile,
       )
   }
 }
 
 private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, AuthoringTarget>, contentFile: Path) {
-  // F-E: keep registering the target even when the sibling SKILL.md is missing so downstream
-  // validation surfaces the orphan instead of silently making the skill invisible to
-  // validate/list/upgrade. validateTarget() asserts SKILL.md presence and emits a discrete issue.
   val skillFile = contentFile.resolveSibling("SKILL.md")
   val skillName = contentFile.parent.name
   if (skillName in discovered) {
@@ -144,6 +144,8 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
       contentFile,
     )
 }
+
+private fun declaredContentFile(declaredFile: Path): Path = declaredFile
 
 private fun platformFromSkillPath(relative: Path): String = if (
   relative.nameCount >= PRE_SHELL_PLATFORM_PATH_PARTS &&

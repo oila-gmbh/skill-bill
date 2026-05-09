@@ -1,13 +1,11 @@
 package skillbill.scaffold
 
 import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidDescriptorSectionError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.error.MissingShellCeremonyFileError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -34,8 +32,58 @@ class ShellContentLoaderParityTest {
     val pack = loadPlatformPack(fixture("code_review_and_quality_check"))
     val contentPath = loadQualityCheckContent(pack)
 
-    assertEquals(pack.declaredQualityCheckFile?.resolveSibling("content.md"), contentPath)
+    assertEquals(pack.declaredQualityCheckFile, contentPath)
     assertTrue(Files.isRegularFile(contentPath))
+  }
+
+  @Test
+  fun `declared governed skill paths must point directly at content_md`() {
+    val cases: List<Pair<String, (Path) -> Unit>> = listOf(
+      "declared_files.baseline" to { manifest ->
+        Files.writeString(
+          manifest,
+          Files.readString(manifest).replace(
+            "baseline: code-review/content.md",
+            "baseline: code-review/SKILL.md",
+          ),
+        )
+      },
+      "declared_files.areas.architecture" to { manifest ->
+        Files.writeString(
+          manifest,
+          Files.readString(manifest).replace(
+            "architecture: code-review/architecture/content.md",
+            "architecture: code-review/architecture.md",
+          ),
+        )
+      },
+      "declared_quality_check_file" to { manifest ->
+        Files.writeString(
+          manifest,
+          Files.readString(manifest).replace(
+            "declared_quality_check_file: quality-check/content.md",
+            "declared_quality_check_file: quality-check/SKILL.md",
+          ),
+        )
+      },
+    )
+
+    cases.forEach { (field, mutateManifest) ->
+      val fixtureName = if (field == "declared_quality_check_file") {
+        "code_review_and_quality_check"
+      } else {
+        "valid_pack"
+      }
+      val root = copyFixture(fixtureName)
+      val manifest = root.resolve("platform.yaml")
+      mutateManifest(manifest)
+
+      val error = assertFailsWith<InvalidManifestSchemaError>(field) {
+        loadPlatformPack(root)
+      }
+      assertContains(error.message.orEmpty(), field)
+      assertContains(error.message.orEmpty(), "content.md")
+    }
   }
 
   @Test
@@ -43,60 +91,23 @@ class ShellContentLoaderParityTest {
     assertNamedFailure<MissingManifestError>("missing_manifest", "platform.yaml")
     assertNamedFailure<MissingContentFileError>("missing_content_file", "baseline")
     assertNamedFailure<ContractVersionMismatchError>("bad_version", "9.99")
-    assertNamedFailure<MissingRequiredSectionError>("missing_section", "## Ceremony")
     assertNamedFailure<InvalidManifestSchemaError>("invalid_schema", "routing_signals")
     assertNamedFailure<InvalidManifestSchemaError>("schema_areas_wrong_type", "declared_code_review_areas")
     assertNamedFailure<InvalidManifestSchemaError>("schema_unapproved_area", "laravel")
     assertNamedFailure<InvalidManifestSchemaError>("extra_area", "performance")
-    assertNamedFailure<MissingRequiredSectionError>("heading_in_fence", "## Descriptor")
   }
 
   @Test
-  fun `quality check declaration fails loudly when file or wrapper section is invalid`() {
+  fun `quality check declaration fails loudly when declared content file is missing`() {
     val missingFilePack = loadPlatformManifest(fixture("quality_check_missing_file"))
     val missingFileError = assertFailsWith<MissingContentFileError> {
       loadQualityCheckContent(missingFilePack)
     }
-    assertContains(missingFileError.message.orEmpty(), "does-not-exist.md")
-
-    val missingSectionPack = loadPlatformManifest(fixture("quality_check_missing_section"))
-    val missingSectionError = assertFailsWith<MissingRequiredSectionError> {
-      loadQualityCheckContent(missingSectionPack)
-    }
-    assertContains(missingSectionError.message.orEmpty(), "## Ceremony")
+    assertContains(missingFileError.message.orEmpty(), "does-not-exist/content.md")
   }
 
   @Test
-  fun `missing shell ceremony fails before descriptor drift`() {
-    val fixtureRoot = copyFixture("valid_pack")
-    val skillPath = fixtureRoot.resolve("code-review").resolve("SKILL.md")
-    Files.writeString(
-      skillPath,
-      Files.readString(skillPath).replace("Governed skill: `code-review`", "Governed skill: `drifted`"),
-    )
-    Files.delete(fixtureRoot.resolve("code-review").resolve("shell-ceremony.md"))
-
-    assertFailsWith<MissingShellCeremonyFileError> {
-      loadPlatformPack(fixtureRoot)
-    }
-  }
-
-  @Test
-  fun `descriptor drift and invalid skill md shape are distinct named failures`() {
-    val driftRoot = copyFixture("valid_pack")
-    val driftSkill = driftRoot.resolve("code-review").resolve("SKILL.md")
-    Files.writeString(
-      driftSkill,
-      Files.readString(driftSkill).replace("Governed skill: `code-review`", "Governed skill: `drifted`"),
-    )
-    val driftError = assertFailsWith<InvalidDescriptorSectionError> {
-      loadPlatformPack(driftRoot)
-    }
-    assertContains(driftError.message.orEmpty(), "## Descriptor")
-
-    // The loader validates both SKILL.md (with body-shape rules) and the sibling content.md
-    // (frontmatter only). Remove the required `description` key from content.md to prove the
-    // content-side validator path fires.
+  fun `loader validates content_md frontmatter instead of generated wrapper body shape`() {
     val shapeRoot = copyFixture("valid_pack")
     val shapeContent = shapeRoot.resolve("code-review").resolve("content.md")
     Files.writeString(
@@ -110,8 +121,70 @@ class ShellContentLoaderParityTest {
       loadPlatformPack(shapeRoot)
     }
     assertContains(shapeError.message.orEmpty(), "description")
-    // Error path must name content.md, not SKILL.md, so callers can tell which file is broken.
     assertContains(shapeError.message.orEmpty(), "content.md")
+  }
+
+  @Test
+  fun `loader requires governed content sections without exact render matching`() {
+    val root = copyFixture("valid_pack")
+    val contentFile = root.resolve("code-review").resolve("content.md")
+    Files.writeString(
+      contentFile,
+      Files.readString(contentFile).replace(
+        Regex("(?ms)^## Execution\\n.*?(?=^## Ceremony)", RegexOption.MULTILINE),
+        "",
+      ),
+    )
+
+    val error = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(root)
+    }
+    assertContains(error.message.orEmpty(), "## Execution")
+    assertContains(error.message.orEmpty(), "content.md")
+  }
+
+  @Test
+  fun `area and quality check declarations require governed content sections`() {
+    val areaRoot = copyFixture("valid_pack")
+    val areaContent = areaRoot.resolve("code-review").resolve("architecture").resolve("content.md")
+    Files.writeString(areaContent, Files.readString(areaContent).replace("## Descriptor", "## Not Descriptor"))
+
+    val areaError = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(areaRoot)
+    }
+    assertContains(areaError.message.orEmpty(), "## Descriptor")
+    assertContains(areaError.message.orEmpty(), "code-review/architecture/content.md")
+
+    val qualityRoot = copyFixture("code_review_and_quality_check")
+    val qualityContent = qualityRoot.resolve("quality-check").resolve("content.md")
+    Files.writeString(qualityContent, Files.readString(qualityContent).replace("## Ceremony", "## Not Ceremony"))
+    val pack = loadPlatformManifest(qualityRoot)
+
+    val qualityError = assertFailsWith<MissingRequiredSectionError> {
+      loadQualityCheckContent(pack)
+    }
+    assertContains(qualityError.message.orEmpty(), "## Ceremony")
+    assertContains(qualityError.message.orEmpty(), "quality-check/content.md")
+  }
+
+  @Test
+  fun `quality check declaration validates content_md frontmatter`() {
+    val root = copyFixture("code_review_and_quality_check")
+    val contentFile = root.resolve("quality-check").resolve("content.md")
+    Files.writeString(
+      contentFile,
+      Files.readString(contentFile).replace(
+        Regex("(?m)^description:.*$"),
+        "description:",
+      ),
+    )
+    val pack = loadPlatformManifest(root)
+
+    val error = assertFailsWith<InvalidSkillMdShapeError> {
+      loadQualityCheckContent(pack)
+    }
+    assertContains(error.message.orEmpty(), "description")
+    assertContains(error.message.orEmpty(), "quality-check/content.md")
   }
 
   @Test
@@ -180,9 +253,12 @@ class ShellContentLoaderParityTest {
     Files.writeString(contentFile, richBody)
     // Calling the validator directly on the new content.md (frontmatter-only) must not throw.
     validateSkillMdShape(contentFile, validateBodyShape = false)
-    // Loader integration must also accept rich body markdown end-to-end — guards against a
-    // regression that would re-introduce body-shape enforcement on the content.md path.
-    loadPlatformPack(root)
+    // Loader integration still requires governed shell sections; the looser shape validator must
+    // not become a backdoor that accepts manifest-declared content with no shell contract sections.
+    val error = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(root)
+    }
+    assertContains(error.message.orEmpty(), "## Descriptor")
   }
 }
 

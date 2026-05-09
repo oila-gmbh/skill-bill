@@ -3,6 +3,16 @@ name: bill-kotlin-code-review-testing
 description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Kotlin code. Use when user mentions test quality, test coverage, mock setup, or test reliability in Kotlin code.
 ---
 
+## Descriptor
+
+Governed skill: `bill-kotlin-code-review-testing`
+Family: `code-review`
+Platform pack: `kotlin` (Kotlin)
+Area: `testing`
+Description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Kotlin code. Use when user mentions test quality, test coverage, mock setup, or test reliability in Kotlin code.
+
+## Execution
+
 # Testing Review Specialist
 
 Review only test gaps that create real regression risk.
@@ -48,3 +58,7 @@ Use this specialist for shared Kotlin test-risk concerns across libraries, app l
 - Include a minimal test plan for the highest uncovered risks.
 - Report weak or useless tests only when they materially reduce regression confidence.
 - The concrete fix may be to rewrite or delete the test and replace it with a behavior-focused one.
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

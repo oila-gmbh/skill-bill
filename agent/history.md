@@ -1,3 +1,11 @@
+## [2026-05-09] generated-skill-artifact-deletion-policy
+Areas: AGENTS.md, skills/, platform-packs/{kotlin,kmp}/, runtime-kotlin/runtime-core scaffold validation/install
+- SKILL-40 subtask 4 retired committed governed generated outputs: source now keeps authored `content.md`, sidecars, manifests, renderer code, and install staging behavior, while `SKILL.md` wrappers and platform.yaml pointer files are render/install output only. reusable
+- Pack manifests now declare `content.md` baselines/areas/quality-check files; loader/validator paths must loud-fail invalid declared content rather than falling back to generated wrappers. reusable
+- Policy added to AGENTS.md: do not commit generated governed `SKILL.md` files or platform.yaml-declared pointer files.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-08] pointer-codegen-platform-packs
 Areas: runtime-kotlin/runtime-core/src/main/kotlin/skillbill/scaffold/, runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/scaffold/model/, runtime-kotlin/runtime-core/src/test/kotlin/skillbill/scaffold/, platform-packs/{kotlin,kmp}/platform.yaml, platform-packs/{kotlin,kmp}/code-review/**/, platform-packs/kotlin/quality-check/**/, runtime-kotlin/runtime-core/src/main/kotlin/skillbill/nativeagent/README.md
 - SKILL-39 replaced 60 hand-authored single-line "pointer" .md files (e.g. `../../../../orchestration/shell-content-contract/shell-ceremony.md`) with codegen driven by an additive `pointers:` block in each pack's `platform.yaml`. New `PointerOperations.regenerate` mirrors `NativeAgentOperations.regenerate` (same `originalBytes`/`createdPaths` rollback hooks, same atomic-write tmp+ATOMIC_MOVE pattern) and is wired into `AuthoringOperations.upgrade` alongside it; `validatePlatformPackPointers` mirrors `validateRepoNativeAgents` and is wired into `RepoValidationRuntime.validateRepo`. There is no top-level `skill-bill regenerate` — `upgrade` / `render` are the entry points, contrary to what the original spec implied. reusable

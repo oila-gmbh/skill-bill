@@ -216,7 +216,7 @@ class PointerManifestParsingTest {
       declared_code_review_areas: []
 
       declared_files:
-        baseline: code-review/SKILL.md
+        baseline: code-review/content.md
 
       area_metadata: {}
     """.trimIndent() + pointersBlock

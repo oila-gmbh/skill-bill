@@ -75,7 +75,7 @@ private fun scaffoldPlatformPack(fixture: ExternalAuthorDryRunFixture): Path {
   assertEquals(0, result.exitCode, result.stdout)
   assertEquals("ok", result.payload?.get("status"), result.stdout)
   assertTrue(Files.isDirectory(fixture.packRoot))
-  assertTrue(Files.isRegularFile(baselineSkill.resolve("SKILL.md")))
+  assertTrue(Files.isRegularFile(baselineSkill.resolve("content.md")))
   return baselineSkill
 }
 
@@ -95,7 +95,7 @@ private fun scaffoldQualityCheckOverride(fixture: ExternalAuthorDryRunFixture) {
 
   assertEquals(0, result.exitCode, result.stdout)
   assertEquals("ok", result.payload?.get("status"), result.stdout)
-  assertTrue(Files.isRegularFile(qualityCheckSkill.resolve("SKILL.md")))
+  assertTrue(Files.isRegularFile(qualityCheckSkill.resolve("content.md")))
 }
 
 private fun linkBaselineSkill(fixture: ExternalAuthorDryRunFixture, baselineSkill: Path): Path {

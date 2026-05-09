@@ -70,7 +70,13 @@ internal fun renderDescriptorSection(context: TemplateContext, areaFocus: String
   appendLine("Description: ${inferSkillDescription(context, areaFocus)}")
 }
 
-internal fun renderContentBody(context: TemplateContext, description: String, contentBody: String? = null): String {
+internal fun renderContentBody(
+  context: TemplateContext,
+  description: String,
+  contentBody: String? = null,
+  governedSections: Boolean = false,
+  areaFocus: String = "",
+): String {
   val resolvedDescription = description.ifBlank { inferSkillDescription(context) }
   // Reject caller-supplied bodies that already carry a YAML frontmatter block. We always render
   // a fresh canonical frontmatter from `context`/`description`, so accepting an inline one would
@@ -83,6 +89,19 @@ internal fun renderContentBody(context: TemplateContext, description: String, co
           "YAML frontmatter block; the canonical block is rendered from the payload's name/" +
           "description.",
       )
+    }
+  }
+  if (governedSections) {
+    return buildString {
+      append(renderFrontmatter(context.skillName, resolvedDescription))
+      appendLine()
+      append(renderDescriptorSection(context, areaFocus))
+      appendLine()
+      appendLine("## Execution")
+      appendLine()
+      appendLine(renderGovernedContentStarter(context, resolvedDescription).trimEnd())
+      appendLine()
+      append(renderCeremonySection(context))
     }
   }
   val body = contentBody?.trimEnd()?.plus("\n") ?: renderGovernedContentStarter(context, resolvedDescription)

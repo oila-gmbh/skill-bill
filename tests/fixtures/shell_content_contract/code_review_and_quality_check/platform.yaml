@@ -9,10 +9,10 @@ routing_signals:
 declared_code_review_areas:
 - architecture
 declared_files:
-  baseline: code-review/SKILL.md
+  baseline: code-review/content.md
   areas:
-    architecture: code-review/architecture.md
-declared_quality_check_file: quality-check/SKILL.md
+    architecture: code-review/architecture/content.md
+declared_quality_check_file: quality-check/content.md
 area_metadata:
   architecture:
     focus: architecture, boundaries, and dependency direction

@@ -122,7 +122,7 @@ install_codex_agents_tomls() {
   run_runtime_cli install link-codex-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
     --skills "$SKILLS_DIR" \
-    "${args[@]}" >/dev/null
+    ${args[@]+"${args[@]}"} >/dev/null
   ok "  Codex subagent TOMLs linked"
 }
 
@@ -146,7 +146,7 @@ install_claude_agent_mds() {
   run_runtime_cli install link-claude-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
     --skills "$SKILLS_DIR" \
-    "${args[@]}" >/dev/null
+    ${args[@]+"${args[@]}"} >/dev/null
   ok "  Claude subagent markdown linked"
 }
 
@@ -170,7 +170,7 @@ install_opencode_agent_mds() {
   run_runtime_cli install link-opencode-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
     --skills "$SKILLS_DIR" \
-    "${args[@]}" >/dev/null
+    ${args[@]+"${args[@]}"} >/dev/null
   ok "  OpenCode subagent markdown linked"
 }
 
@@ -183,10 +183,18 @@ install_junie_agent_mds() {
   mkdir -p "$target_dir"
   info "Installing Junie subagent markdown to: $target_dir"
 
+  local args=()
+  local platform
+  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
+    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
+      args+=(--platform "$platform")
+    done
+  fi
+
   run_runtime_cli install link-junie-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
     --skills "$SKILLS_DIR" \
-    "${SELECTED_PLATFORM_ARGS[@]}"
+    ${args[@]+"${args[@]}"} >/dev/null
   ok "  Junie subagent markdown installed"
 }
 
@@ -477,11 +485,13 @@ build_platform_packages() {
   fi
 
   PLATFORM_PACKAGES=()
-  for package in "${discovered[@]}"; do
-    if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
-      PLATFORM_PACKAGES+=("$package")
-    fi
-  done
+  if [[ ${#discovered[@]} -gt 0 ]]; then
+    for package in "${discovered[@]}"; do
+      if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
+        PLATFORM_PACKAGES+=("$package")
+      fi
+    done
+  fi
 }
 
 resolve_platform_selection() {
@@ -694,6 +704,9 @@ build_skill_names() {
     skill_name="$(basename "$skill_dir")"
 
     if existing_idx="$(find_skill_index "$skill_name" 2>/dev/null)"; then
+      if [[ "${SKILL_PATHS[$existing_idx]}" == "$skill_dir" ]]; then
+        continue
+      fi
       err "Duplicate skill name '$skill_name' found at:"
       err "  ${SKILL_PATHS[$existing_idx]}"
       err "  $skill_dir"
@@ -704,9 +717,9 @@ build_skill_names() {
     SKILL_PATHS+=("$skill_dir")
   done < <(
     {
-      find "$SKILLS_DIR" -type f -name 'SKILL.md'
+      find "$SKILLS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
       if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
-        find "$PLATFORM_PACKS_DIR" -type f -name 'SKILL.md'
+        find "$PLATFORM_PACKS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
       fi
     } | sort
   )
@@ -780,11 +793,13 @@ build_legacy_skill_names() {
   add_legacy_name ".bill-shared"
 
   local skill pair old_name
-  for skill in "${SKILL_NAMES[@]}"; do
-    if [[ "$skill" == bill-* ]]; then
-      add_legacy_name "mdp-${skill#bill-}"
-    fi
-  done
+  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill in "${SKILL_NAMES[@]}"; do
+      if [[ "$skill" == bill-* ]]; then
+        add_legacy_name "mdp-${skill#bill-}"
+      fi
+    done
+  fi
 
   for pair in "${RENAMED_SKILL_PAIRS[@]}"; do
     old_name="${pair%%:*}"
@@ -797,37 +812,39 @@ remove_legacy_skill_paths() {
   local target_dir="$1"
   local legacy_skill replacement legacy_target
 
-  for legacy_skill in "${LEGACY_SKILL_NAMES[@]}"; do
-    legacy_target="$target_dir/$legacy_skill"
-    if [[ ! -e "$legacy_target" && ! -L "$legacy_target" ]]; then
-      continue
-    fi
-    if replacement="$(lookup_renamed_skill "$legacy_skill" 2>/dev/null)"; then
-      :
-    else
-      replacement=""
-    fi
-    if [[ -z "$replacement" && "$legacy_skill" == mdp-* ]]; then
-      local bill_name="bill-${legacy_skill#mdp-}"
-      if replacement="$(lookup_renamed_skill "$bill_name" 2>/dev/null)"; then
-        :
-      else
-        replacement="$bill_name"
+  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
+    for legacy_skill in "${LEGACY_SKILL_NAMES[@]}"; do
+      legacy_target="$target_dir/$legacy_skill"
+      if [[ ! -e "$legacy_target" && ! -L "$legacy_target" ]]; then
+        continue
       fi
-    fi
-
-    if remove_if_allowed "$legacy_target"; then
-      if [[ -e "$legacy_target" || -L "$legacy_target" ]]; then
+      if replacement="$(lookup_renamed_skill "$legacy_skill" 2>/dev/null)"; then
         :
       else
-        if [[ -n "$replacement" ]]; then
-          ok "  removed legacy $legacy_skill (use $replacement)"
+        replacement=""
+      fi
+      if [[ -z "$replacement" && "$legacy_skill" == mdp-* ]]; then
+        local bill_name="bill-${legacy_skill#mdp-}"
+        if replacement="$(lookup_renamed_skill "$bill_name" 2>/dev/null)"; then
+          :
         else
-          ok "  removed legacy $legacy_skill"
+          replacement="$bill_name"
         fi
       fi
-    fi
-  done
+
+      if remove_if_allowed "$legacy_target"; then
+        if [[ -e "$legacy_target" || -L "$legacy_target" ]]; then
+          :
+        else
+          if [[ -n "$replacement" ]]; then
+            ok "  removed legacy $legacy_skill (use $replacement)"
+          else
+            ok "  removed legacy $legacy_skill"
+          fi
+        fi
+      fi
+    done
+  fi
 }
 
 cleanup_selected_agent_target() {
@@ -838,17 +855,21 @@ cleanup_selected_agent_target() {
   local skill_name
   local args=()
 
-  for skill_name in "${SKILL_NAMES[@]}"; do
-    args+=(--skill-name "$skill_name")
-  done
-  for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
-    args+=(--legacy-name "$skill_name")
-  done
+  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill_name in "${SKILL_NAMES[@]}"; do
+      args+=(--skill-name "$skill_name")
+    done
+  fi
+  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
+      args+=(--legacy-name "$skill_name")
+    done
+  fi
 
   output="$(run_runtime_cli install cleanup-agent-target \
     --target-dir "$target_dir" \
     --marker "$MANAGED_INSTALL_MARKER" \
-    "${args[@]}" || status=$?)"
+    ${args[@]+"${args[@]}"} || status=$?)"
   if [[ "${status:-0}" -ne 0 ]]; then
     err "Failed to clean existing Skill Bill installs for $agent: $target_dir"
     return "$status"
@@ -962,15 +983,11 @@ install_skill() {
     remove_if_allowed "$target"
   fi
 
-  # SKILL-21: we symlink the entire skill directory, so every file inside it
-  # — SKILL.md, content.md, and sibling supporting files — is visible to
-  # every detected agent without per-file plumbing. Adding new files to a
-  # governed skill (e.g. the v1.1 content.md sibling) needs no installer
-  # changes.
   run_runtime_cli install link-skill \
     --source "$source" \
     --target-dir "$(dirname "$target")" \
-    --agent manual >/dev/null
+    --agent manual \
+    --repo-root "$PLUGIN_DIR" >/dev/null
   ok "  $label"
 }
 
@@ -1005,10 +1022,12 @@ prompt_for_telemetry_preference
 build_install_skill_names
 
 echo ""
+SELECTED_PLATFORM_LABEL="$(format_platform_list ${SELECTED_PLATFORM_PACKAGES[@]+"${SELECTED_PLATFORM_PACKAGES[@]}"})"
+[[ -n "$SELECTED_PLATFORM_LABEL" ]] || SELECTED_PLATFORM_LABEL="none"
 info "Plugin:  $PLUGIN_DIR"
-info "Agents selected: $(format_agent_list "${AGENT_NAMES[@]}")"
+info "Agents selected: $(format_agent_list ${AGENT_NAMES[@]+"${AGENT_NAMES[@]}"})"
 info "Skills found: ${#SKILL_NAMES[@]}"
-info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"))"
+info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $SELECTED_PLATFORM_LABEL)"
 info "Telemetry:      $TELEMETRY_LEVEL"
 echo ""
 
@@ -1073,7 +1092,7 @@ fi
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
-info "Platforms:       $(format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}")"
+info "Platforms:       $SELECTED_PLATFORM_LABEL"
 if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
   info "Telemetry:       setup failed"
 else

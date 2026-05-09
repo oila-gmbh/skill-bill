@@ -119,9 +119,9 @@ build_skill_names() {
     fi
   done < <(
     {
-      find "$SKILLS_DIR" -type f -name 'SKILL.md'
+      find "$SKILLS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
       if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
-        find "$PLATFORM_PACKS_DIR" -type f -name 'SKILL.md'
+        find "$PLATFORM_PACKS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
       fi
     } | sort
   )
@@ -142,11 +142,13 @@ build_legacy_skill_names() {
   LEGACY_SKILL_NAMES=()
   add_legacy_name ".bill-shared"
 
-  for skill in "${SKILL_NAMES[@]}"; do
-    if [[ "$skill" == bill-* ]]; then
-      add_legacy_name "mdp-${skill#bill-}"
-    fi
-  done
+  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill in "${SKILL_NAMES[@]}"; do
+      if [[ "$skill" == bill-* ]]; then
+        add_legacy_name "mdp-${skill#bill-}"
+      fi
+    done
+  fi
 
   for pair in "${RENAMED_SKILL_PAIRS[@]}"; do
     old_name="${pair%%:*}"
@@ -190,18 +192,22 @@ remove_from_agent_dir() {
     return 0
   fi
 
-  for skill_name in "${SKILL_NAMES[@]}"; do
-    args+=(--skill-name "$skill_name")
-  done
-  for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
-    args+=(--legacy-name "$skill_name")
-  done
+  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill_name in "${SKILL_NAMES[@]}"; do
+      args+=(--skill-name "$skill_name")
+    done
+  fi
+  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
+    for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
+      args+=(--legacy-name "$skill_name")
+    done
+  fi
 
   info "Checking $label: $target_dir"
   output="$(run_runtime_cli install cleanup-agent-target \
     --target-dir "$target_dir" \
     --marker "$MANAGED_INSTALL_MARKER" \
-    "${args[@]}" || status=$?)"
+    ${args[@]+"${args[@]}"} || status=$?)"
   if [[ "${status:-0}" -ne 0 ]]; then
     warn "  cleanup failed"
     return 0

@@ -2,6 +2,12 @@
 
 Parent feature overview: `.feature-specs/SKILL-40-hide-generated-skill-artifacts/spec.md`
 
+Status: Complete
+
+Completion note: All three decomposed runs are complete. The render CLI output,
+drift/agent-config guards, and snapshot/final-validation work satisfy the broad
+parent subtask `.feature-specs/SKILL-40-hide-generated-skill-artifacts/spec_subtask_3_render-cli-and-snapshots.md`.
+
 This decomposition splits the render CLI, drift validation, and snapshot coverage work from `.feature-specs/SKILL-40-hide-generated-skill-artifacts/spec_subtask_3_render-cli-and-snapshots.md` into smaller feature-implement runs. The work crosses runtime CLI, runtime core, tests, build logic, resources, and agent-config validation, so it should land in dependency order.
 
 ## Acceptance criteria

@@ -3,6 +3,16 @@ name: bill-kotlin-code-review-security
 description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Kotlin code. Use when user mentions secrets, auth tokens, encryption, sensitive data, or security review in Kotlin code.
 ---
 
+## Descriptor
+
+Governed skill: `bill-kotlin-code-review-security`
+Family: `code-review`
+Platform pack: `kotlin` (Kotlin)
+Area: `security`
+Description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Kotlin code. Use when user mentions secrets, auth tokens, encryption, sensitive data, or security review in Kotlin code.
+
+## Execution
+
 # Security Review Specialist
 
 Review only exploitable or compliance-relevant issues.
@@ -33,3 +43,7 @@ Use this specialist for shared security risks across Kotlin libraries, app layer
 - Verify authenticity and integrity checks for new external entry points, signed callbacks, or inter-service trust boundaries
 - Verify that sensitive stored data receives the protection level the contract or platform requires
 - For Major or Blocker findings, describe the abuse or exploit scenario explicitly.
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

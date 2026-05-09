@@ -22,16 +22,16 @@ declared_code_review_areas:
   - reliability
 
 declared_files:
-  baseline: code-review/bill-kotlin-code-review/SKILL.md
+  baseline: code-review/bill-kotlin-code-review/content.md
   areas:
-    architecture: code-review/bill-kotlin-code-review-architecture/SKILL.md
-    performance: code-review/bill-kotlin-code-review-performance/SKILL.md
-    platform-correctness: code-review/bill-kotlin-code-review-platform-correctness/SKILL.md
-    security: code-review/bill-kotlin-code-review-security/SKILL.md
-    testing: code-review/bill-kotlin-code-review-testing/SKILL.md
-    api-contracts: code-review/bill-kotlin-code-review-api-contracts/SKILL.md
-    persistence: code-review/bill-kotlin-code-review-persistence/SKILL.md
-    reliability: code-review/bill-kotlin-code-review-reliability/SKILL.md
+    architecture: code-review/bill-kotlin-code-review-architecture/content.md
+    performance: code-review/bill-kotlin-code-review-performance/content.md
+    platform-correctness: code-review/bill-kotlin-code-review-platform-correctness/content.md
+    security: code-review/bill-kotlin-code-review-security/content.md
+    testing: code-review/bill-kotlin-code-review-testing/content.md
+    api-contracts: code-review/bill-kotlin-code-review-api-contracts/content.md
+    persistence: code-review/bill-kotlin-code-review-persistence/content.md
+    reliability: code-review/bill-kotlin-code-review-reliability/content.md
 
 area_metadata:
   architecture:
@@ -51,12 +51,12 @@ area_metadata:
   reliability:
     focus: "timeouts, retries, background work, and observability"
 
-declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md
+declared_quality_check_file: quality-check/bill-kotlin-quality-check/content.md
 
 # Pointer files (single-line markdown files containing only a relative path) are generated
-# from this block. Targets are repo-rooted; the renderer computes the correct ../-prefixed
-# relative path. Never hand-edit pointer files — add or modify entries here and run
-# `skill-bill upgrade`.
+# from this block during render/install output. Targets are repo-rooted; the renderer computes
+# the correct ../-prefixed relative path. Never commit pointer files — add or modify entries here
+# and use `skill-bill render` or the install pipeline.
 pointers:
   code-review/bill-kotlin-code-review:
     - name: review-orchestrator.md

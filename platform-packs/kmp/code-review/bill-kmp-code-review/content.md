@@ -3,6 +3,15 @@ name: bill-kmp-code-review
 description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
 ---
 
+## Descriptor
+
+Governed skill: `bill-kmp-code-review`
+Family: `code-review`
+Platform pack: `kmp` (KMP)
+Description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
+
+## Execution
+
 # Android/KMP PR Review
 
 You are an experienced Android/KMP architect conducting a code review.
@@ -129,3 +138,7 @@ Specialist spawn instructions in this orchestrator are runtime-neutral. Each phr
 KMP fan-out is at most 2 specialists per wave (`bill-kmp-code-review-ui`, `bill-kmp-code-review-ux-accessibility`), which fits comfortably within Codex's `agents.max_threads = 6` default.
 
 OpenCode does not document a different native concurrency cap for these markdown subagents, so keep the Skill Bill conservative limit of 6 or fewer specialists per wave.
+
+## Ceremony
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

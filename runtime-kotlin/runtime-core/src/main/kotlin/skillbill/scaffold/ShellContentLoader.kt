@@ -4,14 +4,10 @@ package skillbill.scaffold
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidCeremonySectionError
-import skillbill.error.InvalidDescriptorSectionError
-import skillbill.error.InvalidExecutionSectionError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.error.MissingShellCeremonyFileError
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
@@ -90,7 +86,7 @@ internal fun loadQualityCheckContent(pack: PlatformManifest): Path {
         "(call is only valid after checking pack.declaredQualityCheckFile is not null).",
     )
   validateGovernedSkill(pack, "quality-check", filePath, "quality-check", "")
-  return filePath.resolveSibling(CONTENT_BODY_FILENAME)
+  return filePath
 }
 
 private fun readManifest(manifestPath: Path, slug: String): Any? = try {
@@ -188,6 +184,7 @@ private fun parseDeclaredFiles(
       "Platform pack '$slug': 'declared_files.baseline' must be a non-empty path string.",
     )
   }
+  requireDeclaredContentPath(slug, "declared_files.baseline", baselineRaw)
 
   val rawAreaFiles = rawFiles["areas"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
   val areaFiles = rawAreaFiles.entries.associate { (key, value) ->
@@ -199,6 +196,7 @@ private fun parseDeclaredFiles(
       ?: throw InvalidManifestSchemaError(
         "Platform pack '$slug': 'declared_files.areas' entries must be string->string.",
       )
+    requireDeclaredContentPath(slug, "declared_files.areas.$area", relativePath)
     area to packRoot.resolve(relativePath).normalize()
   }
 
@@ -391,7 +389,16 @@ private fun parseOptionalPath(manifest: Map<*, *>, slug: String, key: String, pa
   if (value.isBlank()) {
     throw InvalidManifestSchemaError("Platform pack '$slug': '$key' must be a non-empty path string when provided.")
   }
+  requireDeclaredContentPath(slug, key, value)
   return packRoot.resolve(value).normalize()
+}
+
+private fun requireDeclaredContentPath(slug: String, key: String, value: String) {
+  if (!value.replace('\\', '/').endsWith("/$CONTENT_BODY_FILENAME") && value != CONTENT_BODY_FILENAME) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': '$key' must point directly at '$CONTENT_BODY_FILENAME' but was '$value'.",
+    )
+  }
 }
 
 private fun requireMappingField(manifest: Map<*, *>, slug: String, key: String): Map<*, *> = manifest[key] as? Map<*, *>
@@ -430,71 +437,31 @@ private fun validateGovernedSkill(
   pack: PlatformManifest,
   slot: String,
   skillPath: Path,
-  family: String,
-  area: String,
+  @Suppress("UNUSED_PARAMETER") family: String,
+  @Suppress("UNUSED_PARAMETER") area: String,
 ) {
+  if (skillPath.fileName?.toString() != CONTENT_BODY_FILENAME) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${pack.slug}': declared content file for slot '$slot' must end in " +
+        "'$CONTENT_BODY_FILENAME' but was '${displayPackPath(pack, skillPath)}'.",
+    )
+  }
   if (!Files.isRegularFile(skillPath)) {
     throw MissingContentFileError(
       "Platform pack '${pack.slug}': declared content file for slot '$slot' is missing at '$skillPath'.",
     )
   }
-
-  val sections = collectTopLevelH2Sections(Files.readString(skillPath))
-  ensureRequiredSections(pack.slug, skillPath, sections)
-  // Pack manifests still point at SKILL.md through subtask 3, so keep enforcing the wrapper
-  // body shape on the wrapper until subtask 4 flips the manifest baseline. Also enforce
-  // frontmatter-only validation on the sibling content.md so authored content gets first-class
-  // validation today.
-  validateSkillMdShape(skillPath, validateBodyShape = true)
-  val siblingContent = skillPath.resolveSibling("content.md")
-  if (Files.isRegularFile(siblingContent)) {
-    validateSkillMdShape(siblingContent, validateBodyShape = false)
-  }
-  ensureSiblingFiles(pack.slug, slot, skillPath)
-
-  val context = governedContext(pack, skillPath.parent.fileName.toString(), family, area)
-  val expectedDescriptor =
-    renderDescriptorSection(context, pack.areaMetadata.getValueOrDefault(area, defaultAreaFocus(area)))
-  if (sections.getValue("## Execution") != CANONICAL_EXECUTION_SECTION) {
-    throw InvalidExecutionSectionError(
-      "Platform pack '${pack.slug}': skill file '$skillPath' has a drifted ## Execution section.",
-    )
-  }
-  if (sections.getValue("## Ceremony") != renderCeremonySection(context)) {
-    throw InvalidCeremonySectionError(
-      "Platform pack '${pack.slug}': skill file '$skillPath' has a drifted ## Ceremony section.",
-    )
-  }
-  if (sections.getValue("## Descriptor") != expectedDescriptor) {
-    throw InvalidDescriptorSectionError(
-      "Platform pack '${pack.slug}': skill file '$skillPath' has a drifted ## Descriptor section.",
-    )
-  }
+  validateSkillMdShape(skillPath, validateBodyShape = false)
+  ensureRequiredSections(pack.slug, skillPath, collectTopLevelH2Sections(Files.readString(skillPath)))
 }
 
 private fun ensureRequiredSections(slug: String, skillPath: Path, sections: Map<String, String>) {
   REQUIRED_GOVERNED_SECTIONS.forEach { required ->
     if (required !in sections) {
       throw MissingRequiredSectionError(
-        "Platform pack '$slug': skill file '$skillPath' is missing required section '$required'.",
+        "Platform pack '$slug': content file '$skillPath' is missing required section '$required'.",
       )
     }
-  }
-}
-
-private fun ensureSiblingFiles(slug: String, slot: String, skillPath: Path) {
-  val contentPath = skillPath.resolveSibling(CONTENT_BODY_FILENAME)
-  if (!Files.isRegularFile(contentPath)) {
-    throw MissingContentFileError(
-      "Platform pack '$slug': sibling content file for slot '$slot' is missing at '$contentPath'.",
-    )
-  }
-
-  val ceremonyPath = skillPath.resolveSibling("shell-ceremony.md")
-  if (!Files.isRegularFile(ceremonyPath)) {
-    throw MissingShellCeremonyFileError(
-      "Platform pack '$slug': sibling shell ceremony file for slot '$slot' is missing at '$ceremonyPath'.",
-    )
   }
 }
 
@@ -522,6 +489,12 @@ private fun collectTopLevelH2Sections(text: String): Map<String, String> {
   return sections
 }
 
+private fun displayPackPath(pack: PlatformManifest, path: Path): String = runCatching {
+  pack.packRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
+    .toString()
+    .replace('\\', '/')
+}.getOrDefault(path.toString())
+
 private fun childDirectories(root: Path): List<Path> {
   if (!Files.isDirectory(root)) {
     return emptyList()
@@ -545,14 +518,3 @@ private fun childMarkdownFiles(root: Path): List<Path> {
       .sortedBy { it.fileName.toString() }
   }
 }
-
-private fun Map<String, String>.getValueOrDefault(key: String, default: String): String = this[key] ?: default
-
-private fun governedContext(pack: PlatformManifest, skillName: String, family: String, area: String): TemplateContext =
-  TemplateContext(
-    skillName = skillName,
-    family = family,
-    platform = pack.slug,
-    area = area,
-    displayName = pack.displayName ?: displayNameFromSlug(pack.slug),
-  )

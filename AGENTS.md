@@ -62,6 +62,7 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 - `skill-bill show <skill-name>` and `skill-bill explain [<skill-name>]` are the preferred stable read paths for agents; do not grep or hand-parse governed wrappers unless you are changing the scaffold system itself.
 - Treat `content.md` as the primary authored surface for governed skills. Do not manually edit generated `SKILL.md` files during normal authoring.
 - Direct `SKILL.md` edits are maintainer-only work and are allowed only when intentionally changing the shared wrapper, scaffold, render, or migration system itself.
+- Governed generated skill artifacts are render/install output, not source artifacts. Do not commit generated governed `SKILL.md` wrappers or `platform.yaml`-declared pointer files; keep only authored `content.md`, sidecars, manifests, renderer code, and install-staging behavior in git.
 - The default intake is contextual, not a top-level taxonomy dump. Start with `Platform name:` and branch from there.
 - New platform packs always scaffold the pack root plus baseline `bill-<platform>-code-review` and `bill-<platform>-quality-check`. The interactive flow then lets the author choose `none`, `custom subset`, or `all` for approved code-review specialist stubs. It does not auto-create `feature-implement` or `feature-verify` overrides.
 - `create-and-fill` is only for one content-managed skill at a time. Do not use it for horizontal skills, pre-shell overrides, or platform-pack bootstrap flows.

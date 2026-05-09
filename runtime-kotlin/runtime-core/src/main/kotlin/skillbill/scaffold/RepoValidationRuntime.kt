@@ -90,10 +90,10 @@ object RepoValidationRuntime {
     val nativeAgentSources = NativeAgentOperations.discoverRepoNativeAgentSources(root)
 
     skillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true)
     }
     platformSkillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
     }
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
@@ -109,8 +109,9 @@ object RepoValidationRuntime {
     validateNoInlineTelemetryContractDrift(root, issues)
     validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
     issues += validateRepoNativeAgents(root).issues
-    issues += validatePlatformPackPointers(root).issues
     issues += validatePointerTargetParityIssues(root)
+    issues += validateGovernedSkillDrift(root).issues
+    issues += validateGeneratedArtifactGuard(root).issues
 
     return RepoValidationReport(
       issues = issues.sorted(),
@@ -161,16 +162,8 @@ object RepoValidationRuntime {
         .sorted()
         .forEach { contentFile ->
           seenContent.add(contentFile.parent)
-          val skillFile = contentFile.resolveSibling("SKILL.md")
-          if (!Files.isRegularFile(skillFile)) {
-            // F-E: surface orphans rather than silently dropping. The wrapper SKILL.md is still
-            // required through SKILL-40 subtasks 1–3.
-            issues += "${contentFile.parent.relativeTo(root)}: content.md found without sibling " +
-              "SKILL.md (wrapper required until SKILL-40 subtask 4)"
-            return@forEach
-          }
           val skillName = contentFile.parent.name
-          val previous = found.putIfAbsent(skillName, skillFile)
+          val previous = found.putIfAbsent(skillName, contentFile)
           if (previous != null) {
             issues += "Duplicate skill directory name '$skillName' found at ${previous.parent.relativeTo(
               root,
@@ -209,14 +202,7 @@ object RepoValidationRuntime {
         .sorted()
         .forEach { contentFile ->
           seenContent.add(contentFile.parent)
-          val skillFile = contentFile.resolveSibling("SKILL.md")
-          if (Files.isRegularFile(skillFile)) {
-            found[contentFile.parent.name] = skillFile
-          } else {
-            // F-E: surface orphans rather than silently dropping.
-            issues += "${contentFile.parent.relativeTo(root)}: content.md found without sibling " +
-              "SKILL.md (wrapper required until SKILL-40 subtask 4)"
-          }
+          found[contentFile.parent.name] = contentFile
         }
     }
     Files.walk(packsRoot).use { stream ->
@@ -256,52 +242,40 @@ object RepoValidationRuntime {
     return validCount
   }
 
-  private fun validateInstallableSkill(skillName: String, skillFile: Path, root: Path, issues: MutableList<String>) {
-    val text = Files.readString(skillFile)
+  private fun validateInstallableSkill(
+    skillName: String,
+    contentFile: Path,
+    root: Path,
+    issues: MutableList<String>,
+    validateSourceSidecars: Boolean,
+  ) {
+    val text = Files.readString(contentFile)
     val frontmatter = parseFrontmatter(text)
     if (frontmatter["name"] != skillName) {
-      issues += "$skillFile: frontmatter name '${frontmatter["name"].orEmpty()}' does not match directory '$skillName'"
+      issues += "$contentFile: frontmatter name '${frontmatter["name"].orEmpty()}' does not match " +
+        "directory '$skillName'"
     }
     if (frontmatter["description"].isNullOrBlank()) {
-      issues += "$skillFile: frontmatter description is missing"
+      issues += "$contentFile: frontmatter description is missing"
     }
     try {
-      // Wrapper SKILL.md still on disk through subtasks 1–3 — keep enforcing the canonical
-      // wrapper body shape until subtask 4 retires the wrapper.
-      validateSkillMdShape(skillFile, validateBodyShape = true)
+      validateSkillMdShape(contentFile, validateBodyShape = false)
     } catch (error: InvalidSkillMdShapeError) {
       issues += error.message.orEmpty()
-    }
-    val contentFile = skillFile.parent.resolve("content.md")
-    if (Files.isRegularFile(contentFile)) {
-      try {
-        validateSkillMdShape(contentFile, validateBodyShape = false)
-      } catch (error: InvalidSkillMdShapeError) {
-        issues += error.message.orEmpty()
-      }
-      // Mirror the SKILL.md `name == skillName` identity check on content.md so an authored
-      // mismatch is surfaced at the source rather than as wrapper drift after `skill-bill render`.
-      val contentFrontmatter = parseFrontmatter(Files.readString(contentFile))
-      val contentName = contentFrontmatter["name"].orEmpty()
-      if (contentName != skillName) {
-        issues += "$contentFile: content.md frontmatter name '$contentName' does not match skill " +
-          "directory name '$skillName'"
-      }
     }
     requiredSupportingFilesForSkill(skillName).forEach { fileName ->
       val expectedTarget = supportingFileTargets(root)[fileName]
       if (expectedTarget == null) {
-        issues += "$skillFile: supporting file '$fileName' has no registered target"
+        issues += "$contentFile: supporting file '$fileName' has no registered target"
       } else if (!Files.exists(expectedTarget)) {
-        issues += "$skillFile: supporting file '$fileName' target is missing at ${expectedTarget.relativeTo(root)}"
+        issues += "$contentFile: supporting file '$fileName' target is missing at ${expectedTarget.relativeTo(root)}"
       }
-      validateSupportingSidecar(skillFile, fileName, expectedTarget, root, issues)
-      if (fileName !in text && fileName !in supportingAddonFiles()) {
-        issues += "$skillFile: missing required supporting file reference '$fileName'"
+      if (validateSourceSidecars) {
+        validateSupportingSidecar(contentFile, fileName, expectedTarget, root, issues)
       }
     }
-    validatePortableReviewWording(skillName, text, skillFile, issues)
-    validateGovernedContentFile(skillFile, issues)
+    validatePortableReviewWording(skillName, text, contentFile, issues)
+    validateGovernedContentFile(contentFile, issues)
   }
 
   private fun parseFrontmatter(text: String): Map<String, String> {
@@ -341,7 +315,7 @@ object RepoValidationRuntime {
   }
 
   private fun validateSupportingSidecar(
-    skillFile: Path,
+    contentFile: Path,
     fileName: String,
     expectedTarget: Path?,
     root: Path,
@@ -350,17 +324,17 @@ object RepoValidationRuntime {
     if (expectedTarget == null) {
       return
     }
-    val sidecar = skillFile.parent.resolve(fileName)
+    val sidecar = contentFile.parent.resolve(fileName)
     val sidecarPath = sidecar.normalize().toAbsolutePath()
     val expectedPath = expectedTarget.normalize().toAbsolutePath()
     when {
       !Files.exists(sidecar, LinkOption.NOFOLLOW_LINKS) ->
-        issues += "$skillFile: required supporting sidecar '$fileName' is missing beside the skill"
+        issues += "$contentFile: required supporting sidecar '$fileName' is missing beside the skill"
       sidecarPath == expectedPath -> Unit
       !Files.isSymbolicLink(sidecar) && !isGitSymlinkPlaceholder(sidecar, expectedTarget) ->
-        issues += "$skillFile: required supporting sidecar '$fileName' must be a symlink"
+        issues += "$contentFile: required supporting sidecar '$fileName' must be a symlink or git symlink placeholder"
       !Files.isSymbolicLink(sidecar) -> Unit
-      else -> supportingSymlinkTargetIssue(skillFile, fileName, sidecar, expectedTarget, root)?.let(issues::add)
+      else -> supportingSymlinkTargetIssue(contentFile, fileName, sidecar, expectedTarget, root)?.let(issues::add)
     }
   }
 
@@ -378,7 +352,7 @@ object RepoValidationRuntime {
   }
 
   private fun supportingSymlinkTargetIssue(
-    skillFile: Path,
+    contentFile: Path,
     fileName: String,
     sidecar: Path,
     expectedTarget: Path,
@@ -390,7 +364,7 @@ object RepoValidationRuntime {
       null
     } else {
       val realRoot = root.toRealPath()
-      "$skillFile: supporting sidecar '$fileName' points to ${actualTarget.relativeTo(realRoot)} " +
+      "$contentFile: supporting sidecar '$fileName' points to ${actualTarget.relativeTo(realRoot)} " +
         "instead of ${expected.relativeTo(realRoot)}"
     }
   }
@@ -536,8 +510,7 @@ object RepoValidationRuntime {
     }.sorted()
   }
 
-  private fun validateGovernedContentFile(skillFile: Path, issues: MutableList<String>) {
-    val contentFile = skillFile.parent.resolve("content.md")
+  private fun validateGovernedContentFile(contentFile: Path, issues: MutableList<String>) {
     if (!contentFile.isRegularFile()) {
       return
     }
@@ -564,9 +537,6 @@ object RepoValidationRuntime {
       if (pattern.containsMatchIn(text)) {
         issues += "$skillFile: $message"
       }
-    }
-    if ("telemetry-contract.md" !in text && "import_review" !in text) {
-      issues += "$skillFile: portable review skills must link or inline the telemetry ownership contract"
     }
   }
 
@@ -623,15 +593,6 @@ object RepoValidationRuntime {
       }
     }
   }
-
-  private fun supportingAddonFiles(): Set<String> = supportingFileTargets(Path.of(".")).keys
-    .filter {
-      it.endsWith("-implementation.md") ||
-        it.endsWith("-review.md") ||
-        it == "android-compose-edge-to-edge.md" ||
-        it == "android-compose-adaptive-layouts.md"
-    }
-    .toSet()
 
   private fun validatePointerTargetParityIssues(root: Path): List<String> {
     val packsRoot = root.resolve("platform-packs")

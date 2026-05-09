@@ -46,6 +46,11 @@ private fun renderBlocks(blocks: List<AuthoringRenderBlock>): String = buildStri
 fun renderAuthoringTarget(repoRoot: Path, skillName: String): AuthoringRenderResult {
   val resolvedRoot = repoRoot.toAbsolutePath().normalize()
   val target = resolveTarget(resolvedRoot, skillName)
+  return renderAuthoringTarget(resolvedRoot, target)
+}
+
+internal fun renderAuthoringTarget(repoRoot: Path, target: AuthoringTarget): AuthoringRenderResult {
+  val resolvedRoot = repoRoot.toAbsolutePath().normalize()
   val relativeSkillFile = normalizedRelativePath(resolvedRoot, target.skillFile)
   val wrapperBlock =
     AuthoringRenderBlock(

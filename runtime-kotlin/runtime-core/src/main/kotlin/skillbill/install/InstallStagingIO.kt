@@ -48,6 +48,7 @@ internal fun reuseInstallStaging(
   sourceSkillDir: Path,
   finalStagingDir: Path,
   contentHash: String,
+  applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
 ): RenderedSkill {
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillFileNormalized = skillFile.toAbsolutePath().normalize()
@@ -60,11 +61,13 @@ internal fun reuseInstallStaging(
       .toList()
   }
   // A staged file is "authored" iff a regular file exists at the same relative path under the
-  // source skill dir; anything else is a rendered pointer file.
+  // source skill dir and the relative path is not a generated pointer file; anything else is a
+  // rendered pointer file.
   val finalRoot = finalStagingDir.toAbsolutePath().normalize()
+  val pointerRelativePaths = applicablePointers.map { (_, spec) -> Path.of(spec.name) }.toSet()
   val authoredCopied = staged.filter { path ->
     val rel = finalRoot.relativize(path.toAbsolutePath().normalize())
-    Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
+    rel !in pointerRelativePaths && Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
   }
   val pointerFiles = staged.filter { path -> path !in authoredCopied }
   return RenderedSkill(

@@ -8,6 +8,6 @@ routing_signals:
 declared_code_review_areas:
   - laravel
 declared_files:
-  baseline: code-review/SKILL.md
+  baseline: code-review/content.md
   areas:
     laravel: code-review/laravel.md
