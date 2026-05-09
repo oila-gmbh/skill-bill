@@ -12,7 +12,7 @@ Skill Bill gives a team governed agent workflows, not just prompt files. The use
 - strict validation around generated wrappers, manifests, and MCP schemas
 - model-mediated reasoning for code review, planning, audits, and prose
 
-The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` enter packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
+The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` launchers point at packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
 
 ## Before Inviting The Team
 
@@ -52,11 +52,12 @@ Team members should not need to know migration history. Current behavior is:
 - `skill-bill` is the packaged Kotlin CLI.
 - `skill-bill-mcp` is the packaged Kotlin stdio MCP server.
 - Missing packaged distributions fail closed with install/build guidance.
-- Agent skills are symlinked back to the repo checkout.
+- Agent skills are symlinked to rendered staging directories under `~/.skill-bill/installed-skills/`.
+- Source skill directories under `skills/` contain only `content.md` plus optional `native-agents/`; generated `SKILL.md` wrappers and support pointer files are install/render output.
 - Repo validation and maintainer commands are Kotlin-backed; the legacy maintainer stack is no longer required for current team workflows.
 - Runtime rollback means installing a previous release, not toggling a legacy fallback.
 
-On Claude, Codex, OpenCode, and Junie, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, and `bill-feature-implement` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Native subagent sources live as provider-neutral `native-agents/<name>.md` files; install renders the same sources into `~/.skill-bill/native-agents/` before linking Claude markdown, Codex TOMLs, OpenCode markdown, or Junie markdown into each runtime's native agents directory. Generated provider files are install-cache outputs, not committed source. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-feature-implement-planning` subagent", and so on) is runtime-neutral: Claude and Junie resolve the installed Markdown/YAML custom subagents, Codex resolves each TOML by `name`, and OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](../skills/bill-feature-implement/parsing_tolerance.md).
+On Claude, Codex, OpenCode, and Junie, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, and `bill-feature-implement` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files; install renders the same sources into `~/.skill-bill/native-agents/` before linking Claude markdown, Codex TOMLs, OpenCode markdown, or Junie markdown into each runtime's native agents directory. Codex TOMLs normally install to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes without `.codex`. Generated provider files are install-cache outputs, not committed source. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-feature-implement-planning` subagent", and so on) is runtime-neutral: Claude and Junie resolve the installed Markdown/YAML custom subagents, Codex resolves each TOML by `name`, and OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
 
 ## Fallback And Failure Boundaries
 
@@ -68,7 +69,8 @@ Fail closed:
 - missing packaged Kotlin CLI/MCP distributions
 - missing platform manifests or declared files
 - wrong shell contract version
-- missing required `SKILL.md` sections or sibling `content.md`/`shell-ceremony.md`
+- missing sibling `content.md`, invalid generated wrapper sections, or missing generated support pointers
+- extra files in `skills/` source directories beyond `content.md` and optional `native-agents/`
 - invalid scaffold payloads
 - generated wrapper or agent-config drift
 
@@ -85,9 +87,9 @@ Degrade or report explicitly:
 Strict guarantees are runtime and contract boundaries:
 
 - MCP schemas are strict where declared and reject unknown top-level arguments.
-- Contract fixtures enforce manifest shape, contract version, declared files, required wrapper sections, and sidecars.
+- Contract fixtures enforce manifest shape, contract version, declared files, generated wrapper sections, and support-pointer renderability.
 - Scaffold and validation commands use structured payloads and loud-fail on invalid state.
-- Install primitives create real symlinks and can be tested against temporary agent paths.
+- Install primitives create real symlinks to rendered staging directories and can be tested against temporary agent paths.
 
 Model-mediated output is still judgement:
 
@@ -187,7 +189,8 @@ Suggested rollout:
 - Keep platform discovery manifest-driven.
 - Keep `contract_version: "1.1"` in lockstep with the shell.
 - Add platform behavior as manifest-declared overrides, approved code-review areas, or pack-owned add-ons.
-- Do not edit generated `SKILL.md` wrappers during normal authoring; edit `content.md` through `skill-bill fill` or the documented scaffolder path.
+- Do not commit generated `SKILL.md` wrappers or support pointer files under `skills/`; edit `content.md` through `skill-bill fill` or the documented scaffolder path.
+- Keep source skill directories limited to `content.md` and optional `native-agents/`.
 - Treat missing manifests, missing declared files, and wrong contract versions as product bugs, not soft warnings.
 
 ## Getting Unstuck
@@ -198,4 +201,5 @@ Suggested rollout:
 - Skill state: `skill-bill show <skill> --content preview`
 - Repo validation: `skill-bill validate`
 - Full maintainer gate: run the four validation commands above
+- Source and generation model: [Skill Source And Generation Model](skill-source-generation.md)
 - Telemetry format: [Review Telemetry](review-telemetry.md)

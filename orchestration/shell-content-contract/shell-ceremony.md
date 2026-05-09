@@ -7,11 +7,11 @@ description: Shared ceremony sidecar for governed shells and horizontal skills.
 
 This file is the canonical ceremony sidecar for governed platform-pack skills
 and for horizontal shells that point their project-overrides section here.
-Skills consume this file through sibling symlinks, so changes here propagate to
-every linked skill immediately.
+Installed skills consume this file through generated sibling support pointers,
+so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use
-the sibling `shell-ceremony.md` file instead.
+the generated sibling `shell-ceremony.md` support pointer instead.
 
 ## Project Overrides
 

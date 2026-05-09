@@ -1,13 +1,13 @@
 ---
 name: telemetry-contract
-description: Single source of truth for shared telemetry event semantics, orchestration flags, and learnings resolution. Skills link to this via sibling symlinks.
+description: Single source of truth for shared telemetry event semantics, orchestration flags, and learnings resolution. Installed skills link to this via generated support pointers.
 ---
 
 # Shared Telemetry Contract
 
-This is the canonical telemetry contract for skill-bill skills. Skills consume it through a sibling `telemetry-contract.md` symlink inside each skill directory, so changes here propagate to every linked skill immediately.
+This is the canonical telemetry contract for skill-bill skills. Installed skills consume it through a generated sibling `telemetry-contract.md` support pointer inside each staged skill directory, so changes here propagate to every linked skill after render/install refresh.
 
-Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
+Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 ## Standalone-first contract
 
