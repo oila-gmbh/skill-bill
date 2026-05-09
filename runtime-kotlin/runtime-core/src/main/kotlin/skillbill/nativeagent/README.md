@@ -4,7 +4,12 @@ Provider-neutral source-of-truth for subagent prompts plus per-provider renderin
 
 ## Source format
 
-Each native agent lives at `<skill-or-pack>/native-agents/<name>.md` with YAML frontmatter and a markdown body. The frontmatter accepts `name` (lowercase kebab-case, must match the filename stem), `description` (non-blank), and optional `compose: governed-content`. Anything else is rejected.
+Each native agent can be authored in either source form:
+
+- one markdown file at `<skill-or-pack>/native-agents/<name>.md`
+- one bundled list at `<skill-or-pack>/native-agents/agents.yaml`
+
+Markdown files use YAML frontmatter plus a markdown body. The frontmatter accepts `name` (lowercase kebab-case, must match the filename stem), `description` (non-blank), and optional `compose: governed-content`. Anything else is rejected.
 
 Example:
 
@@ -19,9 +24,26 @@ description: Example worker.
 Do the work.
 ```
 
-`parseNativeAgentSource` reads these files; `renderNativeAgentSource` emits the canonical neutral form (used for round-trip stability and scaffolding stubs).
+Bundles use a top-level `agents:` list. Each entry accepts `name`, `description`, optional `compose: governed-content`, and optional `body`. `body` may be omitted only when `compose: governed-content` is present. Duplicate names fail validation across markdown files and bundle entries.
 
-When `compose: governed-content` is present, the source may omit a local body and compose from the corresponding governed `content.md`. Platform-pack sources resolve that target through the pack manifest's declared files; skill-local sources resolve only a sibling `content.md` whose frontmatter name matches. Installed provider-native files are rendered from the composed body and inline declared local markdown sidecars, so they do not depend on repo-local `content.md` or sidecar files at runtime.
+Example:
+
+```yaml
+agents:
+  - name: bill-example-worker
+    description: Example composed worker.
+    compose: governed-content
+  - name: bill-custom-worker
+    description: Example custom worker.
+    body: |-
+      # Worker
+
+      Do the work.
+```
+
+`parseNativeAgentSource` reads markdown files; `parseNativeAgentBundle` reads bundles; `discoverNativeAgentSources` expands both source forms into logical `NativeAgentSource` values. `renderNativeAgentSource` and `renderNativeAgentBundle` emit canonical neutral forms for round-trip stability and scaffolded bundle stubs.
+
+When `compose: governed-content` is present, the source may omit a local body and compose from the corresponding governed `content.md`. Platform-pack sources resolve that target through the pack manifest's declared files; skill-local sources resolve only a sibling `content.md` whose frontmatter name matches. Bundle entries use `agents.yaml` as their source path for this resolution, so they follow the same manifest and sibling-content rules as markdown sources. Installed provider-native files are rendered one artifact per logical native agent from the composed body and inline declared local markdown sidecars, so they do not depend on repo-local `content.md` or sidecar files at runtime.
 
 ## Bodies are provider-agnostic
 

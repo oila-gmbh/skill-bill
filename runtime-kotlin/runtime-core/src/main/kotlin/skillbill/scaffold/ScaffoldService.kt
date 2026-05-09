@@ -14,7 +14,6 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.error.MissingSupportingFileTargetError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
@@ -140,7 +139,7 @@ private fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResu
   skillPath = plan.skillPath,
   createdFiles = previewCreatedFiles(plan),
   manifestEdits = previewManifestEdits(plan, repoRoot),
-  symlinks = previewSymlinks(plan, repoRoot),
+  symlinks = emptyList(),
   installTargets = emptyList(),
   notes = plan.notes + listOf("Dry run - no filesystem changes applied."),
 )
@@ -612,7 +611,6 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = baselineSkillPath,
-      orchestratorName = plan.baselineSkillName,
       specialists = plan.subagentSpecialists,
     )
   }
@@ -639,7 +637,6 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
     }
   }
   val manifestEdits = applyManifestEdits(txn, plan, repoRoot)
-  val symlinks = stageSourceSidecarSymlinks(txn, plan, repoRoot)
   if (plan.shouldEmitSubagents()) {
     val contentPath = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME)
     appendRuntimeNotesToContent(
@@ -649,14 +646,13 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = plan.skillPath,
-      orchestratorName = plan.skillName,
       specialists = plan.subagentSpecialists,
     )
   }
   return ScaffoldExecutionResult(
     createdFiles = txn.createdPaths.toList(),
     manifestEdits = manifestEdits,
-    symlinks = symlinks,
+    symlinks = emptyList(),
     installTargets = emptyList(),
     notes = emptyList(),
   )
@@ -726,17 +722,11 @@ private fun appendRuntimeNotesToContent(contentPath: Path, runtimeNotes: String)
 private fun stageSubagentStubs(
   txn: ScaffoldTransaction,
   orchestratorSkillPath: Path,
-  orchestratorName: String,
   specialists: List<String>,
 ): List<Path> {
-  val staged = mutableListOf<Path>()
-  specialists.forEach { specialist ->
-    val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("$specialist.md")
-    val sourceText = renderNativeAgentSourceStub(specialist, orchestratorName)
-    stageFile(txn, sourcePath, sourceText)
-    staged.add(sourcePath)
-  }
-  return staged
+  val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists))
+  return listOf(sourcePath)
 }
 
 private fun snapshotManifest(txn: ScaffoldTransaction, manifestPath: Path) {
@@ -784,61 +774,6 @@ private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path>
   SKILL_KIND_CODE_REVIEW_AREA, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED ->
     listOf(platformPackManifestPath(repoRoot, plan.platform))
   else -> emptyList()
-}
-
-private fun previewSymlinks(plan: ScaffoldPlan, repoRoot: Path): List<Path> = when {
-  plan.kind == SKILL_KIND_PLATFORM_PACK -> emptyList()
-  plan.kind == SKILL_KIND_CODE_REVIEW_AREA -> emptyList()
-  plan.kind == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED && plan.isShelled -> emptyList()
-  plan.kind in setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED) ->
-    previewSidecars(plan.skillName, plan.skillPath, repoRoot)
-  else -> emptyList()
-}
-
-private fun stageSourceSidecarSymlinks(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): List<Path> {
-  if (!shouldStageSourceSidecars(plan)) {
-    return emptyList()
-  }
-  return stageSidecarSymlinksForSkill(txn, plan.skillName, plan.skillPath, repoRoot)
-}
-
-private fun shouldStageSourceSidecars(plan: ScaffoldPlan): Boolean = plan.kind == SKILL_KIND_HORIZONTAL ||
-  (plan.kind == SKILL_KIND_PLATFORM_OVERRIDE_PILOTED && !plan.isShelled)
-
-private fun stageSidecarSymlinksForSkill(
-  txn: ScaffoldTransaction,
-  skillName: String,
-  skillPath: Path,
-  repoRoot: Path,
-): List<Path> {
-  val required = requiredSupportingFilesForSkill(skillName)
-  if (required.isEmpty()) {
-    return emptyList()
-  }
-  val created = mutableListOf<Path>()
-  for (fileName in required) {
-    val target = supportingFileTargets(
-      repoRoot,
-    )[fileName] ?: throw missingSupportingFileTargetError(fileName, skillName)
-    val linkPath = skillPath.resolve(fileName)
-    if (Files.exists(linkPath) || Files.isSymbolicLink(linkPath)) {
-      continue
-    }
-    Files.createSymbolicLink(linkPath, target)
-    txn.createdSymlinks.add(linkPath)
-    created.add(linkPath)
-  }
-  return created
-}
-
-private fun previewSidecars(skillName: String, skillPath: Path, repoRoot: Path): List<Path> {
-  val required = requiredSupportingFilesForSkill(skillName)
-  required.forEach { fileName ->
-    if (fileName !in supportingFileTargets(repoRoot)) {
-      throw missingSupportingFileTargetError(fileName, skillName)
-    }
-  }
-  return required.map { skillPath.resolve(it) }
 }
 
 private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
@@ -1079,11 +1014,7 @@ private fun previewSubagentStubFiles(plan: ScaffoldPlan): List<Path> {
     } else {
       plan.skillPath
     }
-  return plan.subagentSpecialists.flatMap { specialist ->
-    listOf(
-      stubDir.resolve("native-agents").resolve("$specialist.md"),
-    )
-  }
+  return listOf(stubDir.resolve("native-agents").resolve("agents.yaml"))
 }
 
 private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
@@ -1097,8 +1028,9 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
       plan.skillPath
     }
   return listOf(
-    "Subagent stubs emitted: ${plan.subagentSpecialists.size}. " +
-      "Fill in the TODO placeholders in $stubDir/native-agents/ before shipping; install renders provider artifacts.",
+    "Subagent bundle emitted: ${plan.subagentSpecialists.size} entries. " +
+      "Fill in the TODO placeholders in $stubDir/native-agents/agents.yaml before shipping; " +
+      "install renders provider artifacts.",
   )
 }
 
@@ -1157,11 +1089,6 @@ private fun rollbackDirs(txn: ScaffoldTransaction, errors: MutableList<String>) 
     }
   }
 }
-
-private fun missingSupportingFileTargetError(fileName: String, skillName: String): MissingSupportingFileTargetError =
-  MissingSupportingFileTargetError(
-    "Runtime supporting file '$fileName' is not registered for '$skillName'.",
-  )
 
 private fun sharedContractNote(): String = "Author skill instructions only in sibling `content.md` files. " +
   "Generated `SKILL.md` wrappers and platform pointer files are render/install output."

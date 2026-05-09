@@ -94,32 +94,32 @@ object FeatureImplementWorkflowDefinition {
       "preplan" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 2: Pre-Planning (subagent)",
-        "reference.md :: Pre-planning subagent briefing",
+        "content.md :: Pre-planning subagent briefing",
       ),
       "plan" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 3: Create Implementation Plan (subagent)",
-        "reference.md :: Planning subagent briefing",
+        "content.md :: Planning subagent briefing",
       ),
       "implement" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 4: Execute Plan (subagent)",
-        "reference.md :: Implementation subagent briefing",
+        "content.md :: Implementation subagent briefing",
       ),
       "review" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 5: Code Review (orchestrator)",
-        "reference.md :: Fix-loop briefing (used by Step 5 review loop)",
+        "content.md :: Fix-loop briefing (used by Step 5 review loop)",
       ),
       "audit" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 6: Completeness Audit (subagent)",
-        "reference.md :: Completeness audit subagent briefing",
+        "content.md :: Completeness audit subagent briefing",
       ),
       "validate" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 6b: Final Validation Gate (subagent)",
-        "reference.md :: Quality-check subagent briefing",
+        "content.md :: Quality-check subagent briefing",
       ),
       "write_history" to listOf(
         "content.md :: Continuation Mode",
@@ -132,11 +132,11 @@ object FeatureImplementWorkflowDefinition {
       "pr_description" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 9: Generate PR Description (subagent)",
-        "reference.md :: PR-description subagent briefing",
+        "content.md :: PR-description subagent briefing",
       ),
       "finish" to listOf(
         "content.md :: Telemetry: Record Finished",
-        "reference.md :: Workflow State Contract",
+        "content.md :: Workflow State Contract",
       ),
     ),
     continuationDirectives =

@@ -71,7 +71,7 @@ object FeatureVerifyWorkflowDefinition {
       "feature_flag_audit" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 4: Feature Flag Audit (conditional)",
-        "audit-rubrics.md :: Feature Flag Audit",
+        "content.md :: Feature Flag Audit",
       ),
       "code_review" to listOf(
         "content.md :: Continuation Mode",
@@ -81,12 +81,12 @@ object FeatureVerifyWorkflowDefinition {
       "completeness_audit" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 6: Completeness Audit",
-        "audit-rubrics.md :: Completeness Audit",
+        "content.md :: Completeness Audit",
       ),
       "verdict" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 7: Consolidated Verdict",
-        "audit-rubrics.md :: Consolidated Verdict",
+        "content.md :: Consolidated Verdict",
       ),
       "finish" to listOf("content.md :: Telemetry", "content.md :: Workflow State"),
     ),

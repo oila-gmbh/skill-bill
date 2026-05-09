@@ -1,1 +1,0 @@
-../../orchestration/shell-content-contract/shell-ceremony.md

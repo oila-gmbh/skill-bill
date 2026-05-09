@@ -1,7 +1,7 @@
 package skillbill.scaffold
 
-import skillbill.nativeagent.parseNativeAgentSource
-import skillbill.nativeagent.renderNativeAgentSource
+import skillbill.nativeagent.parseNativeAgentBundle
+import skillbill.nativeagent.renderNativeAgentBundle
 import skillbill.testsupport.SnapshotAssertions
 import java.nio.file.Files
 import java.nio.file.Path
@@ -46,7 +46,7 @@ class AuthoringRenderSnapshotTest {
   }
 
   @Test
-  fun `kmp ui code-review render and native agent source match snapshots`() {
+  fun `kmp ui code-review render and native agent bundle match snapshots`() {
     val repoRoot = currentRepoRootForSnapshotTest()
     val rendered = renderAuthoringTarget(repoRoot, "bill-kmp-code-review-ui")
     val first = rendered.stdout
@@ -63,16 +63,16 @@ class AuthoringRenderSnapshotTest {
     )
 
     val nativeAgentPath = repoRoot.resolve(
-      "platform-packs/kmp/code-review/bill-kmp-code-review/native-agents/bill-kmp-code-review-ui.md",
+      "platform-packs/kmp/code-review/bill-kmp-code-review/native-agents/agents.yaml",
     )
-    val nativeAgentSource = renderNativeAgentSource(parseNativeAgentSource(nativeAgentPath))
+    val nativeAgentSource = renderNativeAgentBundle(parseNativeAgentBundle(nativeAgentPath))
     assertEquals(
       SnapshotAssertions.normalizeLineEndings(Files.readString(nativeAgentPath)),
       nativeAgentSource,
       "native agent source render must stay byte-identical after line-ending normalization",
     )
     SnapshotAssertions.assertMatchesSnapshot(
-      "snapshots/native-agents/bill-kmp-code-review-ui.source.md",
+      "snapshots/native-agents/bill-kmp-code-review.agents.yaml",
       nativeAgentSource,
     )
   }

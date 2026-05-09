@@ -1,13 +1,13 @@
 ---
 name: review-orchestrator
-description: Single source of truth for shared stack-specific code-review orchestration contracts, merge rules, and output structure. Skills link to this via sibling symlinks.
+description: Single source of truth for shared stack-specific code-review orchestration contracts, merge rules, and output structure. Installed skills link to this via generated support pointers.
 ---
 
 # Shared Code Review Orchestrator Contract
 
-This is the canonical review-orchestration contract. Skills consume it through sibling symlinks (e.g. `review-orchestrator.md` inside each skill directory), so changes here propagate to every linked skill immediately.
+This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
-Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
+Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 ## Shared Contract For Every Specialist
 

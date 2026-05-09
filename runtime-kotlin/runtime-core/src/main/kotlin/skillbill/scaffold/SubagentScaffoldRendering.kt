@@ -1,29 +1,33 @@
 package skillbill.scaffold
 
+import skillbill.nativeagent.NativeAgentCompositionDirective
+import skillbill.nativeagent.NativeAgentCompositionKind
 import skillbill.nativeagent.NativeAgentSource
+import skillbill.nativeagent.renderNativeAgentBundle
 import skillbill.nativeagent.renderNativeAgentSource
 
 private const val DEFAULT_CODEX_MAX_THREADS = 6
 
 internal fun renderNativeAgentSourceStub(name: String, parentSkill: String): String {
-  val body = buildString {
-    appendLine("# ${titleCaseSpecialist(name)} Specialist")
-    appendLine()
-    appendLine("TODO: replace this placeholder with the specialist briefing.")
-    appendLine()
-    appendLine(
-      "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk Register format used by " +
-        "this orchestrator's review specialists (parent skill: $parentSkill).",
-    )
-  }.trimEnd()
   return renderNativeAgentSource(
     NativeAgentSource(
       name = name,
       description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
-      body = body,
+      body = nativeAgentStubBody(name, parentSkill),
     ),
   )
 }
+
+internal fun renderNativeAgentBundleStubs(names: List<String>): String = renderNativeAgentBundle(
+  names.map { name ->
+    NativeAgentSource(
+      name = name,
+      description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
+      body = "",
+      composition = NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent),
+    )
+  },
+)
 
 internal fun renderSubagentSpawnRuntimeNotes(orchestratorName: String, specialists: List<String>): String {
   if (specialists.isEmpty()) {
@@ -56,6 +60,17 @@ private fun subagentResolutionParagraph(orchestratorName: String, specialists: L
     "resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents " +
     "directory; operators can also invoke the same specialists manually with $backticked."
 }
+
+private fun nativeAgentStubBody(name: String, parentSkill: String): String = buildString {
+  appendLine("# ${titleCaseSpecialist(name)} Specialist")
+  appendLine()
+  appendLine("TODO: replace this placeholder with the specialist briefing.")
+  appendLine()
+  appendLine(
+    "Specialist contract pointer: see specialist-contract.md for the F-XXX Risk Register format used by " +
+      "this orchestrator's review specialists (parent skill: $parentSkill).",
+  )
+}.trimEnd()
 
 private fun titleCaseSpecialist(name: String): String =
   name.split("-").filter { it.isNotBlank() }.joinToString(" ") { part ->

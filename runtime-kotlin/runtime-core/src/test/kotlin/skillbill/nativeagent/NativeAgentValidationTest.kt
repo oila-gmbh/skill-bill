@@ -85,7 +85,7 @@ class NativeAgentValidationTest {
   @Test
   fun `governed content composition resolves through platform manifest declared files`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
-    val sourcePath = NativeAgentOperations.discoverRepoNativeAgentSources(repo).single()
+    val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
     val target = resolveNativeAgentCompositionTarget(repo, source)
@@ -176,7 +176,7 @@ class NativeAgentValidationTest {
   fun `native agent source discovery still returns composed source in place`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
 
-    val sources = NativeAgentOperations.discoverRepoNativeAgentSources(repo)
+    val sources = discoverRepoNativeAgentSources(repo)
 
     assertEquals(
       listOf(
@@ -192,7 +192,7 @@ class NativeAgentValidationTest {
   @Test
   fun `provider render output contains composed governed content without mutating source file`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true, localFraming = "Use delegated mode.")
-    val sourcePath = NativeAgentOperations.discoverRepoNativeAgentSources(repo).single()
+    val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
     val composed = composeNativeAgentSource(repo, source)
@@ -305,19 +305,215 @@ class NativeAgentValidationTest {
   }
 
   @Test
+  fun `checked in generated provider dirs are rejected when sources are bundled`() {
+    val repo = Files.createTempDirectory("skillbill-validation-bundle-generated")
+    val nativeAgentDir = Files.createDirectories(repo.resolve("skills/bill-validation-fixture/native-agents"))
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-validation-fixture
+          description: Validation fixture.
+          body: |-
+            # Worker
+
+            Do the work.
+      """.trimIndent() + "\n",
+    )
+    val generatedDir = Files.createDirectories(repo.resolve("skills/bill-validation-fixture/codex-agents"))
+    Files.writeString(generatedDir.resolve("bill-validation-fixture.toml"), "generated\n")
+
+    val report = validateRepoNativeAgents(repo)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { issue -> "generated native agent artifacts must not be checked in" in issue },
+      "Expected checked-in generated artifact issue, got:\n${report.issues.joinToString("\n")}",
+    )
+  }
+
+  @Test
   fun `composition is manifest driven for arbitrary platform slugs`() {
     val repo = newRepoWithComposedPlatformAgent(
       platformSlug = "swift",
       writeAreaContent = true,
       declaredSourceName = "bill-swift-code-review-architecture",
     )
-    val sourcePath = NativeAgentOperations.discoverRepoNativeAgentSources(repo).single()
+    val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
     val rendered = NativeAgentProvider.Claude.render(composeNativeAgentSource(repo, source))
 
     assertContains(rendered, "Use this governed content.")
     assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+  }
+
+  @Test
+  fun `bundled platform composition resolves through manifest declared files`() {
+    val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
+    val nativeAgentDir = repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/native-agents")
+    Files.delete(nativeAgentDir.resolve("bill-fixture-code-review-architecture.md"))
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-fixture-code-review-architecture
+          description: Architecture worker.
+          compose: governed-content
+      """.trimIndent() + "\n",
+    )
+
+    val source = discoverRepoNativeAgentSourceEntries(repo).single()
+    val target = resolveNativeAgentCompositionTarget(repo, source)
+
+    assertEquals(
+      repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review-architecture/content.md"),
+      target?.contentPath,
+    )
+    assertEquals(NativeAgentCompositionTargetSource.PlatformManifest, target?.source)
+    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+  }
+
+  @Test
+  fun `bundled platform composition rejects undeclared sibling content fallback`() {
+    val repo = newRepoWithComposedPlatformAgent(
+      writeAreaContent = true,
+      declaredSourceName = "bill-fixture-unregistered",
+    )
+    val nativeAgentDir = repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/native-agents")
+    Files.delete(nativeAgentDir.resolve("bill-fixture-unregistered.md"))
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-fixture-unregistered
+          description: Undeclared worker.
+          compose: governed-content
+      """.trimIndent() + "\n",
+    )
+
+    val report = validateRepoNativeAgents(repo)
+
+    assertFalse(report.passed)
+    val issue = report.issues.single()
+    assertContains(issue, "agents.yaml entry 'bill-fixture-unregistered'")
+    assertContains(issue, "could not resolve a corresponding content.md")
+  }
+
+  @Test
+  fun `bundled horizontal composition resolves only matching sibling content frontmatter`() {
+    val repo = Files.createTempDirectory("skillbill-horizontal-bundle-composition")
+    val skillDir = repo.resolve("skills/bill-horizontal")
+    writeContent(skillDir.resolve("content.md"), "bill-horizontal", body = "# Horizontal\n\nUse sibling content.")
+    val nativeAgentDir = Files.createDirectories(skillDir.resolve("native-agents"))
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-horizontal
+          description: Horizontal worker.
+          compose: governed-content
+      """.trimIndent() + "\n",
+    )
+
+    val source = discoverRepoNativeAgentSourceEntries(repo).single()
+    val rendered = NativeAgentProvider.Claude.render(composeNativeAgentSource(repo, source))
+
+    assertContains(rendered, "Use sibling content.")
+    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      Files.readString(skillDir.resolve("content.md")).replace("name: bill-horizontal", "name: bill-other"),
+    )
+    val report = validateRepoNativeAgents(repo)
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { issue -> "could not resolve a corresponding content.md" in issue },
+      "Expected sibling frontmatter mismatch to fail, got:\n${report.issues.joinToString("\n")}",
+    )
+  }
+
+  @Test
+  fun `duplicate names loud fail across markdown and bundled sources`() {
+    val repo = newRepoWithSource(body = "# Worker\n\nDo the work.")
+    val nativeAgentDir = repo.resolve("skills/bill-validation-fixture/native-agents")
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-validation-fixture
+          description: Duplicate worker.
+          body: Duplicate body.
+      """.trimIndent() + "\n",
+    )
+
+    val report = validateRepoNativeAgents(repo)
+
+    assertFalse(report.passed)
+    val issue = report.issues.single { "duplicates" in it }
+    assertContains(issue, "agents.yaml entry 'bill-validation-fixture'")
+    assertContains(issue, "bill-validation-fixture.md")
+  }
+
+  @Test
+  fun `bundled custom body renders same provider output as markdown source`() {
+    val body = "# Worker\n\nDo the work."
+    val bundled = NativeAgentSource(
+      name = "bill-custom",
+      description = "Custom worker.",
+      body = body,
+      path = Path.of("native-agents/agents.yaml"),
+      bundleEntryName = "bill-custom",
+    )
+    val markdown = NativeAgentSource(
+      name = "bill-custom",
+      description = "Custom worker.",
+      body = body,
+      path = Path.of("native-agents/bill-custom.md"),
+    )
+
+    NativeAgentProvider.entries.forEach { provider ->
+      assertEquals(provider.render(markdown), provider.render(bundled), provider.name)
+    }
+  }
+
+  @Test
+  fun `bundled install output writes one self contained artifact per native agent`() {
+    val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
+    val nativeAgentDir = repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/native-agents")
+    Files.delete(nativeAgentDir.resolve("bill-fixture-code-review-architecture.md"))
+    Files.writeString(
+      nativeAgentDir.resolve("agents.yaml"),
+      """
+      agents:
+        - name: bill-fixture-code-review-architecture
+          description: Architecture worker.
+          compose: governed-content
+        - name: bill-fixture-custom
+          description: Custom worker.
+          body: |-
+            # Custom
+
+            Do the custom work.
+      """.trimIndent() + "\n",
+    )
+
+    val result = NativeAgentOperations.renderInstallArtifacts(
+      platformPacksRoot = repo.resolve("platform-packs"),
+      skillsRoot = null,
+      selectedPlatforms = listOf("fixture"),
+      provider = NativeAgentProvider.Claude,
+      home = repo.resolve("home"),
+    )
+
+    assertEquals(
+      listOf("bill-fixture-code-review-architecture.md", "bill-fixture-custom.md"),
+      result.generatedFiles.map { it.fileName.toString() }.sorted(),
+    )
+    val composed = Files.readString(result.generatedFiles.first { it.fileName.toString().contains("architecture") })
+    assertContains(composed, "Use this governed content.")
+    assertFalse("(sidecar.md)" in composed)
   }
 
   private fun newRepoWithComposedPlatformAgent(
