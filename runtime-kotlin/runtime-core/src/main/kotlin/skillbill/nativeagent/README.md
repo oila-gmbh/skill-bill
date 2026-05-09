@@ -4,7 +4,7 @@ Provider-neutral source-of-truth for subagent prompts plus per-provider renderin
 
 ## Source format
 
-Each native agent lives at `<skill-or-pack>/native-agents/<name>.md` with YAML frontmatter and a markdown body. The frontmatter accepts exactly two keys: `name` (lowercase kebab-case, must match the filename stem) and `description` (non-blank). Anything else is rejected.
+Each native agent lives at `<skill-or-pack>/native-agents/<name>.md` with YAML frontmatter and a markdown body. The frontmatter accepts `name` (lowercase kebab-case, must match the filename stem), `description` (non-blank), and optional `compose: governed-content`. Anything else is rejected.
 
 Example:
 
@@ -20,6 +20,8 @@ Do the work.
 ```
 
 `parseNativeAgentSource` reads these files; `renderNativeAgentSource` emits the canonical neutral form (used for round-trip stability and scaffolding stubs).
+
+When `compose: governed-content` is present, the source may omit a local body and compose from the corresponding governed `content.md`. Platform-pack sources resolve that target through the pack manifest's declared files; skill-local sources resolve only a sibling `content.md` whose frontmatter name matches. Installed provider-native files are rendered from the composed body and inline declared local markdown sidecars, so they do not depend on repo-local `content.md` or sidecar files at runtime.
 
 ## Bodies are provider-agnostic
 

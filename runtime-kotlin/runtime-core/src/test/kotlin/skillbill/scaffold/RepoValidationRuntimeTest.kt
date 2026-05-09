@@ -152,6 +152,31 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation preserves native agent source files`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-source-preservation")
+    createRepoValidationSkillFixture(repoRoot)
+    val nativeAgent = repoRoot.resolve("skills/bill-code-review/native-agents/bill-code-review-worker.md")
+    Files.createDirectories(nativeAgent.parent)
+    val sourceText = renderNativeAgentSource(
+      NativeAgentSource(
+        name = "bill-code-review-worker",
+        description = "Review changed code.",
+        body = "Review the changed files.",
+      ),
+    )
+    Files.writeString(nativeAgent, sourceText)
+
+    RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(Files.exists(nativeAgent), "repo validation must not delete native-agent source files")
+    assertEquals(
+      sourceText,
+      Files.readString(nativeAgent),
+      "repo validation must not rewrite native-agent source files",
+    )
+  }
+
+  @Test
   fun `repo validation rejects checked-in generated native agent artifact with source`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-checked-in-artifact")
     createRepoValidationSkillFixture(repoRoot)

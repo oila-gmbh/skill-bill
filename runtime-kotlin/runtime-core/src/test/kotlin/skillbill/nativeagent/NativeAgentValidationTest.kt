@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -138,6 +139,40 @@ class NativeAgentValidationTest {
   }
 
   @Test
+  fun `missing platform manifest for composed platform native agent is reported as validation issue`() {
+    val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
+    Files.delete(repo.resolve("platform-packs/fixture/platform.yaml"))
+
+    val report = validateRepoNativeAgents(repo)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { issue -> "expected manifest" in issue && "platform.yaml" in issue },
+      "Expected missing manifest issue, got:\n${report.issues.joinToString("\n")}",
+    )
+  }
+
+  @Test
+  fun `version mismatched platform manifest for composed native agent is reported as validation issue`() {
+    val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
+    val manifest = repo.resolve("platform-packs/fixture/platform.yaml")
+    Files.writeString(
+      manifest,
+      Files.readString(manifest).replace("contract_version: \"1.1\"", "contract_version: \"9.99\""),
+    )
+
+    val report = validateRepoNativeAgents(repo)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { issue ->
+        "declares contract_version '9.99'" in issue && "shell expects '1.1'" in issue
+      },
+      "Expected contract version mismatch issue, got:\n${report.issues.joinToString("\n")}",
+    )
+  }
+
+  @Test
   fun `native agent source discovery still returns composed source in place`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
 
@@ -217,6 +252,28 @@ class NativeAgentValidationTest {
     assertContains(rendered, "Nested details.")
     assertFalse("(sidecar.md)" in rendered)
     assertFalse("(nested.md)" in rendered)
+  }
+
+  @Test
+  fun `install render rejects malformed composition directives before writing provider output`() {
+    val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true, composeDirective = "local-file")
+    val home = repo.resolve("home")
+
+    val error = assertFailsWith<IllegalArgumentException> {
+      NativeAgentOperations.renderInstallArtifacts(
+        platformPacksRoot = repo.resolve("platform-packs"),
+        skillsRoot = null,
+        selectedPlatforms = listOf("fixture"),
+        provider = NativeAgentProvider.Claude,
+        home = home,
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "unsupported native agent compose directive 'local-file'")
+    assertFalse(
+      Files.exists(home.resolve(".skill-bill/native-agents")),
+      "invalid install must not write provider output",
+    )
   }
 
   @Test
