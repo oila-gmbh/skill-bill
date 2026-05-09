@@ -12,8 +12,17 @@ data class NativeAgentSource(
   val name: String,
   val description: String,
   val body: String,
+  val composition: NativeAgentCompositionDirective? = null,
   val path: Path? = null,
 )
+
+data class NativeAgentCompositionDirective(
+  val kind: NativeAgentCompositionKind,
+)
+
+enum class NativeAgentCompositionKind(val wireValue: String) {
+  GovernedContent("governed-content"),
+}
 
 fun discoverNativeAgentSources(
   platformPacksRoot: Path,
@@ -88,6 +97,7 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   val frontmatter = parseSimpleFrontmatter(normalized.substring(FRONTMATTER_OPEN_LENGTH, end), label)
   val name = frontmatter["name"].orEmpty()
   val description = frontmatter["description"].orEmpty()
+  val composition = parseCompositionDirective(frontmatter["compose"], label)
   require(name.matches(Regex("^[a-z][a-z0-9-]*$"))) {
     "$label: native agent name must be lowercase kebab-case"
   }
@@ -95,16 +105,19 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
     "$label: native agent description is required"
   }
   val body = normalized.substring(end + "\n---\n".length).removePrefix("\n").trimEnd()
-  require(body.isNotBlank()) {
+  require(body.isNotBlank() || composition != null) {
     "$label: native agent body is required"
   }
-  return NativeAgentSource(name = name, description = description, body = body)
+  return NativeAgentSource(name = name, description = description, body = body, composition = composition)
 }
 
 fun renderNativeAgentSource(agent: NativeAgentSource): String = buildString {
   append("---").append('\n')
   append("name: ${agent.name}").append('\n')
   append("description: ${agent.description}").append('\n')
+  agent.composition?.let { directive ->
+    append("compose: ${directive.kind.wireValue}").append('\n')
+  }
   append("---").append('\n')
   append('\n')
   append(agent.body.trimEnd()).append('\n')
@@ -119,7 +132,7 @@ private fun parseSimpleFrontmatter(raw: String, label: String): Map<String, Stri
     }
     val key = line.substring(0, separator).trim()
     val value = decodeYamlScalar(line.substring(separator + 1).trimStart(), label)
-    require(key in setOf("name", "description")) {
+    require(key in setOf("name", "description", "compose")) {
       "$label: unsupported native agent frontmatter key '$key'"
     }
     parsed[key] = value

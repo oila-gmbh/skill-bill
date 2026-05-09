@@ -27,6 +27,7 @@ class NativeAgentRoundTripTest {
 
       assertEquals(parsed.name, reparsed.name, "name drift on round-trip for $sourcePath")
       assertEquals(parsed.description, reparsed.description, "description drift on round-trip for $sourcePath")
+      assertEquals(parsed.composition, reparsed.composition, "composition drift on round-trip for $sourcePath")
       assertEquals(parsed.body, reparsed.body, "body drift on round-trip for $sourcePath")
     }
   }

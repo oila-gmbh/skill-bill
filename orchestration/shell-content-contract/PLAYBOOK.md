@@ -119,6 +119,42 @@ in that same pack may reference the pack's add-ons from its sibling
 - Specialist or child skills inside the same pack may consume already-selected
   add-ons, but they must still treat them as subordinate supporting files.
 
+## Native-Agent Composition Sources
+
+Provider-neutral native-agent source files live in `native-agents/*.md` under
+the owning skill directory. They remain source files: render and install flows
+may generate provider-native cache artifacts from them, but must not replace,
+delete, or commit generated output over the source files.
+
+A native-agent source may declare:
+
+```yaml
+compose: governed-content
+```
+
+The directive means the native-agent source composes from the corresponding
+governed `content.md`. It is intentionally declarative; provider-specific
+install output must be self-contained after rendering, and must not depend on
+repo-local `content.md` files at runtime.
+
+For platform-pack specialists, the corresponding content file is resolved
+through the owning `platform.yaml` declared file entries. For ordinary governed
+skills, the corresponding file is the sibling `content.md` whose frontmatter
+`name` matches the native-agent source name. Resolution must stay manifest
+driven or explicitly declared; it must not enumerate platform slugs or approved
+specialist names in code.
+
+Composition parser and resolver failures are validation failures:
+
+- Unsupported or malformed `compose` frontmatter values are native-agent source
+  parser failures.
+- Missing manifests, contract-version mismatches, invalid declared files, and
+  missing declared `content.md` targets flow through the same named loud-fail
+  shell-content loader errors described above.
+- A composed source whose corresponding content target cannot be resolved must
+  fail repository validation rather than silently falling back to the source
+  body alone.
+
 ## Required Content File (quality-check)
 
 When a platform pack declares the optional `declared_quality_check_file`
