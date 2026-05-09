@@ -5,7 +5,7 @@ description: Use when you want a generic quality-check entry point that detects 
 
 # Quality Check Shell Content
 
-This skill is a governed shell. It owns ceremony, stack routing, and contract enforcement for the quality-check family. It is deliberately platform-independent: every piece of stack-specific quality-check reasoning lives in a user-owned platform pack under `platform-packs/<platform>/quality-check/<name>/SKILL.md`, registered via the optional `declared_quality_check_file` key on the pack's `platform.yaml`.
+This skill is a governed shell. It owns ceremony, stack routing, and contract enforcement for the quality-check family. It is deliberately platform-independent: every piece of stack-specific quality-check reasoning lives in a user-owned platform pack under `platform-packs/<platform>/quality-check/<name>/content.md`, registered via the optional `declared_quality_check_file` key on the pack's `platform.yaml`.
 
 Keep this shell thin:
 
@@ -36,14 +36,14 @@ Before routing, read [stack-routing.md](stack-routing.md). Use it as the source 
 - dominant-stack tie-breakers
 - mixed-stack routing rules
 
-This supporting file lives beside `SKILL.md`; keep the routing rules in this shell aligned with it. Do not redefine stack signals here unless a route-specific exception is truly unique to quality-check behavior.
+This supporting file is generated beside the rendered runtime wrapper; keep the routing rules in this shell aligned with it. Do not redefine stack signals here unless a route-specific exception is truly unique to quality-check behavior.
 
 ## Routing Rules
 
 Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using the tie-breakers declared in [stack-routing.md](stack-routing.md). The shell does not enumerate platform names inline.
 
 - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`.
-- The routed skill name is the `name:` of the SKILL.md at `platform-packs/<slug>/quality-check/<name>/`. This contract preserves the existing `bill-<slug>-quality-check` user-facing commands.
+- The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. This contract preserves the existing `bill-<slug>-quality-check` user-facing commands.
 - Explicit fallback rule: the `kmp` pack intentionally does NOT declare `declared_quality_check_file`. When the dominant pack is `kmp`, route quality-check work to the `kotlin` pack's quality-check skill instead. Any other pack that does not declare the key loud-fails via `MissingContentFileError` — the shell never silently substitutes another pack.
 - If multiple supported stacks appear in one repo, run the matching stack-specific quality checks sequentially, not in parallel, so fixes stay deterministic.
 - The routed stack-specific skill is the source of truth for build commands, filtering rules, and fix strategy.
@@ -64,7 +64,7 @@ When routing to another skill, pass along:
 - the current unit of work and changed files
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
-- the rule that the delegated skill must follow its own `SKILL.md` as the primary rubric
+- the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
 
 ## Output Format
 

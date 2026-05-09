@@ -64,7 +64,7 @@ For a single routed platform pack:
 
 - Let the routed pack choose `inline` or `delegated` using its own `review-orchestrator.md` contract.
 - If the routed pack selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection.
-- If the routed pack selects `delegated`, use `review-delegation.md` and pass along the routed skill file path plus the required review context.
+- If the routed pack selects `delegated`, use `review-delegation.md` and pass along the routed skill name, rendered runtime instructions, and required review context.
 
 For multiple routed platform packs:
 
@@ -83,8 +83,8 @@ When routing to another skill, pass along:
 - the detected stack and key signals
 - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
 - the parent thread's model when the runtime supports delegated-worker model inheritance
-- the delegated skill file path
-- the rule that the delegated skill must follow its own `SKILL.md` as the primary rubric
+- the delegated skill name and rendered runtime instructions
+- the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
 - the delegated skill's `review-orchestrator.md` contract when the routed pack is a stack review orchestrator
 
 ## Output Format

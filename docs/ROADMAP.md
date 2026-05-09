@@ -4,7 +4,7 @@
 
 Skill Bill can look deceptively simple because most of the repository is Markdown rather than application code. But the project is not just a prompt collection. It is a framework for governed AI-agent behavior: a portable layer of routing, orchestration, review depth, safety rules, authoring contracts, and cross-agent installation for AI-assisted engineering.
 
-The product is that framework. The skills and platform packs shipped in this repo are reference examples — real, validated, ready to use, and meant to be forked or replaced. The governance model is what a team adopts; the packs are what they start from.
+The product is that framework. The skills and platform packs shipped in this repo are reference examples — real, validated, ready to use, and meant to be forked or replaced. The governance model is what a team adopts; the packs are what they start from. The flagship bundled workflow is `bill-feature-implement`; it proves the framework by composing planning, implementation, review, validation, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents into one governed feature-delivery path.
 
 Without that distinction, the project drifts into "more skills, more stacks, more prompts" instead of becoming meaningfully more reliable or more useful to teams.
 
@@ -14,7 +14,7 @@ This roadmap exists to keep the bigger picture visible while the repository grow
 
 **Make AI-assisted engineering feel like a reliable team capability, not a bag of prompts.**
 
-In practical terms, that means a team should be able to adopt stable commands such as `/bill-code-review`, `/bill-feature-implement`, and `/bill-quality-check` and trust:
+In practical terms, that means a team should be able to adopt `/bill-feature-implement` as a governed spec-to-PR workflow, use `/bill-code-review` and `/bill-quality-check` as reusable phases or standalone entry points, and trust:
 
 - what behavior they will get
 - how scope will be interpreted
@@ -26,7 +26,13 @@ The long-term goal is not only broader stack coverage. The goal is to become the
 
 ## Product thesis
 
-Skill Bill is most valuable when it behaves like infrastructure rather than a prompt dump. The framework is the product — the shell+content contract, the scaffolder, the validator, the cross-agent installer, the manifest-driven discovery. Shipped skills are reference examples that prove the framework works; they are not the thing being adopted.
+Skill Bill is most valuable when it behaves like infrastructure rather than a prompt dump. The framework is the product — the shell+content contract, the scaffolder, the validator, the cross-agent installer, the manifest-driven discovery. Shipped skills are reference examples that prove the framework works; they are not the product boundary.
+
+The current bundled workflow hierarchy is intentional:
+
+- `bill-feature-implement` is the flagship bundled workflow.
+- `bill-code-review`, `bill-quality-check`, `bill-pr-description`, `bill-boundary-history`, platform packs, add-ons, native agents, workflow state, and telemetry are reusable subsystems inside the flagship workflow.
+- Every bundled skill remains replaceable. Teams can delete the shipped skills and keep the framework for their own governed workflows.
 
 The clearest structural moat is **cross-agent portability**. Individual pieces of Skill Bill — governed taxonomy, validator-backed rules, skill scaffolders — exist in adjacent projects or could plausibly be bundled by a first-party agent vendor. The piece a first-party vendor structurally cannot bundle is one source of truth synced across competing coding agents. That is the piece to protect.
 
@@ -51,8 +57,8 @@ Skill Bill is succeeding when most of the following are true:
 5. Project-specific customization is possible without degrading the shared taxonomy.
 6. New skills and edits are constrained by tests and validators, not only maintainer judgment.
 7. Teams start treating Skill Bill as part of engineering process, not as an experimental side tool.
-8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External authorship is the real test of whether the framework is complete.
-9. **At least one lighthouse team uses it in production.** One concrete before/after from a real engineering org does more to validate the project than any amount of internal polish.
+8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External PHP and Golang packs are early proof; the next bar is repeatability.
+9. **At least one lighthouse team uses it in production.** Early friend/colleague usage is a strong signal; one concrete before/after from a real engineering org does more to validate the project than any amount of internal polish.
 
 ## Recent milestones
 
@@ -62,12 +68,14 @@ Skill Bill is succeeding when most of the following are true:
 - **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
 - **Workflow runtime and resume surfaces (shipped):** Durable workflow state, resume, continue, local stats, and matching MCP tools now exist for both `bill-feature-implement` and `bill-feature-verify`, so long-running orchestrators no longer depend only on chat history.
 - **Operator docs split (shipped):** The documentation surface is now split into a shorter `README.md`, a primary `docs/getting-started.md`, and a team-focused `docs/getting-started-for-teams.md`, which is a healthier structure for adoption than a single overloaded README.
+- **Early external adoption signal (observed):** Multiple external users have used Skill Bill for real work, `bill-feature-implement` has emerged as the strongest day-to-day workflow, `bill-code-review` is the strongest standalone phase, and non-maintainers have created PHP and Golang platform packs for themselves.
 - **Next architectural move:** Separate framework from reference packs even more aggressively so adoption, forking, and adding maintained packs stay distinct from the governance system itself.
 
 ## Current position
 
 Today, Skill Bill is strongest in these areas:
 
+- a flagship `bill-feature-implement` workflow that composes the rest of the system into a practical feature-delivery path
 - governed naming and package taxonomy
 - portable installation across multiple agent environments
 - stack-aware routing for code review and quality-check flows
@@ -81,9 +89,9 @@ Today, Skill Bill is still relatively early in these areas:
 - reliability under real-world runtime behavior across different agents and repos
 - organization-level rollout and override strategy beyond maintainer intuition
 - measurement of review quality, repeat usage, and external usefulness
-- external authoring validation for new packs and governed extensions
+- repeatable external authoring validation for new packs and governed extensions
 - deeper process routing beyond stack detection
-- broader team adoption patterns and lighthouse-team evidence
+- broader team adoption patterns and stronger lighthouse-team evidence
 
 ## Strategic priorities
 
@@ -112,13 +120,13 @@ Adding new languages is useful, but deepening the main workflows matters more.
 
 The highest-leverage flows today are:
 
-- `/bill-code-review`
 - `/bill-feature-implement`
+- `/bill-code-review`
 - `/bill-feature-verify`
 - `/bill-quality-check`
 - `/bill-pr-description`
 
-The next phase of maturity is making these workflows feel complete and dependable enough for daily team use.
+The next phase of maturity is making `bill-feature-implement` feel complete and dependable enough for daily team use, while keeping its component skills strong as standalone entry points.
 
 That means improving:
 
@@ -165,19 +173,20 @@ Key outcome:
 
 **Teams should be able to operationalize Skill Bill without each team inventing its own model from scratch.**
 
-### 5. Validate external authoring and adoption
+### 5. Turn early external authoring into a repeatable path
 
-The framework is only complete if someone other than the maintainer can use it successfully.
+The framework is only complete if someone other than the maintainer can use it successfully. PHP and Golang packs created outside the bundled reference set show that the model can work. The next job is making that success repeatable without maintainer context.
 
 The highest-value validation now is:
 
 - can a non-maintainer author or extend a platform pack using the scaffolder, docs, and validator?
 - can a team install the system and keep using it for several weeks?
 - do the current stable entry points hold up under normal engineering usage rather than maintainer demos?
+- does the author understand that bundled skills are optional references and the framework remains useful with entirely team-owned workflows?
 
 Key outcome:
 
-**Skill Bill should prove itself with external authors and one lighthouse team before it spends much more energy on breadth.**
+**Skill Bill should convert early external authoring and usage into a repeatable onboarding path before it spends much more energy on breadth.**
 
 ### 6. Add measurement and feedback loops
 

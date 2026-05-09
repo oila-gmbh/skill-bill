@@ -155,7 +155,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review` inline in the orchestrator. Read its skill file and apply it inline. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally.
+Run `bill-code-review` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally.
 
 Review loop:
 
@@ -274,7 +274,7 @@ For detailed step instructions, briefing templates, return-contract schemas, siz
 ## Reference
 
 
-This reference holds the briefing templates, return contracts, and detailed substep instructions for `bill-feature-implement`. Read this alongside `SKILL.md`.
+This reference holds the briefing templates, return contracts, and detailed substep instructions for `bill-feature-implement`. Treat the rendered runtime wrapper as generated output; authored behavior lives here in `content.md`.
 
 ## Briefing Principles
 
@@ -333,7 +333,7 @@ Use these exact step ids when updating workflow state:
 
 ### Canonical artifacts
 
-The shell-owned source of truth for artifact names lives in [SKILL.md](SKILL.md#stable-artifact-names).
+The shell-owned source of truth for artifact names is the stable artifact list in this `content.md` file and the generated runtime wrapper rendered from it.
 
 Persist these named artifacts through `artifacts_patch` when the workflow runtime reaches the corresponding phase:
 

@@ -1,8 +1,10 @@
 # Skill Bill
 
-A governed system for portable AI-agent behavior: stable skill entry points, shared orchestration, validator-backed contracts, cross-agent installers, scaffolding, workflow state, and local-first telemetry that keep one source of truth from drifting as the repo grows.
+Skill Bill is a governed workflow platform for AI coding agents. Its flagship bundled workflow, `/bill-feature-implement`, turns a feature spec into planned, reviewed, validated, documented code.
 
-Skill Bill is a governance product, not a prompt dump. The product is the framework:
+The bundled skills are replaceable reference workflows. Teams can use them as-is, fork them, delete them, or build something completely different on the same governed framework.
+
+Skill Bill is a governance product, not a prompt dump. The durable product is the framework:
 
 - stable user-facing commands such as `/bill-code-review` and `/bill-quality-check`
 - manifest-driven platform packs under `platform-packs/`
@@ -10,7 +12,7 @@ Skill Bill is a governance product, not a prompt dump. The product is the framew
 - runtime surfaces in the `skill-bill` CLI and `skill-bill-mcp` server
 - validator-backed authoring and scaffolding flows
 
-The shipped workflow family is engineering-focused, with stable entry points for review, quality, feature implementation, and PR description.
+The shipped workflow family is engineering-focused. `/bill-feature-implement` is the primary out-of-the-box workflow; `/bill-code-review`, `/bill-quality-check`, `/bill-pr-description`, boundary history, telemetry, workflow state, platform packs, add-ons, and native subagents are reusable workflow components that can also be invoked directly.
 
 ## Why it exists
 
@@ -31,13 +33,23 @@ Skill Bill treats skills more like software:
 
 ## Core experience
 
-Most daily use comes through a small set of stable commands:
+Most daily use starts with the feature workflow:
+
+- `/bill-feature-implement` orchestrates spec-to-PR work
+
+It composes the rest of the shipped system:
 
 - `/bill-code-review` routes to the matching platform review stack
 - `/bill-quality-check` routes to the matching stack-specific checker
-- `/bill-feature-implement` orchestrates spec-to-PR work
-- `/bill-feature-verify` verifies a PR against a spec or design doc
 - `/bill-pr-description` generates PR text and QA steps
+- `/bill-boundary-history` records reusable implementation history when the change is significant
+- workflow state and telemetry make long-running work resumable and measurable
+
+The same components are still useful as standalone entry points:
+
+- `/bill-code-review` for reviewing staged changes, PRs, commits, or files
+- `/bill-quality-check` for running and fixing stack-specific validation
+- `/bill-feature-verify` verifies a PR against a spec or design doc
 
 Skill Bill also ships:
 
@@ -93,6 +105,8 @@ Native subagent definitions are installed only for orchestrators that ship them.
 
 ## Reference skill catalog
 
+These are the bundled reference skills. They are useful defaults, not a lock-in boundary. A team can remove, replace, or fork them and still use the framework for its own governed workflows and platform packs.
+
 ### Canonical Skills (13 skills)
 
 | Skill | Purpose |
@@ -134,9 +148,16 @@ Routing, validation, and installation are manifest-driven, so the system is desi
 
 ## Validation
 
-Core validation commands:
+Normal authoring check:
 
 ```bash
+skill-bill validate
+```
+
+Full maintainer gate before shipping runtime, scaffold, contract, docs, or agent-config changes:
+
+```bash
+skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 scripts/validate_agent_configs

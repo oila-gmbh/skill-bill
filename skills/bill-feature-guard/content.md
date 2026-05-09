@@ -62,6 +62,7 @@ For the remainder of this session:
 
 ## Patterns
 
+Choose the smallest pattern that preserves rollback safety for the current change size.
 
 ## Small Changes (1-2 files, single function)
 Use simple conditional at the call site:

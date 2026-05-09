@@ -169,6 +169,7 @@ Because feature-verify does not directly select native specialists, there is no 
 
 ## Audit Rubrics
 
+Use these inline rubrics for the feature-flag audit, completeness audit, and final verdict phases.
 
 ## Feature Flag Audit
 

@@ -4,7 +4,12 @@ A team adoption guide for Skill Bill. Use [Getting Started](getting-started.md) 
 
 ## Team Adoption Model
 
-Skill Bill gives a team governed agent workflows, not just prompt files. The useful adoption unit is:
+Skill Bill gives a team governed agent workflows, not just prompt files. There are two useful adoption modes:
+
+- Adopt the bundled flagship workflow: start with `/bill-feature-implement`, then use `/bill-code-review`, `/bill-quality-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
+- Adopt the governed workflow platform: fork, replace, or delete bundled skills and author team-owned workflows and platform packs on the same contracts.
+
+The useful adoption unit is:
 
 - stable slash commands for review, quality checks, feature work, verification, PR descriptions, and skill authoring
 - a packaged Kotlin CLI and MCP runtime
@@ -19,7 +24,7 @@ The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bil
 One maintainer should do this first:
 
 1. Install from the branch or release the team will use.
-2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-code-review`.
+2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-feature-implement` on a small spec.
 3. Decide which reference packs matter for the team.
 4. Add project guidance in `AGENTS.md` or `.agents/skill-overrides.md`.
 5. Run the validation gate before asking others to install.
@@ -27,6 +32,7 @@ One maintainer should do this first:
 Validation gate:
 
 ```bash
+skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 scripts/validate_agent_configs
@@ -38,12 +44,12 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 
 | Command | Use it when | What to expect |
 |---------|-------------|----------------|
+| `/bill-feature-implement` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
 | `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Routed review with summary, risk register, action items, and verdict |
 | `/bill-quality-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
-| `/bill-feature-implement` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
 | `/bill-feature-verify` | Checking a teammate PR against a spec | Criteria-based verification plus review and validation guidance |
 
-The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
+Start with `/bill-feature-implement` when introducing Skill Bill to a team. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
 
 ## Runtime Expectations
 
@@ -108,7 +114,7 @@ This distinction matters for team ownership.
 
 Skill Bill is the governance system: routing, shell contracts, scaffold rules, validation, workflow state, telemetry, installer behavior, and MCP/CLI runtime boundaries.
 
-The shipped `kotlin` and `kmp` packs are reference packs. They are production-usable examples, not a hardcoded platform limit. A team can fork an existing pack or add a new conforming pack when behavior materially differs. The governance system should keep discovering packs from manifests instead of relying on a fixed platform list.
+The shipped skills and the shipped `kotlin` and `kmp` packs are reference assets. They are production-usable examples, not a hardcoded product limit. A team can fork existing skills, delete bundled skills, add new workflows, fork an existing pack, or add a new conforming pack when behavior materially differs. The governance system should keep discovering packs from manifests instead of relying on a fixed platform list.
 
 Start from reference packs when they fit:
 
@@ -116,6 +122,19 @@ Start from reference packs when they fit:
 - `kmp`: Kotlin plus Android/KMP depth and governed add-ons
 
 Create or fork a pack when team-specific architecture, framework, API, persistence, reliability, UI, or accessibility expectations need their own maintained behavior.
+
+## External Authoring Signals
+
+Treat platform-pack authoring as a product test, not only a customization task. After someone outside the maintainer loop creates or extends a pack, capture:
+
+- How long did it take to scaffold or create the pack?
+- Which docs or CLI messages were confusing?
+- Did validation catch a real mistake?
+- Which `/bill-*` commands became habitual afterward?
+- Could the author proceed without maintainer context?
+- Did the pack stay cleanly manifest-driven, or did it require local hacks?
+
+PHP and Golang packs authored outside the bundled reference set are the kind of evidence this framework is designed to support. They do not need to become bundled packs for the authoring path to be successful.
 
 ## Customization Layers
 
@@ -178,10 +197,10 @@ The Kotlin CLI has an integration test for this flow using temporary directories
 
 Suggested rollout:
 
-1. One maintainer calibrates on recent real PRs and records obvious overrides.
-2. Two or three engineers install from the same branch or tag and run review plus quality check on live work.
+1. One maintainer calibrates on a small real feature spec with `/bill-feature-implement`.
+2. Two or three engineers install from the same branch or tag and run feature implementation plus standalone review on live work.
 3. The team triages false positives and adds learnings or overrides.
-4. Platform owners fork or create packs only when overrides are no longer enough.
+4. Platform owners fork, delete, or create skills and packs only when bundled defaults no longer fit.
 5. The team makes the validation gate part of release or pack-maintenance work.
 
 ## Operating Rules

@@ -64,8 +64,8 @@ object AuthoringOperations {
       payload["skill"] =
         mapOf(
           "skill_name" to target.skillName,
-          "skill_file" to target.skillFile.toString(),
           "content_file" to target.contentFile.toString(),
+          "render_command" to "skill-bill render ${target.skillName} --repo-root $resolvedRoot",
           "recommended_commands" to recommendedCommands(
             resolvedRoot,
             target,

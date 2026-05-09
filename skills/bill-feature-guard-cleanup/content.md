@@ -66,6 +66,7 @@ Code examples for each cleanup pattern (conditional, DI/factory, navigation/rout
 
 ## Cleanup Patterns
 
+Use the cleanup pattern that matches the feature-guard pattern originally used.
 
 ## Simple conditional cleanup
 ```kotlin

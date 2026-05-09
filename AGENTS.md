@@ -4,6 +4,13 @@
 
 skill-bill is a governed system for authoring, routing, validating, installing, and measuring AI-agent skills. It ships shared orchestration, validators, installers, scaffolding, telemetry, and stable base shells for review, quality checks, feature work, feature verification, and PR descriptions. Platform packs live under `platform-packs/` and are discovered dynamically through their governed manifests.
 
+## Product intent
+
+- `bill-feature-implement` is the flagship bundled workflow. It composes planning, implementation, code review, quality checks, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents into a governed spec-to-PR path.
+- Other bundled skills are reusable workflow components and standalone phase entry points.
+- Bundled skills and reference packs are not sacred. Teams may delete, fork, or replace them and still use Skill Bill as the governed workflow platform.
+- The framework contracts are sacred: source shape, generated-output boundaries, manifests, install staging, validator-backed rules, dynamic discovery, and loud-fail behavior.
+
 ## Core taxonomy
 
 - `skills/` holds canonical user-facing skill source directories. Each source skill directory may contain only `content.md` and, when needed, `native-agents/`.
@@ -106,6 +113,7 @@ Prefer routing through `bill-quality-check`. If a platform-specific checker does
 ## Validation commands
 
 ```bash
+skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 scripts/validate_agent_configs

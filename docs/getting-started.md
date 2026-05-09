@@ -1,6 +1,8 @@
 # Getting Started
 
-Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
+Skill Bill installs governed agent workflows plus a local runtime. The fastest way to understand the product is to run `/bill-feature-implement` on a small feature spec: it plans the work, implements it, reviews it, validates it, records history when relevant, and prepares the PR handoff.
+
+The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
 
 Use this guide when you want to install Skill Bill, understand the runtime model, and know which behavior is enforced by contracts versus model reasoning.
 
@@ -8,9 +10,11 @@ Use this guide when you want to install Skill Bill, understand the runtime model
 
 Skill Bill has three operator surfaces:
 
-- installed slash-command skills such as `/bill-code-review` and `/bill-quality-check`
+- installed slash-command workflows such as `/bill-feature-implement`, `/bill-code-review`, and `/bill-quality-check`
 - the local `skill-bill` CLI
 - the local `skill-bill-mcp` stdio MCP server
+
+The bundled skills are reference workflows and reusable workflow components. They are useful defaults, but the framework does not depend on them being preserved. Teams can fork, replace, or remove bundled skills and author their own governed workflows and platform packs.
 
 Those surfaces use the same governed repo structure:
 
@@ -81,12 +85,14 @@ skill-bill doctor
 skill-bill telemetry status --format json
 ```
 
-Then try the stable skill entry points in your agent:
+Then try the stable skill entry points in your agent, in this order:
 
+- `/bill-feature-implement`
 - `/bill-code-review`
 - `/bill-quality-check`
-- `/bill-feature-implement`
 - `/bill-feature-verify`
+
+Use `/bill-feature-implement` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-code-review` directly when you only need the review phase.
 
 ## Runtime Fallback Boundary
 
@@ -130,6 +136,15 @@ Model-mediated guarantees:
 - workflow handoffs and audits are structured, but the judgement inside them still needs human review for high-risk changes
 
 Use strict guarantees for compatibility and safety boundaries. Use model-mediated output as an expert second opinion that should be checked against the code.
+
+## Bundled Workflows vs Framework
+
+Skill Bill has two layers:
+
+- the governed workflow framework: authoring rules, render/install staging, shell contracts, manifests, validators, CLI/MCP runtime, workflow state, telemetry, and cross-agent installation
+- bundled reference workflows: `bill-feature-implement`, `bill-code-review`, `bill-quality-check`, `bill-feature-verify`, `bill-pr-description`, and supporting skills
+
+The bundled workflows are production-usable defaults, not a lock-in boundary. A team can delete or replace them and still use the framework to build its own governed workflow system.
 
 ## Governance System vs Reference Packs
 
@@ -241,6 +256,7 @@ Primary MCP groups:
 Maintainers should run the full gate before shipping runtime, scaffold, contract, docs, or agent-config changes:
 
 ```bash
+skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 scripts/validate_agent_configs

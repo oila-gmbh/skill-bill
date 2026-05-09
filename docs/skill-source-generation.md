@@ -21,6 +21,10 @@ The repository should be easy to review and hard to drift:
 - installed agents see complete `SKILL.md` wrappers and support files without
   source directories carrying generated files
 
+This is also a product UX rule, not just repository hygiene. Authors should see
+and edit only the material they own. Wrapper ceremony, runtime wiring, pointer
+files, and provider-specific agent artifacts are the system's responsibility.
+
 ## Source Layout
 
 Canonical skills under `skills/` are source-only directories.
@@ -241,13 +245,20 @@ fails, it must not leave partial source changes.
 
 ## Validation And Guards
 
-Use these validation commands before shipping changes:
+Use the normal authoring check before shipping authored content changes:
 
 ```bash
+skill-bill validate
+```
+
+Use the full maintainer gate before shipping runtime, scaffold, contract, docs,
+or agent-config changes:
+
+```bash
+skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
 npx --yes agnix --strict .
 scripts/validate_agent_configs
-skill-bill validate
 ```
 
 Key guards:

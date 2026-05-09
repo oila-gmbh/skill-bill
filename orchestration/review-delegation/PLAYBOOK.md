@@ -17,7 +17,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - The parent review owns only the delegated workers it launched itself. If a delegated child review launches more workers internally, treat those nested workers as opaque implementation detail and consume only the child review's final merged result.
 - The parent review that owns the final merged review output also owns `import_review` and `triage_findings`. Delegated workers must not call those telemetry tools themselves.
 - When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
-- Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill file path, the current `review_session_id` and `review_run_id` when they already exist, any applicable active learnings when they are available, any already-selected governed add-ons, the shared specialist contract from `specialist-contract.md`, and the rule that delegated workers must return telemetry-relevant metadata to the parent instead of calling telemetry tools directly.
+- Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill name and rendered runtime instructions, the current `review_session_id` and `review_run_id` when they already exist, any applicable active learnings when they are available, any already-selected governed add-ons, the shared specialist contract from `specialist-contract.md`, and the rule that delegated workers must return telemetry-relevant metadata to the parent instead of calling telemetry tools directly.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
 - Track delegated workers by the ids returned when they are launched. Do not discover or poll delegated workers through broad global listing in the normal review path.
 - If delegated review is required for the current scope and a supported runtime refuses or cannot start delegated workers, stop and report that delegated review is required for this scope but unavailable on the current runtime.
@@ -29,7 +29,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 
 - Use the `task` tool.
 - Launch one `code-review` agent per delegated review skill or specialist review pass.
-- Use prompts that tell each subagent to read the delegated skill's `SKILL.md` as the primary rubric and apply `review-orchestrator.md` for shared output structure.
+- Use prompts that tell each subagent to follow the delegated skill's rendered runtime instructions as the primary rubric and apply `review-orchestrator.md` for shared output structure.
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Use background mode for parallel delegated passes, capture every returned `agent_id`, then wait on and read only those tracked ids before merging results in the parent review.
 - Do not use `list_agents` to discover delegated workers during normal review execution. Reserve it for explicit recovery/debugging only.

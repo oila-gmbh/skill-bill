@@ -15,24 +15,24 @@ Use the CLI as the source of truth:
 - `skill-bill new` for horizontal skills, pre-shell overrides, platform packs, and any case where `create-and-fill` is not supported.
 - `skill-bill show`, `edit`, `fill`, `doctor skill`, `validate`, and `render` when the user is refining or inspecting an existing governed skill.
 
-All filesystem work happens in the CLI/scaffolder implementation; this skill never edits `SKILL.md`, `content.md`, `platform.yaml`, or symlinks directly. If an agent path changes, the source of truth is `skillbill.install` in `runtime-core` (driven by `runtime-cli` install commands) — not this skill.
+All filesystem work happens in the CLI/scaffolder implementation; this skill never edits `content.md`, `platform.yaml`, native-agent source, generated wrappers, or symlinks directly. If an agent path changes, the source of truth is `skillbill.install` in `runtime-core` (driven by `runtime-cli` install commands) — not this skill.
 
 ## Decision Tree
 
 Internally, the scaffolder maps skill requests to exactly one of four kinds:
 
-1. **horizontal** — capability works across stacks (e.g. `bill-pr-description`). Destination: `skills/<name>/SKILL.md`.
+1. **horizontal** — capability works across stacks (e.g. `bill-pr-description`). Authored source: `skills/<name>/content.md`.
 2. **platform-override-piloted** — a platform-specific variant of an existing base family.
-   - Shelled families (`code-review`, `quality-check`) → destination: `platform-packs/<slug>/<family>/<name>/SKILL.md`.
-   - Pre-shell families (`feature-implement`, `feature-verify`) → destination: `skills/<platform>/<name>/SKILL.md`; the scaffolder emits an interim-location note saying "will move when piloted."
+   - Shelled families (`code-review`, `quality-check`) → authored source: `platform-packs/<slug>/<family>/<name>/content.md`.
+   - Pre-shell families (`feature-implement`, `feature-verify`) → authored source: `skills/<platform>/<name>/content.md`; the scaffolder emits an interim-location note saying "will move when piloted."
 3. **platform-pack** — bootstrap a new platform with the baseline skill set.
-   - Destination: `platform-packs/<slug>/platform.yaml` plus baseline code-review and quality-check skills.
+   - Authored source: `platform-packs/<slug>/platform.yaml` plus baseline code-review and quality-check `content.md` files.
    - User-facing intake asks whether to scaffold the approved code-review specialist stubs.
    - `starter` remains available for direct payload callers and for users who only want the baseline pair first.
    - For known platforms such as `java`, the scaffolder infers routing signals from a built-in preset; ask for manual routing signals only when no preset exists and you do not have a defensible inference.
 4. **code-review-area** — a specialist for one approved code-review area inside an existing platform pack.
    - Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
-   - Destination: `platform-packs/<slug>/code-review/<name>/SKILL.md` plus manifest edits.
+   - Authored source: `platform-packs/<slug>/code-review/<name>/content.md` plus manifest edits.
 
 Governed add-ons are pack-owned supporting files, not skills. Author them through the dedicated `skill-bill new-addon` CLI flow rather than this skill.
 
@@ -129,10 +129,10 @@ Refuse to invent a new family or code-review area inline. New platforms are allo
 - Default to conversational guidance. The raw field template and JSON payload are implementation details, not the primary UX.
 - Default to the thinnest possible adapter behavior. This skill should gather intent, choose the right `skill-bill` command, and then get out of the way.
 - Treat `platform-pack` as the one-shot bootstrap path for a new stack: create the baseline pair plus all approved specialists by default.
-- Default previews to a concise inventory of created paths and generated stubs. For governed skills, tell the user to put skill instructions only in sibling `content.md` files; do not imply they should edit scaffold-managed `SKILL.md` wrappers or `shell-ceremony.md`.
+- Default previews to a concise inventory of created authored paths and generated stubs. For governed skills, tell the user to put skill instructions only in `content.md`; do not imply they should edit generated `SKILL.md` wrappers or generated support pointers.
 - When the user wants to change an existing governed skill, send them through `skill-bill show`, `edit`, `fill`, or `doctor skill` instead of describing direct wrapper edits. Bulk migration and taxonomy changes are maintainer-only workflows.
 - Do not repeat the same intake block, menu, confirmation prompt, or `Execution mode` line twice. The default interaction should feel like one short question, one contextual follow-up, one short summary, and one confirmation.
 - Do not front-load the full decision tree into the first reply. The user should not have to read the entire taxonomy before answering the first question.
-- Governed review-family and quality-check skills use the same wrapper contract: `SKILL.md` must keep `## Descriptor`, the canonical Execution pointer, and the canonical Ceremony pointer, with sibling `content.md` and `shell-ceremony.md` beside it. The shared ceremony sidecar is not customizable per skill; it comes from the stored template and stays identical across governed skills in the family.
-- When reporting a successful governed scaffold, explicitly say that authored skill instructions belong only in `content.md`. `SKILL.md` and `shell-ceremony.md` are scaffold-managed contract files.
+- Governed review-family and quality-check skills render to the same wrapper contract at install/render time: generated `SKILL.md` output contains `## Descriptor`, generated execution wrapping, and `## Ceremony`, while generated support pointers expose shared contracts beside the rendered wrapper in staging.
+- When reporting a successful governed scaffold, explicitly say that authored skill instructions belong only in `content.md`. `SKILL.md` wrappers and support pointers are generated render/install output.
 - Adding a new pre-shell family requires updating the pre-shell family registry and family registry under `skillbill.scaffold` in `runtime-core` in the same change.
