@@ -202,8 +202,7 @@ pointer files are not staged into source.
 This creates only the baseline Java pack without the approved specialist
 stubs. Direct payload callers can still opt into `starter`, but the
 user-facing intake defaults to `full`. The generated files are intentionally
-minimal so the user can enrich the authored
-sidecars afterwards.
+minimal so the user can enrich the authored `content.md` files afterwards.
 
 ### Governed skill with concrete authored content
 
@@ -256,7 +255,7 @@ All exceptions derive from `skillbill.contracts.ShellContentContractException` a
 - `MissingSupportingFileTargetError` — a file name declared in
   `RUNTIME_SUPPORTING_FILES` for this skill is not registered in
   `SUPPORTING_FILE_TARGETS`; register the target or drop the reference.
-  The scaffolder never silently skips supporting-file symlinks.
+  Render and install flows never silently skip generated support pointers.
 - `SkillAlreadyExistsError` — target path already occupied.
 - `ScaffoldValidatorError` — post-scaffold validator run failed; all
   staged changes are rolled back.

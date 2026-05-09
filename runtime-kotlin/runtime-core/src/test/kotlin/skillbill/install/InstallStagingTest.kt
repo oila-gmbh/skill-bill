@@ -3,9 +3,12 @@ package skillbill.install
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.RenderedSkill
+import skillbill.scaffold.normalizePointerPath
 import skillbill.scaffold.renderPointer
 import skillbill.scaffold.renderWrapper
+import skillbill.scaffold.requiredSupportingFilesForSkill
 import skillbill.scaffold.resolveTarget
+import skillbill.scaffold.supportingFileTargets
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -84,6 +87,32 @@ class InstallStagingTest {
       assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing pointer file ${spec.name}")
       val expected = renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
       assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
+    }
+  }
+
+  @Test
+  fun `generated supporting pointers for skills are materialized in staging`() {
+    val repoRoot = Files.createTempDirectory("skillbill-install-staging-skill-repo").also(tempDirs::add)
+    val home = Files.createTempDirectory("skillbill-install-staging-skill-home").also(tempDirs::add)
+    val skillDir = repoRoot.resolve("skills/bill-code-review")
+    Files.createDirectories(skillDir)
+    seedTopLevelSkillContent(skillDir)
+    val targets = supportingFileTargets(repoRoot)
+    requiredSupportingFilesForSkill("bill-code-review").map(targets::getValue).forEach { target ->
+      Files.createDirectories(target.parent)
+      Files.writeString(target, "supporting target\n")
+    }
+
+    val rendered = stageInstalledSkill(repoRoot, skillDir, home)
+
+    requiredSupportingFilesForSkill("bill-code-review").forEach { fileName ->
+      val sourceSidecar = skillDir.resolve(fileName)
+      assertFalse(Files.exists(sourceSidecar, LinkOption.NOFOLLOW_LINKS), "source must not contain $fileName")
+      val staged = rendered.stagingDir.resolve(fileName)
+      assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing staged $fileName")
+      val target = supportingFileTargets(repoRoot).getValue(fileName)
+      val expected = normalizePointerPath(skillDir.relativize(target).toString())
+      assertEquals(expected, Files.readString(staged), "wrong generated pointer for $fileName")
     }
   }
 
@@ -341,6 +370,16 @@ class InstallStagingTest {
     Files.writeString(skillDir.resolve("content.md"), frontmatter)
     // A sibling authored file (e.g. a sidecar) that should be copied verbatim.
     Files.writeString(skillDir.resolve("notes.md"), "verbatim notes\n")
+  }
+
+  private fun seedTopLevelSkillContent(skillDir: Path) {
+    val frontmatter = """
+      |---
+      |name: bill-code-review
+      |description: Review code.
+      |---
+    """.trimMargin() + "\n\nAuthored review guidance.\n"
+    Files.writeString(skillDir.resolve("content.md"), frontmatter)
   }
 
   private fun assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered: RenderedSkill, fixture: Fixture) {

@@ -132,7 +132,7 @@ When `learnings resolve` is called with `--review-session-id`, the resolved lear
 
 The shared telemetry contract — standalone-first behavior, orchestrated flag semantics, child_steps aggregation, routers-never-emit rule, and ownership rules for `import_review` / `triage_findings` — is the single source of truth at `orchestration/telemetry-contract/PLAYBOOK.md`.
 
-Each telemeterable skill consumes this contract through a `telemetry-contract.md` symlink sidecar inside the skill directory. That symlink resolves to `orchestration/telemetry-contract/PLAYBOOK.md`, so agents reading the skill always reach the canonical rules without needing to know the repo layout. Skill-specific telemetry fields (session id format, event names, payload fields) remain in each skill's own `SKILL.md`.
+Each telemeterable skill consumes this contract through a generated `telemetry-contract.md` support pointer in its installed staging directory. That pointer resolves to `orchestration/telemetry-contract/PLAYBOOK.md`, so agents reading the installed skill always reach the canonical rules without needing to know the repo layout. The pointer is render/install output, not a committed source file under `skills/`. Skill-specific telemetry fields (session id format, event names, payload fields) remain in each skill's rendered `SKILL.md` and authored `content.md`.
 
 ## Session correlation
 
