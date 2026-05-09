@@ -4,7 +4,6 @@ package skillbill.nativeagent
 
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.relativeTo
 
 data class NativeAgentValidationReport(
   val issues: List<String>,
@@ -55,11 +54,17 @@ private fun validateNativeAgentSources(root: Path, sources: List<Path>, issues: 
       issues += "${displayPath(root, sourcePath)}: " +
         "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
-    validateNativeAgentCompositionTarget(root, source)?.let { issue ->
-      issues += issue
+    val composed = runCatching { composeNativeAgentSource(root, source) }
+      .getOrElse { error ->
+        issues += "${displayPath(root, sourcePath)}: ${error.message.orEmpty()}"
+        return@forEach
+      }
+    if (composed !== source && containsProviderConditional(composed.body)) {
+      issues += "${displayPath(root, sourcePath)}: " +
+        "composed native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
     NativeAgentProvider.entries.forEach { provider ->
-      runCatching { provider.render(source) }.getOrElse { error ->
+      runCatching { provider.render(composed) }.getOrElse { error ->
         issues += "${displayPath(root, sourcePath)}: cannot render ${provider.directoryName}: " +
           error.message.orEmpty()
       }
@@ -108,17 +113,5 @@ private fun nativeAgentGeneratedArtifacts(root: Path): List<Path> {
 }
 
 private fun commonValidationRoot(platformPacksRoot: Path, skillsRoot: Path?): Path {
-  val platformRoot = platformPacksRoot.toAbsolutePath().normalize()
-  val skillRoot = skillsRoot?.toAbsolutePath()?.normalize()
-  return if (skillRoot != null && platformRoot.parent == skillRoot.parent) {
-    platformRoot.parent
-  } else {
-    platformRoot
-  }
-}
-
-private fun displayPath(root: Path, path: Path): String {
-  val resolvedRoot = root.toAbsolutePath().normalize()
-  val resolvedPath = path.toAbsolutePath().normalize()
-  return runCatching { resolvedPath.relativeTo(resolvedRoot).toString() }.getOrDefault(resolvedPath.toString())
+  return nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
 }

@@ -1,3 +1,22 @@
+## [2026-05-09] native-agent-composition-validation-final-coverage
+Areas: runtime-core nativeagent validation, runtime-core scaffold repo validation, runtime-cli validation, scripts/validate_agent_configs
+- Final validation coverage pins native-agent source preservation through `RepoValidationRuntime.validateRepo`; validation must report issues without rewriting or deleting `native-agents/*.md`. reusable
+- Composition rejection coverage now includes malformed directives, missing platform manifests, contract-version drift, missing governed content, undeclared local markdown sidecars, and install-render refusal before provider output is staged.
+- `validate-agent-configs` CLI coverage now surfaces native-agent composition failures, matching the `scripts/validate_agent_configs` Kotlin-backed path used by repository gates. reusable
+- `skillbill.nativeagent` docs now list optional `compose: governed-content`, manifest/sibling target resolution, and self-contained provider-native install output.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-05-09] native-agent-composition-rendering
+Areas: runtime-core nativeagent rendering/validation, scaffold authored-content rendering, Kotlin/KMP specialist native-agent sources
+- Composed native agents now expand `compose: governed-content` before provider rendering/install; `NativeAgentProvider` still owns Claude/Codex/Opencode/Junie shapes while render inputs are self-contained. reusable
+- `AuthoredContentRendering` centralizes frontmatter stripping, title stripping, heading demotion, and LF normalization so wrapper rendering and native-agent composition share the authored `content.md` body contract. reusable
+- `NativeAgentSidecarInlining` rewrites local markdown links to plain labels and appends referenced sibling or manifest-pointer sidecars recursively; unresolved local links fail validation instead of leaking repo-local runtime dependencies.
+- Direct Kotlin/KMP specialist native-agent source files remain under `native-agents/*.md` but now declare `compose: governed-content` and drop duplicated long specialist prose.
+- Regression coverage pins manifest-driven composition, arbitrary platform slugs, install-cache self-containment, source preservation, generated-artifact rejection, and KMP UI source snapshots.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-05-09] native-agent-composition-foundation
 Areas: runtime-core nativeagent parser/validation, shell-content-contract docs, native-agent tests
 - Native-agent source frontmatter now supports explicit `compose: governed-content`; parser round-trips the directive while provider renderers still use the source body only until rendering migration lands.
