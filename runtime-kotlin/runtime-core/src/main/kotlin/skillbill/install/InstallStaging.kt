@@ -22,6 +22,18 @@ private const val INSTALL_CACHE_KEY_BYTES = 8
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
+private data class FreshInstallInputs(
+  val home: Path,
+  val sourceSkillDir: Path,
+  val repoRoot: Path,
+  val target: AuthoringTarget,
+  val platformPointers: List<Pair<PlatformManifest, PointerSpec>>,
+  val supportPointers: List<GeneratedSupportPointer>,
+  val authored: List<Path>,
+  val contentHash: String,
+  val finalStagingDir: Path,
+)
+
 internal fun installedSkillsCacheRoot(home: Path): Path =
   home.toAbsolutePath().normalize().resolve(".skill-bill/installed-skills")
 
@@ -69,6 +81,7 @@ internal fun applicablePointers(
 internal fun authoredFilesFor(
   sourceSkillDir: Path,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
+  generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
 ): List<Path> {
   val excluded = mutableSetOf<Path>()
   excluded.add(sourceSkillDir.resolve(INSTALL_STAGING_SKILL_FILENAME).toAbsolutePath().normalize())
@@ -76,6 +89,9 @@ internal fun authoredFilesFor(
     val packRoot = manifest.packRoot.toAbsolutePath().normalize()
     val pointerPath = packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toAbsolutePath().normalize()
     excluded.add(pointerPath)
+  }
+  generatedSupportPointers.forEach { pointer ->
+    excluded.add(sourceSkillDir.resolve(pointer.name).toAbsolutePath().normalize())
   }
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   return Files.walk(sourceSkillDir).use { stream ->
@@ -112,6 +128,7 @@ internal fun computeInstallContentHash(
   sourceSkillDir: Path,
   authored: List<Path>,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
+  generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
 ): String {
   val digest = MessageDigest.getInstance("SHA-256")
   val newline = byteArrayOf('\n'.code.toByte())
@@ -131,6 +148,14 @@ internal fun computeInstallContentHash(
       digest.update(line.toByteArray(StandardCharsets.UTF_8))
       digest.update(newline)
     }
+  generatedSupportPointers
+    .sortedBy { it.name }
+    .forEach { pointer ->
+      val target = sourceSkillDir.relativize(pointer.target).toString().replace(File.separatorChar, '/')
+      val line = "${pointer.name}|$target"
+      digest.update(line.toByteArray(StandardCharsets.UTF_8))
+      digest.update(newline)
+    }
   val hashBytes = digest.digest()
   return hashBytes.take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
@@ -146,8 +171,9 @@ internal fun stageInstalledSkill(
   val skillName = resolvedSource.fileName.toString()
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
-  val authored = authoredFilesFor(resolvedSource, pointers)
-  val contentHash = computeInstallContentHash(resolvedSource, authored, pointers)
+  val generatedSupportPointers = generatedSupportPointersFor(resolvedRepoRoot, resolvedSource, skillName)
+  val authored = authoredFilesFor(resolvedSource, pointers, generatedSupportPointers)
+  val contentHash = computeInstallContentHash(resolvedSource, authored, pointers, generatedSupportPointers)
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
   // Idempotent reuse: same hash, marker present and intact, SKILL.md present -> reuse existing dir.
@@ -155,41 +181,70 @@ internal fun stageInstalledSkill(
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
     )
-    return reuseInstallStaging(skillName, resolvedSource, finalStagingDir, contentHash, pointers)
+    return reuseInstallStaging(
+      sourceSkillDir = resolvedSource,
+      finalStagingDir = finalStagingDir,
+      contentHash = contentHash,
+      applicablePointers = pointers,
+      generatedSupportPointers = generatedSupportPointers,
+    )
   }
   log.fine(
     "stageInstalledSkill reuse=false skill=$skillName hash=$contentHash dir=$finalStagingDir",
   )
 
-  Files.createDirectories(installedSkillsCacheRoot(home))
-  val tempDir = Files.createTempDirectory(installedSkillsCacheRoot(home), ".staging-tmp-")
+  return buildFreshInstallStaging(
+    FreshInstallInputs(
+      home = home,
+      sourceSkillDir = resolvedSource,
+      repoRoot = resolvedRepoRoot,
+      target = target,
+      platformPointers = pointers,
+      supportPointers = generatedSupportPointers,
+      authored = authored,
+      contentHash = contentHash,
+      finalStagingDir = finalStagingDir,
+    ),
+  )
+}
+
+private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill {
+  Files.createDirectories(installedSkillsCacheRoot(inputs.home))
+  val tempDir = Files.createTempDirectory(installedSkillsCacheRoot(inputs.home), ".staging-tmp-")
   // F-009/F-010: ownership flag — only delete `finalStagingDir` on failure if WE successfully
   // promoted it during this attempt. Otherwise we'd risk wiping a previously-good cache entry.
   var promoted = false
   return try {
-    val copiedInTemp = copyAuthoredIntoStaging(resolvedSource, tempDir, authored)
-    val skillFileInTemp = writeRenderedSkillFile(tempDir, target)
-    val pointerFilesInTemp = writeRenderedPointerFiles(resolvedRepoRoot, tempDir, pointers)
+    val copiedInTemp = copyAuthoredIntoStaging(inputs.sourceSkillDir, tempDir, inputs.authored)
+    val skillFileInTemp = writeRenderedSkillFile(tempDir, inputs.target)
+    val pointerFilesInTemp = writeRenderedPointerFiles(inputs.repoRoot, tempDir, inputs.platformPointers)
+    val supportPointerFilesInTemp = writeRenderedSupportPointerFiles(
+      repoRoot = inputs.repoRoot,
+      sourceSkillDir = inputs.sourceSkillDir,
+      tempDir = tempDir,
+      pointers = inputs.supportPointers,
+    )
     Files.write(
       tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
-      contentHash.toByteArray(StandardCharsets.UTF_8),
+      inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
     )
-    promoteInstallStagingDir(tempDir, finalStagingDir)
+    promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true
-    val finalSkillFile = finalStagingDir.resolve(tempDir.relativize(skillFileInTemp))
-    val finalPointerFiles = pointerFilesInTemp.map { p -> finalStagingDir.resolve(tempDir.relativize(p)) }
-    val finalCopied = copiedInTemp.map { p -> finalStagingDir.resolve(tempDir.relativize(p)) }
+    val finalSkillFile = inputs.finalStagingDir.resolve(tempDir.relativize(skillFileInTemp))
+    val finalPointerFiles = (pointerFilesInTemp + supportPointerFilesInTemp)
+      .map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
+    val finalCopied = copiedInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
     // F-013: prune older staging dirs for the same skill slug (different hash). Best-effort only;
     // pruning failures are logged and suppressed so they never mask the successful install.
-    pruneStaleStagingDirs(home, resolvedSource, contentHash)
+    pruneStaleStagingDirs(inputs.home, inputs.sourceSkillDir, inputs.contentHash)
     RenderedSkill(
-      skillName = skillName,
-      sourceSkillDir = resolvedSource,
-      stagingDir = finalStagingDir,
+      skillName = inputs.sourceSkillDir.fileName.toString(),
+      sourceSkillDir = inputs.sourceSkillDir,
+      stagingDir = inputs.finalStagingDir,
       renderedSkillFile = finalSkillFile,
       renderedPointerFiles = finalPointerFiles,
       copiedAuthoredFiles = finalCopied,
-      contentHash = contentHash,
+      contentHash = inputs.contentHash,
     )
   } catch (error: Throwable) {
     // F-007: catch every Throwable so any failure path (render error, IO error, programmer error,
@@ -197,11 +252,12 @@ internal fun stageInstalledSkill(
     // primary failure (each delete is wrapped + suppressed inside cleanupInstallStagingOnFailure).
     log.log(
       Level.SEVERE,
-      "stageInstalledSkill failure skill=$skillName hash=$contentHash source=$resolvedSource " +
-        "tempDir=$tempDir finalDir=$finalStagingDir promoted=$promoted error=${error::class.simpleName}",
+      "stageInstalledSkill failure skill=${inputs.sourceSkillDir.fileName} hash=${inputs.contentHash} " +
+        "source=${inputs.sourceSkillDir} tempDir=$tempDir finalDir=${inputs.finalStagingDir} " +
+        "promoted=$promoted error=${error::class.simpleName}",
       error,
     )
-    cleanupInstallStagingOnFailure(tempDir, finalStagingDir, promoted)
+    cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
     throw error
   }
 }

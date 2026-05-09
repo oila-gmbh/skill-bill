@@ -1,5 +1,6 @@
 package skillbill.nativeagent
 
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -21,6 +22,108 @@ class NativeAgentSourceParserTest {
       source.composition,
     )
     assertEquals("", source.body)
+  }
+
+  @Test
+  fun `agents yaml parses multiple bundled native agents`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(
+      bundlePath,
+      """
+      agents:
+        - name: bill-one
+          description: First worker.
+          compose: governed-content
+        - name: bill-two
+          description: Second worker.
+          body: |-
+            # Worker
+
+            Do the work.
+      """.trimIndent() + "\n",
+    )
+
+    val sources = parseNativeAgentBundle(bundlePath)
+
+    assertEquals(listOf("bill-one", "bill-two"), sources.map { it.name })
+    assertEquals(NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent), sources[0].composition)
+    assertEquals("", sources[0].body)
+    assertEquals("# Worker\n\nDo the work.", sources[1].body)
+    assertEquals(bundlePath, sources[0].path)
+    assertEquals("bill-one", sources[0].bundleEntryName)
+  }
+
+  @Test
+  fun `renderNativeAgentBundle quotes implicit scalar descriptions`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle-implicit-scalars")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(
+      bundlePath,
+      renderNativeAgentBundle(
+        listOf(
+          NativeAgentSource(
+            name = "bill-number",
+            description = "123",
+            body = "# Number",
+          ),
+          NativeAgentSource(
+            name = "bill-boolean",
+            description = "true",
+            body = "# Boolean",
+          ),
+        ),
+      ),
+    )
+
+    val rendered = Files.readString(bundlePath)
+    val reparsed = parseNativeAgentBundle(bundlePath)
+
+    assertContains(rendered, "description: \"123\"")
+    assertContains(rendered, "description: \"true\"")
+    assertEquals(listOf("123", "true"), reparsed.map { it.description })
+  }
+
+  @Test
+  fun `agents yaml rejects unsupported entry keys`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle-invalid")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(
+      bundlePath,
+      """
+      agents:
+        - name: bill-one
+          description: First worker.
+          mode: subagent
+          body: Do the work.
+      """.trimIndent() + "\n",
+    )
+
+    val error = assertFailsWith<IllegalArgumentException> {
+      parseNativeAgentBundle(bundlePath)
+    }
+
+    assertContains(error.message.orEmpty(), "unsupported native agent bundle entry key 'mode'")
+  }
+
+  @Test
+  fun `agents yaml rejects body omission without compose`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle-body")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(
+      bundlePath,
+      """
+      agents:
+        - name: bill-one
+          description: First worker.
+      """.trimIndent() + "\n",
+    )
+
+    val error = assertFailsWith<IllegalArgumentException> {
+      parseNativeAgentBundle(bundlePath)
+    }
+
+    assertContains(error.message.orEmpty(), "native agent body is required")
   }
 
   @Test

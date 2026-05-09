@@ -92,7 +92,6 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   "telemetry-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("telemetry-contract")),
   "shell-content-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("shell-content-contract")),
   "shell-ceremony.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("shell-ceremony")),
-  "audit-rubrics.md" to repoRoot.resolve("skills/bill-feature-verify/audit-rubrics.md"),
   "android-compose-implementation.md" to repoRoot.resolve(
     "platform-packs/kmp/addons/android-compose-implementation.md",
   ),
@@ -154,11 +153,7 @@ internal fun requiredSupportingFilesForSkill(skillName: String): List<String> = 
   )
   skillName.startsWith(
     "bill-",
-  ) && skillName.endsWith("-feature-verify") -> listOf(
-    "shell-ceremony.md",
-    "telemetry-contract.md",
-    "audit-rubrics.md",
-  )
+  ) && skillName.endsWith("-feature-verify") -> listOf("shell-ceremony.md", "telemetry-contract.md")
   skillName == "bill-pr-description" -> listOf("shell-ceremony.md", "telemetry-contract.md")
   else -> emptyList()
 }

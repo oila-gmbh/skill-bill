@@ -29,25 +29,32 @@ class ScaffoldServiceParityTest {
     assertContains(content, "## Subagent Spawn Runtime Notes")
     assertContains(content, "`@foo-arch`")
     assertContains(content, "`@foo-perf`")
-    assertSourceStub(skillDir.resolve("native-agents/foo-arch.md"), "foo-arch")
-    assertSourceStub(skillDir.resolve("native-agents/foo-perf.md"), "foo-perf")
+    assertSourceBundle(skillDir.resolve("native-agents/agents.yaml"), "foo-arch", "foo-perf")
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
     assertFalse(Files.exists(skillDir.resolve("junie-agents")))
-    assertNoGeneratedWrapper(skillDir)
-    assertSourceSidecars(skillDir, "bill-foo-orchestrator", repo)
-    assertTrue(result.notes.any { note -> "Subagent stubs emitted: 2." in note }, result.notes.toString())
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-foo-orchestrator")
+    assertTrue(result.notes.any { note -> "Subagent bundle emitted: 2 entries." in note }, result.notes.toString())
   }
 
   @Test
-  fun `horizontal scaffold creates source sidecars without generated wrapper`() = withIsolatedUserHome {
+  fun `horizontal scaffold creates content only without generated wrapper or source pointers`() = withIsolatedUserHome {
     val repo = seedRepo()
     val result = scaffold(payload(repo, "horizontal", "name" to "bill-pr-description"))
     val skillDir = repo.resolve("skills").resolve("bill-pr-description")
 
     assertEquals("bill-pr-description", result.skillName)
-    assertNoGeneratedWrapper(skillDir)
-    assertSourceSidecars(skillDir, "bill-pr-description", repo)
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-pr-description")
+  }
+
+  @Test
+  fun `standalone native agent source stub remains custom body markdown`() {
+    val source = renderNativeAgentSourceStub("bill-worker", "bill-orchestrator")
+
+    assertContains(source, "name: bill-worker")
+    assertContains(source, "description: TODO: one-line description for the bill-worker specialist subagent")
+    assertContains(source, "TODO: replace this placeholder with the specialist briefing.")
+    assertFalse("compose: governed-content" in source)
   }
 
   @Test
@@ -108,8 +115,7 @@ class ScaffoldServiceParityTest {
     val qualityCheck = packRoot.resolve("quality-check/bill-java-quality-check")
 
     assertEquals("platform-pack", result.kind)
-    assertSourceStub(baseline.resolve("native-agents/arch.md"), "arch")
-    assertSourceStub(baseline.resolve("native-agents/perf.md"), "perf")
+    assertSourceBundle(baseline.resolve("native-agents/agents.yaml"), "arch", "perf")
     assertFalse(Files.exists(baseline.resolve("codex-agents")))
     assertFalse(Files.exists(baseline.resolve("opencode-agents")))
     assertFalse(Files.exists(baseline.resolve("junie-agents")))
@@ -344,7 +350,7 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
-  fun `feature verify render preserves audit rubrics sidecar and validates regular files`() = withIsolatedUserHome {
+  fun `feature verify render validates inline audit rubric content without source sidecars`() = withIsolatedUserHome {
     val repo = seedRepo()
     val skillDir = repo.resolve("skills/bill-feature-verify")
     Files.createDirectories(skillDir)
@@ -354,28 +360,16 @@ class ScaffoldServiceParityTest {
       "---\nname: bill-feature-verify\ndescription: Feature verify content.\n---\n\n" +
         baselineReviewContent("Feature verify content."),
     )
-    Files.createSymbolicLink(
-      skillDir.resolve("shell-ceremony.md"),
-      repo.resolve("orchestration/shell-content-contract/shell-ceremony.md"),
-    )
-    Files.createSymbolicLink(
-      skillDir.resolve("telemetry-contract.md"),
-      repo.resolve("orchestration/telemetry-contract/PLAYBOOK.md"),
-    )
-    Files.writeString(skillDir.resolve("audit-rubrics.md"), "# audit\n")
     val target = resolveTarget(repo, "bill-feature-verify")
     val rendered = renderWrapper(target)
 
-    assertContains(rendered, "audit-rubrics.md")
+    assertFalse("audit-rubrics.md" in rendered)
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-feature-verify")
     assertEquals(emptyList(), validateTarget(target, repo))
-
-    Files.delete(skillDir.resolve("audit-rubrics.md"))
-
-    assertTrue(validateTarget(target, repo).any { issue -> "audit-rubrics.md" in issue })
   }
 
   @Test
-  fun `feature verify override links shared audit rubrics supporting file`() = withIsolatedUserHome {
+  fun `feature verify override omits audit rubric source sidecar`() = withIsolatedUserHome {
     val repo = seedRepo()
     val result =
       scaffold(
@@ -388,13 +382,11 @@ class ScaffoldServiceParityTest {
         ),
       )
     val skillDir = repo.resolve("skills/kmp/bill-kmp-feature-verify")
-    val rubricLink = skillDir.resolve("audit-rubrics.md")
 
     assertEquals("bill-kmp-feature-verify", result.skillName)
-    assertContains(renderWrapper(resolveTarget(repo, "bill-kmp-feature-verify")), "audit-rubrics.md")
-    assertTrue(Files.isSymbolicLink(rubricLink))
-    assertEquals(repo.resolve("skills/bill-feature-verify/audit-rubrics.md"), Files.readSymbolicLink(rubricLink))
-    assertSourceSidecars(skillDir, "bill-kmp-feature-verify", repo)
+    assertFalse("audit-rubrics.md" in renderWrapper(resolveTarget(repo, "bill-kmp-feature-verify")))
+    assertFalse(Files.exists(skillDir.resolve("audit-rubrics.md")))
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kmp-feature-verify")
   }
 
   @Test
@@ -588,13 +580,16 @@ private fun seedKmpPack(repo: Path) {
   )
 }
 
-private fun assertSourceStub(path: Path, name: String) {
+private fun assertSourceBundle(path: Path, vararg names: String) {
   val text = Files.readString(path)
-  assertContains(text, "name: $name")
-  assertContains(text, "description:")
-  assertContains(text, "TODO: replace this placeholder with the specialist briefing.")
-  val frontmatterEndIndex = text.indexOf("\n---\n", startIndex = 4)
-  assertTrue(frontmatterEndIndex > 0, "Expected closing frontmatter fence in $path")
+  names.forEach { name ->
+    assertContains(text, "name: $name")
+    assertContains(text, "TODO: one-line description for the $name specialist subagent")
+  }
+  assertContains(text, "agents:")
+  assertEquals(names.size, Regex("""(?m)^    compose: governed-content$""").findAll(text).count())
+  assertFalse("body: |-" in text)
+  assertFalse("TODO: replace this placeholder with the specialist briefing." in text)
   assertFalse("mode: subagent" in text)
 }
 
@@ -610,14 +605,6 @@ private fun assertNoGeneratedWrapperOrSupportingFiles(skillDir: Path, skillName:
 
 private fun assertNoGeneratedWrapper(skillDir: Path) {
   assertFalse(Files.exists(skillDir.resolve("SKILL.md")), "scaffold must not create source SKILL.md at $skillDir")
-}
-
-private fun assertSourceSidecars(skillDir: Path, skillName: String, repo: Path) {
-  requiredSupportingFilesForSkill(skillName).forEach { fileName ->
-    val sidecar = skillDir.resolve(fileName)
-    assertTrue(Files.isSymbolicLink(sidecar), "scaffold must create source sidecar symlink '$fileName' at $skillDir")
-    assertEquals(supportingFileTargets(repo).getValue(fileName), Files.readSymbolicLink(sidecar))
-  }
 }
 
 private fun withIsolatedUserHome(block: () -> Unit) {

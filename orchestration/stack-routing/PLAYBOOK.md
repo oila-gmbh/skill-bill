@@ -1,16 +1,17 @@
 ---
 name: stack-routing
-description: Single source of truth for shared stack detection. Discovery-driven — platforms are enumerated from platform-packs/ manifests, not hardcoded here. Skills link to this via sibling symlinks.
+description: Single source of truth for shared stack detection. Discovery-driven — platforms are enumerated from platform-packs/ manifests, not hardcoded here. Installed skills link to this via generated support pointers.
 ---
 
 # Shared Stack Routing Contract
 
 This is the canonical stack-routing contract. Skills consume it through
-sibling symlinks (e.g. `stack-routing.md` inside each skill directory), so
-changes here propagate to every linked skill immediately.
+generated sibling support pointers (e.g. `stack-routing.md` inside each staged
+skill directory), so changes here propagate to every linked skill after
+render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills —
-use the sibling symlink instead.
+use the generated sibling support pointer instead.
 
 The stack taxonomy, strong signals, and tie-breakers are **not enumerated
 inline**. They are discovered at runtime from the manifests shipped under

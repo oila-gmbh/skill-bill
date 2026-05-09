@@ -7,6 +7,8 @@ PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
 RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
 RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
+RUNTIME_MCP_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -50,6 +52,34 @@ build_kotlin_runtime_distribution() {
 
 run_runtime_cli() {
   "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+}
+
+remove_runtime_launcher() {
+  local name="$1"
+  local expected_target="$2"
+  local link_path="$RUNTIME_LAUNCHER_BIN_DIR/$name"
+  local actual_target=""
+
+  if [[ ! -L "$link_path" ]]; then
+    return 0
+  fi
+
+  actual_target="$(readlink "$link_path")"
+  if [[ "$actual_target" != "$expected_target" ]]; then
+    warn "  skipped $link_path (points outside this checkout)"
+    SKIPPED_TARGETS+=("$link_path")
+    return 0
+  fi
+
+  rm -f "$link_path"
+  REMOVED_TARGETS+=("$link_path")
+  ok "  removed $name"
+}
+
+remove_runtime_launchers() {
+  info "Removing runtime launchers from: $RUNTIME_LAUNCHER_BIN_DIR"
+  remove_runtime_launcher "skill-bill" "$RUNTIME_CLI_BIN"
+  remove_runtime_launcher "skill-bill-mcp" "$RUNTIME_MCP_BIN"
 }
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
@@ -323,6 +353,8 @@ for agent in claude copilot codex glm opencode junie; do
     warn "  could not remove skill-bill MCP server ($agent)"
   fi
 done
+
+remove_runtime_launchers
 
 SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 if [[ -d "$SKILL_BILL_STATE_DIR" ]]; then

@@ -17,13 +17,13 @@ class NativeAgentRoundTripTest {
       )
       return
     }
-    val sources = NativeAgentOperations.discoverRepoNativeAgentSources(repoRoot)
+    val sources = discoverRepoNativeAgentSourceEntries(repoRoot)
     assertTrue(sources.isNotEmpty(), "Expected at least one native agent source under skills/ or platform-packs/")
 
-    sources.forEach { sourcePath ->
-      val parsed = parseNativeAgentSource(sourcePath)
+    sources.forEach { parsed ->
+      val sourcePath = nativeAgentSourceDisplay(repoRoot, parsed)
       val rendered = renderNativeAgentSource(parsed)
-      val reparsed = parseNativeAgentSourceText(rendered, sourcePath.toString())
+      val reparsed = parseNativeAgentSourceText(rendered, parsed.path.toString())
 
       assertEquals(parsed.name, reparsed.name, "name drift on round-trip for $sourcePath")
       assertEquals(parsed.description, reparsed.description, "description drift on round-trip for $sourcePath")

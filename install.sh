@@ -8,6 +8,7 @@ MANAGED_INSTALL_MARKER=".skill-bill-install"
 RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
 RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
 RUNTIME_MCP_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -80,6 +81,42 @@ build_kotlin_runtime_distributions() {
 
 run_runtime_cli() {
   "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+}
+
+path_contains_dir() {
+  local candidate="$1"
+  case ":${PATH:-}:" in
+    *":$candidate:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+install_runtime_launcher() {
+  local name="$1"
+  local target="$2"
+  local link_path="$RUNTIME_LAUNCHER_BIN_DIR/$name"
+
+  if [[ -e "$link_path" && ! -L "$link_path" ]]; then
+    warn "  skipped $link_path (exists and is not a symlink)"
+    return 0
+  fi
+
+  ln -sfn "$target" "$link_path"
+  ok "  linked $name → $target"
+}
+
+install_runtime_launchers() {
+  mkdir -p "$RUNTIME_LAUNCHER_BIN_DIR"
+  info "Installing runtime launchers to: $RUNTIME_LAUNCHER_BIN_DIR"
+  install_runtime_launcher "skill-bill" "$RUNTIME_CLI_BIN"
+  install_runtime_launcher "skill-bill-mcp" "$RUNTIME_MCP_BIN"
+
+  if path_contains_dir "$RUNTIME_LAUNCHER_BIN_DIR"; then
+    ok "  launcher directory is on PATH"
+  else
+    warn "  launcher directory is not on PATH: $RUNTIME_LAUNCHER_BIN_DIR"
+    warn "  set SKILL_BILL_BIN_DIR to a PATH directory before running ./install.sh, or add this directory to PATH"
+  fi
 }
 
 get_agent_path() {
@@ -1023,6 +1060,7 @@ prompt_for_agent_selection
 prompt_for_platform_selection
 prompt_for_telemetry_preference
 build_install_skill_names
+install_runtime_launchers
 
 echo ""
 SELECTED_PLATFORM_LABEL="$(format_platform_list ${SELECTED_PLATFORM_PACKAGES[@]+"${SELECTED_PLATFORM_PACKAGES[@]}"})"
@@ -1096,6 +1134,7 @@ printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
 info "Platforms:       $SELECTED_PLATFORM_LABEL"
+info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
 if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
   info "Telemetry:       setup failed"
 else

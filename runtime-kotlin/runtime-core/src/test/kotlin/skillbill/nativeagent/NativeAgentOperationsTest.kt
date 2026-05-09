@@ -66,4 +66,33 @@ class NativeAgentOperationsTest {
     assertTrue(leaf.matches(Regex("[0-9a-f]{16}")), "expected hash-only leaf for empty slug; got $leaf")
     assertFalse(leaf.contains('_'))
   }
+
+  @Test
+  fun `regenerate filters source files before parsing selected skills`() {
+    val home = Files.createTempDirectory("skillbill-targeted-regenerate-home")
+    val repoRoot = Files.createTempDirectory("skillbill-targeted-regenerate-repo")
+    val selectedSources = Files.createDirectories(repoRoot.resolve("skills/bill-selected/native-agents"))
+    Files.writeString(
+      selectedSources.resolve("bill-selected-worker.md"),
+      """
+      ---
+      name: bill-selected-worker
+      description: Selected worker.
+      ---
+
+      # Worker
+      """.trimIndent(),
+    )
+    val unselectedSources = Files.createDirectories(repoRoot.resolve("skills/bill-unselected/native-agents"))
+    Files.writeString(unselectedSources.resolve("agents.yaml"), "agents: [\n")
+
+    val result = NativeAgentOperations.regenerate(
+      repoRoot = repoRoot,
+      skillNames = listOf("bill-selected"),
+      home = home,
+    )
+
+    assertEquals(NativeAgentProvider.entries.size, result.regeneratedFiles.size)
+    assertTrue(result.regeneratedFiles.all { path -> path.fileName.toString().startsWith("bill-selected-worker.") })
+  }
 }
