@@ -3,16 +3,6 @@ name: bill-kmp-code-review-ui
 description: Use when reviewing or building KMP UI surfaces. Today this skill is implemented with Jetpack Compose-specific guidance, but it is the canonical KMP UI review capability so future platform UI guidance can live behind the same slash command. Enforces state hoisting, proper recomposition handling, slot-based APIs, accessibility, theming, string resources, preview annotations, and official UI framework guidelines. Use when user mentions Compose review, UI review, recomposition, state hoisting, or Composable code.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kmp-code-review-ui`
-Family: `code-review`
-Platform pack: `kmp` (KMP)
-Area: `ui`
-Description: Use when reviewing or building KMP UI surfaces. Today this skill is implemented with Jetpack Compose-specific guidance, but it is the canonical KMP UI review capability so future platform UI guidance can live behind the same slash command. Enforces state hoisting, proper recomposition handling, slot-based APIs, accessibility, theming, string resources, preview annotations, and official UI framework guidelines. Use when user mentions Compose review, UI review, recomposition, state hoisting, or Composable code.
-
-## Execution
-
 # KMP UI Best Practices
 ## Compose Review Rubric
 
@@ -54,7 +44,3 @@ Before considering a composable done, verify:
 - [ ] `Modifier.testTag` on key interactive elements
 - [ ] No unnecessary decomposition — extractions have a reason
 - [ ] File organization: screen → helpers → previews (top to bottom)
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

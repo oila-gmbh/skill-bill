@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
@@ -33,17 +34,29 @@ class AuthoringRenderOutputTest {
       ---
 
       # Authored Body
+
+      ## Review Steps
+
+      Read the authored guidance from content.md.
       """.trimIndent() + "\n",
     )
     val target = resolveTarget(repoRoot, "bill-render-fixture")
+    val renderedWrapper = renderWrapper(target)
     val expectedStdout =
       "===== SKILL.md: skills/bill-render-fixture/SKILL.md =====\n" +
-        renderWrapper(target).trimEnd('\r', '\n') +
+        renderedWrapper.trimEnd('\r', '\n') +
         "\n"
 
     val first = renderAuthoringTarget(repoRoot, "bill-render-fixture")
     val second = renderAuthoringTarget(repoRoot, "bill-render-fixture")
 
+    assertContains(renderedWrapper, "## Descriptor\n\nGoverned skill: `bill-render-fixture`")
+    assertContains(renderedWrapper, "## Execution\n\n### Review Steps\n\nRead the authored guidance from content.md.")
+    assertContains(
+      renderedWrapper,
+      "## Ceremony\n\nFollow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
+    )
+    assertFalse("Follow the instructions in [content.md](content.md)." in renderedWrapper)
     assertEquals(expectedStdout, first.stdout)
     assertEquals(first.stdout, second.stdout)
     assertFalse('\r' in first.stdout, "render stdout must use LF line endings only")

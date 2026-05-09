@@ -28,16 +28,16 @@ Every payload MUST include:
 - `scaffold_payload_version` — exact match for the scaffolder's expected
   version string.
 - `kind` — one of:
-  - `"horizontal"` — placed under `skills/<name>/SKILL.md`.
+  - `"horizontal"` — placed under `skills/<name>/content.md`.
   - `"platform-override-piloted"` — placed under
-    `platform-packs/<slug>/<family>/<name>/SKILL.md` plus a manifest edit
+    `platform-packs/<slug>/<family>/<name>/content.md` plus a manifest edit
     for shelled families. Pre-shell families are placed under
-    `skills/<platform>/<name>/SKILL.md` with an interim-location note.
+    `skills/<platform>/<name>/content.md` with an interim-location note.
   - `"platform-pack"` — creates a new `platform-packs/<slug>/` root with a
-    generated baseline `code-review` skill, a default `quality-check` skill,
+    baseline `code-review` skill, a default `quality-check` skill,
     and a freshly rendered `platform.yaml`.
   - `"code-review-area"` — placed under
-    `platform-packs/<slug>/code-review/<name>/SKILL.md` plus additions to
+    `platform-packs/<slug>/code-review/<name>/content.md` plus additions to
     `declared_code_review_areas`, `declared_files.areas`, and
     `area_metadata` in the owning `platform.yaml`.
   - `"add-on"` — placed at `platform-packs/<platform>/addons/<name>.md` (flat; no
@@ -74,9 +74,11 @@ Every payload MUST include:
 
 - `description` — one-line description copied into the frontmatter.
 - `content_body` — authored markdown body for governed skills. When
-  provided for shelled families (`code-review`, `quality-check`), the
-  scaffolder writes it into the sibling `content.md` instead of the default
-  maintainer starter content.
+  provided for a content-managed skill, the scaffolder writes it into
+  `content.md` below canonical frontmatter and the generated title instead
+  of the default starter content. It must not include YAML frontmatter or
+  generated wrapper headings such as `## Descriptor`, `## Execution`, or
+  `## Ceremony`.
 - `display_name` — human-friendly label for `platform-pack`. Defaults to a
   title-cased version of `platform`.
 - `skeleton_mode` — `starter` or `full` for `platform-pack`. Defaults to
@@ -162,11 +164,10 @@ are checked into the repo.
 ```
 
 This lands the skill at
-`platform-packs/kotlin/quality-check/bill-kotlin-quality-check/SKILL.md` and edits
+`platform-packs/kotlin/quality-check/bill-kotlin-quality-check/content.md` and edits
 the owning pack's `platform.yaml` to register
-`declared_quality_check_file: quality-check/bill-kotlin-quality-check/SKILL.md`.
-The scaffolded skill links the governed sibling sidecars
-`stack-routing.md`, `telemetry-contract.md`, and `shell-ceremony.md`.
+`declared_quality_check_file: quality-check/bill-kotlin-quality-check/content.md`.
+Generated `SKILL.md` wrappers and pointer files are render/install output only.
 
 ### New platform pack
 
@@ -181,10 +182,11 @@ The scaffolded skill links the governed sibling sidecars
 ```
 
 This creates `platform-packs/java/platform.yaml`,
-`platform-packs/java/code-review/bill-java-code-review/SKILL.md`, and
-`platform-packs/java/quality-check/bill-java-quality-check/SKILL.md`, plus
-bare specialist stubs for every approved code-review area. The built-in
-`java` preset supplies the routing signals.
+`platform-packs/java/code-review/bill-java-code-review/content.md`, and
+`platform-packs/java/quality-check/bill-java-quality-check/content.md`, plus
+bare specialist content stubs for every approved code-review area. The built-in
+`java` preset supplies the routing signals. Generated wrappers and platform
+pointer files are not staged into source.
 
 ### Starter platform pack override
 
@@ -261,19 +263,19 @@ All exceptions derive from `skillbill.contracts.ShellContentContractException` a
 - `ScaffoldRollbackError` — rollback itself failed (the only failure mode
   that may leave the repo partially mutated).
 
-## SKILL-21: Shell+content split (v1.1)
+## SKILL-41: Source content.md authoring (v1.1)
 
-SKILL-21 added sibling `content.md` authoring and bumped the shell contract
-to `1.1`. The output changes:
+SKILL-41 makes `content.md` the only source-authored surface for governed
+skills on shell contract `1.1`. The output contract is:
 
-- Every kind that produces a `SKILL.md` now also writes a sibling
-  `content.md` under the same skill directory.
-- The generated `SKILL.md` carries a new required `## Execution` H2 whose
-  body is byte-identical across every governed skill and links to
-  `content.md`.
+- Every governed skill scaffold writes source `content.md` with canonical
+  frontmatter and clean authored body sections.
+- `skill-bill render <skill>` produces deterministic `SKILL.md` wrapper
+  stdout with generated `## Descriptor`, `## Execution`, and `## Ceremony`
+  sections. It does not write wrappers or pointer files into source.
 - End-user creation flows may also provide `content_body` so governed
-  skills are concrete at scaffold time instead of requiring later wrapper
-  edits.
+  skills are concrete at scaffold time without requiring generated wrapper
+  headings.
 
 Loud-fail exceptions added to the shell contract catalog (raised by the
 loader and surfaced by the validator, not by the scaffolder itself):

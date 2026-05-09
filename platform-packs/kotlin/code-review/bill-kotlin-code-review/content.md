@@ -3,15 +3,6 @@ name: bill-kotlin-code-review
 description: Use when conducting a thorough Kotlin PR code review across shared, backend/server, or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing, and add backend-focused specialists for API contracts, persistence, and reliability when server signals are present. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Description: Use when conducting a thorough Kotlin PR code review across shared, backend/server, or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing, and add backend-focused specialists for API contracts, persistence, and reliability when server signals are present. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
-
-## Execution
-
 # Adaptive Kotlin PR Review
 
 You are an experienced Kotlin architect conducting a code review.
@@ -120,7 +111,3 @@ Specialist spawn instructions in this orchestrator are runtime-neutral. Each phr
 Kotlin fan-out can select up to 8 specialists, which exceeds Codex's `agents.max_threads = 6` default. Run selected specialists in stable waves of at most 6 specialists. Wave 1 should keep the shared baseline first (`bill-kotlin-code-review-architecture`, `bill-kotlin-code-review-platform-correctness`) and then continue in routing-table order; Wave 2 handles any remaining specialists. Do not drop backend/server specialists just to fit a single wave.
 
 OpenCode does not document a different native concurrency cap for these markdown subagents, so keep the Skill Bill conservative limit of 6 or fewer specialists per wave.
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

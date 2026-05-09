@@ -102,6 +102,9 @@ internal fun validateSkillMdShape(path: Path, validateBodyShape: Boolean = false
 internal fun parseSkillFrontmatter(text: String): Map<String, String> =
   FRONTMATTER_PATTERN.find(text)?.let { match -> parseFrontmatter(match.groupValues[1]) }.orEmpty()
 
+internal fun markdownBodyAfterFrontmatter(text: String): String =
+  FRONTMATTER_PATTERN.find(text)?.let { match -> text.substring(match.range.last + 1) } ?: text
+
 private fun parseFrontmatter(frontmatter: String): Map<String, String> = frontmatter.lineSequence()
   .mapNotNull { line ->
     val separator = line.indexOf(':')

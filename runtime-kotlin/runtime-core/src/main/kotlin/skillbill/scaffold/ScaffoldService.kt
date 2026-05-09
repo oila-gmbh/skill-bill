@@ -13,6 +13,7 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
+import skillbill.error.MissingRequiredSectionError
 import skillbill.error.MissingSupportingFileTargetError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.ScaffoldRollbackError
@@ -305,6 +306,7 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
     isShelled = true,
     notes = notes,
     displayName = pack.displayName ?: deriveDisplayName(platform),
+    contentBody = payload["content_body"] as? String,
     subagentSpecialists = subagents.specialists,
     subagentsSuppressed = subagents.suppressed,
   )
@@ -669,8 +671,7 @@ private fun renderContentSheet(plan: ScaffoldPlan): String = renderContentBody(
 private fun renderDeclaredPackContentSheet(plan: ScaffoldPlan): String = renderContentBody(
   skillContext(plan),
   description = effectiveDescription(plan),
-  governedSections = true,
-  areaFocus = areaFocus(plan),
+  contentBody = plan.contentBody,
 )
 
 private fun skillContext(plan: ScaffoldPlan): TemplateContext = TemplateContext(
@@ -841,11 +842,29 @@ private fun previewSidecars(skillName: String, skillPath: Path, repoRoot: Path):
 }
 
 private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
-  if (plan.kind == SKILL_KIND_ADD_ON || plan.kind == SKILL_KIND_HORIZONTAL) {
+  if (plan.kind == SKILL_KIND_ADD_ON) {
+    return
+  }
+  if (plan.kind == SKILL_KIND_HORIZONTAL) {
+    val issues = validateTarget(plannedAuthoringTarget(plan), repoRoot)
+    if (issues.isNotEmpty()) {
+      throw MissingRequiredSectionError("Horizontal skill '${plan.skillName}': ${issues.first()}")
+    }
     return
   }
   loadPlatformPack(repoRoot.resolve("platform-packs").resolve(plan.platform))
 }
+
+private fun plannedAuthoringTarget(plan: ScaffoldPlan): AuthoringTarget = AuthoringTarget(
+  skillName = plan.skillName,
+  packageName = plan.platform.ifBlank { "base" },
+  platform = plan.platform,
+  displayName = plan.displayName.ifBlank { displayNameFromSlug(plan.skillName.removePrefix("bill-")) },
+  family = plan.family,
+  area = plan.area,
+  skillFile = plan.skillFile,
+  contentFile = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME),
+)
 
 private fun performInstall(
   txn: ScaffoldTransaction,
@@ -1000,7 +1019,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     baselineSkillPath.resolve("content.md"),
-    renderContentBody(baselineContext, baselineDescription, governedSections = true),
+    renderContentBody(baselineContext, baselineDescription),
   )
 
   val qualityCheckContext =
@@ -1010,7 +1029,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     qualityCheckSkillPath.resolve("content.md"),
-    renderContentBody(qualityCheckContext, qualityCheckDescription, governedSections = true),
+    renderContentBody(qualityCheckContext, qualityCheckDescription),
   )
 
   plan.specialistAreas.forEach { area ->
@@ -1032,7 +1051,7 @@ private fun stagePlatformPackArea(
   stageFile(
     txn,
     areaPath.resolve("content.md"),
-    renderContentBody(areaContext, areaDescription, governedSections = true, areaFocus = defaultAreaFocus(area)),
+    renderContentBody(areaContext, areaDescription),
   )
   return emptyList()
 }

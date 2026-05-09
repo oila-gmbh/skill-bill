@@ -3,16 +3,6 @@ name: bill-kotlin-code-review-reliability
 description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions timeout, retry logic, circuit breaker, caching, or observability in Kotlin backend.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review-reliability`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Area: `reliability`
-Description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions timeout, retry logic, circuit breaker, caching, or observability in Kotlin backend.
-
-## Execution
-
 # Backend Reliability Review Specialist
 
 Review only backend/service reliability issues that can cause outages, stuck work, runaway retries, or production incidents.
@@ -44,7 +34,3 @@ Use this specialist for backend/server Kotlin code routed through the built-in K
 - Logging, metrics, and tracing should include enough contextual identifiers to debug failures without leaking secrets or PII
 - Startup and shutdown hooks must initialize and close long-lived resources predictably
 - For Major or Blocker findings, describe the production failure scenario clearly.
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

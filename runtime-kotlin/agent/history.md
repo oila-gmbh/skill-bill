@@ -1,3 +1,12 @@
+## [2026-05-09] authored-content-scaffold-commands
+Areas: runtime-core scaffold/authoring/render validation, runtime-cli authoring tests, shell-content-contract docs
+- Scaffold now threads `content_body` into governed `content.md` for code-review areas and quality-check overrides, validates horizontal scaffolds against the planned `content.md` target after staging, and rolls back generated-wrapper headings byte-identically. reusable
+- `edit --section` rejects generated wrapper sections (`Descriptor`, `Execution`, `Ceremony`) before mutation with a diagnostic pointing authors to authored `content.md` sections or manifest/frontmatter metadata. reusable
+- Regression coverage pins clean authored scaffold bodies, wrapper-heading rejection, quality-check override rollback, horizontal name-collision validation, deterministic render wrapper sections, and fill/edit authored-content mutation behavior.
+- Validation note: full Gradle check also required formatting an unrelated pre-existing Spotless issue in `InstallOperations.kt`; keep formatter-only unblock changes isolated from scaffold behavior.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-09] generated-skill-artifact-source-contract
 Areas: runtime-core scaffold loader/render/validation/install, runtime-cli validation, runtime-core tests
 - `ShellContentLoader` now treats platform.yaml-declared governed files as exact `content.md` paths with governed frontmatter plus Descriptor/Execution/Ceremony H2s; generated wrapper body-shape validation was removed from the declared-source path. reusable
