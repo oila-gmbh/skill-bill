@@ -59,7 +59,6 @@ object RepoValidationRuntime {
   private val overrideSectionPattern = Regex("""^## (bill-[a-z0-9-]+)$""")
   private val addonSlugPattern = Regex("""^[a-z0-9]+(?:-[a-z0-9]+)*$""")
   private const val GOVERNED_ADDON_PATH_PART_COUNT = 4
-  private val unresolvedPlaceholderPattern = Regex("""(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b""")
   private val externalPlaybookReferencePatterns = listOf(
     Regex("""\.bill-shared/orchestration/""") to
       "must reference skill-local supporting files instead of install-local playbook paths",
@@ -514,14 +513,7 @@ object RepoValidationRuntime {
     if (!contentFile.isRegularFile()) {
       return
     }
-    val text = Files.readString(contentFile)
-    val visibleLines = text.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
-    if (visibleLines.size <= 1) {
-      issues += "$contentFile: content.md must include authored guidance beyond the title heading"
-    }
-    if (unresolvedPlaceholderPattern.containsMatchIn(text)) {
-      issues += "$contentFile: content.md contains an unresolved TODO/FIXME placeholder"
-    }
+    issues += validateAuthoredContent(contentFile, Files.readString(contentFile))
   }
 
   private fun validatePortableReviewWording(

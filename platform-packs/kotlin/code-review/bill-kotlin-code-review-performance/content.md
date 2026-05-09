@@ -3,16 +3,6 @@ name: bill-kotlin-code-review-performance
 description: Use when reviewing performance risks in Kotlin code, including hot-path work, blocking I/O, latency regressions, and resource waste. Use when user mentions performance, blocking I/O, hot path, memory leak, or latency in Kotlin code.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review-performance`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Area: `performance`
-Description: Use when reviewing performance risks in Kotlin code, including hot-path work, blocking I/O, latency regressions, and resource waste. Use when user mentions performance, blocking I/O, hot path, memory leak, or latency in Kotlin code.
-
-## Execution
-
 # Performance Review Specialist
 
 Review only high-impact performance issues.
@@ -52,7 +42,3 @@ Use this specialist for shared Kotlin performance risks across libraries, app la
 - Watch for duplicate serialization, repeated auth lookups, or repeated config parsing inside hot paths
 - Flag cache stampede or thundering-herd patterns only when they can realistically spike load or latency
 - In findings, state the expected production impact such as latency, memory pressure, startup cost, throughput loss, or battery drain.
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

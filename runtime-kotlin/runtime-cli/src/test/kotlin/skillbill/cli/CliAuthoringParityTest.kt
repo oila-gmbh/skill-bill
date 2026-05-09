@@ -5,6 +5,7 @@ import skillbill.scaffold.renderAuthoringTarget
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -125,6 +126,15 @@ class CliAuthoringParityTest {
     assertWrapperCommandRegenerates("upgrade", tempDir, context)
     assertEditBodyFileUpdatesContent(tempDir, context)
     assertFillBodyUpdatesContent(tempDir, context)
+  }
+
+  @Test
+  fun `edit section command targets authored sections and rejects generated wrapper sections`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-sections")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    assertEditSectionUpdatesAuthoredContent(tempDir, context)
+    assertEditSectionRejectsGeneratedWrapperSection(tempDir, context)
   }
 
   @Test
@@ -302,6 +312,95 @@ private fun assertFillBodyUpdatesContent(tempDir: Path, context: CliRuntimeConte
 
   assertEquals("complete", payload["completion_status"])
   assertEquals(true, payload["validator_ran"])
+}
+
+private fun assertEditSectionUpdatesAuthoredContent(tempDir: Path, context: CliRuntimeContext) {
+  val repoRoot = sectionFixtureRepo(tempDir.resolve("edit-section-repo"), "bill-edit-section-fixture")
+  val bodyFile = tempDir.resolve("edit-section-body.md")
+  Files.writeString(bodyFile, "Focused replacement body.")
+
+  val payload =
+    runJson(
+      listOf(
+        "edit",
+        "bill-edit-section-fixture",
+        "--repo-root",
+        repoRoot.toString(),
+        "--body-file",
+        bodyFile.toString(),
+        "--section",
+        "Review Guidance",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+  val content = Files.readString(repoRoot.resolve("skills/bill-edit-section-fixture/content.md"))
+
+  assertEquals("Review Guidance", payload["updated_section"])
+  assertEquals(true, payload["validator_ran"])
+  assertContains(content, "## Review Guidance\n\nFocused replacement body.")
+  assertContains(content, "## Review Focus")
+  assertContains(content, "Initial focus.")
+}
+
+private fun assertEditSectionRejectsGeneratedWrapperSection(tempDir: Path, context: CliRuntimeContext) {
+  val repoRoot = sectionFixtureRepo(tempDir.resolve("edit-generated-section-repo"), "bill-edit-generated-fixture")
+  val bodyFile = tempDir.resolve("edit-generated-section-body.md")
+  Files.writeString(bodyFile, "Generated wrapper body.")
+  val contentFile = repoRoot.resolve("skills/bill-edit-generated-fixture/content.md")
+  val before = Files.readString(contentFile)
+
+  val result =
+    CliRuntime.run(
+      listOf(
+        "edit",
+        "bill-edit-generated-fixture",
+        "--repo-root",
+        repoRoot.toString(),
+        "--body-file",
+        bodyFile.toString(),
+        "--section",
+        "Descriptor",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+  val payload = decodeJsonObject(result.stdout)
+  val message = payload["error"].toString()
+
+  assertEquals(1, result.exitCode, result.stdout)
+  assertEquals("error", payload["status"])
+  assertContains(message, "Cannot edit generated wrapper section '## Descriptor'")
+  assertContains(message, "Edit authored content.md sections")
+  assertContains(message, "platform.yaml manifest fields")
+  assertEquals(before, Files.readString(contentFile))
+}
+
+private fun sectionFixtureRepo(repoRoot: Path, skillName: String): Path {
+  val skillDir = repoRoot.resolve("skills").resolve(skillName)
+  Files.createDirectories(skillDir)
+  Files.writeString(
+    skillDir.resolve("content.md"),
+    """
+    ---
+    name: $skillName
+    description: Fixture skill for CLI section authoring tests.
+    ---
+
+    # Fixture Content
+
+    ## Review Focus
+
+    Initial focus.
+
+    ## Review Guidance
+
+    Initial guidance.
+    """.trimIndent() + "\n",
+  )
+  return repoRoot
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {

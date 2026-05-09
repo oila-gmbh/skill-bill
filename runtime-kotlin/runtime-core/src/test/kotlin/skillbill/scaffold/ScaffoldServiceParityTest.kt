@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingContentFileError
+import skillbill.error.MissingRequiredSectionError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -48,6 +49,51 @@ class ScaffoldServiceParityTest {
     assertNoGeneratedWrapper(skillDir)
     assertSourceSidecars(skillDir, "bill-pr-description", repo)
   }
+
+  @Test
+  fun `horizontal scaffold rejects generated wrapper headings and rolls back`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val skillDir = repo.resolve("skills/bill-wrapper-shaped-horizontal")
+    val before = snapshotTree(repo)
+
+    val error = assertFailsWith<MissingRequiredSectionError> {
+      scaffold(
+        payload(
+          repo,
+          "horizontal",
+          "name" to "bill-wrapper-shaped-horizontal",
+          "content_body" to "## Descriptor\n\nGenerated wrapper content must not be authored here.",
+        ),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "generated wrapper boilerplate heading '## Descriptor'")
+    assertEquals(before, snapshotTree(repo))
+    assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
+  }
+
+  @Test
+  fun `horizontal scaffold validates planned content when skill name collides with platform pack target`() =
+    withIsolatedUserHome {
+      val repo = seedRepo()
+      val skillDir = repo.resolve("skills/bill-kotlin-code-review")
+      val before = snapshotTree(repo)
+
+      val error = assertFailsWith<MissingRequiredSectionError> {
+        scaffold(
+          payload(
+            repo,
+            "horizontal",
+            "name" to "bill-kotlin-code-review",
+            "content_body" to "## Descriptor\n\nGenerated wrapper content must not be authored here.",
+          ),
+        )
+      }
+
+      assertContains(error.message.orEmpty(), "generated wrapper boilerplate heading '## Descriptor'")
+      assertEquals(before, snapshotTree(repo))
+      assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
+    }
 
   @Test
   fun `platform pack subagent specialists attach only to baseline orchestrator`() = withIsolatedUserHome {
@@ -133,6 +179,67 @@ class ScaffoldServiceParityTest {
     assertEquals("bill-kotlin-code-review-performance", result.skillName)
     assertTrue(Files.isRegularFile(skillDir.resolve("content.md")))
     assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-code-review-performance")
+  }
+
+  @Test
+  fun `code review area scaffold accepts clean authored content_body without wrapper source`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val result =
+      scaffold(
+        payload(
+          repo,
+          "code-review-area",
+          "platform" to "kotlin",
+          "area" to "api-contracts",
+          "name" to "bill-kotlin-code-review-api-contracts",
+          "content_body" to """
+            |## Focus
+            |
+            |Review API boundary regressions.
+            |
+            |## Review Guidance
+            |
+            |- Prefer client-visible contract issues.
+          """.trimMargin(),
+        ),
+      )
+    val skillDir = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts")
+    val content = Files.readString(skillDir.resolve("content.md"))
+    val manifest = Files.readString(repo.resolve("platform-packs/kotlin/platform.yaml"))
+
+    assertEquals("bill-kotlin-code-review-api-contracts", result.skillName)
+    assertContains(content, "name: bill-kotlin-code-review-api-contracts")
+    assertContains(content, "## Focus\n\nReview API boundary regressions.")
+    assertFalse("## Descriptor" in content)
+    assertFalse("## Execution" in content)
+    assertFalse("## Ceremony" in content)
+    assertContains(manifest, "api-contracts: \"code-review/bill-kotlin-code-review-api-contracts/content.md\"")
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-code-review-api-contracts")
+    loadPlatformPack(repo.resolve("platform-packs/kotlin"))
+  }
+
+  @Test
+  fun `code review area scaffold rejects generated wrapper headings and rolls back`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val skillDir = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-security")
+    val before = snapshotTree(repo)
+
+    val error = assertFailsWith<MissingRequiredSectionError> {
+      scaffold(
+        payload(
+          repo,
+          "code-review-area",
+          "platform" to "kotlin",
+          "area" to "security",
+          "name" to "bill-kotlin-code-review-security",
+          "content_body" to "## Descriptor\n\nGenerated wrapper content must not be authored here.",
+        ),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "generated wrapper boilerplate heading '## Descriptor'")
+    assertEquals(before, snapshotTree(repo))
+    assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
   }
 
   @Test
@@ -332,6 +439,75 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
+  fun `quality check override accepts clean authored content_body`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val result =
+      scaffold(
+        payload(
+          repo,
+          "platform-override-piloted",
+          "platform" to "kotlin",
+          "family" to "quality-check",
+          "name" to "bill-kotlin-quality-check",
+          "content_body" to """
+            |## Focus
+            |
+            |Run Kotlin checks with the governed quality-check ceremony.
+            |
+            |## Failure Handling
+            |
+            |- Report root causes before repair steps.
+          """.trimMargin(),
+        ),
+      )
+    val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-quality-check")
+    val content = Files.readString(skillDir.resolve("content.md"))
+    val manifest = Files.readString(repo.resolve("platform-packs/kotlin/platform.yaml"))
+
+    assertEquals("bill-kotlin-quality-check", result.skillName)
+    assertContains(content, "name: bill-kotlin-quality-check")
+    assertContains(content, "## Focus\n\nRun Kotlin checks with the governed quality-check ceremony.")
+    assertFalse("## Descriptor" in content)
+    assertFalse("## Execution" in content)
+    assertFalse("## Ceremony" in content)
+    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-quality-check/content.md\"")
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-quality-check")
+    val pack = loadPlatformPack(repo.resolve("platform-packs/kotlin"))
+    assertEquals(skillDir.resolve("content.md"), loadQualityCheckContent(pack))
+  }
+
+  @Test
+  fun `quality check override rejects generated wrapper headings and rolls back manifest byte identically`() =
+    withIsolatedUserHome {
+      val repo = seedRepo()
+      val manifestPath = repo.resolve("platform-packs/kotlin/platform.yaml")
+      val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-quality-check")
+      val before = snapshotTree(repo)
+      val beforeManifest = Files.readAllBytes(manifestPath)
+
+      val error = assertFailsWith<MissingRequiredSectionError> {
+        scaffold(
+          payload(
+            repo,
+            "platform-override-piloted",
+            "platform" to "kotlin",
+            "family" to "quality-check",
+            "name" to "bill-kotlin-quality-check",
+            "content_body" to "## Descriptor\n\nGenerated wrapper content must not be authored here.",
+          ),
+        )
+      }
+
+      assertContains(error.message.orEmpty(), "generated wrapper boilerplate heading '## Descriptor'")
+      assertEquals(before, snapshotTree(repo))
+      assertTrue(
+        beforeManifest.contentEquals(Files.readAllBytes(manifestPath)),
+        "Rejected scaffold must restore platform.yaml byte-for-byte",
+      )
+      assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
+    }
+
+  @Test
   fun `scaffold rollback restores manifest files symlinks and directories byte identically`() = withIsolatedUserHome {
     val repo = seedRepo()
     val unrelated = repo.resolve("notes/unrelated.txt")
@@ -388,7 +564,7 @@ private fun seedKotlinPack(repo: Path) {
   )
   Files.writeString(
     baseline.resolve("content.md"),
-    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+    renderContentBody(context, inferSkillDescription(context)),
   )
 }
 
@@ -408,7 +584,7 @@ private fun seedKmpPack(repo: Path) {
   )
   Files.writeString(
     baseline.resolve("content.md"),
-    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+    renderContentBody(context, inferSkillDescription(context)),
   )
 }
 

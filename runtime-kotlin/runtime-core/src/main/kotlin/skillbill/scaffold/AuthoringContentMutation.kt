@@ -23,6 +23,7 @@ private val horizontalSkillFamilies: Map<String, String> =
 internal fun replaceSectionBody(text: String, sectionName: String, newBody: String): String {
   val (prefix, sections) = parseContentSections(text)
   val normalized = normalizeSectionHeading(sectionName)
+  rejectGeneratedWrapperSectionEdit(normalized)
   var matched = false
   val updated = sections.map { (heading, body) ->
     if (heading == normalized) {
@@ -100,4 +101,17 @@ private fun normalizeSectionHeading(sectionName: String): String {
     throw SkillBillRuntimeException("Section name must be non-empty.")
   }
   return if (heading.startsWith("## ")) heading else "## $heading"
+}
+
+private fun rejectGeneratedWrapperSectionEdit(normalizedHeading: String) {
+  val label = normalizedHeading.removePrefix("## ").trim()
+  val generatedHeading = REQUIRED_GOVERNED_SECTIONS.firstOrNull { heading ->
+    heading.removePrefix("## ").trim().equals(label, ignoreCase = true)
+  } ?: return
+  throw SkillBillRuntimeException(
+    "Cannot edit generated wrapper section '$generatedHeading' through content.md. " +
+      "Descriptor, Execution, and Ceremony are generated into SKILL.md render/install output. " +
+      "Edit authored content.md sections for behavior changes, or update content.md frontmatter " +
+      "and platform.yaml manifest fields for generated descriptor metadata.",
+  )
 }

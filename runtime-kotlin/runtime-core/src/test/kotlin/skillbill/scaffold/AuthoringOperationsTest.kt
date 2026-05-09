@@ -153,6 +153,92 @@ class AuthoringOperationsTest {
     assertEquals(false, Files.exists(skillDir), "Failed scaffold left a partial skill directory at $skillDir")
   }
 
+  @Test
+  fun `fill accepts clean authored body without generated wrapper headings`() {
+    val repo = seedFillFixtureRepo("fill-clean-body")
+    val skillName = "bill-fill-fixture"
+    val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
+
+    val payload =
+      AuthoringOperations.fill(
+        repoRoot = repo,
+        skillName = skillName,
+        body = "Clean authored guidance without wrapper headings.",
+        sectionName = null,
+      )
+    val content = Files.readString(contentFile)
+
+    assertEquals("complete", payload["completion_status"])
+    assertContains(content, "# Fixture Content\n\nClean authored guidance without wrapper headings.")
+    assertEquals(false, "## Descriptor" in content)
+    assertEquals(false, "## Execution" in content)
+    assertEquals(false, "## Ceremony" in content)
+  }
+
+  @Test
+  fun `fill rejects generated wrapper headings and rolls back content_md`() {
+    val repo = seedFillFixtureRepo("fill-reject-wrapper-heading")
+    val skillName = "bill-fill-fixture"
+    val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
+    val before = Files.readString(contentFile)
+
+    val error = assertFailsWith<SkillBillRuntimeException> {
+      AuthoringOperations.fill(
+        repoRoot = repo,
+        skillName = skillName,
+        body = "## Execution\n\nGenerated wrapper content must not be authored here.",
+        sectionName = null,
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "generated wrapper boilerplate heading '## Execution'")
+    assertEquals(before, Files.readString(contentFile), "content.md must roll back after wrapper-heading rejection")
+  }
+
+  @Test
+  fun `edit with section targets authored H2 sections only`() {
+    val repo = seedSectionFixtureRepo("edit-authored-section")
+    val skillName = "bill-section-fixture"
+    val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
+
+    val payload =
+      AuthoringOperations.editWithBodyFile(
+        repoRoot = repo,
+        skillName = skillName,
+        body = "Updated guidance body.",
+        sectionName = "Review Guidance",
+      )
+    val content = Files.readString(contentFile)
+
+    assertEquals("Review Guidance", payload["updated_section"])
+    assertContains(content, "## Review Guidance\n\nUpdated guidance body.")
+    assertContains(content, "## Review Focus")
+    assertContains(content, "Initial focus.")
+  }
+
+  @Test
+  fun `edit with generated wrapper section explains authored surface instead of mutating`() {
+    val repo = seedSectionFixtureRepo("edit-generated-section")
+    val skillName = "bill-section-fixture"
+    val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
+    val before = Files.readString(contentFile)
+
+    val error = assertFailsWith<SkillBillRuntimeException> {
+      AuthoringOperations.editWithBodyFile(
+        repoRoot = repo,
+        skillName = skillName,
+        body = "New generated section body.",
+        sectionName = "Descriptor",
+      )
+    }
+
+    val message = error.message.orEmpty()
+    assertContains(message, "Cannot edit generated wrapper section '## Descriptor'")
+    assertContains(message, "Edit authored content.md sections")
+    assertContains(message, "platform.yaml manifest fields")
+    assertEquals(before, Files.readString(contentFile), "content.md must not change for generated-section edits")
+  }
+
   private fun seedFillFixtureRepo(prefix: String): Path {
     val repo = Files.createTempDirectory("skillbill-$prefix")
     val skillName = "bill-fill-fixture"
@@ -169,6 +255,33 @@ class AuthoringOperationsTest {
       # Fixture Content
 
       Initial authored content.
+      """.trimIndent() + "\n",
+    )
+    return repo
+  }
+
+  private fun seedSectionFixtureRepo(prefix: String): Path {
+    val repo = Files.createTempDirectory("skillbill-$prefix")
+    val skillName = "bill-section-fixture"
+    val skillDir = repo.resolve("skills").resolve(skillName)
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: $skillName
+      description: Fixture skill for AuthoringOperations section tests.
+      ---
+
+      # Fixture Content
+
+      ## Review Focus
+
+      Initial focus.
+
+      ## Review Guidance
+
+      Initial guidance.
       """.trimIndent() + "\n",
     )
     return repo

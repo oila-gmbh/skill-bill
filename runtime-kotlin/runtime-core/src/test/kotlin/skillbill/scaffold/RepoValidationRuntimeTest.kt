@@ -345,6 +345,101 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation rejects content_md without authored guidance beyond title`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-empty-body")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("must include authored guidance beyond the title heading")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects unresolved placeholders in content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-placeholder")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      TODO: replace this placeholder.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("unresolved TODO/FIXME placeholder")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects generated wrapper boilerplate headings in content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-wrapper-boilerplate")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance.
+
+      ## Descriptor
+
+      Generated wrapper metadata does not belong in source content.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("generated wrapper boilerplate heading '## Descriptor'")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation does not require governed SKILL_md drift files on disk`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-drift-wiring")
     val skillDir = repoRoot.resolve("skills/bill-runtime-drift")

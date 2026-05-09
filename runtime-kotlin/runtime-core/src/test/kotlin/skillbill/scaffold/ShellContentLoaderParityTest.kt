@@ -125,45 +125,118 @@ class ShellContentLoaderParityTest {
   }
 
   @Test
-  fun `loader requires governed content sections without exact render matching`() {
+  fun `loader requires non empty authored content`() {
     val root = copyFixture("valid_pack")
     val contentFile = root.resolve("code-review").resolve("content.md")
     Files.writeString(
       contentFile,
-      Files.readString(contentFile).replace(
-        Regex("(?ms)^## Execution\\n.*?(?=^## Ceremony)", RegexOption.MULTILINE),
-        "",
-      ),
+      "---\nname: code-review\ndescription: Empty authored content fixture.\n---\n",
     )
 
     val error = assertFailsWith<MissingRequiredSectionError> {
       loadPlatformPack(root)
     }
-    assertContains(error.message.orEmpty(), "## Execution")
+    assertContains(error.message.orEmpty(), "authored content")
     assertContains(error.message.orEmpty(), "content.md")
   }
 
   @Test
-  fun `area and quality check declarations require governed content sections`() {
+  fun `loader rejects title only authored content`() {
+    val root = copyFixture("valid_pack")
+    val contentFile = root.resolve("code-review").resolve("content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: code-review
+      description: Title-only authored content fixture.
+      ---
+
+      # Fixture Review Content
+      """.trimIndent() + "\n",
+    )
+
+    val error = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(root)
+    }
+    assertContains(error.message.orEmpty(), "authored guidance beyond the title heading")
+    assertContains(error.message.orEmpty(), "content.md")
+  }
+
+  @Test
+  fun `loader rejects generated wrapper boilerplate and self referential content pointer`() {
+    val wrapperRoot = copyFixture("valid_pack")
+    val wrapperContent = wrapperRoot.resolve("code-review").resolve("content.md")
+    Files.writeString(
+      wrapperContent,
+      """
+      ---
+      name: code-review
+      description: Wrapper boilerplate fixture.
+      ---
+
+      # Fixture Review Content
+
+      Review the fixture implementation.
+
+      ## Ceremony
+
+      Generated wrapper ceremony does not belong here.
+      """.trimIndent() + "\n",
+    )
+
+    val wrapperError = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(wrapperRoot)
+    }
+    assertContains(wrapperError.message.orEmpty(), "generated wrapper boilerplate heading '## Ceremony'")
+
+    val pointerRoot = copyFixture("valid_pack")
+    val pointerContent = pointerRoot.resolve("code-review").resolve("architecture").resolve("content.md")
+    Files.writeString(
+      pointerContent,
+      """
+      ---
+      name: code-review
+      description: Self-referential pointer fixture.
+      ---
+
+      Follow the instructions in [content.md](content.md).
+      """.trimIndent() + "\n",
+    )
+
+    val pointerError = assertFailsWith<MissingRequiredSectionError> {
+      loadPlatformPack(pointerRoot)
+    }
+    assertContains(pointerError.message.orEmpty(), "self-referential wrapper pointer text")
+  }
+
+  @Test
+  fun `area and quality check declarations require non empty authored content`() {
     val areaRoot = copyFixture("valid_pack")
     val areaContent = areaRoot.resolve("code-review").resolve("architecture").resolve("content.md")
-    Files.writeString(areaContent, Files.readString(areaContent).replace("## Descriptor", "## Not Descriptor"))
+    Files.writeString(
+      areaContent,
+      "---\nname: code-review\ndescription: Empty architecture area fixture.\n---\n",
+    )
 
     val areaError = assertFailsWith<MissingRequiredSectionError> {
       loadPlatformPack(areaRoot)
     }
-    assertContains(areaError.message.orEmpty(), "## Descriptor")
+    assertContains(areaError.message.orEmpty(), "authored content")
     assertContains(areaError.message.orEmpty(), "code-review/architecture/content.md")
 
     val qualityRoot = copyFixture("code_review_and_quality_check")
     val qualityContent = qualityRoot.resolve("quality-check").resolve("content.md")
-    Files.writeString(qualityContent, Files.readString(qualityContent).replace("## Ceremony", "## Not Ceremony"))
+    Files.writeString(
+      qualityContent,
+      "---\nname: quality-check\ndescription: Empty quality-check fixture.\n---\n",
+    )
     val pack = loadPlatformManifest(qualityRoot)
 
     val qualityError = assertFailsWith<MissingRequiredSectionError> {
       loadQualityCheckContent(pack)
     }
-    assertContains(qualityError.message.orEmpty(), "## Ceremony")
+    assertContains(qualityError.message.orEmpty(), "authored content")
     assertContains(qualityError.message.orEmpty(), "quality-check/content.md")
   }
 
@@ -253,12 +326,7 @@ class ShellContentLoaderParityTest {
     Files.writeString(contentFile, richBody)
     // Calling the validator directly on the new content.md (frontmatter-only) must not throw.
     validateSkillMdShape(contentFile, validateBodyShape = false)
-    // Loader integration still requires governed shell sections; the looser shape validator must
-    // not become a backdoor that accepts manifest-declared content with no shell contract sections.
-    val error = assertFailsWith<MissingRequiredSectionError> {
-      loadPlatformPack(root)
-    }
-    assertContains(error.message.orEmpty(), "## Descriptor")
+    loadPlatformPack(root)
   }
 }
 

@@ -3,16 +3,6 @@ name: bill-kotlin-code-review-api-contracts
 description: Use when reviewing Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, request validation, response serialization, status codes, or backward compatibility in Kotlin backend.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review-api-contracts`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Area: `api-contracts`
-Description: Use when reviewing Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, request validation, response serialization, status codes, or backward compatibility in Kotlin backend.
-
-## Execution
-
 # Backend API & Contract Review Specialist
 
 Review only backend/service API contract issues that can break clients, allow invalid behavior, or create hard-to-debug production regressions.
@@ -42,7 +32,3 @@ Use this specialist for backend/server Kotlin code routed through the built-in K
 - Pagination and filtering should preserve deterministic ordering and bounded result sizes
 - Serialization defaults must match the compatibility expectations of existing clients
 - In findings, explain the client-visible consequence of the contract break or boundary bug.
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

@@ -63,12 +63,7 @@ private fun collectTargetIssues(target: AuthoringTarget, repoRoot: Path?, issues
   } catch (error: ShellContentContractException) {
     issues += error.message.orEmpty()
   }
-  if (contentText.isBlank()) {
-    issues += "${target.contentFile}: content.md must not be empty"
-  }
-  if (hasUnresolvedPlaceholder(contentText)) {
-    issues += "${target.contentFile}: content.md contains an unresolved TODO/FIXME placeholder"
-  }
+  issues += validateAuthoredContent(target.contentFile, contentText)
 }
 
 private fun isSourceOwnedSkillTarget(repoRoot: Path, target: AuthoringTarget): Boolean {
