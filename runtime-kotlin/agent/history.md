@@ -1,3 +1,12 @@
+## [2026-05-09] native-agent-composition-foundation
+Areas: runtime-core nativeagent parser/validation, shell-content-contract docs, native-agent tests
+- Native-agent source frontmatter now supports explicit `compose: governed-content`; parser round-trips the directive while provider renderers still use the source body only until rendering migration lands.
+- Composition target resolution is manifest-bound for platform packs: `platform.yaml` declared content paths are authoritative, and undeclared sibling `content.md` files must not be used as fallback. reusable
+- Repo validation aggregates malformed compose directives, missing declared content targets, unresolved targets, and manifest loader failures as native-agent validation issues alongside existing provider-agnostic/render checks.
+- Regression coverage pins parser acceptance/rejection, manifest-driven target resolution, missing target failure, no undeclared platform fallback, discovery preservation, and composition round-trip.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-05-09] authored-content-scaffold-commands
 Areas: runtime-core scaffold/authoring/render validation, runtime-cli authoring tests, shell-content-contract docs
 - Scaffold now threads `content_body` into governed `content.md` for code-review areas and quality-check overrides, validates horizontal scaffolds against the planned `content.md` target after staging, and rolls back generated-wrapper headings byte-identically. reusable

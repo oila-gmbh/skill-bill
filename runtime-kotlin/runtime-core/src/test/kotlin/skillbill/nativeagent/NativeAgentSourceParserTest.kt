@@ -7,6 +7,73 @@ import kotlin.test.assertFailsWith
 
 class NativeAgentSourceParserTest {
   @Test
+  fun `compose directive parses governed content target`() {
+    val source = parseNativeAgentSourceText(
+      "---\n" +
+        "name: bill-composed\n" +
+        "description: Composed worker.\n" +
+        "compose: governed-content\n" +
+        "---\n\n",
+    )
+
+    assertEquals(
+      NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent),
+      source.composition,
+    )
+    assertEquals("", source.body)
+  }
+
+  @Test
+  fun `renderNativeAgentSource preserves compose directive`() {
+    val source = NativeAgentSource(
+      name = "bill-composed",
+      description = "Composed worker.",
+      body = "",
+      composition = NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent),
+    )
+
+    val expected = "---\n" +
+      "name: bill-composed\n" +
+      "description: Composed worker.\n" +
+      "compose: governed-content\n" +
+      "---\n\n\n"
+    assertEquals(expected, renderNativeAgentSource(source))
+  }
+
+  @Test
+  fun `blank body remains rejected without compose directive`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      parseNativeAgentSourceText(
+        "---\n" +
+          "name: bill-blank\n" +
+          "description: Blank worker.\n" +
+          "---\n\n",
+        label = "test source",
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "test source")
+    assertContains(error.message.orEmpty(), "native agent body is required")
+  }
+
+  @Test
+  fun `unsupported compose directive fails strictly`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      parseNativeAgentSourceText(
+        "---\n" +
+          "name: bill-composed\n" +
+          "description: Composed worker.\n" +
+          "compose: local-file\n" +
+          "---\n\n",
+        label = "test source",
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "test source")
+    assertContains(error.message.orEmpty(), "unsupported native agent compose directive 'local-file'")
+  }
+
+  @Test
   fun `double-quoted description decodes backslash quote and newline escapes`() {
     val source = parseNativeAgentSourceText(
       """

@@ -55,6 +55,9 @@ private fun validateNativeAgentSources(root: Path, sources: List<Path>, issues: 
       issues += "${displayPath(root, sourcePath)}: " +
         "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
+    validateNativeAgentCompositionTarget(root, source)?.let { issue ->
+      issues += issue
+    }
     NativeAgentProvider.entries.forEach { provider ->
       runCatching { provider.render(source) }.getOrElse { error ->
         issues += "${displayPath(root, sourcePath)}: cannot render ${provider.directoryName}: " +
