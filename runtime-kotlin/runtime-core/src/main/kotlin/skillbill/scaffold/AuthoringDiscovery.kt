@@ -64,9 +64,9 @@ internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
   }
   Files.walk(skillsRoot).use { stream ->
     stream
-      .filter { path -> path.name == "SKILL.md" }
+      .filter { path -> path.name == "content.md" }
       .sorted()
-      .forEach { skillFile -> recordSkillTarget(repoRoot, discovered, skillFile) }
+      .forEach { contentFile -> recordSkillTarget(repoRoot, discovered, contentFile) }
   }
   return discovered
 }
@@ -117,16 +117,16 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
   }
 }
 
-private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, AuthoringTarget>, skillFile: Path) {
-  val contentFile = skillFile.resolveSibling("content.md")
-  if (!Files.isRegularFile(contentFile)) {
-    return
-  }
-  val skillName = skillFile.parent.name
+private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, AuthoringTarget>, contentFile: Path) {
+  // F-E: keep registering the target even when the sibling SKILL.md is missing so downstream
+  // validation surfaces the orphan instead of silently making the skill invisible to
+  // validate/list/upgrade. validateTarget() asserts SKILL.md presence and emits a discrete issue.
+  val skillFile = contentFile.resolveSibling("SKILL.md")
+  val skillName = contentFile.parent.name
   if (skillName in discovered) {
     return
   }
-  val platform = platformFromSkillPath(repoRoot.relativize(skillFile))
+  val platform = platformFromSkillPath(repoRoot.relativize(contentFile))
   val packageName = platform.ifBlank { "base" }
   val family = inferFamily(skillName)
   val displayName =

@@ -1,3 +1,8 @@
+---
+name: bill-kotlin-code-review-testing
+description: Use when reviewing test coverage quality, real test value, regression protection, and test reliability risks in Kotlin code. Use when user mentions test quality, test coverage, mock setup, or test reliability in Kotlin code.
+---
+
 # Testing Review Specialist
 
 Review only test gaps that create real regression risk.

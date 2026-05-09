@@ -1,3 +1,8 @@
+---
+name: bill-feature-guard-cleanup
+description: Remove feature flags and legacy code after a feature is fully rolled out. Use when a feature flag has been enabled for all users and the legacy path is no longer needed. Safely deletes Legacy classes, removes flag checks, and inlines the winning code path. Use when user mentions remove feature flag, cleanup flag, delete legacy code, or flag fully rolled out.
+---
+
 # Feature Guard Cleanup Content
 
 ## When To Use

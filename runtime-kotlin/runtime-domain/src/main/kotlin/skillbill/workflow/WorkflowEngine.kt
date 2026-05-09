@@ -306,9 +306,9 @@ object WorkflowEngine {
     val artifacts = artifactKeys.joinToString().ifBlank { "none" }
     val instructionPath =
       if (definition.skillName == "bill-feature-implement") {
-        "`skills/bill-feature-implement/SKILL.md` and `skills/bill-feature-implement/reference.md`"
+        "`skills/bill-feature-implement/content.md` and `skills/bill-feature-implement/reference.md`"
       } else {
-        "`skills/bill-feature-verify/SKILL.md`"
+        "`skills/bill-feature-verify/content.md`"
       }
     return "Resume `${definition.skillName}` workflow `$workflowId` from `$stepLabel` (`$resumeStepId`). " +
       "Follow the normal step instructions in $instructionPath. " +

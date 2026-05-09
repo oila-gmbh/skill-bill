@@ -441,7 +441,15 @@ private fun validateGovernedSkill(
 
   val sections = collectTopLevelH2Sections(Files.readString(skillPath))
   ensureRequiredSections(pack.slug, skillPath, sections)
-  validateSkillMdShape(skillPath)
+  // Pack manifests still point at SKILL.md through subtask 3, so keep enforcing the wrapper
+  // body shape on the wrapper until subtask 4 flips the manifest baseline. Also enforce
+  // frontmatter-only validation on the sibling content.md so authored content gets first-class
+  // validation today.
+  validateSkillMdShape(skillPath, validateBodyShape = true)
+  val siblingContent = skillPath.resolveSibling("content.md")
+  if (Files.isRegularFile(siblingContent)) {
+    validateSkillMdShape(siblingContent, validateBodyShape = false)
+  }
   ensureSiblingFiles(pack.slug, slot, skillPath)
 
   val context = governedContext(pack, skillPath.parent.fileName.toString(), family, area)

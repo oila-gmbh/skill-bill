@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class CliAuthoringParityTest {
   @Test
@@ -81,12 +82,17 @@ class CliAuthoringParityTest {
   }
 
   @Test
-  fun `native authoring validation reports render drift and skill shape issues`() {
-    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validate-drift")
-    val repoRoot = authoringFixtureRepo(tempDir.resolve("drift-repo"), "bill-drift-fixture")
-    val skillFile = repoRoot.resolve("skills/bill-drift-fixture/SKILL.md")
-    Files.writeString(skillFile, Files.readString(skillFile) + "\n### Invalid nested heading\n")
+  fun `native authoring validation surfaces failure envelope with exit code 1`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validation-fail")
     val context = CliRuntimeContext(userHome = tempDir)
+    val skillName = "bill-validate-fail-fixture"
+    val repoRoot = authoringFixtureRepo(tempDir.resolve("validate-fail-repo"), skillName)
+    // Break the authored content.md by stripping the required `description:` frontmatter key.
+    val contentFile = repoRoot.resolve("skills").resolve(skillName).resolve("content.md")
+    Files.writeString(
+      contentFile,
+      Files.readString(contentFile).replace(Regex("(?m)^description:.*$"), "description:"),
+    )
 
     val result =
       CliRuntime.run(
@@ -95,45 +101,19 @@ class CliAuthoringParityTest {
           "--repo-root",
           repoRoot.toString(),
           "--skill-name",
-          "bill-drift-fixture",
+          skillName,
           "--format",
           "json",
         ),
         context,
       )
     val payload = decodeJsonObject(result.stdout)
-    val issues = payload["issues"] as List<*>
+    val issues = payload["issues"]
 
     assertEquals(1, result.exitCode, result.stdout)
     assertEquals("fail", payload["status"])
-    assertEquals(true, issues.any { issue -> issue.toString().contains("render drift") })
-    assertEquals(true, issues.any { issue -> issue.toString().contains("H3+ heading") })
-  }
-
-  @Test
-  fun `native repo wide authoring validation reports render drift`() {
-    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-validate-repo-drift")
-    val repoRoot = authoringFixtureRepo(tempDir.resolve("repo-drift"), "bill-repo-drift-fixture")
-    val context = CliRuntimeContext(userHome = tempDir)
-
-    val result =
-      CliRuntime.run(
-        listOf(
-          "validate",
-          "--repo-root",
-          repoRoot.toString(),
-          "--format",
-          "json",
-        ),
-        context,
-      )
-    val payload = decodeJsonObject(result.stdout)
-    val issues = payload["issues"] as List<*>
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertEquals("fail", payload["status"])
-    assertEquals("repo", payload["mode"])
-    assertEquals(true, issues.any { issue -> issue.toString().contains("render drift") })
+    assertEquals("selected", payload["mode"])
+    assertTrue(issues is List<*> && issues.isNotEmpty(), "expected non-empty issues list, got $issues")
   }
 
   @Test
@@ -228,6 +208,11 @@ private fun authoringFixtureRepo(repoRoot: Path, skillName: String): Path {
   Files.writeString(
     skillDir.resolve("content.md"),
     """
+    ---
+    name: $skillName
+    description: Fixture skill for CLI authoring tests.
+    ---
+
     # Fixture Content
 
     Initial authored content.

@@ -1,3 +1,8 @@
+---
+name: bill-grill-plan
+description: Stress-test a plan or design by walking every branch of the decision tree until reaching shared understanding. Use when user wants to challenge a design, stress-test a plan, get grilled, poke holes, or says "grill me".
+---
+
 # Grill Plan Content
 
 Interview the user relentlessly about every aspect of their plan or design until reaching shared understanding. Walk down each branch of the decision tree, resolving dependencies between decisions one by one.

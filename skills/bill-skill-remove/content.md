@@ -1,3 +1,8 @@
+---
+name: bill-skill-remove
+description: Use when removing an existing skill or platform skill set and cleaning up agent installs, manifests, and supporting links.
+---
+
 # Skill Remove Content
 
 ## Description

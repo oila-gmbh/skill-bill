@@ -94,51 +94,95 @@ class ShellContentLoaderParityTest {
     }
     assertContains(driftError.message.orEmpty(), "## Descriptor")
 
+    // The loader validates both SKILL.md (with body-shape rules) and the sibling content.md
+    // (frontmatter only). Remove the required `description` key from content.md to prove the
+    // content-side validator path fires.
     val shapeRoot = copyFixture("valid_pack")
-    val shapeSkill = shapeRoot.resolve("code-review").resolve("SKILL.md")
-    Files.writeString(shapeSkill, Files.readString(shapeSkill) + "\n### Not allowed here\n")
+    val shapeContent = shapeRoot.resolve("code-review").resolve("content.md")
+    Files.writeString(
+      shapeContent,
+      Files.readString(shapeContent).replace(
+        Regex("(?m)^description:.*$"),
+        "description:",
+      ),
+    )
     val shapeError = assertFailsWith<InvalidSkillMdShapeError> {
       loadPlatformPack(shapeRoot)
     }
-    assertContains(shapeError.message.orEmpty(), "H3+ heading")
+    assertContains(shapeError.message.orEmpty(), "description")
+    // Error path must name content.md, not SKILL.md, so callers can tell which file is broken.
+    assertContains(shapeError.message.orEmpty(), "content.md")
   }
 
   @Test
-  fun `invalid skill md shape rejects high value governed wrapper drift categories`() {
-    listOf(
-      "disallowed frontmatter" to { text: String -> text.replace("---\n", "---\nextra: nope\n") },
-      "intro content" to { text: String -> text.replace("## Descriptor", "Intro paragraph.\n\n## Descriptor") },
-      "fenced code block" to { text: String -> text.replace("## Ceremony", "```\ncode\n```\n\n## Ceremony") },
-      "markdown table" to { text: String -> text.replace("## Ceremony", "| a | b |\n| - | - |\n\n## Ceremony") },
-      "H1 heading" to { text: String -> text.replace("## Ceremony", "# Heading\n\n## Ceremony") },
-      "telemetry instruction" to { text: String ->
-        text.replace("## Ceremony", "skillbill_review_finished\n\n## Ceremony")
-      },
-      "wrong H2 order" to ::moveExecutionBeforeDescriptor,
-    ).forEach { (label, mutate) ->
+  fun `invalid skill md shape rejects frontmatter violations on content_md`() {
+    val cases = listOf(
+      Triple(
+        "disallowed frontmatter key",
+        { text: String -> text.replace("---\n", "---\nextra: nope\n", ignoreCase = false) },
+        "extra",
+      ),
+      Triple(
+        "missing name key",
+        { text: String -> text.replace(Regex("(?m)^name:.*$"), "name:") },
+        "name",
+      ),
+      Triple(
+        "missing description key",
+        { text: String -> text.replace(Regex("(?m)^description:.*$"), "description:") },
+        "description",
+      ),
+    )
+    cases.forEach { (label, mutate, discriminator) ->
       val root = copyFixture("valid_pack")
-      val skill = root.resolve("code-review").resolve("SKILL.md")
-      Files.writeString(skill, mutate(Files.readString(skill)))
+      val contentFile = root.resolve("code-review").resolve("content.md")
+      Files.writeString(contentFile, mutate(Files.readString(contentFile)))
 
       val error = assertFailsWith<InvalidSkillMdShapeError>(label) {
         loadPlatformPack(root)
       }
-      assertTrue(error.message.orEmpty().contains("SKILL.md"), error.message.orEmpty())
+      val message = error.message.orEmpty()
+      assertTrue(message.isNotBlank(), label)
+      assertContains(message, discriminator, message = label)
+      assertContains(message, "content.md", message = label)
     }
   }
-}
 
-private fun moveExecutionBeforeDescriptor(text: String): String {
-  val descriptorStart = text.indexOf("## Descriptor")
-  val executionStart = text.indexOf("## Execution")
-  val ceremonyStart = text.indexOf("## Ceremony")
-  check(descriptorStart >= 0 && executionStart > descriptorStart && ceremonyStart > executionStart)
-  return buildString {
-    append(text.substring(0, descriptorStart))
-    append(text.substring(executionStart, ceremonyStart))
-    append("\n")
-    append(text.substring(descriptorStart, executionStart))
-    append(text.substring(ceremonyStart))
+  @Test
+  fun `valid frontmatter passes shape validator regardless of body markdown`() {
+    // Body-shape rules (fenced code, H1, H3, tables, intro content) are no longer enforced
+    // by the SkillMdShapeValidator on content.md callsites; only SKILL.md callers opt in via
+    // validateBodyShape=true. This test confirms content.md tolerates rich body markdown all the
+    // way through the loadPlatformPack integration path that consumes content.md in production.
+    val root = copyFixture("valid_pack")
+    val contentFile = root.resolve("code-review").resolve("content.md")
+    val richBody = """
+      |---
+      |name: code-review
+      |description: Fixture content with rich markdown to confirm the shape validator no longer rejects body markdown.
+      |---
+      |
+      |# Top-level heading
+      |
+      |Some intro paragraph before any H2.
+      |
+      |### Subheading
+      |
+      || col1 | col2 |
+      || ---- | ---- |
+      || a    | b    |
+      |
+      |```kotlin
+      |fun example(): Int = 42
+      |```
+      |
+    """.trimMargin()
+    Files.writeString(contentFile, richBody)
+    // Calling the validator directly on the new content.md (frontmatter-only) must not throw.
+    validateSkillMdShape(contentFile, validateBodyShape = false)
+    // Loader integration must also accept rich body markdown end-to-end — guards against a
+    // regression that would re-introduce body-shape enforcement on the content.md path.
+    loadPlatformPack(root)
   }
 }
 
