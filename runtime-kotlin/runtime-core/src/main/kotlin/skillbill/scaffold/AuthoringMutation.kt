@@ -7,6 +7,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementText: String): Map<String, Any?> {
+  // Guard against an orphaned content.md (no sibling SKILL.md). Without this, reading the wrapper
+  // bytes for the rollback snapshot would throw an opaque NoSuchFileException from the JVM. Mirror
+  // the wording emitted by validateTarget so callers see the same message regardless of entrypoint.
+  if (!Files.isRegularFile(target.skillFile)) {
+    throw SkillBillRuntimeException("${target.skillFile}: SKILL.md is missing")
+  }
   val contentBefore = Files.readAllBytes(target.contentFile)
   val wrapperBefore = Files.readAllBytes(target.skillFile)
   return runWithContentRollback(target, contentBefore, wrapperBefore) {

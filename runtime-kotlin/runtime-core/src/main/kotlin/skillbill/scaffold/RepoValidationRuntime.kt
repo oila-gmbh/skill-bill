@@ -196,10 +196,7 @@ object RepoValidationRuntime {
     return found
   }
 
-  private fun discoverPlatformPackSkillFiles(
-    root: Path,
-    issues: MutableList<String> = mutableListOf(),
-  ): Map<String, Path> {
+  private fun discoverPlatformPackSkillFiles(root: Path, issues: MutableList<String>): Map<String, Path> {
     val packsRoot = root.resolve("platform-packs")
     if (!packsRoot.isDirectory()) {
       return emptyMap()
@@ -281,6 +278,14 @@ object RepoValidationRuntime {
         validateSkillMdShape(contentFile, validateBodyShape = false)
       } catch (error: InvalidSkillMdShapeError) {
         issues += error.message.orEmpty()
+      }
+      // Mirror the SKILL.md `name == skillName` identity check on content.md so an authored
+      // mismatch is surfaced at the source rather than as wrapper drift after `skill-bill render`.
+      val contentFrontmatter = parseFrontmatter(Files.readString(contentFile))
+      val contentName = contentFrontmatter["name"].orEmpty()
+      if (contentName != skillName) {
+        issues += "$contentFile: content.md frontmatter name '$contentName' does not match skill " +
+          "directory name '$skillName'"
       }
     }
     requiredSupportingFilesForSkill(skillName).forEach { fileName ->

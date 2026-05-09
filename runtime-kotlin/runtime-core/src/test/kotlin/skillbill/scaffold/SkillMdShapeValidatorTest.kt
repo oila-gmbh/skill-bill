@@ -178,6 +178,32 @@ class SkillMdShapeValidatorTest {
     validateSkillMdShape(skillFile, validateBodyShape = false)
   }
 
+  @Test
+  fun `same wrapper text fails strict mode body shape rules`() {
+    // Pair regression-protects on/off semantics: identical SKILL.md text that passes
+    // permissive mode must trip strict mode (fenced code blocks are rejected first).
+    val skillFile = writeFile(
+      "SKILL.md",
+      """
+      ---
+      name: bill-example
+      description: An example skill description.
+      ---
+
+      ## Descriptor
+
+      ```kotlin
+      // permissive mode tolerates fenced code blocks
+      ```
+      """.trimIndent() + "\n",
+    )
+    val error = assertFailsWith<InvalidSkillMdShapeError> {
+      validateSkillMdShape(skillFile, validateBodyShape = true)
+    }
+    assertContains(error.message.orEmpty(), "fenced code blocks are not allowed")
+    assertContains(error.message.orEmpty(), "SKILL.md")
+  }
+
   private fun writeFile(name: String, body: String): Path {
     val dir = Files.createTempDirectory("skill-md-shape-validator-test")
     val file = dir.resolve(name)

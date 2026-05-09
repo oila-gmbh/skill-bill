@@ -4,6 +4,7 @@ import skillbill.error.SkillBillRuntimeException
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -40,9 +41,13 @@ class AuthoringContentMutationTest {
     val context = TemplateContext("bill-example", "code-review", "kotlin", "", "Kotlin")
     val rendered = renderContentBody(context, "An example skill description.", "Plain body without frontmatter.\n")
 
-    // Exactly one leading frontmatter block (between `---` fences).
+    // Exactly one leading frontmatter block — two `---` fences and no extras. `>= 2` would
+    // silently accept a stacked second block, which is exactly the regression renderContentBody
+    // is supposed to prevent.
     val frontmatterFenceCount = Regex("(?m)^---$").findAll(rendered).count()
-    assertTrue(frontmatterFenceCount >= 2, "Expected canonical frontmatter, got: $rendered")
+    assertEquals(2, frontmatterFenceCount, "Expected exactly one canonical frontmatter, got: $rendered")
+    // Lock the canonical leading shape — frontmatter must start at offset 0 with `---\nname:`.
+    assertTrue(rendered.startsWith("---\nname:"), "Rendered output must start with `---\\nname:`, got: $rendered")
     assertContains(rendered, "name: bill-example")
     assertContains(rendered, "description: An example skill description.")
     assertContains(rendered, "Plain body without frontmatter.")
@@ -58,6 +63,47 @@ class AuthoringContentMutationTest {
     val message = error.message.orEmpty()
     assertContains(message, "content.md must already carry a YAML frontmatter block")
     assertContains(message, target.skillName)
+  }
+
+  @Test
+  fun `mutateContent fails fast with explicit message when SKILL_md is missing`() {
+    // Regression for M-1 (architecture iter-2 F-001): orphaned content.md (no sibling SKILL.md)
+    // must fail with a clear "SKILL.md is missing" SkillBillRuntimeException, not the opaque
+    // NoSuchFileException raised by Files.readAllBytes when the wrapper rollback snapshot is read.
+    val dir = Files.createTempDirectory("mutate-content-orphan")
+    val contentFile = dir.resolve("content.md")
+    val skillFile = dir.resolve("SKILL.md")
+    Files.writeString(
+      contentFile,
+      """
+      |---
+      |name: bill-orphan
+      |description: Authored content with no sibling wrapper.
+      |---
+      |
+      |# Body
+      |
+      |Authored body.
+      """.trimMargin() + "\n",
+    )
+    // Intentionally do NOT create SKILL.md — this is the orphan path recordSkillTarget supports.
+    val target = AuthoringTarget(
+      skillName = "bill-orphan",
+      packageName = "base",
+      platform = "",
+      displayName = "orphan",
+      family = "advisor",
+      area = "",
+      skillFile = skillFile,
+      contentFile = contentFile,
+    )
+
+    val error = assertFailsWith<SkillBillRuntimeException> {
+      mutateContent(dir, target, "irrelevant replacement\n")
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "SKILL.md is missing")
+    assertContains(message, skillFile.toString())
   }
 
   @Test

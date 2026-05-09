@@ -9,7 +9,7 @@ internal fun renderWrapper(target: AuthoringTarget): String {
   // Source frontmatter from content.md — content.md is the authoring surface (since SKILL-40
   // subtask 1) and SKILL.md must be a faithful render of it. Sourcing from SKILL.md would let
   // wrapper frontmatter drift from authored description silently.
-  val frontmatter = frontmatterBlock(Files.readString(target.contentFile))
+  val frontmatter = frontmatterBlock(Files.readString(target.contentFile), target)
   val context =
     TemplateContext(
       skillName = target.skillName,
@@ -33,13 +33,17 @@ internal fun renderWrapper(target: AuthoringTarget): String {
   }
 }
 
-private fun frontmatterBlock(text: String): String {
+private fun frontmatterBlock(text: String, target: AuthoringTarget): String {
   if (!text.startsWith("---\n")) {
-    throw SkillBillRuntimeException("content.md is missing YAML frontmatter.")
+    throw SkillBillRuntimeException(
+      "${target.contentFile}: content.md for skill '${target.skillName}' is missing YAML frontmatter.",
+    )
   }
   val end = text.indexOf("\n---", startIndex = FRONTMATTER_PREFIX_LENGTH)
   if (end < 0) {
-    throw SkillBillRuntimeException("content.md is missing YAML frontmatter.")
+    throw SkillBillRuntimeException(
+      "${target.contentFile}: content.md for skill '${target.skillName}' is missing YAML frontmatter.",
+    )
   }
   return text.substring(0, end + "\n---".length)
 }

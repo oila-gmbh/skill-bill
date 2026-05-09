@@ -324,6 +324,41 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation reports content_md frontmatter name mismatch`() {
+    // Regression for M-2 (architecture iter-2 F-002): an authored content.md whose frontmatter
+    // `name:` disagrees with its parent directory must surface as a content.md issue, not as a
+    // wrapper drift symptom only after `skill-bill render` regenerates SKILL.md.
+    val repoRoot = Files.createTempDirectory("skillbill-content-name-mismatch")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-wrong-name
+      description: Authored content whose name disagrees with the directory.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance for the code-review baseline skill fixture.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("bill-wrong-name") &&
+          it.contains("bill-code-review")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation rejects checked-in generated junie native agent artifact`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-junie-checked-in")
     createRepoValidationSkillFixture(repoRoot)

@@ -79,9 +79,9 @@ internal fun renderContentBody(context: TemplateContext, description: String, co
   contentBody?.let { raw ->
     if (FRONTMATTER_BLOCK_LEADING.containsMatchIn(raw.trimStart())) {
       throw SkillBillRuntimeException(
-        "renderContentBody received a content body that already starts with a YAML frontmatter " +
-          "block; pass the body without frontmatter so the canonical block can be rendered " +
-          "from context.",
+        "skill-bill new payload content_body for '${context.skillName}' must not start with a " +
+          "YAML frontmatter block; the canonical block is rendered from the payload's name/" +
+          "description.",
       )
     }
   }
