@@ -1,6 +1,6 @@
 # Getting Started
 
-Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use the built distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
+Skill Bill installs governed agent skills plus a local runtime. The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
 
 Use this guide when you want to install Skill Bill, understand the runtime model, and know which behavior is enforced by contracts versus model reasoning.
 
@@ -14,7 +14,7 @@ Skill Bill has three operator surfaces:
 
 Those surfaces use the same governed repo structure:
 
-- `skills/` contains canonical user-facing skills
+- `skills/` contains canonical user-facing skill sources. A source skill directory contains `content.md` and, only when needed, `native-agents/`.
 - `platform-packs/` contains manifest-declared platform packs
 - `orchestration/` contains shared contracts and playbooks
 - `runtime-kotlin/` contains the packaged CLI and MCP runtime
@@ -37,7 +37,7 @@ cd ~/Development/skill-bill
 ./install.sh
 ```
 
-The installer builds the Kotlin CLI and MCP distributions, verifies the packaged bin scripts, then links selected skills into detected agent directories.
+The installer builds the Kotlin CLI and MCP distributions, verifies the packaged bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
 
 Supported install targets:
 
@@ -47,7 +47,7 @@ Supported install targets:
 | Claude Code | `~/.claude/commands/` |
 | Claude Code (native subagent markdown) | `~/.claude/agents/` |
 | OpenAI Codex (skills) | `~/.codex/skills/` or `~/.agents/skills/` |
-| OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` or `~/.agents/agents/` |
+| OpenAI Codex (native subagent TOMLs) | `~/.codex/agents/` |
 | OpenCode (skills) | `~/.config/opencode/skills/` |
 | OpenCode (native subagent markdown) | `~/.config/opencode/agents/` |
 | JetBrains Junie (skills) | `~/.junie/skills/` |
@@ -55,9 +55,9 @@ Supported install targets:
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
-Installed skills are symlinks back to the checkout. Updating the checkout updates installed skill behavior.
+Installed skills are symlinks to rendered staging directories under `~/.skill-bill/installed-skills/`. Re-run `./install.sh` after changing the checkout so installed agents pick up refreshed `SKILL.md` wrappers, support pointer files, and content hashes.
 
-On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/<name>.md` files. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/` (with `~/.agents/agents/` fallback), OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented at [`skills/bill-feature-implement/parsing_tolerance.md`](../skills/bill-feature-implement/parsing_tolerance.md).
+On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
 
 ## Runtime Model
 
@@ -99,7 +99,8 @@ Fail closed:
 - wrong shell contract versions
 - missing platform manifests
 - missing declared platform-pack content files
-- missing required governed `SKILL.md` sections
+- missing generated wrapper sections during render/install validation
+- extra files in `skills/` source directories other than `content.md` and optional `native-agents/`
 - invalid scaffold payloads
 - validation drift in generated wrappers or agent configs
 
@@ -118,9 +119,9 @@ Rollback for a broken runtime is to install a previous release. Do not expect a 
 Strict and loud-fail guarantees:
 
 - MCP tools publish strict schemas for priority workflow, telemetry, review, learning, scaffold, and workflow-state tools. Unknown top-level arguments are rejected before handler dispatch when the schema is strict.
-- Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, required wrapper sections, and sibling sidecars.
-- Scaffold and validation commands operate on structured manifests and generated wrappers; invalid payloads or drift fail the command.
-- `install link-skill` creates real symlinks to explicit directories and is covered by Kotlin CLI tests.
+- Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, generated wrapper sections, and generated support pointers.
+- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid payloads, source-shape violations, or render drift fail the command.
+- `install link-skill` creates real symlinks to staged rendered skill directories and is covered by Kotlin CLI tests.
 
 Model-mediated guarantees:
 
@@ -177,14 +178,14 @@ Authoring and install:
 | `skill-bill show <skill>` | Inspect one governed skill |
 | `skill-bill explain [skill]` | Explain the governed authoring boundary |
 | `skill-bill validate` | Run repo or targeted governed-skill validation |
-| `skill-bill render` | Regenerate scaffold-managed wrappers |
+| `skill-bill render` | Render generated wrappers to stdout or install output without writing generated files into source |
 | `skill-bill fill <skill>` | Write authored `content.md` text and validate |
 | `skill-bill new --payload <file>` | Scaffold a governed skill or platform pack |
 | `skill-bill new-addon` | Create a pack-owned add-on |
 | `skill-bill doctor` | Show local install and telemetry health |
 | `skill-bill install agent-path <agent>` | Print an agent install path |
 | `skill-bill install detect-agents` | List detected agents |
-| `skill-bill install link-skill` | Symlink one skill directory into a target path |
+| `skill-bill install link-skill` | Render one skill into staging and symlink it into a target path |
 
 ## External Author Dry Run
 
@@ -219,7 +220,7 @@ rm /tmp/skill-bill-agent/skills/bill-java-code-review
 rm -rf platform-packs/java
 ```
 
-In normal team usage, remove scaffolded example files with your usual VCS workflow instead of deleting committed pack files by hand.
+In normal team usage, remove scaffolded example files with your usual VCS workflow instead of deleting committed pack files by hand. The explicit `link-skill` target receives a symlink to a rendered staging directory, not to the source skill directory.
 
 ## MCP Server
 
@@ -250,6 +251,7 @@ scripts/validate_agent_configs
 ## Reference Docs
 
 - [Getting Started for Teams](getting-started-for-teams.md)
+- [Skill Source And Generation Model](skill-source-generation.md)
 - [Review Telemetry](review-telemetry.md)
 - [Roadmap](ROADMAP.md)
 - `orchestration/shell-content-contract/PLAYBOOK.md`

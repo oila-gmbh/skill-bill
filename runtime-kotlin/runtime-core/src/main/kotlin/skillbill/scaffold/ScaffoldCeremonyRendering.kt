@@ -33,10 +33,6 @@ internal fun renderCeremonySection(context: TemplateContext): String = buildStri
     appendLine()
     appendLine("When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).")
   }
-  if (skillRequiresAuditRubrics(context.skillName)) {
-    appendLine()
-    appendLine("When feature verification audit rules apply, follow [audit-rubrics.md](audit-rubrics.md).")
-  }
 }
 
 private fun skillRequiresTelemetryContract(skillName: String): Boolean = skillName.startsWith("bill-") && (
@@ -61,9 +57,6 @@ private fun skillRequiresReviewDelegation(skillName: String): Boolean =
   skillName.startsWith("bill-") && skillName.endsWith("-code-review")
 
 private fun skillRequiresShellContentContract(skillName: String): Boolean = skillName == "bill-code-review"
-
-private fun skillRequiresAuditRubrics(skillName: String): Boolean =
-  skillName == "bill-feature-verify" || skillName.endsWith("-feature-verify")
 
 private fun skillRequiresReviewOrchestrator(skillName: String): Boolean =
   skillName != "bill-code-review" && skillName.startsWith("bill-") &&

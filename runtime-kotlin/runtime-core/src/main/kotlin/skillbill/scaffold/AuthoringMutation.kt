@@ -84,6 +84,9 @@ private fun collectSourceSidecarIssues(repoRoot: Path, target: AuthoringTarget, 
     val sidecar = target.contentFile.resolveSibling(fileName)
     val sidecarPath = sidecar.normalize().toAbsolutePath()
     val expectedPath = expectedTarget.normalize().toAbsolutePath()
+    if (sidecarPath != expectedPath) {
+      return@forEach
+    }
     when {
       !Files.exists(sidecar, LinkOption.NOFOLLOW_LINKS) ->
         issues += "${target.contentFile}: required supporting sidecar '$fileName' is missing beside the skill"

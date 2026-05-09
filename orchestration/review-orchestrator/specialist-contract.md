@@ -7,7 +7,7 @@ description: Compact shared contract for delegated specialist review subagents. 
 
 This is the delegated-worker subset of the full review-orchestrator contract. Orchestrators read the full `review-orchestrator.md`; delegated specialist subagents read this file instead.
 
-Do not reference this repo-relative path directly from installable skills — use the sibling symlink instead.
+Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 ## Shared Contract For Every Specialist
 

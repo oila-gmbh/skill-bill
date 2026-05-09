@@ -62,65 +62,88 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `repo validation requires supporting sidecars beside non-platform skills`() {
+  fun `repo validation does not require generated supporting pointers beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-missing-sidecar")
-    createRepoValidationSkillFixture(repoRoot, skipSidecar = "review-scope.md")
+    createRepoValidationSkillFixture(repoRoot)
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
+    assertFalse(
+      report.issues.any { it.contains("required supporting sidecar") || it.contains("supporting sidecar") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects extra authored files beside source skills`() {
+    val repoRoot = Files.createTempDirectory("skillbill-extra-source-file")
+    createRepoValidationSkillFixture(repoRoot)
+    Files.writeString(repoRoot.resolve("skills/bill-code-review/patterns.md"), "extra organization file\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
     assertTrue(
       report.issues.any {
-        it.contains("skills/bill-code-review/content.md") &&
-          it.contains("required supporting sidecar 'review-scope.md' is missing beside the skill")
+        it.contains("skills/bill-code-review/patterns.md") &&
+          it.contains("skill source directories may contain only content.md and native-agents/")
       },
       report.issues.joinToString("\n"),
     )
   }
 
   @Test
-  fun `repo validation rejects wrong supporting sidecar target beside non-platform skills`() {
+  fun `repo validation rejects committed generated supporting pointer beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-wrong-sidecar")
     val wrongTarget = repoRoot.resolve("orchestration/wrong/PLAYBOOK.md")
     Files.createDirectories(wrongTarget.parent)
     Files.writeString(wrongTarget, "wrong\n")
-    createRepoValidationSkillFixture(repoRoot, overrideTargets = mapOf("review-scope.md" to wrongTarget))
+    createRepoValidationSkillFixture(
+      repoRoot,
+      overrideTargets = mapOf("review-scope.md" to wrongTarget),
+      writeSidecars = true,
+    )
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
       report.issues.any {
-        it.contains("supporting sidecar 'review-scope.md' points to") &&
-          it.contains("instead of orchestration/review-scope/PLAYBOOK.md")
+        it.contains("skills/bill-code-review/review-scope.md") &&
+          it.contains("committed generated supporting pointer file is not allowed")
       },
       report.issues.joinToString("\n"),
     )
   }
 
   @Test
-  fun `repo validation accepts git symlink placeholders beside non-platform skills`() {
+  fun `repo validation rejects git symlink placeholders beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-placeholder-sidecar")
-    createRepoValidationSkillFixture(repoRoot, sidecarMode = SidecarMode.GitPlaceholder)
+    createRepoValidationSkillFixture(repoRoot, sidecarMode = SidecarMode.GitPlaceholder, writeSidecars = true)
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
-    assertFalse(report.issues.any { it.contains("must be a symlink") }, report.issues.joinToString("\n"))
-    assertFalse(report.issues.any { it.contains("points to") }, report.issues.joinToString("\n"))
+    assertTrue(
+      report.issues.any {
+        it.contains("skills/bill-code-review/review-scope.md") &&
+          it.contains("committed generated supporting pointer file is not allowed")
+      },
+      report.issues.joinToString("\n"),
+    )
   }
 
   @Test
-  fun `repo validation rejects regular copied sidecar files beside non-platform skills`() {
+  fun `repo validation rejects regular copied generated supporting pointer files beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-regular-sidecar")
     createRepoValidationSkillFixture(repoRoot)
     val sidecar = repoRoot.resolve("skills/bill-code-review/review-scope.md")
-    Files.delete(sidecar)
     Files.writeString(sidecar, "copied markdown\n")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
       report.issues.any {
-        it.contains("review-scope.md") &&
-          it.contains("must be a symlink or git symlink placeholder")
+        it.contains("skills/bill-code-review/review-scope.md") &&
+          it.contains("committed generated supporting pointer file is not allowed")
       },
       report.issues.joinToString("\n"),
     )
@@ -543,6 +566,7 @@ class RepoValidationRuntimeTest {
     skipSidecar: String? = null,
     overrideTargets: Map<String, java.nio.file.Path> = emptyMap(),
     sidecarMode: SidecarMode = SidecarMode.SymbolicLink,
+    writeSidecars: Boolean = false,
   ) {
     supportingFileTargets(repoRoot).values.forEach { target ->
       Files.createDirectories(target.parent)
@@ -563,6 +587,9 @@ class RepoValidationRuntimeTest {
       Authored review guidance for the code-review baseline skill fixture.
       """.trimIndent(),
     )
+    if (!writeSidecars) {
+      return
+    }
     val targets = supportingFileTargets(repoRoot)
     requiredSupportingFilesForSkill("bill-code-review").filterNot { it == skipSidecar }.forEach { fileName ->
       val sidecar = skillDir.resolve(fileName)

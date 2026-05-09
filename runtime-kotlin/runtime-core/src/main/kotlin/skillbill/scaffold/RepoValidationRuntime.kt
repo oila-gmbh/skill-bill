@@ -94,6 +94,7 @@ object RepoValidationRuntime {
     platformSkillFiles.forEach { (skillName, skillFile) ->
       validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
     }
+    validateSkillSourceShape(skillFiles.values, root, issues)
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
     }
@@ -269,12 +270,31 @@ object RepoValidationRuntime {
       } else if (!Files.exists(expectedTarget)) {
         issues += "$contentFile: supporting file '$fileName' target is missing at ${expectedTarget.relativeTo(root)}"
       }
-      if (validateSourceSidecars) {
+      if (validateSourceSidecars && isAuthoredSourceSidecar(contentFile, fileName, expectedTarget)) {
         validateSupportingSidecar(contentFile, fileName, expectedTarget, root, issues)
       }
     }
     validatePortableReviewWording(skillName, text, contentFile, issues)
     validateGovernedContentFile(contentFile, issues)
+  }
+
+  private fun validateSkillSourceShape(contentFiles: Collection<Path>, root: Path, issues: MutableList<String>) {
+    contentFiles.forEach { contentFile ->
+      val skillDir = contentFile.parent
+      Files.walk(skillDir).use { stream ->
+        stream
+          .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path) }
+          .filter { path ->
+            val rel = skillDir.relativize(path).toString().replace('\\', '/')
+            rel != "content.md" && !rel.startsWith("$NATIVE_AGENT_SOURCE_DIR/")
+          }
+          .sorted()
+          .forEach { path ->
+            issues += "${path.relativeTo(root)}: skill source directories may contain only content.md " +
+              "and native-agents/ source files"
+          }
+      }
+    }
   }
 
   private fun parseFrontmatter(text: String): Map<String, String> {
@@ -335,6 +355,15 @@ object RepoValidationRuntime {
       !Files.isSymbolicLink(sidecar) -> Unit
       else -> supportingSymlinkTargetIssue(contentFile, fileName, sidecar, expectedTarget, root)?.let(issues::add)
     }
+  }
+
+  private fun isAuthoredSourceSidecar(contentFile: Path, fileName: String, expectedTarget: Path?): Boolean {
+    if (expectedTarget == null) {
+      return false
+    }
+    val sidecar = contentFile.parent.resolve(fileName).normalize().toAbsolutePath()
+    val expected = expectedTarget.normalize().toAbsolutePath()
+    return sidecar == expected
   }
 
   private fun isGitSymlinkPlaceholder(sidecar: Path, expectedTarget: Path): Boolean {

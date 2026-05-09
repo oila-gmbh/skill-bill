@@ -44,6 +44,14 @@ internal fun validateGeneratedArtifactGuard(
     issues += "$relative: committed platform.yaml pointer file is not allowed; " +
       "render pointer files only for install/output targets"
   }
+  discoverGeneratedSupportingPointerFiles(root).forEach { pointerFile ->
+    val relative = displayGuardPath(root, pointerFile)
+    if (!shouldValidateCommittedArtifact(relative, trackedFiles)) {
+      return@forEach
+    }
+    issues += "$relative: committed generated supporting pointer file is not allowed; " +
+      "render supporting pointers only for install/output targets"
+  }
   return GeneratedArtifactGuardReport(issues.sorted())
 }
 
@@ -101,6 +109,37 @@ private fun discoverDeclaredPointerFiles(root: Path): List<Path> {
             Files.isSymbolicLink(pointerFile) ||
               Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)
           }
+          .stream()
+      }
+      .toList()
+      .sorted()
+  }
+}
+
+private fun discoverGeneratedSupportingPointerFiles(root: Path): List<Path> {
+  val skillsRoot = root.resolve("skills")
+  if (!skillsRoot.isDirectory()) {
+    return emptyList()
+  }
+  val targets = supportingFileTargets(root)
+  return Files.list(skillsRoot).use { stream ->
+    stream
+      .filter { skillDir -> skillDir.isDirectory() && !skillDir.name.startsWith(".") }
+      .flatMap { skillDir ->
+        val skillName = skillDir.name
+        requiredSupportingFilesForSkill(skillName)
+          .asSequence()
+          .filter { fileName ->
+            val target = targets[fileName]?.normalize()?.toAbsolutePath()
+            val sidecar = skillDir.resolve(fileName).normalize().toAbsolutePath()
+            target != null && target != sidecar
+          }
+          .map { fileName -> skillDir.resolve(fileName) }
+          .filter { pointerFile ->
+            Files.isSymbolicLink(pointerFile) ||
+              Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)
+          }
+          .toList()
           .stream()
       }
       .toList()

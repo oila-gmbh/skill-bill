@@ -215,9 +215,11 @@ ids are:
 11. `pr_description`
 12. `finish`
 
-For this pilot, the workflow shell stays in `skills/bill-feature-implement/SKILL.md`
-and the authored execution body lives in sibling `content.md`.
-`SKILL.md` remains the source of truth for:
+For this pilot, the authored workflow source stays in
+`skills/bill-feature-implement/content.md`. Install and render flows generate the
+runtime `SKILL.md` wrapper from that source plus the shared shell contract.
+Generated wrappers are not committed under `skills/`.
+The rendered `SKILL.md` remains the runtime-facing source of truth for:
 
 - workflow-state and continuation sections
 - stable step headings used by continuation payloads
