@@ -110,11 +110,11 @@ Every payload MUST include:
   `InvalidScaffoldPayloadError`. Default: `false`.
 
 When `subagent_specialists` is non-empty (and not suppressed), the
-scaffolder emits one provider-neutral source stub at
-`<orchestrator-skill-dir>/native-agents/<name>.md` per specialist.
+scaffolder emits one provider-neutral source bundle at
+`<orchestrator-skill-dir>/native-agents/agents.yaml` with one entry per specialist.
 Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are
-self-contained install-cache outputs generated from those sources during
-install. Authors edit `native-agents/<name>.md`, then run
+self-contained install-cache outputs generated from those logical sources during
+install. Authors edit `native-agents/agents.yaml`, then run
 `skill-bill render` to validate source renderability. The scaffolder also
 injects a `## Subagent Spawn Runtime Notes` section into the
 orchestrator's `content.md` that documents how Claude, Codex, OpenCode,

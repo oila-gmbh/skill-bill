@@ -1,3 +1,12 @@
+## [2026-05-09] native-agent-bundles
+Areas: runtime-core nativeagent parser/discovery/validation/install, runtime-core scaffold, Kotlin/KMP platform-pack native agents, shell-content-contract docs
+- Native-agent discovery now treats `native-agents/agents.yaml` and `native-agents/*.md` as source files, expanding bundles into logical `NativeAgentSource` entries only after selection filters so targeted regeneration stays cheap. reusable
+- Bundle validation keeps platform composition manifest-bound and horizontal composition frontmatter-bound, with duplicate-name diagnostics including `agents.yaml` entry names and custom-body parity against markdown sources.
+- Multi-specialist scaffolds emit thin `compose: governed-content` bundle entries in `agents.yaml`; standalone markdown stub rendering remains the custom-body path for authored worker prompts. reusable
+- Kotlin and KMP header-only specialist sources moved from one markdown file per agent into pack-owned bundle files without changing provider-native install output.
+Feature flag: N/A
+Acceptance criteria: 16/16 implemented
+
 ## [2026-05-09] native-agent-composition-validation-final-coverage
 Areas: runtime-core nativeagent validation, runtime-core scaffold repo validation, runtime-cli validation, scripts/validate_agent_configs
 - Final validation coverage pins native-agent source preservation through `RepoValidationRuntime.validateRepo`; validation must report issues without rewriting or deleting `native-agents/*.md`. reusable

@@ -5,7 +5,7 @@ package skillbill.scaffold
 import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.ShellContentContractException
 import skillbill.nativeagent.NATIVE_AGENT_SOURCE_DIR
-import skillbill.nativeagent.NativeAgentOperations
+import skillbill.nativeagent.discoverRepoNativeAgentSourceEntries
 import skillbill.nativeagent.validateRepoNativeAgents
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -86,7 +86,7 @@ object RepoValidationRuntime {
     val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
     val addonFiles = discoverAllAddonFiles(root)
     val platformPacks = validatePlatformPacks(root, issues)
-    val nativeAgentSources = NativeAgentOperations.discoverRepoNativeAgentSources(root)
+    val nativeAgentSources = runCatching { discoverRepoNativeAgentSourceEntries(root) }.getOrDefault(emptyList())
 
     skillFiles.forEach { (skillName, skillFile) ->
       validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true)
