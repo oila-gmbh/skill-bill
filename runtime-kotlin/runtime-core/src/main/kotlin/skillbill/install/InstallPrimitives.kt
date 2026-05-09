@@ -4,6 +4,7 @@ package skillbill.install
 
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallTransaction
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -64,29 +65,47 @@ internal fun detectOpencodeAgentsTarget(home: Path? = null): AgentTarget? {
   return if (agentIsPresent(resolvedHome, "opencode", path)) AgentTarget(OPENCODE_AGENTS_KIND, path) else null
 }
 
+/**
+ * Installation context bundling staging-cache inputs so callers can pre-resolve them once and
+ * reuse them across a multi-skill install (review F-015). Defaults preserve the legacy behavior
+ * of `installSkill` callers that don't care about staging.
+ */
+internal data class InstallContext(
+  val repoRoot: Path? = null,
+  val home: Path = Path.of(System.getProperty("user.home")),
+  val manifests: List<PlatformManifest>? = null,
+)
+
 internal fun installSkill(
   skillPath: Path,
   agentTargets: Iterable<AgentTarget>,
   transaction: InstallTransaction? = null,
+  context: InstallContext = InstallContext(),
 ): List<Path> {
   val resolvedSkill = skillPath.toAbsolutePath().normalize()
   if (!Files.isDirectory(resolvedSkill)) {
     throw java.io.FileNotFoundException("Skill directory '$resolvedSkill' does not exist.")
   }
+  // SKILL-40 subtask 2: content-managed skills install via the per-skill staging cache so the
+  // source tree stays read-only. Non-content-managed sources (manual `link-skill` against an ad-hoc
+  // directory with no content.md) fall back to the legacy direct symlink for backward compat.
+  // F-015: callers (e.g. ScaffoldService.performInstall) may pass a pre-discovered manifest list
+  // so we don't re-walk platform-packs once per skill in a multi-skill scaffold install.
+  val symlinkTarget = resolveStagedSymlinkTarget(resolvedSkill, context.repoRoot, context.home, context.manifests)
   val created = mutableListOf<Path>()
   for (target in agentTargets) {
     Files.createDirectories(target.path)
     val linkPath = target.path.resolve(resolvedSkill.fileName)
     if (Files.isSymbolicLink(linkPath)) {
       val existingTarget = runCatching { Files.readSymbolicLink(linkPath).toAbsolutePath().normalize() }.getOrNull()
-      if (existingTarget == resolvedSkill) {
+      if (existingTarget == symlinkTarget) {
         continue
       }
       Files.deleteIfExists(linkPath)
     } else if (Files.exists(linkPath)) {
       Files.delete(linkPath)
     }
-    Files.createSymbolicLink(linkPath, resolvedSkill)
+    Files.createSymbolicLink(linkPath, symlinkTarget)
     created.add(linkPath)
     transaction?.createdSymlinks?.add(linkPath)
   }

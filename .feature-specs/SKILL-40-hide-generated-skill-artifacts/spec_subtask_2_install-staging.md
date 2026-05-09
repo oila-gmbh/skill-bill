@@ -2,7 +2,7 @@
 
 Parent spec: [./spec.md](./spec.md)
 
-Status: Not started
+Status: Complete
 
 ## Scope
 

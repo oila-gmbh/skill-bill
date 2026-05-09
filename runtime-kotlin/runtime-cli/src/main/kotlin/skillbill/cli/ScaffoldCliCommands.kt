@@ -17,6 +17,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.InstallOperations
 import skillbill.scaffold.AuthoringOperations
+import skillbill.scaffold.renderAuthoringTarget
 import skillbill.scaffold.scaffold
 import java.nio.file.Path
 import java.time.LocalDate
@@ -211,7 +212,20 @@ class UpgradeSkillsCommand(
 @Inject
 class RenderSkillsCommand(
   private val state: CliRunState,
-) : WrapperRegenerationCommand("render", state)
+) : DocumentedCliCommand("render", "Render scaffold-managed files to stdout without writing to disk.") {
+  private val skillName by argument(help = "Governed skill name to render.")
+  private val repoRoot by option(
+    "--repo-root",
+    help = "Repo root to inspect. Defaults to the current working directory.",
+  )
+    .default(".")
+  private val dryRun by option("--dry-run", help = "Accepted no-op alias for read-only render output.")
+    .flag(default = false)
+
+  override fun run() {
+    completeRenderText(state, Path.of(repoRoot), skillName, dryRun)
+  }
+}
 
 open class WrapperRegenerationCommand(
   name: String,
@@ -565,6 +579,15 @@ private fun authoringResult(
   errorResult(error.message.orEmpty(), format)
 } catch (error: IllegalArgumentException) {
   errorResult(error.message.orEmpty(), format)
+}
+
+private fun completeRenderText(state: CliRunState, repoRoot: Path, skillName: String, dryRun: Boolean) = try {
+  val rendered = renderAuthoringTarget(repoRoot, skillName)
+  state.completeText(rendered.stdout, rendered.payload + mapOf("dry_run" to dryRun))
+} catch (error: SkillBillRuntimeException) {
+  state.result = errorResult(error.message.orEmpty(), CliFormat.TEXT)
+} catch (error: IllegalArgumentException) {
+  state.result = errorResult(error.message.orEmpty(), CliFormat.TEXT)
 }
 
 private fun unsupportedNativeScaffoldResult(message: String, format: CliFormat): CliExecutionResult {

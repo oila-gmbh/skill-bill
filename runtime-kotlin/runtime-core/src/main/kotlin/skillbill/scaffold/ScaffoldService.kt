@@ -19,6 +19,7 @@ import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
+import skillbill.install.InstallContext
 import skillbill.install.detectAgents
 import skillbill.install.installSkill
 import skillbill.install.model.InstallTransaction
@@ -175,7 +176,7 @@ private fun executeScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRo
       else -> stageSingleScaffold(txn, plan, repoRoot)
     }
   validateScaffold(plan, repoRoot)
-  val (installTargets, installNotes) = performInstall(txn, plan)
+  val (installTargets, installNotes) = performInstall(txn, plan, repoRoot)
   return execution.copy(
     installTargets = installTargets,
     notes = execution.notes + installNotes + subagentEmissionNotes(plan),
@@ -849,7 +850,11 @@ private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
   loadPlatformPack(repoRoot.resolve("platform-packs").resolve(plan.platform))
 }
 
-private fun performInstall(txn: ScaffoldTransaction, plan: ScaffoldPlan): Pair<List<Path>, List<String>> {
+private fun performInstall(
+  txn: ScaffoldTransaction,
+  plan: ScaffoldPlan,
+  repoRoot: Path,
+): Pair<List<Path>, List<String>> {
   val agents = detectAgents()
   val installTx = InstallTransaction()
   val installPaths = when (plan.kind) {
@@ -857,9 +862,16 @@ private fun performInstall(txn: ScaffoldTransaction, plan: ScaffoldPlan): Pair<L
     SKILL_KIND_PLATFORM_PACK -> plan.installPaths
     else -> listOf(plan.skillPath)
   }
+  // F-015: hoist platform-pack manifest discovery out of the per-skill loop. Walking
+  // `platform-packs` once is O(packs); doing it per skill in a multi-skill platform-pack scaffold
+  // is O(packs * skills). Pass the pre-resolved list down through installSkill so applicablePointers
+  // reuses it.
+  val packsRoot = repoRoot.resolve("platform-packs")
+  val manifests = if (Files.isDirectory(packsRoot)) discoverPlatformPackManifests(packsRoot) else emptyList()
+  val context = InstallContext(repoRoot = repoRoot, manifests = manifests)
   val targets =
     installPaths.flatMap { installPath ->
-      installSkill(installPath, agents, transaction = installTx)
+      installSkill(installPath, agents, transaction = installTx, context = context)
     }
   txn.installTargets += targets
   val notes = when {
