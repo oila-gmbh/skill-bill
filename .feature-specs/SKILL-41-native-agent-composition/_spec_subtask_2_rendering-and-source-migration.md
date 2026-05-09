@@ -2,7 +2,7 @@
 
 Parent overview: `.feature-specs/SKILL-41-native-agent-composition/spec.md`
 
-Status: Planned
+Status: Complete
 
 ## Scope
 

@@ -36,7 +36,7 @@ class NativeAgentSourceParserTest {
       "name: bill-composed\n" +
       "description: Composed worker.\n" +
       "compose: governed-content\n" +
-      "---\n\n\n"
+      "---\n\n"
     assertEquals(expected, renderNativeAgentSource(source))
   }
 

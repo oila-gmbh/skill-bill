@@ -2,6 +2,7 @@ package skillbill.nativeagent
 
 import skillbill.scaffold.loadPlatformPack
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.renderAuthoredContentBody
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -53,14 +54,30 @@ fun resolveNativeAgentCompositionTarget(repoRoot: Path, source: NativeAgentSourc
   )
 }
 
-internal fun validateNativeAgentCompositionTarget(repoRoot: Path, source: NativeAgentSource): String? {
-  if (source.composition == null) {
-    return null
+internal fun nativeAgentCompositionRepoRoot(platformPacksRoot: Path, skillsRoot: Path?): Path {
+  val platformRoot = platformPacksRoot.toAbsolutePath().normalize()
+  val skillRoot = skillsRoot?.toAbsolutePath()?.normalize()
+  return if (skillRoot != null && platformRoot.parent == skillRoot.parent) {
+    platformRoot.parent
+  } else if (platformRoot.fileName?.toString() == "platform-packs") {
+    platformRoot.parent ?: platformRoot
+  } else {
+    platformRoot
   }
-  return runCatching {
-    resolveNativeAgentCompositionTarget(repoRoot, source)
-    null
-  }.getOrElse { error -> error.message.orEmpty() }
+}
+
+internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource): NativeAgentSource {
+  val target = resolveNativeAgentCompositionTarget(repoRoot, source) ?: return source
+  val governedBody = renderAuthoredContentBody(target.contentPath, source.name).trimEnd()
+  val localFraming = source.body.trim()
+  val composedBody = buildString {
+    if (localFraming.isNotBlank()) {
+      append(localFraming)
+      append("\n\n")
+    }
+    append(governedBody)
+  }.trimEnd()
+  return source.copy(body = inlineDeclaredMarkdownSidecars(repoRoot, target, composedBody), composition = null)
 }
 
 private fun resolvePlatformManifestContentTarget(
@@ -101,8 +118,11 @@ private fun resolveSiblingContentTarget(sourcePath: Path, source: NativeAgentSou
       )
     }
 
-private fun platformPackRoot(repoRoot: Path, sourcePath: Path): Path? {
+internal fun platformPackRoot(repoRoot: Path, sourcePath: Path): Path? {
   val packsRoot = repoRoot.resolve("platform-packs")
+  if (!sourcePath.startsWith(packsRoot)) {
+    return null
+  }
   return runCatching { sourcePath.relativeTo(packsRoot) }
     .getOrNull()
     ?.firstOrNull()
@@ -114,23 +134,23 @@ private fun declaredContentPaths(pack: PlatformManifest): List<Path> = listOf(pa
   pack.declaredFiles.areas.values.sortedBy { it.toString() } +
   listOfNotNull(pack.declaredQualityCheckFile)
 
-private fun readContentFrontmatterName(contentPath: Path): String? = Files.readString(contentPath)
-  .replace("\r\n", "\n")
-  .takeIf { text -> text.startsWith("---\n") }
-  ?.let(::frontmatterBody)
-  ?.lineSequence()
-  ?.firstOrNull { line -> line.startsWith("name:") }
-  ?.substringAfter(':')
-  ?.trim()
-  ?.trim('"', '\'')
-  ?.takeIf { it.isNotBlank() }
-
-private fun frontmatterBody(text: String): String? {
+private fun readContentFrontmatterName(contentPath: Path): String? {
+  val text = Files.readString(contentPath).replace("\r\n", "\n")
   val end = text.indexOf("\n---\n", startIndex = FRONTMATTER_OPEN_LENGTH)
-  return end.takeIf { it >= 0 }?.let { text.substring(FRONTMATTER_OPEN_LENGTH, it) }
+  return if (!text.startsWith("---\n") || end < 0) {
+    null
+  } else {
+    text.substring(FRONTMATTER_OPEN_LENGTH, end)
+      .lineSequence()
+      .firstOrNull { line -> line.startsWith("name:") }
+      ?.substringAfter(':')
+      ?.trim()
+      ?.trim('"', '\'')
+      ?.takeIf { it.isNotBlank() }
+  }
 }
 
-private fun displayPath(root: Path, path: Path): String {
+internal fun displayPath(root: Path, path: Path): String {
   val resolvedRoot = root.toAbsolutePath().normalize()
   val resolvedPath = path.toAbsolutePath().normalize()
   return runCatching { resolvedPath.relativeTo(resolvedRoot).toString() }

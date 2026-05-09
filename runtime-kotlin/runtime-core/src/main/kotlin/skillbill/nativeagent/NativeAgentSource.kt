@@ -120,7 +120,10 @@ fun renderNativeAgentSource(agent: NativeAgentSource): String = buildString {
   }
   append("---").append('\n')
   append('\n')
-  append(agent.body.trimEnd()).append('\n')
+  val body = agent.body.trimEnd()
+  if (body.isNotEmpty()) {
+    append(body).append('\n')
+  }
 }
 
 private fun parseSimpleFrontmatter(raw: String, label: String): Map<String, String> {

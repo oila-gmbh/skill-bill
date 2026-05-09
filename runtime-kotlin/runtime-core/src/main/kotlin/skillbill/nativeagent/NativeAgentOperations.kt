@@ -39,9 +39,10 @@ object NativeAgentOperations {
     val byProvider = NativeAgentProvider.entries.associateWith { provider ->
       sources.map { sourcePath ->
         val source = parseNativeAgentSource(sourcePath)
+        val composed = composeNativeAgentSource(root, source)
         RegenerationEntry(
-          target = cacheRoot.resolve(provider.directoryName).resolve("${source.name}.${provider.extension}"),
-          contents = provider.render(source).toByteArray(Charsets.UTF_8),
+          target = cacheRoot.resolve(provider.directoryName).resolve("${composed.name}.${provider.extension}"),
+          contents = provider.render(composed).toByteArray(Charsets.UTF_8),
         )
       }
     }
@@ -83,11 +84,13 @@ object NativeAgentOperations {
     val cacheRoot = installCacheRoot(home, platformPacksRoot, skillsRoot)
     val providerRoot = cacheRoot.resolve(provider.directoryName)
     val sources = discoverNativeAgentSources(platformPacksRoot, skillsRoot, selectedPlatforms)
+    val repoRoot = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
     val rendered = sources.map { sourcePath ->
       val source = parseNativeAgentSource(sourcePath)
+      val composed = composeNativeAgentSource(repoRoot, source)
       RenderedAgent(
-        targetName = "${source.name}.${provider.extension}",
-        contents = provider.render(source).toByteArray(Charsets.UTF_8),
+        targetName = "${composed.name}.${provider.extension}",
+        contents = provider.render(composed).toByteArray(Charsets.UTF_8),
       )
     }
     val staging = Files.createTempDirectory("skill-bill-native-agent-render-")
