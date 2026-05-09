@@ -472,7 +472,10 @@ class InstallLinkSkillCommand(
   private val source by option("--source", help = "Skill directory to install.").required()
   private val targetDir by option("--target-dir", help = "Target install directory.").required()
   private val agent by option("--agent", help = "Optional agent name to label the install.").default("")
-  private val repoRoot by option("--repo-root", help = "Repo root used to render content-managed installs.")
+  private val repoRoot by option(
+    "--repo-root",
+    help = "Repo root for content-managed skills; enables generated SKILL.md install staging.",
+  )
 
   override fun run() {
     InstallOperations.linkSkill(

@@ -35,7 +35,10 @@ object InstallOperations {
     return installSkill(
       skillPath = source,
       agentTargets = listOf(AgentTarget(agent.ifBlank { "manual" }, resolvedTargetDir)),
-      context = InstallContext(repoRoot = repoRoot, home = home ?: Path.of(System.getProperty("user.home"))),
+      context = InstallContext(
+        repoRoot = repoRoot?.toAbsolutePath()?.normalize(),
+        home = home ?: Path.of(System.getProperty("user.home")),
+      ),
     )
   }
 }

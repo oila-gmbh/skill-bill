@@ -446,6 +446,55 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `link-skill stages content managed skills when repo root is supplied`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-install-staged")
+    val context = CliRuntimeContext(userHome = tempDir.resolve("home"))
+    val repoRoot = tempDir.resolve("repo")
+    val skillName = "bill-cli-staged"
+    val sourceSkill = repoRoot.resolve("skills").resolve(skillName)
+    Files.createDirectories(sourceSkill)
+    Files.writeString(
+      sourceSkill.resolve("content.md"),
+      """
+      ---
+      name: $skillName
+      description: CLI staging fixture.
+      ---
+
+      ## Purpose
+
+      Verify installer staging.
+      """.trimIndent() + "\n",
+    )
+
+    val targetDir = tempDir.resolve("agents")
+    val result =
+      CliRuntime.run(
+        listOf(
+          "install",
+          "link-skill",
+          "--source",
+          sourceSkill.toString(),
+          "--target-dir",
+          targetDir.toString(),
+          "--agent",
+          "codex",
+          "--repo-root",
+          repoRoot.toString(),
+        ),
+        context,
+      )
+
+    val link = targetDir.resolve(skillName)
+    val linkedTarget = Files.readSymbolicLink(link).toAbsolutePath().normalize()
+    assertEquals(0, result.exitCode, result.stdout)
+    assertTrue(Files.isSymbolicLink(link))
+    assertTrue(linkedTarget.startsWith(context.userHome.resolve(".skill-bill/installed-skills").toAbsolutePath()))
+    assertTrue(Files.isRegularFile(link.resolve("SKILL.md")))
+    assertFalse(Files.exists(sourceSkill.resolve("SKILL.md")))
+  }
+
+  @Test
   fun `doctor skill subject is retired with stable replacement`() {
     val result =
       CliRuntime.run(
