@@ -7,6 +7,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementText: String): Map<String, Any?> {
+  // Guard against an orphaned content.md (no sibling SKILL.md). Without this, reading the wrapper
+  // bytes for the rollback snapshot would throw an opaque NoSuchFileException from the JVM. Mirror
+  // the wording emitted by validateTarget so callers see the same message regardless of entrypoint.
+  if (!Files.isRegularFile(target.skillFile)) {
+    throw SkillBillRuntimeException("${target.skillFile}: SKILL.md is missing")
+  }
   val contentBefore = Files.readAllBytes(target.contentFile)
   val wrapperBefore = Files.readAllBytes(target.skillFile)
   return runWithContentRollback(target, contentBefore, wrapperBefore) {
@@ -19,12 +25,12 @@ internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementT
   }
 }
 
-internal fun validateTarget(target: AuthoringTarget, checkRenderDrift: Boolean = true): List<String> {
+internal fun validateTarget(target: AuthoringTarget): List<String> {
   val issues = mutableListOf<String>()
   when {
     !Files.isRegularFile(target.skillFile) -> issues += "${target.skillFile}: SKILL.md is missing"
     !Files.isRegularFile(target.contentFile) -> issues += "${target.contentFile}: content.md is missing"
-    else -> collectTargetIssues(target, issues, checkRenderDrift)
+    else -> collectTargetIssues(target, issues)
   }
   return issues
 }
@@ -52,31 +58,33 @@ private fun restoreContentFiles(target: AuthoringTarget, contentBefore: ByteArra
   Files.write(target.skillFile, wrapperBefore)
 }
 
-private fun collectTargetIssues(target: AuthoringTarget, issues: MutableList<String>, checkRenderDrift: Boolean) {
-  val skillText = Files.readString(target.skillFile)
-  if (!skillText.contains("name: ${target.skillName}\n")) {
-    issues += "${target.skillFile}: frontmatter name does not match directory '${target.skillName}'"
-  }
-  REQUIRED_GOVERNED_SECTIONS.forEach { heading ->
-    if (!skillText.contains("$heading\n")) {
-      issues += "${target.skillFile}: SKILL.md is missing required section '$heading'"
-    }
+private fun collectTargetIssues(target: AuthoringTarget, issues: MutableList<String>) {
+  val contentText = Files.readString(target.contentFile)
+  if (!contentText.contains("name: ${target.skillName}\n")) {
+    issues += "${target.contentFile}: frontmatter name does not match directory '${target.skillName}'"
   }
   requiredSupportingFilesForSkill(target.skillName).forEach { fileName ->
-    val sidecar = target.skillFile.resolveSibling(fileName)
+    val sidecar = target.contentFile.resolveSibling(fileName)
     if (!Files.isRegularFile(sidecar)) {
-      issues += "${target.skillFile}: required ceremony sidecar '$fileName' is missing"
+      issues += "${target.contentFile}: required ceremony sidecar '$fileName' is missing"
     }
   }
+  // Validate content.md frontmatter only — content.md is the authored surface and may contain
+  // rich body markdown (fenced code, tables, H1s) that the wrapper rules reject.
   try {
-    validateSkillMdShape(target.skillFile)
+    validateSkillMdShape(target.contentFile, validateBodyShape = false)
   } catch (error: ShellContentContractException) {
     issues += error.message.orEmpty()
   }
-  if (checkRenderDrift && hasGenerationDrift(target)) {
-    issues += "${target.skillFile}: SKILL.md has scaffold-managed render drift"
+  // Wrapper SKILL.md still on disk through subtasks 1–3 — keep enforcing the canonical wrapper
+  // body shape until subtask 4 retires the wrapper.
+  if (Files.isRegularFile(target.skillFile)) {
+    try {
+      validateSkillMdShape(target.skillFile, validateBodyShape = true)
+    } catch (error: ShellContentContractException) {
+      issues += error.message.orEmpty()
+    }
   }
-  val contentText = Files.readString(target.contentFile)
   if (contentText.isBlank()) {
     issues += "${target.contentFile}: content.md must not be empty"
   }

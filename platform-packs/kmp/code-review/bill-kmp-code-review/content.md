@@ -1,3 +1,8 @@
+---
+name: bill-kmp-code-review
+description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
+---
+
 # Android/KMP PR Review
 
 You are an experienced Android/KMP architect conducting a code review.

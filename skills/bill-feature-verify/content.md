@@ -1,3 +1,8 @@
+---
+name: bill-feature-verify
+description: Verify a PR against a task spec — extract acceptance criteria, decide whether rollout expectations matter, audit feature-flag behavior only when the spec or diff requires it, run full code review, and audit completeness. Use when reviewing teammates' PRs to ensure they match the design doc/spec. The reverse of bill-feature-implement. Use when user mentions verify PR, check PR against spec, review against design doc, or verify implementation.
+---
+
 # Feature Verify Content
 
 This file is the author-owned execution body for `bill-feature-verify`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.

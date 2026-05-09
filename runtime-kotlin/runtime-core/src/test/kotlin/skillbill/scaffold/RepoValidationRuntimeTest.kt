@@ -189,6 +189,175 @@ class RepoValidationRuntimeTest {
     )
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // F-T1 (testing): orphan-path detection in discoverSkillFiles / discoverPlatformPackSkillFiles.
+  // The four assertions below pin the iter-1 fixes for F-E so a regression that drops the issue,
+  // mis-formats the message, or routes the wrong path into seenContent is caught here.
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  fun `repo validation reports skills content_md without sibling SKILL_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-orphan-skills-content")
+    val orphanDir = repoRoot.resolve("skills/bill-orphan-content")
+    Files.createDirectories(orphanDir)
+    Files.writeString(
+      orphanDir.resolve("content.md"),
+      """
+      ---
+      name: bill-orphan-content
+      description: Authored content with no sibling wrapper to surface the orphan.
+      ---
+
+      # Orphan Content
+
+      Body that exists without a wrapper SKILL.md so the validator must flag it.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("skills/bill-orphan-content") &&
+          it.contains("content.md found without sibling SKILL.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation reports skills SKILL_md without sibling content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-orphan-skills-wrapper")
+    val orphanDir = repoRoot.resolve("skills/bill-orphan-wrapper")
+    Files.createDirectories(orphanDir)
+    Files.writeString(
+      orphanDir.resolve("SKILL.md"),
+      """
+      ---
+      name: bill-orphan-wrapper
+      description: Wrapper without a sibling content.md to surface the reverse orphan.
+      ---
+      ## Descriptor
+      Stub.
+      ## Execution
+      Stub.
+      ## Ceremony
+      Stub.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("skills/bill-orphan-wrapper") &&
+          it.contains("SKILL.md found without sibling content.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation reports platform pack content_md without sibling SKILL_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-orphan-pack-content")
+    val orphanDir = repoRoot.resolve("platform-packs/orphanpack/code-review/bill-orphanpack-code-review")
+    Files.createDirectories(orphanDir)
+    Files.writeString(
+      orphanDir.resolve("content.md"),
+      """
+      ---
+      name: bill-orphanpack-code-review
+      description: Pack-scoped authored content without a sibling wrapper.
+      ---
+
+      # Orphan Pack Content
+
+      Body to surface the platform-packs/ orphan branch.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/orphanpack/code-review/bill-orphanpack-code-review") &&
+          it.contains("content.md found without sibling SKILL.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation reports platform pack SKILL_md without sibling content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-orphan-pack-wrapper")
+    val orphanDir = repoRoot.resolve("platform-packs/orphanpack/code-review/bill-orphanpack-code-review")
+    Files.createDirectories(orphanDir)
+    Files.writeString(
+      orphanDir.resolve("SKILL.md"),
+      """
+      ---
+      name: bill-orphanpack-code-review
+      description: Pack-scoped wrapper without a sibling content.md.
+      ---
+      ## Descriptor
+      Stub.
+      ## Execution
+      Stub.
+      ## Ceremony
+      Stub.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/orphanpack/code-review/bill-orphanpack-code-review") &&
+          it.contains("SKILL.md found without sibling content.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation reports content_md frontmatter name mismatch`() {
+    // Regression for M-2 (architecture iter-2 F-002): an authored content.md whose frontmatter
+    // `name:` disagrees with its parent directory must surface as a content.md issue, not as a
+    // wrapper drift symptom only after `skill-bill render` regenerates SKILL.md.
+    val repoRoot = Files.createTempDirectory("skillbill-content-name-mismatch")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-wrong-name
+      description: Authored content whose name disagrees with the directory.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance for the code-review baseline skill fixture.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("bill-wrong-name") &&
+          it.contains("bill-code-review")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
   @Test
   fun `repo validation rejects checked-in generated junie native agent artifact`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-junie-checked-in")
@@ -223,6 +392,9 @@ class RepoValidationRuntimeTest {
     val skillDir = repoRoot.resolve("skills/bill-code-review")
     Files.createDirectories(skillDir)
     val requiredFiles = requiredSupportingFilesForSkill("bill-code-review")
+    // Intentionally retains the SKILL.md filename literal until SKILL-40 subtask 4 deletes
+    // the wrapper. A sibling content.md is added so this fixture is discovered by the
+    // post-SKILL-40 marker scan.
     Files.writeString(
       skillDir.resolve("SKILL.md"),
       """
@@ -236,6 +408,19 @@ class RepoValidationRuntimeTest {
       Run the review.
       ## Ceremony
       Report findings.
+      """.trimIndent(),
+    )
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance for the code-review baseline skill fixture.
       """.trimIndent(),
     )
     val targets = supportingFileTargets(repoRoot)

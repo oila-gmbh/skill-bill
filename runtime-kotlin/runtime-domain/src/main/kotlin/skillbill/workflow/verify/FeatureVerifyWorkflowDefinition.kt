@@ -65,30 +65,30 @@ object FeatureVerifyWorkflowDefinition {
     ),
     continuationReferenceSections =
     mapOf(
-      "collect_inputs" to listOf("SKILL.md :: Workflow State", "SKILL.md :: Step 1: Collect Inputs"),
-      "extract_criteria" to listOf("SKILL.md :: Workflow State", "SKILL.md :: Step 2: Extract Acceptance Criteria"),
-      "gather_diff" to listOf("SKILL.md :: Continuation Mode", "SKILL.md :: Step 3: Gather PR Diff"),
+      "collect_inputs" to listOf("content.md :: Workflow State", "content.md :: Step 1: Collect Inputs"),
+      "extract_criteria" to listOf("content.md :: Workflow State", "content.md :: Step 2: Extract Acceptance Criteria"),
+      "gather_diff" to listOf("content.md :: Continuation Mode", "content.md :: Step 3: Gather PR Diff"),
       "feature_flag_audit" to listOf(
-        "SKILL.md :: Continuation Mode",
-        "SKILL.md :: Step 4: Feature Flag Audit (conditional)",
+        "content.md :: Continuation Mode",
+        "content.md :: Step 4: Feature Flag Audit (conditional)",
         "audit-rubrics.md :: Feature Flag Audit",
       ),
       "code_review" to listOf(
-        "SKILL.md :: Continuation Mode",
-        "SKILL.md :: Step 5: Code Review",
-        "SKILL.md :: Nested child tools",
+        "content.md :: Continuation Mode",
+        "content.md :: Step 5: Code Review",
+        "content.md :: Nested child tools",
       ),
       "completeness_audit" to listOf(
-        "SKILL.md :: Continuation Mode",
-        "SKILL.md :: Step 6: Completeness Audit",
+        "content.md :: Continuation Mode",
+        "content.md :: Step 6: Completeness Audit",
         "audit-rubrics.md :: Completeness Audit",
       ),
       "verdict" to listOf(
-        "SKILL.md :: Continuation Mode",
-        "SKILL.md :: Step 7: Consolidated Verdict",
+        "content.md :: Continuation Mode",
+        "content.md :: Step 7: Consolidated Verdict",
         "audit-rubrics.md :: Consolidated Verdict",
       ),
-      "finish" to listOf("SKILL.md :: Telemetry", "SKILL.md :: Workflow State"),
+      "finish" to listOf("content.md :: Telemetry", "content.md :: Workflow State"),
     ),
     continuationDirectives =
     mapOf(

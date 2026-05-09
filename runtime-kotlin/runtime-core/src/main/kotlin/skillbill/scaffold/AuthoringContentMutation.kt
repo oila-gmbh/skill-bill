@@ -46,8 +46,30 @@ internal fun coerceFullContentText(target: AuthoringTarget, bodyText: String): S
   if (stripped.isBlank()) {
     throw SkillBillRuntimeException("Filled content must be non-empty.")
   }
-  val rendered = if (stripped.startsWith("# ")) stripped else "${fullContentTitle(target)}\n\n$stripped"
-  return rendered.trimEnd() + "\n"
+  // The validator now requires a YAML frontmatter block at the head of content.md. If the
+  // user-supplied body already starts with one we use it verbatim; otherwise we preserve
+  // whatever frontmatter the existing content.md has so the writer never strips it.
+  val (existingFrontmatter, _) = splitFrontmatter(Files.readString(target.contentFile))
+  val (suppliedFrontmatter, suppliedBody) = splitFrontmatter(stripped)
+  val frontmatter = suppliedFrontmatter ?: existingFrontmatter
+    ?: throw SkillBillRuntimeException(
+      "${target.contentFile}: content.md must already carry a YAML frontmatter block before " +
+        "fill/edit (and the supplied body does not provide one). Run `skill-bill render " +
+        "--skill-name ${target.skillName}` to regenerate the canonical frontmatter, or restore " +
+        "the file from version control before retrying.",
+    )
+  val body = if (suppliedBody.startsWith("# ")) suppliedBody else "${fullContentTitle(target)}\n\n$suppliedBody"
+  val trimmedBody = body.trimEnd()
+  return "$frontmatter\n$trimmedBody\n"
+}
+
+private val FRONTMATTER_BLOCK = Regex("""(?s)\A---\n(.*?)\n---\n""")
+
+private fun splitFrontmatter(text: String): Pair<String?, String> {
+  val match = FRONTMATTER_BLOCK.find(text) ?: return null to text
+  val frontmatter = text.substring(match.range.first, match.range.last + 1)
+  val rest = text.substring(match.range.last + 1).trimStart('\n')
+  return frontmatter to rest
 }
 
 internal fun sectionHeadingLabel(sectionName: String): String =

@@ -1,3 +1,8 @@
+---
+name: bill-kmp-code-review-ux-accessibility
+description: Use when reviewing UX correctness and accessibility risks, delegating UI-framework-heavy checks to bill-kmp-code-review-ui. Use when user mentions UX review, accessibility, content description, screen reader, or localization review.
+---
+
 # UX & Accessibility Review Specialist
 
 Review only user-impacting UX/accessibility issues.

@@ -83,7 +83,7 @@ object RepoValidationRuntime {
     val root = repoRoot.toAbsolutePath().normalize()
     val issues = mutableListOf<String>()
     val skillFiles = discoverSkillFiles(root, issues)
-    val platformSkillFiles = discoverPlatformPackSkillFiles(root)
+    val platformSkillFiles = discoverPlatformPackSkillFiles(root, issues)
     val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
     val addonFiles = discoverAllAddonFiles(root)
     val platformPacks = validatePlatformPacks(root, issues)
@@ -154,17 +154,39 @@ object RepoValidationRuntime {
       return emptyMap()
     }
     val found = linkedMapOf<String, Path>()
+    val seenContent = mutableSetOf<Path>()
+    Files.walk(skillsDir).use { stream ->
+      stream
+        .filter { it.fileName.toString() == "content.md" }
+        .sorted()
+        .forEach { contentFile ->
+          seenContent.add(contentFile.parent)
+          val skillFile = contentFile.resolveSibling("SKILL.md")
+          if (!Files.isRegularFile(skillFile)) {
+            // F-E: surface orphans rather than silently dropping. The wrapper SKILL.md is still
+            // required through SKILL-40 subtasks 1–3.
+            issues += "${contentFile.parent.relativeTo(root)}: content.md found without sibling " +
+              "SKILL.md (wrapper required until SKILL-40 subtask 4)"
+            return@forEach
+          }
+          val skillName = contentFile.parent.name
+          val previous = found.putIfAbsent(skillName, skillFile)
+          if (previous != null) {
+            issues += "Duplicate skill directory name '$skillName' found at ${previous.parent.relativeTo(
+              root,
+            )} and ${contentFile.parent.relativeTo(root)}"
+          }
+        }
+    }
     Files.walk(skillsDir).use { stream ->
       stream
         .filter { it.fileName.toString() == "SKILL.md" }
         .sorted()
         .forEach { skillFile ->
-          val skillName = skillFile.parent.name
-          val previous = found.putIfAbsent(skillName, skillFile)
-          if (previous != null) {
-            issues += "Duplicate skill directory name '$skillName' found at ${previous.parent.relativeTo(
-              root,
-            )} and ${skillFile.parent.relativeTo(root)}"
+          val parent = skillFile.parent
+          if (parent !in seenContent) {
+            issues += "${parent.relativeTo(root)}: SKILL.md found without sibling content.md " +
+              "(authored content.md required since SKILL-40 subtask 1)"
           }
         }
     }
@@ -174,17 +196,40 @@ object RepoValidationRuntime {
     return found
   }
 
-  private fun discoverPlatformPackSkillFiles(root: Path): Map<String, Path> {
+  private fun discoverPlatformPackSkillFiles(root: Path, issues: MutableList<String>): Map<String, Path> {
     val packsRoot = root.resolve("platform-packs")
     if (!packsRoot.isDirectory()) {
       return emptyMap()
     }
     val found = linkedMapOf<String, Path>()
+    val seenContent = mutableSetOf<Path>()
+    Files.walk(packsRoot).use { stream ->
+      stream
+        .filter { it.fileName.toString() == "content.md" && it.parent.name.startsWith("bill-") }
+        .sorted()
+        .forEach { contentFile ->
+          seenContent.add(contentFile.parent)
+          val skillFile = contentFile.resolveSibling("SKILL.md")
+          if (Files.isRegularFile(skillFile)) {
+            found[contentFile.parent.name] = skillFile
+          } else {
+            // F-E: surface orphans rather than silently dropping.
+            issues += "${contentFile.parent.relativeTo(root)}: content.md found without sibling " +
+              "SKILL.md (wrapper required until SKILL-40 subtask 4)"
+          }
+        }
+    }
     Files.walk(packsRoot).use { stream ->
       stream
         .filter { it.fileName.toString() == "SKILL.md" && it.parent.name.startsWith("bill-") }
         .sorted()
-        .forEach { skillFile -> found[skillFile.parent.name] = skillFile }
+        .forEach { skillFile ->
+          val parent = skillFile.parent
+          if (parent !in seenContent) {
+            issues += "${parent.relativeTo(root)}: SKILL.md found without sibling content.md " +
+              "(authored content.md required since SKILL-40 subtask 1)"
+          }
+        }
     }
     return found
   }
@@ -221,9 +266,27 @@ object RepoValidationRuntime {
       issues += "$skillFile: frontmatter description is missing"
     }
     try {
-      validateSkillMdShape(skillFile)
+      // Wrapper SKILL.md still on disk through subtasks 1–3 — keep enforcing the canonical
+      // wrapper body shape until subtask 4 retires the wrapper.
+      validateSkillMdShape(skillFile, validateBodyShape = true)
     } catch (error: InvalidSkillMdShapeError) {
       issues += error.message.orEmpty()
+    }
+    val contentFile = skillFile.parent.resolve("content.md")
+    if (Files.isRegularFile(contentFile)) {
+      try {
+        validateSkillMdShape(contentFile, validateBodyShape = false)
+      } catch (error: InvalidSkillMdShapeError) {
+        issues += error.message.orEmpty()
+      }
+      // Mirror the SKILL.md `name == skillName` identity check on content.md so an authored
+      // mismatch is surfaced at the source rather than as wrapper drift after `skill-bill render`.
+      val contentFrontmatter = parseFrontmatter(Files.readString(contentFile))
+      val contentName = contentFrontmatter["name"].orEmpty()
+      if (contentName != skillName) {
+        issues += "$contentFile: content.md frontmatter name '$contentName' does not match skill " +
+          "directory name '$skillName'"
+      }
     }
     requiredSupportingFilesForSkill(skillName).forEach { fileName ->
       val expectedTarget = supportingFileTargets(root)[fileName]

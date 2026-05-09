@@ -15,23 +15,49 @@ private val TELEMETRY_PATTERN =
 private val ROUTING_RULE_PATTERN = Regex("""^\s*(?:Route|Routing rule|Routing rules):""", RegexOption.IGNORE_CASE)
 private val RUN_CONTEXT_PATTERN = Regex("""^\s*`(?:Review session ID|Review run ID|Applied learnings):""")
 
-internal fun validateSkillMdShape(skillMdPath: Path) {
-  val text = Files.readString(skillMdPath)
+/**
+ * Validate the YAML frontmatter and (optionally) the canonical wrapper body shape of a markdown
+ * file used by the governed skill pipeline.
+ *
+ * Frontmatter rules are ALWAYS enforced:
+ *  - file must begin with a `---\n…\n---\n` block,
+ *  - frontmatter must only contain keys [name, description],
+ *  - both `name` and `description` must be present and non-blank.
+ *
+ * When [validateBodyShape] is true (used by SKILL.md wrapper callers while the wrapper still lives
+ * on disk in subtasks 1–3), the body is additionally checked for wrapper-shape rules:
+ *  - no fenced code blocks,
+ *  - no H1 or H3+ headings,
+ *  - no markdown tables,
+ *  - exactly the [REQUIRED_GOVERNED_SECTIONS] H2 set in order,
+ *  - no `## Step N:` headings, MCP install gates, telemetry instructions, routing rules, or
+ *    run-context placeholder lines anywhere in the body.
+ *
+ * Error messages reference the file's actual `Path.fileName` rather than hard-coding "SKILL.md"
+ * or "content.md", so the same validator works correctly from both callsites.
+ */
+internal fun validateSkillMdShape(path: Path, validateBodyShape: Boolean = false) {
+  val text = Files.readString(path)
+  val fileName = path.fileName?.toString() ?: path.toString()
   val frontmatterMatch = FRONTMATTER_PATTERN.find(text)
-    ?: skillShapeFailure("$skillMdPath: SKILL.md must begin with a YAML frontmatter block.")
+    ?: skillShapeFailure("$path: $fileName must begin with a YAML frontmatter block.")
 
   val frontmatter = parseFrontmatter(frontmatterMatch.groupValues[1])
   val unknownKeys = (frontmatter.keys - ALLOWED_FRONTMATTER_KEYS).sorted()
   if (unknownKeys.isNotEmpty()) {
     skillShapeFailure(
-      "$skillMdPath: SKILL.md frontmatter contains disallowed keys $unknownKeys; " +
+      "$path: $fileName frontmatter contains disallowed keys $unknownKeys; " +
         "only ${ALLOWED_FRONTMATTER_KEYS.sorted()} are allowed.",
     )
   }
   listOf("name", "description").forEach { requiredKey ->
     if (frontmatter[requiredKey].isNullOrBlank()) {
-      skillShapeFailure("$skillMdPath: SKILL.md frontmatter is missing required key '$requiredKey'.")
+      skillShapeFailure("$path: $fileName frontmatter is missing required key '$requiredKey'.")
     }
+  }
+
+  if (!validateBodyShape) {
+    return
   }
 
   val body = text.substring(frontmatterMatch.range.last + 1)
@@ -42,7 +68,7 @@ internal fun validateSkillMdShape(skillMdPath: Path) {
     val fileLine = bodyStartLine + index
     val stripped = line.trim()
     if (FENCE_PATTERN.containsMatchIn(line)) {
-      skillShapeFailure("$skillMdPath:$fileLine: fenced code blocks are not allowed in SKILL.md.")
+      skillShapeFailure("$path:$fileLine: fenced code blocks are not allowed in $fileName.")
     }
     if (line.startsWith("## ")) {
       headings += stripped
@@ -52,22 +78,22 @@ internal fun validateSkillMdShape(skillMdPath: Path) {
     if (!foundFirstH2) {
       if (stripped.isNotBlank()) {
         skillShapeFailure(
-          "$skillMdPath:$fileLine: intro paragraph or content is not allowed before the first H2.",
+          "$path:$fileLine: intro paragraph or content is not allowed before the first H2.",
         )
       }
       return@forEachIndexed
     }
-    validateBodyLine(skillMdPath, fileLine, line)
+    validateBodyLine(path, fileName, fileLine, line)
   }
 
   if (headings.isEmpty()) {
     skillShapeFailure(
-      "$skillMdPath: SKILL.md must contain the canonical H2 sections $REQUIRED_GOVERNED_SECTIONS.",
+      "$path: $fileName must contain the canonical H2 sections $REQUIRED_GOVERNED_SECTIONS.",
     )
   }
   if (headings != REQUIRED_GOVERNED_SECTIONS) {
     skillShapeFailure(
-      "$skillMdPath: SKILL.md must contain exactly the H2 sections $REQUIRED_GOVERNED_SECTIONS " +
+      "$path: $fileName must contain exactly the H2 sections $REQUIRED_GOVERNED_SECTIONS " +
         "in that order; got $headings.",
     )
   }
@@ -84,7 +110,7 @@ private fun parseFrontmatter(frontmatter: String): Map<String, String> = frontma
   }
   .toMap()
 
-private fun validateBodyLine(skillMdPath: Path, fileLine: Int, line: String) {
+private fun validateBodyLine(path: Path, fileName: String, fileLine: Int, line: String) {
   val matchedLabel = when {
     TABLE_PATTERN.containsMatchIn(line) -> "markdown table"
     STEP_HEADING_PATTERN.containsMatchIn(line) -> "'## Step N:' heading"
@@ -98,7 +124,7 @@ private fun validateBodyLine(skillMdPath: Path, fileLine: Int, line: String) {
   }
   if (matchedLabel != null) {
     skillShapeFailure(
-      "$skillMdPath:$fileLine: SKILL.md body must not contain $matchedLabel; matched '${line.trimEnd()}'.",
+      "$path:$fileLine: $fileName body must not contain $matchedLabel; matched '${line.trimEnd()}'.",
     )
   }
 }

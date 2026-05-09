@@ -1,3 +1,8 @@
+---
+name: bill-kotlin-code-review-api-contracts
+description: Use when reviewing Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, request validation, response serialization, status codes, or backward compatibility in Kotlin backend.
+---
+
 # Backend API & Contract Review Specialist
 
 Review only backend/service API contract issues that can break clients, allow invalid behavior, or create hard-to-debug production regressions.

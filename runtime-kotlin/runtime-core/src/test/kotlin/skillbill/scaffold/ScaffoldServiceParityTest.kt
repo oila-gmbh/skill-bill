@@ -151,7 +151,11 @@ class ScaffoldServiceParityTest {
         "Use when reviewing code changes across stack-specific review specialists.",
       ),
     )
-    Files.writeString(baseSkill.resolve("content.md"), baselineReviewContent("Base shell content."))
+    Files.writeString(
+      baseSkill.resolve("content.md"),
+      "---\nname: bill-code-review\ndescription: Base shell content.\n---\n\n" +
+        baselineReviewContent("Base shell content."),
+    )
     Files.writeString(baseSkill.resolve("shell-ceremony.md"), "# ceremony\n")
     Files.writeString(baseSkill.resolve("shell-content-contract.md"), "# contract\n")
     val baseTarget =
@@ -186,7 +190,6 @@ class ScaffoldServiceParityTest {
 
     assertEquals("platform-pack", result.kind)
     assertContains(rendered, "Platform pack: `foo-bar` (Foo Bar)")
-    assertFalse(hasGenerationDrift(target))
     loadPlatformPack(repo.resolve("platform-packs/foo-bar"))
   }
 
@@ -197,7 +200,11 @@ class ScaffoldServiceParityTest {
     Files.createDirectories(skillDir)
     val context = TemplateContext("bill-feature-verify", "feature-verify", "", "", "feature verify")
     Files.writeString(skillDir.resolve("SKILL.md"), renderSkillBody(context, inferSkillDescription(context)))
-    Files.writeString(skillDir.resolve("content.md"), baselineReviewContent("Feature verify content."))
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      "---\nname: bill-feature-verify\ndescription: Feature verify content.\n---\n\n" +
+        baselineReviewContent("Feature verify content."),
+    )
     Files.writeString(skillDir.resolve("shell-ceremony.md"), "# ceremony\n")
     Files.writeString(skillDir.resolve("telemetry-contract.md"), "# telemetry\n")
     Files.writeString(skillDir.resolve("audit-rubrics.md"), "# audit\n")

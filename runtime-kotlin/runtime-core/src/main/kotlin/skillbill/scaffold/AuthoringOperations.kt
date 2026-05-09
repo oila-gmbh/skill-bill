@@ -16,6 +16,7 @@ data class AuthoringTarget(
   val displayName: String,
   val family: String,
   val area: String,
+  // skillFile remains for transient consumers until SKILL-40 subtask 4 deletes the wrapper.
   val skillFile: Path,
   val contentFile: Path,
 )
@@ -53,7 +54,7 @@ object AuthoringOperations {
         "notes" to listOf(
           "Author behavior changes in content.md.",
           "Regenerate wrappers with render instead of hand-editing SKILL.md.",
-          "Use show to inspect completion, drift, and next commands.",
+          "Use show to inspect completion and next commands.",
         ),
       )
     if (skillName != null) {
@@ -68,7 +69,6 @@ object AuthoringOperations {
             resolvedRoot,
             target,
             completionStatus = contentCompletionStatus(Files.readString(target.contentFile)),
-            generationDrift = hasGenerationDrift(target),
             issues = emptyList(),
           ),
         )
@@ -98,7 +98,6 @@ object AuthoringOperations {
           resolvedRoot,
           target,
           completionStatus = contentCompletionStatus(Files.readString(target.contentFile)),
-          generationDrift = hasGenerationDrift(target),
           issues = issues,
         )
       }.distinct()

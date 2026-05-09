@@ -1,3 +1,8 @@
+---
+name: bill-quality-check
+description: Use when you want a generic quality-check entry point that detects the dominant stack in scope and delegates to the matching stack-specific quality-check skill. Use when user mentions run checks, validate, lint, format, quality check, or run quality.
+---
+
 # Quality Check Shell Content
 
 This skill is a governed shell. It owns ceremony, stack routing, and contract enforcement for the quality-check family. It is deliberately platform-independent: every piece of stack-specific quality-check reasoning lives in a user-owned platform pack under `platform-packs/<platform>/quality-check/<name>/SKILL.md`, registered via the optional `declared_quality_check_file` key on the pack's `platform.yaml`.
