@@ -699,8 +699,8 @@ build_skill_names() {
   SKILL_NAMES=()
   SKILL_PATHS=()
 
-  while IFS= read -r skill_file; do
-    skill_dir="$(dirname "$skill_file")"
+  while IFS= read -r content_file; do
+    skill_dir="$(dirname "$content_file")"
     skill_name="$(basename "$skill_dir")"
 
     if existing_idx="$(find_skill_index "$skill_name" 2>/dev/null)"; then
@@ -717,9 +717,9 @@ build_skill_names() {
     SKILL_PATHS+=("$skill_dir")
   done < <(
     {
-      find "$SKILLS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
+      find "$SKILLS_DIR" -type f -name 'content.md'
       if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
-        find "$PLATFORM_PACKS_DIR" -type f \( -name 'content.md' -o -name 'SKILL.md' \)
+        find "$PLATFORM_PACKS_DIR" -type f -name 'content.md'
       fi
     } | sort
   )
@@ -727,10 +727,10 @@ build_skill_names() {
 
 resolve_package_name_for_skill_path() {
   # Map a skill directory to its owning package name.
-  # - skills/<skill>/SKILL.md                               -> base
-  # - skills/<pkg>/<skill>/SKILL.md                         -> <pkg>
-  # - platform-packs/<slug>/code-review/<skill>/SKILL.md    -> <slug>
-  # - platform-packs/<slug>/quality-check/<skill>/SKILL.md  -> <slug>
+  # - skills/<skill>/content.md                               -> base
+  # - skills/<pkg>/<skill>/content.md                         -> <pkg>
+  # - platform-packs/<slug>/code-review/<skill>/content.md    -> <slug>
+  # - platform-packs/<slug>/quality-check/<skill>/content.md  -> <slug>
   # Falls back to the immediate parent directory name for any other shape.
   local skill_dir="$1"
   local parent parent_parent parent_name grand skill_name
@@ -845,6 +845,7 @@ remove_legacy_skill_paths() {
       fi
     done
   fi
+  return 0
 }
 
 cleanup_selected_agent_target() {
@@ -983,6 +984,8 @@ install_skill() {
     remove_if_allowed "$target"
   fi
 
+  # Content-managed skills install through staging so generated SKILL.md and
+  # pointer files are visible without writing generated artifacts into source.
   run_runtime_cli install link-skill \
     --source "$source" \
     --target-dir "$(dirname "$target")" \
