@@ -49,11 +49,11 @@ object AuthoringOperations {
           "skill-bill new --payload <file>",
           "skill-bill fill <skill-name>",
           "skill-bill validate --skill-name <skill-name>",
-          "skill-bill render --skill-name <skill-name>",
+          "skill-bill render <skill-name>",
         ),
         "notes" to listOf(
           "Author behavior changes in content.md.",
-          "Regenerate wrappers with render instead of hand-editing SKILL.md.",
+          "Preview generated wrappers with render instead of hand-editing SKILL.md.",
           "Use show to inspect completion and next commands.",
         ),
       )

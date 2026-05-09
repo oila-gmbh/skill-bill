@@ -1,6 +1,7 @@
 package skillbill.cli
 
 import skillbill.contracts.JsonSupport
+import skillbill.scaffold.renderAuthoringTarget
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -122,9 +123,47 @@ class CliAuthoringParityTest {
     val context = CliRuntimeContext(userHome = tempDir)
 
     assertWrapperCommandRegenerates("upgrade", tempDir, context)
-    assertWrapperCommandRegenerates("render", tempDir, context)
     assertEditBodyFileUpdatesContent(tempDir, context)
     assertFillBodyUpdatesContent(tempDir, context)
+  }
+
+  @Test
+  fun `render command emits read-only stdout and dry run matches normal output`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-authoring-render")
+    val context = CliRuntimeContext(userHome = tempDir)
+    val skillName = "bill-render-cli-fixture"
+    val repoRoot = authoringFixtureRepo(tempDir.resolve("render-cli-repo"), skillName)
+    val skillFile = repoRoot.resolve("skills").resolve(skillName).resolve("SKILL.md")
+    val before = Files.readString(skillFile)
+    val expected = renderAuthoringTarget(repoRoot, skillName).stdout
+
+    val normal =
+      CliRuntime.run(
+        listOf(
+          "render",
+          skillName,
+          "--repo-root",
+          repoRoot.toString(),
+        ),
+        context,
+      )
+    val dryRun =
+      CliRuntime.run(
+        listOf(
+          "render",
+          "--dry-run",
+          skillName,
+          "--repo-root",
+          repoRoot.toString(),
+        ),
+        context,
+      )
+
+    assertEquals(0, normal.exitCode, normal.stdout)
+    assertEquals(0, dryRun.exitCode, dryRun.stdout)
+    assertEquals(expected, normal.stdout)
+    assertEquals(normal.stdout, dryRun.stdout)
+    assertEquals(before, Files.readString(skillFile))
   }
 
   @Test
