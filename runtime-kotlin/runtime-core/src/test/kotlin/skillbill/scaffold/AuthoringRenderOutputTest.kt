@@ -50,7 +50,12 @@ class AuthoringRenderOutputTest {
     val first = renderAuthoringTarget(repoRoot, "bill-render-fixture")
     val second = renderAuthoringTarget(repoRoot, "bill-render-fixture")
 
+    assertContains(renderedWrapper, "## Descriptor\n\nGoverned skill: `bill-render-fixture`")
     assertContains(renderedWrapper, "## Execution\n\n### Review Steps\n\nRead the authored guidance from content.md.")
+    assertContains(
+      renderedWrapper,
+      "## Ceremony\n\nFollow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).",
+    )
     assertFalse("Follow the instructions in [content.md](content.md)." in renderedWrapper)
     assertEquals(expectedStdout, first.stdout)
     assertEquals(first.stdout, second.stdout)
