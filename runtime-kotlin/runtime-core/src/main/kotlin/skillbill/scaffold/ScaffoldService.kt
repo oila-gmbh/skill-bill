@@ -612,7 +612,6 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = baselineSkillPath,
-      orchestratorName = plan.baselineSkillName,
       specialists = plan.subagentSpecialists,
     )
   }
@@ -649,7 +648,6 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = plan.skillPath,
-      orchestratorName = plan.skillName,
       specialists = plan.subagentSpecialists,
     )
   }
@@ -726,17 +724,11 @@ private fun appendRuntimeNotesToContent(contentPath: Path, runtimeNotes: String)
 private fun stageSubagentStubs(
   txn: ScaffoldTransaction,
   orchestratorSkillPath: Path,
-  orchestratorName: String,
   specialists: List<String>,
 ): List<Path> {
-  val staged = mutableListOf<Path>()
-  specialists.forEach { specialist ->
-    val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("$specialist.md")
-    val sourceText = renderNativeAgentSourceStub(specialist, orchestratorName)
-    stageFile(txn, sourcePath, sourceText)
-    staged.add(sourcePath)
-  }
-  return staged
+  val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists))
+  return listOf(sourcePath)
 }
 
 private fun snapshotManifest(txn: ScaffoldTransaction, manifestPath: Path) {
@@ -1079,11 +1071,7 @@ private fun previewSubagentStubFiles(plan: ScaffoldPlan): List<Path> {
     } else {
       plan.skillPath
     }
-  return plan.subagentSpecialists.flatMap { specialist ->
-    listOf(
-      stubDir.resolve("native-agents").resolve("$specialist.md"),
-    )
-  }
+  return listOf(stubDir.resolve("native-agents").resolve("agents.yaml"))
 }
 
 private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
@@ -1097,8 +1085,9 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
       plan.skillPath
     }
   return listOf(
-    "Subagent stubs emitted: ${plan.subagentSpecialists.size}. " +
-      "Fill in the TODO placeholders in $stubDir/native-agents/ before shipping; install renders provider artifacts.",
+    "Subagent bundle emitted: ${plan.subagentSpecialists.size} entries. " +
+      "Fill in the TODO placeholders in $stubDir/native-agents/agents.yaml before shipping; " +
+      "install renders provider artifacts.",
   )
 }
 

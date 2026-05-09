@@ -1,11 +1,10 @@
 package skillbill.nativeagent
 
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import kotlin.io.path.name
 
 const val NATIVE_AGENT_SOURCE_DIR = "native-agents"
+const val NATIVE_AGENT_BUNDLE_FILE = "agents.yaml"
 private const val FRONTMATTER_OPEN_LENGTH = 4
 
 data class NativeAgentSource(
@@ -14,6 +13,7 @@ data class NativeAgentSource(
   val body: String,
   val composition: NativeAgentCompositionDirective? = null,
   val path: Path? = null,
+  val bundleEntryName: String? = null,
 )
 
 data class NativeAgentCompositionDirective(
@@ -24,57 +24,6 @@ enum class NativeAgentCompositionKind(val wireValue: String) {
   GovernedContent("governed-content"),
 }
 
-fun discoverNativeAgentSources(
-  platformPacksRoot: Path,
-  skillsRoot: Path? = null,
-  selectedPlatforms: List<String>? = null,
-): List<Path> = discoverNativeAgentFilesByDir(
-  platformPacksRoot = platformPacksRoot,
-  skillsRoot = skillsRoot,
-  selectedPlatforms = selectedPlatforms,
-  directoryName = NATIVE_AGENT_SOURCE_DIR,
-  extension = "md",
-)
-
-fun discoverNativeAgentFilesByDir(
-  platformPacksRoot: Path,
-  skillsRoot: Path?,
-  selectedPlatforms: List<String>?,
-  directoryName: String,
-  extension: String,
-): List<Path> {
-  val discovered = linkedSetOf<Path>()
-  nativeAgentSourceDiscoveryRoots(platformPacksRoot, skillsRoot, selectedPlatforms).forEach { root ->
-    if (Files.isDirectory(root)) {
-      val allowedRoot = root.toRealPath()
-      Files.walk(root).use { stream ->
-        stream
-          .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
-          .filter { file ->
-            file.parent?.name == directoryName && file.fileName.toString().endsWith(".$extension")
-          }
-          .map { file -> file.toRealPath() }
-          .filter { file -> file.startsWith(allowedRoot) }
-          .forEach(discovered::add)
-      }
-    }
-  }
-  return discovered.sortedBy { it.toString() }
-}
-
-fun nativeAgentSourceDiscoveryRoots(
-  platformPacksRoot: Path,
-  skillsRoot: Path?,
-  selectedPlatforms: List<String>?,
-): List<Path> = if (selectedPlatforms == null) {
-  listOfNotNull(platformPacksRoot, skillsRoot)
-} else {
-  listOfNotNull(skillsRoot) +
-    selectedPlatforms.flatMap { platform ->
-      listOfNotNull(platformPacksRoot.resolve(platform), skillsRoot?.resolve(platform))
-    }
-}.map { root -> root.toAbsolutePath().normalize() }
-
 fun parseNativeAgentSource(path: Path): NativeAgentSource {
   val text = Files.readString(path)
   val parsed = parseNativeAgentSourceText(text, path.toString())
@@ -84,6 +33,13 @@ fun parseNativeAgentSource(path: Path): NativeAgentSource {
   }
   return parsed.copy(path = path)
 }
+
+fun parseNativeAgentSourceFile(path: Path): List<NativeAgentSource> =
+  if (path.fileName.toString() == NATIVE_AGENT_BUNDLE_FILE) {
+    parseNativeAgentBundle(path)
+  } else {
+    listOf(parseNativeAgentSource(path))
+  }
 
 fun parseNativeAgentSourceText(text: String, label: String = "native agent source"): NativeAgentSource {
   val normalized = text.replace("\r\n", "\n")

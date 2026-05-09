@@ -29,14 +29,13 @@ class ScaffoldServiceParityTest {
     assertContains(content, "## Subagent Spawn Runtime Notes")
     assertContains(content, "`@foo-arch`")
     assertContains(content, "`@foo-perf`")
-    assertSourceStub(skillDir.resolve("native-agents/foo-arch.md"), "foo-arch")
-    assertSourceStub(skillDir.resolve("native-agents/foo-perf.md"), "foo-perf")
+    assertSourceBundle(skillDir.resolve("native-agents/agents.yaml"), "foo-arch", "foo-perf")
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
     assertFalse(Files.exists(skillDir.resolve("junie-agents")))
     assertNoGeneratedWrapper(skillDir)
     assertSourceSidecars(skillDir, "bill-foo-orchestrator", repo)
-    assertTrue(result.notes.any { note -> "Subagent stubs emitted: 2." in note }, result.notes.toString())
+    assertTrue(result.notes.any { note -> "Subagent bundle emitted: 2 entries." in note }, result.notes.toString())
   }
 
   @Test
@@ -48,6 +47,16 @@ class ScaffoldServiceParityTest {
     assertEquals("bill-pr-description", result.skillName)
     assertNoGeneratedWrapper(skillDir)
     assertSourceSidecars(skillDir, "bill-pr-description", repo)
+  }
+
+  @Test
+  fun `standalone native agent source stub remains custom body markdown`() {
+    val source = renderNativeAgentSourceStub("bill-worker", "bill-orchestrator")
+
+    assertContains(source, "name: bill-worker")
+    assertContains(source, "description: TODO: one-line description for the bill-worker specialist subagent")
+    assertContains(source, "TODO: replace this placeholder with the specialist briefing.")
+    assertFalse("compose: governed-content" in source)
   }
 
   @Test
@@ -108,8 +117,7 @@ class ScaffoldServiceParityTest {
     val qualityCheck = packRoot.resolve("quality-check/bill-java-quality-check")
 
     assertEquals("platform-pack", result.kind)
-    assertSourceStub(baseline.resolve("native-agents/arch.md"), "arch")
-    assertSourceStub(baseline.resolve("native-agents/perf.md"), "perf")
+    assertSourceBundle(baseline.resolve("native-agents/agents.yaml"), "arch", "perf")
     assertFalse(Files.exists(baseline.resolve("codex-agents")))
     assertFalse(Files.exists(baseline.resolve("opencode-agents")))
     assertFalse(Files.exists(baseline.resolve("junie-agents")))
@@ -588,13 +596,16 @@ private fun seedKmpPack(repo: Path) {
   )
 }
 
-private fun assertSourceStub(path: Path, name: String) {
+private fun assertSourceBundle(path: Path, vararg names: String) {
   val text = Files.readString(path)
-  assertContains(text, "name: $name")
-  assertContains(text, "description:")
-  assertContains(text, "TODO: replace this placeholder with the specialist briefing.")
-  val frontmatterEndIndex = text.indexOf("\n---\n", startIndex = 4)
-  assertTrue(frontmatterEndIndex > 0, "Expected closing frontmatter fence in $path")
+  names.forEach { name ->
+    assertContains(text, "name: $name")
+    assertContains(text, "TODO: one-line description for the $name specialist subagent")
+  }
+  assertContains(text, "agents:")
+  assertEquals(names.size, Regex("""(?m)^    compose: governed-content$""").findAll(text).count())
+  assertFalse("body: |-" in text)
+  assertFalse("TODO: replace this placeholder with the specialist briefing." in text)
   assertFalse("mode: subagent" in text)
 }
 

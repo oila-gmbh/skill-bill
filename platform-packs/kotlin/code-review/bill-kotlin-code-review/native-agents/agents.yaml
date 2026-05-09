@@ -1,0 +1,25 @@
+agents:
+  - name: bill-kotlin-code-review-api-contracts
+    description: "Kotlin backend API contracts specialist code reviewer. Runs against request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-architecture
+    description: "Kotlin architecture specialist code reviewer. Runs against architecture, boundaries, DI scopes, module ownership, and source-of-truth consistency. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-performance
+    description: "Kotlin performance specialist code reviewer. Runs against hot-path work, blocking I/O, latency regressions, memory pressure, retry waste, and resource usage. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-persistence
+    description: "Kotlin backend persistence specialist code reviewer. Runs against transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-platform-correctness
+    description: "Kotlin platform and correctness specialist code reviewer. Runs against lifecycle, coroutine, threading, race-condition, state-machine, and business-invariant risks. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-reliability
+    description: "Kotlin backend reliability specialist code reviewer. Runs against timeouts, retries, background work, queues, caching, observability, and production failure behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-security
+    description: "Kotlin security specialist code reviewer. Runs against secrets handling, auth/session safety, sensitive-data exposure, and transport or storage security regressions. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-testing
+    description: "Kotlin testing specialist code reviewer. Runs against test coverage quality, behavior-focused regression protection, brittle tests, and low-value coverage-padding tests. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content

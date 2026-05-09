@@ -29,16 +29,19 @@ object NativeAgentOperations {
     createdPaths: MutableList<Path>? = null,
   ): NativeAgentRegenerationResult {
     val root = repoRoot.toAbsolutePath().normalize()
-    val sources = discoverRepoNativeAgentSources(root)
-      .filter { source -> skillNames.isEmpty() || source.parent.parent.name in skillNames }
+    val selectedSkillNames = skillNames.toSet()
+    val sourceFiles = discoverRepoNativeAgentSourceFiles(root)
+      .filter { sourcePath ->
+        selectedSkillNames.isEmpty() || sourcePath.parent?.parent?.name in selectedSkillNames
+      }
+    val sources = sourceFiles.flatMap(::parseNativeAgentSourceFile)
     if (sources.isEmpty()) {
       return NativeAgentRegenerationResult(emptyList())
     }
     val cacheRoot = installCacheRoot(home, root.resolve("platform-packs"), root.resolve("skills"))
     val written = mutableListOf<Path>()
     val byProvider = NativeAgentProvider.entries.associateWith { provider ->
-      sources.map { sourcePath ->
-        val source = parseNativeAgentSource(sourcePath)
+      sources.map { source ->
         val composed = composeNativeAgentSource(root, source)
         RegenerationEntry(
           target = cacheRoot.resolve(provider.directoryName).resolve("${composed.name}.${provider.extension}"),
@@ -83,10 +86,9 @@ object NativeAgentOperations {
     validateNativeAgentArtifactsForInstall(platformPacksRoot, skillsRoot, selectedPlatforms)
     val cacheRoot = installCacheRoot(home, platformPacksRoot, skillsRoot)
     val providerRoot = cacheRoot.resolve(provider.directoryName)
-    val sources = discoverNativeAgentSources(platformPacksRoot, skillsRoot, selectedPlatforms)
+    val sources = discoverNativeAgentSourceEntries(platformPacksRoot, skillsRoot, selectedPlatforms)
     val repoRoot = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
-    val rendered = sources.map { sourcePath ->
-      val source = parseNativeAgentSource(sourcePath)
+    val rendered = sources.map { source ->
       val composed = composeNativeAgentSource(repoRoot, source)
       RenderedAgent(
         targetName = "${composed.name}.${provider.extension}",
@@ -150,18 +152,6 @@ object NativeAgentOperations {
     }
   }
 
-  internal fun discoverRepoNativeAgentSources(repoRoot: Path): List<Path> {
-    val roots = listOf(repoRoot.resolve("skills"), repoRoot.resolve("platform-packs"))
-    return roots.filter { it.isDirectory() }.flatMap { root ->
-      Files.walk(root).use { stream ->
-        stream
-          .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
-          .filter { file -> file.parent?.name == NATIVE_AGENT_SOURCE_DIR && file.fileName.toString().endsWith(".md") }
-          .toList()
-      }
-    }.sortedBy { it.toString() }
-  }
-
   fun installCacheRoot(home: Path, platformPacksRoot: Path, skillsRoot: Path?): Path {
     val hash = stableRepoKey(platformPacksRoot, skillsRoot)
     val slug = repoSlug(platformPacksRoot)
@@ -188,4 +178,27 @@ object NativeAgentOperations {
     val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
     return digest.take(NATIVE_AGENT_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
   }
+}
+
+internal fun discoverRepoNativeAgentSources(repoRoot: Path): List<Path> {
+  return discoverRepoNativeAgentSourceFiles(repoRoot)
+}
+
+internal fun discoverRepoNativeAgentSourceEntries(repoRoot: Path): List<NativeAgentSource> {
+  return discoverRepoNativeAgentSourceFiles(repoRoot).flatMap(::parseNativeAgentSourceFile)
+}
+
+internal fun discoverRepoNativeAgentSourceFiles(repoRoot: Path): List<Path> {
+  val roots = listOf(repoRoot.resolve("skills"), repoRoot.resolve("platform-packs"))
+  return roots.filter { it.isDirectory() }.flatMap { root ->
+    Files.walk(root).use { stream ->
+      stream
+        .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
+        .filter { file ->
+          file.parent?.name == NATIVE_AGENT_SOURCE_DIR &&
+            (file.fileName.toString().endsWith(".md") || file.fileName.toString() == NATIVE_AGENT_BUNDLE_FILE)
+        }
+        .toList()
+    }
+  }.sortedBy { it.toString() }
 }

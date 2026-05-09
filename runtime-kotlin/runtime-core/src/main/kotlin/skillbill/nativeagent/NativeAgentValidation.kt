@@ -14,7 +14,8 @@ data class NativeAgentValidationReport(
 fun validateRepoNativeAgents(repoRoot: Path): NativeAgentValidationReport {
   val root = repoRoot.toAbsolutePath().normalize()
   val issues = mutableListOf<String>()
-  val sources = NativeAgentOperations.discoverRepoNativeAgentSources(root)
+  val sourceFiles = discoverRepoNativeAgentSourceFiles(root)
+  val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
   validateNativeAgentSources(root, sources, issues)
   validateNoCheckedInGeneratedArtifacts(root, issues)
   return NativeAgentValidationReport(issues.sorted())
@@ -25,50 +26,69 @@ internal fun validateNativeAgentArtifactsForInstall(
   skillsRoot: Path?,
   selectedPlatforms: List<String>?,
 ) {
-  val sources = discoverNativeAgentSources(platformPacksRoot, skillsRoot, selectedPlatforms)
-  if (sources.isEmpty()) {
+  val sourceFiles = discoverNativeAgentSourceFiles(platformPacksRoot, skillsRoot, selectedPlatforms)
+  if (sourceFiles.isEmpty()) {
     return
   }
   val root = commonValidationRoot(platformPacksRoot, skillsRoot)
   val issues = mutableListOf<String>()
+  val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
   validateNativeAgentSources(root, sources, issues)
   require(issues.isEmpty()) {
     "Native agent sources are invalid:\n${issues.sorted().joinToString("\n")}"
   }
 }
 
-private fun validateNativeAgentSources(root: Path, sources: List<Path>, issues: MutableList<String>) {
-  val seenNames = mutableMapOf<String, Path>()
-  sources.forEach { sourcePath ->
-    val source = runCatching { parseNativeAgentSource(sourcePath) }
-      .getOrElse { error ->
-        issues += "${displayPath(root, sourcePath)}: ${error.message.orEmpty()}"
-        return@forEach
-      }
-    val duplicate = seenNames.putIfAbsent(source.name, sourcePath)
+private fun parseNativeAgentSourcesForValidation(
+  root: Path,
+  sourceFiles: List<Path>,
+  issues: MutableList<String>,
+): List<NativeAgentSource> = sourceFiles.flatMap { sourcePath ->
+  runCatching { parseNativeAgentSourceFile(sourcePath) }
+    .getOrElse { error ->
+      issues += "${displayPath(root, sourcePath)}: ${error.message.orEmpty()}"
+      emptyList()
+    }
+}
+
+private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSource>, issues: MutableList<String>) {
+  val seenNames = mutableMapOf<String, NativeAgentSource>()
+  sources.forEach { source ->
+    requireNotNull(source.path) { "validated native agent source requires a path" }
+    val duplicate = seenNames.putIfAbsent(source.name, source)
     if (duplicate != null) {
-      issues += "${displayPath(root, sourcePath)}: native agent source name '${source.name}' duplicates " +
-        displayPath(root, duplicate)
+      issues += "${nativeAgentSourceDisplay(root, source)}: native agent source name '${source.name}' duplicates " +
+        nativeAgentSourceDisplay(root, duplicate)
     }
     if (containsProviderConditional(source.body)) {
-      issues += "${displayPath(root, sourcePath)}: " +
+      issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
     val composed = runCatching { composeNativeAgentSource(root, source) }
       .getOrElse { error ->
-        issues += "${displayPath(root, sourcePath)}: ${error.message.orEmpty()}"
+        issues += "${nativeAgentSourceDisplay(root, source)}: ${error.message.orEmpty()}"
         return@forEach
       }
     if (composed !== source && containsProviderConditional(composed.body)) {
-      issues += "${displayPath(root, sourcePath)}: " +
+      issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "composed native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
     NativeAgentProvider.entries.forEach { provider ->
       runCatching { provider.render(composed) }.getOrElse { error ->
-        issues += "${displayPath(root, sourcePath)}: cannot render ${provider.directoryName}: " +
+        issues += "${nativeAgentSourceDisplay(root, source)}: cannot render ${provider.directoryName}: " +
           error.message.orEmpty()
       }
     }
+  }
+}
+
+internal fun nativeAgentSourceDisplay(root: Path, source: NativeAgentSource): String {
+  val sourcePath = requireNotNull(source.path) { "native agent source display requires a path" }
+  val base = displayPath(root, sourcePath)
+  return if (source.bundleEntryName == null) {
+    base
+  } else {
+    "$base entry '${source.bundleEntryName}'"
   }
 }
 

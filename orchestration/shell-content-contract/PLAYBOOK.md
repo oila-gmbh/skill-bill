@@ -121,28 +121,40 @@ in that same pack may reference the pack's add-ons from its sibling
 
 ## Native-Agent Composition Sources
 
-Provider-neutral native-agent source files live in `native-agents/*.md` under
-the owning skill directory. They remain source files: render and install flows
-may generate provider-native cache artifacts from them, but must not replace,
-delete, or commit generated output over the source files.
+Provider-neutral native-agent source files live under `native-agents/` in one
+of two source forms:
 
-A native-agent source may declare:
+- `native-agents/<name>.md` for one markdown-defined agent
+- `native-agents/agents.yaml` for a bundled `agents:` list
+
+They remain source files: render and install flows may generate provider-native
+cache artifacts from them, but must not replace, delete, or commit generated
+output over the source files.
+
+A markdown source frontmatter or bundled entry may declare:
 
 ```yaml
 compose: governed-content
 ```
 
-The directive means the native-agent source composes from the corresponding
-governed `content.md`. It is intentionally declarative; provider-specific
-install output must be self-contained after rendering, and must not depend on
-repo-local `content.md` files at runtime.
+The directive means the logical native-agent source composes from the
+corresponding governed `content.md`. It is intentionally declarative;
+provider-specific install output must be self-contained after rendering, and
+must not depend on repo-local `content.md` files at runtime.
+
+Bundled entries support `name`, `description`, optional `compose`, and optional
+`body`. `body` may be omitted only when `compose: governed-content` is present.
+Duplicate native-agent names must fail across both markdown files and bundle
+entries, and install output remains one self-contained provider-native artifact
+per logical native agent.
 
 For platform-pack specialists, the corresponding content file is resolved
-through the owning `platform.yaml` declared file entries. For ordinary governed
-skills, the corresponding file is the sibling `content.md` whose frontmatter
-`name` matches the native-agent source name. Resolution must stay manifest
-driven or explicitly declared; it must not enumerate platform slugs or approved
-specialist names in code.
+through the owning `platform.yaml` declared file entries. Platform-pack bundle
+composition must not fall back to path-shaped sibling content that is not
+declared in the manifest. For ordinary governed skills, the corresponding file
+is the sibling `content.md` whose frontmatter `name` matches the native-agent
+source name. Resolution must stay manifest driven or explicitly declared; it
+must not enumerate platform slugs or approved specialist names in code.
 
 Composition parser and resolver failures are validation failures:
 
