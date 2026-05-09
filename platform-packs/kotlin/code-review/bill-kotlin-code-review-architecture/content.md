@@ -3,16 +3,6 @@ name: bill-kotlin-code-review-architecture
 description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin code. Use when user mentions Kotlin architecture, DI scope, module boundaries, or dependency direction in Kotlin code.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review-architecture`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Area: `architecture`
-Description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin code. Use when user mentions Kotlin architecture, DI scope, module boundaries, or dependency direction in Kotlin code.
-
-## Execution
-
 # Architecture Review Specialist
 
 Review only high-signal architectural issues.
@@ -46,7 +36,3 @@ Use this specialist for shared Kotlin architectural concerns across libraries, a
 - DI scopes must match object lifetime; avoid singleton or app-wide objects quietly owning request, screen, or task-local state
 - Background/async entry points should reuse the same business services as synchronous entry points instead of duplicating workflow logic
 - Avoid `kotlin.Result` and `Any` in core architecture contracts unless the project explicitly standardizes on them
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

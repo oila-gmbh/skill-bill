@@ -3,16 +3,6 @@ name: bill-kotlin-code-review-platform-correctness
 description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code. Use when user mentions coroutine leak, race condition, dispatcher misuse, lifecycle-unsafe collection, or threading bug in Kotlin code.
 ---
 
-## Descriptor
-
-Governed skill: `bill-kotlin-code-review-platform-correctness`
-Family: `code-review`
-Platform pack: `kotlin` (Kotlin)
-Area: `platform-correctness`
-Description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code. Use when user mentions coroutine leak, race condition, dispatcher misuse, lifecycle-unsafe collection, or threading bug in Kotlin code.
-
-## Execution
-
 # Platform & Correctness Review Specialist
 
 Review only correctness and runtime-safety issues.
@@ -57,7 +47,3 @@ Use this specialist for shared Kotlin correctness risks across libraries, app la
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
 - For Major or Blocker findings, include a reproducible failure scenario.
 - Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.
-
-## Ceremony
-
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

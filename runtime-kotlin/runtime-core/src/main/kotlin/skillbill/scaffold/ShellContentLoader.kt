@@ -451,42 +451,18 @@ private fun validateGovernedSkill(
       "Platform pack '${pack.slug}': declared content file for slot '$slot' is missing at '$skillPath'.",
     )
   }
+  val text = Files.readString(skillPath)
   validateSkillMdShape(skillPath, validateBodyShape = false)
-  ensureRequiredSections(pack.slug, skillPath, collectTopLevelH2Sections(Files.readString(skillPath)))
+  ensureValidAuthoredContent(pack.slug, skillPath, text)
 }
 
-private fun ensureRequiredSections(slug: String, skillPath: Path, sections: Map<String, String>) {
-  REQUIRED_GOVERNED_SECTIONS.forEach { required ->
-    if (required !in sections) {
-      throw MissingRequiredSectionError(
-        "Platform pack '$slug': content file '$skillPath' is missing required section '$required'.",
-      )
-    }
+private fun ensureValidAuthoredContent(slug: String, skillPath: Path, text: String) {
+  val authoredIssues = validateAuthoredContent(skillPath, text)
+  if (authoredIssues.isNotEmpty()) {
+    throw MissingRequiredSectionError(
+      "Platform pack '$slug': ${authoredIssues.first()}",
+    )
   }
-}
-
-private fun collectTopLevelH2Sections(text: String): Map<String, String> {
-  val visibleLines = mutableListOf<String>()
-  var inFence = false
-  for (line in text.lineSequence()) {
-    if (line.trimStart().startsWith("```") || line.trimStart().startsWith("~~~")) {
-      inFence = !inFence
-      continue
-    }
-    if (!inFence) {
-      visibleLines += line
-    }
-  }
-  val visibleText = visibleLines.joinToString("\n")
-  val headingRegex = Regex("^##\\s+[^\\n]+$", RegexOption.MULTILINE)
-  val matches = headingRegex.findAll(visibleText).toList()
-  val sections = linkedMapOf<String, String>()
-  matches.forEachIndexed { index, match ->
-    val heading = match.value.trim()
-    val end = matches.getOrNull(index + 1)?.range?.first ?: visibleText.length
-    sections[heading] = visibleText.substring(match.range.first, end).trimEnd() + "\n"
-  }
-  return sections
 }
 
 private fun displayPackPath(pack: PlatformManifest, path: Path): String = runCatching {

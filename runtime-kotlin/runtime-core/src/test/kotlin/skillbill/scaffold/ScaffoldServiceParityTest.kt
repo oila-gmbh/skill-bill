@@ -388,7 +388,7 @@ private fun seedKotlinPack(repo: Path) {
   )
   Files.writeString(
     baseline.resolve("content.md"),
-    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+    renderContentBody(context, inferSkillDescription(context)),
   )
 }
 
@@ -408,7 +408,7 @@ private fun seedKmpPack(repo: Path) {
   )
   Files.writeString(
     baseline.resolve("content.md"),
-    renderContentBody(context, inferSkillDescription(context), governedSections = true),
+    renderContentBody(context, inferSkillDescription(context)),
   )
 }
 
