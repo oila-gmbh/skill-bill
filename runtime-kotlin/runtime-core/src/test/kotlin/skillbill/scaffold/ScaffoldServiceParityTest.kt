@@ -24,11 +24,13 @@ class ScaffoldServiceParityTest {
       )
     val skillDir = repo.resolve("skills").resolve("bill-foo-orchestrator")
     val content = Files.readString(skillDir.resolve("content.md"))
+    val rendered = renderAuthoringTarget(repo, "bill-foo-orchestrator").stdout
 
     assertEquals("horizontal", result.kind)
-    assertContains(content, "## Subagent Spawn Runtime Notes")
-    assertContains(content, "`@foo-arch`")
-    assertContains(content, "`@foo-perf`")
+    assertFalse("Subagent Spawn Runtime Notes" in content)
+    assertContains(rendered, "### Subagent Spawn Runtime Notes")
+    assertContains(rendered, "`@foo-arch`")
+    assertContains(rendered, "`@foo-perf`")
     assertSourceBundle(skillDir.resolve("native-agents/agents.yaml"), "foo-arch", "foo-perf")
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))
@@ -123,7 +125,8 @@ class ScaffoldServiceParityTest {
     assertFalse(Files.exists(qualityCheck.resolve("opencode-agents")))
     assertFalse(Files.exists(qualityCheck.resolve("junie-agents")))
     assertFalse(Files.exists(qualityCheck.resolve("native-agents")))
-    assertContains(Files.readString(baseline.resolve("content.md")), "## Subagent Spawn Runtime Notes")
+    assertFalse("Subagent Spawn Runtime Notes" in Files.readString(baseline.resolve("content.md")))
+    assertContains(renderAuthoringTarget(repo, "bill-java-code-review").stdout, "### Subagent Spawn Runtime Notes")
     assertNoGeneratedWrapperOrSupportingFiles(baseline, "bill-java-code-review")
     assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-quality-check")
   }
