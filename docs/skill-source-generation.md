@@ -237,8 +237,9 @@ Scaffolding writes source files only. It does not stage generated `SKILL.md`
 wrappers or support pointer files into source.
 
 When `subagent_specialists` are requested for orchestrator scaffolds, the
-scaffolder writes `native-agents/agents.yaml` stubs and appends runtime notes to
-the orchestrator `content.md`. Authors must fill the TODOs before shipping.
+scaffolder writes `native-agents/agents.yaml` stubs. Render and install output
+generate the runtime spawn notes into `SKILL.md`; authors must fill the TODOs
+before shipping.
 
 The scaffolder is atomic: if validation, manifest updates, install, or rollback
 fails, it must not leave partial source changes.
