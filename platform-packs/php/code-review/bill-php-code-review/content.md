@@ -58,11 +58,3 @@ When the diff is large, high-risk, or spans multiple review surfaces, build per-
 6. After scoping, re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-php-code-review-platform-correctness` with all changed files as the default second.
 
 This is a lightweight file-level classification, not a full review.
-
-## Subagent Spawn Runtime Notes
-
-Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-php-code-review-architecture` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in the Codex user agents directory, respecting `agents.max_threads` and `agents.max_depth`. On OpenCode, the spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-php-code-review-architecture`, `@bill-php-code-review-platform-correctness`, `@bill-php-code-review-api-contracts`, `@bill-php-code-review-persistence`, `@bill-php-code-review-reliability`, `@bill-php-code-review-security`, `@bill-php-code-review-testing`, `@bill-php-code-review-performance`, `@bill-php-code-review-ui`, or `@bill-php-code-review-ux-accessibility`.
-
-PHP fan-out can select up to 10 specialists, which exceeds Codex's `agents.max_threads = 6` default. Run selected specialists in stable waves of at most 6 specialists. Wave 1 should keep the shared baseline first (`bill-php-code-review-architecture`, `bill-php-code-review-platform-correctness`) and then continue in routing-table order; Wave 2 handles any remaining specialists. Do not drop selected PHP specialists just to fit a single wave.
-
-OpenCode does not document a different native concurrency cap for these markdown subagents, so keep the Skill Bill conservative limit of 6 or fewer specialists per wave.
