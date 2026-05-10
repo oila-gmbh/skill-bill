@@ -1,16 +1,40 @@
+## [2026-05-10] runtime-desktop-navigation-room3
+Areas: runtime-kotlin runtime-desktop core navigation, core database, app shell, architecture guardrails
+- Added `runtime-desktop/core/navigation` with typed desktop routes, explicit back-stack state, and a navigator that supports push, root replacement, reset, and guarded back navigation. reusable
+- Added `runtime-desktop/core/database` using the KMPComposeStarter Room3 pattern: `androidx.room3` plugin/runtime/compiler, exported schema, generated database constructor, JVM SQLite driver, app-scoped database provider, and DAO tests for recent repository rows. reusable
+- Wired the app shell through navigation state instead of a hard-coded destination enum, and exposed the Room3 provider from the application DI component so the app graph proves database construction. reusable
+Feature flag: N/A
+Acceptance criteria: desktop navigation and Room3 foundation
+
 ## [2026-05-10] runtime-desktop-kmp-starter-base
-Areas: runtime-kotlin Gradle build-logic, runtime-desktop app/core/feature modules, runtime architecture guardrails, desktop workbench docs
-- Reworked `runtime-desktop` from a thin Compose app into a KMPComposeStarter-style desktop-only graph: app module plus nested `runtime-desktop/core/common`, `runtime-desktop/core/domain`, `runtime-desktop/core/data`, `runtime-desktop/core/designsystem`, `runtime-desktop/core/ui`, `runtime-desktop/core/testing`, and `runtime-desktop/feature/workbench` modules. reusable
+Areas: runtime-kotlin Gradle build-logic, runtime-desktop app/core/feature modules, runtime architecture guardrails, desktop Skill Bill app docs
+- Reworked `runtime-desktop` from a thin Compose app into a KMPComposeStarter-style desktop-only graph: app module plus nested `runtime-desktop/core/common`, `runtime-desktop/core/domain`, `runtime-desktop/core/data`, `runtime-desktop/core/designsystem`, `runtime-desktop/core/ui`, `runtime-desktop/core/testing`, and `runtime-desktop/feature/skillbill` modules. reusable
 - Added repo-local KMP convention plugins for library, Compose, application, and kotlin-inject/KSP/Anvil wiring; keep external plugin classes out of build-logic compile classpath to avoid Kotlin metadata mismatch. reusable
-- Desktop DI is now starter-shaped and compile-time generated: `@MergeComponent(AppScope)`, contributed `UserScope` and `ScreenScope` subcomponents, `UserComponentManager`, and screen-scoped workbench state; placeholder services remain no-write adapters for iteration 01.
+- Desktop DI is now starter-shaped and compile-time generated: `@MergeComponent(AppScope)`, contributed `UserScope` and `ScreenScope` subcomponents, `UserComponentManager`, and screen-scoped Skill Bill app state; placeholder services remain no-write adapters for iteration 01.
 - Architecture guards now understand nested Gradle paths and pin desktop module dependency direction separately from shared runtime modules.
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
 
+## [2026-05-10] runtime-desktop-starter-shell-completion
+Areas: runtime-kotlin runtime-desktop app shell, desktop core modules, architecture guardrails, packaging
+- Completed the desktop-only KMPComposeStarter architecture pass by adding `runtime-desktop/core/datastore`, persisted recent-repo preferences, native distribution metadata, app-shell state, and composition-local user/screen component wiring. reusable
+- `SkillBillRoute` now resolves its screen component from the app-provided screen factory instead of taking a feature factory directly, matching the starter host boundary and keeping screen creation behind the user component. reusable
+- Desktop module catalogs and architecture tests now include `core:datastore` so the nested app/core/feature graph remains explicit.
+Feature flag: N/A
+Acceptance criteria: desktop shell architecture completion
+
+## [2026-05-10] runtime-desktop-skillbill-theme
+Areas: runtime-kotlin runtime-desktop design system, desktop app shell
+- Replaced the thin Skill Bill palette with a KMPComposeStarter-style Material 3 theme stack: color scheme, extended colors, content alpha, typography, shapes, background, gradients, and text-field colors. reusable
+- Desktop design tokens now derive from `docs/assets/readme-hero-preview.html` (`ink`, `panel`, `line`, `yellow`, `muted`, `steel`, `green`) and are pinned by a design-system test. reusable
+- User-facing desktop app naming is `Skill Bill`; no authored runtime desktop source uses the old interim naming.
+Feature flag: N/A
+Acceptance criteria: Skill Bill desktop theme uses README hero palette
+
 ## [2026-05-10] runtime-desktop-shell
-Areas: runtime-kotlin Gradle build, runtime-desktop Compose shell, runtime architecture guardrails, desktop workbench docs
+Areas: runtime-kotlin Gradle build, runtime-desktop Compose shell, runtime architecture guardrails, desktop Skill Bill app docs
 - Added optional `runtime-desktop` Compose Multiplatform JVM module with repo-local `skillbill.kmp-compose-application` convention plugin, `commonMain`/`jvmMain` source sets, and `:runtime-desktop:run`, mirroring KMPComposeStarter app/core/feature layering while staying isolated from shared runtime modules. reusable
-- Workbench shell owns only presentation and in-memory state: app entrypoint, design system, repo toolbar, tree/editor/status placeholders, placeholder repo/tree/authoring/git gateways, and no repo-content writes on launch/close.
+- Skill Bill shell owns only presentation and in-memory state: app entrypoint, design system, repo toolbar, tree/editor/status placeholders, placeholder repo/tree/authoring/git gateways, and no repo-content writes on launch/close.
 - Desktop boundary guardrails now live in `RuntimeDesktopBoundaryTest`: non-desktop runtime modules must not import desktop/Compose APIs or apply Compose dependencies. reusable
 - Review pitfall: do not mark `List`-backed Compose state as `@Immutable`; snapshot service-returned tree items at the state boundary instead.
 Feature flag: N/A

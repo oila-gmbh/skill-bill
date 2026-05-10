@@ -31,11 +31,14 @@ class RuntimeGradleModuleLayeringTest {
         "runtime-desktop",
         "runtime-desktop:core:common",
         "runtime-desktop:core:data",
+        "runtime-desktop:core:database",
+        "runtime-desktop:core:datastore",
         "runtime-desktop:core:designsystem",
         "runtime-desktop:core:domain",
+        "runtime-desktop:core:navigation",
         "runtime-desktop:core:testing",
         "runtime-desktop:core:ui",
-        "runtime-desktop:feature:workbench",
+        "runtime-desktop:feature:skillbill",
         "runtime-mcp",
         "runtime-ports",
       )
@@ -97,24 +100,37 @@ class RuntimeGradleModuleLayeringTest {
       "runtime-desktop:core:domain",
       "runtime-desktop:core:data",
       "runtime-desktop:core:ui",
-      "runtime-desktop:feature:workbench",
+      "runtime-desktop:feature:skillbill",
     )
     assertNoProjectDependencies(
       "runtime-desktop:core:data",
       "runtime-desktop:core:ui",
-      "runtime-desktop:feature:workbench",
+      "runtime-desktop:feature:skillbill",
+    )
+    assertNoProjectDependencies(
+      "runtime-desktop:core:database",
+      "runtime-desktop:core:data",
+      "runtime-desktop:core:ui",
+      "runtime-desktop:feature:skillbill",
+    )
+    assertNoProjectDependencies(
+      "runtime-desktop:core:datastore",
+      "runtime-desktop:core:data",
+      "runtime-desktop:core:ui",
+      "runtime-desktop:feature:skillbill",
     )
     assertNoProjectDependencies(
       "runtime-desktop:core:designsystem",
       "runtime-desktop:core:data",
-      "runtime-desktop:feature:workbench",
+      "runtime-desktop:feature:skillbill",
     )
     assertNoProjectDependencies(
       "runtime-desktop:core:ui",
       "runtime-desktop:core:data",
-      "runtime-desktop:feature:workbench",
+      "runtime-desktop:feature:skillbill",
     )
-    assertNoProjectDependencies("runtime-desktop:core:testing", "runtime-desktop:feature:workbench")
+    assertNoProjectDependencies("runtime-desktop:core:navigation", "runtime-desktop:feature:skillbill")
+    assertNoProjectDependencies("runtime-desktop:core:testing", "runtime-desktop:feature:skillbill")
   }
 
   private fun declaredSettingsModules(): Set<String> {

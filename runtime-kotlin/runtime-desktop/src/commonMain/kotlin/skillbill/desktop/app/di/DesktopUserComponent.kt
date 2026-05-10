@@ -1,15 +1,16 @@
 package skillbill.desktop.app.di
 
+import skillbill.desktop.core.domain.di.UserComponentManager
 import skillbill.desktop.core.domain.di.UserDependencies
-import skillbill.desktop.feature.workbench.di.WorkbenchComponentFactory
+import skillbill.desktop.core.ui.di.ScreenComponentFactoryOwner
+import skillbill.desktop.feature.skillbill.di.SkillBillComponentFactory
 
-interface DesktopUserComponent : UserDependencies {
-  val workbenchComponentFactory: WorkbenchComponentFactory
+interface DesktopUserComponent : UserDependencies, ScreenComponentFactoryOwner {
+  override val screenComponentFactory: SkillBillComponentFactory
 }
 
-interface DesktopUserComponentManager {
-  val userComponent: DesktopUserComponent?
+interface DesktopUserComponentManager : UserComponentManager {
+  override val userComponent: DesktopUserComponent?
 
   fun createComponent(): DesktopUserComponent
-  fun destroyComponent()
 }

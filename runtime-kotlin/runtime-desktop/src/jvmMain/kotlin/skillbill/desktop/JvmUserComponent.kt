@@ -10,7 +10,7 @@ import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.domain.di.UserComponentManager
 import skillbill.desktop.core.domain.di.UserDependencies
 import skillbill.desktop.core.domain.model.UserSession
-import skillbill.desktop.feature.workbench.di.WorkbenchComponent
+import skillbill.desktop.feature.skillbill.di.SkillBillComponent
 import software.amazon.lastmile.kotlin.inject.anvil.ContributesSubcomponent
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
@@ -18,7 +18,7 @@ import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 @SingleIn(UserScope::class)
 interface JvmUserComponent : DesktopUserComponent {
   override val userSession: UserSession
-  override val workbenchComponentFactory: WorkbenchComponent.Factory
+  override val screenComponentFactory: SkillBillComponent.Factory
 
   @ContributesSubcomponent.Factory(AppScope::class)
   interface Factory {

@@ -23,6 +23,7 @@ class KmpApplicationConventionPlugin : Plugin<Project> {
       dependencies {
         add("commonMainImplementation", libs.findLibrary("compose.foundation").get())
         add("commonMainImplementation", libs.findLibrary("compose.material").get())
+        add("commonMainImplementation", libs.findLibrary("compose.material3").get())
         add("commonMainImplementation", libs.findLibrary("compose.runtime").get())
         add("commonMainImplementation", libs.findLibrary("compose.ui").get())
         add("commonMainImplementation", libs.findLibrary("kotlinx.coroutines.core").get())

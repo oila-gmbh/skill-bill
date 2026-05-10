@@ -7,12 +7,11 @@ import skillbill.desktop.app.SkillBillDesktopApp
 fun main() {
   val component = createJvmApplicationComponent()
   val userComponentManager = component.desktopUserComponentManager
-  userComponentManager.createComponent()
 
   application {
     Window(
       onCloseRequest = ::exitApplication,
-      title = "Skill Bill Workbench",
+      title = "Skill Bill",
     ) {
       SkillBillDesktopApp(userComponentManager = userComponentManager)
     }

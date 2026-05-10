@@ -6,6 +6,7 @@ kotlin {
   sourceSets {
     commonMain.dependencies {
       implementation(project(":runtime-desktop:core:designsystem"))
+      implementation(project(":runtime-desktop:core:domain"))
     }
 
     jvmTest.dependencies {
