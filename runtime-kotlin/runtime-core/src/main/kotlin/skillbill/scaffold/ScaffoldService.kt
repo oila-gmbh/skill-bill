@@ -609,10 +609,6 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
   )
   val symlinks = stagePlatformPackSkills(txn, plan, repoRoot, baselineSkillPath, qualityCheckSkillPath)
   if (plan.shouldEmitSubagents()) {
-    appendRuntimeNotesToContent(
-      baselineSkillPath.resolve("content.md"),
-      renderSubagentSpawnRuntimeNotes(plan.baselineSkillName, plan.subagentSpecialists),
-    )
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = baselineSkillPath,
@@ -643,11 +639,6 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
   }
   val manifestEdits = applyManifestEdits(txn, plan, repoRoot)
   if (plan.shouldEmitSubagents()) {
-    val contentPath = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME)
-    appendRuntimeNotesToContent(
-      contentPath,
-      renderSubagentSpawnRuntimeNotes(plan.skillName, plan.subagentSpecialists),
-    )
     stageSubagentStubs(
       txn,
       orchestratorSkillPath = plan.skillPath,
@@ -709,19 +700,6 @@ private fun stageFile(txn: ScaffoldTransaction, path: Path, content: String) {
   }
   Files.writeString(path, content)
   txn.createdPaths.add(path)
-}
-
-private fun appendRuntimeNotesToContent(contentPath: Path, runtimeNotes: String) {
-  if (runtimeNotes.isBlank()) {
-    return
-  }
-  val existing = Files.readString(contentPath)
-  val separator = when {
-    existing.endsWith("\n\n") -> ""
-    existing.endsWith("\n") -> "\n"
-    else -> "\n\n"
-  }
-  Files.writeString(contentPath, existing + separator + runtimeNotes.trimEnd() + "\n")
 }
 
 private fun stageSubagentStubs(
