@@ -38,12 +38,18 @@ di
   workflow surface declarations, and remaining reserved runtime surfaces.
 - `runtime-cli`: Clikt command tree, terminal rendering, JSON output, help, and
   completion surfaces.
+- `runtime-desktop`: optional Compose Multiplatform JVM desktop workbench shell
+  for repo-based Skill Bill authoring; Iteration 01 owns only presentation,
+  in-memory state, and read-only placeholder gateways.
 - `runtime-mcp`: MCP adapter surface and MCP-specific payload shaping.
 
 ## Current Package Ownership
 
 - `skillbill.cli`: Clikt command tree, option validation, shell completion,
   terminal text rendering, and CLI JSON output.
+- `skillbill.desktop`: optional Compose desktop presentation, local workbench
+  state, and thin placeholder gateways for future repo, tree, authoring, and
+  Git integration. Governed behavior must stay in shared runtime services.
 - `skillbill.mcp`: MCP-facing adapter surface. It delegates overlapping
   workflows to `skillbill.application` and keeps MCP-specific orchestration
   metadata at the adapter boundary.
@@ -175,7 +181,7 @@ useful for the next refactors:
 - the physical Gradle module split includes `runtime-contracts`,
   `runtime-domain`, `runtime-ports`, `runtime-application`,
   `runtime-infra-sqlite`, `runtime-infra-http`, `runtime-infra-fs`,
-  `runtime-core`, `runtime-cli`, and `runtime-mcp`
+  `runtime-core`, `runtime-cli`, optional `runtime-desktop`, and `runtime-mcp`
 - `docs/architecture/gradle-module-split-evaluation.md` records the physical
   split decision and the readiness rules that must remain true
 - future `skillbill.domain.*` packages are protected from infrastructure

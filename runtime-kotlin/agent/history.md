@@ -1,3 +1,21 @@
+## [2026-05-10] runtime-desktop-kmp-starter-base
+Areas: runtime-kotlin Gradle build-logic, runtime-desktop app/core/feature modules, runtime architecture guardrails, desktop workbench docs
+- Reworked `runtime-desktop` from a thin Compose app into a KMPComposeStarter-style desktop-only graph: app module plus nested `runtime-desktop/core/common`, `runtime-desktop/core/domain`, `runtime-desktop/core/data`, `runtime-desktop/core/designsystem`, `runtime-desktop/core/ui`, `runtime-desktop/core/testing`, and `runtime-desktop/feature/workbench` modules. reusable
+- Added repo-local KMP convention plugins for library, Compose, application, and kotlin-inject/KSP/Anvil wiring; keep external plugin classes out of build-logic compile classpath to avoid Kotlin metadata mismatch. reusable
+- Desktop DI is now starter-shaped and compile-time generated: `@MergeComponent(AppScope)`, contributed `UserScope` and `ScreenScope` subcomponents, `UserComponentManager`, and screen-scoped workbench state; placeholder services remain no-write adapters for iteration 01.
+- Architecture guards now understand nested Gradle paths and pin desktop module dependency direction separately from shared runtime modules.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-05-10] runtime-desktop-shell
+Areas: runtime-kotlin Gradle build, runtime-desktop Compose shell, runtime architecture guardrails, desktop workbench docs
+- Added optional `runtime-desktop` Compose Multiplatform JVM module with repo-local `skillbill.kmp-compose-application` convention plugin, `commonMain`/`jvmMain` source sets, and `:runtime-desktop:run`, mirroring KMPComposeStarter app/core/feature layering while staying isolated from shared runtime modules. reusable
+- Workbench shell owns only presentation and in-memory state: app entrypoint, design system, repo toolbar, tree/editor/status placeholders, placeholder repo/tree/authoring/git gateways, and no repo-content writes on launch/close.
+- Desktop boundary guardrails now live in `RuntimeDesktopBoundaryTest`: non-desktop runtime modules must not import desktop/Compose APIs or apply Compose dependencies. reusable
+- Review pitfall: do not mark `List`-backed Compose state as `@Immutable`; snapshot service-returned tree items at the state boundary instead.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-09] native-agent-bundles
 Areas: runtime-core nativeagent parser/discovery/validation/install, runtime-core scaffold, Kotlin/KMP platform-pack native agents, shell-content-contract docs
 - Native-agent discovery now treats `native-agents/agents.yaml` and `native-agents/*.md` as source files, expanding bundles into logical `NativeAgentSource` entries only after selection filters so targeted regeneration stays cheap. reusable

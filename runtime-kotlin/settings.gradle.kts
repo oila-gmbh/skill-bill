@@ -15,7 +15,10 @@ plugins {
 
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-  repositories { mavenCentral() }
+  repositories {
+    google()
+    mavenCentral()
+  }
 }
 
 include(
@@ -27,6 +30,14 @@ include(
   "runtime-infra-http",
   "runtime-infra-sqlite",
   "runtime-cli",
+  "runtime-desktop",
+  "runtime-desktop:core:common",
+  "runtime-desktop:core:data",
+  "runtime-desktop:core:designsystem",
+  "runtime-desktop:core:domain",
+  "runtime-desktop:core:testing",
+  "runtime-desktop:core:ui",
+  "runtime-desktop:feature:workbench",
   "runtime-mcp",
   "runtime-ports",
 )
