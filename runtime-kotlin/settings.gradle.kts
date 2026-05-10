@@ -3,6 +3,7 @@ pluginManagement {
 
   repositories {
     gradlePluginPortal()
+    google()
     mavenCentral()
   }
 }
@@ -33,11 +34,14 @@ include(
   "runtime-desktop",
   "runtime-desktop:core:common",
   "runtime-desktop:core:data",
+  "runtime-desktop:core:database",
+  "runtime-desktop:core:datastore",
   "runtime-desktop:core:designsystem",
   "runtime-desktop:core:domain",
+  "runtime-desktop:core:navigation",
   "runtime-desktop:core:testing",
   "runtime-desktop:core:ui",
-  "runtime-desktop:feature:workbench",
+  "runtime-desktop:feature:skillbill",
   "runtime-mcp",
   "runtime-ports",
 )

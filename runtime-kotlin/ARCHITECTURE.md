@@ -38,18 +38,24 @@ di
   workflow surface declarations, and remaining reserved runtime surfaces.
 - `runtime-cli`: Clikt command tree, terminal rendering, JSON output, help, and
   completion surfaces.
-- `runtime-desktop`: optional Compose Multiplatform JVM desktop workbench shell
-  for repo-based Skill Bill authoring; Iteration 01 owns only presentation,
-  in-memory state, and read-only placeholder gateways.
+- `runtime-desktop`: optional Compose Multiplatform JVM desktop Skill Bill app
+  for repo-based Skill Bill authoring. It follows the KMPComposeStarter-style
+  desktop app graph: app-shell state and JVM entrypoint in the app module,
+  `core:common`, `core:domain`, `core:data`, `core:database`,
+  `core:datastore`, `core:designsystem`, `core:navigation`, `core:ui`,
+  `core:testing`, and feature-owned screens under `feature:*`.
 - `runtime-mcp`: MCP adapter surface and MCP-specific payload shaping.
 
 ## Current Package Ownership
 
 - `skillbill.cli`: Clikt command tree, option validation, shell completion,
   terminal text rendering, and CLI JSON output.
-- `skillbill.desktop`: optional Compose desktop presentation, local workbench
-  state, and thin placeholder gateways for future repo, tree, authoring, and
-  Git integration. Governed behavior must stay in shared runtime services.
+- `skillbill.desktop`: optional Compose desktop app shell, README-hero-derived
+  Material 3 design system, composition-local DI bridge, local desktop state,
+  typed navigation, desktop preferences, Room3-backed desktop database
+  foundation, and thin placeholder gateways for future repo, tree, authoring,
+  and Git integration. Governed
+  behavior must stay in shared runtime services.
 - `skillbill.mcp`: MCP-facing adapter surface. It delegates overlapping
   workflows to `skillbill.application` and keeps MCP-specific orchestration
   metadata at the adapter boundary.

@@ -5,12 +5,14 @@ import skillbill.desktop.app.di.DesktopUserComponentManager
 import skillbill.desktop.core.common.di.AppScope
 import skillbill.desktop.core.common.di.DefaultDispatcherProvider
 import skillbill.desktop.core.common.di.DispatcherProvider
+import skillbill.desktop.core.database.DesktopDatabaseProvider
 import software.amazon.lastmile.kotlin.inject.anvil.MergeComponent
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @MergeComponent(AppScope::class)
 @SingleIn(AppScope::class)
 abstract class JvmApplicationComponent {
+  abstract val databaseProvider: DesktopDatabaseProvider
   abstract val userComponentFactory: JvmUserComponent.Factory
   abstract val userComponentManager: JvmUserComponentManager
 

@@ -42,7 +42,7 @@ of all runtime implementation code.
   reserved runtime surfaces.
 - `runtime-cli`: Clikt command tree, CLI option validation, terminal
   presenters, JSON output, help/completion surfaces, and CLI tests.
-- `runtime-desktop`: optional Compose Multiplatform JVM desktop workbench shell
+- `runtime-desktop`: optional Compose Multiplatform JVM desktop Skill Bill app shell
   with Iteration 01 presentation, local in-memory state, and read-only
   placeholder gateways.
 - `runtime-mcp`: MCP adapter surface, MCP payload shaping, MCP tests, and the
@@ -107,8 +107,12 @@ and useful now:
   adapters.
 - Reserved runtime surfaces expose documented `RuntimeSurfaceContract` metadata.
 - CLI and MCP are independently compiled adapter modules.
-- The optional desktop workbench compiles as an isolated JVM desktop module and
-  does not own governed runtime behavior.
+- The optional desktop Skill Bill app compiles as an isolated JVM desktop module and
+  does not own governed runtime behavior. Its nested desktop modules preserve
+  app/core/feature dependency direction and keep lightweight preferences in
+  `runtime-desktop:core:datastore`, typed route/back-stack ownership in
+  `runtime-desktop:core:navigation`, and Room3 persistence foundation in
+  `runtime-desktop:core:database`.
 - Contract, domain, port, application, SQLite, HTTP, and filesystem runtime
   layers compile as independent Gradle modules.
 - Module-owned SQLite tests now live with `runtime-infra-sqlite`, so tests can
