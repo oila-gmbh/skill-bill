@@ -1,3 +1,5 @@
+![Skill Bill — governed AI-agent skill platform](docs/assets/skill-bill-readme-hero.svg)
+
 # Skill Bill
 
 Skill Bill is a governed workflow platform for AI coding agents. Its flagship bundled workflow, `/bill-feature-implement`, turns a feature spec into planned, reviewed, validated, documented code.
