@@ -34,7 +34,7 @@ internal fun renderSubagentSpawnRuntimeNotes(orchestratorName: String, specialis
     return ""
   }
   val paragraphs = mutableListOf(
-    "## Subagent Spawn Runtime Notes",
+    "### Subagent Spawn Runtime Notes",
     subagentResolutionParagraph(orchestratorName, specialists),
   )
   if (specialists.size > DEFAULT_CODEX_MAX_THREADS) {
