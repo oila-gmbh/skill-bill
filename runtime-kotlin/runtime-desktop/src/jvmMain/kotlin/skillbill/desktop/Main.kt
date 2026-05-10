@@ -11,7 +11,7 @@ fun main() {
   application {
     Window(
       onCloseRequest = ::exitApplication,
-      title = "Skill Bill",
+      title = "SkillBill",
     ) {
       SkillBillDesktopApp(userComponentManager = userComponentManager)
     }

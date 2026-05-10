@@ -21,56 +21,56 @@ class PlaceholderRepoSessionService : RepoSessionService {
 
 @Inject
 class PlaceholderSkillTreeService : SkillTreeService {
+  @Suppress("UNUSED_PARAMETER")
   override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> = listOf(
     SkillBillTreeItem(
-      id = "horizontal-skills",
-      label = "Horizontal Skills",
+      id = "skills",
+      label = "Skills",
       kind = TreeItemKind.GROUP,
       children = listOf(
-        SkillBillTreeItem(
-          id = "horizontal-skills-placeholder",
-          label = placeholderLabel(session),
-          kind = TreeItemKind.PLACEHOLDER,
-        ),
+        SkillBillTreeItem(id = "s-invoice", label = "invoice-extractor", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "s-meeting", label = "meeting-summarizer", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "s-router", label = "intent-router", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "s-csv", label = "csv-normalizer", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "s-pii", label = "pii-redactor", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "s-trans", label = "transcript-cleaner", kind = TreeItemKind.PLACEHOLDER),
       ),
     ),
     SkillBillTreeItem(
-      id = "platform-packs",
+      id = "packs",
       label = "Platform Packs",
       kind = TreeItemKind.GROUP,
       children = listOf(
-        SkillBillTreeItem(
-          id = "platform-packs-placeholder",
-          label = "Pack discovery will use runtime services.",
-          kind = TreeItemKind.PLACEHOLDER,
-        ),
+        SkillBillTreeItem(id = "p-zen", label = "zendesk-pack", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "p-sf", label = "salesforce-pack", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "p-slack", label = "slack-pack", kind = TreeItemKind.PLACEHOLDER),
       ),
     ),
     SkillBillTreeItem(
-      id = "repository",
-      label = "Repository",
+      id = "addons",
+      label = "Add-ons",
       kind = TreeItemKind.GROUP,
       children = listOf(
-        SkillBillTreeItem(
-          id = "repository-placeholder",
-          label = "Repo metadata will appear after browser integration.",
-          kind = TreeItemKind.PLACEHOLDER,
-        ),
+        SkillBillTreeItem(id = "a-trace", label = "tracing-otel", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "a-eval", label = "eval-harness", kind = TreeItemKind.PLACEHOLDER),
+      ),
+    ),
+    SkillBillTreeItem(
+      id = "agents",
+      label = "Native Agents",
+      kind = TreeItemKind.GROUP,
+      children = listOf(
+        SkillBillTreeItem(id = "n-triage", label = "support-triage", kind = TreeItemKind.PLACEHOLDER),
+        SkillBillTreeItem(id = "n-onboard", label = "onboarding-bot", kind = TreeItemKind.PLACEHOLDER),
       ),
     ),
   )
-
-  private fun placeholderLabel(session: RepoSession?): String = if (session == null) {
-    "Open a repository to load authored sources."
-  } else {
-    "Discovery is not connected yet for ${session.repoPath}."
-  }
 }
 
 @Inject
 class PlaceholderAuthoringGateway : AuthoringGateway {
   override fun describeSelection(treeItemId: String): EditorPlaceholder = EditorPlaceholder(
-    title = "Editor placeholder",
+    title = treeItemId,
     detail = "Selection `$treeItemId` is tracked in memory. Authoring is not enabled yet.",
   )
 }

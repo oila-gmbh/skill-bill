@@ -46,7 +46,7 @@ data class EditorPlaceholder(
     val empty: EditorPlaceholder =
       EditorPlaceholder(
         title = "No source selected",
-        detail = "Open a Skill Bill repository, then choose a skill or pack source.",
+        detail = "Open a SkillBill repository, then choose a skill or pack source.",
       )
   }
 }

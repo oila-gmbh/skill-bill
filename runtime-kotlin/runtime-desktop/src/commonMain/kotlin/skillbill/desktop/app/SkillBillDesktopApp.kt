@@ -24,7 +24,7 @@ fun SkillBillDesktopApp(userComponentManager: DesktopUserComponentManager) {
   CompositionLocalProvider(LocalUserComponentManager provides userComponentManager) {
     ProvideScreenComponentFactory {
       SkillBillAppTheme {
-        SkillBillWindow(title = "Skill Bill") {
+        SkillBillWindow(title = "SkillBill") {
           when (navigationState.currentRoute) {
             SkillBillHomeRoute -> SkillBillRoute(
               selectedSourceId = null,

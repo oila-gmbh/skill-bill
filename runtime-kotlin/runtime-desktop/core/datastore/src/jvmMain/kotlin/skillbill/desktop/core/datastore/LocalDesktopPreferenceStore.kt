@@ -50,7 +50,7 @@ class LocalDesktopPreferenceStore : DesktopPreferenceStore {
   private fun saveProperties() {
     preferencesPath.parent?.let(Files::createDirectories)
     Files.newOutputStream(preferencesPath).use { output ->
-      properties.store(output, "Skill Bill desktop preferences")
+      properties.store(output, "SkillBill desktop preferences")
     }
   }
 
