@@ -11,6 +11,10 @@ kotlin {
       implementation(libs.room3.runtime)
     }
 
+    jvmMain.dependencies {
+      implementation(project(":runtime-core"))
+    }
+
     jvmTest.dependencies {
       implementation(libs.junit.jupiter)
       implementation(libs.kotlin.test)

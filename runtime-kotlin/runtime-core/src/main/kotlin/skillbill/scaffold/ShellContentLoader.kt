@@ -40,7 +40,7 @@ internal fun discoverPlatformPacks(platformPacksRoot: Path): List<PlatformManife
 internal fun discoverPlatformPackManifests(platformPacksRoot: Path): List<PlatformManifest> =
   childDirectories(platformPacksRoot).map(::loadPlatformManifest)
 
-internal fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
+fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
   val packsRoot = repoRoot.toAbsolutePath().normalize().resolve("platform-packs")
   if (!Files.isDirectory(packsRoot)) {
     return emptyList()

@@ -1,3 +1,12 @@
+## [2026-05-11] runtime-desktop-repo-browser-readonly-tree
+Areas: runtime-kotlin runtime-core scaffold/nativeagent, runtime-desktop core data/domain/testing, feature skillbill UI/state, desktop app docs
+- Added the Iteration 02 repo browser path: desktop repo selection validates a local Skill Bill checkout, builds a read-only tree from `AuthoringOperations`, `RepoValidationRuntime`, governed add-on discovery, generated-artifact guard discovery, and provider-neutral native-agent source parsing. reusable
+- `RuntimeRepoBrowserService` now keeps desktop as an adapter over shared runtime contracts: do not reintroduce UI-local guesses for add-ons, generated wrappers, pointer files, or provider-native agent output. reusable
+- Selection IDs are repo-scoped, invalid/blank paths return error state instead of throwing, malformed native-agent sources remain visible as invalid read-only items, source reads tolerate file races, and git branch lookup has a timeout.
+- `SkillBillFrame` preserves the existing shell but renders tree, editor, inspector, status, and refresh from state; editing, scaffolding, git diff/commit, and PR flows remain deferred.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-10] runtime-desktop-navigation-room3
 Areas: runtime-kotlin runtime-desktop core navigation, core database, app shell, architecture guardrails
 - Added `runtime-desktop/core/navigation` with typed desktop routes, explicit back-stack state, and a navigator that supports push, root replacement, reset, and guarded back navigation. reusable

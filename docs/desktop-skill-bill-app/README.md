@@ -367,16 +367,16 @@ Use this checklist as the lightweight implementation tracker. Keep detailed acce
 
 ### Iteration 02: Repo Browser and Read-Only Tree
 
-- [ ] Implement local repo directory selection.
-- [ ] Validate selected directory as a Skill Bill repo.
-- [ ] Build tree from runtime authoring/discovery services.
-- [ ] Show horizontal skills.
-- [ ] Show platform packs and declared skills.
-- [ ] Show add-ons.
-- [ ] Show provider-neutral native-agent source targets when present.
-- [ ] Mark generated artifacts hidden or read-only.
-- [ ] Add explicit tree refresh.
-- [ ] Add repo browser tests.
+- [x] Implement local repo directory selection.
+- [x] Validate selected directory as a Skill Bill repo.
+- [x] Build tree from runtime authoring/discovery services.
+- [x] Show horizontal skills.
+- [x] Show platform packs and declared skills.
+- [x] Show add-ons.
+- [x] Show provider-neutral native-agent source targets when present.
+- [x] Mark generated artifacts hidden or read-only.
+- [x] Add explicit tree refresh.
+- [x] Add repo browser tests.
 
 ### Iteration 03: Content Editor and Validation
 

@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.RepoLoadState
+import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SourceControlStatus
@@ -14,7 +16,15 @@ import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 
 class FakeRepoSessionService : RepoSessionService {
-  override fun open(repoPath: String): RepoSession = RepoSession(repoPath = repoPath, isRecognizedSkillBillRepo = true)
+  override fun open(repoPath: String): RepoSession = RepoSession(
+    repoPath = repoPath,
+    isRecognizedSkillBillRepo = true,
+    loadStatus = RepoLoadStatus(
+      state = RepoLoadState.LOADED,
+      message = "Loaded",
+      skillCount = 1,
+    ),
+  )
 }
 
 class FakeSkillTreeService(private val items: List<SkillBillTreeItem>) : SkillTreeService {

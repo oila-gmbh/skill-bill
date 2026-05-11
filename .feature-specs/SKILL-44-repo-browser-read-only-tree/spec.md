@@ -1,6 +1,24 @@
+# SKILL-44 Repo Browser Read-Only Tree
+
+Status: Complete
+
+## Sources
+
+- `docs/desktop-skill-bill-app/iterations/02-repo-browser-readonly-tree.md`
+
+## Acceptance Criteria
+
+1. Selecting a valid Skill Bill repo loads a tree using shared runtime discovery/authoring behavior, not generated-wrapper hand parsing.
+2. Selecting a skill shows name, kind, authored path, and status.
+3. Generated artifacts, if visible, are clearly non-editable.
+4. Invalid repo selection shows a clear error and does not crash.
+5. Explicit refresh reflects file changes.
+
+## Consolidated Spec
+
 # Iteration 02: Repo Browser and Read-Only Tree
 
-Status: Implemented
+Status: Draft
 
 ## Parent Spec Context
 
@@ -35,7 +53,6 @@ A user can point the app at a checkout and understand what can be authored witho
 - Show metadata for selected tree items in the right panel.
 - Identify editable targets, but do not allow editing yet.
 - Mark generated artifacts as hidden or read-only.
-- Provide an explicit refresh action that re-runs runtime discovery.
 
 ## Required Runtime Behavior
 
@@ -104,16 +121,6 @@ Manual smoke:
 2. Confirm horizontal skills appear.
 3. Confirm `platform-packs/kotlin` and `platform-packs/kmp` appear.
 4. Confirm generated `SKILL.md` files are not offered as editable targets.
-
-## Implementation Notes
-
-- Runtime-backed browsing is wired through the desktop service boundary and uses
-  `AuthoringOperations`, `RepoValidationRuntime`, and provider-neutral native-agent
-  discovery.
-- The tree shows authored `content.md` targets, pack add-ons, native-agent source
-  entries, and any generated artifacts that are present as read-only metadata.
-- The app remains read-only. Editing, scaffolding, Git diff/commit, and PR flows stay
-  deferred to later iterations.
 
 ## Risks
 
