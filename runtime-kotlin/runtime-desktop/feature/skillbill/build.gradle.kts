@@ -9,6 +9,7 @@ kotlin {
       implementation(project(":runtime-desktop:core:designsystem"))
       implementation(project(":runtime-desktop:core:domain"))
       implementation(project(":runtime-desktop:core:ui"))
+      implementation(libs.kotlinx.coroutines.core)
     }
 
     jvmTest.dependencies {

@@ -21,11 +21,15 @@ data class UserSession(
 
 data class SkillBillState(
   val selectedRepoPath: String?,
+  val repoPathText: String = selectedRepoPath.orEmpty(),
   val repoStatus: RepoLoadStatus = RepoLoadStatus.empty,
   val treeItems: List<SkillBillTreeItem>,
   val selectedTreeItemId: String?,
+  val expandedNodeIds: Set<String> = emptySet(),
+  val busyOperation: SkillBillBusyOperation? = null,
   val editor: EditorPlaceholder,
   val sourceControl: SourceControlStatus,
+  val statusBar: SkillBillStatusBar = SkillBillStatusBar.empty,
 )
 
 data class SkillBillTreeItem(
@@ -35,6 +39,7 @@ data class SkillBillTreeItem(
   val authoredPath: String? = null,
   val status: String? = null,
   val editable: Boolean = true,
+  val readOnlyLabel: String? = null,
   val metadata: SkillBillTreeItemMetadata? = null,
   val children: List<SkillBillTreeItem> = emptyList(),
 )
@@ -83,6 +88,34 @@ enum class RepoLoadState {
   INVALID,
 }
 
+enum class SkillBillBusyOperation {
+  OPEN_REPO,
+  REFRESH,
+  CHOOSE_DIRECTORY,
+}
+
+data class SkillBillStatusBar(
+  val targetCount: Int,
+  val repoPathLabel: String,
+  val branchLabel: String,
+  val readOnlyModeLabel: String,
+  val policyLabel: String,
+) {
+  companion object {
+    val empty: SkillBillStatusBar =
+      SkillBillStatusBar(
+        targetCount = 0,
+        repoPathLabel = "no repo",
+        branchLabel = SourceControlStatus.empty.branchLabel,
+        readOnlyModeLabel = READ_ONLY_MODE_LABEL,
+        policyLabel = POLICY_LABEL,
+      )
+
+    const val READ_ONLY_MODE_LABEL = "read-only"
+    const val POLICY_LABEL = "strict"
+  }
+}
+
 data class GeneratedArtifactDetail(
   val path: String,
   val reason: String,
@@ -96,6 +129,7 @@ data class EditorPlaceholder(
   val authoredPath: String? = null,
   val status: String? = null,
   val editable: Boolean = false,
+  val readOnlyLabel: String? = null,
   val content: String? = null,
   val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
 ) {

@@ -5,6 +5,8 @@ import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.relativeTo
+import kotlin.streams.toList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -31,6 +33,7 @@ class RuntimeRepoBrowserServiceTest {
     val generated = flattened.single { it.id.endsWith("skills/bill-alpha/SKILL.md") }
     assertEquals(TreeItemKind.GENERATED_ARTIFACT, generated.kind)
     assertFalse(generated.editable)
+    assertEquals("RO", generated.readOnlyLabel)
     assertEquals("read-only", generated.status)
   }
 
@@ -77,6 +80,7 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("generated artifact", detail.kind)
     assertEquals("skills/bill-alpha/SKILL.md", detail.authoredPath)
     assertEquals("read-only", detail.status)
+    assertEquals("RO", detail.readOnlyLabel)
     assertFalse(detail.editable)
     assertTrue(detail.detail.contains("Generated runtime wrapper"))
   }
@@ -91,6 +95,22 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals(RepoLoadState.INVALID, session.loadStatus.state)
     assertTrue(session.loadStatus.message.contains("not a directory"))
     assertTrue(service.treeFor(session).isEmpty())
+  }
+
+  @Test
+  fun `invalid repo selection after valid open clears stale tree and selection`() {
+    val repo = seedRepo("invalid-clears-stale")
+    val service = RuntimeRepoBrowserService()
+    val loadedSession = service.open(repo.toString())
+    val loadedSkillId = service.treeForSessionLocalId(loadedSession, "skill:bill-alpha")
+    val missing = repo.resolve("missing")
+
+    val invalidSession = service.open(missing.toString())
+
+    assertEquals(RepoLoadState.INVALID, invalidSession.loadStatus.state)
+    assertTrue(service.treeFor(invalidSession).isEmpty())
+    assertTrue(service.treeFor(loadedSession).isEmpty())
+    assertEquals("No source selected", service.describeSelection(loadedSkillId).title)
   }
 
   @Test
@@ -165,6 +185,41 @@ class RuntimeRepoBrowserServiceTest {
 
     val refreshed = service.treeFor(service.open(repo.toString())).flatten()
     assertTrue(refreshed.any { it.id.hasLocalId("skill:bill-beta") })
+  }
+
+  @Test
+  fun `reopening repo reflects deleted authored content and status count changes`() {
+    val repo = seedRepo("runtime-refresh-delete")
+    val service = RuntimeRepoBrowserService()
+
+    val initialSession = service.open(repo.toString())
+    val initialSkillCount = initialSession.loadStatus.skillCount
+    writeContentSkill(repo, "bill-beta", "Beta guidance.")
+
+    val addedSession = service.open(repo.toString())
+    assertEquals(initialSkillCount + 1, addedSession.loadStatus.skillCount)
+    assertTrue(service.treeFor(addedSession).flatten().any { it.id.hasLocalId("skill:bill-beta") })
+
+    Files.delete(repo.resolve("skills/bill-beta/content.md"))
+    Files.delete(repo.resolve("skills/bill-beta"))
+    val deletedSession = service.open(repo.toString())
+    assertEquals(initialSkillCount, deletedSession.loadStatus.skillCount)
+    assertFalse(service.treeFor(deletedSession).flatten().any { it.id.hasLocalId("skill:bill-beta") })
+  }
+
+  @Test
+  fun `open refresh and navigation do not modify repository files`() {
+    val repo = seedRepo("read-only-browser")
+    val before = repoFileSnapshot(repo)
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repo.toString())
+    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
+    service.describeSelection(skillId)
+    service.open(repo.toString())
+    service.treeFor(session)
+
+    assertEquals(before, repoFileSnapshot(repo))
   }
 
   private fun seedRepo(name: String): Path {
@@ -245,6 +300,18 @@ class RuntimeRepoBrowserServiceTest {
     )
     Files.writeString(packRoot.resolve("addons/tracing-otel.md"), "# Tracing\n")
   }
+}
+
+private fun repoFileSnapshot(repo: Path): Map<String, Long> = Files.walk(repo).use { paths ->
+  paths
+    .filter(Files::isRegularFile)
+    .sorted()
+    .toList()
+    .associate { path ->
+      path.relativeTo(
+        repo,
+      ).toString().replace('\\', '/') to Files.getLastModifiedTime(path).toMillis()
+    }
 }
 
 private fun List<skillbill.desktop.core.domain.model.SkillBillTreeItem>.flatten():

@@ -1,3 +1,12 @@
+## [2026-05-11] state-repo-controls-tree-polish
+Areas: runtime-desktop core data/domain/testing, feature skillbill UI/state
+- Split repo browser state into typed path text, current session/tree, selected item, expanded groups, busy operation, and status-bar model so UI reads one coherent source of truth. reusable
+- Open/refresh now rebuild through runtime services, preserve selection only for same-repo existing ids, clear stale invalid state, and keep generated artifacts from shared discovery read-only with `RO`.
+- Desktop chooser is a common/JVM boundary that feeds the same open flow as typed paths; open/refresh load off the UI thread and apply token-checked results to prevent stale completions overwriting newer state. reusable
+- Tree interactions now support expand/collapse and keyboard movement over visible rows while busy state disables conflicting repo/tree actions and renders progress.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-05-11] runtime-desktop-repo-browser-readonly-tree
 Areas: runtime-kotlin runtime-core scaffold/nativeagent, runtime-desktop core data/domain/testing, feature skillbill UI/state, desktop app docs
 - Added the Iteration 02 repo browser path: desktop repo selection validates a local Skill Bill checkout, builds a read-only tree from `AuthoringOperations`, `RepoValidationRuntime`, governed add-on discovery, generated-artifact guard discovery, and provider-neutral native-agent source parsing. reusable

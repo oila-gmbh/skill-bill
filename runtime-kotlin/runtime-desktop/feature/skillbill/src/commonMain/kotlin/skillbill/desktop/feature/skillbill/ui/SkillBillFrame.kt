@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -50,6 +56,7 @@ import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
+import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
@@ -72,39 +79,38 @@ fun SkillBillFrame(
   state: SkillBillState,
   canNavigateBack: Boolean,
   onNavigateBack: () -> Unit,
+  onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
+  onChooseRepoDirectory: () -> Unit,
   onRefresh: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
+  onTreeItemExpandedToggled: (String) -> Unit,
+  onMoveTreeSelection: (Int) -> Unit,
 ) {
-  var selectedNodeId by remember(state.selectedTreeItemId) {
-    mutableStateOf(state.selectedTreeItemId)
-  }
-  var repoPath by remember(state.selectedRepoPath) {
-    mutableStateOf(state.selectedRepoPath.orEmpty())
-  }
-
   Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
     WorkspaceToolbar(
       canNavigateBack = canNavigateBack,
       onNavigateBack = onNavigateBack,
       onRefresh = onRefresh,
       sourceControlLabel = state.sourceControl.branchLabel,
+      readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
+      busyOperation = state.busyOperation,
     )
     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
       NavigationPane(
-        repoPath = repoPath,
+        repoPath = state.repoPathText,
         repoStatus = state.repoStatus,
         treeItems = state.treeItems,
-        selectedNodeId = selectedNodeId,
-        onRepoPathChanged = { repoPath = it },
-        onRepoSelected = {
-          repoPath = it.trim()
-          onRepoSelected(it)
-        },
-        onNodeSelected = {
-          selectedNodeId = it
-          onTreeItemSelected(it)
-        },
+        selectedNodeId = state.selectedTreeItemId,
+        expandedNodeIds = state.expandedNodeIds,
+        busyOperation = state.busyOperation,
+        policyLabel = state.statusBar.policyLabel,
+        onRepoPathChanged = onRepoPathChanged,
+        onRepoSelected = onRepoSelected,
+        onChooseRepoDirectory = onChooseRepoDirectory,
+        onNodeSelected = onTreeItemSelected,
+        onNodeExpandedToggled = onTreeItemExpandedToggled,
+        onMoveSelection = onMoveTreeSelection,
       )
       VerticalDivider(color = WorkspaceLine)
       CenterWorkspace(editor = state.editor, modifier = Modifier.weight(1f).fillMaxHeight())
@@ -120,7 +126,10 @@ private fun WorkspaceToolbar(
   onNavigateBack: () -> Unit,
   onRefresh: () -> Unit,
   sourceControlLabel: String,
+  readOnlyModeLabel: String,
+  busyOperation: SkillBillBusyOperation?,
 ) {
+  val busy = busyOperation != null
   Row(
     modifier =
     Modifier
@@ -132,26 +141,40 @@ private fun WorkspaceToolbar(
     verticalAlignment = Alignment.CenterVertically,
   ) {
     if (canNavigateBack) {
-      ToolbarButton(label = "Back", marker = "<", onClick = onNavigateBack)
+      ToolbarButton(label = "Back", marker = "<", enabled = !busy, onClick = onNavigateBack)
       Spacer(modifier = Modifier.width(8.dp))
       ToolbarDivider()
     }
     ToolbarButton(label = sourceControlLabel, marker = "br")
     ToolbarDivider()
-    ToolbarButton(label = "Refresh", marker = "rf", onClick = onRefresh)
-    ToolbarButton(label = "Validate", marker = "ok")
-    ToolbarButton(label = "Render check", marker = "rc")
+    ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
+    ToolbarButton(label = "Validate", marker = "ok", enabled = !busy)
+    ToolbarButton(label = "Render check", marker = "rc", enabled = !busy)
     ToolbarDivider()
-    ToolbarButton(label = "Read only", marker = "ro", primary = true)
+    ToolbarButton(label = readOnlyModeLabel, marker = "ro", primary = true)
+    if (busyOperation != null) {
+      BusyIndicator(busyOperation)
+    }
     Spacer(modifier = Modifier.weight(1f))
     SearchBox()
   }
 }
 
 @Composable
-private fun ToolbarButton(label: String, marker: String, primary: Boolean = false, onClick: () -> Unit = {}) {
+private fun ToolbarButton(
+  label: String,
+  marker: String,
+  primary: Boolean = false,
+  enabled: Boolean = true,
+  onClick: () -> Unit = {},
+) {
   val background = if (primary) WorkspaceYellow else WorkspaceRaised
-  val foreground = if (primary) Color(0xFF0B0B0D) else WorkspaceText
+  val foreground =
+    when {
+      !enabled -> WorkspaceSteel
+      primary -> Color(0xFF0B0B0D)
+      else -> WorkspaceText
+    }
   val border = if (primary) WorkspaceYellow else WorkspaceLine
   Row(
     modifier =
@@ -161,7 +184,7 @@ private fun ToolbarButton(label: String, marker: String, primary: Boolean = fals
       .clip(RoundedCornerShape(6.dp))
       .border(1.dp, border, RoundedCornerShape(6.dp))
       .background(background)
-      .clickable(role = Role.Button, onClick = onClick)
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
       .padding(horizontal = 9.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -174,6 +197,23 @@ private fun ToolbarButton(label: String, marker: String, primary: Boolean = fals
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
+  }
+}
+
+@Composable
+private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
+  val label = when (busyOperation) {
+    SkillBillBusyOperation.OPEN_REPO -> "Opening..."
+    SkillBillBusyOperation.REFRESH -> "Refreshing..."
+    SkillBillBusyOperation.CHOOSE_DIRECTORY -> "Choosing..."
+  }
+  Row(
+    modifier = Modifier.padding(start = 4.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    MiniIcon(text = "..", tint = WorkspaceYellow)
+    Text(text = label, color = WorkspaceMuted, fontSize = 11.sp, maxLines = 1)
   }
 }
 
@@ -221,10 +261,17 @@ private fun NavigationPane(
   repoStatus: RepoLoadStatus,
   treeItems: List<SkillBillTreeItem>,
   selectedNodeId: String?,
+  expandedNodeIds: Set<String>,
+  busyOperation: SkillBillBusyOperation?,
+  policyLabel: String,
   onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
+  onChooseRepoDirectory: () -> Unit,
   onNodeSelected: (String) -> Unit,
+  onNodeExpandedToggled: (String) -> Unit,
+  onMoveSelection: (Int) -> Unit,
 ) {
+  val busy = busyOperation != null
   Column(
     modifier =
     Modifier
@@ -235,19 +282,57 @@ private fun NavigationPane(
     RepositorySelector(
       repoPath = repoPath,
       repoStatus = repoStatus,
+      busy = busy,
       onRepoPathChanged = onRepoPathChanged,
       onRepoSelected = onRepoSelected,
+      onChooseRepoDirectory = onChooseRepoDirectory,
     )
-    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
+    Column(
+      modifier =
+      Modifier
+        .weight(1f)
+        .verticalScroll(rememberScrollState())
+        .onPreviewKeyEvent { event ->
+          if (busy || event.type != KeyEventType.KeyDown) {
+            false
+          } else {
+            when (event.key) {
+              Key.DirectionDown -> {
+                onMoveSelection(1)
+                true
+              }
+              Key.DirectionUp -> {
+                onMoveSelection(-1)
+                true
+              }
+              else -> false
+            }
+          }
+        }
+        .focusable()
+        .padding(vertical = 6.dp),
+    ) {
       if (treeItems.isEmpty()) {
         EmptyTreeMessage(repoStatus)
       }
       treeItems.forEach { group ->
-        NavGroup(group = group, selectedNodeId = selectedNodeId, onNodeSelected = onNodeSelected)
+        NavGroup(
+          group = group,
+          selectedNodeId = selectedNodeId,
+          expanded = group.id in expandedNodeIds,
+          enabled = !busy,
+          onNodeSelected = onNodeSelected,
+          onNodeExpandedToggled = onNodeExpandedToggled,
+        )
       }
       HorizontalDivider(modifier = Modifier.padding(top = 10.dp, bottom = 8.dp), color = WorkspaceLine)
-      RepositoryAction(label = "Validation", marker = "vl", badge = repoStatus.issueCount.takeIf { it > 0 }?.toString())
-      RepositoryAction(label = "Read-only browsing", marker = "ro")
+      RepositoryAction(
+        label = "Validation",
+        marker = "vl",
+        badge = repoStatus.issueCount.takeIf { it > 0 }?.toString(),
+        enabled = !busy,
+      )
+      RepositoryAction(label = "Read-only browsing", marker = "ro", enabled = !busy)
     }
     Row(
       modifier =
@@ -262,7 +347,7 @@ private fun NavigationPane(
     ) {
       MiniIcon(text = "lk", tint = WorkspaceSteel)
       Text(text = "contract policy:", color = WorkspaceSteel, fontSize = 11.sp)
-      Text(text = "strict", color = WorkspaceText, fontSize = 11.sp)
+      Text(text = policyLabel, color = WorkspaceText, fontSize = 11.sp)
     }
   }
 }
@@ -271,8 +356,10 @@ private fun NavigationPane(
 private fun RepositorySelector(
   repoPath: String,
   repoStatus: RepoLoadStatus,
+  busy: Boolean,
   onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
+  onChooseRepoDirectory: () -> Unit,
 ) {
   Column(
     modifier =
@@ -297,6 +384,7 @@ private fun RepositorySelector(
       BasicTextField(
         value = repoPath,
         onValueChange = onRepoPathChanged,
+        enabled = !busy,
         textStyle = androidx.compose.ui.text.TextStyle(
           color = WorkspaceText,
           fontSize = 12.sp,
@@ -306,11 +394,18 @@ private fun RepositorySelector(
         modifier = Modifier.weight(1f),
       )
       Text(
-        text = "Open",
-        color = WorkspaceYellow,
+        text = if (busy) "Busy" else "Open",
+        color = if (busy) WorkspaceSteel else WorkspaceYellow,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.clickable(role = Role.Button) { onRepoSelected(repoPath) },
+        modifier = Modifier.clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) },
+      )
+      Text(
+        text = "...",
+        color = if (busy) WorkspaceSteel else WorkspaceYellow,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory),
       )
     }
     Text(
@@ -335,39 +430,84 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
 }
 
 @Composable
-private fun NavGroup(group: SkillBillTreeItem, selectedNodeId: String?, onNodeSelected: (String) -> Unit) {
+private fun NavGroup(
+  group: SkillBillTreeItem,
+  selectedNodeId: String?,
+  expanded: Boolean,
+  enabled: Boolean,
+  onNodeSelected: (String) -> Unit,
+  onNodeExpandedToggled: (String) -> Unit,
+) {
+  val selected = selectedNodeId == group.id
+  val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
+  val iconTint = if (selected) WorkspaceYellow else WorkspaceSteel
+  val textColor =
+    when {
+      selected -> WorkspaceText
+      else -> WorkspaceSteel
+    }
   Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)) {
     Row(
-      modifier = Modifier.fillMaxWidth().height(27.dp).padding(horizontal = 8.dp),
+      modifier =
+      Modifier
+        .fillMaxWidth()
+        .height(27.dp)
+        .padding(start = 2.dp, end = 4.dp)
+        .clip(RoundedCornerShape(3.dp))
+        .background(rowBackground)
+        .semantics { this.selected = selected }
+        .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
+        .padding(end = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      Text(text = "⌄", color = WorkspaceSteel, fontSize = 12.sp)
-      MiniIcon(text = markerFor(group.kind), tint = WorkspaceSteel)
+      Box(
+        modifier =
+        Modifier
+          .width(3.dp)
+          .fillMaxHeight()
+          .background(if (selected) WorkspaceYellow else Color.Transparent),
+      )
+      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+      MiniIcon(text = markerFor(group.kind), tint = iconTint)
       Text(
         text = group.label,
-        color = WorkspaceSteel,
+        color = textColor,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.children.size.toString(), color = WorkspaceSteel, fontSize = 11.sp)
+      Text(text = group.children.size.toString(), color = iconTint, fontSize = 11.sp)
     }
-    group.children.forEach { node ->
-      NavNodeRow(
-        node = node,
-        selected = selectedNodeId == node.id,
-        onNodeSelected = onNodeSelected,
-      )
+    if (expanded) {
+      group.children.forEach { node ->
+        NavNodeRow(
+          node = node,
+          selected = selectedNodeId == node.id,
+          enabled = enabled,
+          onNodeSelected = onNodeSelected,
+        )
+      }
     }
   }
 }
 
 @Composable
-private fun NavNodeRow(node: SkillBillTreeItem, selected: Boolean, onNodeSelected: (String) -> Unit) {
+private fun NavNodeRow(
+  node: SkillBillTreeItem,
+  selected: Boolean,
+  enabled: Boolean,
+  onNodeSelected: (String) -> Unit,
+) {
   val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
   val iconTint = if (selected) WorkspaceYellow else WorkspaceSteel
+  val textAlpha =
+    when {
+      !enabled -> 0.42f
+      selected -> 1f
+      else -> 0.86f
+    }
   Row(
     modifier =
     Modifier
@@ -377,7 +517,7 @@ private fun NavNodeRow(node: SkillBillTreeItem, selected: Boolean, onNodeSelecte
       .clip(RoundedCornerShape(3.dp))
       .background(rowBackground)
       .semantics { this.selected = selected }
-      .clickable(role = Role.Button) { onNodeSelected(node.id) },
+      .clickable(enabled = enabled, role = Role.Button) { onNodeSelected(node.id) },
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Box(
@@ -391,16 +531,17 @@ private fun NavNodeRow(node: SkillBillTreeItem, selected: Boolean, onNodeSelecte
     MiniIcon(text = markerFor(node.kind), tint = iconTint)
     Text(
       text = node.label,
-      color = WorkspaceText.copy(alpha = if (selected) 1f else 0.86f),
+      color = WorkspaceText.copy(alpha = textAlpha),
       fontSize = 12.5.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.padding(start = 8.dp).weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    if (!node.editable) {
+    val readOnlyLabel = node.readOnlyLabel ?: "RO".takeIf { !node.editable }
+    if (readOnlyLabel != null) {
       Text(
-        text = "RO",
+        text = readOnlyLabel,
         color = WorkspaceSteel,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
@@ -413,7 +554,13 @@ private fun NavNodeRow(node: SkillBillTreeItem, selected: Boolean, onNodeSelecte
 }
 
 @Composable
-private fun RepositoryAction(label: String, marker: String, badge: String? = null) {
+private fun RepositoryAction(
+  label: String,
+  marker: String,
+  badge: String? = null,
+  enabled: Boolean = true,
+) {
+  val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
   Row(
     modifier =
     Modifier
@@ -421,7 +568,7 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
       .height(28.dp)
       .padding(horizontal = 6.dp)
       .clip(RoundedCornerShape(3.dp))
-      .clickable(role = Role.Button) {}
+      .clickable(enabled = enabled, role = Role.Button) {}
       .padding(horizontal = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -429,7 +576,7 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
     MiniIcon(text = marker, tint = WorkspaceSteel)
     Text(
       text = label,
-      color = WorkspaceText.copy(alpha = 0.86f),
+      color = contentColor,
       fontSize = 12.5.sp,
       modifier = Modifier.weight(1f),
     )
@@ -459,12 +606,18 @@ private fun EditorTabs(editor: EditorPlaceholder) {
       .horizontalScroll(rememberScrollState()),
     verticalAlignment = Alignment.Bottom,
   ) {
-    EditorTab(editor.authoredPath ?: editor.title, active = true, dirty = false, readOnly = !editor.editable)
+    EditorTab(
+      name = editor.authoredPath ?: editor.title,
+      active = true,
+      dirty = false,
+      readOnly = !editor.editable,
+      readOnlyLabel = editor.readOnlyLabel,
+    )
   }
 }
 
 @Composable
-private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: Boolean) {
+private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: Boolean, readOnlyLabel: String?) {
   val background = if (active) WorkspaceBackground else WorkspacePanel
   val textColor = if (active) WorkspaceText else WorkspaceMuted
   Column(
@@ -499,7 +652,7 @@ private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: B
         Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(WorkspaceYellow))
       }
       if (readOnly) {
-        Text(text = "RO", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text(text = readOnlyLabel ?: "RO", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
       }
     }
   }
@@ -537,7 +690,7 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
     MiniIcon(text = "ro", tint = WorkspaceYellow)
     Text(
       text = if (editor.kind == "generated artifact") {
-        "Generated artifact is read-only"
+        "Generated artifact is ${editor.readOnlyLabel ?: "read-only"}"
       } else {
         "Read-only browser"
       },
@@ -641,6 +794,7 @@ private fun InspectorPane(editor: EditorPlaceholder, repoStatus: RepoLoadStatus)
         KeyValueRow("kind", editor.kind ?: "none")
         KeyValueRow("authored path", editor.authoredPath ?: "-")
         KeyValueRow("status", editor.status ?: "-", tone = toneForStatus(editor.status))
+        KeyValueRow("mode", editor.readOnlyLabel ?: if (editor.editable) "editable" else "read-only")
         KeyValueRow(
           "editable",
           if (editor.editable) "yes" else "no",
@@ -867,7 +1021,7 @@ private fun ValidationTable(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     TableHeader("Lvl", "Code", "Message", "Source")
     TableRow(
-      first = "ro",
+      first = editor.readOnlyLabel ?: if (editor.editable) "ok" else "ro",
       second = editor.status ?: "-",
       third = editor.detail,
       fourth = editor.authoredPath ?: "-",
@@ -905,7 +1059,7 @@ private fun InstallConsole(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
     val lines = listOf(
       ConsoleLine("Selected: ${editor.title}", Tone.Neutral),
-      ConsoleLine("Mode: read-only", Tone.Warning),
+      ConsoleLine("Mode: ${editor.readOnlyLabel ?: "read-only"}", Tone.Warning),
       ConsoleLine("Authored path: ${editor.authoredPath ?: "-"}", Tone.Neutral),
     )
     lines.forEachIndexed { index, line ->
@@ -1005,18 +1159,17 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    StatusItem("br", state.sourceControl.branchLabel, Tone.Neutral)
-    StatusItem("rp", state.selectedRepoPath ?: "no repo", Tone.Neutral)
-    StatusItem("tr", "${state.treeItems.sumOf { it.children.size }} targets", Tone.Neutral)
+    StatusItem("br", state.statusBar.branchLabel, Tone.Neutral)
+    StatusItem("rp", state.statusBar.repoPathLabel, Tone.Neutral)
+    StatusItem("tr", "${state.statusBar.targetCount} targets", Tone.Neutral)
     StatusItem(
       "vl",
       "validation: ${state.repoStatus.issueCount} issue(s)",
       if (state.repoStatus.issueCount == 0) Tone.Success else Tone.Warning,
     )
     Spacer(modifier = Modifier.weight(1f))
-    StatusItem("ro", "read-only", Tone.Warning)
-    Text(text = "UTF-8", color = WorkspaceSteel, fontSize = 11.sp)
-    Text(text = "YAML", color = WorkspaceSteel, fontSize = 11.sp)
+    StatusItem("ro", state.statusBar.readOnlyModeLabel, Tone.Warning)
+    StatusItem("lk", state.statusBar.policyLabel, Tone.Neutral)
   }
 }
 

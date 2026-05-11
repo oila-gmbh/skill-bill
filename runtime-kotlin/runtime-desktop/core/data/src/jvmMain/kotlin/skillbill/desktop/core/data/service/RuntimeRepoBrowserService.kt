@@ -364,6 +364,7 @@ class RuntimeRepoBrowserService :
           authoredPath = relative,
           status = "read-only",
           editable = false,
+          readOnlyLabel = READ_ONLY_LABEL,
         )
       SkillBillTreeItem(
         id = id,
@@ -372,6 +373,7 @@ class RuntimeRepoBrowserService :
         authoredPath = relative,
         status = "read-only",
         editable = false,
+        readOnlyLabel = READ_ONLY_LABEL,
         metadata = SkillBillTreeItemMetadata(kind = "generated artifact"),
       )
     }
@@ -434,6 +436,7 @@ class RuntimeRepoBrowserService :
     val authoredPath: String? = null,
     val status: String? = null,
     val editable: Boolean = false,
+    val readOnlyLabel: String? = null,
     val contentFile: Path? = null,
     val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
     val metadata: SkillBillTreeItemMetadata? = null,
@@ -456,6 +459,7 @@ class RuntimeRepoBrowserService :
         authoredPath = authoredPath,
         status = status,
         editable = editable,
+        readOnlyLabel = readOnlyLabel,
         content = content,
         generatedArtifacts = generatedArtifacts,
       )
@@ -465,6 +469,7 @@ class RuntimeRepoBrowserService :
   companion object {
     val SkillItemKind = TreeItemKind.SKILL
     private const val GIT_STATUS_TIMEOUT_SECONDS = 2L
+    private const val READ_ONLY_LABEL = "RO"
   }
 }
 
