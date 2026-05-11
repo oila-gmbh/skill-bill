@@ -3,6 +3,8 @@ package skillbill.desktop.feature.skillbill.state
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.RepoLoadState
+import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.service.AuthoringGateway
@@ -21,25 +23,38 @@ class SkillBillViewModel(
   private val gitGateway: GitGateway,
   private val recentRepoRepository: RecentRepoRepository,
 ) {
+  private var currentRepoPath: String? = recentRepoRepository.recentRepoPath()
   private var currentState =
-    createState(selectedRepoPath = recentRepoRepository.recentRepoPath(), selectedTreeItemId = null)
+    createState(selectedRepoPath = currentRepoPath, selectedTreeItemId = null)
 
   fun state(selectedTreeItemId: String? = currentState.selectedTreeItemId): SkillBillState {
     currentState = createState(
-      selectedRepoPath = recentRepoRepository.recentRepoPath(),
+      selectedRepoPath = currentRepoPath,
       selectedTreeItemId = selectedTreeItemId,
     )
     return currentState
   }
 
   fun selectRepoPath(repoPath: String): SkillBillState {
-    recentRepoRepository.rememberRepoPath(repoPath)
-    currentState = createState(selectedRepoPath = recentRepoRepository.recentRepoPath(), selectedTreeItemId = null)
+    currentState = createState(selectedRepoPath = repoPath, selectedTreeItemId = null)
+    currentRepoPath = currentState.selectedRepoPath
+    if (currentState.repoStatus.state == RepoLoadState.LOADED) {
+      currentState.selectedRepoPath?.let(recentRepoRepository::rememberRepoPath)
+    }
     return currentState
   }
 
   fun selectTreeItem(itemId: String): SkillBillState {
     currentState = createState(selectedRepoPath = currentState.selectedRepoPath, selectedTreeItemId = itemId)
+    return currentState
+  }
+
+  fun refresh(): SkillBillState {
+    currentState = createState(
+      selectedRepoPath = currentState.selectedRepoPath,
+      selectedTreeItemId = currentState.selectedTreeItemId,
+    )
+    currentRepoPath = currentState.selectedRepoPath
     return currentState
   }
 
@@ -51,6 +66,7 @@ class SkillBillViewModel(
     }
     return SkillBillState(
       selectedRepoPath = session?.repoPath,
+      repoStatus = session?.loadStatus ?: RepoLoadStatus.empty,
       treeItems = treeItems,
       selectedTreeItemId = resolvedTreeItemId,
       editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty,

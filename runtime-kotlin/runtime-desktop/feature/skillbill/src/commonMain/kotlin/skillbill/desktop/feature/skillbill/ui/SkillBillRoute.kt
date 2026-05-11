@@ -26,6 +26,7 @@ fun SkillBillRoute(
     canNavigateBack = canNavigateBack,
     onNavigateBack = onNavigateBack,
     onRepoSelected = { repoPath -> state = viewModel.selectRepoPath(repoPath) },
+    onRefresh = { state = viewModel.refresh() },
     onTreeItemSelected = { itemId ->
       state = viewModel.selectTreeItem(itemId)
       onSourceRouteSelected(itemId)

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -46,7 +47,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillMetrics
+import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.RepoLoadState
+import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillState
+import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.TreeItemKind
 
 private val WorkspaceBackground = Color(0xFF050506)
 private val WorkspacePanel = Color(0xFF121216)
@@ -67,26 +73,32 @@ fun SkillBillFrame(
   canNavigateBack: Boolean,
   onNavigateBack: () -> Unit,
   onRepoSelected: (String) -> Unit,
+  onRefresh: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
 ) {
   var selectedNodeId by remember(state.selectedTreeItemId) {
-    mutableStateOf(state.selectedTreeItemId ?: DEFAULT_SELECTED_NODE_ID)
+    mutableStateOf(state.selectedTreeItemId)
   }
   var repoPath by remember(state.selectedRepoPath) {
-    mutableStateOf(state.selectedRepoPath ?: "~/code/skillbill/acme-ai-platform")
+    mutableStateOf(state.selectedRepoPath.orEmpty())
   }
 
   Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
     WorkspaceToolbar(
       canNavigateBack = canNavigateBack,
       onNavigateBack = onNavigateBack,
+      onRefresh = onRefresh,
+      sourceControlLabel = state.sourceControl.branchLabel,
     )
     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
       NavigationPane(
         repoPath = repoPath,
+        repoStatus = state.repoStatus,
+        treeItems = state.treeItems,
         selectedNodeId = selectedNodeId,
+        onRepoPathChanged = { repoPath = it },
         onRepoSelected = {
-          repoPath = it
+          repoPath = it.trim()
           onRepoSelected(it)
         },
         onNodeSelected = {
@@ -95,15 +107,20 @@ fun SkillBillFrame(
         },
       )
       VerticalDivider(color = WorkspaceLine)
-      CenterWorkspace(modifier = Modifier.weight(1f).fillMaxHeight())
-      InspectorPane(selectedNodeId = selectedNodeId)
+      CenterWorkspace(editor = state.editor, modifier = Modifier.weight(1f).fillMaxHeight())
+      InspectorPane(editor = state.editor, repoStatus = state.repoStatus)
     }
-    WorkspaceStatusBar()
+    WorkspaceStatusBar(state = state)
   }
 }
 
 @Composable
-private fun WorkspaceToolbar(canNavigateBack: Boolean, onNavigateBack: () -> Unit) {
+private fun WorkspaceToolbar(
+  canNavigateBack: Boolean,
+  onNavigateBack: () -> Unit,
+  onRefresh: () -> Unit,
+  sourceControlLabel: String,
+) {
   Row(
     modifier =
     Modifier
@@ -119,13 +136,13 @@ private fun WorkspaceToolbar(canNavigateBack: Boolean, onNavigateBack: () -> Uni
       Spacer(modifier = Modifier.width(8.dp))
       ToolbarDivider()
     }
-    ToolbarButton(label = "main · governed", marker = "br")
+    ToolbarButton(label = sourceControlLabel, marker = "br")
     ToolbarDivider()
+    ToolbarButton(label = "Refresh", marker = "rf", onClick = onRefresh)
     ToolbarButton(label = "Validate", marker = "ok")
-    ToolbarButton(label = "Build install", marker = "bd")
     ToolbarButton(label = "Render check", marker = "rc")
     ToolbarDivider()
-    ToolbarButton(label = "Publish", marker = "up", primary = true)
+    ToolbarButton(label = "Read only", marker = "ro", primary = true)
     Spacer(modifier = Modifier.weight(1f))
     SearchBox()
   }
@@ -201,7 +218,10 @@ private fun SearchBox() {
 @Composable
 private fun NavigationPane(
   repoPath: String,
-  selectedNodeId: String,
+  repoStatus: RepoLoadStatus,
+  treeItems: List<SkillBillTreeItem>,
+  selectedNodeId: String?,
+  onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
   onNodeSelected: (String) -> Unit,
 ) {
@@ -212,15 +232,22 @@ private fun NavigationPane(
       .fillMaxHeight()
       .background(WorkspaceSidebar),
   ) {
-    RepositorySelector(repoPath = repoPath, onRepoSelected = onRepoSelected)
+    RepositorySelector(
+      repoPath = repoPath,
+      repoStatus = repoStatus,
+      onRepoPathChanged = onRepoPathChanged,
+      onRepoSelected = onRepoSelected,
+    )
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
-      WorkspaceGroups.forEach { group ->
+      if (treeItems.isEmpty()) {
+        EmptyTreeMessage(repoStatus)
+      }
+      treeItems.forEach { group ->
         NavGroup(group = group, selectedNodeId = selectedNodeId, onNodeSelected = onNodeSelected)
       }
       HorizontalDivider(modifier = Modifier.padding(top = 10.dp, bottom = 8.dp), color = WorkspaceLine)
-      RepositoryAction(label = "Validation", marker = "vl", badge = "2")
-      RepositoryAction(label = "History", marker = "hi")
-      RepositoryAction(label = "Publishing", marker = "pb")
+      RepositoryAction(label = "Validation", marker = "vl", badge = repoStatus.issueCount.takeIf { it > 0 }?.toString())
+      RepositoryAction(label = "Read-only browsing", marker = "ro")
     }
     Row(
       modifier =
@@ -241,7 +268,12 @@ private fun NavigationPane(
 }
 
 @Composable
-private fun RepositorySelector(repoPath: String, onRepoSelected: (String) -> Unit) {
+private fun RepositorySelector(
+  repoPath: String,
+  repoStatus: RepoLoadStatus,
+  onRepoPathChanged: (String) -> Unit,
+  onRepoSelected: (String) -> Unit,
+) {
   Column(
     modifier =
     Modifier
@@ -257,37 +289,53 @@ private fun RepositorySelector(repoPath: String, onRepoSelected: (String) -> Uni
         .height(32.dp)
         .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp))
         .background(WorkspaceRaised, RoundedCornerShape(6.dp))
-        .clickable(role = Role.Button) { onRepoSelected(repoPath) }
         .padding(horizontal = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       MiniIcon(text = "db", tint = WorkspaceYellow)
-      Text(
-        text = "acme-ai-platform",
-        color = WorkspaceText,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
+      BasicTextField(
+        value = repoPath,
+        onValueChange = onRepoPathChanged,
+        textStyle = androidx.compose.ui.text.TextStyle(
+          color = WorkspaceText,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+        ),
+        singleLine = true,
         modifier = Modifier.weight(1f),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
       )
-      Text(text = "⌄", color = WorkspaceSteel, fontSize = 13.sp)
+      Text(
+        text = "Open",
+        color = WorkspaceYellow,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.clickable(role = Role.Button) { onRepoSelected(repoPath) },
+      )
     }
     Text(
-      text = repoPath,
-      color = WorkspaceSteel,
+      text = repoStatus.message,
+      color = if (repoStatus.state == RepoLoadState.INVALID) WorkspaceRed else WorkspaceSteel,
       fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
       modifier = Modifier.padding(top = 6.dp),
-      maxLines = 1,
+      maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
   }
 }
 
 @Composable
-private fun NavGroup(group: WorkspaceGroup, selectedNodeId: String, onNodeSelected: (String) -> Unit) {
+private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
+  Text(
+    text = repoStatus.message,
+    color = if (repoStatus.state == RepoLoadState.INVALID) WorkspaceRed else WorkspaceSteel,
+    fontSize = 12.sp,
+    modifier = Modifier.padding(12.dp),
+  )
+}
+
+@Composable
+private fun NavGroup(group: SkillBillTreeItem, selectedNodeId: String?, onNodeSelected: (String) -> Unit) {
   Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)) {
     Row(
       modifier = Modifier.fillMaxWidth().height(27.dp).padding(horizontal = 8.dp),
@@ -295,7 +343,7 @@ private fun NavGroup(group: WorkspaceGroup, selectedNodeId: String, onNodeSelect
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       Text(text = "⌄", color = WorkspaceSteel, fontSize = 12.sp)
-      MiniIcon(text = group.marker, tint = WorkspaceSteel)
+      MiniIcon(text = markerFor(group.kind), tint = WorkspaceSteel)
       Text(
         text = group.label,
         color = WorkspaceSteel,
@@ -304,9 +352,9 @@ private fun NavGroup(group: WorkspaceGroup, selectedNodeId: String, onNodeSelect
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.nodes.size.toString(), color = WorkspaceSteel, fontSize = 11.sp)
+      Text(text = group.children.size.toString(), color = WorkspaceSteel, fontSize = 11.sp)
     }
-    group.nodes.forEach { node ->
+    group.children.forEach { node ->
       NavNodeRow(
         node = node,
         selected = selectedNodeId == node.id,
@@ -317,7 +365,7 @@ private fun NavGroup(group: WorkspaceGroup, selectedNodeId: String, onNodeSelect
 }
 
 @Composable
-private fun NavNodeRow(node: WorkspaceNode, selected: Boolean, onNodeSelected: (String) -> Unit) {
+private fun NavNodeRow(node: SkillBillTreeItem, selected: Boolean, onNodeSelected: (String) -> Unit) {
   val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
   val iconTint = if (selected) WorkspaceYellow else WorkspaceSteel
   Row(
@@ -340,7 +388,7 @@ private fun NavNodeRow(node: WorkspaceNode, selected: Boolean, onNodeSelected: (
         .background(if (selected) WorkspaceYellow else Color.Transparent),
     )
     Spacer(modifier = Modifier.width(22.dp))
-    MiniIcon(text = node.marker, tint = iconTint)
+    MiniIcon(text = markerFor(node.kind), tint = iconTint)
     Text(
       text = node.label,
       color = WorkspaceText.copy(alpha = if (selected) 1f else 0.86f),
@@ -350,16 +398,16 @@ private fun NavNodeRow(node: WorkspaceNode, selected: Boolean, onNodeSelected: (
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    if (node.changed) {
+    if (!node.editable) {
       Text(
-        text = "M",
-        color = WorkspaceAmber,
+        text = "RO",
+        color = WorkspaceSteel,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.padding(end = 8.dp),
       )
     }
-    StatusDot(level = node.status)
+    StatusDot(level = validationLevelFor(node.status))
     Spacer(modifier = Modifier.width(8.dp))
   }
 }
@@ -392,16 +440,16 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
 }
 
 @Composable
-private fun CenterWorkspace(modifier: Modifier) {
+private fun CenterWorkspace(editor: EditorPlaceholder, modifier: Modifier) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
-    EditorTabs()
-    CodeEditor(modifier = Modifier.weight(1f))
-    BottomDock()
+    EditorTabs(editor)
+    CodeEditor(editor = editor, modifier = Modifier.weight(1f))
+    BottomDock(editor = editor)
   }
 }
 
 @Composable
-private fun EditorTabs() {
+private fun EditorTabs(editor: EditorPlaceholder) {
   Row(
     modifier =
     Modifier
@@ -411,15 +459,12 @@ private fun EditorTabs() {
       .horizontalScroll(rememberScrollState()),
     verticalAlignment = Alignment.Bottom,
   ) {
-    EditorTab("skill.yaml", active = true, dirty = true)
-    EditorTab("schemas/summary.v3.json", active = false, dirty = true)
-    EditorTab("src/skill.ts", active = false, dirty = false)
-    EditorTab("README.md", active = false, dirty = false)
+    EditorTab(editor.authoredPath ?: editor.title, active = true, dirty = false, readOnly = !editor.editable)
   }
 }
 
 @Composable
-private fun EditorTab(name: String, active: Boolean, dirty: Boolean) {
+private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: Boolean) {
   val background = if (active) WorkspaceBackground else WorkspacePanel
   val textColor = if (active) WorkspaceText else WorkspaceMuted
   Column(
@@ -453,12 +498,19 @@ private fun EditorTab(name: String, active: Boolean, dirty: Boolean) {
       if (dirty) {
         Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(WorkspaceYellow))
       }
+      if (readOnly) {
+        Text(text = "RO", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+      }
     }
   }
 }
 
 @Composable
-private fun CodeEditor(modifier: Modifier = Modifier) {
+private fun CodeEditor(editor: EditorPlaceholder, modifier: Modifier = Modifier) {
+  val lines =
+    (editor.content ?: editor.detail)
+      .ifBlank { "No source selected" }
+      .lines()
   Column(
     modifier =
     modifier
@@ -466,9 +518,34 @@ private fun CodeEditor(modifier: Modifier = Modifier) {
       .background(WorkspaceBackground)
       .verticalScroll(rememberScrollState()),
   ) {
-    SkillSourceLines.forEachIndexed { index, line ->
-      CodeLine(number = index + 1, line = line, flagged = index == 11 || index == 24)
+    if (!editor.editable) {
+      ReadOnlyBanner(editor)
     }
+    lines.forEachIndexed { index, line ->
+      CodeLine(number = index + 1, line = line, flagged = false)
+    }
+  }
+}
+
+@Composable
+private fun ReadOnlyBanner(editor: EditorPlaceholder) {
+  Row(
+    modifier = Modifier.fillMaxWidth().background(WorkspaceRaised).padding(horizontal = 14.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(text = "ro", tint = WorkspaceYellow)
+    Text(
+      text = if (editor.kind == "generated artifact") {
+        "Generated artifact is read-only"
+      } else {
+        "Read-only browser"
+      },
+      color = WorkspaceMuted,
+      fontSize = 11.sp,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 
@@ -548,8 +625,7 @@ private fun SyntaxText(line: String) {
 }
 
 @Composable
-private fun InspectorPane(selectedNodeId: String) {
-  val selectedNode = WorkspaceGroups.flatMap { it.nodes }.firstOrNull { it.id == selectedNodeId }
+private fun InspectorPane(editor: EditorPlaceholder, repoStatus: RepoLoadStatus) {
   Column(
     modifier =
     Modifier
@@ -558,51 +634,69 @@ private fun InspectorPane(selectedNodeId: String) {
       .background(WorkspaceBackground)
       .border(BorderStroke(0.dp, Color.Transparent)),
   ) {
-    InspectorHeader(selectedNode?.label ?: "meeting-summarizer")
+    InspectorHeader(editor)
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
       InspectorSection(title = "Metadata", marker = "mt") {
-        KeyValueRow("owner", "ai-platform@skillbill")
-        KeyValueRow("visibility", "internal")
-        KeyValueRow("contract", "v3.2")
-        KeyValueRow("signed", "verified", tone = Tone.Success)
+        KeyValueRow("name", editor.skillName ?: editor.title)
+        KeyValueRow("kind", editor.kind ?: "none")
+        KeyValueRow("authored path", editor.authoredPath ?: "-")
+        KeyValueRow("status", editor.status ?: "-", tone = toneForStatus(editor.status))
+        KeyValueRow(
+          "editable",
+          if (editor.editable) "yes" else "no",
+          tone = if (editor.editable) Tone.Success else Tone.Warning,
+        )
       }
-      InspectorSection(title = "Contract status", marker = "vl", badge = "FAIL") {
-        CheckRow(ok = true, label = "output_schema present")
-        CheckRow(ok = true, label = "must_emit fields declared")
-        CheckRow(ok = false, label = "schema field missing: decisions[].owner")
-        CheckRow(ok = true, label = "forbid_pii enforced")
+      InspectorSection(
+        title = "Repository validation",
+        marker = "vl",
+        badge = repoStatus.issueCount.takeIf { it > 0 }?.toString(),
+      ) {
+        KeyValueRow("state", repoStatus.state.name.lowercase())
+        KeyValueRow("skills", repoStatus.skillCount.toString())
+        KeyValueRow("platform packs", repoStatus.platformPackCount.toString())
+        KeyValueRow("add-ons", repoStatus.addonCount.toString())
+        KeyValueRow("native agents", repoStatus.nativeAgentCount.toString())
       }
-      InspectorSection(title = "Routing signals", marker = "rt") {
-        KeyValueRow("intents", "meeting.summary, notes.action_items")
-        KeyValueRow("confidence", "0.62")
-        KeyValueRow("fallback", "ai-platform.passthrough")
-        KeyValueRow("pack baseline", "below 0.70", tone = Tone.Warning)
+      InspectorSection(
+        title = "Validation issues",
+        marker = "x",
+        badge = repoStatus.issueCount.takeIf {
+          it > 0
+        }?.toString(),
+      ) {
+        if (repoStatus.issues.isEmpty()) {
+          CheckRow(ok = true, label = repoStatus.message)
+        } else {
+          repoStatus.issues.take(5).forEach { issue -> CheckRow(ok = false, label = issue) }
+        }
       }
-      InspectorSection(title = "Dependencies", marker = "dp") {
-        DependencyRow("pii-redactor", "^2.0", "2.4.1")
-        DependencyRow("tracing-otel", "^1.1", "1.3.0")
-      }
-      InspectorSection(title = "Generated artifacts", marker = "gn") {
-        KeyValueRow("skill.bundle.mjs", "stale +3", tone = Tone.Warning)
-        KeyValueRow("contract.lock.json", "fresh")
-        KeyValueRow("generated_from", "src/skill.ts")
-      }
-      InspectorSection(title = "Audit", marker = "hi") {
-        KeyValueRow("last publish", "apr 30, 14:22")
-        KeyValueRow("publisher", "nadia.k")
-        KeyValueRow("installs (30d)", "2,481")
+      InspectorSection(
+        title = "Generated artifacts",
+        marker = "gn",
+        badge = editor.generatedArtifacts.size.takeIf {
+          it > 0
+        }?.toString(),
+      ) {
+        if (editor.generatedArtifacts.isEmpty()) {
+          KeyValueRow("visible", "none")
+        } else {
+          editor.generatedArtifacts.forEach { artifact ->
+            KeyValueRow(artifact.path, "read-only", tone = Tone.Warning)
+          }
+        }
       }
     }
   }
 }
 
 @Composable
-private fun InspectorHeader(label: String) {
+private fun InspectorHeader(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxWidth().background(WorkspacePanel).padding(12.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       MiniIcon(text = "sk", tint = WorkspaceYellow)
       Text(
-        text = label,
+        text = editor.skillName ?: editor.title,
         color = WorkspaceText,
         fontSize = 13.sp,
         fontFamily = FontFamily.Monospace,
@@ -611,10 +705,10 @@ private fun InspectorHeader(label: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
-      Badge(text = "v1.4.0", tone = Tone.Neutral)
+      Badge(text = if (editor.editable) "EDIT" else "RO", tone = if (editor.editable) Tone.Success else Tone.Warning)
     }
     Text(
-      text = "Internal · governed authoring · skill",
+      text = editor.kind ?: editor.detail,
       color = WorkspaceMuted,
       fontSize = 11.sp,
       modifier = Modifier.padding(top = 4.dp),
@@ -708,7 +802,7 @@ private fun DependencyRow(name: String, range: String, resolved: String) {
 }
 
 @Composable
-private fun BottomDock() {
+private fun BottomDock(editor: EditorPlaceholder) {
   var activeTab by remember { mutableStateOf(DockTab.Validation) }
   Column(
     modifier =
@@ -731,17 +825,16 @@ private fun BottomDock() {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
         MiniIcon(text = "run", tint = WorkspaceMuted)
-        Text(text = "last run · 14s ·", color = WorkspaceMuted, fontSize = 11.sp)
-        Text(text = "1 error", color = WorkspaceRed, fontSize = 11.sp)
+        Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
       }
     }
     HorizontalDivider(color = WorkspaceLine)
     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(WorkspaceBackground)) {
       when (activeTab) {
-        DockTab.Validation -> ValidationTable()
-        DockTab.Changes -> ChangesTable()
+        DockTab.Validation -> ValidationTable(editor)
+        DockTab.Changes -> ChangesTable(editor)
         DockTab.History -> HistoryTable()
-        DockTab.Console -> InstallConsole()
+        DockTab.Console -> InstallConsole(editor)
       }
     }
   }
@@ -770,48 +863,24 @@ private fun DockTabButton(tab: DockTab, active: Boolean, onSelected: () -> Unit)
 }
 
 @Composable
-private fun ValidationTable() {
+private fun ValidationTable(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     TableHeader("Lvl", "Code", "Message", "Source")
-    ValidationRows.forEach { row ->
-      TableRow(
-        first = row.level.marker,
-        second = row.code,
-        third = row.message,
-        fourth = row.source,
-        tone = row.level.tone,
-      )
-    }
+    TableRow(
+      first = "ro",
+      second = editor.status ?: "-",
+      third = editor.detail,
+      fourth = editor.authoredPath ?: "-",
+      tone = if (editor.editable) Tone.Success else Tone.Warning,
+    )
   }
 }
 
 @Composable
-private fun ChangesTable() {
+private fun ChangesTable(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxSize().padding(6.dp).verticalScroll(rememberScrollState())) {
-    ChangedFiles.forEach { file ->
-      Row(
-        modifier =
-        Modifier
-          .fillMaxWidth()
-          .height(28.dp)
-          .clip(RoundedCornerShape(3.dp))
-          .clickable(role = Role.Button) {},
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(
-          text = file.state,
-          color = if (file.state == "A") WorkspaceGreen else WorkspaceAmber,
-          fontSize = 11.sp,
-          fontFamily = FontFamily.Monospace,
-          modifier = Modifier.width(32.dp),
-        )
-        Text(
-          text = file.path,
-          color = WorkspaceText.copy(alpha = 0.9f),
-          fontSize = 12.sp,
-          fontFamily = FontFamily.Monospace,
-        )
-      }
+    editor.generatedArtifacts.forEach { artifact ->
+      TableRow("RO", "generated", artifact.reason, artifact.path, Tone.Warning)
     }
   }
 }
@@ -832,9 +901,14 @@ private fun HistoryTable() {
 }
 
 @Composable
-private fun InstallConsole() {
+private fun InstallConsole(editor: EditorPlaceholder) {
   Column(modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
-    ConsoleLines.forEachIndexed { index, line ->
+    val lines = listOf(
+      ConsoleLine("Selected: ${editor.title}", Tone.Neutral),
+      ConsoleLine("Mode: read-only", Tone.Warning),
+      ConsoleLine("Authored path: ${editor.authoredPath ?: "-"}", Tone.Neutral),
+    )
+    lines.forEachIndexed { index, line ->
       Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text(
           text = (index + 1).toString().padStart(2, '0'),
@@ -919,7 +993,7 @@ private fun TableRow(first: String, second: String, third: String, fourth: Strin
 }
 
 @Composable
-private fun WorkspaceStatusBar() {
+private fun WorkspaceStatusBar(state: SkillBillState) {
   Row(
     modifier =
     Modifier
@@ -931,14 +1005,16 @@ private fun WorkspaceStatusBar() {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    StatusItem("br", "main", Tone.Neutral)
-    StatusItem("cm", "8f3a912", Tone.Neutral)
-    StatusItem("wr", "5 changes", Tone.Warning)
-    StatusItem("x", "validation: 1 error / 2 warn", Tone.Error)
-    StatusItem("bd", "install: not built", Tone.Neutral)
-    StatusItem("vl", "contract v3.2", Tone.Neutral)
+    StatusItem("br", state.sourceControl.branchLabel, Tone.Neutral)
+    StatusItem("rp", state.selectedRepoPath ?: "no repo", Tone.Neutral)
+    StatusItem("tr", "${state.treeItems.sumOf { it.children.size }} targets", Tone.Neutral)
+    StatusItem(
+      "vl",
+      "validation: ${state.repoStatus.issueCount} issue(s)",
+      if (state.repoStatus.issueCount == 0) Tone.Success else Tone.Warning,
+    )
     Spacer(modifier = Modifier.weight(1f))
-    StatusItem("tm", "publish blocked · resolve C-204 to unlock", Tone.Neutral)
+    StatusItem("ro", "read-only", Tone.Warning)
     Text(text = "UTF-8", color = WorkspaceSteel, fontSize = 11.sp)
     Text(text = "YAML", color = WorkspaceSteel, fontSize = 11.sp)
   }
@@ -1033,6 +1109,30 @@ private enum class ValidationLevel(val marker: String, val tone: Tone) {
   Ok("ok", Tone.Success),
   Warn("wr", Tone.Warning),
   Error("x", Tone.Error),
+}
+
+private fun markerFor(kind: TreeItemKind): String = when (kind) {
+  TreeItemKind.GROUP -> "gr"
+  TreeItemKind.SKILL -> "sk"
+  TreeItemKind.PLATFORM_PACK -> "pk"
+  TreeItemKind.ADD_ON -> "ad"
+  TreeItemKind.NATIVE_AGENT -> "ag"
+  TreeItemKind.GENERATED_ARTIFACT -> "gn"
+  TreeItemKind.PLACEHOLDER -> "ph"
+}
+
+private fun validationLevelFor(status: String?): ValidationLevel? = when (status) {
+  "complete", "authored", "governed-content" -> ValidationLevel.Ok
+  "draft", "read-only" -> ValidationLevel.Warn
+  null -> null
+  else -> ValidationLevel.Warn
+}
+
+private fun toneForStatus(status: String?): Tone = when (validationLevelFor(status)) {
+  ValidationLevel.Ok -> Tone.Success
+  ValidationLevel.Warn -> Tone.Warning
+  ValidationLevel.Error -> Tone.Error
+  null -> Tone.Neutral
 }
 
 private enum class DockTab(val label: String, val badge: String?, val tone: Tone, val width: Dp) {
