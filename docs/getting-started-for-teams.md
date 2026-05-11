@@ -17,7 +17,7 @@ The useful adoption unit is:
 - strict validation around generated wrappers, manifests, and MCP schemas
 - model-mediated reasoning for code review, planning, audits, and prose
 
-The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` launchers point at packaged Kotlin distribution scripts built by `./install.sh`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
+The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` launchers point at packaged Kotlin distribution scripts copied by `./install.sh` into `~/.skill-bill/runtime/`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
 
 ## Before Inviting The Team
 

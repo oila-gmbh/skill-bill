@@ -41,7 +41,7 @@ cd ~/Development/skill-bill
 ./install.sh
 ```
 
-The installer builds the Kotlin CLI and MCP distributions, verifies the packaged bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
+The installer builds the Kotlin CLI and MCP distributions, copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
 
 Supported install targets:
 

@@ -115,6 +115,18 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `installer registers mcp from durable installed runtime`() {
+    val installScript = Files.readString(runtimeRoot.parent.resolve("install.sh"))
+    assertContains(installScript, "RUNTIME_INSTALL_ROOT")
+    assertContains(installScript, "RUNTIME_MCP_BUILD_BIN")
+    assertContains(installScript, "RUNTIME_MCP_BIN=\"\$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp\"")
+    assertContains(
+      installScript,
+      "run_runtime_cli install register-mcp \"\${AGENT_NAMES[\$i]}\" --runtime-mcp-bin \"\$RUNTIME_MCP_BIN\"",
+    )
+  }
+
+  @Test
   fun `application layer stays independent of entrypoint frameworks`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.application") },
