@@ -24,6 +24,8 @@ fun SkillBillRoute(
   canNavigateBack: Boolean,
   onNavigateBack: () -> Unit,
   onSourceRouteSelected: (String) -> Unit = {},
+  // No-op seam for Subtask 05 (post-render git refresh). Default keeps render dry-run / preview-only.
+  onPostRenderGitRefresh: () -> Unit = {},
 ) {
   val component = rememberScreenComponent<SkillBillComponent>()
   val viewModel = component.viewModel
@@ -90,6 +92,25 @@ fun SkillBillRoute(
           val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
           state = viewModel.finishValidate(result)
         }
+      }
+    },
+    onRender = {
+      if (state.busyOperation == null) {
+        // F-102 mirror: beginRender captures token + session + treeItemId + previousRenderSummary on
+        // the caller dispatcher so the dispatcher work below does not read mutable VM fields off-thread.
+        val request = viewModel.beginRender()
+        state = viewModel.state()
+        coroutineScope.launch {
+          val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
+          state = viewModel.finishRender(result)
+          // No-op seam for Subtask 05 — git status refresh is owned by the route.
+          onPostRenderGitRefresh()
+        }
+      }
+    },
+    onActiveDockTabChanged = { tab ->
+      if (state.busyOperation == null) {
+        state = viewModel.setActiveDockTab(tab)
       }
     },
     onTreeItemSelected = { itemId ->

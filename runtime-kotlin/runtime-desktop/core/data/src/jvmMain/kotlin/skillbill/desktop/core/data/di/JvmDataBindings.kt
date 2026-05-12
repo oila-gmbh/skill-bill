@@ -5,6 +5,7 @@ import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.service.RuntimeRepoBrowserService
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
@@ -26,4 +27,7 @@ interface JvmDataBindings {
 
   @Provides
   fun RuntimeRepoBrowserService.bindValidationGateway(): ValidationGateway = this
+
+  @Provides
+  fun RuntimeRepoBrowserService.bindRenderGateway(): RenderGateway = this
 }

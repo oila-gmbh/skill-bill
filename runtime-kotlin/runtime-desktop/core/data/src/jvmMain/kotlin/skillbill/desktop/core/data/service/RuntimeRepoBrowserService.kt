@@ -4,6 +4,9 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
+import skillbill.desktop.core.domain.model.RenderBlock
+import skillbill.desktop.core.domain.model.RenderRunState
+import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -17,17 +20,21 @@ import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.nativeagent.discoverNativeAgentSourceFiles
 import skillbill.nativeagent.parseNativeAgentSourceFile
+import skillbill.nativeagent.renderNativeAgentSource
 import skillbill.scaffold.AuthoringOperations
+import skillbill.scaffold.AuthoringRenderResult
 import skillbill.scaffold.RepoValidationIssueSeverity
 import skillbill.scaffold.RepoValidationReport
 import skillbill.scaffold.RepoValidationRuntime
 import skillbill.scaffold.discoverGeneratedArtifactFiles
 import skillbill.scaffold.discoverGovernedAddonFiles
+import skillbill.scaffold.renderAuthoringTarget
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -45,10 +52,15 @@ class RuntimeRepoBrowserService :
   SkillTreeService,
   AuthoringGateway,
   GitGateway,
-  ValidationGateway {
+  ValidationGateway,
+  RenderGateway {
   // F-107: validator is a functional seam tests can swap to drive the onFailure branch of validate()
   // without needing to physically corrupt a repo on disk.
   internal var validator: (Path) -> RepoValidationReport = RepoValidationRuntime::validateRepo
+
+  // Mirror of F-107 for render. Tests swap this to drive the runtime-failure branch of render()
+  // without needing to physically corrupt the on-disk source.
+  internal var renderer: (Path, String) -> AuthoringRenderResult = ::renderAuthoringTarget
   private var snapshot: RepoBrowserSnapshot = RepoBrowserSnapshot.empty
 
   override fun open(repoPath: String): RepoSession {
@@ -141,6 +153,83 @@ class RuntimeRepoBrowserService :
           )
         },
       )
+  }
+
+  override fun render(session: RepoSession?, treeItemId: String): RenderSummary {
+    if (session == null || !session.isRecognizedSkillBillRepo) {
+      return RenderSummary.unavailable
+    }
+    // F-201: capture the snapshot reference once so we get a consistent view across reads even if
+    // open()/refresh() rewrites `snapshot` from another thread mid-render.
+    val capturedSnapshot = snapshot
+    val root = capturedSnapshot.repoRoot ?: return RenderSummary.unavailable
+    if (root.toString() != session.repoPath) {
+      return RenderSummary.unavailable
+    }
+    val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
+      ?: return RenderSummary.unavailable
+    val start = System.nanoTime()
+    return runCatching { renderDetail(root, detail) }
+      .fold(
+        onSuccess = { (blocks, artifacts) ->
+          RenderSummary(
+            state = RenderRunState.PASSED,
+            blocks = blocks,
+            generatedArtifacts = artifacts,
+            durationMillis = elapsedMillis(start),
+          )
+        },
+        onFailure = { error ->
+          RenderSummary(
+            state = RenderRunState.FAILED,
+            blocks = emptyList(),
+            generatedArtifacts = emptyList(),
+            durationMillis = elapsedMillis(start),
+            runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
+            runtimeExceptionMessage = error.message,
+          )
+        },
+      )
+  }
+
+  private fun renderDetail(root: Path, detail: SelectionDetail): RenderOutcome = when (detail.kind) {
+    "horizontal skill", "platform pack skill" -> renderSkill(root, detail)
+    "native agent" -> renderNativeAgent(root, detail)
+    "add-on" -> renderAddon(root, detail)
+    else -> error("Render is not supported for selection kind '${detail.kind ?: "unknown"}'.")
+  }
+
+  private fun renderSkill(root: Path, detail: SelectionDetail): RenderOutcome {
+    val skillName = detail.skillName ?: error("Skill selection is missing a skill name.")
+    val result = renderer(root, skillName)
+    val blocks = result.blocks.map { block -> RenderBlock(header = block.header, content = block.content) }
+    val artifacts = result.blocks.mapNotNull { block -> generatedArtifactFromHeader(block.header) }
+    return RenderOutcome(blocks = blocks, generatedArtifacts = artifacts)
+  }
+
+  private fun renderNativeAgent(root: Path, detail: SelectionDetail): RenderOutcome {
+    val contentFile = detail.contentFile
+      ?: error("Native agent selection is missing a content file.")
+    val agents = parseNativeAgentSourceFile(contentFile)
+    val relative = relativePath(root, contentFile.toString())
+    val blocks = agents.map { agent ->
+      RenderBlock(
+        header = "===== native-agent: $relative:${agent.name} =====",
+        content = renderNativeAgentSource(agent),
+      )
+    }
+    return RenderOutcome(blocks = blocks, generatedArtifacts = emptyList())
+  }
+
+  private fun renderAddon(root: Path, detail: SelectionDetail): RenderOutcome {
+    val contentFile = detail.contentFile
+      ?: error("Add-on selection is missing a content file.")
+    val relative = relativePath(root, contentFile.toString())
+    val content = Files.readString(contentFile)
+    return RenderOutcome(
+      blocks = listOf(RenderBlock(header = "===== addon: $relative =====", content = content)),
+      generatedArtifacts = emptyList(),
+    )
   }
 
   override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? {
@@ -467,6 +556,11 @@ class RuntimeRepoBrowserService :
     if (process.exitValue() == 0 && output.isNotBlank()) output else null
   }.getOrNull()
 
+  private data class RenderOutcome(
+    val blocks: List<RenderBlock>,
+    val generatedArtifacts: List<GeneratedArtifactDetail>,
+  )
+
   private data class RepoBrowserSnapshot(
     val repoRoot: Path? = null,
     val repoToken: String? = null,
@@ -607,6 +701,22 @@ private fun normalizeSourcePath(root: Path, sourcePath: String): String {
     }
   }.getOrDefault(trimmed.replace('\\', '/'))
 }
+
+private val RENDER_ARTIFACT_HEADER_REGEX = Regex("^===== (SKILL\\.md|pointer): (.+) =====$")
+
+private fun generatedArtifactFromHeader(header: String): GeneratedArtifactDetail? {
+  val match = RENDER_ARTIFACT_HEADER_REGEX.matchEntire(header) ?: return null
+  val kind = match.groupValues[1]
+  val path = match.groupValues[2]
+  val reason = when (kind) {
+    "SKILL.md" -> "Generated runtime wrapper"
+    "pointer" -> "Generated pointer"
+    else -> "Generated artifact"
+  }
+  return GeneratedArtifactDetail(path = path, reason = reason)
+}
+
+private fun elapsedMillis(startNanos: Long): Long = (System.nanoTime() - startNanos).coerceAtLeast(0L) / 1_000_000L
 
 private fun matchesSourcePath(authoredPath: String?, sourcePath: String): Boolean {
   if (authoredPath.isNullOrBlank() || sourcePath.isBlank()) {

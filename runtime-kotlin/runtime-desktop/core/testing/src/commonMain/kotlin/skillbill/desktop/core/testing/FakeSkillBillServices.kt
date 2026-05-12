@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -13,6 +14,7 @@ import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
+import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
@@ -61,6 +63,25 @@ class FakeValidationGateway(
   @Suppress("UNUSED_PARAMETER")
   override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? =
     resolveBySourcePath[sourcePath]
+}
+
+class FakeRenderGateway(
+  var scriptedSummary: RenderSummary = RenderSummary.unavailable,
+  var throwOnRender: Throwable? = null,
+) : RenderGateway {
+  var callCount: Int = 0
+    private set
+
+  var lastRequestedTreeItemId: String? = null
+    private set
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun render(session: RepoSession?, treeItemId: String): RenderSummary {
+    callCount += 1
+    lastRequestedTreeItemId = treeItemId
+    throwOnRender?.let { throw it }
+    return scriptedSummary
+  }
 }
 
 class FakeDesktopPreferenceStore(initialRepoPath: String? = null) : DesktopPreferenceStore {

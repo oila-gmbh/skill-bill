@@ -31,7 +31,17 @@ data class SkillBillState(
   val sourceControl: SourceControlStatus,
   val statusBar: SkillBillStatusBar = SkillBillStatusBar.empty,
   val validation: ValidationSummary = ValidationSummary.unavailable,
+  val render: RenderSummary = RenderSummary.unavailable,
+  val activeDockTab: DockTab = DockTab.Validation,
+  val renderable: Boolean = false,
 )
+
+enum class DockTab {
+  Validation,
+  Changes,
+  History,
+  Console,
+}
 
 enum class ValidationSeverity {
   ERROR,
@@ -131,6 +141,32 @@ enum class SkillBillBusyOperation {
   REFRESH,
   CHOOSE_DIRECTORY,
   VALIDATE,
+  RENDER,
+}
+
+enum class RenderRunState {
+  UNAVAILABLE,
+  RUNNING,
+  PASSED,
+  FAILED,
+}
+
+data class RenderBlock(
+  val header: String,
+  val content: String,
+)
+
+data class RenderSummary(
+  val state: RenderRunState,
+  val blocks: List<RenderBlock> = emptyList(),
+  val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
+  val durationMillis: Long = 0L,
+  val runtimeExceptionName: String? = null,
+  val runtimeExceptionMessage: String? = null,
+) {
+  companion object {
+    val unavailable: RenderSummary = RenderSummary(state = RenderRunState.UNAVAILABLE)
+  }
 }
 
 data class SkillBillStatusBar(

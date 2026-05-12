@@ -30,10 +30,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,7 +49,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillMetrics
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
+import skillbill.desktop.core.domain.model.RenderRunState
+import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
@@ -88,14 +88,20 @@ fun SkillBillFrame(
   onChooseRepoDirectory: () -> Unit,
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
+  onRender: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
   onTreeItemExpandedToggled: (String) -> Unit,
   onMoveTreeSelection: (Int) -> Unit,
   onValidationIssueSelected: (ValidationIssue) -> Unit,
   onCopyIssueSource: (String) -> Unit,
+  onActiveDockTabChanged: (DockTab) -> Unit,
 ) {
   val validateEnabled =
     state.selectedRepoPath != null &&
+      state.repoStatus.state == RepoLoadState.LOADED &&
+      state.busyOperation == null
+  val renderEnabled =
+    state.renderable &&
       state.repoStatus.state == RepoLoadState.LOADED &&
       state.busyOperation == null
   Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
@@ -104,7 +110,9 @@ fun SkillBillFrame(
       onNavigateBack = onNavigateBack,
       onRefresh = onRefresh,
       onValidate = onValidate,
+      onRender = onRender,
       validateEnabled = validateEnabled,
+      renderEnabled = renderEnabled,
       sourceControlLabel = state.sourceControl.branchLabel,
       readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
       busyOperation = state.busyOperation,
@@ -130,12 +138,16 @@ fun SkillBillFrame(
       CenterWorkspace(
         editor = state.editor,
         validation = state.validation,
+        render = state.render,
+        activeDockTab = state.activeDockTab,
+        onActiveDockTabChanged = onActiveDockTabChanged,
         modifier = Modifier.weight(1f).fillMaxHeight(),
       )
       InspectorPane(
         editor = state.editor,
         repoStatus = state.repoStatus,
         validation = state.validation,
+        render = state.render,
         onValidationIssueSelected = onValidationIssueSelected,
         onCopyIssueSource = onCopyIssueSource,
       )
@@ -150,7 +162,9 @@ private fun WorkspaceToolbar(
   onNavigateBack: () -> Unit,
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
+  onRender: () -> Unit,
   validateEnabled: Boolean,
+  renderEnabled: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
   busyOperation: SkillBillBusyOperation?,
@@ -175,7 +189,7 @@ private fun WorkspaceToolbar(
     ToolbarDivider()
     ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
     ToolbarButton(label = "Validate", marker = "ok", enabled = validateEnabled, onClick = onValidate)
-    ToolbarButton(label = "Render check", marker = "rc", enabled = !busy)
+    ToolbarButton(label = "Render check", marker = "rc", enabled = renderEnabled, onClick = onRender)
     ToolbarDivider()
     ToolbarButton(label = readOnlyModeLabel, marker = "ro", primary = true)
     if (busyOperation != null) {
@@ -233,6 +247,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.REFRESH -> "Refreshing..."
     SkillBillBusyOperation.CHOOSE_DIRECTORY -> "Choosing..."
     SkillBillBusyOperation.VALIDATE -> "Validating..."
+    SkillBillBusyOperation.RENDER -> "Rendering..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),
@@ -610,11 +625,24 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
 }
 
 @Composable
-private fun CenterWorkspace(editor: EditorPlaceholder, validation: ValidationSummary, modifier: Modifier) {
+private fun CenterWorkspace(
+  editor: EditorPlaceholder,
+  validation: ValidationSummary,
+  render: RenderSummary,
+  activeDockTab: DockTab,
+  onActiveDockTabChanged: (DockTab) -> Unit,
+  modifier: Modifier,
+) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
     EditorTabs(editor)
     CodeEditor(editor = editor, modifier = Modifier.weight(1f))
-    BottomDock(editor = editor, validation = validation)
+    BottomDock(
+      editor = editor,
+      validation = validation,
+      render = render,
+      activeTab = activeDockTab,
+      onActiveTabSelected = onActiveDockTabChanged,
+    )
   }
 }
 
@@ -805,6 +833,7 @@ private fun InspectorPane(
   editor: EditorPlaceholder,
   repoStatus: RepoLoadStatus,
   validation: ValidationSummary,
+  render: RenderSummary,
   onValidationIssueSelected: (ValidationIssue) -> Unit,
   onCopyIssueSource: (String) -> Unit,
 ) {
@@ -852,17 +881,25 @@ private fun InspectorPane(
           onCopyIssueSource = onCopyIssueSource,
         )
       }
+      val artifactsForInspector: List<GeneratedArtifactDetail> =
+        if (render.state == RenderRunState.PASSED || render.state == RenderRunState.FAILED) {
+          render.generatedArtifacts
+        } else {
+          editor.generatedArtifacts
+        }
       InspectorSection(
         title = "Generated artifacts",
         marker = "gn",
-        badge = editor.generatedArtifacts.size.takeIf {
-          it > 0
-        }?.toString(),
+        badge = artifactsForInspector.size.takeIf { it > 0 }?.toString(),
       ) {
-        if (editor.generatedArtifacts.isEmpty()) {
+        val renderHeaderLabel = renderHeaderLabelFor(render)
+        if (renderHeaderLabel != null) {
+          KeyValueRow("render", renderHeaderLabel, tone = renderHeaderToneFor(render))
+        }
+        if (artifactsForInspector.isEmpty()) {
           KeyValueRow("visible", "none")
         } else {
-          editor.generatedArtifacts.forEach { artifact ->
+          artifactsForInspector.forEach { artifact ->
             KeyValueRow(artifact.path, "read-only", tone = Tone.Warning)
           }
         }
@@ -1111,8 +1148,13 @@ private fun DependencyRow(name: String, range: String, resolved: String) {
 }
 
 @Composable
-private fun BottomDock(editor: EditorPlaceholder, validation: ValidationSummary) {
-  var activeTab by remember { mutableStateOf(DockTab.Validation) }
+private fun BottomDock(
+  editor: EditorPlaceholder,
+  validation: ValidationSummary,
+  render: RenderSummary,
+  activeTab: DockTab,
+  onActiveTabSelected: (DockTab) -> Unit,
+) {
   Column(
     modifier =
     Modifier
@@ -1129,7 +1171,7 @@ private fun BottomDock(editor: EditorPlaceholder, validation: ValidationSummary)
           tab = tab,
           badge = badgeForDockTab(tab, validation),
           active = activeTab == tab,
-          onSelected = { activeTab = tab },
+          onSelected = { onActiveTabSelected(tab) },
         )
       }
       Spacer(modifier = Modifier.weight(1f))
@@ -1148,7 +1190,7 @@ private fun BottomDock(editor: EditorPlaceholder, validation: ValidationSummary)
         DockTab.Validation -> ValidationTable(validation)
         DockTab.Changes -> ChangesTable(editor)
         DockTab.History -> HistoryTable()
-        DockTab.Console -> InstallConsole(editor)
+        DockTab.Console -> InstallConsole(editor = editor, render = render)
       }
     }
   }
@@ -1156,16 +1198,17 @@ private fun BottomDock(editor: EditorPlaceholder, validation: ValidationSummary)
 
 private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary): String? = when (tab) {
   DockTab.Validation -> validation.issues.size.takeIf { it > 0 }?.toString()
-  else -> tab.badge
+  else -> dockTabMetadata(tab).badge
 }
 
 @Composable
 private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelected: () -> Unit) {
+  val meta = dockTabMetadata(tab)
   Column(
     modifier =
     Modifier
       .height(33.dp)
-      .width(tab.width)
+      .width(meta.width)
       .background(if (active) WorkspaceBackground else WorkspacePanel)
       .clickable(role = Role.Button, onClick = onSelected),
   ) {
@@ -1175,10 +1218,19 @@ private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelec
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-      Text(text = tab.label, color = if (active) WorkspaceText else WorkspaceMuted, fontSize = 12.sp)
-      badge?.let { Badge(text = it, tone = tab.tone) }
+      Text(text = meta.label, color = if (active) WorkspaceText else WorkspaceMuted, fontSize = 12.sp)
+      badge?.let { Badge(text = it, tone = meta.tone) }
     }
   }
+}
+
+private data class DockTabMetadata(val label: String, val badge: String?, val tone: Tone, val width: Dp)
+
+private fun dockTabMetadata(tab: DockTab): DockTabMetadata = when (tab) {
+  DockTab.Validation -> DockTabMetadata("Validation", null, Tone.Error, 118.dp)
+  DockTab.Changes -> DockTabMetadata("Changes", null, Tone.Warning, 106.dp)
+  DockTab.History -> DockTabMetadata("History", null, Tone.Neutral, 102.dp)
+  DockTab.Console -> DockTabMetadata("Install console", null, Tone.Neutral, 132.dp)
 }
 
 @Composable
@@ -1270,26 +1322,83 @@ private fun HistoryTable() {
 }
 
 @Composable
-private fun InstallConsole(editor: EditorPlaceholder) {
+private fun InstallConsole(editor: EditorPlaceholder, render: RenderSummary) {
+  // F-601: long unbreakable tokens (paths, exception class names) in line content can clip silently
+  // at narrow dock widths. One shared horizontalScroll state on the inner column keeps all lines
+  // aligned and lets the user scroll right to reach any clipped failure text. softWrap stays at its
+  // default `true` so wrappable content still wraps. Do NOT use maxLines/Ellipsis here — that would
+  // hide AC5 failure text.
   Column(modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
-    val lines = listOf(
-      ConsoleLine("Selected: ${editor.title}", Tone.Neutral),
-      ConsoleLine("Mode: ${editor.readOnlyLabel ?: "read-only"}", Tone.Warning),
-      ConsoleLine("Authored path: ${editor.authoredPath ?: "-"}", Tone.Neutral),
-    )
-    lines.forEachIndexed { index, line ->
-      Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Text(
-          text = (index + 1).toString().padStart(2, '0'),
-          color = WorkspaceSteel,
-          fontSize = 12.sp,
-          fontFamily = FontFamily.Monospace,
-          modifier = Modifier.width(34.dp),
-        )
-        Text(text = line.text, color = line.tone.color(), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+      val lines = buildInstallConsoleLines(editor = editor, render = render)
+      lines.forEachIndexed { index, line ->
+        Row(modifier = Modifier.padding(vertical = 2.dp)) {
+          Text(
+            text = (index + 1).toString().padStart(2, '0'),
+            color = WorkspaceSteel,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.width(34.dp),
+          )
+          Text(text = line.text, color = line.tone.color(), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        }
       }
     }
   }
+}
+
+private fun buildInstallConsoleLines(editor: EditorPlaceholder, render: RenderSummary): List<ConsoleLine> {
+  val target = editor.skillName ?: editor.authoredPath ?: editor.title
+  return when (render.state) {
+    RenderRunState.UNAVAILABLE -> listOf(
+      ConsoleLine("Selected: ${editor.title}", Tone.Neutral),
+      ConsoleLine("Authored path: ${editor.authoredPath ?: "-"}", Tone.Neutral),
+      ConsoleLine("render: not run for this selection", Tone.Warning),
+    )
+    RenderRunState.RUNNING -> listOf(
+      ConsoleLine("> render $target", Tone.Neutral),
+      ConsoleLine("  resolving target...", Tone.Neutral),
+      ConsoleLine("render: rendering...", Tone.Warning),
+    )
+    RenderRunState.PASSED, RenderRunState.FAILED -> buildList {
+      add(ConsoleLine("> render $target", Tone.Neutral))
+      add(ConsoleLine("  resolving target...", Tone.Neutral))
+      render.blocks.forEachIndexed { index, block ->
+        val phase = phaseHeaderForBlock(block.header, index)
+        if (phase != null) {
+          add(ConsoleLine("  $phase", Tone.Neutral))
+        }
+        add(ConsoleLine(block.header, Tone.Neutral))
+        block.content.lines().forEach { line -> add(ConsoleLine(line, Tone.Neutral)) }
+      }
+      add(terminalRenderLine(render))
+    }
+  }
+}
+
+private fun phaseHeaderForBlock(header: String, index: Int): String? = when {
+  header.startsWith("===== SKILL.md:") -> "rendering wrapper"
+  header.startsWith("===== pointer:") -> "rendering pointer $index"
+  header.startsWith("===== native-agent:") -> "rendering native agent"
+  header.startsWith("===== addon:") -> "rendering add-on"
+  else -> null
+}
+
+private fun terminalRenderLine(render: RenderSummary): ConsoleLine = when (render.state) {
+  RenderRunState.PASSED ->
+    ConsoleLine("render: passed in ${render.durationMillis} ms", Tone.Success)
+  RenderRunState.FAILED -> {
+    val suffix = formatRenderExceptionSuffix(render)
+    ConsoleLine("render: failed in ${render.durationMillis} ms$suffix", Tone.Error)
+  }
+  RenderRunState.RUNNING -> ConsoleLine("render: rendering...", Tone.Warning)
+  RenderRunState.UNAVAILABLE -> ConsoleLine("render: not run for this selection", Tone.Warning)
+}
+
+private fun formatRenderExceptionSuffix(render: RenderSummary): String {
+  val name = render.runtimeExceptionName ?: return ""
+  val message = render.runtimeExceptionMessage
+  return if (message.isNullOrBlank()) " - $name" else " - $name: $message"
 }
 
 @Composable
@@ -1379,6 +1488,8 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
     StatusItem("tr", "${state.statusBar.targetCount} targets", Tone.Neutral)
     val validationStatus = describeValidationStatus(state.validation)
     StatusItem("vl", validationStatus.label, validationStatus.tone)
+    val renderStatus = describeRenderStatus(state.render)
+    StatusItem("rn", renderStatus.label, renderStatus.tone)
     Spacer(modifier = Modifier.weight(1f))
     StatusItem("ro", state.statusBar.readOnlyModeLabel, Tone.Warning)
     StatusItem("lk", state.statusBar.policyLabel, Tone.Neutral)
@@ -1386,6 +1497,29 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
 }
 
 private data class ValidationStatusDescription(val label: String, val tone: Tone)
+
+private data class RenderStatusDescription(val label: String, val tone: Tone)
+
+private fun renderHeaderLabelFor(render: RenderSummary): String? = when (render.state) {
+  RenderRunState.PASSED -> "passed in ${render.durationMillis} ms"
+  RenderRunState.FAILED -> "failed in ${render.durationMillis} ms"
+  RenderRunState.RUNNING -> "running"
+  RenderRunState.UNAVAILABLE -> null
+}
+
+private fun renderHeaderToneFor(render: RenderSummary): Tone = when (render.state) {
+  RenderRunState.PASSED -> Tone.Success
+  RenderRunState.FAILED -> Tone.Error
+  RenderRunState.RUNNING -> Tone.Warning
+  RenderRunState.UNAVAILABLE -> Tone.Neutral
+}
+
+private fun describeRenderStatus(render: RenderSummary): RenderStatusDescription = when (render.state) {
+  RenderRunState.UNAVAILABLE -> RenderStatusDescription("render: unavailable", Tone.Neutral)
+  RenderRunState.RUNNING -> RenderStatusDescription("render: running", Tone.Warning)
+  RenderRunState.PASSED -> RenderStatusDescription("render: passed", Tone.Success)
+  RenderRunState.FAILED -> RenderStatusDescription("render: failed", Tone.Error)
+}
 
 private fun describeValidationStatus(validation: ValidationSummary): ValidationStatusDescription =
   when (validation.state) {
@@ -1512,13 +1646,6 @@ private fun toneForStatus(status: String?): Tone = when (validationLevelFor(stat
   ValidationLevel.Warn -> Tone.Warning
   ValidationLevel.Error -> Tone.Error
   null -> Tone.Neutral
-}
-
-private enum class DockTab(val label: String, val badge: String?, val tone: Tone, val width: Dp) {
-  Validation("Validation", "5", Tone.Error, 118.dp),
-  Changes("Changes", "5", Tone.Warning, 106.dp),
-  History("History", "5", Tone.Neutral, 102.dp),
-  Console("Install console", null, Tone.Neutral, 132.dp),
 }
 
 private data class WorkspaceGroup(

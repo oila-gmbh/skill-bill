@@ -2,7 +2,10 @@ package skillbill.desktop.feature.skillbill.state
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.RenderRunState
+import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -16,6 +19,7 @@ import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
+import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
@@ -29,6 +33,7 @@ class SkillBillViewModel(
   private val authoringGateway: AuthoringGateway,
   private val gitGateway: GitGateway,
   private val validationGateway: ValidationGateway,
+  private val renderGateway: RenderGateway,
   private val recentRepoRepository: RecentRepoRepository,
 ) {
   private var repoPathText: String = recentRepoRepository.recentRepoPath().orEmpty()
@@ -39,6 +44,8 @@ class SkillBillViewModel(
   private var busyOperation: SkillBillBusyOperation? = null
   private var activeOperationToken = 0L
   private var validation: ValidationSummary = ValidationSummary.unavailable
+  private var render: RenderSummary = RenderSummary.unavailable
+  private var activeDockTab: DockTab = DockTab.Validation
   private var currentState = createState()
 
   init {
@@ -86,7 +93,13 @@ class SkillBillViewModel(
   }
 
   fun selectTreeItem(itemId: String): SkillBillState {
+    val previousSelectedTreeItemId = selectedTreeItemId
     selectedTreeItemId = itemId.takeIf(::containsTreeItem)
+    if (selectedTreeItemId != previousSelectedTreeItemId) {
+      // F-202: render output is keyed by tree-item id, so the prior selection's PASSED/FAILED
+      // summary must not bleed into a new selection. Mirror the refresh/repo-switch reset (F-103).
+      resetRenderForSelectionChange()
+    }
     currentState = createState()
     return currentState
   }
@@ -121,9 +134,14 @@ class SkillBillViewModel(
   }
 
   fun moveSelection(delta: Int): SkillBillState {
+    val previousSelectedTreeItemId = selectedTreeItemId
     val visibleIds = treeItems.visibleItems(expandedNodeIds).map(SkillBillTreeItem::id)
     if (visibleIds.isEmpty()) {
       selectedTreeItemId = null
+      if (selectedTreeItemId != previousSelectedTreeItemId) {
+        // F-202: selection changed (cleared); render output is no longer for this selection.
+        resetRenderForSelectionChange()
+      }
       currentState = createState()
       return currentState
     }
@@ -134,8 +152,19 @@ class SkillBillViewModel(
         else -> (currentIndex + delta).coerceIn(0, visibleIds.lastIndex)
       }
     selectedTreeItemId = visibleIds[nextIndex]
+    if (selectedTreeItemId != previousSelectedTreeItemId) {
+      // F-202: selection changed via keyboard movement; reset render to mirror selectTreeItem.
+      resetRenderForSelectionChange()
+    }
     currentState = createState()
     return currentState
+  }
+
+  private fun resetRenderForSelectionChange() {
+    render = RenderSummary.unavailable
+    if (activeDockTab == DockTab.Console) {
+      activeDockTab = DockTab.Validation
+    }
   }
 
   fun chooseRepoDirectory(repoPath: String?): SkillBillState {
@@ -205,12 +234,16 @@ class SkillBillViewModel(
     // Reset validation on every successful refresh: on-disk state may have changed since the last run,
     // so prior PASSED/FAILED results are no longer trustworthy. (F-103)
     validation = ValidationSummary.unavailable
+    // F-103: render output mirrors on-disk state and must also reset on refresh / repo-switch.
+    render = RenderSummary.unavailable
+    activeDockTab = DockTab.Validation
   }
 
   private fun createState(): SkillBillState {
     val session = currentSession
     val resolvedTreeItemId = selectedTreeItemId?.takeIf(::containsTreeItem)
     val sourceControl = gitGateway.statusFor(session)
+    val editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty
     return SkillBillState(
       selectedRepoPath = session?.repoPath,
       repoPathText = repoPathText,
@@ -219,10 +252,13 @@ class SkillBillViewModel(
       selectedTreeItemId = resolvedTreeItemId,
       expandedNodeIds = expandedNodeIds,
       busyOperation = busyOperation,
-      editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty,
+      editor = editor,
       sourceControl = sourceControl,
       statusBar = statusBarFor(session?.repoPath, sourceControl.branchLabel),
       validation = validation,
+      render = render,
+      activeDockTab = activeDockTab,
+      renderable = isRenderableKind(editor.kind),
     )
   }
 
@@ -257,6 +293,52 @@ class SkillBillViewModel(
     }
     busyOperation = null
     validation = result.summary
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginRender(): RenderRunRequest {
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.RENDER
+    val previousRenderSummary = render
+    render = RenderSummary(state = RenderRunState.RUNNING)
+    activeDockTab = DockTab.Console
+    currentState = createState()
+    return RenderRunRequest(
+      token = activeOperationToken,
+      session = currentSession,
+      treeItemId = selectedTreeItemId,
+      previousRenderSummary = previousRenderSummary,
+    )
+  }
+
+  fun runRender(request: RenderRunRequest): RenderRunResult {
+    val summary = if (request.treeItemId == null) {
+      RenderSummary.unavailable
+    } else {
+      renderGateway.render(request.session, request.treeItemId)
+    }
+    return RenderRunResult(request = request, summary = summary)
+  }
+
+  fun finishRender(result: RenderRunResult): SkillBillState {
+    if (result.request.token != activeOperationToken) {
+      // F-101: stale finish — restore the pre-RUNNING render summary captured at beginRender so the
+      // slice does not stay stuck on RUNNING after a preempting op completes.
+      if (render.state == RenderRunState.RUNNING) {
+        render = result.request.previousRenderSummary
+        currentState = createState()
+      }
+      return currentState
+    }
+    busyOperation = null
+    render = result.summary
+    currentState = createState()
+    return currentState
+  }
+
+  fun setActiveDockTab(tab: DockTab): SkillBillState {
+    activeDockTab = tab
     currentState = createState()
     return currentState
   }
@@ -327,6 +409,23 @@ data class ValidationRunResult(
   val request: ValidationRunRequest,
   val summary: ValidationSummary,
 )
+
+data class RenderRunRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val treeItemId: String?,
+  val previousRenderSummary: RenderSummary,
+)
+
+data class RenderRunResult(
+  val request: RenderRunRequest,
+  val summary: RenderSummary,
+)
+
+private fun isRenderableKind(kind: String?): Boolean = when (kind) {
+  "horizontal skill", "platform pack skill", "add-on", "native agent" -> true
+  else -> false
+}
 
 private fun List<SkillBillTreeItem>.flatten(): List<SkillBillTreeItem> =
   flatMap { item -> listOf(item) + item.children.flatten() }

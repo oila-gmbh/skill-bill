@@ -1,6 +1,11 @@
 package skillbill.desktop.feature.skillbill.state
 
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
+import skillbill.desktop.core.domain.model.RenderBlock
+import skillbill.desktop.core.domain.model.RenderRunState
+import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -14,18 +19,21 @@ import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeGitGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
+import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -78,6 +86,7 @@ class SkillBillViewModelTest {
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
       validationGateway = FakeValidationGateway(),
+      renderGateway = FakeRenderGateway(),
       recentRepoRepository = recentRepoRepository,
     )
 
@@ -109,6 +118,7 @@ class SkillBillViewModelTest {
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
       validationGateway = FakeValidationGateway(),
+      renderGateway = FakeRenderGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
     )
     viewModel.selectRepoPath("/repo")
@@ -655,6 +665,276 @@ class SkillBillViewModelTest {
   }
 
   @Test
+  fun `renderable is false for groups and generated artifacts but true for governed kinds`() {
+    val viewModel = newViewModel(
+      authoringGateway = KindKeyedAuthoringGateway(
+        mapOf(
+          "skill-one" to EditorPlaceholder(title = "skill-one", detail = "", kind = "horizontal skill"),
+          "skill-two" to EditorPlaceholder(title = "skill-two", detail = "", kind = "platform pack skill"),
+          "addon" to EditorPlaceholder(title = "addon", detail = "", kind = "add-on"),
+          "agent" to EditorPlaceholder(title = "agent", detail = "", kind = "native agent"),
+          "generated" to EditorPlaceholder(title = "generated", detail = "", kind = "generated artifact"),
+          "skills" to EditorPlaceholder(title = "skills", detail = "", kind = null),
+        ),
+      ),
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "skill-one", label = "skill-one", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "skill-two", label = "skill-two", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "addon", label = "addon", kind = TreeItemKind.ADD_ON),
+              SkillBillTreeItem(id = "agent", label = "agent", kind = TreeItemKind.NATIVE_AGENT),
+              SkillBillTreeItem(
+                id = "generated",
+                label = "generated",
+                kind = TreeItemKind.GENERATED_ARTIFACT,
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+
+    assertTrue(viewModel.selectTreeItem("skill-one").renderable)
+    assertTrue(viewModel.selectTreeItem("skill-two").renderable)
+    assertTrue(viewModel.selectTreeItem("addon").renderable)
+    assertTrue(viewModel.selectTreeItem("agent").renderable)
+    assertFalse(viewModel.selectTreeItem("generated").renderable)
+    assertFalse(viewModel.selectTreeItem("skills").renderable)
+  }
+
+  @Test
+  fun `beginRender flips state to RUNNING and activates Console dock tab`() {
+    val renderGateway = FakeRenderGateway()
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+
+    viewModel.beginRender()
+    val running = viewModel.state()
+
+    assertEquals(RenderRunState.RUNNING, running.render.state)
+    assertEquals(DockTab.Console, running.activeDockTab)
+    assertEquals(SkillBillBusyOperation.RENDER, running.busyOperation)
+  }
+
+  @Test
+  fun `successful render transitions running to passed and records blocks and artifacts`() {
+    val summary = RenderSummary(
+      state = RenderRunState.PASSED,
+      blocks = listOf(RenderBlock(header = "===== SKILL.md: skills/x/SKILL.md =====", content = "# x\n")),
+      generatedArtifacts = listOf(GeneratedArtifactDetail("skills/x/SKILL.md", "Generated runtime wrapper")),
+      durationMillis = 12L,
+    )
+    val renderGateway = FakeRenderGateway(scriptedSummary = summary)
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    val request = viewModel.beginRender()
+    val finished = viewModel.finishRender(viewModel.runRender(request))
+
+    assertEquals(RenderRunState.PASSED, finished.render.state)
+    assertEquals(1, finished.render.blocks.size)
+    assertEquals(1, finished.render.generatedArtifacts.size)
+    assertNull(finished.busyOperation)
+    assertEquals(1, renderGateway.callCount)
+    assertEquals("skill-one", renderGateway.lastRequestedTreeItemId)
+  }
+
+  @Test
+  fun `failed render surfaces runtime exception name and message in the summary`() {
+    val failedSummary = RenderSummary(
+      state = RenderRunState.FAILED,
+      blocks = emptyList(),
+      generatedArtifacts = emptyList(),
+      durationMillis = 7L,
+      runtimeExceptionName = "IllegalStateException",
+      runtimeExceptionMessage = "boom",
+    )
+    val renderGateway = FakeRenderGateway(scriptedSummary = failedSummary)
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    val request = viewModel.beginRender()
+    val finished = viewModel.finishRender(viewModel.runRender(request))
+
+    assertEquals(RenderRunState.FAILED, finished.render.state)
+    assertEquals("IllegalStateException", finished.render.runtimeExceptionName)
+    assertEquals("boom", finished.render.runtimeExceptionMessage)
+  }
+
+  @Test
+  fun `stale finishRender after refresh unwinds RUNNING and restores previousSummary`() {
+    val passedSummary = RenderSummary(
+      state = RenderRunState.PASSED,
+      blocks = emptyList(),
+      durationMillis = 1L,
+    )
+    val renderGateway = FakeRenderGateway(scriptedSummary = passedSummary)
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    // Seed with a known PASSED render.
+    val sealed = viewModel.finishRender(viewModel.runRender(viewModel.beginRender()))
+    assertEquals(RenderRunState.PASSED, sealed.render.state)
+
+    // Begin a second render but preempt it with a refresh before finish lands.
+    val staleRequest = viewModel.beginRender()
+    assertEquals(RenderRunState.RUNNING, viewModel.state().render.state)
+    viewModel.beginRefresh()
+    val staleResult = viewModel.runRender(staleRequest)
+    val afterStale = viewModel.finishRender(staleResult)
+
+    // F-101: stale finish must unwind RUNNING back to the previous-summary captured at beginRender
+    // time (PASSED in this scenario). Refresh has not yet completed, so refresh's reset-to-UNAVAILABLE
+    // has not landed; the stale finish must restore PASSED rather than leave the slice on RUNNING.
+    assertEquals(RenderRunState.PASSED, afterStale.render.state)
+    assertEquals(SkillBillBusyOperation.REFRESH, afterStale.busyOperation)
+  }
+
+  @Test
+  fun `refresh resets render summary to UNAVAILABLE even with prior PASSED state`() {
+    val renderGateway = FakeRenderGateway(
+      scriptedSummary = RenderSummary(state = RenderRunState.PASSED, durationMillis = 5L),
+    )
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    val sealed = viewModel.finishRender(viewModel.runRender(viewModel.beginRender()))
+    assertEquals(RenderRunState.PASSED, sealed.render.state)
+
+    val refreshed = viewModel.refresh()
+
+    assertEquals(RenderRunState.UNAVAILABLE, refreshed.render.state)
+  }
+
+  @Test
+  fun `selectTreeItem to a different node resets render slice to UNAVAILABLE`() {
+    // F-202: render output is keyed by tree-item id; switching selection must not leave the prior
+    // PASSED summary attached.
+    val passedSummary = RenderSummary(
+      state = RenderRunState.PASSED,
+      blocks = listOf(RenderBlock(header = "===== SKILL.md: skills/x/SKILL.md =====", content = "# x\n")),
+      generatedArtifacts = listOf(GeneratedArtifactDetail("skills/x/SKILL.md", "Generated runtime wrapper")),
+      durationMillis = 9L,
+    )
+    val renderGateway = FakeRenderGateway(scriptedSummary = passedSummary)
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "skill-one", label = "skill-one", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "skill-two", label = "skill-two", kind = TreeItemKind.SKILL),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    val sealed = viewModel.finishRender(viewModel.runRender(viewModel.beginRender()))
+    assertEquals(RenderRunState.PASSED, sealed.render.state)
+
+    val switched = viewModel.selectTreeItem("skill-two")
+
+    assertEquals(RenderRunState.UNAVAILABLE, switched.render.state)
+    assertTrue(switched.render.blocks.isEmpty())
+    assertTrue(switched.render.generatedArtifacts.isEmpty())
+  }
+
+  @Test
+  fun `moveSelection to a different node resets render slice to UNAVAILABLE`() {
+    // F-202: keyboard-driven selection change must also reset the render slice.
+    val passedSummary = RenderSummary(
+      state = RenderRunState.PASSED,
+      blocks = listOf(RenderBlock(header = "===== SKILL.md: skills/x/SKILL.md =====", content = "# x\n")),
+      generatedArtifacts = listOf(GeneratedArtifactDetail("skills/x/SKILL.md", "Generated runtime wrapper")),
+      durationMillis = 9L,
+    )
+    val renderGateway = FakeRenderGateway(scriptedSummary = passedSummary)
+    val viewModel = newViewModel(
+      authoringGateway = SkillKindAuthoringGateway,
+      renderGateway = renderGateway,
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "skill-one", label = "skill-one", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "skill-two", label = "skill-two", kind = TreeItemKind.SKILL),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    val sealed = viewModel.finishRender(viewModel.runRender(viewModel.beginRender()))
+    assertEquals(RenderRunState.PASSED, sealed.render.state)
+
+    val moved = viewModel.moveSelection(1)
+
+    assertEquals("skill-two", moved.selectedTreeItemId)
+    assertEquals(RenderRunState.UNAVAILABLE, moved.render.state)
+    assertTrue(moved.render.blocks.isEmpty())
+    assertTrue(moved.render.generatedArtifacts.isEmpty())
+  }
+
+  @Test
+  fun `setActiveDockTab updates state and is observable through state()`() {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+
+    val updated = viewModel.setActiveDockTab(DockTab.Console)
+
+    assertEquals(DockTab.Console, updated.activeDockTab)
+  }
+
+  @Test
+  fun `runRender returns unavailable when no tree item is selected`() {
+    val renderGateway = FakeRenderGateway(
+      scriptedSummary = RenderSummary(state = RenderRunState.PASSED, durationMillis = 1L),
+    )
+    val viewModel = newViewModel(renderGateway = renderGateway)
+    viewModel.selectRepoPath("/repo")
+    val request = viewModel.beginRender()
+    val finished = viewModel.finishRender(viewModel.runRender(request))
+
+    assertEquals(RenderRunState.UNAVAILABLE, finished.render.state)
+    // Gateway is not consulted when there is no selection — selection is a precondition for renderable.
+    assertEquals(0, renderGateway.callCount)
+    assertNotNull(request)
+  }
+
+  @Test
   fun `revealValidationIssue with unresolvable path leaves selection unchanged`() {
     val validationGateway = FakeValidationGateway()
     val viewModel = newViewModel(validationGateway = validationGateway)
@@ -678,6 +958,7 @@ class SkillBillViewModelTest {
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
     gitGateway: GitGateway = FakeGitGateway(),
     validationGateway: ValidationGateway = FakeValidationGateway(),
+    renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
@@ -685,6 +966,7 @@ class SkillBillViewModelTest {
     authoringGateway = authoringGateway,
     gitGateway = gitGateway,
     validationGateway = validationGateway,
+    renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
   )
 }
@@ -743,6 +1025,22 @@ private class MutableSkillTreeService(var items: List<SkillBillTreeItem>) : Skil
 
 private class StaticAuthoringGateway(private val editor: EditorPlaceholder) : AuthoringGateway {
   override fun describeSelection(treeItemId: String): EditorPlaceholder = editor
+}
+
+private class KindKeyedAuthoringGateway(
+  private val byId: Map<String, EditorPlaceholder>,
+) : AuthoringGateway {
+  override fun describeSelection(treeItemId: String): EditorPlaceholder =
+    byId[treeItemId] ?: EditorPlaceholder(title = treeItemId, detail = "")
+}
+
+private val SkillKindAuthoringGateway: AuthoringGateway = object : AuthoringGateway {
+  override fun describeSelection(treeItemId: String): EditorPlaceholder = EditorPlaceholder(
+    title = treeItemId,
+    detail = "",
+    skillName = treeItemId,
+    kind = "horizontal skill",
+  )
 }
 
 private fun loadedSession(repoPath: String): RepoSession = RepoSession(
