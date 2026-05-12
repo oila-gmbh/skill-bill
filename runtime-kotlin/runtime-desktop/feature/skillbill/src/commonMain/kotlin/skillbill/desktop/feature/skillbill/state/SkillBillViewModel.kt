@@ -10,11 +10,15 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.ValidationIssue
+import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @Inject
@@ -24,6 +28,7 @@ class SkillBillViewModel(
   private val skillTreeService: SkillTreeService,
   private val authoringGateway: AuthoringGateway,
   private val gitGateway: GitGateway,
+  private val validationGateway: ValidationGateway,
   private val recentRepoRepository: RecentRepoRepository,
 ) {
   private var repoPathText: String = recentRepoRepository.recentRepoPath().orEmpty()
@@ -33,6 +38,7 @@ class SkillBillViewModel(
   private var expandedNodeIds: Set<String> = emptySet()
   private var busyOperation: SkillBillBusyOperation? = null
   private var activeOperationToken = 0L
+  private var validation: ValidationSummary = ValidationSummary.unavailable
   private var currentState = createState()
 
   init {
@@ -196,6 +202,9 @@ class SkillBillViewModel(
     expandedNodeIds =
       reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, request.preserveSelection && sameRepo)
     busyOperation = null
+    // Reset validation on every successful refresh: on-disk state may have changed since the last run,
+    // so prior PASSED/FAILED results are no longer trustworthy. (F-103)
+    validation = ValidationSummary.unavailable
   }
 
   private fun createState(): SkillBillState {
@@ -213,7 +222,73 @@ class SkillBillViewModel(
       editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty,
       sourceControl = sourceControl,
       statusBar = statusBarFor(session?.repoPath, sourceControl.branchLabel),
+      validation = validation,
     )
+  }
+
+  fun beginValidate(): ValidationRunRequest {
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.VALIDATE
+    val previousValidationSummary = validation
+    validation = ValidationSummary(state = ValidationRunState.RUNNING)
+    currentState = createState()
+    return ValidationRunRequest(
+      token = activeOperationToken,
+      session = currentSession,
+      previousValidationSummary = previousValidationSummary,
+    )
+  }
+
+  fun runValidate(request: ValidationRunRequest): ValidationRunResult {
+    val summary = validationGateway.validate(request.session)
+    return ValidationRunResult(request = request, summary = summary)
+  }
+
+  fun finishValidate(result: ValidationRunResult): SkillBillState {
+    if (result.request.token != activeOperationToken) {
+      // The validation run was preempted by a newer operation. We must unwind the RUNNING marker
+      // we set in beginValidate so that the (possibly same) repo does not get stuck displaying
+      // RUNNING forever. Restore the pre-validate validation slice. (F-101)
+      if (validation.state == ValidationRunState.RUNNING) {
+        validation = result.request.previousValidationSummary
+        currentState = createState()
+      }
+      return currentState
+    }
+    busyOperation = null
+    validation = result.summary
+    currentState = createState()
+    return currentState
+  }
+
+  fun revealValidationIssue(issue: ValidationIssue): SkillBillState {
+    val sourcePath = issue.sourcePath ?: return currentState
+    val resolvedId = validationGateway.resolveTreeItemIdForSource(currentSession, sourcePath) ?: return currentState
+    if (!containsTreeItem(resolvedId)) {
+      return currentState
+    }
+    selectedTreeItemId = resolvedId
+    expandedNodeIds = expandedNodeIds + ancestorIdsOf(resolvedId)
+    currentState = createState()
+    return currentState
+  }
+
+  private fun ancestorIdsOf(itemId: String): Set<String> {
+    val ancestors = mutableSetOf<String>()
+    fun visit(items: List<SkillBillTreeItem>, parents: List<String>): Boolean {
+      for (item in items) {
+        if (item.id == itemId) {
+          ancestors.addAll(parents)
+          return true
+        }
+        if (item.children.isNotEmpty() && visit(item.children, parents + item.id)) {
+          return true
+        }
+      }
+      return false
+    }
+    visit(treeItems, emptyList())
+    return ancestors
   }
 
   private fun statusBarFor(repoPath: String?, branchLabel: String): SkillBillStatusBar = SkillBillStatusBar(
@@ -240,6 +315,17 @@ data class RepoLoadResult(
   val request: RepoLoadRequest,
   val session: RepoSession,
   val treeItems: List<SkillBillTreeItem>,
+)
+
+data class ValidationRunRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val previousValidationSummary: ValidationSummary,
+)
+
+data class ValidationRunResult(
+  val request: ValidationRunRequest,
+  val summary: ValidationSummary,
 )
 
 private fun List<SkillBillTreeItem>.flatten(): List<SkillBillTreeItem> =

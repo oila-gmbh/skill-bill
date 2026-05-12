@@ -60,6 +60,10 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationIssue
+import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.desktop.core.domain.model.ValidationSeverity
+import skillbill.desktop.core.domain.model.ValidationSummary
 
 private val WorkspaceBackground = Color(0xFF050506)
 private val WorkspacePanel = Color(0xFF121216)
@@ -83,15 +87,24 @@ fun SkillBillFrame(
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
   onRefresh: () -> Unit,
+  onValidate: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
   onTreeItemExpandedToggled: (String) -> Unit,
   onMoveTreeSelection: (Int) -> Unit,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onCopyIssueSource: (String) -> Unit,
 ) {
+  val validateEnabled =
+    state.selectedRepoPath != null &&
+      state.repoStatus.state == RepoLoadState.LOADED &&
+      state.busyOperation == null
   Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
     WorkspaceToolbar(
       canNavigateBack = canNavigateBack,
       onNavigateBack = onNavigateBack,
       onRefresh = onRefresh,
+      onValidate = onValidate,
+      validateEnabled = validateEnabled,
       sourceControlLabel = state.sourceControl.branchLabel,
       readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
       busyOperation = state.busyOperation,
@@ -105,6 +118,7 @@ fun SkillBillFrame(
         expandedNodeIds = state.expandedNodeIds,
         busyOperation = state.busyOperation,
         policyLabel = state.statusBar.policyLabel,
+        validationIssueCount = state.validation.issues.size,
         onRepoPathChanged = onRepoPathChanged,
         onRepoSelected = onRepoSelected,
         onChooseRepoDirectory = onChooseRepoDirectory,
@@ -113,8 +127,18 @@ fun SkillBillFrame(
         onMoveSelection = onMoveTreeSelection,
       )
       VerticalDivider(color = WorkspaceLine)
-      CenterWorkspace(editor = state.editor, modifier = Modifier.weight(1f).fillMaxHeight())
-      InspectorPane(editor = state.editor, repoStatus = state.repoStatus)
+      CenterWorkspace(
+        editor = state.editor,
+        validation = state.validation,
+        modifier = Modifier.weight(1f).fillMaxHeight(),
+      )
+      InspectorPane(
+        editor = state.editor,
+        repoStatus = state.repoStatus,
+        validation = state.validation,
+        onValidationIssueSelected = onValidationIssueSelected,
+        onCopyIssueSource = onCopyIssueSource,
+      )
     }
     WorkspaceStatusBar(state = state)
   }
@@ -125,6 +149,8 @@ private fun WorkspaceToolbar(
   canNavigateBack: Boolean,
   onNavigateBack: () -> Unit,
   onRefresh: () -> Unit,
+  onValidate: () -> Unit,
+  validateEnabled: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
   busyOperation: SkillBillBusyOperation?,
@@ -148,7 +174,7 @@ private fun WorkspaceToolbar(
     ToolbarButton(label = sourceControlLabel, marker = "br")
     ToolbarDivider()
     ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
-    ToolbarButton(label = "Validate", marker = "ok", enabled = !busy)
+    ToolbarButton(label = "Validate", marker = "ok", enabled = validateEnabled, onClick = onValidate)
     ToolbarButton(label = "Render check", marker = "rc", enabled = !busy)
     ToolbarDivider()
     ToolbarButton(label = readOnlyModeLabel, marker = "ro", primary = true)
@@ -206,6 +232,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.OPEN_REPO -> "Opening..."
     SkillBillBusyOperation.REFRESH -> "Refreshing..."
     SkillBillBusyOperation.CHOOSE_DIRECTORY -> "Choosing..."
+    SkillBillBusyOperation.VALIDATE -> "Validating..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),
@@ -264,6 +291,7 @@ private fun NavigationPane(
   expandedNodeIds: Set<String>,
   busyOperation: SkillBillBusyOperation?,
   policyLabel: String,
+  validationIssueCount: Int,
   onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
@@ -329,7 +357,7 @@ private fun NavigationPane(
       RepositoryAction(
         label = "Validation",
         marker = "vl",
-        badge = repoStatus.issueCount.takeIf { it > 0 }?.toString(),
+        badge = validationIssueCount.takeIf { it > 0 }?.toString(),
         enabled = !busy,
       )
       RepositoryAction(label = "Read-only browsing", marker = "ro", enabled = !busy)
@@ -582,11 +610,11 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
 }
 
 @Composable
-private fun CenterWorkspace(editor: EditorPlaceholder, modifier: Modifier) {
+private fun CenterWorkspace(editor: EditorPlaceholder, validation: ValidationSummary, modifier: Modifier) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
     EditorTabs(editor)
     CodeEditor(editor = editor, modifier = Modifier.weight(1f))
-    BottomDock(editor = editor)
+    BottomDock(editor = editor, validation = validation)
   }
 }
 
@@ -773,7 +801,13 @@ private fun SyntaxText(line: String) {
 }
 
 @Composable
-private fun InspectorPane(editor: EditorPlaceholder, repoStatus: RepoLoadStatus) {
+private fun InspectorPane(
+  editor: EditorPlaceholder,
+  repoStatus: RepoLoadStatus,
+  validation: ValidationSummary,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onCopyIssueSource: (String) -> Unit,
+) {
   Column(
     modifier =
     Modifier
@@ -810,15 +844,13 @@ private fun InspectorPane(editor: EditorPlaceholder, repoStatus: RepoLoadStatus)
       InspectorSection(
         title = "Validation issues",
         marker = "x",
-        badge = repoStatus.issueCount.takeIf {
-          it > 0
-        }?.toString(),
+        badge = validation.issues.size.takeIf { it > 0 }?.toString(),
       ) {
-        if (repoStatus.issues.isEmpty()) {
-          CheckRow(ok = true, label = repoStatus.message)
-        } else {
-          repoStatus.issues.take(5).forEach { issue -> CheckRow(ok = false, label = issue) }
-        }
+        ValidationIssuesInspector(
+          validation = validation,
+          onValidationIssueSelected = onValidationIssueSelected,
+          onCopyIssueSource = onCopyIssueSource,
+        )
       }
       InspectorSection(
         title = "Generated artifacts",
@@ -835,6 +867,134 @@ private fun InspectorPane(editor: EditorPlaceholder, repoStatus: RepoLoadStatus)
           }
         }
       }
+    }
+  }
+}
+
+@Composable
+private fun ValidationIssuesInspector(
+  validation: ValidationSummary,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onCopyIssueSource: (String) -> Unit,
+) {
+  when (validation.state) {
+    ValidationRunState.UNAVAILABLE -> {
+      CheckRow(ok = true, label = "Validation has not run for this repo.")
+      return
+    }
+    ValidationRunState.RUNNING -> {
+      CheckRow(ok = true, label = "Validation in progress...")
+      return
+    }
+    ValidationRunState.PASSED -> {
+      if (validation.issues.isEmpty()) {
+        CheckRow(ok = true, label = "Validation passed with no issues.")
+        return
+      }
+    }
+    ValidationRunState.FAILED -> {
+      val exceptionName = validation.runtimeExceptionName
+      if (exceptionName != null) {
+        val exceptionMessage = validation.runtimeExceptionMessage
+        CheckRow(
+          ok = false,
+          label = buildString {
+            append(exceptionName)
+            if (!exceptionMessage.isNullOrBlank()) {
+              append(": ")
+              append(exceptionMessage)
+            }
+          },
+        )
+      } else if (validation.issues.isEmpty()) {
+        // F-105: avoid a silent empty inspector when validation failed with no structured signal.
+        CheckRow(ok = false, label = "Validation failed - no details available.")
+      }
+    }
+  }
+  validation.issues.forEach { issue ->
+    ValidationIssueRow(
+      issue = issue,
+      onValidationIssueSelected = onValidationIssueSelected,
+      onCopyIssueSource = onCopyIssueSource,
+    )
+  }
+}
+
+@Composable
+private fun ValidationIssueRow(
+  issue: ValidationIssue,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onCopyIssueSource: (String) -> Unit,
+) {
+  val sourcePath = issue.sourcePath
+  Row(
+    modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onValidationIssueSelected(issue) }
+      .padding(vertical = 3.dp),
+    verticalAlignment = Alignment.Top,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(
+      text = severityMarker(issue.severity),
+      tint = severityTone(issue.severity).color(),
+    )
+    Column(modifier = Modifier.weight(1f)) {
+      // F-104: surface severity text label + code beside the colored marker, so screen readers and
+      // colorblind users can still distinguish issue severities.
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        Text(
+          text = issue.severity.name,
+          color = severityTone(issue.severity).color(),
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          fontWeight = FontWeight.SemiBold,
+        )
+        val code = issue.code
+        if (!code.isNullOrBlank()) {
+          Text(
+            text = code,
+            color = WorkspaceSteel,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+          )
+        }
+      }
+      Text(text = issue.message, color = WorkspaceText.copy(alpha = 0.9f), fontSize = 12.sp)
+      if (!sourcePath.isNullOrBlank()) {
+        Text(
+          text = sourcePath,
+          color = WorkspaceSteel,
+          fontSize = 10.5.sp,
+          fontFamily = FontFamily.Monospace,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      if (!issue.exceptionName.isNullOrBlank()) {
+        Text(
+          text = "exception: ${issue.exceptionName}",
+          color = WorkspaceRed,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+    if (!sourcePath.isNullOrBlank()) {
+      Text(
+        text = "copy",
+        color = WorkspaceYellow,
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.clickable(role = Role.Button) {
+          // F-106: clipboard side effect is owned by the route; this is now a pure callback.
+          onCopyIssueSource(sourcePath)
+        },
+      )
     }
   }
 }
@@ -951,7 +1111,7 @@ private fun DependencyRow(name: String, range: String, resolved: String) {
 }
 
 @Composable
-private fun BottomDock(editor: EditorPlaceholder) {
+private fun BottomDock(editor: EditorPlaceholder, validation: ValidationSummary) {
   var activeTab by remember { mutableStateOf(DockTab.Validation) }
   Column(
     modifier =
@@ -965,7 +1125,12 @@ private fun BottomDock(editor: EditorPlaceholder) {
       verticalAlignment = Alignment.Bottom,
     ) {
       DockTab.entries.forEach { tab ->
-        DockTabButton(tab = tab, active = activeTab == tab, onSelected = { activeTab = tab })
+        DockTabButton(
+          tab = tab,
+          badge = badgeForDockTab(tab, validation),
+          active = activeTab == tab,
+          onSelected = { activeTab = tab },
+        )
       }
       Spacer(modifier = Modifier.weight(1f))
       Row(
@@ -980,7 +1145,7 @@ private fun BottomDock(editor: EditorPlaceholder) {
     HorizontalDivider(color = WorkspaceLine)
     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(WorkspaceBackground)) {
       when (activeTab) {
-        DockTab.Validation -> ValidationTable(editor)
+        DockTab.Validation -> ValidationTable(validation)
         DockTab.Changes -> ChangesTable(editor)
         DockTab.History -> HistoryTable()
         DockTab.Console -> InstallConsole(editor)
@@ -989,8 +1154,13 @@ private fun BottomDock(editor: EditorPlaceholder) {
   }
 }
 
+private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary): String? = when (tab) {
+  DockTab.Validation -> validation.issues.size.takeIf { it > 0 }?.toString()
+  else -> tab.badge
+}
+
 @Composable
-private fun DockTabButton(tab: DockTab, active: Boolean, onSelected: () -> Unit) {
+private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelected: () -> Unit) {
   Column(
     modifier =
     Modifier
@@ -1006,23 +1176,73 @@ private fun DockTabButton(tab: DockTab, active: Boolean, onSelected: () -> Unit)
       horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
       Text(text = tab.label, color = if (active) WorkspaceText else WorkspaceMuted, fontSize = 12.sp)
-      tab.badge?.let { Badge(text = it, tone = tab.tone) }
+      badge?.let { Badge(text = it, tone = tab.tone) }
     }
   }
 }
 
 @Composable
-private fun ValidationTable(editor: EditorPlaceholder) {
+private fun ValidationTable(validation: ValidationSummary) {
   Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     TableHeader("Lvl", "Code", "Message", "Source")
-    TableRow(
-      first = editor.readOnlyLabel ?: if (editor.editable) "ok" else "ro",
-      second = editor.status ?: "-",
-      third = editor.detail,
-      fourth = editor.authoredPath ?: "-",
-      tone = if (editor.editable) Tone.Success else Tone.Warning,
-    )
+    val exceptionName = validation.runtimeExceptionName
+    if (exceptionName != null) {
+      val exceptionMessage = validation.runtimeExceptionMessage
+      TableRow(
+        first = "x",
+        second = "runtime",
+        third = buildString {
+          append(exceptionName)
+          if (!exceptionMessage.isNullOrBlank()) {
+            append(": ")
+            append(exceptionMessage)
+          }
+        },
+        fourth = "-",
+        tone = Tone.Error,
+      )
+    } else if (validation.state == ValidationRunState.FAILED && validation.issues.isEmpty()) {
+      // F-105: render an explicit fallback row when failure carries no structured signal, so the
+      // dock and the inspector stay symmetric instead of showing only the header.
+      TableRow(
+        first = "x",
+        second = "runtime",
+        third = "Validation failed - no details available.",
+        fourth = "-",
+        tone = Tone.Error,
+      )
+    }
+    validation.issues.forEach { issue ->
+      val message = buildString {
+        append(issue.message)
+        // F-104: surface the per-issue exceptionName inline so the dock mirrors the inspector content.
+        if (!issue.exceptionName.isNullOrBlank()) {
+          append(" [exception: ")
+          append(issue.exceptionName)
+          append(']')
+        }
+      }
+      TableRow(
+        first = severityMarker(issue.severity),
+        second = issue.code ?: "-",
+        third = message,
+        fourth = issue.sourcePath ?: "-",
+        tone = severityTone(issue.severity),
+      )
+    }
   }
+}
+
+private fun severityMarker(severity: ValidationSeverity): String = when (severity) {
+  ValidationSeverity.ERROR -> "x"
+  ValidationSeverity.WARNING -> "wr"
+  ValidationSeverity.INFO -> "ok"
+}
+
+private fun severityTone(severity: ValidationSeverity): Tone = when (severity) {
+  ValidationSeverity.ERROR -> Tone.Error
+  ValidationSeverity.WARNING -> Tone.Warning
+  ValidationSeverity.INFO -> Tone.Success
 }
 
 @Composable
@@ -1157,16 +1377,27 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
     StatusItem("br", state.statusBar.branchLabel, Tone.Neutral)
     StatusItem("rp", state.statusBar.repoPathLabel, Tone.Neutral)
     StatusItem("tr", "${state.statusBar.targetCount} targets", Tone.Neutral)
-    StatusItem(
-      "vl",
-      "validation: ${state.repoStatus.issueCount} issue(s)",
-      if (state.repoStatus.issueCount == 0) Tone.Success else Tone.Warning,
-    )
+    val validationStatus = describeValidationStatus(state.validation)
+    StatusItem("vl", validationStatus.label, validationStatus.tone)
     Spacer(modifier = Modifier.weight(1f))
     StatusItem("ro", state.statusBar.readOnlyModeLabel, Tone.Warning)
     StatusItem("lk", state.statusBar.policyLabel, Tone.Neutral)
   }
 }
+
+private data class ValidationStatusDescription(val label: String, val tone: Tone)
+
+private fun describeValidationStatus(validation: ValidationSummary): ValidationStatusDescription =
+  when (validation.state) {
+    ValidationRunState.UNAVAILABLE -> ValidationStatusDescription("validation: unavailable", Tone.Neutral)
+    ValidationRunState.RUNNING -> ValidationStatusDescription("validation: running", Tone.Warning)
+    ValidationRunState.PASSED -> ValidationStatusDescription("validation: passed", Tone.Success)
+    ValidationRunState.FAILED -> {
+      val count = validation.issues.size
+      val label = if (count == 0) "validation: failed" else "validation: failed - $count issue(s)"
+      ValidationStatusDescription(label, Tone.Error)
+    }
+  }
 
 @Composable
 private fun StatusItem(marker: String, text: String, tone: Tone) {

@@ -6,10 +6,12 @@ import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 
 @Inject
 class PlaceholderRepoSessionService : RepoSessionService {
@@ -73,6 +75,15 @@ class PlaceholderAuthoringGateway : AuthoringGateway {
     title = treeItemId,
     detail = "Selection `$treeItemId` is tracked in memory. Authoring is not enabled yet.",
   )
+}
+
+@Inject
+class PlaceholderValidationGateway : ValidationGateway {
+  @Suppress("UNUSED_PARAMETER")
+  override fun validate(session: RepoSession?): ValidationSummary = ValidationSummary.unavailable
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? = null
 }
 
 @Inject

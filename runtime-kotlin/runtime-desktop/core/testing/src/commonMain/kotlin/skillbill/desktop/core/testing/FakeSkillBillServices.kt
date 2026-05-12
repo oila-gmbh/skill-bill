@@ -9,11 +9,13 @@ import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SourceControlStatus
+import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 
 class FakeRepoSessionService : RepoSessionService {
   override fun open(repoPath: String): RepoSession = RepoSession(
@@ -39,6 +41,26 @@ class FakeAuthoringGateway : AuthoringGateway {
 class FakeGitGateway : GitGateway {
   override fun statusFor(session: RepoSession?): SourceControlStatus =
     SourceControlStatus(branchLabel = "main", summary = session?.repoPath.orEmpty())
+}
+
+class FakeValidationGateway(
+  var scriptedSummary: ValidationSummary = ValidationSummary.unavailable,
+  var resolveBySourcePath: Map<String, String> = emptyMap(),
+  var throwOnValidate: Throwable? = null,
+) : ValidationGateway {
+  var validateCallCount: Int = 0
+    private set
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun validate(session: RepoSession?): ValidationSummary {
+    validateCallCount += 1
+    throwOnValidate?.let { throw it }
+    return scriptedSummary
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? =
+    resolveBySourcePath[sourcePath]
 }
 
 class FakeDesktopPreferenceStore(initialRepoPath: String? = null) : DesktopPreferenceStore {

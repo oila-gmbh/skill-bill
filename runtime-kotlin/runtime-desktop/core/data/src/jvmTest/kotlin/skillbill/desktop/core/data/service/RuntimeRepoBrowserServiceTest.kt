@@ -3,6 +3,7 @@ package skillbill.desktop.core.data.service
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationRunState
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
@@ -220,6 +221,101 @@ class RuntimeRepoBrowserServiceTest {
     service.treeFor(session)
 
     assertEquals(before, repoFileSnapshot(repo))
+  }
+
+  @Test
+  fun `validate returns unavailable when no session is open`() {
+    val service = RuntimeRepoBrowserService()
+    val summary = service.validate(session = null)
+
+    assertEquals(ValidationRunState.UNAVAILABLE, summary.state)
+  }
+
+  @Test
+  fun `validate returns failed with structured issues for a non-passing repo`() {
+    val repo = seedRepo("validate-failed")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+
+    val summary = service.validate(session)
+
+    // Seeded repo is missing README, override files, etc., so validation must fail.
+    assertEquals(ValidationRunState.FAILED, summary.state)
+    assertTrue(summary.issues.isNotEmpty())
+    // At least one issue should be tied to an actual source path under skills/ or platform-packs/.
+    val pathBearingIssue = summary.issues.firstOrNull { issue ->
+      !issue.sourcePath.isNullOrBlank()
+    }
+    assertNotNull(pathBearingIssue, "Expected at least one issue with a source path")
+  }
+
+  @Test
+  fun `validate maps unrecognized session to unavailable`() {
+    val service = RuntimeRepoBrowserService()
+    val missing = Files.createTempDirectory("skillbill-desktop-validate-missing").resolve("nope")
+    val invalidSession = service.open(missing.toString())
+
+    val summary = service.validate(invalidSession)
+
+    assertEquals(ValidationRunState.UNAVAILABLE, summary.state)
+  }
+
+  @Test
+  fun `resolveTreeItemIdForSource maps known authored path to its selection id`() {
+    val repo = seedRepo("validate-resolve")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val skillTreeId = service.treeForSessionLocalId(session, "skill:bill-alpha")
+
+    val resolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/content.md")
+
+    assertEquals(skillTreeId, resolved)
+  }
+
+  @Test
+  fun `resolveTreeItemIdForSource returns null for unknown source paths`() {
+    val repo = seedRepo("validate-resolve-unknown")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+
+    val resolved = service.resolveTreeItemIdForSource(session, "skills/does-not-exist/content.md")
+
+    assertNull(resolved)
+  }
+
+  @Test
+  fun `resolveTreeItemIdForSource matches SKILL md sibling against authored content md`() {
+    // F-108: validation reports often surface the generated SKILL.md path even though the
+    // authored selection lives next to it as content.md. The parent-directory fallback must
+    // make those two paths resolve to the same tree item.
+    val repo = seedRepo("validate-resolve-parent")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+
+    val contentResolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/content.md")
+    val siblingResolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/SKILL.md")
+
+    assertNotNull(contentResolved)
+    assertEquals(contentResolved, siblingResolved)
+  }
+
+  @Test
+  fun `validate failure inside runtime is surfaced as FAILED with runtime exception fields`() {
+    // F-107: when the underlying validation runtime throws, the service must report a FAILED
+    // summary that carries the runtime exception name and message so the UI can render the
+    // failure without losing the cause.
+    val repo = seedRepo("validate-runtime-failure")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    service.validator = { _ -> error("simulated runtime crash") }
+
+    val summary = service.validate(session)
+
+    assertEquals(ValidationRunState.FAILED, summary.state)
+    assertNotNull(summary.runtimeExceptionName)
+    assertNotNull(summary.runtimeExceptionMessage)
+    assertTrue(summary.runtimeExceptionMessage!!.contains("simulated runtime crash"))
+    assertTrue(summary.issues.isEmpty())
   }
 
   @Test

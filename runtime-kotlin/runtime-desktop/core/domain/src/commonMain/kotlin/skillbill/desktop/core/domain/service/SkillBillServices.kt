@@ -4,6 +4,7 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SourceControlStatus
+import skillbill.desktop.core.domain.model.ValidationSummary
 
 interface RepoSessionService {
   fun open(repoPath: String): RepoSession
@@ -25,4 +26,10 @@ interface AuthoringGateway {
 
 interface GitGateway {
   fun statusFor(session: RepoSession?): SourceControlStatus
+}
+
+interface ValidationGateway {
+  fun validate(session: RepoSession?): ValidationSummary
+
+  fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String?
 }

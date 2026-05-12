@@ -8,19 +8,26 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationIssue
+import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.desktop.core.domain.model.ValidationSeverity
+import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeGitGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
+import skillbill.desktop.core.testing.FakeValidationGateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SkillBillViewModelTest {
   @Test
@@ -70,6 +77,7 @@ class SkillBillViewModelTest {
       skillTreeService = FakeSkillTreeService(emptyList()),
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
+      validationGateway = FakeValidationGateway(),
       recentRepoRepository = recentRepoRepository,
     )
 
@@ -100,6 +108,7 @@ class SkillBillViewModelTest {
       skillTreeService = skillTreeService,
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
+      validationGateway = FakeValidationGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
     )
     viewModel.selectRepoPath("/repo")
@@ -426,17 +435,256 @@ class SkillBillViewModelTest {
     assertEquals(SkillBillBusyOperation.REFRESH, state.busyOperation)
   }
 
+  @Test
+  fun `validate with no repo open is no-op and stays unavailable`() {
+    val validationGateway = FakeValidationGateway()
+    val viewModel = newViewModel(validationGateway = validationGateway)
+
+    val request = viewModel.beginValidate()
+    val running = viewModel.state()
+    val result = viewModel.runValidate(request)
+    val finished = viewModel.finishValidate(result)
+
+    assertEquals(ValidationRunState.RUNNING, running.validation.state)
+    assertEquals(ValidationRunState.UNAVAILABLE, finished.validation.state)
+    assertEquals(1, validationGateway.validateCallCount)
+  }
+
+  @Test
+  fun `successful validation transitions running to passed and clears stale issues`() {
+    val staleSummary = ValidationSummary(
+      state = ValidationRunState.FAILED,
+      issues = listOf(
+        ValidationIssue(
+          severity = ValidationSeverity.ERROR,
+          code = null,
+          message = "stale issue",
+          sourcePath = "skills/old.md",
+        ),
+      ),
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = staleSummary)
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val seededRequest = viewModel.beginValidate()
+    val seededFinish = viewModel.finishValidate(viewModel.runValidate(seededRequest))
+    assertEquals(ValidationRunState.FAILED, seededFinish.validation.state)
+    assertEquals(1, seededFinish.validation.issues.size)
+
+    // Now flip gateway to PASSED and validate again.
+    validationGateway.scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)
+    val nextRequest = viewModel.beginValidate()
+    val running = viewModel.state()
+    assertEquals(ValidationRunState.RUNNING, running.validation.state)
+    val passed = viewModel.finishValidate(viewModel.runValidate(nextRequest))
+
+    assertEquals(ValidationRunState.PASSED, passed.validation.state)
+    assertTrue(passed.validation.issues.isEmpty())
+    assertNull(passed.busyOperation)
+  }
+
+  @Test
+  fun `failed validation preserves editor selection`() {
+    val validationGateway = FakeValidationGateway()
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    val selected = viewModel.selectTreeItem("skill-one")
+    val editorBefore = selected.editor
+
+    validationGateway.scriptedSummary = ValidationSummary(
+      state = ValidationRunState.FAILED,
+      issues = listOf(
+        ValidationIssue(
+          severity = ValidationSeverity.ERROR,
+          code = null,
+          message = "boom",
+          sourcePath = null,
+        ),
+      ),
+    )
+    val request = viewModel.beginValidate()
+    val finished = viewModel.finishValidate(viewModel.runValidate(request))
+
+    assertEquals(ValidationRunState.FAILED, finished.validation.state)
+    assertEquals(editorBefore, finished.editor)
+  }
+
+  @Test
+  fun `stale validation finish is ignored when a newer operation has started`() {
+    val validationGateway = FakeValidationGateway(
+      scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED),
+    )
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    val staleRequest = viewModel.beginValidate()
+    val staleResult = viewModel.runValidate(staleRequest)
+    // A newer operation starts (e.g. refresh)
+    viewModel.beginRefresh()
+    val state = viewModel.finishValidate(staleResult)
+
+    // Refresh operation is still in flight; validation should not have overwritten its busy state.
+    assertEquals(SkillBillBusyOperation.REFRESH, state.busyOperation)
+    // F-101: the stale finish must unwind the RUNNING validation marker; otherwise the validation
+    // slice would stay stuck on RUNNING after the unrelated operation completes.
+    assertEquals(ValidationRunState.UNAVAILABLE, state.validation.state)
+  }
+
+  @Test
+  fun `status bar reflects every validation run state`() {
+    val validationGateway = FakeValidationGateway()
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val unavailable = viewModel.state()
+    assertEquals(ValidationRunState.UNAVAILABLE, unavailable.validation.state)
+
+    val firstRequest = viewModel.beginValidate()
+    val running = viewModel.state()
+    assertEquals(ValidationRunState.RUNNING, running.validation.state)
+
+    validationGateway.scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)
+    val passed = viewModel.finishValidate(viewModel.runValidate(firstRequest))
+    assertEquals(ValidationRunState.PASSED, passed.validation.state)
+
+    val secondRequest = viewModel.beginValidate()
+    validationGateway.scriptedSummary = ValidationSummary(
+      state = ValidationRunState.FAILED,
+      issues = listOf(
+        ValidationIssue(
+          severity = ValidationSeverity.ERROR,
+          code = null,
+          message = "x",
+          sourcePath = null,
+        ),
+      ),
+    )
+    val failed = viewModel.finishValidate(viewModel.runValidate(secondRequest))
+    assertEquals(ValidationRunState.FAILED, failed.validation.state)
+  }
+
+  @Test
+  fun `inspector and bottom dock share the same validation issues list`() {
+    val issues = listOf(
+      ValidationIssue(
+        severity = ValidationSeverity.ERROR,
+        code = "E1",
+        message = "missing",
+        sourcePath = "skills/a.md",
+      ),
+      ValidationIssue(
+        severity = ValidationSeverity.WARNING,
+        code = "W1",
+        message = "old",
+        sourcePath = "skills/b.md",
+      ),
+    )
+    val validationGateway = FakeValidationGateway(
+      scriptedSummary = ValidationSummary(state = ValidationRunState.FAILED, issues = issues),
+    )
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    val request = viewModel.beginValidate()
+    val state = viewModel.finishValidate(viewModel.runValidate(request))
+
+    // The state exposes a single validation slice that drives both surfaces.
+    assertEquals(issues, state.validation.issues)
+  }
+
+  @Test
+  fun `revealValidationIssue selects resolved id and expands ancestor`() {
+    val validationGateway = FakeValidationGateway(
+      resolveBySourcePath = mapOf("skills/bill-alpha/content.md" to "skill-one"),
+    )
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    val issue = ValidationIssue(
+      severity = ValidationSeverity.ERROR,
+      code = null,
+      message = "boom",
+      sourcePath = "skills/bill-alpha/content.md",
+    )
+
+    val state = viewModel.revealValidationIssue(issue)
+
+    assertEquals("skill-one", state.selectedTreeItemId)
+    assertTrue("skills" in state.expandedNodeIds)
+  }
+
+  @Test
+  fun `stale finishValidate after a refresh restores the pre-RUNNING validation summary`() {
+    val passedSummary = ValidationSummary(state = ValidationRunState.PASSED)
+    val validationGateway = FakeValidationGateway(scriptedSummary = passedSummary)
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+
+    // Seed the slice with a known PASSED state.
+    val firstRequest = viewModel.beginValidate()
+    val sealed = viewModel.finishValidate(viewModel.runValidate(firstRequest))
+    assertEquals(ValidationRunState.PASSED, sealed.validation.state)
+
+    // Begin a second validation but preempt it with a refresh before finish lands.
+    val staleRequest = viewModel.beginValidate()
+    assertEquals(ValidationRunState.RUNNING, viewModel.state().validation.state)
+    viewModel.beginRefresh()
+    val staleResult = viewModel.runValidate(staleRequest)
+    val afterStale = viewModel.finishValidate(staleResult)
+
+    // F-101: the stale finish must unwind RUNNING back to the previous-summary captured at
+    // beginValidate time (PASSED in this scenario), not leave validation stuck on RUNNING.
+    assertEquals(ValidationRunState.PASSED, afterStale.validation.state)
+    // Refresh is still the in-flight op.
+    assertEquals(SkillBillBusyOperation.REFRESH, afterStale.busyOperation)
+  }
+
+  @Test
+  fun `successful refresh on same repo resets validation to UNAVAILABLE`() {
+    val passedSummary = ValidationSummary(state = ValidationRunState.PASSED)
+    val validationGateway = FakeValidationGateway(scriptedSummary = passedSummary)
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val seeded = viewModel.finishValidate(viewModel.runValidate(viewModel.beginValidate()))
+    assertEquals(ValidationRunState.PASSED, seeded.validation.state)
+
+    val refreshed = viewModel.refresh()
+
+    // F-103: a refresh re-reads on-disk state; the prior validation result is now stale and must
+    // be cleared even when the repo path is unchanged.
+    assertEquals(ValidationRunState.UNAVAILABLE, refreshed.validation.state)
+  }
+
+  @Test
+  fun `revealValidationIssue with unresolvable path leaves selection unchanged`() {
+    val validationGateway = FakeValidationGateway()
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    val before = viewModel.selectTreeItem("skill-one")
+    val issue = ValidationIssue(
+      severity = ValidationSeverity.ERROR,
+      code = null,
+      message = "boom",
+      sourcePath = "nope.md",
+    )
+
+    val state = viewModel.revealValidationIssue(issue)
+
+    assertEquals(before.selectedTreeItemId, state.selectedTreeItemId)
+  }
+
   private fun newViewModel(
     repoSessionService: RepoSessionService = FakeRepoSessionService(),
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultSkillTree()),
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
     gitGateway: GitGateway = FakeGitGateway(),
+    validationGateway: ValidationGateway = FakeValidationGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
     gitGateway = gitGateway,
+    validationGateway = validationGateway,
     recentRepoRepository = recentRepoRepository,
   )
 }

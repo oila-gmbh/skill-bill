@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -15,6 +17,7 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
 
+@Suppress("DEPRECATION")
 @Composable
 fun SkillBillRoute(
   selectedSourceId: String?,
@@ -25,6 +28,7 @@ fun SkillBillRoute(
   val component = rememberScreenComponent<SkillBillComponent>()
   val viewModel = component.viewModel
   val coroutineScope = rememberCoroutineScope()
+  val clipboardManager = LocalClipboardManager.current
   var state by remember(viewModel, selectedSourceId) { mutableStateOf(viewModel.state(selectedSourceId)) }
 
   SkillBillFrame(
@@ -75,6 +79,19 @@ fun SkillBillRoute(
         }
       }
     },
+    onValidate = {
+      if (state.busyOperation == null) {
+        // beginValidate returns a request that captures the active token, the current session, and the
+        // pre-RUNNING validation summary, so the dispatcher work below does not read mutable VM fields
+        // off-thread. (F-102)
+        val request = viewModel.beginValidate()
+        state = viewModel.state()
+        coroutineScope.launch {
+          val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
+          state = viewModel.finishValidate(result)
+        }
+      }
+    },
     onTreeItemSelected = { itemId ->
       if (state.busyOperation == null) {
         state = viewModel.selectTreeItem(itemId)
@@ -90,6 +107,15 @@ fun SkillBillRoute(
       if (state.busyOperation == null) {
         state = viewModel.moveSelection(delta)
       }
+    },
+    onValidationIssueSelected = { issue ->
+      if (state.busyOperation == null) {
+        state = viewModel.revealValidationIssue(issue)
+      }
+    },
+    // F-106: clipboard side effect is hoisted into the route so the inspector stays pure.
+    onCopyIssueSource = { sourcePath ->
+      clipboardManager.setText(AnnotatedString(sourcePath))
     },
   )
 }

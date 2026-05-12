@@ -7,6 +7,7 @@ import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 import software.amazon.lastmile.kotlin.inject.anvil.ContributesTo
 
 @ContributesTo(UserScope::class)
@@ -22,4 +23,7 @@ interface JvmDataBindings {
 
   @Provides
   fun RuntimeRepoBrowserService.bindGitGateway(): GitGateway = this
+
+  @Provides
+  fun RuntimeRepoBrowserService.bindValidationGateway(): ValidationGateway = this
 }

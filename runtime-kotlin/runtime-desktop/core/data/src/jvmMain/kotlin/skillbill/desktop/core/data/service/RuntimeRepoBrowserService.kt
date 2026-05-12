@@ -11,13 +11,20 @@ import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
 import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationIssue
+import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.desktop.core.domain.model.ValidationSeverity
+import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.nativeagent.discoverNativeAgentSourceFiles
 import skillbill.nativeagent.parseNativeAgentSourceFile
 import skillbill.scaffold.AuthoringOperations
+import skillbill.scaffold.RepoValidationIssueSeverity
+import skillbill.scaffold.RepoValidationReport
 import skillbill.scaffold.RepoValidationRuntime
 import skillbill.scaffold.discoverGeneratedArtifactFiles
 import skillbill.scaffold.discoverGovernedAddonFiles
@@ -37,7 +44,11 @@ class RuntimeRepoBrowserService :
   RepoSessionService,
   SkillTreeService,
   AuthoringGateway,
-  GitGateway {
+  GitGateway,
+  ValidationGateway {
+  // F-107: validator is a functional seam tests can swap to drive the onFailure branch of validate()
+  // without needing to physically corrupt a repo on disk.
+  internal var validator: (Path) -> RepoValidationReport = RepoValidationRuntime::validateRepo
   private var snapshot: RepoBrowserSnapshot = RepoBrowserSnapshot.empty
 
   override fun open(repoPath: String): RepoSession {
@@ -98,6 +109,57 @@ class RuntimeRepoBrowserService :
     ?.takeIf { detail -> detail.repoToken == snapshot.repoToken }
     ?.toEditorPlaceholder()
     ?: EditorPlaceholder.empty
+
+  override fun validate(session: RepoSession?): ValidationSummary {
+    if (session == null || !session.isRecognizedSkillBillRepo) {
+      return ValidationSummary.unavailable
+    }
+    val root = resolveRepoPath(session.repoPath) ?: return ValidationSummary.unavailable
+    return runCatching { validator(root) }
+      .fold(
+        onSuccess = { report ->
+          val issues = report.structuredIssues.map { issue ->
+            ValidationIssue(
+              severity = issue.severity.toDomain(),
+              code = issue.code,
+              message = issue.message,
+              sourcePath = issue.sourcePath?.let { path -> normalizeSourcePath(root, path) },
+              exceptionName = issue.exceptionName,
+            )
+          }
+          ValidationSummary(
+            state = if (report.passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
+            issues = issues,
+          )
+        },
+        onFailure = { error ->
+          ValidationSummary(
+            state = ValidationRunState.FAILED,
+            issues = emptyList(),
+            runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
+            runtimeExceptionMessage = error.message,
+          )
+        },
+      )
+  }
+
+  override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? {
+    if (session?.isRecognizedSkillBillRepo != true) {
+      return null
+    }
+    val expectedRepoPath = snapshot.repoRoot?.toString()
+    if (expectedRepoPath != session.repoPath) {
+      return null
+    }
+    val root = snapshot.repoRoot ?: return null
+    val normalized = normalizeSourcePath(root, sourcePath)
+    if (normalized.isBlank()) {
+      return null
+    }
+    return snapshot.selections.entries
+      .firstOrNull { (_, detail) -> matchesSourcePath(detail.authoredPath, normalized) }
+      ?.key
+  }
 
   override fun statusFor(session: RepoSession?): SourceControlStatus {
     if (session == null) {
@@ -523,3 +585,39 @@ private fun repoToken(root: Path): String {
 }
 
 private fun selectionId(repoToken: String, localId: String): String = "repo:$repoToken|$localId"
+
+private fun RepoValidationIssueSeverity.toDomain(): ValidationSeverity = when (this) {
+  RepoValidationIssueSeverity.ERROR -> ValidationSeverity.ERROR
+  RepoValidationIssueSeverity.WARNING -> ValidationSeverity.WARNING
+  RepoValidationIssueSeverity.INFO -> ValidationSeverity.INFO
+}
+
+private fun normalizeSourcePath(root: Path, sourcePath: String): String {
+  val trimmed = sourcePath.trim()
+  if (trimmed.isBlank()) {
+    return ""
+  }
+  return runCatching {
+    val absolute = Path.of(trimmed)
+    if (absolute.isAbsolute) {
+      absolute.toAbsolutePath().normalize().relativeTo(root).portablePath()
+    } else {
+      // Already relative; portable-ify.
+      trimmed.replace('\\', '/')
+    }
+  }.getOrDefault(trimmed.replace('\\', '/'))
+}
+
+private fun matchesSourcePath(authoredPath: String?, sourcePath: String): Boolean {
+  if (authoredPath.isNullOrBlank() || sourcePath.isBlank()) {
+    return false
+  }
+  val normalizedAuthored = authoredPath.replace('\\', '/')
+  if (normalizedAuthored == sourcePath) {
+    return true
+  }
+  // Allow matching on the parent directory of an authored file (e.g. content.md path vs SKILL.md sibling).
+  val authoredDir = normalizedAuthored.substringBeforeLast('/', missingDelimiterValue = "")
+  val sourceDir = sourcePath.substringBeforeLast('/', missingDelimiterValue = "")
+  return authoredDir.isNotEmpty() && sourceDir.isNotEmpty() && authoredDir == sourceDir
+}

@@ -30,7 +30,45 @@ data class SkillBillState(
   val editor: EditorPlaceholder,
   val sourceControl: SourceControlStatus,
   val statusBar: SkillBillStatusBar = SkillBillStatusBar.empty,
+  val validation: ValidationSummary = ValidationSummary.unavailable,
 )
+
+enum class ValidationSeverity {
+  ERROR,
+  WARNING,
+  INFO,
+}
+
+data class ValidationIssue(
+  val severity: ValidationSeverity,
+  val code: String?,
+  val message: String,
+  val sourcePath: String?,
+  val exceptionName: String? = null,
+)
+
+enum class ValidationRunState {
+  RUNNING,
+  PASSED,
+  FAILED,
+  UNAVAILABLE,
+}
+
+data class ValidationSummary(
+  val state: ValidationRunState,
+  val issues: List<ValidationIssue> = emptyList(),
+  val errorCount: Int = issues.count { it.severity == ValidationSeverity.ERROR },
+  val warningCount: Int = issues.count { it.severity == ValidationSeverity.WARNING },
+  val infoCount: Int = issues.count { it.severity == ValidationSeverity.INFO },
+  val runtimeExceptionName: String? = null,
+  val runtimeExceptionMessage: String? = null,
+) {
+  val totalCount: Int = errorCount + warningCount + infoCount
+
+  companion object {
+    val unavailable: ValidationSummary = ValidationSummary(state = ValidationRunState.UNAVAILABLE)
+  }
+}
 
 data class SkillBillTreeItem(
   val id: String,
@@ -92,6 +130,7 @@ enum class SkillBillBusyOperation {
   OPEN_REPO,
   REFRESH,
   CHOOSE_DIRECTORY,
+  VALIDATE,
 }
 
 data class SkillBillStatusBar(
