@@ -222,6 +222,22 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals(before, repoFileSnapshot(repo))
   }
 
+  @Test
+  fun `failed open does not modify repository files`() {
+    val repo = seedRepo("failed-open-snapshot")
+    val before = repoFileSnapshot(repo)
+    val service = RuntimeRepoBrowserService()
+    val missing = repo.resolve("missing-subdir")
+
+    service.open(missing.toString())
+    val recoveredSession = service.open(repo.toString())
+    val skillId = service.treeForSessionLocalId(recoveredSession, "skill:bill-alpha")
+    service.treeFor(recoveredSession)
+    service.describeSelection(skillId)
+
+    assertEquals(before, repoFileSnapshot(repo))
+  }
+
   private fun seedRepo(name: String): Path {
     val repo = Files.createTempDirectory("skillbill-desktop-$name")
     writeContentSkill(repo, "bill-alpha", "Alpha guidance.")

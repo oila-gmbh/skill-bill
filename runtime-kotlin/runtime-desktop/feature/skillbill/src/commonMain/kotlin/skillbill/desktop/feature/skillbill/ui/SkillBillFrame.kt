@@ -554,12 +554,7 @@ private fun NavNodeRow(
 }
 
 @Composable
-private fun RepositoryAction(
-  label: String,
-  marker: String,
-  badge: String? = null,
-  enabled: Boolean = true,
-) {
+private fun RepositoryAction(label: String, marker: String, badge: String? = null, enabled: Boolean = true) {
   val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
   Row(
     modifier =

@@ -342,6 +342,41 @@ class SkillBillViewModelTest {
   }
 
   @Test
+  fun `keyboard movement skips children of collapsed groups`() {
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "group-a",
+            label = "Group A",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "a-one", label = "A One", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "a-two", label = "A Two", kind = TreeItemKind.SKILL),
+            ),
+          ),
+          SkillBillTreeItem(
+            id = "group-b",
+            label = "Group B",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "b-one", label = "B One", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "b-two", label = "B Two", kind = TreeItemKind.SKILL),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.toggleExpanded("group-b")
+
+    val visited = mutableListOf<String?>()
+    repeat(5) { visited += viewModel.moveSelection(1).selectedTreeItemId }
+
+    assertEquals(listOf<String?>("group-a", "a-one", "a-two", "group-b", "group-b"), visited)
+  }
+
+  @Test
   fun `generated artifact selection remains read only in presentation state`() {
     val viewModel = newViewModel(
       skillTreeService = MutableSkillTreeService(
