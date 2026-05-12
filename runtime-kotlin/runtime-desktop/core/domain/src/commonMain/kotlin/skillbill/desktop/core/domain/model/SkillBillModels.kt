@@ -34,6 +34,15 @@ data class SkillBillState(
   val render: RenderSummary = RenderSummary.unavailable,
   val activeDockTab: DockTab = DockTab.Validation,
   val renderable: Boolean = false,
+  val changes: ChangesSnapshot = ChangesSnapshot.empty,
+  val changesBusy: Boolean = false,
+  val selectedChangedFile: ChangedFile? = null,
+  val selectedDiff: String = "",
+  val selectedDiffBusy: Boolean = false,
+  val history: List<CommitEntry> = emptyList(),
+  val historyBusy: Boolean = false,
+  val historyErrorMessage: String? = null,
+  val historyPathFilter: String? = null,
 )
 
 enum class DockTab {
@@ -227,5 +236,56 @@ data class SourceControlStatus(
         branchLabel = "No repository",
         summary = "Open a local checkout before source control state is available.",
       )
+  }
+}
+
+enum class ChangedFileGroup {
+  STAGED,
+  UNSTAGED,
+  UNTRACKED,
+  GENERATED,
+}
+
+data class ChangedFile(
+  val path: String,
+  val group: ChangedFileGroup,
+  // Raw porcelain status code, e.g. "M", "A", "??". Preserved for UI labels.
+  val statusCode: String,
+  // Whether this file is a generated artifact (cannot be opened in editable mode).
+  val isGenerated: Boolean = group == ChangedFileGroup.GENERATED,
+)
+
+data class CommitEntry(
+  val shortHash: String,
+  val fullHash: String,
+  val author: String,
+  // ISO-8601 commit date, e.g. "2025-04-30T14:22:00+00:00".
+  val isoDate: String,
+  val subject: String,
+  val changedPaths: List<String> = emptyList(),
+)
+
+data class ChangesSnapshot(
+  val files: List<ChangedFile> = emptyList(),
+  // Branch label captured atomically with the changed-file groups so the UI never needs to call
+  // back into the gateway to populate the branch label on the UI thread (F-C701).
+  val branchLabel: String = "",
+  // When non-null, indicates the most recent gateway error message without mutating the rest of state.
+  val errorMessage: String? = null,
+  // F-A02: when true, this snapshot represents a stage/unstage failure that produced no fresh
+  // file list. The VM merges the errorMessage into its existing snapshot instead of replacing files.
+  val isFailed: Boolean = false,
+) {
+  companion object {
+    val empty: ChangesSnapshot = ChangesSnapshot()
+
+    // F-A02 helper: stage/unstage failures return only an error message and a `isFailed = true`
+    // marker. The VM overlays this onto its existing snapshot to preserve the prior file list.
+    fun failed(errorMessage: String): ChangesSnapshot = ChangesSnapshot(
+      files = emptyList(),
+      branchLabel = "",
+      errorMessage = errorMessage,
+      isFailed = true,
+    )
   }
 }

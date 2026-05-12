@@ -1,5 +1,21 @@
 # SkillBill desktop feature — history
 
+## [2026-05-12] SKILL-44 changes-history (subtask 05)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data (commonMain + jvmMain), runtime-desktop/core/domain, runtime-desktop/core/testing
+- New sibling `RuntimeGitGateway` in core/data/jvmMain honors Subtask 04's god-class warning — GitGateway dropped from RuntimeRepoBrowserService. Future gateway work keeps adding siblings.
+- JVM subprocess hardening template (reusable for any future Process-shelling gateway): `redirectErrorStream(true)` + concurrent daemon stdout-drain into a size-capped (8 MiB) ByteArrayOutputStream — NEVER `waitFor` before reading (pipe-buffer deadlock); explicit `Charsets.UTF_8` (Windows cp1252 corrupts non-ASCII); scrub GIT_DIR/WORK_TREE/INDEX_FILE/CONFIG*/EXTERNAL_DIFF/FILTER/PAGER/EDITOR/SSH_COMMAND/ASKPASS env vars + `GIT_TERMINAL_PROMPT=0`; prepend `--no-optional-locks` + `-c core.fsmonitor= -c core.hooksPath=/dev/null -c core.pager= -c core.sshCommand= -c protocol.file.allow=user` and `--no-ext-diff` on diff (`-c diff.external=` is rejected by git) to neutralize untrusted `.git/config` (CVE-2022-24765 class).
+- `statusFor` must NEVER fork a subprocess on the UI thread (F-C701). Branch label is part of `ChangesSnapshot.branchLabel`, populated only inside the async snapshotFor triplet; VM caches it in `currentBranchLabel` and `createState()` reads cache. Any gateway method called from createState() must be pure.
+- Async-op slice-ownership rule (F-A01): when refresh/stage/unstage share one `activeGitOperationToken` and all mutate the SAME slice, stale-finish KEEPS currentState (NOT restore previousSnapshot). The F-101 restore-previous pattern only fits per-selection or per-filter slices; selectedDiff and history triplets still use F-101.
+- F-A02: stage/unstage failure must NOT re-query snapshotFor. Use `ChangesSnapshot.failed(errorMessage)` sentinel; VM overlays error onto the existing snapshot (preserve files + branchLabel). AC11 invariant.
+- Stale + error coexistence: when slice error appears AND prior data still on screen, render a `Tone.Warning` banner ("Showing previous results — refresh failed.") above the data — do NOT hide stale rows.
+- Filter-aware empty-state: an active filter yielding zero must reference the filter and offer a clickable clear affordance, distinct from the no-data empty-state.
+- Reusable Compose helpers: `Modifier.iconButtonSemantics(description)` (hit-target min size + Role.Button + contentDescription for every text-based clickable in the dock); `ReadOnlyArtifactTooltip` wraps the RO badge on Generated rows; `recentlyCopiedKey` + 1.5s LaunchedEffect at SkillBillRoute for transient "copied" feedback (clipboard still hoisted via LocalClipboardManager — `@Suppress("DEPRECATION")` intentional until Compose 1.7 migration).
+- AC10 fan-out funnels through `runGitRefresh()` and the new `vm.afterValidateFinished()` / `vm.afterRenderFinished()` hooks. Save/scaffold actions don't exist in app yet; once introduced they should call `runGitRefresh()` in the same pattern.
+- FakeGitGateway pattern: scripted snapshot/diff/commits + `throwOnX` toggles + per-method `callCount` mirrors FakeValidationGateway/FakeRenderGateway. `recentCommits` returns empty for null session — required for the AC5 empty-state test contract.
+- Deferred Major review findings (do not relitigate next subtask): F-U02 LazyColumn for unbounded changed-file list; F-U06 `selectableGroup` row-a11y restructure (project-wide); F-U07 StateFlow + `collectAsStateWithLifecycle` vs hand-rolled `remember{mutableStateOf(viewModel.state())}` (project-wide route pattern); F-T06 AC7 positive-case binding test at the route level.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-05-12] SKILL-44 render-console (subtask 04)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing, runtime-core/scaffold + nativeagent
 - Added on-demand render: SkillBillViewModel.beginRender/runRender/finishRender mirrors the Subtask 02 validation triplet (activeOperationToken + caller-dispatcher-captured RenderRunRequest with previousRenderSummary); stale finish restores previousSummary instead of getting stuck on RUNNING.

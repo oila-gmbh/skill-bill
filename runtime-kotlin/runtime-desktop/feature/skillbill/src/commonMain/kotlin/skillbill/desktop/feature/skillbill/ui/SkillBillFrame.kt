@@ -3,6 +3,8 @@
 package skillbill.desktop.feature.skillbill.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,9 +20,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +44,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -49,6 +55,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillMetrics
+import skillbill.desktop.core.domain.model.ChangedFile
+import skillbill.desktop.core.domain.model.ChangedFileGroup
+import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
@@ -95,6 +105,16 @@ fun SkillBillFrame(
   onValidationIssueSelected: (ValidationIssue) -> Unit,
   onCopyIssueSource: (String) -> Unit,
   onActiveDockTabChanged: (DockTab) -> Unit,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onRefreshGit: () -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  onCopyCommitHash: (String) -> Unit,
+  onClearHistoryPathFilter: () -> Unit,
+  // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
+  // value matches the key flashes its copied state until the route clears the key.
+  recentlyCopiedKey: String? = null,
 ) {
   val validateEnabled =
     state.selectedRepoPath != null &&
@@ -141,6 +161,24 @@ fun SkillBillFrame(
         render = state.render,
         activeDockTab = state.activeDockTab,
         onActiveDockTabChanged = onActiveDockTabChanged,
+        changes = state.changes,
+        changesBusy = state.changesBusy,
+        selectedChangedFile = state.selectedChangedFile,
+        selectedDiff = state.selectedDiff,
+        selectedDiffBusy = state.selectedDiffBusy,
+        history = state.history,
+        historyBusy = state.historyBusy,
+        historyErrorMessage = state.historyErrorMessage,
+        historyPathFilter = state.historyPathFilter,
+        hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onRefreshGit = onRefreshGit,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        onCopyCommitHash = onCopyCommitHash,
+        onClearHistoryPathFilter = onClearHistoryPathFilter,
+        recentlyCopiedKey = recentlyCopiedKey,
         modifier = Modifier.weight(1f).fillMaxHeight(),
       )
       InspectorPane(
@@ -436,19 +474,26 @@ private fun RepositorySelector(
         singleLine = true,
         modifier = Modifier.weight(1f),
       )
+      // F-U05 / F-X-501: enlarge hit target and announce intent for the text-as-button actions.
       Text(
         text = if (busy) "Busy" else "Open",
         color = if (busy) WorkspaceSteel else WorkspaceYellow,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) },
+        modifier = Modifier
+          .iconButtonSemantics(description = "Open repository at path")
+          .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
+          .padding(horizontal = 6.dp, vertical = 4.dp),
       )
       Text(
         text = "...",
         color = if (busy) WorkspaceSteel else WorkspaceYellow,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory),
+        modifier = Modifier
+          .iconButtonSemantics(description = "Choose repository directory")
+          .clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory)
+          .padding(horizontal = 6.dp, vertical = 4.dp),
       )
     }
     Text(
@@ -494,11 +539,17 @@ private fun NavGroup(
       modifier =
       Modifier
         .fillMaxWidth()
-        .height(27.dp)
+        .heightIn(min = 27.dp)
         .padding(start = 2.dp, end = 4.dp)
         .clip(RoundedCornerShape(3.dp))
         .background(rowBackground)
-        .semantics { this.selected = selected }
+        // F-U05 / F-X-501: announce the toggle action so screen readers can distinguish it from
+        // sibling rows; selection state stays on the row for tree semantics.
+        .semantics {
+          this.selected = selected
+          this.contentDescription = "Toggle group ${group.label}"
+          this.role = Role.Button
+        }
         .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
         .padding(end = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -631,6 +682,24 @@ private fun CenterWorkspace(
   render: RenderSummary,
   activeDockTab: DockTab,
   onActiveDockTabChanged: (DockTab) -> Unit,
+  changes: ChangesSnapshot,
+  changesBusy: Boolean,
+  selectedChangedFile: ChangedFile?,
+  selectedDiff: String,
+  selectedDiffBusy: Boolean,
+  history: List<CommitEntry>,
+  historyBusy: Boolean,
+  historyErrorMessage: String?,
+  historyPathFilter: String?,
+  hasRepoOpen: Boolean,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onRefreshGit: () -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  onCopyCommitHash: (String) -> Unit,
+  onClearHistoryPathFilter: () -> Unit,
+  recentlyCopiedKey: String?,
   modifier: Modifier,
 ) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
@@ -642,6 +711,24 @@ private fun CenterWorkspace(
       render = render,
       activeTab = activeDockTab,
       onActiveTabSelected = onActiveDockTabChanged,
+      changes = changes,
+      changesBusy = changesBusy,
+      selectedChangedFile = selectedChangedFile,
+      selectedDiff = selectedDiff,
+      selectedDiffBusy = selectedDiffBusy,
+      history = history,
+      historyBusy = historyBusy,
+      historyErrorMessage = historyErrorMessage,
+      historyPathFilter = historyPathFilter,
+      hasRepoOpen = hasRepoOpen,
+      onChangedFileSelected = onChangedFileSelected,
+      onStageChangedFile = onStageChangedFile,
+      onUnstageChangedFile = onUnstageChangedFile,
+      onRefreshGit = onRefreshGit,
+      onCopyChangedFilePath = onCopyChangedFilePath,
+      onCopyCommitHash = onCopyCommitHash,
+      onClearHistoryPathFilter = onClearHistoryPathFilter,
+      recentlyCopiedKey = recentlyCopiedKey,
     )
   }
 }
@@ -1154,6 +1241,24 @@ private fun BottomDock(
   render: RenderSummary,
   activeTab: DockTab,
   onActiveTabSelected: (DockTab) -> Unit,
+  changes: ChangesSnapshot,
+  changesBusy: Boolean,
+  selectedChangedFile: ChangedFile?,
+  selectedDiff: String,
+  selectedDiffBusy: Boolean,
+  history: List<CommitEntry>,
+  historyBusy: Boolean,
+  historyErrorMessage: String?,
+  historyPathFilter: String?,
+  hasRepoOpen: Boolean,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onRefreshGit: () -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  onCopyCommitHash: (String) -> Unit,
+  onClearHistoryPathFilter: () -> Unit,
+  recentlyCopiedKey: String?,
 ) {
   Column(
     modifier =
@@ -1169,7 +1274,7 @@ private fun BottomDock(
       DockTab.entries.forEach { tab ->
         DockTabButton(
           tab = tab,
-          badge = badgeForDockTab(tab, validation),
+          badge = badgeForDockTab(tab, validation, changes),
           active = activeTab == tab,
           onSelected = { onActiveTabSelected(tab) },
         )
@@ -1188,18 +1293,42 @@ private fun BottomDock(
     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(WorkspaceBackground)) {
       when (activeTab) {
         DockTab.Validation -> ValidationTable(validation)
-        DockTab.Changes -> ChangesTable(editor)
-        DockTab.History -> HistoryTable()
+        DockTab.Changes -> ChangesPanel(
+          changes = changes,
+          changesBusy = changesBusy,
+          selectedChangedFile = selectedChangedFile,
+          selectedDiff = selectedDiff,
+          selectedDiffBusy = selectedDiffBusy,
+          hasRepoOpen = hasRepoOpen,
+          onChangedFileSelected = onChangedFileSelected,
+          onStageChangedFile = onStageChangedFile,
+          onUnstageChangedFile = onUnstageChangedFile,
+          onRefreshGit = onRefreshGit,
+          onCopyChangedFilePath = onCopyChangedFilePath,
+          recentlyCopiedKey = recentlyCopiedKey,
+        )
+        DockTab.History -> HistoryPanel(
+          history = history,
+          historyBusy = historyBusy,
+          historyErrorMessage = historyErrorMessage,
+          historyPathFilter = historyPathFilter,
+          hasRepoOpen = hasRepoOpen,
+          onCopyCommitHash = onCopyCommitHash,
+          onClearHistoryPathFilter = onClearHistoryPathFilter,
+          recentlyCopiedKey = recentlyCopiedKey,
+        )
         DockTab.Console -> InstallConsole(editor = editor, render = render)
       }
     }
   }
 }
 
-private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary): String? = when (tab) {
-  DockTab.Validation -> validation.issues.size.takeIf { it > 0 }?.toString()
-  else -> dockTabMetadata(tab).badge
-}
+private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary, changes: ChangesSnapshot): String? =
+  when (tab) {
+    DockTab.Validation -> validation.issues.size.takeIf { it > 0 }?.toString()
+    DockTab.Changes -> changes.files.size.takeIf { it > 0 }?.toString()
+    else -> dockTabMetadata(tab).badge
+  }
 
 @Composable
 private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelected: () -> Unit) {
@@ -1298,26 +1427,578 @@ private fun severityTone(severity: ValidationSeverity): Tone = when (severity) {
 }
 
 @Composable
-private fun ChangesTable(editor: EditorPlaceholder) {
-  Column(modifier = Modifier.fillMaxSize().padding(6.dp).verticalScroll(rememberScrollState())) {
-    editor.generatedArtifacts.forEach { artifact ->
-      TableRow("RO", "generated", artifact.reason, artifact.path, Tone.Warning)
+private fun ChangesPanel(
+  changes: ChangesSnapshot,
+  changesBusy: Boolean,
+  selectedChangedFile: ChangedFile?,
+  selectedDiff: String,
+  selectedDiffBusy: Boolean,
+  hasRepoOpen: Boolean,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onRefreshGit: () -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  Row(modifier = Modifier.fillMaxSize()) {
+    Column(
+      modifier = Modifier.weight(1f).fillMaxHeight().padding(6.dp).verticalScroll(rememberScrollState()),
+    ) {
+      ChangesHeader(
+        changesBusy = changesBusy,
+        errorMessage = changes.errorMessage,
+        hasStaleData = changes.files.isNotEmpty(),
+        onRefreshGit = onRefreshGit,
+      )
+      if (!hasRepoOpen) {
+        Text(
+          text = "Open a Git repository to see local changes.",
+          color = WorkspaceSteel,
+          fontSize = 11.sp,
+          modifier = Modifier.padding(8.dp),
+        )
+        return@Column
+      }
+      if (changes.files.isEmpty() && !changesBusy && changes.errorMessage == null) {
+        Text(
+          text = "No local changes.",
+          color = WorkspaceSteel,
+          fontSize = 11.sp,
+          modifier = Modifier.padding(8.dp),
+        )
+      }
+      // AC9: grouped sections in deterministic order. Generated stays last so authored changes
+      // surface first.
+      ChangedFileGroupSection(
+        title = "Staged",
+        group = ChangedFileGroup.STAGED,
+        files = changes.files,
+        selectedPath = selectedChangedFile?.path,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        recentlyCopiedKey = recentlyCopiedKey,
+      )
+      ChangedFileGroupSection(
+        title = "Unstaged",
+        group = ChangedFileGroup.UNSTAGED,
+        files = changes.files,
+        selectedPath = selectedChangedFile?.path,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        recentlyCopiedKey = recentlyCopiedKey,
+      )
+      ChangedFileGroupSection(
+        title = "Untracked",
+        group = ChangedFileGroup.UNTRACKED,
+        files = changes.files,
+        selectedPath = selectedChangedFile?.path,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        recentlyCopiedKey = recentlyCopiedKey,
+      )
+      ChangedFileGroupSection(
+        title = "Generated",
+        group = ChangedFileGroup.GENERATED,
+        files = changes.files,
+        selectedPath = selectedChangedFile?.path,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        recentlyCopiedKey = recentlyCopiedKey,
+      )
+    }
+    VerticalDivider(color = WorkspaceLine)
+    // F-U03: the diff column must not collapse below a readable width when the dock is narrow.
+    ChangesDiffPane(
+      selectedChangedFile = selectedChangedFile,
+      selectedDiff = selectedDiff,
+      selectedDiffBusy = selectedDiffBusy,
+      modifier = Modifier.weight(1f).fillMaxHeight().widthIn(min = 220.dp),
+    )
+  }
+}
+
+@Composable
+private fun ChangesHeader(
+  changesBusy: Boolean,
+  errorMessage: String?,
+  hasStaleData: Boolean,
+  onRefreshGit: () -> Unit,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(
+      text = if (changesBusy) "Refreshing..." else "Changes",
+      color = WorkspaceMuted,
+      fontSize = 11.sp,
+      modifier = Modifier.weight(1f),
+    )
+    // F-U05 / F-X-501: icon-text actions get a larger hit target and a parameterized
+    // contentDescription so screen readers announce intent (not just "button"). The internal
+    // padding gives the touch target room without changing the visible glyph size.
+    Text(
+      text = "refresh",
+      color = WorkspaceYellow,
+      fontSize = 11.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier
+        .iconButtonSemantics(description = "Refresh repository status")
+        .clickable(role = Role.Button, onClick = onRefreshGit)
+        .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+  }
+  if (errorMessage != null && hasStaleData) {
+    // F-X-505: when an error is present AND prior data is non-empty, surface a single
+    // visually-distinct banner so users see the rows below are stale. Keep the existing error
+    // text path for the no-data case (rendered below).
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+      Text(
+        text = "Last refresh failed - showing previous snapshot.",
+        color = Tone.Warning.color(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+      )
+    }
+  }
+  if (errorMessage != null) {
+    // F-601 mirror: long unbreakable error tokens (paths, exception names) should be reachable via
+    // horizontal scroll rather than silently clipping. Shared with the install console treatment.
+    Row(
+      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp),
+    ) {
+      Text(
+        text = errorMessage,
+        color = WorkspaceRed,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        softWrap = false,
+        maxLines = 1,
+      )
     }
   }
 }
 
 @Composable
-private fun HistoryTable() {
-  Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-    HistoryRows.forEach { row ->
-      TableRow(
-        first = row.sha,
-        second = row.who,
-        third = row.message,
-        fourth = row.timeAgo,
-        tone = if (row.ok) Tone.Success else Tone.Warning,
+private fun ChangedFileGroupSection(
+  title: String,
+  group: ChangedFileGroup,
+  files: List<ChangedFile>,
+  selectedPath: String?,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  val groupFiles = files.filter { it.group == group }
+  if (groupFiles.isEmpty()) {
+    return
+  }
+  Text(
+    text = "$title (${groupFiles.size})",
+    color = WorkspaceSteel,
+    fontSize = 10.sp,
+    fontWeight = FontWeight.SemiBold,
+    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp, start = 6.dp),
+  )
+  groupFiles.forEach { file ->
+    ChangedFileRow(
+      file = file,
+      selected = file.path == selectedPath,
+      onChangedFileSelected = onChangedFileSelected,
+      onStageChangedFile = onStageChangedFile,
+      onUnstageChangedFile = onUnstageChangedFile,
+      onCopyChangedFilePath = onCopyChangedFilePath,
+      recentlyCopiedKey = recentlyCopiedKey,
+    )
+  }
+}
+
+@Composable
+private fun ChangedFileRow(
+  file: ChangedFile,
+  selected: Boolean,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  val tone = when (file.group) {
+    ChangedFileGroup.STAGED -> Tone.Success
+    ChangedFileGroup.UNSTAGED -> Tone.Warning
+    ChangedFileGroup.UNTRACKED -> Tone.Neutral
+    ChangedFileGroup.GENERATED -> Tone.Warning
+  }
+  val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .height(28.dp)
+      .clip(RoundedCornerShape(3.dp))
+      .background(background)
+      .semantics { this.selected = selected }
+      .clickable(role = Role.Button) { onChangedFileSelected(file.path) }
+      .padding(horizontal = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    // AC4: generated artifacts get the "RO" label and no Open action; rendered later as a non-clickable
+    // marker. The status code uses a monospace badge so single-letter codes line up.
+    // F-X-502: wrap the "RO" badge in a Compose Desktop TooltipArea explaining the read-only contract
+    // so users understand why the row exposes no stage/unstage actions and that Render refreshes it.
+    val statusText: @Composable () -> Unit = {
+      Text(
+        text = if (file.isGenerated) "RO" else file.statusCode,
+        color = tone.color(),
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.width(28.dp),
       )
     }
+    if (file.isGenerated) {
+      ReadOnlyArtifactTooltip { statusText() }
+    } else {
+      statusText()
+    }
+    Text(
+      text = file.path,
+      color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    // F-U05 / F-X-501: each icon-text action gets a min hit target + parameterized contentDescription
+    // so screen readers and pointer users can distinguish actions on adjacent rows.
+    // F-X-512: when this file's path matches the recently-copied key, briefly render "copied" so the
+    // user gets visual confirmation that the clipboard write happened.
+    val showCopied = recentlyCopiedKey == file.path
+    Text(
+      text = if (showCopied) "copied" else "copy",
+      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier
+        .iconButtonSemantics(description = "Copy path: ${file.path}")
+        .clickable(role = Role.Button) { onCopyChangedFilePath(file.path) }
+        .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+    // AC4: generated artifacts must NOT expose stage/unstage actions; users cannot reopen them
+    // editable either (handled at the editor level — the read-only banner already enforces this).
+    if (!file.isGenerated) {
+      when (file.group) {
+        ChangedFileGroup.STAGED -> Text(
+          text = "unstage",
+          color = WorkspaceYellow,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Unstage file: ${file.path}")
+            .clickable(role = Role.Button) { onUnstageChangedFile(file.path) }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
+          text = "stage",
+          color = WorkspaceYellow,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Stage file: ${file.path}")
+            .clickable(role = Role.Button) { onStageChangedFile(file.path) }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        ChangedFileGroup.GENERATED -> Unit
+      }
+    }
+  }
+}
+
+// F-X-502: TooltipArea wrapper for the "RO" badge on Generated rows. Mirrors the project tone
+// styling so the tooltip surface is consistent with other ambient surfaces.
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ReadOnlyArtifactTooltip(content: @Composable () -> Unit) {
+  TooltipArea(
+    tooltip = {
+      Box(
+        modifier = Modifier
+          .background(WorkspaceRaised, RoundedCornerShape(4.dp))
+          .border(1.dp, WorkspaceLine, RoundedCornerShape(4.dp))
+          .padding(horizontal = 8.dp, vertical = 6.dp),
+      ) {
+        Text(
+          text = "Generated artifact - read-only. Re-run Render to refresh.",
+          color = WorkspaceText,
+          fontSize = 11.sp,
+        )
+      }
+    },
+    content = content,
+  )
+}
+
+@Composable
+private fun ChangesDiffPane(
+  selectedChangedFile: ChangedFile?,
+  selectedDiff: String,
+  selectedDiffBusy: Boolean,
+  modifier: Modifier = Modifier,
+) {
+  // F-U04: padding lives on the outer column so it stays fixed while content scrolls. The inner
+  // scrolled column inherits the padded viewport without the padding scrolling out of view.
+  Column(modifier = modifier.background(WorkspaceBackground).padding(10.dp)) {
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+      if (selectedChangedFile == null) {
+        Text(
+          text = "Select a changed file to view its diff.",
+          color = WorkspaceSteel,
+          fontSize = 11.sp,
+        )
+        return@Column
+      }
+      Text(
+        text = selectedChangedFile.path,
+        color = WorkspaceMuted,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.padding(bottom = 6.dp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      if (selectedDiffBusy) {
+        Text(text = "Loading diff...", color = WorkspaceSteel, fontSize = 11.sp)
+        return@Column
+      }
+      if (selectedDiff.isBlank()) {
+        Text(text = "(no diff available)", color = WorkspaceSteel, fontSize = 11.sp)
+        return@Column
+      }
+      // F-601 mirror: shared horizontalScroll lets long diff lines stay reachable without clipping.
+      // F-U01: softWrap=false + maxLines=1 so long unbreakable tokens (paths, hashes) push out to
+      // the right and become reachable via the horizontal scroll instead of silently wrapping.
+      Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        selectedDiff.lines().forEach { line ->
+          Text(
+            text = line,
+            color = diffLineColor(line),
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            softWrap = false,
+            maxLines = 1,
+          )
+        }
+      }
+    }
+  }
+}
+
+private fun diffLineColor(line: String): Color = when {
+  line.startsWith("+++") || line.startsWith("---") -> WorkspaceMuted
+  line.startsWith("@@") -> WorkspaceAmber
+  line.startsWith("+") -> WorkspaceGreen
+  line.startsWith("-") -> WorkspaceRed
+  else -> WorkspaceText.copy(alpha = 0.85f)
+}
+
+@Composable
+private fun HistoryPanel(
+  history: List<CommitEntry>,
+  historyBusy: Boolean,
+  historyErrorMessage: String?,
+  historyPathFilter: String?,
+  hasRepoOpen: Boolean,
+  onCopyCommitHash: (String) -> Unit,
+  onClearHistoryPathFilter: () -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  Column(modifier = Modifier.fillMaxSize().padding(6.dp).verticalScroll(rememberScrollState())) {
+    if (!hasRepoOpen) {
+      // AC5: history empty-state when no Git repo is open.
+      Text(
+        text = "Open a Git repository to see recent commits.",
+        color = WorkspaceSteel,
+        fontSize = 11.sp,
+        modifier = Modifier.padding(8.dp),
+      )
+      return@Column
+    }
+    if (historyPathFilter != null) {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = "Filtered by",
+          color = WorkspaceSteel,
+          fontSize = 10.sp,
+        )
+        Text(
+          text = historyPathFilter,
+          color = WorkspaceYellow,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier.weight(1f),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        // F-U05 / F-X-501: a11y treatment for the clear-filter chip.
+        Text(
+          text = "clear",
+          color = WorkspaceYellow,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Clear history path filter")
+            .clickable(role = Role.Button, onClick = onClearHistoryPathFilter)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+      }
+    }
+    // F-X-503: when an error is present AND prior history is non-empty, surface a single
+    // visually-distinct banner so users see the rows below are stale. Keep the existing error
+    // text path for the no-data case.
+    if (historyErrorMessage != null && history.isNotEmpty()) {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp),
+      ) {
+        Text(
+          text = "Showing previous results - refresh failed.",
+          color = Tone.Warning.color(),
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+        )
+      }
+    }
+    if (historyErrorMessage != null) {
+      // AC11 / F-601 mirror: surface errors without mutating other state. Shared horizontalScroll
+      // so long error lines stay reachable.
+      // F-U01: softWrap=false + maxLines=1 so long unbreakable tokens are reachable via horizontal
+      // scroll rather than silently clipping.
+      Column(modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+        Text(
+          text = historyErrorMessage,
+          color = WorkspaceRed,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          softWrap = false,
+          maxLines = 1,
+        )
+      }
+    }
+    if (historyBusy) {
+      Text(text = "Loading recent commits...", color = WorkspaceSteel, fontSize = 11.sp)
+      return@Column
+    }
+    if (history.isEmpty() && historyErrorMessage == null) {
+      // F-X-504: filter-aware empty-state — when a path filter is active and produced zero results,
+      // tell the user what's filtered and offer a clickable Clear filter affordance. Otherwise show
+      // the generic "No commits to show." text.
+      if (historyPathFilter != null) {
+        Column(modifier = Modifier.padding(8.dp)) {
+          Text(
+            text = "No commits for `$historyPathFilter`. Clear filter to see all commits.",
+            color = WorkspaceSteel,
+            fontSize = 11.sp,
+          )
+          Text(
+            text = "Clear filter",
+            color = WorkspaceYellow,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+              .padding(top = 4.dp)
+              .iconButtonSemantics(description = "Clear history path filter")
+              .clickable(role = Role.Button, onClick = onClearHistoryPathFilter)
+              .padding(horizontal = 6.dp, vertical = 4.dp),
+          )
+        }
+      } else {
+        Text(text = "No commits to show.", color = WorkspaceSteel, fontSize = 11.sp)
+      }
+      return@Column
+    }
+    history.forEach { entry ->
+      CommitRow(
+        entry = entry,
+        onCopyCommitHash = onCopyCommitHash,
+        recentlyCopiedKey = recentlyCopiedKey,
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, recentlyCopiedKey: String?) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(
+      text = entry.shortHash,
+      color = WorkspaceYellow,
+      fontSize = 11.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier.width(72.dp),
+      maxLines = 1,
+    )
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        text = entry.subject,
+        color = WorkspaceText.copy(alpha = 0.9f),
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = entry.author,
+          color = WorkspaceMuted,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+        )
+        Text(
+          text = entry.isoDate,
+          color = WorkspaceSteel,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+        )
+      }
+    }
+    // F-U05 / F-X-501: a11y treatment + larger hit target.
+    // F-X-512: brief "copied" feedback when the key matches this row's full hash.
+    val showCopied = recentlyCopiedKey == entry.fullHash
+    Text(
+      text = if (showCopied) "copied" else "copy hash",
+      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier
+        .iconButtonSemantics(description = "Copy commit hash: ${entry.shortHash}")
+        .clickable(role = Role.Button) { onCopyCommitHash(entry.fullHash) }
+        .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
   }
 }
 
@@ -1603,6 +2284,18 @@ private fun MiniIcon(text: String, tint: Color) {
   }
 }
 
+// F-U05 / F-X-501: shared helper for icon-text actions (copy, stage, unstage, clear, refresh,
+// repository chooser, etc.). Applies a minimum hit target (>= 24x32 dp incl. inner padding) and a
+// parameterized contentDescription so screen readers announce the action's intent. Callers still
+// add their own `.clickable(role = Role.Button)` and visual padding (typically 6dp x 4dp).
+private fun Modifier.iconButtonSemantics(description: String): Modifier = this
+  .heightIn(min = 24.dp)
+  .widthIn(min = 32.dp)
+  .semantics {
+    this.contentDescription = description
+    this.role = Role.Button
+  }
+
 private enum class Tone {
   Neutral,
   Success,
@@ -1668,16 +2361,6 @@ private data class ValidationRow(
   val code: String,
   val message: String,
   val source: String,
-)
-
-private data class ChangedFile(val path: String, val state: String)
-
-private data class HistoryRow(
-  val sha: String,
-  val who: String,
-  val timeAgo: String,
-  val message: String,
-  val ok: Boolean,
 )
 
 private data class ConsoleLine(val text: String, val tone: Tone)
@@ -1805,22 +2488,6 @@ private val ValidationRows = listOf(
   ),
   ValidationRow(ValidationLevel.Ok, "S-001", "Signature verified for owner ai-platform@skillbill", "skill.yaml"),
   ValidationRow(ValidationLevel.Ok, "D-022", "All declared dependencies resolved at compatible versions", "-"),
-)
-
-private val ChangedFiles = listOf(
-  ChangedFile("skills/meeting-summarizer/skill.yaml", "M"),
-  ChangedFile("skills/meeting-summarizer/schemas/summary.v3.json", "M"),
-  ChangedFile("skills/intent-router/routes.yaml", "M"),
-  ChangedFile("skills/transcript-cleaner/skill.yaml", "A"),
-  ChangedFile("packs/zendesk-pack/manifest.yaml", "M"),
-)
-
-private val HistoryRows = listOf(
-  HistoryRow("8f3a912", "nadia.k", "12 min ago", "tighten contract on summarizer outputs", true),
-  HistoryRow("1d04e77", "ravi.p", "1 h ago", "add transcript-cleaner skill", true),
-  HistoryRow("44b9ce2", "marko.s", "3 h ago", "raise router confidence floor", false),
-  HistoryRow("9aa2204", "nadia.k", "yesterday", "regen install artifacts", true),
-  HistoryRow("0b71ee8", "ci-bot", "yesterday", "rotate signing key", true),
 )
 
 private val ConsoleLines = listOf(

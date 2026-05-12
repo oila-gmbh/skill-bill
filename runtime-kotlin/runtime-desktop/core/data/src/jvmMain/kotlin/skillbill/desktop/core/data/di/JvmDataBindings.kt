@@ -2,6 +2,7 @@ package skillbill.desktop.core.data.di
 
 import me.tatarka.inject.annotations.Provides
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.service.RuntimeGitGateway
 import skillbill.desktop.core.data.service.RuntimeRepoBrowserService
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
@@ -23,7 +24,7 @@ interface JvmDataBindings {
   fun RuntimeRepoBrowserService.bindAuthoringGateway(): AuthoringGateway = this
 
   @Provides
-  fun RuntimeRepoBrowserService.bindGitGateway(): GitGateway = this
+  fun RuntimeGitGateway.bindGitGateway(): GitGateway = this
 
   @Provides
   fun RuntimeRepoBrowserService.bindValidationGateway(): ValidationGateway = this

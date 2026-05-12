@@ -2,6 +2,10 @@ package skillbill.desktop.feature.skillbill.state
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
+import skillbill.desktop.core.domain.model.ChangedFile
+import skillbill.desktop.core.domain.model.ChangedFileGroup
+import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RenderRunState
@@ -46,6 +50,25 @@ class SkillBillViewModel(
   private var validation: ValidationSummary = ValidationSummary.unavailable
   private var render: RenderSummary = RenderSummary.unavailable
   private var activeDockTab: DockTab = DockTab.Validation
+  private var changesSnapshot: ChangesSnapshot = ChangesSnapshot.empty
+
+  // F-C701: cache the branch label sourced from the most recent ChangesSnapshot so createState()
+  // never has to fork `git branch --show-current` on the UI thread per assembly. The cache is
+  // populated only inside the async git-refresh triplet (finishGitRefresh) and cleared on repo
+  // switch (applyRepoLoadResult).
+  private var currentBranchLabel: String? = null
+  private var changesBusy: Boolean = false
+  private var selectedChangedFilePath: String? = null
+  private var selectedDiff: String = ""
+  private var selectedDiffStaged: Boolean = false
+  private var selectedDiffBusy: Boolean = false
+  private var history: List<CommitEntry> = emptyList()
+  private var historyBusy: Boolean = false
+  private var historyErrorMessage: String? = null
+  private var historyPathFilter: String? = null
+  private var activeGitOperationToken: Long = 0L
+  private var activeGitDiffToken: Long = 0L
+  private var activeHistoryToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -165,6 +188,17 @@ class SkillBillViewModel(
     if (activeDockTab == DockTab.Console) {
       activeDockTab = DockTab.Validation
     }
+    // F-202 mirror: per-selection-keyed slices (selected diff, history-filtered-by-path) must also
+    // reset when the tree selection changes, otherwise stale diffs/history rows attach to the new
+    // selection. Invalidate any in-flight git diff/history work so late results cannot overwrite.
+    activeGitDiffToken += 1
+    activeHistoryToken += 1
+    selectedChangedFilePath = null
+    selectedDiff = ""
+    selectedDiffStaged = false
+    selectedDiffBusy = false
+    historyPathFilter = null
+    historyErrorMessage = null
   }
 
   fun chooseRepoDirectory(repoPath: String?): SkillBillState {
@@ -237,13 +271,44 @@ class SkillBillViewModel(
     // F-103: render output mirrors on-disk state and must also reset on refresh / repo-switch.
     render = RenderSummary.unavailable
     activeDockTab = DockTab.Validation
+    // F-103: every per-snapshot git slice mirrors on-disk state and must reset on refresh / repo-switch.
+    // Invalidate any in-flight git work so a late finish cannot reseed the stale slice on the new repo.
+    activeGitOperationToken += 1
+    activeGitDiffToken += 1
+    activeHistoryToken += 1
+    changesSnapshot = ChangesSnapshot.empty
+    currentBranchLabel = null
+    changesBusy = false
+    selectedChangedFilePath = null
+    selectedDiff = ""
+    selectedDiffStaged = false
+    selectedDiffBusy = false
+    history = emptyList()
+    historyBusy = false
+    historyErrorMessage = null
+    historyPathFilter = null
   }
 
   private fun createState(): SkillBillState {
     val session = currentSession
     val resolvedTreeItemId = selectedTreeItemId?.takeIf(::containsTreeItem)
-    val sourceControl = gitGateway.statusFor(session)
+    // F-C701: derive source-control status from cached branch label, not by forking git on the UI
+    // thread every time state() is called. `gitGateway.statusFor` is now a pure derivation that
+    // does NOT shell out — it returns a placeholder branch label that we override with the cached
+    // value populated by finishGitRefresh.
+    val baseStatus = gitGateway.statusFor(session)
+    val sourceControl = when {
+      session == null -> baseStatus
+      !session.isRecognizedSkillBillRepo -> baseStatus
+      else -> baseStatus.copy(branchLabel = currentBranchLabel ?: baseStatus.branchLabel)
+    }
     val editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty
+    // F-201: capture the snapshot reference once so the file lookup and the state assembly see a
+    // consistent slice even if refresh()/openRepo() rewrites changesSnapshot between reads.
+    val capturedSnapshot = changesSnapshot
+    val resolvedSelectedFile = selectedChangedFilePath?.let { path ->
+      capturedSnapshot.files.firstOrNull { file -> file.path == path }
+    }
     return SkillBillState(
       selectedRepoPath = session?.repoPath,
       repoPathText = repoPathText,
@@ -259,6 +324,15 @@ class SkillBillViewModel(
       render = render,
       activeDockTab = activeDockTab,
       renderable = isRenderableKind(editor.kind),
+      changes = capturedSnapshot,
+      changesBusy = changesBusy,
+      selectedChangedFile = resolvedSelectedFile,
+      selectedDiff = selectedDiff,
+      selectedDiffBusy = selectedDiffBusy,
+      history = history,
+      historyBusy = historyBusy,
+      historyErrorMessage = historyErrorMessage,
+      historyPathFilter = historyPathFilter,
     )
   }
 
@@ -335,6 +409,233 @@ class SkillBillViewModel(
     render = result.summary
     currentState = createState()
     return currentState
+  }
+
+  // --- Changes (git status snapshot) ---
+  // Mirrors beginValidate/runValidate/finishValidate at SkillBillViewModel.kt:265-298. The triplet
+  // captures all VM fields on the caller dispatcher (F-102), routes the gateway call through a
+  // separate `run` step so callers can hop to Dispatchers.Default, and uses a per-slice token so
+  // stale finishes restore the previously captured snapshot (F-101).
+
+  fun beginGitRefresh(): GitRefreshRequest {
+    activeGitOperationToken += 1
+    val previousSnapshot = changesSnapshot
+    changesBusy = true
+    currentState = createState()
+    return GitRefreshRequest(
+      token = activeGitOperationToken,
+      session = currentSession,
+      previousSnapshot = previousSnapshot,
+    )
+  }
+
+  fun runGitRefresh(request: GitRefreshRequest): GitRefreshResult {
+    val snapshot = runCatching { gitGateway.snapshotFor(request.session) }
+      .getOrElse { error -> ChangesSnapshot(errorMessage = describe(error)) }
+    return GitRefreshResult(request = request, snapshot = snapshot)
+  }
+
+  fun finishGitRefresh(result: GitRefreshResult): SkillBillState {
+    if (result.request.token != activeGitOperationToken) {
+      // F-A01: the changes-slice triplet (refresh/stage/unstage) shares a single token, so a newer
+      // refresh kicked off after a stage would otherwise see token mismatch and silently restore
+      // the pre-stage snapshot, losing the staging effect. Instead, when a newer changes-slice op
+      // is in-flight, return `currentState` UNCHANGED — whichever operation finishes LAST is the
+      // source of truth for the changes slice. (Diff/history triplets keep prior-snapshot restore
+      // semantics because they use their own per-slice tokens.)
+      return currentState
+    }
+    changesBusy = false
+    // F-A02: stage/unstage failures return a sentinel `isFailed = true` snapshot. The VM overlays
+    // the error message onto the existing snapshot rather than replacing the files list — losing
+    // the prior file list on stage failure would be a worse UX than surfacing the error inline.
+    if (result.snapshot.isFailed) {
+      changesSnapshot = changesSnapshot.copy(errorMessage = result.snapshot.errorMessage)
+      currentState = createState()
+      return currentState
+    }
+    changesSnapshot = result.snapshot
+    // F-C701: cache branch label so createState() can derive sourceControl without forking git.
+    if (result.snapshot.branchLabel.isNotEmpty()) {
+      currentBranchLabel = result.snapshot.branchLabel
+    }
+    // If the previously-selected changed file is no longer in the new snapshot, clear it so the diff
+    // pane does not stay attached to a stale path.
+    val stillExists = selectedChangedFilePath?.let { path ->
+      result.snapshot.files.any { it.path == path }
+    } ?: false
+    if (!stillExists) {
+      selectedChangedFilePath = null
+      selectedDiff = ""
+      selectedDiffStaged = false
+      selectedDiffBusy = false
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  // Convenience wrapper for synchronous tests and route fan-out seams. Production code should use
+  // begin/run/finish so the gateway call runs on Dispatchers.Default.
+  fun refreshGit(): SkillBillState {
+    val request = beginGitRefresh()
+    return finishGitRefresh(runGitRefresh(request))
+  }
+
+  // --- Selected diff ---
+
+  fun selectChangedFile(path: String): SelectChangedFileRequest? {
+    // F-201: capture the snapshot once so the lookup is consistent even if a parallel refresh swaps
+    // changesSnapshot before we resolve the file.
+    val captured = changesSnapshot
+    val file = captured.files.firstOrNull { it.path == path } ?: run {
+      selectedChangedFilePath = null
+      selectedDiff = ""
+      selectedDiffStaged = false
+      selectedDiffBusy = false
+      activeGitDiffToken += 1
+      currentState = createState()
+      return null
+    }
+    selectedChangedFilePath = file.path
+    selectedDiffStaged = file.group == ChangedFileGroup.STAGED
+    selectedDiff = ""
+    selectedDiffBusy = true
+    activeGitDiffToken += 1
+    currentState = createState()
+    return SelectChangedFileRequest(
+      token = activeGitDiffToken,
+      session = currentSession,
+      file = file,
+      staged = selectedDiffStaged,
+    )
+  }
+
+  fun runDiff(request: SelectChangedFileRequest): SelectChangedFileResult {
+    val diff = runCatching { gitGateway.diffFor(request.session, request.file.path, request.staged) }
+      .getOrDefault("")
+    return SelectChangedFileResult(request = request, diff = diff)
+  }
+
+  fun finishDiff(result: SelectChangedFileResult): SkillBillState {
+    if (result.request.token != activeGitDiffToken) {
+      return currentState
+    }
+    selectedDiff = result.diff
+    selectedDiffBusy = false
+    currentState = createState()
+    return currentState
+  }
+
+  // --- Stage / Unstage ---
+
+  fun beginStage(paths: List<String>): StageRequest {
+    activeGitOperationToken += 1
+    val previousSnapshot = changesSnapshot
+    changesBusy = true
+    currentState = createState()
+    return StageRequest(
+      token = activeGitOperationToken,
+      session = currentSession,
+      paths = paths.toList(),
+      previousSnapshot = previousSnapshot,
+      action = StageAction.STAGE,
+    )
+  }
+
+  fun beginUnstage(paths: List<String>): StageRequest {
+    activeGitOperationToken += 1
+    val previousSnapshot = changesSnapshot
+    changesBusy = true
+    currentState = createState()
+    return StageRequest(
+      token = activeGitOperationToken,
+      session = currentSession,
+      paths = paths.toList(),
+      previousSnapshot = previousSnapshot,
+      action = StageAction.UNSTAGE,
+    )
+  }
+
+  fun runStage(request: StageRequest): GitRefreshResult {
+    val snapshot = runCatching {
+      when (request.action) {
+        StageAction.STAGE -> gitGateway.stage(request.session, request.paths)
+        StageAction.UNSTAGE -> gitGateway.unstage(request.session, request.paths)
+      }
+      // F-A02: when the gateway itself throws (process failure), use the failed sentinel so the
+      // VM overlays the error onto the existing snapshot rather than blanking the file list.
+    }.getOrElse { error -> ChangesSnapshot.failed(describe(error)) }
+    return GitRefreshResult(
+      request = GitRefreshRequest(
+        token = request.token,
+        session = request.session,
+        previousSnapshot = request.previousSnapshot,
+      ),
+      snapshot = snapshot,
+    )
+  }
+
+  // --- History ---
+
+  fun beginLoadHistory(limit: Int = DEFAULT_HISTORY_LIMIT): HistoryLoadRequest {
+    activeHistoryToken += 1
+    historyBusy = true
+    val previousHistory = history
+    val previousError = historyErrorMessage
+    currentState = createState()
+    return HistoryLoadRequest(
+      token = activeHistoryToken,
+      session = currentSession,
+      limit = limit,
+      pathFilter = historyPathFilter,
+      previousHistory = previousHistory,
+      previousErrorMessage = previousError,
+    )
+  }
+
+  fun runLoadHistory(request: HistoryLoadRequest): HistoryLoadResult {
+    val outcome = runCatching {
+      gitGateway.recentCommits(request.session, request.limit, request.pathFilter)
+    }
+    return HistoryLoadResult(
+      request = request,
+      commits = outcome.getOrDefault(emptyList()),
+      errorMessage = outcome.exceptionOrNull()?.let(::describe),
+    )
+  }
+
+  fun finishLoadHistory(result: HistoryLoadResult): SkillBillState {
+    if (result.request.token != activeHistoryToken) {
+      // F-101: stale finish — restore prior history slice so it does not stay stuck busy.
+      if (historyBusy) {
+        history = result.request.previousHistory
+        historyErrorMessage = result.request.previousErrorMessage
+        historyBusy = false
+        currentState = createState()
+      }
+      return currentState
+    }
+    historyBusy = false
+    history = result.commits
+    historyErrorMessage = result.errorMessage
+    currentState = createState()
+    return currentState
+  }
+
+  fun setHistoryPathFilter(pathFilter: String?): SkillBillState {
+    val trimmed = pathFilter?.trim()?.takeIf { it.isNotEmpty() }
+    if (trimmed == historyPathFilter) {
+      return currentState
+    }
+    historyPathFilter = trimmed
+    currentState = createState()
+    return currentState
+  }
+
+  private fun describe(error: Throwable): String {
+    val message = error.message
+    val name = error::class.simpleName ?: error::class.qualifiedName ?: "Throwable"
+    return if (message.isNullOrBlank()) name else "$name: $message"
   }
 
   fun setActiveDockTab(tab: DockTab): SkillBillState {
@@ -420,6 +721,61 @@ data class RenderRunRequest(
 data class RenderRunResult(
   val request: RenderRunRequest,
   val summary: RenderSummary,
+)
+
+// Default cap on the number of recent commits surfaced in the History tab. Kept here so tests can
+// exercise the same default and route fan-out can override per-call when needed.
+const val DEFAULT_HISTORY_LIMIT: Int = 50
+
+data class GitRefreshRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val previousSnapshot: ChangesSnapshot,
+)
+
+data class GitRefreshResult(
+  val request: GitRefreshRequest,
+  val snapshot: ChangesSnapshot,
+)
+
+data class SelectChangedFileRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val file: ChangedFile,
+  val staged: Boolean,
+)
+
+data class SelectChangedFileResult(
+  val request: SelectChangedFileRequest,
+  val diff: String,
+)
+
+enum class StageAction {
+  STAGE,
+  UNSTAGE,
+}
+
+data class StageRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val paths: List<String>,
+  val previousSnapshot: ChangesSnapshot,
+  val action: StageAction,
+)
+
+data class HistoryLoadRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val limit: Int,
+  val pathFilter: String?,
+  val previousHistory: List<CommitEntry>,
+  val previousErrorMessage: String?,
+)
+
+data class HistoryLoadResult(
+  val request: HistoryLoadRequest,
+  val commits: List<CommitEntry>,
+  val errorMessage: String?,
 )
 
 private fun isRenderableKind(kind: String?): Boolean = when (kind) {

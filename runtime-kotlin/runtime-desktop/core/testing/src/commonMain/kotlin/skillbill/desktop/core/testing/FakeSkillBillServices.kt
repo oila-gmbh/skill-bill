@@ -3,6 +3,9 @@ package skillbill.desktop.core.testing
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
+import skillbill.desktop.core.domain.model.ChangedFile
+import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -40,9 +43,147 @@ class FakeAuthoringGateway : AuthoringGateway {
     EditorPlaceholder(title = treeItemId, detail = "Selected $treeItemId")
 }
 
-class FakeGitGateway : GitGateway {
-  override fun statusFor(session: RepoSession?): SourceControlStatus =
-    SourceControlStatus(branchLabel = "main", summary = session?.repoPath.orEmpty())
+class FakeGitGateway(
+  initialSnapshot: ChangesSnapshot = ChangesSnapshot.empty,
+  var scriptedCommits: List<CommitEntry> = emptyList(),
+  var scriptedDiff: String = "",
+  var scriptedStatus: SourceControlStatus = SourceControlStatus(branchLabel = "main", summary = ""),
+  var throwOnSnapshot: Throwable? = null,
+  var throwOnDiff: Throwable? = null,
+  var throwOnCommits: Throwable? = null,
+  var throwOnStage: Throwable? = null,
+  var throwOnUnstage: Throwable? = null,
+  // Optional error message to inject into the next ChangesSnapshot returned by snapshotFor/stage/unstage.
+  var scriptedSnapshotErrorMessage: String? = null,
+) : GitGateway {
+  var scriptedSnapshot: ChangesSnapshot = initialSnapshot
+
+  var statusForCallCount: Int = 0
+    private set
+
+  var snapshotForCallCount: Int = 0
+    private set
+
+  var diffForCallCount: Int = 0
+    private set
+
+  var recentCommitsCallCount: Int = 0
+    private set
+
+  var stageCallCount: Int = 0
+    private set
+
+  var unstageCallCount: Int = 0
+    private set
+
+  var lastDiffRequestedPath: String? = null
+    private set
+
+  var lastDiffRequestedStaged: Boolean? = null
+    private set
+
+  var lastStagedPaths: List<String> = emptyList()
+    private set
+
+  var lastUnstagedPaths: List<String> = emptyList()
+    private set
+
+  var lastRecentCommitsPathFilter: String? = null
+    private set
+
+  var lastRecentCommitsLimit: Int = 0
+    private set
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun statusFor(session: RepoSession?): SourceControlStatus {
+    statusForCallCount += 1
+    return scriptedStatus.copy(summary = scriptedStatus.summary.ifBlank { session?.repoPath.orEmpty() })
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun snapshotFor(session: RepoSession?): ChangesSnapshot {
+    snapshotForCallCount += 1
+    throwOnSnapshot?.let { throw it }
+    val errorMessage = scriptedSnapshotErrorMessage
+    return if (errorMessage != null) scriptedSnapshot.copy(errorMessage = errorMessage) else scriptedSnapshot
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun diffFor(session: RepoSession?, path: String, staged: Boolean): String {
+    diffForCallCount += 1
+    lastDiffRequestedPath = path
+    lastDiffRequestedStaged = staged
+    throwOnDiff?.let { throw it }
+    return scriptedDiff
+  }
+
+  override fun recentCommits(session: RepoSession?, limit: Int, pathFilter: String?): List<CommitEntry> {
+    recentCommitsCallCount += 1
+    lastRecentCommitsLimit = limit
+    lastRecentCommitsPathFilter = pathFilter
+    throwOnCommits?.let { throw it }
+    // F-T01 / AC5: when no repo session is open, the gateway returns no commits so the UI's
+    // empty-state branch is exercised. Production gateway short-circuits on null too.
+    if (session == null) {
+      return emptyList()
+    }
+    val filtered =
+      if (pathFilter.isNullOrBlank()) {
+        scriptedCommits
+      } else {
+        scriptedCommits.filter { entry -> entry.changedPaths.any { it == pathFilter } }
+      }
+    return filtered.take(limit)
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun stage(session: RepoSession?, paths: List<String>): ChangesSnapshot {
+    stageCallCount += 1
+    lastStagedPaths = paths
+    throwOnStage?.let { throw it }
+    // Mutate scripted snapshot to move staged paths from UNSTAGED/UNTRACKED to STAGED.
+    val mutated = scriptedSnapshot.files.map { file ->
+      if (file.path in paths && file.group != skillbill.desktop.core.domain.model.ChangedFileGroup.GENERATED) {
+        file.copy(group = skillbill.desktop.core.domain.model.ChangedFileGroup.STAGED)
+      } else {
+        file
+      }
+    }
+    scriptedSnapshot = scriptedSnapshot.copy(files = mutated)
+    return snapshotFor(session)
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot {
+    unstageCallCount += 1
+    lastUnstagedPaths = paths
+    throwOnUnstage?.let { throw it }
+    val mutated = scriptedSnapshot.files.map { file ->
+      if (file.path in paths && file.group == skillbill.desktop.core.domain.model.ChangedFileGroup.STAGED) {
+        file.copy(group = skillbill.desktop.core.domain.model.ChangedFileGroup.UNSTAGED)
+      } else {
+        file
+      }
+    }
+    scriptedSnapshot = scriptedSnapshot.copy(files = mutated)
+    return snapshotFor(session)
+  }
+
+  // Helper retained for tests that previously read a single counter.
+  @Suppress("unused")
+  val callCount: Int
+    get() = snapshotForCallCount + diffForCallCount + recentCommitsCallCount + stageCallCount + unstageCallCount
+
+  @Suppress("unused")
+  fun replaceSnapshot(snapshot: ChangesSnapshot) {
+    scriptedSnapshot = snapshot
+  }
+
+  // Used by FakeChangedFile-friendly constructors in tests.
+  @Suppress("unused")
+  fun setFiles(files: List<ChangedFile>) {
+    scriptedSnapshot = scriptedSnapshot.copy(files = files)
+  }
 }
 
 class FakeValidationGateway(

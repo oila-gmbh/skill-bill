@@ -1,6 +1,8 @@
 package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoSession
@@ -104,4 +106,19 @@ class PlaceholderGitGateway : GitGateway {
       summary = "Placeholder session for ${session.repoPath}. No repository files are read or written.",
     )
   }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun snapshotFor(session: RepoSession?): ChangesSnapshot = ChangesSnapshot.empty
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun diffFor(session: RepoSession?, path: String, staged: Boolean): String = ""
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun recentCommits(session: RepoSession?, limit: Int, pathFilter: String?): List<CommitEntry> = emptyList()
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun stage(session: RepoSession?, paths: List<String>): ChangesSnapshot = ChangesSnapshot.empty
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot = ChangesSnapshot.empty
 }

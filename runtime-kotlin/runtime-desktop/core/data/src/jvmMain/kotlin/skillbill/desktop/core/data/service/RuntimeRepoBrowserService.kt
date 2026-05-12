@@ -12,14 +12,12 @@ import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
-import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
-import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
@@ -41,7 +39,6 @@ import java.nio.file.InvalidPathException
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.isDirectory
 import kotlin.io.path.relativeTo
 
@@ -51,7 +48,6 @@ class RuntimeRepoBrowserService :
   RepoSessionService,
   SkillTreeService,
   AuthoringGateway,
-  GitGateway,
   ValidationGateway,
   RenderGateway {
   // F-107: validator is a functional seam tests can swap to drive the onFailure branch of validate()
@@ -248,27 +244,6 @@ class RuntimeRepoBrowserService :
     return snapshot.selections.entries
       .firstOrNull { (_, detail) -> matchesSourcePath(detail.authoredPath, normalized) }
       ?.key
-  }
-
-  override fun statusFor(session: RepoSession?): SourceControlStatus {
-    if (session == null) {
-      return SourceControlStatus.empty
-    }
-    if (!session.isRecognizedSkillBillRepo) {
-      return SourceControlStatus(
-        branchLabel = "Invalid repository",
-        summary = session.loadStatus.message,
-      )
-    }
-    val root = resolveRepoPath(session.repoPath) ?: return SourceControlStatus.empty
-    val branch = currentGitBranch(root) ?: "Repository loaded"
-    val issueSummary =
-      if (session.loadStatus.issueCount == 0) {
-        "Runtime validation passed"
-      } else {
-        "Runtime validation reported ${session.loadStatus.issueCount} issue(s)"
-      }
-    return SourceControlStatus(branchLabel = branch, summary = issueSummary)
   }
 
   private fun validateRoot(root: Path): RepoLoadStatus {
@@ -543,19 +518,6 @@ class RuntimeRepoBrowserService :
       }
   }
 
-  private fun currentGitBranch(root: Path): String? = runCatching {
-    val process =
-      ProcessBuilder("git", "-C", root.toString(), "branch", "--show-current")
-        .redirectErrorStream(true)
-        .start()
-    if (!process.waitFor(GIT_STATUS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-      process.destroyForcibly()
-      return@runCatching null
-    }
-    val output = process.inputStream.bufferedReader().use { reader -> reader.readText().trim() }
-    if (process.exitValue() == 0 && output.isNotBlank()) output else null
-  }.getOrNull()
-
   private data class RenderOutcome(
     val blocks: List<RenderBlock>,
     val generatedArtifacts: List<GeneratedArtifactDetail>,
@@ -624,7 +586,6 @@ class RuntimeRepoBrowserService :
 
   companion object {
     val SkillItemKind = TreeItemKind.SKILL
-    private const val GIT_STATUS_TIMEOUT_SECONDS = 2L
     private const val READ_ONLY_LABEL = "RO"
   }
 }
