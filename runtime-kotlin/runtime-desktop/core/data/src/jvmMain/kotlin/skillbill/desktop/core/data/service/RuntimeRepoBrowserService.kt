@@ -2,6 +2,8 @@ package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
+import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.RenderBlock
@@ -22,6 +24,7 @@ import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
+import skillbill.error.SkillBillRuntimeException
 import skillbill.nativeagent.discoverNativeAgentSourceFiles
 import skillbill.nativeagent.parseNativeAgentSourceFile
 import skillbill.nativeagent.renderNativeAgentSource
@@ -57,6 +60,9 @@ class RuntimeRepoBrowserService :
   // Mirror of F-107 for render. Tests swap this to drive the runtime-failure branch of render()
   // without needing to physically corrupt the on-disk source.
   internal var renderer: (Path, String) -> AuthoringRenderResult = ::renderAuthoringTarget
+  internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
+    AuthoringOperations.fill(root, skillName, body, sectionName = null)
+  }
   private var snapshot: RepoBrowserSnapshot = RepoBrowserSnapshot.empty
 
   override fun open(repoPath: String): RepoSession {
@@ -117,6 +123,45 @@ class RuntimeRepoBrowserService :
     ?.takeIf { detail -> detail.repoToken == snapshot.repoToken }
     ?.toEditorPlaceholder()
     ?: EditorPlaceholder.empty
+
+  override fun loadDocument(session: RepoSession?, treeItemId: String?): AuthoredContentDocument {
+    val detail = selectionFor(session, treeItemId)
+      ?: return AuthoredContentDocument(
+        treeItemId = treeItemId,
+        title = "No source selected",
+        skillName = null,
+        kind = null,
+        authoredPath = null,
+        text = "",
+        editable = false,
+        readOnlyReason = "No editable governed source is selected.",
+      )
+    return detail.toDocument(treeItemId)
+  }
+
+  override fun saveDocument(session: RepoSession?, treeItemId: String?, body: String): AuthoringSaveResult {
+    val root = snapshot.repoRoot
+      ?: return AuthoringSaveResult.failed("No Skill Bill repository is open.")
+    if (session?.isRecognizedSkillBillRepo != true || session.repoPath != root.toString()) {
+      return AuthoringSaveResult.failed("No editable Skill Bill repository is open.")
+    }
+    val detail = selectionFor(session, treeItemId)
+      ?: return AuthoringSaveResult.failed("No editable governed source is selected.")
+    if (!detail.canEdit()) {
+      return AuthoringSaveResult.failed(detail.readOnlyReasonForDocument())
+    }
+    val skillName = detail.skillName
+      ?: return AuthoringSaveResult.failed("Only governed skill content.md files can be saved through authoring.")
+    return runCatching {
+      authoringSaver(root, skillName, body)
+      AuthoringSaveResult(
+        success = true,
+        document = detail.toDocument(treeItemId),
+      )
+    }.getOrElse { error ->
+      AuthoringSaveResult.failed(runtimeMessage(error))
+    }
+  }
 
   override fun validate(session: RepoSession?): ValidationSummary {
     if (session == null || !session.isRecognizedSkillBillRepo) {
@@ -340,7 +385,7 @@ class RuntimeRepoBrowserService :
           kind = SkillItemKind,
           authoredPath = relativePath(root, contentFile),
           status = status,
-          editable = false,
+          editable = true,
           metadata = metadata,
         )
       selections[id] =
@@ -352,6 +397,7 @@ class RuntimeRepoBrowserService :
           kind = kind,
           authoredPath = relativePath(root, contentFile),
           status = status,
+          editable = true,
           contentFile = Path.of(contentFile),
           generatedArtifacts = generatedArtifactsForSkill(root, Path.of(contentFile)),
           metadata = metadata,
@@ -394,6 +440,8 @@ class RuntimeRepoBrowserService :
             authoredPath = relative,
             status = "authored",
             contentFile = addon,
+            readOnlyLabel = READ_ONLY_LABEL,
+            readOnlyReason = "Add-ons are not editable in this workbench.",
           )
         SkillBillTreeItem(
           id = id,
@@ -403,6 +451,7 @@ class RuntimeRepoBrowserService :
           status = "authored",
           editable = false,
           metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = addonFile.packSlug),
+          readOnlyLabel = READ_ONLY_LABEL,
         )
       }
   }
@@ -431,6 +480,8 @@ class RuntimeRepoBrowserService :
                   authoredPath = relative,
                   status = agent.composition?.kind?.wireValue ?: "authored",
                   contentFile = sourceFile,
+                  readOnlyLabel = READ_ONLY_LABEL,
+                  readOnlyReason = "Native-agent source editing is not supported in this workbench.",
                 )
               SkillBillTreeItem(
                 id = id,
@@ -439,6 +490,7 @@ class RuntimeRepoBrowserService :
                 authoredPath = relative,
                 status = agent.composition?.kind?.wireValue ?: "authored",
                 editable = false,
+                readOnlyLabel = READ_ONLY_LABEL,
                 metadata = SkillBillTreeItemMetadata(kind = "native agent"),
               )
             }
@@ -455,6 +507,8 @@ class RuntimeRepoBrowserService :
                 authoredPath = relative,
                 status = "invalid",
                 contentFile = sourceFile,
+                readOnlyLabel = READ_ONLY_LABEL,
+                readOnlyReason = "Invalid native-agent sources cannot enter editable mode.",
               )
             listOf(
               SkillBillTreeItem(
@@ -464,6 +518,7 @@ class RuntimeRepoBrowserService :
                 authoredPath = relative,
                 status = "invalid",
                 editable = false,
+                readOnlyLabel = READ_ONLY_LABEL,
                 metadata = SkillBillTreeItemMetadata(kind = "native agent"),
               ),
             )
@@ -491,6 +546,7 @@ class RuntimeRepoBrowserService :
           status = "read-only",
           editable = false,
           readOnlyLabel = READ_ONLY_LABEL,
+          readOnlyReason = generated.reason,
         )
       SkillBillTreeItem(
         id = id,
@@ -555,6 +611,7 @@ class RuntimeRepoBrowserService :
     val status: String? = null,
     val editable: Boolean = false,
     val readOnlyLabel: String? = null,
+    val readOnlyReason: String? = null,
     val contentFile: Path? = null,
     val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
     val metadata: SkillBillTreeItemMetadata? = null,
@@ -578,10 +635,58 @@ class RuntimeRepoBrowserService :
         status = status,
         editable = editable,
         readOnlyLabel = readOnlyLabel,
+        readOnlyReason = if (editable) null else readOnlyReasonForDocument(),
         content = content,
         generatedArtifacts = generatedArtifacts,
       )
     }
+
+    fun toDocument(treeItemId: String?): AuthoredContentDocument {
+      val content = contentFile
+        ?.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+        ?.let { file -> runCatching { Files.readString(file) } }
+      return AuthoredContentDocument(
+        treeItemId = treeItemId,
+        title = title,
+        skillName = skillName ?: metadata?.skillName,
+        kind = kind ?: metadata?.kind,
+        authoredPath = authoredPath,
+        text = content?.getOrNull().orEmpty(),
+        editable = canEdit(),
+        readOnlyReason = if (canEdit()) null else readOnlyReasonForDocument(),
+        runtimeErrorMessage = content?.exceptionOrNull()?.let(::runtimeMessage),
+      )
+    }
+
+    fun canEdit(): Boolean =
+      editable &&
+        contentFile != null &&
+        (kind == "horizontal skill" || kind == "platform pack skill") &&
+        Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
+        !isInstallCachePath(contentFile) &&
+        contentFile.fileName.toString() == "content.md"
+
+    fun readOnlyReasonForDocument(): String =
+      readOnlyReason
+        ?: when {
+          isInstallCachePath(contentFile) -> "Install cache files are runtime output and cannot be edited here."
+          kind == "generated artifact" -> detail
+          kind == "native agent" -> "Provider-native output and native-agent sources cannot enter editable mode here."
+          kind == "add-on" -> "Add-ons are not editable in this workbench."
+          contentFile?.fileName?.toString() == "SKILL.md" -> "Generated SKILL.md is runtime output. Edit content.md instead."
+          else -> "This selection cannot enter editable mode."
+    }
+  }
+
+  private fun selectionFor(session: RepoSession?, treeItemId: String?): SelectionDetail? {
+    if (session?.isRecognizedSkillBillRepo != true || treeItemId == null) {
+      return null
+    }
+    val capturedSnapshot = snapshot
+    if (capturedSnapshot.repoRoot?.toString() != session.repoPath) {
+      return null
+    }
+    return capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
   }
 
   companion object {
@@ -678,6 +783,26 @@ private fun generatedArtifactFromHeader(header: String): GeneratedArtifactDetail
 }
 
 private fun elapsedMillis(startNanos: Long): Long = (System.nanoTime() - startNanos).coerceAtLeast(0L) / 1_000_000L
+
+private fun runtimeMessage(error: Throwable): String {
+  val message = error.message
+  return when {
+    error is SkillBillRuntimeException && !message.isNullOrBlank() -> message
+    !message.isNullOrBlank() -> message
+    else -> error::class.simpleName ?: error::class.qualifiedName ?: "Runtime error"
+  }
+}
+
+private fun isInstallCachePath(path: Path?): Boolean =
+  path
+    ?.toAbsolutePath()
+    ?.normalize()
+    ?.iterator()
+    ?.asSequence()
+    ?.map { part -> part.toString() }
+    ?.windowed(2)
+    ?.any { parts -> parts[0] == ".skill-bill" && parts[1] == "installed-skills" }
+    ?: false
 
 private fun matchesSourcePath(authoredPath: String?, sourcePath: String): Boolean {
   if (authoredPath.isNullOrBlank() || sourcePath.isBlank()) {

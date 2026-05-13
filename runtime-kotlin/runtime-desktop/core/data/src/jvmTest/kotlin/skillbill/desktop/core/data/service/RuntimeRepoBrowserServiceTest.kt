@@ -5,6 +5,7 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.error.SkillBillRuntimeException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -54,7 +55,99 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("complete", detail.status)
     assertTrue(detail.content.orEmpty().contains("Alpha guidance."))
     assertTrue(detail.generatedArtifacts.any { it.path == "skills/bill-alpha/SKILL.md" })
-    assertFalse(detail.editable)
+    assertTrue(detail.editable)
+  }
+
+  @Test
+  fun `selected governed skill loads full editable content document`() {
+    val repo = seedRepo("authoring-document")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
+
+    val document = service.loadDocument(session, skillId)
+
+    assertTrue(document.editable)
+    assertEquals("bill-alpha", document.skillName)
+    assertEquals("skills/bill-alpha/content.md", document.authoredPath)
+    assertTrue(document.text.contains("Alpha guidance."))
+    assertNull(document.readOnlyReason)
+  }
+
+  @Test
+  fun `saving governed skill uses authoring operation and reloads saved text`() {
+    val repo = seedRepo("authoring-save")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
+
+    val result = service.saveDocument(session, skillId, "# Rewritten\n\nSaved body.\n")
+    val document = service.loadDocument(session, skillId)
+
+    assertTrue(result.success, result.runtimeErrorMessage.orEmpty())
+    assertTrue(document.text.contains("Saved body."))
+    assertTrue(Files.readString(repo.resolve("skills/bill-alpha/content.md")).contains("Saved body."))
+  }
+
+  @Test
+  fun `save failure returns runtime message and leaves source intact`() {
+    val repo = seedRepo("authoring-save-failure")
+    val before = Files.readString(repo.resolve("skills/bill-alpha/content.md"))
+    val service = RuntimeRepoBrowserService()
+    service.authoringSaver = { _, _, _ -> throw SkillBillRuntimeException("runtime said no") }
+    val session = service.open(repo.toString())
+    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
+
+    val result = service.saveDocument(session, skillId, "broken")
+
+    assertFalse(result.success)
+    assertEquals("runtime said no", result.runtimeErrorMessage)
+    assertEquals(before, Files.readString(repo.resolve("skills/bill-alpha/content.md")))
+  }
+
+  @Test
+  fun `generated artifact document is read-only and cannot be saved`() {
+    val repo = seedRepo("authoring-generated-read-only")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val generatedId = service.treeForSessionLocalId(session, "generated:skills/bill-alpha/SKILL.md")
+
+    val document = service.loadDocument(session, generatedId)
+    val result = service.saveDocument(session, generatedId, "attempt")
+
+    assertFalse(document.editable)
+    assertTrue(document.readOnlyReason.orEmpty().contains("Generated runtime wrapper"))
+    assertFalse(result.success)
+    assertTrue(result.runtimeErrorMessage.orEmpty().contains("Generated runtime wrapper"))
+  }
+
+  @Test
+  fun `generated support pointer and provider-native output are read-only and cannot be saved`() {
+    val repo = seedRepo("authoring-generated-pointers-read-only")
+    writeQualityCheckWithGeneratedSupportPointer(repo)
+    Files.createDirectories(repo.resolve("skills/bill-alpha/claude-agents"))
+    Files.writeString(repo.resolve("skills/bill-alpha/claude-agents/alpha-agent.md"), "Generated provider output\n")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val supportPointerId = service.treeForSessionLocalId(session, "generated:skills/bill-quality-check/stack-routing.md")
+    val providerOutputId = service.treeForSessionLocalId(
+      session,
+      "generated:skills/bill-alpha/claude-agents/alpha-agent.md",
+    )
+
+    val supportPointer = service.loadDocument(session, supportPointerId)
+    val supportSave = service.saveDocument(session, supportPointerId, "attempt")
+    val providerOutput = service.loadDocument(session, providerOutputId)
+    val providerSave = service.saveDocument(session, providerOutputId, "attempt")
+
+    assertFalse(supportPointer.editable)
+    assertTrue(supportPointer.readOnlyReason.orEmpty().contains("Generated support pointer"))
+    assertFalse(supportSave.success)
+    assertTrue(supportSave.runtimeErrorMessage.orEmpty().contains("Generated support pointer"))
+    assertFalse(providerOutput.editable)
+    assertTrue(providerOutput.readOnlyReason.orEmpty().contains("Generated provider-specific native-agent output"))
+    assertFalse(providerSave.success)
+    assertTrue(providerSave.runtimeErrorMessage.orEmpty().contains("Generated provider-specific native-agent output"))
   }
 
   @Test
@@ -494,6 +587,11 @@ class RuntimeRepoBrowserServiceTest {
         |$body
       """.trimMargin(),
     )
+  }
+
+  private fun writeQualityCheckWithGeneratedSupportPointer(repo: Path) {
+    writeContentSkill(repo, "bill-quality-check", "Quality guidance.")
+    Files.writeString(repo.resolve("skills/bill-quality-check/stack-routing.md"), "Generated pointer\n")
   }
 
   private fun writePlatformPack(repo: Path) {

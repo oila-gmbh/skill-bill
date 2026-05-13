@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
@@ -74,6 +75,94 @@ fun SkillBillRoute(
     }
   }
 
+  fun runEditorSave() {
+    val request = viewModel.beginSaveEditor()
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runSaveEditor(request) }
+        state = viewModel.finishSaveEditor(result)
+        if (result.result.success) {
+          runGitRefresh()
+        }
+      }
+    }
+  }
+
+  fun runRepoLoad(
+    preserveSelection: Boolean,
+    repoPath: String = state.selectedRepoPath ?: state.repoPathText,
+    afterLoad: () -> Unit = {},
+  ) {
+    val request = viewModel.repoLoadRequest(
+      repoPath = repoPath,
+      preserveSelection = preserveSelection,
+    )
+    coroutineScope.launch {
+      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      state = if (preserveSelection) {
+        viewModel.finishRepoLoad(result)
+      } else {
+        viewModel.finishSelectRepoPath(result)
+      }
+      afterLoad()
+    }
+  }
+
+  fun runChooseRepoDirectory() {
+    val repoPath = chooseRepoDirectory(state.repoPathText)
+    if (repoPath.isNullOrBlank()) {
+      state = viewModel.chooseRepoDirectory(repoPath)
+    } else {
+      state = viewModel.beginSelectRepoPath(repoPath)
+      if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
+        runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
+          runGitRefresh()
+          loadHistory()
+        }
+      }
+    }
+  }
+
+  fun runDiscardedDirtyPrompt() {
+    val prompt = state.dirtyEditorPrompt
+    val previousSelection = state.selectedTreeItemId
+    state = viewModel.discardDirtyEditorPrompt()
+    when (prompt?.reason) {
+      DirtyEditorPromptReason.SELECTION_CHANGE -> {
+        val selected = state.selectedTreeItemId
+        if (selected != null && selected != previousSelection) {
+          viewModel.setHistoryPathFilter(state.editor.authoredPath)
+          loadHistory()
+          state = viewModel.state()
+          onSourceRouteSelected(selected)
+        }
+      }
+      DirtyEditorPromptReason.REFRESH -> {
+        if (state.busyOperation == SkillBillBusyOperation.REFRESH) {
+          runRepoLoad(preserveSelection = true) {
+            runGitRefresh()
+            loadHistory()
+          }
+        }
+      }
+      DirtyEditorPromptReason.REPO_SWITCH -> {
+        if (state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
+          runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
+            runGitRefresh()
+            loadHistory()
+          }
+        }
+      }
+      DirtyEditorPromptReason.CHOOSE_DIRECTORY -> {
+        if (state.busyOperation == SkillBillBusyOperation.CHOOSE_DIRECTORY) {
+          runChooseRepoDirectory()
+        }
+      }
+      null -> Unit
+    }
+  }
+
   fun runPush(allowCanonicalRemote: Boolean = false) {
     val request = viewModel.beginPush(allowCanonicalRemote)
     state = viewModel.state()
@@ -102,47 +191,38 @@ fun SkillBillRoute(
     onRepoSelected = { repoPath ->
       if (canStartRepoScopedAction()) {
         state = viewModel.beginSelectRepoPath(repoPath)
-        val request = viewModel.repoLoadRequest(repoPath = repoPath, preserveSelection = false)
-        coroutineScope.launch {
-          val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
-          state = viewModel.finishSelectRepoPath(result)
-          // AC10: after a successful repo switch we want a fresh status snapshot + history.
-          runGitRefresh()
-          loadHistory()
-        }
-      }
-    },
-    onChooseRepoDirectory = {
-      if (canStartRepoScopedAction()) {
-        state = viewModel.busyState(SkillBillBusyOperation.CHOOSE_DIRECTORY)
-        val repoPath = chooseRepoDirectory(state.repoPathText)
-        if (repoPath.isNullOrBlank()) {
-          state = viewModel.chooseRepoDirectory(repoPath)
-        } else {
-          state = viewModel.beginSelectRepoPath(repoPath)
-          val request = viewModel.repoLoadRequest(repoPath = repoPath, preserveSelection = false)
-          coroutineScope.launch {
-            val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
-            state = viewModel.finishSelectRepoPath(result)
+        if (state.dirtyEditorPrompt == null) {
+          runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
+            // AC10: after a successful repo switch we want a fresh status snapshot + history.
             runGitRefresh()
             loadHistory()
           }
         }
       }
     },
+    onChooseRepoDirectory = {
+      if (canStartRepoScopedAction()) {
+        state = viewModel.beginChooseRepoDirectory()
+        if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.CHOOSE_DIRECTORY) {
+          runChooseRepoDirectory()
+        }
+      }
+    },
     onRefresh = {
       if (canStartRepoScopedAction()) {
         state = viewModel.beginRefresh()
-        val request = viewModel.repoLoadRequest(
-          repoPath = state.selectedRepoPath ?: state.repoPathText,
-          preserveSelection = true,
-        )
-        coroutineScope.launch {
-          val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
-          state = viewModel.finishRepoLoad(result)
-          // AC10: manual refresh refreshes git status + history.
-          runGitRefresh()
-          loadHistory()
+        if (state.dirtyEditorPrompt == null) {
+          val request = viewModel.repoLoadRequest(
+            repoPath = state.selectedRepoPath ?: state.repoPathText,
+            preserveSelection = true,
+          )
+          coroutineScope.launch {
+            val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+            state = viewModel.finishRepoLoad(result)
+            // AC10: manual refresh refreshes git status + history.
+            runGitRefresh()
+            loadHistory()
+          }
         }
       }
     },
@@ -175,6 +255,25 @@ fun SkillBillRoute(
         }
       }
     },
+    onEditorDraftChanged = { draft ->
+      state = viewModel.updateEditorDraft(draft)
+    },
+    onEditorSave = {
+      if (canStartRepoScopedAction()) {
+        runEditorSave()
+      }
+    },
+    onEditorRevert = {
+      if (canStartRepoScopedAction()) {
+        state = viewModel.revertEditorDraft()
+      }
+    },
+    onDirtyPromptDiscard = {
+      runDiscardedDirtyPrompt()
+    },
+    onDirtyPromptCancel = {
+      state = viewModel.cancelDirtyEditorPrompt()
+    },
     onActiveDockTabChanged = { tab ->
       if (canStartRepoScopedAction()) {
         state = viewModel.setActiveDockTab(tab)
@@ -182,14 +281,17 @@ fun SkillBillRoute(
     },
     onTreeItemSelected = { itemId ->
       if (canStartRepoScopedAction()) {
+        val previousSelection = state.selectedTreeItemId
         state = viewModel.selectTreeItem(itemId)
-        // AC7: tree selection narrows history to commits that touched the authored path of the
-        // selected tree item. Falls back to no filter when the selection has no authored path.
-        val authoredPath = state.editor.authoredPath
-        viewModel.setHistoryPathFilter(authoredPath)
-        loadHistory()
-        state = viewModel.state()
-        onSourceRouteSelected(itemId)
+        if (state.selectedTreeItemId != previousSelection) {
+          // AC7: tree selection narrows history to commits that touched the authored path of the
+          // selected tree item. Falls back to no filter when the selection has no authored path.
+          val authoredPath = state.editor.authoredPath
+          viewModel.setHistoryPathFilter(authoredPath)
+          loadHistory()
+          state = viewModel.state()
+          state.selectedTreeItemId?.let(onSourceRouteSelected)
+        }
       }
     },
     onTreeItemExpandedToggled = { itemId ->
