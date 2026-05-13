@@ -81,6 +81,7 @@ import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
+import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -143,6 +144,8 @@ fun SkillBillFrame(
   onCommandPaletteMoveSelection: (Int) -> Unit,
   onCommandPaletteExecuteSelected: () -> Unit,
   onCommandPaletteExecuteResult: (CommandPaletteResult) -> Unit,
+  onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
+  scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
@@ -179,12 +182,18 @@ fun SkillBillFrame(
         onValidate = onValidate,
         onRender = onRender,
         onCommandPaletteOpen = onCommandPaletteOpen,
+        onNewHorizontalSkill = { onOpenScaffoldWizard(ScaffoldKind.HORIZONTAL_SKILL) },
         validateEnabled = validateEnabled,
         renderEnabled = renderEnabled,
         publishingBusy = publishingBusy,
         sourceControlLabel = state.sourceControl.branchLabel,
         readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
         busyOperation = state.busyOperation,
+        scaffoldEnabled = state.selectedRepoPath != null &&
+          state.repoStatus.state == RepoLoadState.LOADED &&
+          state.busyOperation == null &&
+          !publishingBusy &&
+          state.scaffoldWizard == null,
       )
       Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         NavigationPane(
@@ -283,6 +292,13 @@ fun SkillBillFrame(
         modifier = Modifier.align(Alignment.TopCenter),
       )
     }
+    state.scaffoldWizard?.let { wizard ->
+      ScaffoldWizardDialog(
+        state = wizard,
+        canStartScaffoldAction = state.busyOperation == null && !publishingBusy,
+        callbacks = scaffoldWizardCallbacks,
+      )
+    }
   }
 }
 
@@ -294,12 +310,14 @@ private fun WorkspaceToolbar(
   onValidate: () -> Unit,
   onRender: () -> Unit,
   onCommandPaletteOpen: () -> Unit,
+  onNewHorizontalSkill: () -> Unit,
   validateEnabled: Boolean,
   renderEnabled: Boolean,
   publishingBusy: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
   busyOperation: SkillBillBusyOperation?,
+  scaffoldEnabled: Boolean,
 ) {
   val busy = busyOperation != null || publishingBusy
   Row(
@@ -322,6 +340,7 @@ private fun WorkspaceToolbar(
     ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
     ToolbarButton(label = "Validate", marker = "ok", enabled = validateEnabled, onClick = onValidate)
     ToolbarButton(label = "Render check", marker = "rc", enabled = renderEnabled, onClick = onRender)
+    ToolbarButton(label = "NEW...", marker = "nw", enabled = scaffoldEnabled, onClick = onNewHorizontalSkill)
     ToolbarDivider()
     ToolbarButton(label = readOnlyModeLabel, marker = "ro", primary = true)
     if (busyOperation != null) {
@@ -381,6 +400,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.VALIDATE -> "Validating..."
     SkillBillBusyOperation.RENDER -> "Rendering..."
     SkillBillBusyOperation.SAVE -> "Saving..."
+    SkillBillBusyOperation.SCAFFOLD -> "Scaffolding..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),

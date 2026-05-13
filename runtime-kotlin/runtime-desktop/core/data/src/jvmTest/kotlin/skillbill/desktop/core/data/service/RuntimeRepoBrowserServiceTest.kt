@@ -129,7 +129,8 @@ class RuntimeRepoBrowserServiceTest {
     Files.writeString(repo.resolve("skills/bill-alpha/claude-agents/alpha-agent.md"), "Generated provider output\n")
     val service = RuntimeRepoBrowserService()
     val session = service.open(repo.toString())
-    val supportPointerId = service.treeForSessionLocalId(session, "generated:skills/bill-quality-check/stack-routing.md")
+    val supportPointerId =
+      service.treeForSessionLocalId(session, "generated:skills/bill-quality-check/stack-routing.md")
     val providerOutputId = service.treeForSessionLocalId(
       session,
       "generated:skills/bill-alpha/claude-agents/alpha-agent.md",

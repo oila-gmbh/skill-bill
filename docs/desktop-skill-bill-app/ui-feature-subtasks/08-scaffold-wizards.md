@@ -1,6 +1,6 @@
 # Subtask 08: Scaffold Entry Points and Wizards
 
-Status: Draft
+Status: Complete
 
 ## Parent Context
 

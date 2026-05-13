@@ -2,9 +2,9 @@ package skillbill.desktop.core.testing
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
-import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
@@ -359,16 +359,15 @@ class FakeRecentRepoRepository(initialRepoPath: String? = null) : RecentRepoRepo
   }
 }
 
-private fun AuthoredContentDocument.toEditorPlaceholder(): EditorPlaceholder =
-  EditorPlaceholder(
-    title = title,
-    detail = readOnlyReason ?: "Authored Skill Bill source.",
-    skillName = skillName,
-    kind = kind,
-    authoredPath = authoredPath,
-    editable = editable,
-    readOnlyLabel = if (editable) null else "RO",
-    content = text,
-    draftContent = text,
-    readOnlyReason = readOnlyReason,
-  )
+private fun AuthoredContentDocument.toEditorPlaceholder(): EditorPlaceholder = EditorPlaceholder(
+  title = title,
+  detail = readOnlyReason ?: "Authored Skill Bill source.",
+  skillName = skillName,
+  kind = kind,
+  authoredPath = authoredPath,
+  editable = editable,
+  readOnlyLabel = if (editable) null else "RO",
+  content = text,
+  draftContent = text,
+  readOnlyReason = readOnlyReason,
+)

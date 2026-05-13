@@ -316,6 +316,7 @@ class SkillBillViewModelTest {
       validationGateway = FakeValidationGateway(),
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = recentRepoRepository,
+      scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
     )
 
     val state = viewModel.selectRepoPath("/not-skill-bill")
@@ -348,6 +349,7 @@ class SkillBillViewModelTest {
       validationGateway = FakeValidationGateway(),
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
+      scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
     )
     viewModel.selectRepoPath("/repo")
     skillTreeService.items =
@@ -1437,6 +1439,8 @@ class SkillBillViewModelTest {
     validationGateway: ValidationGateway = FakeValidationGateway(),
     renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
+    scaffoldGateway: skillbill.desktop.core.domain.service.RuntimeScaffoldGateway =
+      skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1445,6 +1449,7 @@ class SkillBillViewModelTest {
     validationGateway = validationGateway,
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
+    scaffoldGateway = scaffoldGateway,
   )
 }
 
@@ -1458,6 +1463,7 @@ private fun paletteActions(
   showHistory: () -> Unit = {},
   save: () -> Unit = {},
   refreshGitStatus: () -> Unit = {},
+  openScaffoldWizard: (skillbill.desktop.core.domain.model.ScaffoldKind) -> Unit = {},
 ): CommandPaletteActions = CommandPaletteActions(
   selectTreeItem = selectTreeItem,
   openRepository = openRepository,
@@ -1468,6 +1474,7 @@ private fun paletteActions(
   showHistory = showHistory,
   save = save,
   refreshGitStatus = refreshGitStatus,
+  openScaffoldWizard = openScaffoldWizard,
 )
 
 private fun defaultSkillTree(): List<SkillBillTreeItem> = listOf(

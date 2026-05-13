@@ -43,13 +43,26 @@ private val SUPPORTED_SKILL_KINDS =
     SKILL_KIND_ADD_ON,
   )
 
-private val SHELLED_FAMILIES = setOf("code-review", "quality-check")
-private val PRE_SHELL_FAMILIES = setOf("feature-implement", "feature-verify")
+// F-001: The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and the
+// slug->displayName platform-pack preset map (`PLATFORM_PACK_PRESETS`) are declared as `internal`
+// in `ScaffoldSupport.kt` so the desktop wizard catalog (`ScaffoldCatalog`) can delegate to them,
+// keeping the runtime as the single source of truth for which families and presets exist. The
+// richer descriptor map (with routing signals and tie-breakers) lives below as
+// `PLATFORM_PACK_PRESET_DESCRIPTORS` and references the same set of slugs.
+
 private val ORCHESTRATOR_KINDS_FOR_SUBAGENTS =
   setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_PLATFORM_PACK)
 private val SUBAGENT_NAME_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 
-private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
+internal data class PlatformPackPreset(
+  val displayName: String,
+  val strongSignals: List<String>,
+  val tieBreakers: List<String>,
+)
+
+// Full runtime descriptors for built-in platform-pack presets. The slugs MUST match the keys of
+// the simpler [PLATFORM_PACK_PRESETS] wizard projection in `ScaffoldSupport.kt`.
+private val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
   mapOf(
     "java" to PlatformPackPreset(
       displayName = "Java",
@@ -62,12 +75,6 @@ private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
       tieBreakers = listOf("Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."),
     ),
   )
-
-private data class PlatformPackPreset(
-  val displayName: String,
-  val strongSignals: List<String>,
-  val tieBreakers: List<String>,
-)
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -566,7 +573,7 @@ private data class PlatformPackDefaults(
 )
 
 private fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: String): PlatformPackDefaults {
-  val preset = PLATFORM_PACK_PRESETS[platform]
+  val preset = PLATFORM_PACK_PRESET_DESCRIPTORS[platform]
   val routing = payload["routing_signals"] as? Map<*, *>
   val strong = routing?.get("strong")?.let { requireStringList(it, "routing_signals.strong") }
   val tieBreakers = routing?.get("tie_breakers")?.let { requireStringList(it, "routing_signals.tie_breakers") }

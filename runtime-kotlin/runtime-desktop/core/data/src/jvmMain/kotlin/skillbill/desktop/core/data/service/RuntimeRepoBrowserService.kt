@@ -658,24 +658,23 @@ class RuntimeRepoBrowserService :
       )
     }
 
-    fun canEdit(): Boolean =
-      editable &&
-        contentFile != null &&
-        (kind == "horizontal skill" || kind == "platform pack skill") &&
-        Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
-        !isInstallCachePath(contentFile) &&
-        contentFile.fileName.toString() == "content.md"
+    fun canEdit(): Boolean = editable &&
+      contentFile != null &&
+      (kind == "horizontal skill" || kind == "platform pack skill") &&
+      Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
+      !isInstallCachePath(contentFile) &&
+      contentFile.fileName.toString() == "content.md"
 
-    fun readOnlyReasonForDocument(): String =
-      readOnlyReason
-        ?: when {
-          isInstallCachePath(contentFile) -> "Install cache files are runtime output and cannot be edited here."
-          kind == "generated artifact" -> detail
-          kind == "native agent" -> "Provider-native output and native-agent sources cannot enter editable mode here."
-          kind == "add-on" -> "Add-ons are not editable in this workbench."
-          contentFile?.fileName?.toString() == "SKILL.md" -> "Generated SKILL.md is runtime output. Edit content.md instead."
-          else -> "This selection cannot enter editable mode."
-    }
+    fun readOnlyReasonForDocument(): String = readOnlyReason
+      ?: when {
+        isInstallCachePath(contentFile) -> "Install cache files are runtime output and cannot be edited here."
+        kind == "generated artifact" -> detail
+        kind == "native agent" -> "Provider-native output and native-agent sources cannot enter editable mode here."
+        kind == "add-on" -> "Add-ons are not editable in this workbench."
+        contentFile?.fileName?.toString() == "SKILL.md" ->
+          "Generated SKILL.md is runtime output. Edit content.md instead."
+        else -> "This selection cannot enter editable mode."
+      }
   }
 
   private fun selectionFor(session: RepoSession?, treeItemId: String?): SelectionDetail? {
@@ -793,16 +792,15 @@ private fun runtimeMessage(error: Throwable): String {
   }
 }
 
-private fun isInstallCachePath(path: Path?): Boolean =
-  path
-    ?.toAbsolutePath()
-    ?.normalize()
-    ?.iterator()
-    ?.asSequence()
-    ?.map { part -> part.toString() }
-    ?.windowed(2)
-    ?.any { parts -> parts[0] == ".skill-bill" && parts[1] == "installed-skills" }
-    ?: false
+private fun isInstallCachePath(path: Path?): Boolean = path
+  ?.toAbsolutePath()
+  ?.normalize()
+  ?.iterator()
+  ?.asSequence()
+  ?.map { part -> part.toString() }
+  ?.windowed(2)
+  ?.any { parts -> parts[0] == ".skill-bill" && parts[1] == "installed-skills" }
+  ?: false
 
 private fun matchesSourcePath(authoredPath: String?, sourcePath: String): Boolean {
   if (authoredPath.isNullOrBlank() || sourcePath.isBlank()) {
