@@ -57,6 +57,7 @@ data class SkillBillState(
   val pushStatusErrorMessage: String? = null,
   val canonicalPushConfirmationRequired: Boolean = false,
   val dirtyEditorPrompt: DirtyEditorPrompt? = null,
+  val commandPalette: CommandPaletteState = CommandPaletteState(),
 )
 
 enum class DockTab {
@@ -166,6 +167,45 @@ enum class SkillBillBusyOperation {
   VALIDATE,
   RENDER,
   SAVE,
+}
+
+data class CommandPaletteState(
+  val open: Boolean = false,
+  val query: String = "",
+  val selectedResultIndex: Int = 0,
+  val results: List<CommandPaletteResult> = emptyList(),
+)
+
+data class CommandPaletteResult(
+  val id: String,
+  val title: String,
+  val subtitle: String,
+  val marker: String,
+  val kind: CommandPaletteResultKind,
+  val action: CommandPaletteAction,
+  val treeItemId: String? = null,
+  val disabledReason: String? = null,
+  val rank: Int = 0,
+) {
+  val enabled: Boolean
+    get() = disabledReason == null
+}
+
+enum class CommandPaletteResultKind {
+  COMMAND,
+  TREE_ITEM,
+}
+
+enum class CommandPaletteAction {
+  SELECT_TREE_ITEM,
+  OPEN_REPOSITORY,
+  REFRESH,
+  VALIDATE,
+  RENDER,
+  SHOW_CHANGES,
+  SHOW_HISTORY,
+  SAVE,
+  REFRESH_GIT_STATUS,
 }
 
 enum class RenderRunState {

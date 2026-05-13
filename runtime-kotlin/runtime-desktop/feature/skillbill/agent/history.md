@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-13] SKILL-44 command-search-quick-open (subtask 07)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain
+- Added command palette state derived from `SkillBillState`, with ranked command/source results and no separate discovery or indexing service.
+- Palette execution reuses existing route handlers for tree selection, refresh, validate, render, save, repo open, dock tab changes, and Git refresh.
+- Reusable pattern: future mutation flows should expose a named ViewModel refresh hook like `refreshAfterScaffold()` so open palette results rebuild through `createState()`.
+- Empty repo state shows only repo/session commands; invalid/blocked commands carry disabled prerequisite text in the result model.
+- Known limitation: Subtask 08 still owns the actual scaffold wizard and should call `refreshAfterScaffold()` after successful scaffold execution.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-13] SKILL-44 authored-content-editor (subtask 03)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
 - Added runtime-backed authored `content.md` editing: AuthoringGateway loads editable documents and saves through AuthoringOperations.fill, never direct file writes.
