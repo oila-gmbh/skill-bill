@@ -1,6 +1,7 @@
 package skillbill.desktop.feature.skillbill.state
 
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.RenderBlock
@@ -75,6 +76,228 @@ class SkillBillViewModelTest {
 
     assertEquals("skill-one", state.selectedTreeItemId)
     assertEquals("skill-one", state.editor.title)
+  }
+
+  @Test
+  fun `selecting governed skill loads full authored content and editing marks dirty`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "line 1\nline 2\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val loaded = viewModel.selectTreeItem("skill-one")
+    val edited = viewModel.updateEditorDraft("line 1\nchanged\n")
+
+    assertEquals("line 1\nline 2\n", loaded.editor.draftContent)
+    assertTrue(edited.editor.dirty)
+    assertEquals("dirty", edited.statusBar.readOnlyModeLabel)
+  }
+
+  @Test
+  fun `save writes through authoring gateway and successful save clears dirty draft`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "before\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("after\n")
+
+    val request = viewModel.beginSaveEditor()
+    val saved = viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(request)))
+
+    assertEquals(1, authoringGateway.saveCallCount)
+    assertEquals("skill-one", authoringGateway.lastSavedTreeItemId)
+    assertEquals("after\n", authoringGateway.lastSavedBody)
+    assertFalse(saved.editor.dirty)
+    assertEquals("after\n", saved.editor.draftContent)
+  }
+
+  @Test
+  fun `revert reloads latest saved authored text`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("draft\n")
+    authoringGateway.putDocument("skill-one", "latest saved\n")
+
+    val reverted = viewModel.revertEditorDraft()
+
+    assertFalse(reverted.editor.dirty)
+    assertEquals("latest saved\n", reverted.editor.draftContent)
+  }
+
+  @Test
+  fun `save failure preserves draft and surfaces runtime message`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "before\n")
+      saveFailureMessage = "validator rejected content"
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("broken draft\n")
+
+    val request = viewModel.beginSaveEditor()
+    val failed = viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(request)))
+
+    assertTrue(failed.editor.dirty)
+    assertEquals("broken draft\n", failed.editor.draftContent)
+    assertEquals("validator rejected content", failed.editor.saveErrorMessage)
+  }
+
+  @Test
+  fun `dirty selection change prompts for discard or cancel before mutating selection`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "one\n")
+      putDocument("skill-two", "two\n")
+    }
+    val viewModel = newViewModel(
+      skillTreeService = FakeSkillTreeService(skillTree("skill-one", "skill-two")),
+      authoringGateway = authoringGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("dirty\n")
+
+    val prompted = viewModel.selectTreeItem("skill-two")
+    val canceled = viewModel.cancelDirtyEditorPrompt()
+    val promptedAgain = viewModel.selectTreeItem("skill-two")
+    val discarded = viewModel.discardDirtyEditorPrompt()
+
+    assertEquals("skill-one", prompted.selectedTreeItemId)
+    assertEquals(DirtyEditorPromptReason.SELECTION_CHANGE, prompted.dirtyEditorPrompt?.reason)
+    assertEquals("skill-one", canceled.selectedTreeItemId)
+    assertNull(canceled.dirtyEditorPrompt)
+    assertEquals(DirtyEditorPromptReason.SELECTION_CHANGE, promptedAgain.dirtyEditorPrompt?.reason)
+    assertEquals("skill-two", discarded.selectedTreeItemId)
+    assertFalse(discarded.editor.dirty)
+  }
+
+  @Test
+  fun `dirty refresh prompts before reloading tree data`() {
+    val repoSessionService = CountingRepoSessionService()
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "one\n")
+    }
+    val viewModel = newViewModel(repoSessionService = repoSessionService, authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("dirty\n")
+
+    val prompted = viewModel.beginRefresh()
+    val discarded = viewModel.discardDirtyEditorPrompt()
+
+    assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
+    assertEquals(DirtyEditorPromptReason.REFRESH, prompted.dirtyEditorPrompt?.reason)
+    assertEquals(SkillBillBusyOperation.REFRESH, discarded.busyOperation)
+  }
+
+  @Test
+  fun `draft changes are ignored while repo refresh is in flight`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+
+    val refreshState = viewModel.beginRefresh()
+    val request = viewModel.repoLoadRequest(repoPath = "/repo", preserveSelection = true)
+    val editedDuringRefresh = viewModel.updateEditorDraft("draft after refresh started\n")
+    authoringGateway.putDocument("skill-one", "reloaded\n")
+    val refreshed = viewModel.finishRepoLoad(viewModel.loadRepo(request))
+
+    assertEquals(SkillBillBusyOperation.REFRESH, refreshState.busyOperation)
+    assertFalse(editedDuringRefresh.editor.dirty)
+    assertEquals("saved\n", editedDuringRefresh.editor.draftContent)
+    assertFalse(refreshed.editor.dirty)
+    assertEquals("reloaded\n", refreshed.editor.draftContent)
+  }
+
+  @Test
+  fun `dirty repo switch prompts before opening target repo`() {
+    val repoSessionService = CountingRepoSessionService()
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val viewModel = newViewModel(repoSessionService = repoSessionService, authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("dirty\n")
+
+    val prompted = viewModel.beginSelectRepoPath("/other")
+    val discarded = viewModel.discardDirtyEditorPrompt()
+
+    assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
+    assertEquals("skill-one", prompted.selectedTreeItemId)
+    assertEquals(DirtyEditorPromptReason.REPO_SWITCH, prompted.dirtyEditorPrompt?.reason)
+    assertEquals("/other", prompted.dirtyEditorPrompt?.targetRepoPath)
+    assertEquals(SkillBillBusyOperation.OPEN_REPO, discarded.busyOperation)
+    assertEquals("/other", discarded.repoPathText)
+    assertFalse(discarded.editor.dirty)
+  }
+
+  @Test
+  fun `dirty choose directory prompts before opening chooser`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("dirty\n")
+
+    val prompted = viewModel.beginChooseRepoDirectory()
+    val discarded = viewModel.discardDirtyEditorPrompt()
+
+    assertEquals(DirtyEditorPromptReason.CHOOSE_DIRECTORY, prompted.dirtyEditorPrompt?.reason)
+    assertEquals(SkillBillBusyOperation.CHOOSE_DIRECTORY, discarded.busyOperation)
+    assertFalse(discarded.editor.dirty)
+  }
+
+  @Test
+  fun `successful editor save can be followed by git refresh`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "before\n")
+    }
+    val gitGateway = FakeGitGateway()
+    val viewModel = newViewModel(authoringGateway = authoringGateway, gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("after\n")
+
+    val saveRequest = viewModel.beginSaveEditor()
+    val saved = viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(saveRequest)))
+    val refreshRequest = viewModel.beginGitRefresh()
+    viewModel.finishGitRefresh(viewModel.runGitRefresh(refreshRequest))
+
+    assertFalse(saved.editor.dirty)
+    assertEquals(1, gitGateway.snapshotForCallCount)
+  }
+
+  @Test
+  fun `draft changes are ignored while git refresh is in flight`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val viewModel = newViewModel(authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+
+    val refreshRequest = viewModel.beginGitRefresh()
+    val editedDuringRefresh = viewModel.updateEditorDraft("draft during git refresh\n")
+    val refreshed = viewModel.finishGitRefresh(viewModel.runGitRefresh(refreshRequest))
+
+    assertTrue(editedDuringRefresh.changesBusy)
+    assertFalse(editedDuringRefresh.editor.dirty)
+    assertEquals("saved\n", editedDuringRefresh.editor.draftContent)
+    assertFalse(refreshed.editor.dirty)
+    assertEquals("saved\n", refreshed.editor.draftContent)
   }
 
   @Test

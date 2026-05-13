@@ -62,6 +62,8 @@ import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.DirtyEditorPrompt
+import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.GitAheadBehind
@@ -103,6 +105,11 @@ fun SkillBillFrame(
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
   onRender: () -> Unit,
+  onEditorDraftChanged: (String) -> Unit,
+  onEditorSave: () -> Unit,
+  onEditorRevert: () -> Unit,
+  onDirtyPromptDiscard: () -> Unit,
+  onDirtyPromptCancel: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
   onTreeItemExpandedToggled: (String) -> Unit,
   onMoveTreeSelection: (Int) -> Unit,
@@ -199,6 +206,17 @@ fun SkillBillFrame(
         pushStatusErrorMessage = state.pushStatusErrorMessage,
         canonicalPushConfirmationRequired = state.canonicalPushConfirmationRequired,
         hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
+        dirtyEditorPrompt = state.dirtyEditorPrompt,
+        editorInputEnabled = state.busyOperation == null &&
+          !state.changesBusy &&
+          !state.commitBusy &&
+          !state.commitValidationRunning &&
+          !state.pushBusy,
+        onEditorDraftChanged = onEditorDraftChanged,
+        onEditorSave = onEditorSave,
+        onEditorRevert = onEditorRevert,
+        onDirtyPromptDiscard = onDirtyPromptDiscard,
+        onDirtyPromptCancel = onDirtyPromptCancel,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
@@ -320,6 +338,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.CHOOSE_DIRECTORY -> "Choosing..."
     SkillBillBusyOperation.VALIDATE -> "Validating..."
     SkillBillBusyOperation.RENDER -> "Rendering..."
+    SkillBillBusyOperation.SAVE -> "Saving..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),
@@ -741,6 +760,13 @@ private fun CenterWorkspace(
   pushStatusErrorMessage: String?,
   canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
+  dirtyEditorPrompt: DirtyEditorPrompt?,
+  editorInputEnabled: Boolean,
+  onEditorDraftChanged: (String) -> Unit,
+  onEditorSave: () -> Unit,
+  onEditorRevert: () -> Unit,
+  onDirtyPromptDiscard: () -> Unit,
+  onDirtyPromptCancel: () -> Unit,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
@@ -758,7 +784,17 @@ private fun CenterWorkspace(
 ) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
     EditorTabs(editor)
-    CodeEditor(editor = editor, modifier = Modifier.weight(1f))
+    CodeEditor(
+      editor = editor,
+      dirtyEditorPrompt = dirtyEditorPrompt,
+      editorInputEnabled = editorInputEnabled,
+      onDraftChanged = onEditorDraftChanged,
+      onSave = onEditorSave,
+      onRevert = onEditorRevert,
+      onDirtyPromptDiscard = onDirtyPromptDiscard,
+      onDirtyPromptCancel = onDirtyPromptCancel,
+      modifier = Modifier.weight(1f),
+    )
     BottomDock(
       editor = editor,
       validation = validation,
@@ -820,7 +856,7 @@ private fun EditorTabs(editor: EditorPlaceholder) {
     EditorTab(
       name = editor.authoredPath ?: editor.title,
       active = true,
-      dirty = false,
+      dirty = editor.dirty,
       readOnly = !editor.editable,
       readOnlyLabel = editor.readOnlyLabel,
     )
@@ -870,24 +906,145 @@ private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: B
 }
 
 @Composable
-private fun CodeEditor(editor: EditorPlaceholder, modifier: Modifier = Modifier) {
-  val lines =
-    (editor.content ?: editor.detail)
-      .ifBlank { "No source selected" }
-      .lines()
+private fun CodeEditor(
+  editor: EditorPlaceholder,
+  dirtyEditorPrompt: DirtyEditorPrompt?,
+  editorInputEnabled: Boolean,
+  onDraftChanged: (String) -> Unit,
+  onSave: () -> Unit,
+  onRevert: () -> Unit,
+  onDirtyPromptDiscard: () -> Unit,
+  onDirtyPromptCancel: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
   Column(
     modifier =
     modifier
       .fillMaxWidth()
-      .background(WorkspaceBackground)
-      .verticalScroll(rememberScrollState()),
+      .background(WorkspaceBackground),
   ) {
-    if (!editor.editable) {
+    EditorCommandBar(editor = editor, onSave = onSave, onRevert = onRevert)
+    if (dirtyEditorPrompt != null) {
+      DirtyEditorPromptBanner(
+        prompt = dirtyEditorPrompt,
+        onDiscard = onDirtyPromptDiscard,
+        onCancel = onDirtyPromptCancel,
+      )
+    }
+    editor.saveErrorMessage?.let { message ->
+      SaveErrorBanner(message)
+    }
+    if (editor.editable) {
+      Box(
+        modifier =
+        Modifier
+          .weight(1f)
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState()),
+      ) {
+        BasicTextField(
+          value = editor.draftContent ?: editor.content.orEmpty(),
+          onValueChange = onDraftChanged,
+          enabled = editorInputEnabled && !editor.saveInProgress,
+          textStyle = androidx.compose.ui.text.TextStyle(
+            color = WorkspaceText.copy(alpha = 0.92f),
+            fontSize = 12.5.sp,
+            fontFamily = FontFamily.Monospace,
+            lineHeight = 20.sp,
+          ),
+          modifier =
+          Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+      }
+    } else {
+      val lines =
+        (editor.content ?: editor.detail)
+          .ifBlank { "No source selected" }
+          .lines()
       ReadOnlyBanner(editor)
+      Column(
+        modifier =
+        Modifier
+          .weight(1f)
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState()),
+      ) {
+        lines.forEachIndexed { index, line ->
+          CodeLine(number = index + 1, line = line, flagged = false)
+        }
+      }
     }
-    lines.forEachIndexed { index, line ->
-      CodeLine(number = index + 1, line = line, flagged = false)
+  }
+}
+
+@Composable
+private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRevert: () -> Unit) {
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .height(38.dp)
+      .background(WorkspaceRaised)
+      .padding(horizontal = 12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(
+      text = if (editor.dirty) "Modified" else if (editor.editable) "Saved" else "Read-only",
+      color = if (editor.dirty) WorkspaceYellow else WorkspaceMuted,
+      fontSize = 11.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    EditorActionButton(
+      label = if (editor.saveInProgress) "Saving..." else "Save",
+      marker = "sv",
+      enabled = editor.editable && editor.dirty && !editor.saveInProgress,
+      primary = editor.dirty,
+      onClick = onSave,
+    )
+    EditorActionButton(
+      label = "Revert",
+      marker = "rv",
+      enabled = editor.editable && editor.dirty && !editor.saveInProgress,
+      onClick = onRevert,
+    )
+  }
+}
+
+@Composable
+private fun EditorActionButton(
+  label: String,
+  marker: String,
+  enabled: Boolean,
+  primary: Boolean = false,
+  onClick: () -> Unit,
+) {
+  val background = if (primary && enabled) WorkspaceYellow else WorkspacePanel
+  val foreground =
+    when {
+      !enabled -> WorkspaceSteel
+      primary -> Color(0xFF0B0B0D)
+      else -> WorkspaceText
     }
+  Row(
+    modifier =
+    Modifier
+      .height(26.dp)
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, if (enabled) WorkspaceLine else WorkspacePanel, RoundedCornerShape(6.dp))
+      .background(background, RoundedCornerShape(6.dp))
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+      .padding(horizontal = 9.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    MiniIcon(text = marker, tint = foreground)
+    Text(text = label, color = foreground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
   }
 }
 
@@ -901,15 +1058,69 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
     MiniIcon(text = "ro", tint = WorkspaceYellow)
     Text(
       text = if (editor.kind == "generated artifact") {
-        "Generated artifact is ${editor.readOnlyLabel ?: "read-only"}"
+        editor.readOnlyReason ?: "Generated artifact is ${editor.readOnlyLabel ?: "read-only"}"
       } else {
-        "Read-only browser"
+        editor.readOnlyReason ?: "Read-only browser"
       },
       color = WorkspaceMuted,
       fontSize = 11.sp,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
+  }
+}
+
+@Composable
+private fun SaveErrorBanner(message: String) {
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .heightIn(max = 140.dp)
+      .background(WorkspaceRed.copy(alpha = 0.16f))
+      .verticalScroll(rememberScrollState())
+      .padding(horizontal = 14.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.Top,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(text = "x", tint = WorkspaceRed)
+    Text(
+      text = message,
+      color = WorkspaceText,
+      fontSize = 11.sp,
+      modifier = Modifier.weight(1f),
+    )
+  }
+}
+
+@Composable
+private fun DirtyEditorPromptBanner(
+  prompt: DirtyEditorPrompt,
+  onDiscard: () -> Unit,
+  onCancel: () -> Unit,
+) {
+  val message = when (prompt.reason) {
+    DirtyEditorPromptReason.SELECTION_CHANGE -> "Discard unsaved edits before changing selection?"
+    DirtyEditorPromptReason.REFRESH -> "Discard unsaved edits before refreshing?"
+    DirtyEditorPromptReason.REPO_SWITCH -> "Discard unsaved edits before switching repositories?"
+    DirtyEditorPromptReason.CHOOSE_DIRECTORY -> "Discard unsaved edits before choosing another repository?"
+  }
+  Row(
+    modifier = Modifier.fillMaxWidth().background(WorkspaceAmber.copy(alpha = 0.16f)).padding(horizontal = 14.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(text = "!", tint = WorkspaceAmber)
+    Text(
+      text = message,
+      color = WorkspaceText,
+      fontSize = 11.sp,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    EditorActionButton(label = "Discard", marker = "ds", enabled = true, primary = true, onClick = onDiscard)
+    EditorActionButton(label = "Cancel", marker = "cn", enabled = true, onClick = onCancel)
   }
 }
 
@@ -1013,6 +1224,7 @@ private fun InspectorPane(
         KeyValueRow("authored path", editor.authoredPath ?: "-")
         KeyValueRow("status", editor.status ?: "-", tone = toneForStatus(editor.status))
         KeyValueRow("mode", editor.readOnlyLabel ?: if (editor.editable) "editable" else "read-only")
+        KeyValueRow("draft", if (editor.dirty) "dirty" else "clean", tone = if (editor.dirty) Tone.Warning else Tone.Success)
         KeyValueRow(
           "editable",
           if (editor.editable) "yes" else "no",

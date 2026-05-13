@@ -2,11 +2,15 @@ package skillbill.desktop.feature.skillbill.state
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
+import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.DirtyEditorPrompt
+import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
@@ -85,6 +89,13 @@ class SkillBillViewModel(
   private var canonicalPushConfirmationTarget: GitPushTarget? = null
   private var activeCommitToken: Long = 0L
   private var activePushToken: Long = 0L
+  private var loadedEditorDocument: AuthoredContentDocument? = null
+  private var editorSelectionId: String? = null
+  private var editorDraftText: String = ""
+  private var editorSaveInProgress: Boolean = false
+  private var editorSaveErrorMessage: String? = null
+  private var dirtyEditorPrompt: DirtyEditorPrompt? = null
+  private var activeSaveToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -94,7 +105,19 @@ class SkillBillViewModel(
   }
 
   fun state(selectedTreeItemId: String? = currentState.selectedTreeItemId): SkillBillState {
-    this.selectedTreeItemId = selectedTreeItemId?.takeIf(::containsTreeItem)
+    val resolvedSelection = selectedTreeItemId?.takeIf(::containsTreeItem)
+    if (this.selectedTreeItemId != resolvedSelection) {
+      if (isEditorDirty()) {
+        dirtyEditorPrompt = DirtyEditorPrompt(
+          reason = DirtyEditorPromptReason.SELECTION_CHANGE,
+          targetTreeItemId = resolvedSelection,
+        )
+        currentState = createState()
+        return currentState
+      }
+      this.selectedTreeItemId = resolvedSelection
+      loadEditorForSelection()
+    }
     currentState = createState()
     return currentState
   }
@@ -106,12 +129,24 @@ class SkillBillViewModel(
   }
 
   fun selectRepoPath(repoPath: String = repoPathText): SkillBillState {
-    beginSelectRepoPath(repoPath)
+    val state = beginSelectRepoPath(repoPath)
+    if (state.dirtyEditorPrompt != null) {
+      return state
+    }
     return finishSelectRepoPath()
   }
 
   fun beginSelectRepoPath(repoPath: String = repoPathText): SkillBillState {
-    repoPathText = repoPath.trim()
+    val targetRepoPath = repoPath.trim()
+    if (isEditorDirty()) {
+      dirtyEditorPrompt = DirtyEditorPrompt(
+        reason = DirtyEditorPromptReason.REPO_SWITCH,
+        targetRepoPath = targetRepoPath,
+      )
+      currentState = createState()
+      return currentState
+    }
+    repoPathText = targetRepoPath
     activeOperationToken += 1
     busyOperation = SkillBillBusyOperation.OPEN_REPO
     currentState = createState()
@@ -132,6 +167,18 @@ class SkillBillViewModel(
   }
 
   fun selectTreeItem(itemId: String): SkillBillState {
+    if (isEditorDirty() && itemId != selectedTreeItemId) {
+      dirtyEditorPrompt = DirtyEditorPrompt(
+        reason = DirtyEditorPromptReason.SELECTION_CHANGE,
+        targetTreeItemId = itemId,
+      )
+      currentState = createState()
+      return currentState
+    }
+    return selectTreeItemIgnoringDirty(itemId)
+  }
+
+  private fun selectTreeItemIgnoringDirty(itemId: String): SkillBillState {
     val previousSelectedTreeItemId = selectedTreeItemId
     selectedTreeItemId = itemId.takeIf(::containsTreeItem)
     if (selectedTreeItemId != previousSelectedTreeItemId) {
@@ -139,6 +186,7 @@ class SkillBillViewModel(
       // summary must not bleed into a new selection. Mirror the refresh/repo-switch reset (F-103).
       resetRenderForSelectionChange()
     }
+    loadEditorForSelection()
     currentState = createState()
     return currentState
   }
@@ -149,6 +197,11 @@ class SkillBillViewModel(
   }
 
   fun beginRefresh(): SkillBillState {
+    if (isEditorDirty()) {
+      dirtyEditorPrompt = DirtyEditorPrompt(reason = DirtyEditorPromptReason.REFRESH)
+      currentState = createState()
+      return currentState
+    }
     activeOperationToken += 1
     busyOperation = SkillBillBusyOperation.REFRESH
     currentState = createState()
@@ -156,6 +209,9 @@ class SkillBillViewModel(
   }
 
   fun finishRefresh(): SkillBillState {
+    if (dirtyEditorPrompt != null) {
+      return currentState
+    }
     val path = currentSession?.repoPath ?: repoPathText
     currentState = finishRepoLoad(loadRepo(repoLoadRequest(repoPath = path, preserveSelection = true)))
     return currentState
@@ -176,11 +232,17 @@ class SkillBillViewModel(
     val previousSelectedTreeItemId = selectedTreeItemId
     val visibleIds = treeItems.visibleItems(expandedNodeIds).map(SkillBillTreeItem::id)
     if (visibleIds.isEmpty()) {
+      if (isEditorDirty() && selectedTreeItemId != null) {
+        dirtyEditorPrompt = DirtyEditorPrompt(reason = DirtyEditorPromptReason.SELECTION_CHANGE)
+        currentState = createState()
+        return currentState
+      }
       selectedTreeItemId = null
       if (selectedTreeItemId != previousSelectedTreeItemId) {
         // F-202: selection changed (cleared); render output is no longer for this selection.
         resetRenderForSelectionChange()
       }
+      resetEditorDocument()
       currentState = createState()
       return currentState
     }
@@ -190,11 +252,21 @@ class SkillBillViewModel(
         null -> if (delta >= 0) 0 else visibleIds.lastIndex
         else -> (currentIndex + delta).coerceIn(0, visibleIds.lastIndex)
       }
-    selectedTreeItemId = visibleIds[nextIndex]
+    val nextSelection = visibleIds[nextIndex]
+    if (isEditorDirty() && nextSelection != selectedTreeItemId) {
+      dirtyEditorPrompt = DirtyEditorPrompt(
+        reason = DirtyEditorPromptReason.SELECTION_CHANGE,
+        targetTreeItemId = nextSelection,
+      )
+      currentState = createState()
+      return currentState
+    }
+    selectedTreeItemId = nextSelection
     if (selectedTreeItemId != previousSelectedTreeItemId) {
       // F-202: selection changed via keyboard movement; reset render to mirror selectTreeItem.
       resetRenderForSelectionChange()
     }
+    loadEditorForSelection()
     currentState = createState()
     return currentState
   }
@@ -226,6 +298,15 @@ class SkillBillViewModel(
     }
     repoPathText = selectedPath
     return selectRepoPath(selectedPath)
+  }
+
+  fun beginChooseRepoDirectory(): SkillBillState {
+    if (isEditorDirty()) {
+      dirtyEditorPrompt = DirtyEditorPrompt(reason = DirtyEditorPromptReason.CHOOSE_DIRECTORY)
+      currentState = createState()
+      return currentState
+    }
+    return busyState(SkillBillBusyOperation.CHOOSE_DIRECTORY)
   }
 
   fun busyState(operation: SkillBillBusyOperation): SkillBillState {
@@ -278,6 +359,7 @@ class SkillBillViewModel(
       request.previousSelection
         ?.takeIf { request.preserveSelection && sameRepo }
         ?.takeIf(::containsTreeItem)
+    resetEditorDocument()
     expandedNodeIds =
       reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, request.preserveSelection && sameRepo)
     busyOperation = null
@@ -316,6 +398,7 @@ class SkillBillViewModel(
     pushErrorMessage = null
     canonicalPushConfirmationRequired = false
     canonicalPushConfirmationTarget = null
+    loadEditorForSelection()
   }
 
   private fun createState(): SkillBillState {
@@ -331,7 +414,7 @@ class SkillBillViewModel(
       !session.isRecognizedSkillBillRepo -> baseStatus
       else -> baseStatus.copy(branchLabel = currentBranchLabel ?: baseStatus.branchLabel)
     }
-    val editor = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty
+    val editor = editorForSelection(resolvedTreeItemId)
     // F-201: capture the snapshot reference once so the file lookup and the state assembly see a
     // consistent slice even if refresh()/openRepo() rewrites changesSnapshot between reads.
     val capturedSnapshot = changesSnapshot
@@ -375,7 +458,132 @@ class SkillBillViewModel(
       pushErrorMessage = pushErrorMessage,
       pushStatusErrorMessage = publishingStatus.errorMessage,
       canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
+      dirtyEditorPrompt = dirtyEditorPrompt,
     )
+  }
+
+  fun updateEditorDraft(text: String): SkillBillState {
+    val document = loadedEditorDocument
+    if (
+      document?.editable != true ||
+      editorSaveInProgress ||
+      busyOperation != null ||
+      changesBusy ||
+      commitBusy ||
+      commitValidationRunning ||
+      pushBusy
+    ) {
+      currentState = createState()
+      return currentState
+    }
+    editorDraftText = text
+    editorSaveErrorMessage = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun revertEditorDraft(): SkillBillState {
+    if (editorSaveInProgress) {
+      currentState = createState()
+      return currentState
+    }
+    loadEditorForSelection()
+    editorSaveErrorMessage = null
+    dirtyEditorPrompt = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginSaveEditor(): EditorSaveRequest? {
+    val document = loadedEditorDocument
+    if (
+      document?.editable != true ||
+      !isEditorDirty() ||
+      editorSaveInProgress ||
+      busyOperation != null ||
+      changesBusy ||
+      commitBusy ||
+      commitValidationRunning ||
+      pushBusy
+    ) {
+      currentState = createState()
+      return null
+    }
+    activeSaveToken += 1
+    editorSaveInProgress = true
+    editorSaveErrorMessage = null
+    busyOperation = SkillBillBusyOperation.SAVE
+    currentState = createState()
+    return EditorSaveRequest(
+      token = activeSaveToken,
+      session = currentSession,
+      treeItemId = selectedTreeItemId,
+      body = editorDraftText,
+    )
+  }
+
+  fun runSaveEditor(request: EditorSaveRequest): EditorSaveResult {
+    val result = runCatching {
+      authoringGateway.saveDocument(request.session, request.treeItemId, request.body)
+    }.getOrElse { error -> AuthoringSaveResult.failed(describe(error)) }
+    return EditorSaveResult(request = request, result = result)
+  }
+
+  fun finishSaveEditor(result: EditorSaveResult): SkillBillState {
+    if (result.request.token != activeSaveToken) {
+      return currentState
+    }
+    editorSaveInProgress = false
+    busyOperation = null
+    if (result.result.success) {
+      val savedDocument = result.result.document
+        ?: authoringGateway.loadDocument(currentSession, selectedTreeItemId)
+      loadedEditorDocument = savedDocument
+      editorSelectionId = result.request.treeItemId
+      editorDraftText = savedDocument.text
+      editorSaveErrorMessage = null
+      dirtyEditorPrompt = null
+    } else {
+      editorSaveErrorMessage = result.result.runtimeErrorMessage ?: "Save failed."
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun cancelDirtyEditorPrompt(): SkillBillState {
+    dirtyEditorPrompt = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun discardDirtyEditorPrompt(): SkillBillState {
+    val prompt = dirtyEditorPrompt ?: return currentState
+    dirtyEditorPrompt = null
+    when (prompt.reason) {
+      DirtyEditorPromptReason.SELECTION_CHANGE -> {
+        prompt.targetTreeItemId
+          ?.let { target -> selectTreeItemIgnoringDirty(target) }
+          ?: run {
+            selectedTreeItemId = null
+            resetRenderForSelectionChange()
+            resetEditorDocument()
+          }
+      }
+      DirtyEditorPromptReason.REFRESH -> {
+        resetEditorDocument()
+        beginRefresh()
+      }
+      DirtyEditorPromptReason.REPO_SWITCH -> {
+        resetEditorDocument()
+        prompt.targetRepoPath?.let(::beginSelectRepoPath)
+      }
+      DirtyEditorPromptReason.CHOOSE_DIRECTORY -> {
+        resetEditorDocument()
+        busyState(SkillBillBusyOperation.CHOOSE_DIRECTORY)
+      }
+    }
+    currentState = createState()
+    return currentState
   }
 
   fun updateCommitMessage(message: String): SkillBillState {
@@ -900,8 +1108,17 @@ class SkillBillViewModel(
     if (!containsTreeItem(resolvedId)) {
       return currentState
     }
+    if (isEditorDirty() && resolvedId != selectedTreeItemId) {
+      dirtyEditorPrompt = DirtyEditorPrompt(
+        reason = DirtyEditorPromptReason.SELECTION_CHANGE,
+        targetTreeItemId = resolvedId,
+      )
+      currentState = createState()
+      return currentState
+    }
     selectedTreeItemId = resolvedId
     expandedNodeIds = expandedNodeIds + ancestorIdsOf(resolvedId)
+    loadEditorForSelection()
     currentState = createState()
     return currentState
   }
@@ -924,11 +1141,68 @@ class SkillBillViewModel(
     return ancestors
   }
 
+  private fun editorForSelection(resolvedTreeItemId: String?): EditorPlaceholder {
+    val base = resolvedTreeItemId?.let(authoringGateway::describeSelection) ?: EditorPlaceholder.empty
+    val document = loadedEditorDocument
+      ?.takeIf { editorSelectionId == resolvedTreeItemId }
+    val dirty = isEditorDirty()
+    return if (document == null) {
+      base.copy(
+        saveInProgress = editorSaveInProgress,
+        saveErrorMessage = editorSaveErrorMessage,
+      )
+    } else {
+      base.copy(
+        title = document.title,
+        skillName = document.skillName,
+        kind = document.kind,
+        authoredPath = document.authoredPath,
+        editable = document.editable,
+        readOnlyLabel = if (document.editable) null else base.readOnlyLabel ?: "RO",
+        content = document.text,
+        draftContent = editorDraftText,
+        dirty = dirty,
+        saveInProgress = editorSaveInProgress,
+        saveErrorMessage = editorSaveErrorMessage ?: document.runtimeErrorMessage,
+        readOnlyReason = document.readOnlyReason,
+      )
+    }
+  }
+
+  private fun loadEditorForSelection() {
+    val selection = selectedTreeItemId
+    if (selection == null || !containsTreeItem(selection)) {
+      resetEditorDocument()
+      return
+    }
+    val document = authoringGateway.loadDocument(currentSession, selection)
+    loadedEditorDocument = document
+    editorSelectionId = selection
+    editorDraftText = document.text
+    editorSaveInProgress = false
+    editorSaveErrorMessage = document.runtimeErrorMessage
+    dirtyEditorPrompt = null
+  }
+
+  private fun resetEditorDocument() {
+    loadedEditorDocument = null
+    editorSelectionId = null
+    editorDraftText = ""
+    editorSaveInProgress = false
+    editorSaveErrorMessage = null
+    dirtyEditorPrompt = null
+  }
+
+  private fun isEditorDirty(): Boolean {
+    val document = loadedEditorDocument ?: return false
+    return document.editable && editorDraftText != document.text
+  }
+
   private fun statusBarFor(repoPath: String?, branchLabel: String): SkillBillStatusBar = SkillBillStatusBar(
     targetCount = treeItems.flatten().count { it.children.isEmpty() },
     repoPathLabel = repoPath ?: "no repo",
     branchLabel = branchLabel,
-    readOnlyModeLabel = SkillBillStatusBar.READ_ONLY_MODE_LABEL,
+    readOnlyModeLabel = if (isEditorDirty()) "dirty" else SkillBillStatusBar.READ_ONLY_MODE_LABEL,
     policyLabel = SkillBillStatusBar.POLICY_LABEL,
   )
 
@@ -1006,6 +1280,18 @@ data class RenderRunRequest(
 data class RenderRunResult(
   val request: RenderRunRequest,
   val summary: RenderSummary,
+)
+
+data class EditorSaveRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val treeItemId: String?,
+  val body: String,
+)
+
+data class EditorSaveResult(
+  val request: EditorSaveRequest,
+  val result: AuthoringSaveResult,
 )
 
 // Default cap on the number of recent commits surfaced in the History tab. Kept here so tests can

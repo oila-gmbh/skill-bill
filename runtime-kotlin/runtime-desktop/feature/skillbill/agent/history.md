@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-13] SKILL-44 authored-content-editor (subtask 03)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
+- Added runtime-backed authored `content.md` editing: AuthoringGateway loads editable documents and saves through AuthoringOperations.fill, never direct file writes.
+- Editor state now tracks saved text, draft text, dirty status, save progress, save errors, revert, and discard/cancel prompts for dirty selection, refresh, repo switch, and chooser flows.
+- Reused the existing runGitRefresh fan-out after successful saves so source-control state updates in the same pattern as validation/render/publishing.
+- Generated SKILL.md/support pointers, native-agent output, add-ons, and install cache paths stay read-only; service tests cover generated wrapper/support/native read-only cases.
+- Known limitation: final Gradle JVM validation could not start in the local WSL workspace because Gradle FileHasher creation fails with `java.io.IOException: Input/output error`; `skill-bill validate` and `git diff --check` passed.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-13] SKILL-44 publishing (subtask 06)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
 - Added commit + push publishing flow: commit runs validation first, failed validation requires explicit override, successful commit/push refreshes changes, history, and publishing status.

@@ -2,6 +2,8 @@ package skillbill.desktop.core.testing
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
+import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangesSnapshot
@@ -42,8 +44,63 @@ class FakeSkillTreeService(private val items: List<SkillBillTreeItem>) : SkillTr
 }
 
 class FakeAuthoringGateway : AuthoringGateway {
+  var documentsByTreeItemId: MutableMap<String, AuthoredContentDocument> = mutableMapOf()
+  var saveFailureMessage: String? = null
+  var loadCallCount: Int = 0
+    private set
+  var saveCallCount: Int = 0
+    private set
+  var lastSavedTreeItemId: String? = null
+    private set
+  var lastSavedBody: String? = null
+    private set
+
   override fun describeSelection(treeItemId: String): EditorPlaceholder =
-    EditorPlaceholder(title = treeItemId, detail = "Selected $treeItemId")
+    documentsByTreeItemId[treeItemId]?.toEditorPlaceholder()
+      ?: EditorPlaceholder(title = treeItemId, detail = "Selected $treeItemId")
+
+  override fun loadDocument(session: RepoSession?, treeItemId: String?): AuthoredContentDocument {
+    loadCallCount += 1
+    return treeItemId?.let(documentsByTreeItemId::get)
+      ?: AuthoredContentDocument(
+        treeItemId = treeItemId,
+        title = treeItemId ?: "No source selected",
+        skillName = null,
+        kind = null,
+        authoredPath = null,
+        text = "",
+        editable = false,
+        readOnlyReason = "No editable governed source is selected.",
+      )
+  }
+
+  override fun saveDocument(session: RepoSession?, treeItemId: String?, body: String): AuthoringSaveResult {
+    saveCallCount += 1
+    lastSavedTreeItemId = treeItemId
+    lastSavedBody = body
+    saveFailureMessage?.let { message -> return AuthoringSaveResult.failed(message) }
+    val current = treeItemId?.let(documentsByTreeItemId::get)
+      ?: return AuthoringSaveResult.failed("No editable governed source is selected.")
+    if (!current.editable) {
+      return AuthoringSaveResult.failed(current.readOnlyReason ?: "This selection cannot enter editable mode.")
+    }
+    val updated = current.copy(text = body, runtimeErrorMessage = null)
+    documentsByTreeItemId[treeItemId] = updated
+    return AuthoringSaveResult(success = true, document = updated)
+  }
+
+  fun putDocument(treeItemId: String, text: String, editable: Boolean = true, readOnlyReason: String? = null) {
+    documentsByTreeItemId[treeItemId] = AuthoredContentDocument(
+      treeItemId = treeItemId,
+      title = treeItemId,
+      skillName = treeItemId,
+      kind = if (editable) "horizontal skill" else "generated artifact",
+      authoredPath = "skills/$treeItemId/content.md",
+      text = text,
+      editable = editable,
+      readOnlyReason = readOnlyReason,
+    )
+  }
 }
 
 class FakeGitGateway(
@@ -301,3 +358,17 @@ class FakeRecentRepoRepository(initialRepoPath: String? = null) : RecentRepoRepo
     repoPath = null
   }
 }
+
+private fun AuthoredContentDocument.toEditorPlaceholder(): EditorPlaceholder =
+  EditorPlaceholder(
+    title = title,
+    detail = readOnlyReason ?: "Authored Skill Bill source.",
+    skillName = skillName,
+    kind = kind,
+    authoredPath = authoredPath,
+    editable = editable,
+    readOnlyLabel = if (editable) null else "RO",
+    content = text,
+    draftContent = text,
+    readOnlyReason = readOnlyReason,
+  )

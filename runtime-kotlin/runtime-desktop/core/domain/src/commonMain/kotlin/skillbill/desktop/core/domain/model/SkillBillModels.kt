@@ -56,6 +56,7 @@ data class SkillBillState(
   val pushErrorMessage: String? = null,
   val pushStatusErrorMessage: String? = null,
   val canonicalPushConfirmationRequired: Boolean = false,
+  val dirtyEditorPrompt: DirtyEditorPrompt? = null,
 )
 
 enum class DockTab {
@@ -164,6 +165,7 @@ enum class SkillBillBusyOperation {
   CHOOSE_DIRECTORY,
   VALIDATE,
   RENDER,
+  SAVE,
 }
 
 enum class RenderRunState {
@@ -228,6 +230,11 @@ data class EditorPlaceholder(
   val editable: Boolean = false,
   val readOnlyLabel: String? = null,
   val content: String? = null,
+  val draftContent: String? = content,
+  val dirty: Boolean = false,
+  val saveInProgress: Boolean = false,
+  val saveErrorMessage: String? = null,
+  val readOnlyReason: String? = null,
   val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
 ) {
   companion object {
@@ -237,6 +244,42 @@ data class EditorPlaceholder(
         detail = "Open a SkillBill repository, then choose a skill or pack source.",
       )
   }
+}
+
+data class AuthoredContentDocument(
+  val treeItemId: String?,
+  val title: String,
+  val skillName: String?,
+  val kind: String?,
+  val authoredPath: String?,
+  val text: String,
+  val editable: Boolean,
+  val readOnlyReason: String? = null,
+  val runtimeErrorMessage: String? = null,
+)
+
+data class AuthoringSaveResult(
+  val success: Boolean,
+  val document: AuthoredContentDocument? = null,
+  val runtimeErrorMessage: String? = null,
+) {
+  companion object {
+    fun failed(message: String): AuthoringSaveResult =
+      AuthoringSaveResult(success = false, runtimeErrorMessage = message)
+  }
+}
+
+data class DirtyEditorPrompt(
+  val reason: DirtyEditorPromptReason,
+  val targetTreeItemId: String? = null,
+  val targetRepoPath: String? = null,
+)
+
+enum class DirtyEditorPromptReason {
+  SELECTION_CHANGE,
+  REFRESH,
+  REPO_SWITCH,
+  CHOOSE_DIRECTORY,
 }
 
 data class SourceControlStatus(
