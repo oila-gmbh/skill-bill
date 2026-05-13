@@ -31,12 +31,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +62,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -151,16 +158,19 @@ fun SkillBillFrame(
   recentlyCopiedKey: String? = null,
 ) {
   val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
+  // F-X-901-B: mirrors the route's `canStartRepoScopedAction()` predicate so the sidebar
+  // Validation row can render `disabled()` semantics whenever the route would silently drop the
+  // dock-tab activation and validate call. The route owns the gating contract; this is purely a
+  // derived UI signal so accessibility semantics match real behavior (AC8).
+  val canActivateRepoScopedAction = state.busyOperation == null && !publishingBusy
   val validateEnabled =
     state.selectedRepoPath != null &&
       state.repoStatus.state == RepoLoadState.LOADED &&
-      state.busyOperation == null &&
-      !publishingBusy
+      canActivateRepoScopedAction
   val renderEnabled =
     state.renderable &&
       state.repoStatus.state == RepoLoadState.LOADED &&
-      state.busyOperation == null &&
-      !publishingBusy
+      canActivateRepoScopedAction
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -182,7 +192,7 @@ fun SkillBillFrame(
         onValidate = onValidate,
         onRender = onRender,
         onCommandPaletteOpen = onCommandPaletteOpen,
-        onNewHorizontalSkill = { onOpenScaffoldWizard(ScaffoldKind.HORIZONTAL_SKILL) },
+        onOpenScaffoldWizard = onOpenScaffoldWizard,
         validateEnabled = validateEnabled,
         renderEnabled = renderEnabled,
         publishingBusy = publishingBusy,
@@ -206,12 +216,16 @@ fun SkillBillFrame(
           publishingBusy = publishingBusy,
           policyLabel = state.statusBar.policyLabel,
           validationIssueCount = state.validation.issues.size,
+          readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
+          canActivateValidationTab = canActivateRepoScopedAction,
           onRepoPathChanged = onRepoPathChanged,
           onRepoSelected = onRepoSelected,
           onChooseRepoDirectory = onChooseRepoDirectory,
           onNodeSelected = onTreeItemSelected,
           onNodeExpandedToggled = onTreeItemExpandedToggled,
           onMoveSelection = onMoveTreeSelection,
+          onActivateValidationTab = { onActiveDockTabChanged(DockTab.Validation) },
+          onValidate = onValidate,
         )
         VerticalDivider(color = WorkspaceLine)
         CenterWorkspace(
@@ -310,7 +324,7 @@ private fun WorkspaceToolbar(
   onValidate: () -> Unit,
   onRender: () -> Unit,
   onCommandPaletteOpen: () -> Unit,
-  onNewHorizontalSkill: () -> Unit,
+  onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   validateEnabled: Boolean,
   renderEnabled: Boolean,
   publishingBusy: Boolean,
@@ -335,14 +349,18 @@ private fun WorkspaceToolbar(
       Spacer(modifier = Modifier.width(8.dp))
       ToolbarDivider()
     }
-    ToolbarButton(label = sourceControlLabel, marker = "br")
+    // F-X-901 (AC5): branch indicator is informational, not an action. Render as a status chip
+    // with no clickable/Role.Button so its affordance matches its behavior.
+    ToolbarStatusItem(label = sourceControlLabel, marker = "br")
     ToolbarDivider()
     ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
     ToolbarButton(label = "Validate", marker = "ok", enabled = validateEnabled, onClick = onValidate)
     ToolbarButton(label = "Render check", marker = "rc", enabled = renderEnabled, onClick = onRender)
-    ToolbarButton(label = "NEW...", marker = "nw", enabled = scaffoldEnabled, onClick = onNewHorizontalSkill)
+    NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
-    ToolbarButton(label = readOnlyModeLabel, marker = "ro", primary = true)
+    // F-X-901 (AC6): read-only mode is a workspace policy indicator, not a toggle. Render as a
+    // status chip — primary tone preserved so it remains visually prominent.
+    ToolbarStatusItem(label = readOnlyModeLabel, marker = "ro", primary = true)
     if (busyOperation != null) {
       BusyIndicator(busyOperation)
     }
@@ -351,13 +369,18 @@ private fun WorkspaceToolbar(
   }
 }
 
+// F-X-901 (AC1/AC5): no default `onClick = {}` — every call site must pass an explicit handler so
+// dead affordances cannot be silently inherited. `contentDescription` defaults to `label` but may
+// be overridden when the visible label and announced intent differ (e.g. the "NEW..." disclosure
+// button, which announces "Open new scaffold menu").
 @Composable
 private fun ToolbarButton(
   label: String,
   marker: String,
+  onClick: () -> Unit,
   primary: Boolean = false,
   enabled: Boolean = true,
-  onClick: () -> Unit = {},
+  contentDescription: String = label,
 ) {
   val background = if (primary) WorkspaceYellow else WorkspaceRaised
   val foreground =
@@ -375,6 +398,13 @@ private fun ToolbarButton(
       .clip(RoundedCornerShape(6.dp))
       .border(1.dp, border, RoundedCornerShape(6.dp))
       .background(background)
+      // F-X-901-A: merge child Text/icon semantics into the clickable node so screen readers
+      // announce a single actionable element instead of three, and `disabled()` propagates to the
+      // merged node when `enabled = false`.
+      .semantics(mergeDescendants = true) {
+        this.contentDescription = contentDescription
+        if (!enabled) this.disabled()
+      }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
       .padding(horizontal = 9.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -388,6 +418,108 @@ private fun ToolbarButton(
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
+  }
+}
+
+/**
+ * F-X-901 (AC5/AC6): toolbar chip used for status indicators (branch label, read-only mode). Has
+ * the same visual treatment as [ToolbarButton] but no .clickable, no Role.Button, no hover/press
+ * affordance. Accessibility announces the value as plain text so screen readers do not advertise a
+ * tappable affordance.
+ */
+@Composable
+private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = false) {
+  val background = if (primary) WorkspaceYellow else WorkspaceRaised
+  val foreground = if (primary) Color(0xFF0B0B0D) else WorkspaceText
+  val border = if (primary) WorkspaceYellow else WorkspaceLine
+  Row(
+    modifier =
+    Modifier
+      .height(28.dp)
+      .padding(end = 6.dp)
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .background(background)
+      // F-X-901-G: merge the inner Text/MiniIcon semantics into one node so screen readers
+      // announce the chip as a single status string rather than three separate elements.
+      .semantics(mergeDescendants = true) { this.contentDescription = label }
+      .padding(horizontal = 9.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    MiniIcon(text = marker, tint = foreground)
+    Text(
+      text = label,
+      color = foreground,
+      fontSize = 12.sp,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+/**
+ * F-X-901 (AC7): toolbar "NEW..." entry point. Renders as a [ToolbarButton] and, when activated,
+ * opens a kind picker over every [ScaffoldKind] reachable from the wizard's [KindPicker]. Each
+ * entry invokes [onOpenScaffoldWizard] with the corresponding kind, replacing the previous
+ * hardcoded `ScaffoldKind.HORIZONTAL_SKILL` routing.
+ *
+ * F-X-901-C: migrated from a bare `Popup` to Material3 [DropdownMenu] so keyboard navigation,
+ * focus management, and Escape-to-close are provided by the framework rather than reimplemented.
+ *
+ * F-X-901-D: the parent ToolbarButton announces a distinct `contentDescription` ("Open new
+ * scaffold menu") plus a `stateDescription` reflecting expansion, so screen readers don't recite
+ * the verbatim label ("NEW dot dot dot") and users hear when the menu opens or closes.
+ *
+ * F-X-901-F: closes the menu automatically when the parent's `enabled` flag flips to false, so
+ * items cannot remain selectable after the toolbar disables.
+ */
+@Composable
+private fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (ScaffoldKind) -> Unit) {
+  var menuOpen by remember { mutableStateOf(false) }
+  LaunchedEffect(enabled) {
+    if (!enabled) menuOpen = false
+  }
+  Box(
+    modifier = Modifier.semantics {
+      stateDescription = if (menuOpen) "Expanded" else "Collapsed"
+    },
+  ) {
+    ToolbarButton(
+      label = "NEW...",
+      marker = "nw",
+      enabled = enabled,
+      onClick = { menuOpen = true },
+      contentDescription = "Open new scaffold menu",
+    )
+    DropdownMenu(
+      expanded = menuOpen,
+      onDismissRequest = { menuOpen = false },
+      modifier = Modifier
+        .background(WorkspacePanel)
+        .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp)),
+    ) {
+      ScaffoldKind.values().forEach { kind ->
+        DropdownMenuItem(
+          text = {
+            Text(
+              text = kind.displayLabel,
+              color = WorkspaceText,
+              fontSize = 12.sp,
+              maxLines = 1,
+            )
+          },
+          colors = MenuDefaults.itemColors(textColor = WorkspaceText),
+          modifier = Modifier
+            .widthIn(min = 220.dp)
+            .semantics { contentDescription = "Open ${kind.displayLabel} wizard" },
+          onClick = {
+            menuOpen = false
+            onOpenScaffoldWizard(kind)
+          },
+        )
+      }
+    }
   }
 }
 
@@ -669,12 +801,18 @@ private fun NavigationPane(
   publishingBusy: Boolean,
   policyLabel: String,
   validationIssueCount: Int,
+  readOnlyModeLabel: String,
+  // F-X-901-B (AC8): mirrors the route's `canStartRepoScopedAction()` gate so the Validation row
+  // can render `disabled()` semantics whenever the route would silently drop the validate call.
+  canActivateValidationTab: Boolean,
   onRepoPathChanged: (String) -> Unit,
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
   onNodeSelected: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
+  onActivateValidationTab: () -> Unit,
+  onValidate: () -> Unit,
 ) {
   val busy = busyOperation != null || publishingBusy
   Column(
@@ -735,9 +873,26 @@ private fun NavigationPane(
         label = "Validation",
         marker = "vl",
         badge = validationIssueCount.takeIf { it > 0 }?.toString(),
+        // F-X-901-B (AC8): AND-in the route gate so the row renders disabled() whenever the
+        // route would silently drop the validate call (no repo loaded, busy, etc.).
+        enabled = !busy && canActivateValidationTab,
+        onClick = {
+          activateValidationDockAndMaybeRun(
+            validationIssueCount = validationIssueCount,
+            onActivateValidationTab = onActivateValidationTab,
+            onValidate = onValidate,
+          )
+        },
+      )
+      // F-X-901: Read-only browsing is a workspace-wide status indicator, not an action. Render it
+      // as a labeled status row (no clickable, no Role.Button) mirroring StatusItem in the bottom
+      // status bar, so accessibility semantics match real behavior.
+      RepositoryStatusItem(
+        label = "Read-only browsing",
+        statusText = readOnlyModeLabel,
+        marker = "ro",
         enabled = !busy,
       )
-      RepositoryAction(label = "Read-only browsing", marker = "ro", enabled = !busy)
     }
     Row(
       modifier =
@@ -972,7 +1127,13 @@ private fun NavNodeRow(
 }
 
 @Composable
-private fun RepositoryAction(label: String, marker: String, badge: String? = null, enabled: Boolean = true) {
+private fun RepositoryAction(
+  label: String,
+  marker: String,
+  onClick: () -> Unit,
+  badge: String? = null,
+  enabled: Boolean = true,
+) {
   val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
   Row(
     modifier =
@@ -981,7 +1142,13 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
       .height(28.dp)
       .padding(horizontal = 6.dp)
       .clip(RoundedCornerShape(3.dp))
-      .clickable(enabled = enabled, role = Role.Button) {}
+      // F-X-901-A: merge child Text/badge semantics into this clickable node so screen readers
+      // announce a single actionable row and `disabled()` propagates correctly.
+      .semantics(mergeDescendants = true) {
+        this.contentDescription = label
+        if (!enabled) this.disabled()
+      }
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
       .padding(horizontal = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -996,6 +1163,66 @@ private fun RepositoryAction(label: String, marker: String, badge: String? = nul
     if (badge != null) {
       Badge(text = badge, tone = Tone.Error)
     }
+  }
+}
+
+/**
+ * F-X-901: Sidebar row that conveys repository-level status without an action. Mirrors the
+ * StatusItem pattern in the bottom WorkspaceStatusBar — no .clickable, no Role.Button, no hover or
+ * press affordance. The contentDescription announces the status, not an action, so screen readers
+ * do not advertise a tappable affordance.
+ */
+@Composable
+private fun RepositoryStatusItem(label: String, statusText: String, marker: String, enabled: Boolean = true) {
+  val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .height(28.dp)
+      // F-X-901-H: match the sibling RepositoryAction's outer-padding shape (6dp gutter + 8dp
+      // inner) using a single combined modifier instead of two stacked padding calls.
+      .padding(horizontal = 14.dp)
+      // F-X-901-G: merge child Text/MiniIcon semantics into one node so screen readers announce
+      // "<label>: <status>" once rather than three separate fragments.
+      .semantics(mergeDescendants = true) {
+        this.contentDescription = "$label: $statusText"
+      },
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(text = marker, tint = WorkspaceSteel)
+    Text(
+      text = label,
+      color = contentColor,
+      fontSize = 12.5.sp,
+      modifier = Modifier.weight(1f),
+    )
+    Text(
+      text = statusText,
+      color = WorkspaceAmber,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+    )
+  }
+}
+
+/**
+ * F-X-901 (AC3): handler for the sidebar Validation row. Always switches the dock to the
+ * Validation tab. When there are pending validation issues, additionally requests a fresh run —
+ * the route gates the run on `canStartRepoScopedAction()`, so callers can invoke this without
+ * coupling the frame to that predicate. Extracted as an `internal` top-level function so unit
+ * tests can assert the wiring without standing up a Compose runtime.
+ */
+internal fun activateValidationDockAndMaybeRun(
+  validationIssueCount: Int,
+  onActivateValidationTab: () -> Unit,
+  onValidate: () -> Unit,
+) {
+  onActivateValidationTab()
+  if (validationIssueCount > 0) {
+    onValidate()
   }
 }
 

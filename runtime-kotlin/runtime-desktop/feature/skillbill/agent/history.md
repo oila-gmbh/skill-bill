@@ -1,5 +1,18 @@
 # SkillBill desktop feature — history
 
+## [2026-05-13] SKILL-44 dead-affordances (subtask 09)
+Areas: runtime-desktop/feature/skillbill
+- Closes prior-subtask review debt F-102 (toolbar `NEW...` only opened HORIZONTAL_SKILL) and F-107 (`Role.Button` on non-interactive surfaces): every visible button-affordance element either has a real handler or drops `.clickable` + `Role.Button`.
+- `ToolbarButton` API change: default `onClick = {}` is removed — every call site MUST pass an explicit handler. Added optional `contentDescription: String = label` so accessible name can diverge from visual label (used by `NewScaffoldMenuButton`). Mandatory for future toolbar additions in this boundary.
+- Reusable composables: `ToolbarStatusItem` (toolbar-shaped) and `RepositoryStatusItem` (sidebar-shaped) render non-interactive labeled status — NO `.clickable`, NO `Role.Button`, `semantics(mergeDescendants = true) { contentDescription = ... }` so screen readers announce the row once. Use these instead of demoting `ToolbarButton`/`RepositoryAction` to an empty-lambda hack.
+- Semantics rule (reusable, applies to every existing and future clickable composable here): apply `Modifier.semantics(mergeDescendants = true) { contentDescription = label; if (!enabled) disabled() }` to the SAME node as `.clickable(...)`. A standalone `.semantics{}` chained BEFORE `.clickable` lands on the outer parent and `disabled()` never reaches the click target. `ToolbarButton` and `RepositoryAction` were both fixed.
+- `NewScaffoldMenuButton` now uses Material3 `DropdownMenu` + `DropdownMenuItem` (not bare `Popup`) so keyboard nav / focus / Escape-to-close / Enter-to-select are framework-provided. Future menu surfaces should follow the same pattern unless there is concrete reason to manage focus by hand. Parent button announces disclosure via `stateDescription = "Expanded"|"Collapsed"`.
+- Repo-scoped gate plumbing: `canActivateRepoScopedAction = state.busyOperation == null && !publishingBusy` mirrors `SkillBillRoute.canStartRepoScopedAction()` and is now threaded through `NavigationPane` so the Validation row renders `disabled()` whenever the route would silently drop the call. Pattern for future repo-scoped sidebar rows: derive the boolean in `SkillBillFrame` from `state`, pass as a prop, AND with the row's local enabled flag.
+- Helper `internal fun activateValidationDockAndMaybeRun(...)` in `SkillBillFrame.kt` is the test seam for click logic when the module's convention forbids Compose UI tests — extract similar pure helpers for any future hoisted-state click logic in this module.
+- Limitations / deferred polish (do not relitigate next subtask): Validation-row badge count is not in `contentDescription` so screen readers don't hear pending-issue count (F-X-901-K); hardcoded `IntOffset(0, 32)` for popup anchoring not derived from `SkillBillMetrics` (F-X-901-L nit); module-wide hardcoded English strings (F-X-901-E) not introduced by this feature but called out for future localization sweep.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-13] SKILL-44 scaffold-wizards (subtask 08)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing, runtime-core/scaffold
 - Added a single `ScaffoldWizardDialog` driven by `SkillBillState.scaffoldWizard` (one source of truth in commonMain). Kind picker exposes only the five governed kinds — HORIZONTAL_SKILL, PLATFORM_PACK, PLATFORM_OVERRIDE, CODE_REVIEW_AREA, ADD_ON; no governed source is ever hand-written from the UI — every write routes through `skillbill.scaffold.scaffold(payload, dryRun)`.
