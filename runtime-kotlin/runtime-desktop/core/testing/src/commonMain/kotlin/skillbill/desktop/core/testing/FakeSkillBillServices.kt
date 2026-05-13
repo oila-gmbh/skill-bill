@@ -7,6 +7,9 @@ import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
@@ -53,6 +56,12 @@ class FakeGitGateway(
   var throwOnCommits: Throwable? = null,
   var throwOnStage: Throwable? = null,
   var throwOnUnstage: Throwable? = null,
+  var throwOnCommit: Throwable? = null,
+  var throwOnPush: Throwable? = null,
+  var throwOnPublishingStatus: Throwable? = null,
+  var scriptedCommitResult: GitOperationResult = GitOperationResult.success,
+  var scriptedPushResult: GitOperationResult = GitOperationResult.success,
+  var scriptedPublishingStatus: GitPublishingStatus = GitPublishingStatus.empty,
   // Optional error message to inject into the next ChangesSnapshot returned by snapshotFor/stage/unstage.
   var scriptedSnapshotErrorMessage: String? = null,
 ) : GitGateway {
@@ -76,6 +85,15 @@ class FakeGitGateway(
   var unstageCallCount: Int = 0
     private set
 
+  var publishingStatusCallCount: Int = 0
+    private set
+
+  var commitCallCount: Int = 0
+    private set
+
+  var pushCallCount: Int = 0
+    private set
+
   var lastDiffRequestedPath: String? = null
     private set
 
@@ -92,6 +110,12 @@ class FakeGitGateway(
     private set
 
   var lastRecentCommitsLimit: Int = 0
+    private set
+
+  var lastCommitMessage: String? = null
+    private set
+
+  var lastPushTarget: GitPushTarget? = null
     private set
 
   @Suppress("UNUSED_PARAMETER")
@@ -169,10 +193,34 @@ class FakeGitGateway(
     return snapshotFor(session)
   }
 
+  @Suppress("UNUSED_PARAMETER")
+  override fun publishingStatus(session: RepoSession?): GitPublishingStatus {
+    publishingStatusCallCount += 1
+    throwOnPublishingStatus?.let { throw it }
+    return scriptedPublishingStatus
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun commit(session: RepoSession?, message: String): GitOperationResult {
+    commitCallCount += 1
+    lastCommitMessage = message
+    throwOnCommit?.let { throw it }
+    return scriptedCommitResult
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult {
+    pushCallCount += 1
+    lastPushTarget = target
+    throwOnPush?.let { throw it }
+    return scriptedPushResult
+  }
+
   // Helper retained for tests that previously read a single counter.
   @Suppress("unused")
   val callCount: Int
-    get() = snapshotForCallCount + diffForCallCount + recentCommitsCallCount + stageCallCount + unstageCallCount
+    get() = snapshotForCallCount + diffForCallCount + recentCommitsCallCount + stageCallCount + unstageCallCount +
+      publishingStatusCallCount + commitCallCount + pushCallCount
 
   @Suppress("unused")
   fun replaceSnapshot(snapshot: ChangesSnapshot) {

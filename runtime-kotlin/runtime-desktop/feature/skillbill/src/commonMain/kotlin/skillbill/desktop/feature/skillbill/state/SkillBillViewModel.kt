@@ -8,6 +8,9 @@ import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -69,6 +72,19 @@ class SkillBillViewModel(
   private var activeGitOperationToken: Long = 0L
   private var activeGitDiffToken: Long = 0L
   private var activeHistoryToken: Long = 0L
+  private var commitMessage: String = ""
+  private var commitBusy: Boolean = false
+  private var commitErrorMessage: String? = null
+  private var commitValidationFailed: Boolean = false
+  private var failedValidationStagedAuthoredPaths: Set<String>? = null
+  private var commitValidationRunning: Boolean = false
+  private var publishingStatus: GitPublishingStatus = GitPublishingStatus.empty
+  private var pushBusy: Boolean = false
+  private var pushErrorMessage: String? = null
+  private var canonicalPushConfirmationRequired: Boolean = false
+  private var canonicalPushConfirmationTarget: GitPushTarget? = null
+  private var activeCommitToken: Long = 0L
+  private var activePushToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -276,6 +292,8 @@ class SkillBillViewModel(
     activeGitOperationToken += 1
     activeGitDiffToken += 1
     activeHistoryToken += 1
+    activeCommitToken += 1
+    activePushToken += 1
     changesSnapshot = ChangesSnapshot.empty
     currentBranchLabel = null
     changesBusy = false
@@ -287,6 +305,17 @@ class SkillBillViewModel(
     historyBusy = false
     historyErrorMessage = null
     historyPathFilter = null
+    commitMessage = ""
+    commitBusy = false
+    commitErrorMessage = null
+    commitValidationFailed = false
+    failedValidationStagedAuthoredPaths = null
+    commitValidationRunning = false
+    publishingStatus = GitPublishingStatus.empty
+    pushBusy = false
+    pushErrorMessage = null
+    canonicalPushConfirmationRequired = false
+    canonicalPushConfirmationTarget = null
   }
 
   private fun createState(): SkillBillState {
@@ -333,7 +362,154 @@ class SkillBillViewModel(
       historyBusy = historyBusy,
       historyErrorMessage = historyErrorMessage,
       historyPathFilter = historyPathFilter,
+      commitMessage = commitMessage,
+      canCommit = canCommit(),
+      commitBusy = commitBusy,
+      commitErrorMessage = commitErrorMessage,
+      commitValidationFailed = commitValidationFailed,
+      commitValidationRunning = commitValidationRunning,
+      pushTarget = publishingStatus.pushTarget,
+      aheadBehind = publishingStatus.aheadBehind,
+      compareUrl = publishingStatus.compareUrl,
+      pushBusy = pushBusy,
+      pushErrorMessage = pushErrorMessage,
+      pushStatusErrorMessage = publishingStatus.errorMessage,
+      canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
     )
+  }
+
+  fun updateCommitMessage(message: String): SkillBillState {
+    if (commitBusy || commitValidationRunning) {
+      currentState = createState()
+      return currentState
+    }
+    commitMessage = message
+    commitErrorMessage = null
+    if (commitValidationFailed) {
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginCommit(allowFailedValidation: Boolean = false): CommitRunRequest? {
+    val hasCommitInputs = hasCommitInputs()
+    if (
+      !hasCommitInputs ||
+      busyOperation != null ||
+      changesBusy ||
+      pushBusy ||
+      (!allowFailedValidation && !canCommit()) ||
+      (allowFailedValidation && !hasCurrentFailedValidationOverride())
+    ) {
+      currentState = createState()
+      return null
+    }
+    activeCommitToken += 1
+    val previousValidationSummary = validation
+    commitBusy = true
+    commitValidationRunning = true
+    commitErrorMessage = null
+    commitValidationFailed = false
+    failedValidationStagedAuthoredPaths = null
+    validation = ValidationSummary(state = ValidationRunState.RUNNING)
+    currentState = createState()
+    return CommitRunRequest(
+      token = activeCommitToken,
+      session = currentSession,
+      message = commitMessage,
+      allowFailedValidation = allowFailedValidation,
+      previousValidationSummary = previousValidationSummary,
+      previousSnapshot = changesSnapshot,
+      previousHistory = history,
+      previousHistoryErrorMessage = historyErrorMessage,
+      historyLimit = DEFAULT_HISTORY_LIMIT,
+      historyPathFilter = historyPathFilter,
+    )
+  }
+
+  fun runCommit(request: CommitRunRequest): CommitRunResult {
+    val validationOutcome = runCatching { validationGateway.validate(request.session) }
+    val validationSummary = validationOutcome.getOrElse { error ->
+      ValidationSummary(
+        state = ValidationRunState.FAILED,
+        runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName ?: "Throwable",
+        runtimeExceptionMessage = error.message,
+      )
+    }
+    val validationFailed = validationSummary.failedForCommit()
+    if (validationFailed && !request.allowFailedValidation) {
+      return CommitRunResult(
+        request = request,
+        validationSummary = validationSummary,
+        validationBlockedCommit = true,
+      )
+    }
+    val commitResult = runCatching { gitGateway.commit(request.session, request.message) }
+      .getOrElse { error -> GitOperationResult.failed(describe(error)) }
+    if (!commitResult.success) {
+      return CommitRunResult(
+        request = request,
+        validationSummary = validationSummary,
+        commitResult = commitResult,
+      )
+    }
+    return CommitRunResult(
+      request = request,
+      validationSummary = validationSummary,
+      commitResult = commitResult,
+      refreshedSnapshot = runCatching { gitGateway.snapshotFor(request.session) }
+        .getOrElse { error -> ChangesSnapshot.failed(describe(error)) },
+      refreshedHistory = runCatching {
+        gitGateway.recentCommits(request.session, request.historyLimit, request.historyPathFilter)
+      }.getOrDefault(request.previousHistory),
+      refreshedHistoryErrorMessage = null,
+      refreshedPublishingStatus = runCatching { gitGateway.publishingStatus(request.session) }
+        .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) },
+    )
+  }
+
+  fun finishCommit(result: CommitRunResult): SkillBillState {
+    if (result.request.token != activeCommitToken) {
+      return currentState
+    }
+    commitBusy = false
+    commitValidationRunning = false
+    validation = result.validationSummary
+    if (result.validationBlockedCommit) {
+      commitValidationFailed = true
+      failedValidationStagedAuthoredPaths = stagedAuthoredPaths(changesSnapshot)
+      commitErrorMessage = null
+      currentState = createState()
+      return currentState
+    }
+    val commitResult = result.commitResult
+    if (commitResult?.success == true) {
+      commitMessage = ""
+      commitErrorMessage = null
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+      result.refreshedSnapshot?.let { snapshot ->
+        if (snapshot.isFailed) {
+          changesSnapshot = changesSnapshot.copy(errorMessage = snapshot.errorMessage)
+        } else {
+          changesSnapshot = snapshot
+          if (snapshot.branchLabel.isNotEmpty()) {
+            currentBranchLabel = snapshot.branchLabel
+          }
+        }
+      }
+      result.refreshedHistory?.let { commits -> history = commits }
+      historyErrorMessage = result.refreshedHistoryErrorMessage
+      result.refreshedPublishingStatus?.let { status -> replacePublishingStatus(status, clearConfirmation = true) }
+    } else {
+      commitErrorMessage = commitResult?.errorMessage ?: "Commit failed."
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+    }
+    currentState = createState()
+    return currentState
   }
 
   fun beginValidate(): ValidationRunRequest {
@@ -432,7 +608,9 @@ class SkillBillViewModel(
   fun runGitRefresh(request: GitRefreshRequest): GitRefreshResult {
     val snapshot = runCatching { gitGateway.snapshotFor(request.session) }
       .getOrElse { error -> ChangesSnapshot(errorMessage = describe(error)) }
-    return GitRefreshResult(request = request, snapshot = snapshot)
+    val status = runCatching { gitGateway.publishingStatus(request.session) }
+      .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) }
+    return GitRefreshResult(request = request, snapshot = snapshot, publishingStatus = status)
   }
 
   fun finishGitRefresh(result: GitRefreshResult): SkillBillState {
@@ -451,10 +629,13 @@ class SkillBillViewModel(
     // the prior file list on stage failure would be a worse UX than surfacing the error inline.
     if (result.snapshot.isFailed) {
       changesSnapshot = changesSnapshot.copy(errorMessage = result.snapshot.errorMessage)
+      result.publishingStatus?.let { replacePublishingStatus(it, clearConfirmation = true) }
       currentState = createState()
       return currentState
     }
     changesSnapshot = result.snapshot
+    invalidateFailedValidationOverrideIfStagedAuthoredChanged()
+    result.publishingStatus?.let { replacePublishingStatus(it, clearConfirmation = true) }
     // F-C701: cache branch label so createState() can derive sourceControl without forking git.
     if (result.snapshot.branchLabel.isNotEmpty()) {
       currentBranchLabel = result.snapshot.branchLabel
@@ -575,6 +756,75 @@ class SkillBillViewModel(
     )
   }
 
+  // --- Push ---
+
+  fun beginPush(allowCanonicalRemote: Boolean = false): PushRunRequest? {
+    if (busyOperation != null || pushBusy || commitBusy || commitValidationRunning || changesBusy) {
+      currentState = createState()
+      return null
+    }
+    val target = publishingStatus.pushTarget
+    if (target == null) {
+      pushErrorMessage = publishingStatus.errorMessage ?: "No push target is available."
+      currentState = createState()
+      return null
+    }
+    if (target.isLikelyCanonical && !allowCanonicalRemote) {
+      canonicalPushConfirmationRequired = true
+      canonicalPushConfirmationTarget = target
+      pushErrorMessage = null
+      currentState = createState()
+      return null
+    }
+    if (allowCanonicalRemote && (!canonicalPushConfirmationRequired || canonicalPushConfirmationTarget != target)) {
+      currentState = createState()
+      return null
+    }
+    activePushToken += 1
+    pushBusy = true
+    pushErrorMessage = null
+    canonicalPushConfirmationRequired = false
+    canonicalPushConfirmationTarget = null
+    currentState = createState()
+    return PushRunRequest(
+      token = activePushToken,
+      session = currentSession,
+      target = target,
+      previousPublishingStatus = publishingStatus,
+    )
+  }
+
+  fun runPush(request: PushRunRequest): PushRunResult {
+    val pushResult = runCatching { gitGateway.push(request.session, request.target) }
+      .getOrElse { error -> GitOperationResult.failed(describe(error)) }
+    if (!pushResult.success) {
+      return PushRunResult(request = request, pushResult = pushResult)
+    }
+    return PushRunResult(
+      request = request,
+      pushResult = pushResult,
+      refreshedPublishingStatus = runCatching { gitGateway.publishingStatus(request.session) }
+        .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) },
+    )
+  }
+
+  fun finishPush(result: PushRunResult): SkillBillState {
+    if (result.request.token != activePushToken) {
+      return currentState
+    }
+    pushBusy = false
+    if (result.pushResult.success) {
+      pushErrorMessage = null
+      canonicalPushConfirmationRequired = false
+      canonicalPushConfirmationTarget = null
+      result.refreshedPublishingStatus?.let { status -> replacePublishingStatus(status, clearConfirmation = true) }
+    } else {
+      pushErrorMessage = result.pushResult.errorMessage ?: "Push failed."
+    }
+    currentState = createState()
+    return currentState
+  }
+
   // --- History ---
 
   fun beginLoadHistory(limit: Int = DEFAULT_HISTORY_LIMIT): HistoryLoadRequest {
@@ -682,6 +932,41 @@ class SkillBillViewModel(
     policyLabel = SkillBillStatusBar.POLICY_LABEL,
   )
 
+  private fun canCommit(): Boolean = hasCommitInputs() &&
+    busyOperation == null &&
+    !changesBusy &&
+    !commitBusy &&
+    !commitValidationRunning &&
+    !pushBusy
+
+  private fun hasCommitInputs(): Boolean = currentSession?.isRecognizedSkillBillRepo == true &&
+    commitMessage.isNotBlank() &&
+    changesSnapshot.files.any { it.group == ChangedFileGroup.STAGED && !it.isGenerated }
+
+  private fun hasCurrentFailedValidationOverride(): Boolean =
+    commitValidationFailed && failedValidationStagedAuthoredPaths == stagedAuthoredPaths(changesSnapshot)
+
+  private fun invalidateFailedValidationOverrideIfStagedAuthoredChanged() {
+    val failedPaths = failedValidationStagedAuthoredPaths ?: return
+    if (failedPaths != stagedAuthoredPaths(changesSnapshot)) {
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+    }
+  }
+
+  private fun stagedAuthoredPaths(snapshot: ChangesSnapshot): Set<String> = snapshot.files
+    .filter { file -> file.group == ChangedFileGroup.STAGED && !file.isGenerated }
+    .map { file -> file.path }
+    .toSet()
+
+  private fun replacePublishingStatus(status: GitPublishingStatus, clearConfirmation: Boolean) {
+    if (clearConfirmation || status.pushTarget != publishingStatus.pushTarget) {
+      canonicalPushConfirmationRequired = false
+      canonicalPushConfirmationTarget = null
+    }
+    publishingStatus = status
+  }
+
   private fun containsTreeItem(itemId: String): Boolean = treeItems.flatten().any { item -> item.id == itemId }
 }
 
@@ -736,6 +1021,7 @@ data class GitRefreshRequest(
 data class GitRefreshResult(
   val request: GitRefreshRequest,
   val snapshot: ChangesSnapshot,
+  val publishingStatus: GitPublishingStatus? = null,
 )
 
 data class SelectChangedFileRequest(
@@ -761,6 +1047,43 @@ data class StageRequest(
   val paths: List<String>,
   val previousSnapshot: ChangesSnapshot,
   val action: StageAction,
+)
+
+data class CommitRunRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val message: String,
+  val allowFailedValidation: Boolean,
+  val previousValidationSummary: ValidationSummary,
+  val previousSnapshot: ChangesSnapshot,
+  val previousHistory: List<CommitEntry>,
+  val previousHistoryErrorMessage: String?,
+  val historyLimit: Int,
+  val historyPathFilter: String?,
+)
+
+data class CommitRunResult(
+  val request: CommitRunRequest,
+  val validationSummary: ValidationSummary,
+  val validationBlockedCommit: Boolean = false,
+  val commitResult: GitOperationResult? = null,
+  val refreshedSnapshot: ChangesSnapshot? = null,
+  val refreshedHistory: List<CommitEntry>? = null,
+  val refreshedHistoryErrorMessage: String? = null,
+  val refreshedPublishingStatus: GitPublishingStatus? = null,
+)
+
+data class PushRunRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val target: GitPushTarget,
+  val previousPublishingStatus: GitPublishingStatus,
+)
+
+data class PushRunResult(
+  val request: PushRunRequest,
+  val pushResult: GitOperationResult,
+  val refreshedPublishingStatus: GitPublishingStatus? = null,
 )
 
 data class HistoryLoadRequest(
@@ -812,3 +1135,6 @@ private fun reconcileExpandedNodeIds(
 
 private fun topLevelExpandableIds(treeItems: List<SkillBillTreeItem>): Set<String> =
   treeItems.filter { item -> item.children.isNotEmpty() }.map(SkillBillTreeItem::id).toSet()
+
+private fun ValidationSummary.failedForCommit(): Boolean =
+  state == ValidationRunState.FAILED || errorCount > 0 || runtimeExceptionName != null

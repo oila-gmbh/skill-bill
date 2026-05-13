@@ -1,6 +1,7 @@
 package skillbill.desktop.core.data.service
 
 import skillbill.desktop.core.domain.model.ChangedFileGroup
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -13,6 +14,7 @@ import kotlin.streams.toList
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -208,6 +210,240 @@ class RuntimeGitGatewayTest {
     assertTrue(edgeCommit.subject.contains("newline"), "subject lost trailing word: '${edgeCommit.subject}'")
   }
 
+  @Test
+  fun `commit creates a commit from staged changes and surfaces success`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    Files.writeString(repo.resolve("published.md"), "ready\n")
+    runGit(repo, "add", "published.md")
+
+    val result = service.commit(session, "publish changes")
+    val snapshot = service.snapshotFor(session)
+    val commits = service.recentCommits(session, limit = 2)
+
+    assertTrue(result.success, "commit failed: ${result.errorMessage}")
+    assertTrue(snapshot.files.none { it.path == "published.md" })
+    assertEquals("publish changes", commits.first().subject)
+  }
+
+  @Test
+  fun `publishingStatus shows push target canonical risk and compare URL for fork topology`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "git@github.com:contributor/skill-bill.git")
+    runGit(repo, "remote", "add", "upstream", "https://github.com/canonical/skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(false, status.pushTarget?.isLikelyCanonical)
+    assertEquals("https://github.com/canonical/skill-bill/compare/main...contributor:$branch", status.compareUrl)
+  }
+
+  @Test
+  fun `publishingStatus targets current branch even when upstream tracks a different branch`() {
+    val repo = newRepoWithCommit()
+    val origin = newBareRemote()
+    val upstream = newBareRemote()
+    val baseBranch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", origin.toUri().toString())
+    runGit(repo, "remote", "add", "upstream", upstream.toUri().toString())
+    runGit(repo, "push", "origin", baseBranch)
+    runGit(repo, "push", "-u", "upstream", baseBranch)
+    runGit(repo, "checkout", "-b", "feature", "upstream/$baseBranch")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/feature", status.pushTarget?.displayName)
+    assertEquals("feature", status.pushTarget?.branchName)
+
+    Files.writeString(repo.resolve("feature.md"), "feature\n")
+    runGit(repo, "add", "feature.md")
+    assertTrue(service.commit(loadedSession(repo), "feature work").success)
+
+    val pushResult = service.push(loadedSession(repo), status.pushTarget!!)
+
+    assertTrue(pushResult.success, "push failed: ${pushResult.errorMessage}")
+    assertEquals(0, gitExitCode(origin, "show-ref", "--verify", "--quiet", "refs/heads/feature"))
+    assertEquals(1, gitExitCode(upstream, "show-ref", "--verify", "--quiet", "refs/heads/feature"))
+  }
+
+  @Test
+  fun `publishingStatus uses pushurl when classifying canonical target risk`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "git@github.com:contributor/skill-bill.git")
+    runGit(repo, "remote", "set-url", "--push", "origin", "https://github.com/canonical/skill-bill.git")
+    runGit(repo, "remote", "add", "upstream", "https://github.com/canonical/skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(true, status.pushTarget?.isLikelyCanonical)
+    assertNotNull(status.pushTarget?.canonicalWarning)
+    assertEquals("https://github.com/canonical/skill-bill/compare/$branch", status.compareUrl)
+  }
+
+  @Test
+  fun `publishingStatus treats any canonical pushurl as canonical risk`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "git@github.com:contributor/skill-bill.git")
+    runGit(repo, "remote", "set-url", "--push", "--add", "origin", "git@github.com:contributor/skill-bill.git")
+    runGit(repo, "remote", "set-url", "--push", "--add", "origin", "https://github.com/canonical/skill-bill.git")
+    runGit(repo, "remote", "add", "upstream", "https://github.com/canonical/skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(true, status.pushTarget?.isLikelyCanonical)
+    assertNotNull(status.pushTarget?.canonicalWarning)
+    assertEquals(null, status.compareUrl)
+  }
+
+  @Test
+  fun `publishingStatus uses fork pushurl instead of canonical fetch url`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "https://github.com/canonical/skill-bill.git")
+    runGit(repo, "remote", "set-url", "--push", "origin", "git@github.com:contributor/skill-bill.git")
+    runGit(repo, "remote", "add", "upstream", "https://github.com/canonical/skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(false, status.pushTarget?.isLikelyCanonical)
+    assertEquals("https://github.com/canonical/skill-bill/compare/main...contributor:$branch", status.compareUrl)
+  }
+
+  @Test
+  fun `publishingStatus blocks single-origin topology by marking target likely canonical`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "https://github.com/canonical/skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(true, status.pushTarget?.isLikelyCanonical)
+    assertNotNull(status.pushTarget?.canonicalWarning)
+    assertEquals("https://github.com/canonical/skill-bill/compare/$branch", status.compareUrl)
+  }
+
+  @Test
+  fun `publishingStatus keeps origin canonical when upstream is not a matching fork topology`() {
+    val repo = newRepoWithCommit()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", "https://github.com/canonical/skill-bill.git")
+    runGit(repo, "remote", "add", "upstream", "https://github.com/dummy/not-skill-bill.git")
+    val service = RuntimeGitGateway()
+
+    val status = service.publishingStatus(loadedSession(repo))
+
+    assertEquals("origin/$branch", status.pushTarget?.displayName)
+    assertEquals(true, status.pushTarget?.isLikelyCanonical)
+    assertNotNull(status.pushTarget?.canonicalWarning)
+  }
+
+  @Test
+  fun `push validates remote and branch names before invoking git`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+
+    val badRemote = service.push(session, GitPushTarget(remoteName = "-c", branchName = "feature"))
+    val badBranch = service.push(session, GitPushTarget(remoteName = "origin", branchName = "feature:main"))
+
+    assertFalse(badRemote.success)
+    assertEquals("Push remote name is invalid.", badRemote.errorMessage)
+    assertFalse(badBranch.success)
+    assertEquals("Push branch name is invalid.", badBranch.errorMessage)
+  }
+
+  @Test
+  fun `push rejects stale target when current branch changed before invoking git`() {
+    val repo = newRepoWithCommit()
+    val remote = newBareRemote()
+    runGit(repo, "remote", "add", "origin", remote.toUri().toString())
+    runGit(repo, "checkout", "-b", "feature")
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    val target = service.publishingStatus(session).pushTarget
+    assertNotNull(target)
+    runGit(repo, "checkout", "-b", "other")
+
+    val result = service.push(session, target)
+
+    assertFalse(result.success)
+    assertTrue(result.errorMessage.orEmpty().contains("Current branch changed from feature to other"))
+    assertEquals(1, gitExitCode(remote, "show-ref", "--verify", "--quiet", "refs/heads/feature"))
+  }
+
+  @Test
+  fun `commit error includes git output and credentialed URLs are redacted`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+
+    val commitResult = service.commit(loadedSession(repo), "no changes")
+    val redacted = redactCredentialedUrls(
+      "fatal: Authentication failed for 'https://user:secret-token@github.com/owner/repo.git'",
+    )
+
+    assertFalse(commitResult.success)
+    assertTrue(commitResult.errorMessage.orEmpty().contains("nothing to commit"))
+    assertEquals(
+      "fatal: Authentication failed for 'https://user:<redacted>@github.com/owner/repo.git'",
+      redacted,
+    )
+  }
+
+  @Test
+  fun `push error redacts credentialed remote URL through gateway result`() {
+    val repo = newRepoWithCommit()
+    runGit(repo, "remote", "add", "origin", "https://user:secret-token@localhost:9/owner/repo.git")
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    val target = service.publishingStatus(session).pushTarget
+    assertNotNull(target)
+
+    val pushResult = service.push(session, target)
+
+    assertFalse(pushResult.success)
+    assertTrue(pushResult.errorMessage.orEmpty().contains("user:<redacted>@localhost:9"))
+    assertFalse(pushResult.errorMessage.orEmpty().contains("secret-token"))
+  }
+
+  @Test
+  fun `push to selected target refreshes ahead behind from remote tracking state`() {
+    val repo = newRepoWithCommit()
+    val remote = newBareRemote()
+    val branch = currentBranch(repo)
+    runGit(repo, "remote", "add", "origin", remote.toUri().toString())
+    runGit(repo, "push", "-u", "origin", branch)
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+
+    Files.writeString(repo.resolve("after-push.md"), "queued\n")
+    runGit(repo, "add", "after-push.md")
+    assertTrue(service.commit(session, "queued push").success)
+    val beforePush = service.publishingStatus(session)
+    assertEquals(1, beforePush.aheadBehind?.ahead)
+
+    val pushResult = service.push(session, beforePush.pushTarget!!)
+    val afterPush = service.publishingStatus(session)
+
+    assertTrue(pushResult.success, "push failed: ${pushResult.errorMessage}")
+    assertEquals(0, afterPush.aheadBehind?.ahead)
+    assertEquals(0, afterPush.aheadBehind?.behind)
+  }
+
   // ---- helpers ----
 
   private fun newRepoWithCommit(): Path {
@@ -233,6 +469,26 @@ class RuntimeGitGatewayTest {
     return repo
   }
 
+  private fun newBareRemote(): Path {
+    val remote = Files.createTempDirectory("skillbill-remote-")
+    cleanupRoots.add(remote)
+    runGit(remote, "init", "--bare", "-q")
+    return remote
+  }
+
+  private fun currentBranch(repo: Path): String {
+    val process = ProcessBuilder("git", "-C", repo.toString(), "branch", "--show-current")
+      .redirectErrorStream(true)
+      .start()
+    if (!process.waitFor(10, TimeUnit.SECONDS)) {
+      process.destroyForcibly()
+      error("git branch --show-current timed out")
+    }
+    val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+    check(process.exitValue() == 0 && output.isNotBlank()) { "git branch --show-current failed: $output" }
+    return output
+  }
+
   private fun loadedSession(repo: Path): RepoSession = RepoSession(
     repoPath = repo.toString(),
     isRecognizedSkillBillRepo = true,
@@ -249,6 +505,17 @@ class RuntimeGitGatewayTest {
     }
     val output = process.inputStream.bufferedReader().use { it.readText() }
     check(process.exitValue() == 0) { "git ${args.joinToString(" ")} failed: $output" }
+  }
+
+  private fun gitExitCode(root: Path, vararg args: String): Int {
+    val command = mutableListOf("git", "-C", root.toString())
+    command.addAll(args)
+    val process = ProcessBuilder(command).redirectErrorStream(true).start()
+    if (!process.waitFor(10, TimeUnit.SECONDS)) {
+      process.destroyForcibly()
+      error("git ${args.joinToString(" ")} timed out")
+    }
+    return process.exitValue()
   }
 }
 

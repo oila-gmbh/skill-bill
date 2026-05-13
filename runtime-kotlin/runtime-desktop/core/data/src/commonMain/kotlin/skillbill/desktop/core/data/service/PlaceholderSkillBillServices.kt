@@ -4,6 +4,9 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -121,4 +124,15 @@ class PlaceholderGitGateway : GitGateway {
 
   @Suppress("UNUSED_PARAMETER")
   override fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot = ChangesSnapshot.empty
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun publishingStatus(session: RepoSession?): GitPublishingStatus = GitPublishingStatus.empty
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun commit(session: RepoSession?, message: String): GitOperationResult =
+    GitOperationResult.failed("Git is unavailable in this runtime.")
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult =
+    GitOperationResult.failed("Git is unavailable in this runtime.")
 }

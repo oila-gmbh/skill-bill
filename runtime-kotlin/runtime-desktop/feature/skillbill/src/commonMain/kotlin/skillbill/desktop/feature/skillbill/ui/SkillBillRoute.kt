@@ -63,17 +63,44 @@ fun SkillBillRoute(
     }
   }
 
+  fun runCommit(allowFailedValidation: Boolean = false) {
+    val request = viewModel.beginCommit(allowFailedValidation)
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runCommit(request) }
+        state = viewModel.finishCommit(result)
+      }
+    }
+  }
+
+  fun runPush(allowCanonicalRemote: Boolean = false) {
+    val request = viewModel.beginPush(allowCanonicalRemote)
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runPush(request) }
+        state = viewModel.finishPush(result)
+      }
+    }
+  }
+
+  fun canStartRepoScopedAction(): Boolean = state.busyOperation == null &&
+    !state.commitBusy &&
+    !state.commitValidationRunning &&
+    !state.pushBusy
+
   SkillBillFrame(
     state = state,
     canNavigateBack = canNavigateBack,
-    onNavigateBack = { if (state.busyOperation == null) onNavigateBack() },
+    onNavigateBack = { if (canStartRepoScopedAction()) onNavigateBack() },
     onRepoPathChanged = { repoPath ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.updateRepoPathText(repoPath)
       }
     },
     onRepoSelected = { repoPath ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.beginSelectRepoPath(repoPath)
         val request = viewModel.repoLoadRequest(repoPath = repoPath, preserveSelection = false)
         coroutineScope.launch {
@@ -86,7 +113,7 @@ fun SkillBillRoute(
       }
     },
     onChooseRepoDirectory = {
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.busyState(SkillBillBusyOperation.CHOOSE_DIRECTORY)
         val repoPath = chooseRepoDirectory(state.repoPathText)
         if (repoPath.isNullOrBlank()) {
@@ -104,7 +131,7 @@ fun SkillBillRoute(
       }
     },
     onRefresh = {
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.beginRefresh()
         val request = viewModel.repoLoadRequest(
           repoPath = state.selectedRepoPath ?: state.repoPathText,
@@ -120,7 +147,7 @@ fun SkillBillRoute(
       }
     },
     onValidate = {
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         // beginValidate returns a request that captures the active token, the current session, and the
         // pre-RUNNING validation summary, so the dispatcher work below does not read mutable VM fields
         // off-thread. (F-102)
@@ -135,7 +162,7 @@ fun SkillBillRoute(
       }
     },
     onRender = {
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         // F-102 mirror: beginRender captures token + session + treeItemId + previousRenderSummary on
         // the caller dispatcher so the dispatcher work below does not read mutable VM fields off-thread.
         val request = viewModel.beginRender()
@@ -149,12 +176,12 @@ fun SkillBillRoute(
       }
     },
     onActiveDockTabChanged = { tab ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.setActiveDockTab(tab)
       }
     },
     onTreeItemSelected = { itemId ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.selectTreeItem(itemId)
         // AC7: tree selection narrows history to commits that touched the authored path of the
         // selected tree item. Falls back to no filter when the selection has no authored path.
@@ -166,17 +193,17 @@ fun SkillBillRoute(
       }
     },
     onTreeItemExpandedToggled = { itemId ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.toggleExpanded(itemId)
       }
     },
     onMoveTreeSelection = { delta ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.moveSelection(delta)
       }
     },
     onValidationIssueSelected = { issue ->
-      if (state.busyOperation == null) {
+      if (canStartRepoScopedAction()) {
         state = viewModel.revealValidationIssue(issue)
       }
     },
@@ -195,23 +222,48 @@ fun SkillBillRoute(
       }
     },
     onStageChangedFile = { path ->
-      val request = viewModel.beginStage(listOf(path))
-      state = viewModel.state()
-      coroutineScope.launch {
-        val result = withContext(Dispatchers.Default) { viewModel.runStage(request) }
-        // AC10: stage updates status. Token is shared with refresh so finishGitRefresh handles it.
-        state = viewModel.finishGitRefresh(result)
+      if (canStartRepoScopedAction()) {
+        val request = viewModel.beginStage(listOf(path))
+        state = viewModel.state()
+        coroutineScope.launch {
+          val result = withContext(Dispatchers.Default) { viewModel.runStage(request) }
+          // AC10: stage updates status. Token is shared with refresh so finishGitRefresh handles it.
+          state = viewModel.finishGitRefresh(result)
+        }
       }
     },
     onUnstageChangedFile = { path ->
-      val request = viewModel.beginUnstage(listOf(path))
-      state = viewModel.state()
-      coroutineScope.launch {
-        val result = withContext(Dispatchers.Default) { viewModel.runStage(request) }
-        state = viewModel.finishGitRefresh(result)
+      if (canStartRepoScopedAction()) {
+        val request = viewModel.beginUnstage(listOf(path))
+        state = viewModel.state()
+        coroutineScope.launch {
+          val result = withContext(Dispatchers.Default) { viewModel.runStage(request) }
+          state = viewModel.finishGitRefresh(result)
+        }
       }
     },
-    onRefreshGit = { runGitRefresh() },
+    onRefreshGit = {
+      if (canStartRepoScopedAction()) {
+        runGitRefresh()
+      }
+    },
+    onCommitMessageChanged = { message ->
+      if (!state.commitBusy && !state.commitValidationRunning) {
+        state = viewModel.updateCommitMessage(message)
+      }
+    },
+    onCommit = {
+      runCommit(allowFailedValidation = false)
+    },
+    onCommitAfterFailedValidation = {
+      runCommit(allowFailedValidation = true)
+    },
+    onPush = {
+      runPush(allowCanonicalRemote = false)
+    },
+    onConfirmCanonicalPush = {
+      runPush(allowCanonicalRemote = true)
+    },
     onCopyChangedFilePath = { path ->
       // F-106 mirror: clipboard side effect lives in the route; UI emits pure copy callbacks.
       clipboardManager.setText(AnnotatedString(path))

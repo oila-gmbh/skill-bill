@@ -3,6 +3,9 @@ package skillbill.desktop.core.domain.service
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -51,6 +54,18 @@ interface GitGateway {
   // Unstages the given paths and returns the post-unstage snapshot. Failures surface in the
   // snapshot's errorMessage rather than throwing.
   fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot
+
+  // Returns the current publish target, ahead/behind counts, and compare URL when the remote
+  // topology supports one. Failures surface in GitPublishingStatus.errorMessage.
+  fun publishingStatus(session: RepoSession?): GitPublishingStatus
+
+  // Commits currently staged changes with [message]. Callers are responsible for validation gating.
+  // Failures surface in the result without refreshing or replacing local repo state.
+  fun commit(session: RepoSession?, message: String): GitOperationResult
+
+  // Pushes to [target]. Callers are responsible for canonical-remote confirmation.
+  // Failures surface in the result without refreshing or replacing local repo state.
+  fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult
 }
 
 interface ValidationGateway {

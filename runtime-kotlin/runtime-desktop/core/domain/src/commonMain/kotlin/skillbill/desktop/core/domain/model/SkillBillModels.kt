@@ -43,6 +43,19 @@ data class SkillBillState(
   val historyBusy: Boolean = false,
   val historyErrorMessage: String? = null,
   val historyPathFilter: String? = null,
+  val commitMessage: String = "",
+  val canCommit: Boolean = false,
+  val commitBusy: Boolean = false,
+  val commitErrorMessage: String? = null,
+  val commitValidationFailed: Boolean = false,
+  val commitValidationRunning: Boolean = false,
+  val pushTarget: GitPushTarget? = null,
+  val aheadBehind: GitAheadBehind? = null,
+  val compareUrl: String? = null,
+  val pushBusy: Boolean = false,
+  val pushErrorMessage: String? = null,
+  val pushStatusErrorMessage: String? = null,
+  val canonicalPushConfirmationRequired: Boolean = false,
 )
 
 enum class DockTab {
@@ -287,5 +300,42 @@ data class ChangesSnapshot(
       errorMessage = errorMessage,
       isFailed = true,
     )
+  }
+}
+
+data class GitOperationResult(
+  val success: Boolean,
+  val errorMessage: String? = null,
+) {
+  companion object {
+    val success: GitOperationResult = GitOperationResult(success = true)
+
+    fun failed(errorMessage: String): GitOperationResult =
+      GitOperationResult(success = false, errorMessage = errorMessage)
+  }
+}
+
+data class GitAheadBehind(
+  val ahead: Int,
+  val behind: Int,
+)
+
+data class GitPushTarget(
+  val remoteName: String,
+  val branchName: String,
+  val expectedCurrentBranch: String = branchName,
+  val displayName: String = "$remoteName/$branchName",
+  val isLikelyCanonical: Boolean = false,
+  val canonicalWarning: String? = null,
+)
+
+data class GitPublishingStatus(
+  val pushTarget: GitPushTarget? = null,
+  val aheadBehind: GitAheadBehind? = null,
+  val compareUrl: String? = null,
+  val errorMessage: String? = null,
+) {
+  companion object {
+    val empty: GitPublishingStatus = GitPublishingStatus()
   }
 }

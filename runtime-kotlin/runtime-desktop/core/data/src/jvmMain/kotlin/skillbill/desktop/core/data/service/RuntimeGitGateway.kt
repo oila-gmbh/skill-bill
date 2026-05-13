@@ -6,6 +6,10 @@ import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
+import skillbill.desktop.core.domain.model.GitAheadBehind
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.service.GitGateway
@@ -113,6 +117,56 @@ class RuntimeGitGateway : GitGateway {
       },
       onFailure = { error -> ChangesSnapshot.failed(describe(error)) },
     )
+  }
+
+  override fun publishingStatus(session: RepoSession?): GitPublishingStatus {
+    val root = sessionRoot(session) ?: return GitPublishingStatus.empty
+    return runCatching { readPublishingStatus(root) }
+      .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) }
+  }
+
+  override fun commit(session: RepoSession?, message: String): GitOperationResult {
+    val root = sessionRoot(session) ?: return GitOperationResult.failed("Open a Git repository before committing.")
+    val trimmed = message.trim()
+    if (trimmed.isBlank()) {
+      return GitOperationResult.failed("Commit message is required.")
+    }
+    val result = runCatching { runGit(root, listOf("commit", "-m", trimmed)) }
+      .getOrElse { error -> return GitOperationResult.failed(describe(error)) }
+    return if (result.exitCode == 0) {
+      GitOperationResult.success
+    } else {
+      GitOperationResult.failed(describeGitFailure(result))
+    }
+  }
+
+  override fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult {
+    val root = sessionRoot(session) ?: return GitOperationResult.failed("Open a Git repository before pushing.")
+    if (!isSafeGitRemoteName(target.remoteName)) {
+      return GitOperationResult.failed("Push remote name is invalid.")
+    }
+    if (!isSafeGitBranchName(target.branchName)) {
+      return GitOperationResult.failed("Push branch name is invalid.")
+    }
+    val currentBranch = currentBranch(root)
+    if (currentBranch != target.expectedCurrentBranch) {
+      return GitOperationResult.failed(
+        "Current branch changed from ${target.expectedCurrentBranch} to ${currentBranch ?: "detached HEAD"}. " +
+          "Refresh Git status before pushing.",
+      )
+    }
+    val result = runCatching {
+      runGit(
+        root,
+        listOf("push", target.remoteName, "HEAD:refs/heads/${target.branchName}"),
+        hardeningFlags = GIT_PUSH_HARDENING_FLAGS,
+      )
+    }.getOrElse { error -> return GitOperationResult.failed(describe(error)) }
+    return if (result.exitCode == 0) {
+      GitOperationResult.success
+    } else {
+      GitOperationResult.failed(describePushFailure(root, target, result))
+    }
   }
 
   private fun sessionRoot(session: RepoSession?): Path? {
@@ -277,13 +331,138 @@ class RuntimeGitGateway : GitGateway {
     if (result.exitCode == 0 && result.stdout.isNotBlank()) result.stdout.trim() else null
   }.getOrNull()
 
-  private fun runGit(root: Path, args: List<String>): GitResult {
+  private fun readPublishingStatus(root: Path): GitPublishingStatus {
+    val branch = currentBranch(root) ?: return GitPublishingStatus(errorMessage = "Detached HEAD has no push target.")
+    val remotes = readRemotes(root)
+    if (remotes.isEmpty()) {
+      return GitPublishingStatus(errorMessage = "No Git remotes are configured.")
+    }
+    val targetRemote =
+      when {
+        remotes.any { it.name == "origin" } -> "origin"
+        else -> remotes.first().name
+      }
+    val targetBranch = branch
+    val targetRemoteInfo = remotes.firstOrNull { it.name == targetRemote }
+    val likelyCanonical = targetRemoteInfo?.let { isLikelyCanonicalRemote(it, remotes) } ?: true
+    val target = GitPushTarget(
+      remoteName = targetRemote,
+      branchName = targetBranch,
+      expectedCurrentBranch = branch,
+      displayName = "$targetRemote/$targetBranch",
+      isLikelyCanonical = likelyCanonical,
+      canonicalWarning = if (likelyCanonical) canonicalWarning(targetRemoteInfo, remotes) else null,
+    )
+    return GitPublishingStatus(
+      pushTarget = target,
+      aheadBehind = readAheadBehind(root, target),
+      compareUrl = buildCompareUrl(root, remotes, target),
+    )
+  }
+
+  private fun readRemotes(root: Path): List<RemoteInfo> {
+    val namesResult = runGit(root, listOf("remote"))
+    if (namesResult.exitCode != 0) {
+      return emptyList()
+    }
+    return namesResult.stdout
+      .lineSequence()
+      .map(String::trim)
+      .filter(String::isNotEmpty)
+      .map { name ->
+        val urlsResult = runGit(root, listOf("remote", "get-url", "--all", name))
+        val urls =
+          if (urlsResult.exitCode == 0) {
+            urlsResult.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+          } else {
+            emptyList()
+          }
+        val pushUrlsResult = runGit(root, listOf("remote", "get-url", "--push", "--all", name))
+        val pushUrls =
+          if (pushUrlsResult.exitCode == 0) {
+            pushUrlsResult.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+          } else {
+            emptyList()
+          }
+        RemoteInfo(name = name, urls = urls, pushUrls = pushUrls)
+      }
+      .toList()
+  }
+
+  private fun readAheadBehind(root: Path, target: GitPushTarget): GitAheadBehind? {
+    val remoteRef = "refs/remotes/${target.remoteName}/${target.branchName}"
+    val remoteExists = runGit(root, listOf("show-ref", "--verify", "--quiet", remoteRef)).exitCode == 0
+    if (!remoteExists) {
+      return null
+    }
+    val result = runGit(root, listOf("rev-list", "--left-right", "--count", "HEAD...$remoteRef"))
+    if (result.exitCode != 0) {
+      return null
+    }
+    val parts = result.stdout.trim().split(Regex("\\s+"))
+    val ahead = parts.getOrNull(0)?.toIntOrNull() ?: return null
+    val behind = parts.getOrNull(1)?.toIntOrNull() ?: return null
+    return GitAheadBehind(ahead = ahead, behind = behind)
+  }
+
+  private fun isLikelyCanonicalRemote(remote: RemoteInfo, remotes: List<RemoteInfo>): Boolean {
+    if (remote.name != "origin") {
+      return true
+    }
+    val upstream = remotes.firstOrNull { it.name == "upstream" } ?: return true
+    val originRepos = remote.githubPushRepos()
+    val upstreamRepos = upstream.githubRepos()
+    if (originRepos.isEmpty() || upstreamRepos.isEmpty()) {
+      return true
+    }
+    val everyPushDestinationIsFork = originRepos.all { originRepo ->
+      upstreamRepos.any { upstreamRepo ->
+        originRepo.repo == upstreamRepo.repo && originRepo.owner != upstreamRepo.owner
+      }
+    }
+    return !everyPushDestinationIsFork
+  }
+
+  private fun canonicalWarning(remote: RemoteInfo?, remotes: List<RemoteInfo>): String =
+    if (remote?.name == "origin" && remotes.none { it.name == "upstream" }) {
+      "origin is the only configured remote, so it may be the canonical repository."
+    } else {
+      "${remote?.name ?: "This remote"} looks like a canonical remote. Confirm before pushing."
+    }
+
+  private fun buildCompareUrl(root: Path, remotes: List<RemoteInfo>, target: GitPushTarget): String? {
+    val targetRemote = remotes.firstOrNull { it.name == target.remoteName }?.singleGithubPushRepo() ?: return null
+    val upstreamRemote = remotes.firstOrNull { it.name == "upstream" }?.githubRepo()
+    return if (
+      target.remoteName == "origin" &&
+      upstreamRemote != null &&
+      upstreamRemote.repo == targetRemote.repo &&
+      upstreamRemote.owner != targetRemote.owner
+    ) {
+      val baseBranch = defaultBranchForRemote(root, "upstream") ?: DEFAULT_COMPARE_BASE_BRANCH
+      "${upstreamRemote.webUrl}/compare/$baseBranch...${targetRemote.owner}:${target.branchName}"
+    } else {
+      "${targetRemote.webUrl}/compare/${target.branchName}"
+    }
+  }
+
+  private fun defaultBranchForRemote(root: Path, remoteName: String): String? {
+    val result = runGit(root, listOf("symbolic-ref", "--quiet", "--short", "refs/remotes/$remoteName/HEAD"))
+    if (result.exitCode != 0) {
+      return null
+    }
+    return result.stdout.trim()
+      .removePrefix("$remoteName/")
+      .takeIf(String::isNotBlank)
+  }
+
+  private fun runGit(root: Path, args: List<String>, hardeningFlags: List<String> = GIT_HARDENING_FLAGS): GitResult {
     // F-S02: prepend hardening flags BEFORE the subcommand. A malicious .git/config inside a
     // user-opened repo cannot trigger arbitrary command execution (CVE-2022-24765 class) when
     // diff/pager/sshCommand/external-filter knobs are forced to safe values. --no-optional-locks
     // also avoids touching lockfiles in repos we are only reading.
     val command = mutableListOf("git", "-C", root.toString())
-    command.addAll(GIT_HARDENING_FLAGS)
+    command.addAll(hardeningFlags)
     command.addAll(args)
     val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
 
@@ -355,12 +534,25 @@ class RuntimeGitGateway : GitGateway {
   private data class GitResult(val exitCode: Int, val stdout: String)
 
   private fun describeGitFailure(result: GitResult): String {
-    val firstLine = result.stdout.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
-    return if (firstLine.isBlank()) {
+    val output = redactCredentialedUrls(result.stdout.trim())
+    return if (output.isBlank()) {
       "git exited with code ${result.exitCode}"
     } else {
-      "git exited with code ${result.exitCode}: $firstLine"
+      "git exited with code ${result.exitCode}: $output"
     }
+  }
+
+  private fun describePushFailure(root: Path, target: GitPushTarget, result: GitResult): String {
+    val failure = describeGitFailure(result)
+    val destinations = readRemotes(root)
+      .firstOrNull { remote -> remote.name == target.remoteName }
+      ?.effectivePushUrls()
+      ?.map(::redactCredentialedUrls)
+      .orEmpty()
+    if (destinations.isEmpty()) {
+      return failure
+    }
+    return "$failure\nRemote ${target.remoteName}: ${destinations.joinToString()}"
   }
 
   private fun describe(error: Throwable): String {
@@ -377,6 +569,7 @@ class RuntimeGitGateway : GitGateway {
     private const val MAX_GIT_OUTPUT_BYTES: Int = 8 * 1024 * 1024
     private const val BUFFER_BYTES: Int = 8 * 1024
     private const val READER_JOIN_TIMEOUT_MILLIS: Long = 1_000L
+    private const val DEFAULT_COMPARE_BASE_BRANCH: String = "main"
 
     // F-S01: environment variables that can redirect git to attacker-controlled state. The user's
     // launch environment is untrusted (inherited from shell / desktop launcher / parent processes),
@@ -421,6 +614,23 @@ class RuntimeGitGateway : GitGateway {
       "protocol.file.allow=user",
     )
 
+    // Push must support normal SSH remotes (`git@github.com:owner/repo.git`). Keep the non-SSH
+    // hardening from read operations, but override repo-local sshCommand with the platform ssh
+    // binary instead of the empty command used to neutralize read-only Git operations.
+    private val GIT_PUSH_HARDENING_FLAGS: List<String> = listOf(
+      "--no-optional-locks",
+      "-c",
+      "core.fsmonitor=",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "core.pager=",
+      "-c",
+      "core.sshCommand=ssh -o BatchMode=yes",
+      "-c",
+      "protocol.file.allow=user",
+    )
+
     // ASCII control bytes are used as field/record separators in the git log format, so subjects
     // or authors that contain tabs, pipes, or newlines do not corrupt parsing. NUL terminates path
     // records emitted by --name-only -z.
@@ -447,3 +657,75 @@ private fun resolveRepoPath(repoPath: String): Path? {
 }
 
 private fun Path.portablePath(): String = toString().replace('\\', '/')
+
+private data class RemoteInfo(
+  val name: String,
+  val urls: List<String>,
+  val pushUrls: List<String>,
+) {
+  fun githubRepo(): GithubRepo? = urls.firstNotNullOfOrNull(::parseGithubUrl)
+
+  fun githubRepos(): List<GithubRepo> = urls.mapNotNull(::parseGithubUrl).distinct()
+
+  fun singleGithubPushRepo(): GithubRepo? = githubPushRepos().singleOrNull()
+
+  fun githubPushRepos(): List<GithubRepo> = effectivePushUrls().mapNotNull(::parseGithubUrl).distinct()
+
+  fun effectivePushUrls(): List<String> = pushUrls.ifEmpty { urls }
+}
+
+private data class GithubRepo(
+  val owner: String,
+  val repo: String,
+) {
+  val webUrl: String = "https://github.com/$owner/$repo"
+}
+
+private fun parseGithubUrl(url: String): GithubRepo? {
+  val normalized = url.trim().removeSuffix(".git").withoutGithubUserInfo()
+  val path = when {
+    normalized.startsWith("https://github.com/") -> normalized.removePrefix("https://github.com/")
+    normalized.startsWith("http://github.com/") -> normalized.removePrefix("http://github.com/")
+    normalized.startsWith("git@github.com:") -> normalized.removePrefix("git@github.com:")
+    normalized.startsWith("ssh://git@github.com/") -> normalized.removePrefix("ssh://git@github.com/")
+    else -> return null
+  }
+  val parts = path.split('/').filter(String::isNotBlank)
+  val owner = parts.getOrNull(0) ?: return null
+  val repo = parts.getOrNull(1) ?: return null
+  return GithubRepo(owner = owner, repo = repo)
+}
+
+private fun String.withoutGithubUserInfo(): String =
+  replace(Regex("""^https://[^/@]+@github\.com/"""), "https://github.com/")
+    .replace(Regex("""^http://[^/@]+@github\.com/"""), "http://github.com/")
+
+private fun isSafeGitRemoteName(value: String): Boolean = isSafeGitRefPath(value)
+
+private fun isSafeGitBranchName(value: String): Boolean = isSafeGitRefPath(value)
+
+private fun isSafeGitRefPath(value: String): Boolean {
+  if (value.isBlank() || value.startsWith("-") || value.startsWith("/") || value.endsWith("/")) {
+    return false
+  }
+  if (value.contains("//") || value.contains("..") || value.endsWith(".lock") || value.endsWith(".")) {
+    return false
+  }
+  return value.all { char ->
+    char.code in 33..126 &&
+      char !in setOf(' ', '~', '^', ':', '?', '*', '[', '\\')
+  }
+}
+
+internal fun redactCredentialedUrls(message: String): String = message.replace(CREDENTIAL_URL_PATTERN) { match ->
+  val scheme = match.groupValues[1]
+  val username = match.groupValues[2]
+  val password = match.groupValues[4]
+  if (password.isBlank()) {
+    "$scheme<redacted>@"
+  } else {
+    "$scheme$username:<redacted>@"
+  }
+}
+
+private val CREDENTIAL_URL_PATTERN = Regex("""\b([A-Za-z][A-Za-z0-9+.-]*://)([^@\s/:]+)(:([^@\s/]+))?@""")

@@ -1,5 +1,16 @@
 # SkillBill desktop feature — history
 
+## [2026-05-13] SKILL-44 publishing (subtask 06)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
+- Added commit + push publishing flow: commit runs validation first, failed validation requires explicit override, successful commit/push refreshes changes, history, and publishing status.
+- Git publishing status now reports push target, ahead/behind, canonical-risk classification, and GitHub compare URL only when remote topology is unambiguous.
+- Reused hardened RuntimeGitGateway subprocess pattern; push keeps SSH usable with `ssh -o BatchMode=yes`, while read operations keep `core.sshCommand=` disabled.
+- Fork-safety rule: treat `origin` as safe only when every effective push destination is fork-shaped relative to upstream; any canonical pushurl blocks by default.
+- UI publishing actions share a busy gate across validation, commit, and push so toolbar/navigation/changes controls do not race source-control operations.
+- Known limitation: compare URL is withheld for multiple push destinations because the UI cannot truthfully name a single GitHub target.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-05-12] SKILL-44 changes-history (subtask 05)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data (commonMain + jvmMain), runtime-desktop/core/domain, runtime-desktop/core/testing
 - New sibling `RuntimeGitGateway` in core/data/jvmMain honors Subtask 04's god-class warning — GitGateway dropped from RuntimeRepoBrowserService. Future gateway work keeps adding siblings.

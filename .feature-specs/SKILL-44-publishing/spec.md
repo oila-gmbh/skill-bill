@@ -1,3 +1,26 @@
+# SKILL-44 Publishing
+
+Status: Complete
+
+## Sources
+
+- `docs/desktop-skill-bill-app/ui-feature-subtasks/06-publishing.md`
+- Parent context: `docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`
+
+## Acceptance Criteria
+
+1. Commit is disabled until staged changes and a message are present.
+2. Validation runs before commit.
+3. Failed validation requires explicit confirmation to commit anyway.
+4. Commit success refreshes Git status and history.
+5. Push target is shown before push.
+6. Push to a likely canonical remote is blocked by default.
+7. Push success refreshes ahead/behind state.
+8. Compare URL is generated when remote topology supports it.
+9. Git errors are visible and leave the repo state unchanged except for Git's own failed command effects.
+
+## Consolidated Spec
+
 # Subtask 06: Commit, Push, and Fork Publishing
 
 Status: Complete

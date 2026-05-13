@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -45,6 +46,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +64,8 @@ import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
+import skillbill.desktop.core.domain.model.GitAheadBehind
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -109,6 +113,11 @@ fun SkillBillFrame(
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
+  onCommitMessageChanged: (String) -> Unit,
+  onCommit: () -> Unit,
+  onCommitAfterFailedValidation: () -> Unit,
+  onPush: () -> Unit,
+  onConfirmCanonicalPush: () -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
@@ -116,14 +125,17 @@ fun SkillBillFrame(
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
 ) {
+  val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
   val validateEnabled =
     state.selectedRepoPath != null &&
       state.repoStatus.state == RepoLoadState.LOADED &&
-      state.busyOperation == null
+      state.busyOperation == null &&
+      !publishingBusy
   val renderEnabled =
     state.renderable &&
       state.repoStatus.state == RepoLoadState.LOADED &&
-      state.busyOperation == null
+      state.busyOperation == null &&
+      !publishingBusy
   Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
     WorkspaceToolbar(
       canNavigateBack = canNavigateBack,
@@ -133,6 +145,7 @@ fun SkillBillFrame(
       onRender = onRender,
       validateEnabled = validateEnabled,
       renderEnabled = renderEnabled,
+      publishingBusy = publishingBusy,
       sourceControlLabel = state.sourceControl.branchLabel,
       readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
       busyOperation = state.busyOperation,
@@ -145,6 +158,7 @@ fun SkillBillFrame(
         selectedNodeId = state.selectedTreeItemId,
         expandedNodeIds = state.expandedNodeIds,
         busyOperation = state.busyOperation,
+        publishingBusy = publishingBusy,
         policyLabel = state.statusBar.policyLabel,
         validationIssueCount = state.validation.issues.size,
         onRepoPathChanged = onRepoPathChanged,
@@ -170,11 +184,30 @@ fun SkillBillFrame(
         historyBusy = state.historyBusy,
         historyErrorMessage = state.historyErrorMessage,
         historyPathFilter = state.historyPathFilter,
+        publishingBusy = publishingBusy,
+        commitMessage = state.commitMessage,
+        canCommit = state.canCommit,
+        commitBusy = state.commitBusy,
+        commitErrorMessage = state.commitErrorMessage,
+        commitValidationFailed = state.commitValidationFailed,
+        commitValidationRunning = state.commitValidationRunning,
+        pushTarget = state.pushTarget,
+        aheadBehind = state.aheadBehind,
+        compareUrl = state.compareUrl,
+        pushBusy = state.pushBusy,
+        pushErrorMessage = state.pushErrorMessage,
+        pushStatusErrorMessage = state.pushStatusErrorMessage,
+        canonicalPushConfirmationRequired = state.canonicalPushConfirmationRequired,
         hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
         onRefreshGit = onRefreshGit,
+        onCommitMessageChanged = onCommitMessageChanged,
+        onCommit = onCommit,
+        onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+        onPush = onPush,
+        onConfirmCanonicalPush = onConfirmCanonicalPush,
         onCopyChangedFilePath = onCopyChangedFilePath,
         onCopyCommitHash = onCopyCommitHash,
         onClearHistoryPathFilter = onClearHistoryPathFilter,
@@ -203,11 +236,12 @@ private fun WorkspaceToolbar(
   onRender: () -> Unit,
   validateEnabled: Boolean,
   renderEnabled: Boolean,
+  publishingBusy: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
   busyOperation: SkillBillBusyOperation?,
 ) {
-  val busy = busyOperation != null
+  val busy = busyOperation != null || publishingBusy
   Row(
     modifier =
     Modifier
@@ -343,6 +377,7 @@ private fun NavigationPane(
   selectedNodeId: String?,
   expandedNodeIds: Set<String>,
   busyOperation: SkillBillBusyOperation?,
+  publishingBusy: Boolean,
   policyLabel: String,
   validationIssueCount: Int,
   onRepoPathChanged: (String) -> Unit,
@@ -352,7 +387,7 @@ private fun NavigationPane(
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
 ) {
-  val busy = busyOperation != null
+  val busy = busyOperation != null || publishingBusy
   Column(
     modifier =
     Modifier
@@ -691,11 +726,30 @@ private fun CenterWorkspace(
   historyBusy: Boolean,
   historyErrorMessage: String?,
   historyPathFilter: String?,
+  publishingBusy: Boolean,
+  commitMessage: String,
+  canCommit: Boolean,
+  commitBusy: Boolean,
+  commitErrorMessage: String?,
+  commitValidationFailed: Boolean,
+  commitValidationRunning: Boolean,
+  pushTarget: GitPushTarget?,
+  aheadBehind: GitAheadBehind?,
+  compareUrl: String?,
+  pushBusy: Boolean,
+  pushErrorMessage: String?,
+  pushStatusErrorMessage: String?,
+  canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
+  onCommitMessageChanged: (String) -> Unit,
+  onCommit: () -> Unit,
+  onCommitAfterFailedValidation: () -> Unit,
+  onPush: () -> Unit,
+  onConfirmCanonicalPush: () -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
@@ -720,11 +774,30 @@ private fun CenterWorkspace(
       historyBusy = historyBusy,
       historyErrorMessage = historyErrorMessage,
       historyPathFilter = historyPathFilter,
+      publishingBusy = publishingBusy,
+      commitMessage = commitMessage,
+      canCommit = canCommit,
+      commitBusy = commitBusy,
+      commitErrorMessage = commitErrorMessage,
+      commitValidationFailed = commitValidationFailed,
+      commitValidationRunning = commitValidationRunning,
+      pushTarget = pushTarget,
+      aheadBehind = aheadBehind,
+      compareUrl = compareUrl,
+      pushBusy = pushBusy,
+      pushErrorMessage = pushErrorMessage,
+      pushStatusErrorMessage = pushStatusErrorMessage,
+      canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
       hasRepoOpen = hasRepoOpen,
       onChangedFileSelected = onChangedFileSelected,
       onStageChangedFile = onStageChangedFile,
       onUnstageChangedFile = onUnstageChangedFile,
       onRefreshGit = onRefreshGit,
+      onCommitMessageChanged = onCommitMessageChanged,
+      onCommit = onCommit,
+      onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+      onPush = onPush,
+      onConfirmCanonicalPush = onConfirmCanonicalPush,
       onCopyChangedFilePath = onCopyChangedFilePath,
       onCopyCommitHash = onCopyCommitHash,
       onClearHistoryPathFilter = onClearHistoryPathFilter,
@@ -1250,11 +1323,30 @@ private fun BottomDock(
   historyBusy: Boolean,
   historyErrorMessage: String?,
   historyPathFilter: String?,
+  publishingBusy: Boolean,
+  commitMessage: String,
+  canCommit: Boolean,
+  commitBusy: Boolean,
+  commitErrorMessage: String?,
+  commitValidationFailed: Boolean,
+  commitValidationRunning: Boolean,
+  pushTarget: GitPushTarget?,
+  aheadBehind: GitAheadBehind?,
+  compareUrl: String?,
+  pushBusy: Boolean,
+  pushErrorMessage: String?,
+  pushStatusErrorMessage: String?,
+  canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
+  onCommitMessageChanged: (String) -> Unit,
+  onCommit: () -> Unit,
+  onCommitAfterFailedValidation: () -> Unit,
+  onPush: () -> Unit,
+  onConfirmCanonicalPush: () -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
@@ -1276,6 +1368,7 @@ private fun BottomDock(
           tab = tab,
           badge = badgeForDockTab(tab, validation, changes),
           active = activeTab == tab,
+          enabled = !publishingBusy,
           onSelected = { onActiveTabSelected(tab) },
         )
       }
@@ -1296,14 +1389,33 @@ private fun BottomDock(
         DockTab.Changes -> ChangesPanel(
           changes = changes,
           changesBusy = changesBusy,
+          publishingBusy = publishingBusy,
           selectedChangedFile = selectedChangedFile,
           selectedDiff = selectedDiff,
           selectedDiffBusy = selectedDiffBusy,
+          commitMessage = commitMessage,
+          canCommit = canCommit,
+          commitBusy = commitBusy,
+          commitErrorMessage = commitErrorMessage,
+          commitValidationFailed = commitValidationFailed,
+          commitValidationRunning = commitValidationRunning,
+          pushTarget = pushTarget,
+          aheadBehind = aheadBehind,
+          compareUrl = compareUrl,
+          pushBusy = pushBusy,
+          pushErrorMessage = pushErrorMessage,
+          pushStatusErrorMessage = pushStatusErrorMessage,
+          canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
           hasRepoOpen = hasRepoOpen,
           onChangedFileSelected = onChangedFileSelected,
           onStageChangedFile = onStageChangedFile,
           onUnstageChangedFile = onUnstageChangedFile,
           onRefreshGit = onRefreshGit,
+          onCommitMessageChanged = onCommitMessageChanged,
+          onCommit = onCommit,
+          onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+          onPush = onPush,
+          onConfirmCanonicalPush = onConfirmCanonicalPush,
           onCopyChangedFilePath = onCopyChangedFilePath,
           recentlyCopiedKey = recentlyCopiedKey,
         )
@@ -1331,15 +1443,25 @@ private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary, changes
   }
 
 @Composable
-private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelected: () -> Unit) {
+private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, enabled: Boolean, onSelected: () -> Unit) {
   val meta = dockTabMetadata(tab)
+  val labelColor = when {
+    active -> WorkspaceText
+    enabled -> WorkspaceMuted
+    else -> WorkspaceSteel
+  }
   Column(
     modifier =
     Modifier
       .height(33.dp)
       .width(meta.width)
       .background(if (active) WorkspaceBackground else WorkspacePanel)
-      .clickable(role = Role.Button, onClick = onSelected),
+      .clickable(enabled = enabled, role = Role.Button, onClick = onSelected)
+      .semantics {
+        if (!enabled) {
+          disabled()
+        }
+      },
   ) {
     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(if (active) WorkspaceYellow else Color.Transparent))
     Row(
@@ -1347,7 +1469,7 @@ private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, onSelec
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-      Text(text = meta.label, color = if (active) WorkspaceText else WorkspaceMuted, fontSize = 12.sp)
+      Text(text = meta.label, color = labelColor, fontSize = 12.sp)
       badge?.let { Badge(text = it, tone = meta.tone) }
     }
   }
@@ -1430,14 +1552,33 @@ private fun severityTone(severity: ValidationSeverity): Tone = when (severity) {
 private fun ChangesPanel(
   changes: ChangesSnapshot,
   changesBusy: Boolean,
+  publishingBusy: Boolean,
   selectedChangedFile: ChangedFile?,
   selectedDiff: String,
   selectedDiffBusy: Boolean,
+  commitMessage: String,
+  canCommit: Boolean,
+  commitBusy: Boolean,
+  commitErrorMessage: String?,
+  commitValidationFailed: Boolean,
+  commitValidationRunning: Boolean,
+  pushTarget: GitPushTarget?,
+  aheadBehind: GitAheadBehind?,
+  compareUrl: String?,
+  pushBusy: Boolean,
+  pushErrorMessage: String?,
+  pushStatusErrorMessage: String?,
+  canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
+  onCommitMessageChanged: (String) -> Unit,
+  onCommit: () -> Unit,
+  onCommitAfterFailedValidation: () -> Unit,
+  onPush: () -> Unit,
+  onConfirmCanonicalPush: () -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   recentlyCopiedKey: String?,
 ) {
@@ -1447,6 +1588,7 @@ private fun ChangesPanel(
     ) {
       ChangesHeader(
         changesBusy = changesBusy,
+        refreshEnabled = !changesBusy && !publishingBusy,
         errorMessage = changes.errorMessage,
         hasStaleData = changes.files.isNotEmpty(),
         onRefreshGit = onRefreshGit,
@@ -1460,6 +1602,30 @@ private fun ChangesPanel(
         )
         return@Column
       }
+      CommitControls(
+        publishingBusy = publishingBusy,
+        commitMessage = commitMessage,
+        canCommit = canCommit,
+        commitBusy = commitBusy,
+        commitErrorMessage = commitErrorMessage,
+        commitValidationFailed = commitValidationFailed,
+        commitValidationRunning = commitValidationRunning,
+        onCommitMessageChanged = onCommitMessageChanged,
+        onCommit = onCommit,
+        onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+      )
+      PushControls(
+        publishingBusy = publishingBusy,
+        pushTarget = pushTarget,
+        aheadBehind = aheadBehind,
+        compareUrl = compareUrl,
+        pushBusy = pushBusy,
+        pushErrorMessage = pushErrorMessage,
+        pushStatusErrorMessage = pushStatusErrorMessage,
+        canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
+        onPush = onPush,
+        onConfirmCanonicalPush = onConfirmCanonicalPush,
+      )
       if (changes.files.isEmpty() && !changesBusy && changes.errorMessage == null) {
         Text(
           text = "No local changes.",
@@ -1475,6 +1641,7 @@ private fun ChangesPanel(
         group = ChangedFileGroup.STAGED,
         files = changes.files,
         selectedPath = selectedChangedFile?.path,
+        stageActionsEnabled = !changesBusy && !publishingBusy,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
@@ -1486,6 +1653,7 @@ private fun ChangesPanel(
         group = ChangedFileGroup.UNSTAGED,
         files = changes.files,
         selectedPath = selectedChangedFile?.path,
+        stageActionsEnabled = !changesBusy && !publishingBusy,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
@@ -1497,6 +1665,7 @@ private fun ChangesPanel(
         group = ChangedFileGroup.UNTRACKED,
         files = changes.files,
         selectedPath = selectedChangedFile?.path,
+        stageActionsEnabled = !changesBusy && !publishingBusy,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
@@ -1508,6 +1677,7 @@ private fun ChangesPanel(
         group = ChangedFileGroup.GENERATED,
         files = changes.files,
         selectedPath = selectedChangedFile?.path,
+        stageActionsEnabled = !changesBusy && !publishingBusy,
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
@@ -1527,8 +1697,232 @@ private fun ChangesPanel(
 }
 
 @Composable
+private fun PushControls(
+  publishingBusy: Boolean,
+  pushTarget: GitPushTarget?,
+  aheadBehind: GitAheadBehind?,
+  compareUrl: String?,
+  pushBusy: Boolean,
+  pushErrorMessage: String?,
+  pushStatusErrorMessage: String?,
+  canonicalPushConfirmationRequired: Boolean,
+  onPush: () -> Unit,
+  onConfirmCanonicalPush: () -> Unit,
+) {
+  Column(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+    verticalArrangement = Arrangement.spacedBy(5.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Text(text = "Push target", color = WorkspaceSteel, fontSize = 10.sp)
+      Text(
+        text = pushTarget?.displayName ?: "No target",
+        color = if (pushTarget == null) WorkspaceSteel else WorkspaceText,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.weight(1f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      val pushEnabled = pushTarget != null && !publishingBusy
+      Text(
+        text = if (pushBusy) "pushing" else "push",
+        color = if (pushEnabled) WorkspaceYellow else WorkspaceSteel,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+          .iconButtonSemantics(description = "Push current branch")
+          .clickable(enabled = pushEnabled, role = Role.Button, onClick = onPush)
+          .padding(horizontal = 8.dp, vertical = 5.dp),
+      )
+    }
+    if (aheadBehind != null) {
+      Text(
+        text = "Ahead ${aheadBehind.ahead} / behind ${aheadBehind.behind}",
+        color = WorkspaceSteel,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+      )
+    }
+    if (canonicalPushConfirmationRequired && pushTarget != null) {
+      val confirmEnabled = !publishingBusy
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = pushTarget.canonicalWarning ?: "This may push to a canonical remote.",
+          color = Tone.Warning.color(),
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier.weight(1f),
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+          text = "confirm push",
+          color = if (confirmEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Confirm canonical remote push")
+            .clickable(enabled = confirmEnabled, role = Role.Button, onClick = onConfirmCanonicalPush)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+      }
+    }
+    if (compareUrl != null) {
+      SelectionContainer {
+        Text(
+          text = compareUrl,
+          color = WorkspaceYellow,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+          maxLines = 1,
+        )
+      }
+    }
+    val error = pushErrorMessage ?: pushStatusErrorMessage
+    if (error != null) {
+      Text(
+        text = error,
+        color = WorkspaceRed,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.fillMaxWidth(),
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommitControls(
+  publishingBusy: Boolean,
+  commitMessage: String,
+  canCommit: Boolean,
+  commitBusy: Boolean,
+  commitErrorMessage: String?,
+  commitValidationFailed: Boolean,
+  commitValidationRunning: Boolean,
+  onCommitMessageChanged: (String) -> Unit,
+  onCommit: () -> Unit,
+  onCommitAfterFailedValidation: () -> Unit,
+) {
+  val commitInputEnabled = !publishingBusy
+  val commitInputDescription =
+    if (commitInputEnabled) "Commit message" else "Commit message disabled while publishing is running"
+  Column(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      BasicTextField(
+        value = commitMessage,
+        onValueChange = { message ->
+          if (commitInputEnabled) {
+            onCommitMessageChanged(message)
+          }
+        },
+        enabled = commitInputEnabled,
+        singleLine = true,
+        textStyle = androidx.compose.ui.text.TextStyle(
+          color = WorkspaceText,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+        ),
+        modifier = Modifier
+          .weight(1f)
+          .height(30.dp)
+          .background(if (commitInputEnabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
+          .border(1.dp, if (commitInputEnabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+          .semantics {
+            contentDescription = commitInputDescription
+            if (!commitInputEnabled) {
+              disabled()
+            }
+          }
+          .padding(horizontal = 8.dp, vertical = 7.dp),
+        decorationBox = { innerTextField ->
+          if (commitMessage.isBlank()) {
+            Text(
+              text = "Commit message",
+              color = WorkspaceSteel,
+              fontSize = 12.sp,
+              fontFamily = FontFamily.Monospace,
+              maxLines = 1,
+            )
+          }
+          innerTextField()
+        },
+      )
+      val commitEnabled = canCommit && !publishingBusy
+      Text(
+        text = if (commitBusy) "committing" else "commit",
+        color = if (commitEnabled) WorkspaceYellow else WorkspaceSteel,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+          .height(30.dp)
+          .iconButtonSemantics(description = "Commit staged changes")
+          .clickable(enabled = commitEnabled, role = Role.Button, onClick = onCommit)
+          .padding(horizontal = 8.dp, vertical = 7.dp),
+      )
+    }
+    if (commitValidationRunning) {
+      Text(text = "Running validation before commit...", color = WorkspaceSteel, fontSize = 11.sp)
+    }
+    if (commitValidationFailed) {
+      val overrideEnabled = !publishingBusy
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = "Validation failed.",
+          color = Tone.Warning.color(),
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier.weight(1f),
+        )
+        Text(
+          text = "commit anyway",
+          color = if (overrideEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Commit despite failed validation")
+            .clickable(enabled = overrideEnabled, role = Role.Button, onClick = onCommitAfterFailedValidation)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+      }
+    }
+    if (commitErrorMessage != null) {
+      Text(
+        text = commitErrorMessage,
+        color = WorkspaceRed,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.fillMaxWidth(),
+      )
+    }
+  }
+}
+
+@Composable
 private fun ChangesHeader(
   changesBusy: Boolean,
+  refreshEnabled: Boolean,
   errorMessage: String?,
   hasStaleData: Boolean,
   onRefreshGit: () -> Unit,
@@ -1549,12 +1943,12 @@ private fun ChangesHeader(
     // padding gives the touch target room without changing the visible glyph size.
     Text(
       text = "refresh",
-      color = WorkspaceYellow,
+      color = if (refreshEnabled) WorkspaceYellow else WorkspaceSteel,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier
         .iconButtonSemantics(description = "Refresh repository status")
-        .clickable(role = Role.Button, onClick = onRefreshGit)
+        .clickable(enabled = refreshEnabled, role = Role.Button, onClick = onRefreshGit)
         .padding(horizontal = 6.dp, vertical = 4.dp),
     )
   }
@@ -1597,6 +1991,7 @@ private fun ChangedFileGroupSection(
   group: ChangedFileGroup,
   files: List<ChangedFile>,
   selectedPath: String?,
+  stageActionsEnabled: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
@@ -1618,6 +2013,7 @@ private fun ChangedFileGroupSection(
     ChangedFileRow(
       file = file,
       selected = file.path == selectedPath,
+      stageActionsEnabled = stageActionsEnabled,
       onChangedFileSelected = onChangedFileSelected,
       onStageChangedFile = onStageChangedFile,
       onUnstageChangedFile = onUnstageChangedFile,
@@ -1631,6 +2027,7 @@ private fun ChangedFileGroupSection(
 private fun ChangedFileRow(
   file: ChangedFile,
   selected: Boolean,
+  stageActionsEnabled: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
@@ -1706,22 +2103,22 @@ private fun ChangedFileRow(
       when (file.group) {
         ChangedFileGroup.STAGED -> Text(
           text = "unstage",
-          color = WorkspaceYellow,
+          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
             .iconButtonSemantics(description = "Unstage file: ${file.path}")
-            .clickable(role = Role.Button) { onUnstageChangedFile(file.path) }
+            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onUnstageChangedFile(file.path) }
             .padding(horizontal = 6.dp, vertical = 4.dp),
         )
         ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
           text = "stage",
-          color = WorkspaceYellow,
+          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
             .iconButtonSemantics(description = "Stage file: ${file.path}")
-            .clickable(role = Role.Button) { onStageChangedFile(file.path) }
+            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onStageChangedFile(file.path) }
             .padding(horizontal = 6.dp, vertical = 4.dp),
         )
         ChangedFileGroup.GENERATED -> Unit

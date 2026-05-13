@@ -4,6 +4,10 @@ import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
+import skillbill.desktop.core.domain.model.GitAheadBehind
+import skillbill.desktop.core.domain.model.GitOperationResult
+import skillbill.desktop.core.domain.model.GitPublishingStatus
+import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -11,7 +15,9 @@ import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
+import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
@@ -517,6 +523,322 @@ class SkillBillViewModelGitTest {
     assertEquals("", cleared.selectedDiff)
   }
 
+  @Test
+  fun `commit is disabled until staged changes and message are present`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    val refreshed = viewModel.refreshGit()
+    assertFalse(refreshed.canCommit)
+
+    val noMessageRequest = viewModel.beginCommit()
+    assertNull(noMessageRequest)
+    val ready = viewModel.updateCommitMessage("publish x")
+
+    assertTrue(ready.canCommit)
+    assertNotNull(viewModel.beginCommit())
+  }
+
+  @Test
+  fun `commit stays disabled for unstaged only and generated only changes`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(path = "unstaged.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(path = "generated.md", group = ChangedFileGroup.GENERATED, statusCode = "M", isGenerated = true),
+        ),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val state = viewModel.updateCommitMessage("publish x")
+
+    assertFalse(state.canCommit)
+    assertNull(viewModel.beginCommit())
+  }
+
+  @Test
+  fun `commit and push do not start while git refresh is in flight`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+
+    viewModel.beginGitRefresh()
+
+    assertNull(viewModel.beginCommit())
+    assertNull(viewModel.beginPush())
+    assertEquals(0, gitGateway.commitCallCount)
+    assertEquals(0, gitGateway.pushCallCount)
+  }
+
+  @Test
+  fun `commit runs validation before git commit and blocks on failed validation`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
+    val viewModel = newViewModel(gitGateway = gitGateway, validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+
+    val request = viewModel.beginCommit()
+    assertNotNull(request)
+    val state = viewModel.finishCommit(viewModel.runCommit(request))
+
+    assertEquals(1, validationGateway.validateCallCount)
+    assertEquals(0, gitGateway.commitCallCount)
+    assertTrue(state.commitValidationFailed)
+  }
+
+  @Test
+  fun `failed validation override commits and refreshes changes history and publishing status`() {
+    val refreshedStatus = GitPublishingStatus(
+      pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+    )
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+      scriptedCommits = listOf(commitEntry("published", paths = listOf("x.md"))),
+      scriptedPublishingStatus = refreshedStatus,
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
+    val viewModel = newViewModel(gitGateway = gitGateway, validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+    val blocked = viewModel.beginCommit()
+    assertNotNull(blocked)
+    viewModel.finishCommit(viewModel.runCommit(blocked))
+    val beforeSnapshots = gitGateway.snapshotForCallCount
+    val beforeHistory = gitGateway.recentCommitsCallCount
+
+    val overrideRequest = viewModel.beginCommit(allowFailedValidation = true)
+    assertNotNull(overrideRequest)
+    val state = viewModel.finishCommit(viewModel.runCommit(overrideRequest))
+
+    assertEquals(1, gitGateway.commitCallCount)
+    assertTrue(gitGateway.snapshotForCallCount > beforeSnapshots)
+    assertTrue(gitGateway.recentCommitsCallCount > beforeHistory)
+    assertEquals("", state.commitMessage)
+    assertEquals(1, state.history.size)
+    assertEquals(refreshedStatus.pushTarget, state.pushTarget)
+  }
+
+  @Test
+  fun `failed validation override is invalidated when staged authored files change`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
+    val viewModel = newViewModel(gitGateway = gitGateway, validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+    val blocked = viewModel.beginCommit()
+    assertNotNull(blocked)
+    viewModel.finishCommit(viewModel.runCommit(blocked))
+    gitGateway.scriptedSnapshot = ChangesSnapshot(
+      files = listOf(
+        ChangedFile(path = "y.md", group = ChangedFileGroup.STAGED, statusCode = "A"),
+      ),
+    )
+    viewModel.refreshGit()
+
+    val staleOverride = viewModel.beginCommit(allowFailedValidation = true)
+
+    assertNull(staleOverride)
+    assertEquals(0, gitGateway.commitCallCount)
+    assertFalse(viewModel.state().commitValidationFailed)
+  }
+
+  @Test
+  fun `commit success replaces stale snapshot history and publishing state`() {
+    val beforeStatus = GitPublishingStatus(
+      pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+    )
+    val afterStatus = beforeStatus.copy(aheadBehind = GitAheadBehind(ahead = 0, behind = 0))
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = beforeStatus,
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      validationGateway = FakeValidationGateway(scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+    val request = viewModel.beginCommit()
+    assertNotNull(request)
+    gitGateway.scriptedSnapshot = ChangesSnapshot(files = emptyList())
+    gitGateway.scriptedCommits = listOf(commitEntry("publish x", paths = listOf("x.md")))
+    gitGateway.scriptedPublishingStatus = afterStatus
+
+    val state = viewModel.finishCommit(viewModel.runCommit(request))
+
+    assertTrue(state.changes.files.isEmpty())
+    assertEquals(listOf("publish x"), state.history.map { it.subject })
+    assertEquals(afterStatus.aheadBehind, state.aheadBehind)
+    assertEquals("", state.commitMessage)
+  }
+
+  @Test
+  fun `commit git error is visible and preserves existing changes`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+      ),
+      scriptedCommitResult = GitOperationResult.failed("git exited with code 1: no identity"),
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      validationGateway = FakeValidationGateway(scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+
+    val request = viewModel.beginCommit()
+    assertNotNull(request)
+    val state = viewModel.finishCommit(viewModel.runCommit(request))
+
+    assertEquals("git exited with code 1: no identity", state.commitErrorMessage)
+    assertEquals(listOf("x.md"), state.changes.files.map { it.path })
+  }
+
+  @Test
+  fun `refreshGit exposes push target ahead behind and compare URL`() {
+    val status = GitPublishingStatus(
+      pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      aheadBehind = GitAheadBehind(ahead = 2, behind = 1),
+      compareUrl = "https://github.com/acme/repo/compare/feature",
+    )
+    val gitGateway = FakeGitGateway(scriptedPublishingStatus = status)
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val state = viewModel.refreshGit()
+
+    assertEquals(status.pushTarget, state.pushTarget)
+    assertEquals(status.aheadBehind, state.aheadBehind)
+    assertEquals(status.compareUrl, state.compareUrl)
+  }
+
+  @Test
+  fun `push to likely canonical remote is blocked until explicit confirmation`() {
+    val target = GitPushTarget(
+      remoteName = "origin",
+      branchName = "main",
+      isLikelyCanonical = true,
+      canonicalWarning = "origin may be canonical",
+    )
+    val gitGateway = FakeGitGateway(scriptedPublishingStatus = GitPublishingStatus(pushTarget = target))
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val blocked = viewModel.beginPush()
+    val state = viewModel.state()
+
+    assertNull(blocked)
+    assertTrue(state.canonicalPushConfirmationRequired)
+    assertEquals(0, gitGateway.pushCallCount)
+  }
+
+  @Test
+  fun `confirmed push refreshes ahead behind and compare URL`() {
+    val target = GitPushTarget(remoteName = "origin", branchName = "feature", isLikelyCanonical = true)
+    val before = GitPublishingStatus(
+      pushTarget = target,
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      compareUrl = "https://github.com/acme/repo/compare/feature",
+    )
+    val after = before.copy(aheadBehind = GitAheadBehind(ahead = 0, behind = 0))
+    val gitGateway = FakeGitGateway(scriptedPublishingStatus = before)
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.beginPush()
+    gitGateway.scriptedPublishingStatus = after
+
+    val request = viewModel.beginPush(allowCanonicalRemote = true)
+    assertNotNull(request)
+    val state = viewModel.finishPush(viewModel.runPush(request))
+
+    assertEquals(1, gitGateway.pushCallCount)
+    assertEquals(after.aheadBehind, state.aheadBehind)
+    assertEquals(after.compareUrl, state.compareUrl)
+    assertFalse(state.canonicalPushConfirmationRequired)
+  }
+
+  @Test
+  fun `refresh clears stale canonical push confirmation when target changes`() {
+    val targetA = GitPushTarget(remoteName = "origin", branchName = "main", isLikelyCanonical = true)
+    val targetB = GitPushTarget(remoteName = "origin", branchName = "feature", isLikelyCanonical = true)
+    val gitGateway = FakeGitGateway(scriptedPublishingStatus = GitPublishingStatus(pushTarget = targetA))
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.beginPush()
+    assertTrue(viewModel.state().canonicalPushConfirmationRequired)
+    gitGateway.scriptedPublishingStatus = GitPublishingStatus(pushTarget = targetB)
+
+    val refreshed = viewModel.refreshGit()
+    val staleConfirmation = viewModel.beginPush(allowCanonicalRemote = true)
+
+    assertFalse(refreshed.canonicalPushConfirmationRequired)
+    assertNull(staleConfirmation)
+    assertEquals(0, gitGateway.pushCallCount)
+  }
+
+  @Test
+  fun `push git error is visible and preserves previous publish state`() {
+    val before = GitPublishingStatus(
+      pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = before,
+      scriptedPushResult = GitOperationResult.failed("git exited with code 128: rejected"),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPush()
+    assertNotNull(request)
+    val state = viewModel.finishPush(viewModel.runPush(request))
+
+    assertEquals("git exited with code 128: rejected", state.pushErrorMessage)
+    assertEquals(before.pushTarget, state.pushTarget)
+    assertEquals(before.aheadBehind, state.aheadBehind)
+  }
+
   // ---- helpers ----
 
   private fun newViewModel(
@@ -549,6 +871,18 @@ class SkillBillViewModelGitTest {
     isoDate = "2025-04-30T14:22:00+00:00",
     subject = subject,
     changedPaths = paths,
+  )
+
+  private fun failedValidationSummary(): ValidationSummary = ValidationSummary(
+    state = ValidationRunState.FAILED,
+    issues = listOf(
+      ValidationIssue(
+        severity = ValidationSeverity.ERROR,
+        code = "T-001",
+        message = "Validation failed",
+        sourcePath = "skills/x.md",
+      ),
+    ),
   )
 
   // Confirm the unused parameters don't trigger warnings.
