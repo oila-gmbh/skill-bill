@@ -1,7 +1,10 @@
 package skillbill.desktop.feature.skillbill.state
 
-import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.CommandPaletteAction
+import skillbill.desktop.core.domain.model.CommandPaletteResult
+import skillbill.desktop.core.domain.model.CommandPaletteResultKind
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.RenderBlock
@@ -31,6 +34,8 @@ import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
+import skillbill.desktop.feature.skillbill.ui.CommandPaletteActions
+import skillbill.desktop.feature.skillbill.ui.executeCommandPaletteResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1175,6 +1180,255 @@ class SkillBillViewModelTest {
     assertEquals(before.selectedTreeItemId, state.selectedTreeItemId)
   }
 
+  @Test
+  fun `opening command palette exposes query state and ranked results`() {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+
+    val state = viewModel.openCommandPalette()
+
+    assertTrue(state.commandPalette.open)
+    assertEquals("", state.commandPalette.query)
+    assertEquals(0, state.commandPalette.selectedResultIndex)
+    assertTrue(state.commandPalette.results.isNotEmpty())
+    assertEquals("command.refresh", state.commandPalette.results.first().id)
+  }
+
+  @Test
+  fun `palette tree results preserve exact tree item ids`() {
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(
+                id = "skill-alpha",
+                label = "bill-alpha",
+                kind = TreeItemKind.SKILL,
+                authoredPath = "skills/bill-alpha/content.md",
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.openCommandPalette()
+
+    val state = viewModel.updateCommandPaletteQuery("alpha")
+    val result = state.commandPalette.results.first { it.action == CommandPaletteAction.SELECT_TREE_ITEM }
+
+    assertEquals("skill-alpha", result.id)
+    assertEquals("skill-alpha", result.treeItemId)
+  }
+
+  @Test
+  fun `palette tree search matches item kind even when path is the subtitle`() {
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "source-group",
+            label = "Sources",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(
+                id = "native-agent-alpha",
+                label = "Alpha worker",
+                kind = TreeItemKind.NATIVE_AGENT,
+                authoredPath = "skills/bill-alpha/native-agents/alpha.md",
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.openCommandPalette()
+
+    val state = viewModel.updateCommandPaletteQuery("native")
+
+    assertTrue(state.commandPalette.results.any { it.treeItemId == "native-agent-alpha" })
+  }
+
+  @Test
+  fun `palette empty repo state only exposes repo session commands`() {
+    val viewModel = newViewModel()
+
+    val state = viewModel.openCommandPalette()
+
+    assertEquals(listOf("command.open-repository"), state.commandPalette.results.map { it.id })
+    assertTrue(state.commandPalette.results.single().enabled)
+  }
+
+  @Test
+  fun `palette disabled commands explain missing prerequisites`() {
+    val viewModel = newViewModel(repoSessionService = InvalidRepoSessionService())
+
+    val state = viewModel.selectRepoPath("/not-skill-bill").let { viewModel.openCommandPalette() }
+    val validate = state.commandPalette.results.first { it.id == "command.validate" }
+    val render = state.commandPalette.results.first { it.id == "command.render" }
+    val showChanges = state.commandPalette.results.first { it.id == "command.show-changes" }
+    val showHistory = state.commandPalette.results.first { it.id == "command.show-history" }
+
+    assertFalse(validate.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", validate.disabledReason)
+    assertFalse(render.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", render.disabledReason)
+    assertFalse(showChanges.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", showChanges.disabledReason)
+    assertFalse(showHistory.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", showHistory.disabledReason)
+  }
+
+  @Test
+  fun `palette command execution dispatches visible commands through shared callbacks`() {
+    val refresh = CommandPaletteResult(
+      id = "command.refresh",
+      title = "Refresh",
+      subtitle = "",
+      marker = "rf",
+      kind = CommandPaletteResultKind.COMMAND,
+      action = CommandPaletteAction.REFRESH,
+    )
+    val validate = refresh.copy(
+      id = "command.validate",
+      title = "Validate",
+      marker = "ok",
+      action = CommandPaletteAction.VALIDATE,
+    )
+    val openRepository = refresh.copy(
+      id = "command.open-repository",
+      title = "Open repository",
+      marker = "op",
+      action = CommandPaletteAction.OPEN_REPOSITORY,
+    )
+    val showChanges = refresh.copy(
+      id = "command.show-changes",
+      title = "Show changes",
+      marker = "chg",
+      action = CommandPaletteAction.SHOW_CHANGES,
+    )
+    val showHistory = refresh.copy(
+      id = "command.show-history",
+      title = "Show history",
+      marker = "hst",
+      action = CommandPaletteAction.SHOW_HISTORY,
+    )
+    var openRepositoryCount = 0
+    var refreshCount = 0
+    var validateCount = 0
+    var showChangesCount = 0
+    var showHistoryCount = 0
+    val actions = paletteActions(
+      openRepository = { openRepositoryCount += 1 },
+      refresh = { refreshCount += 1 },
+      validate = { validateCount += 1 },
+      showChanges = { showChangesCount += 1 },
+      showHistory = { showHistoryCount += 1 },
+    )
+
+    assertTrue(executeCommandPaletteResult(openRepository, actions))
+    assertTrue(executeCommandPaletteResult(refresh, actions))
+    assertTrue(executeCommandPaletteResult(validate, actions))
+    assertTrue(executeCommandPaletteResult(showChanges, actions))
+    assertTrue(executeCommandPaletteResult(showHistory, actions))
+
+    assertEquals(1, openRepositoryCount)
+    assertEquals(1, refreshCount)
+    assertEquals(1, validateCount)
+    assertEquals(1, showChangesCount)
+    assertEquals(1, showHistoryCount)
+  }
+
+  @Test
+  fun `palette includes open repository and dock commands`() {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+
+    val resultIds = viewModel.openCommandPalette().commandPalette.results.map { it.id }
+
+    assertTrue("command.open-repository" in resultIds)
+    assertTrue("command.show-changes" in resultIds)
+    assertTrue("command.show-history" in resultIds)
+  }
+
+  @Test
+  fun `palette results rebuild after repo refresh validation save and git status mutations`() {
+    val treeService = MutableSkillTreeService(skillTree("skill-one"))
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val validationGateway = FakeValidationGateway(
+      scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED),
+    )
+    val viewModel = newViewModel(
+      skillTreeService = treeService,
+      authoringGateway = authoringGateway,
+      validationGateway = validationGateway,
+    )
+
+    viewModel.selectRepoPath("/repo")
+    viewModel.openCommandPalette()
+    treeService.items = skillTree("skill-one", "skill-two")
+    val refreshed = viewModel.refresh()
+    assertTrue(refreshed.commandPalette.results.any { it.treeItemId == "skill-two" })
+
+    val runningValidation = viewModel.beginValidate()
+    val validateDuringRun = viewModel.state().commandPalette.results.first { it.id == "command.validate" }
+    assertEquals("Wait for validation to finish.", validateDuringRun.disabledReason)
+    val afterValidation = viewModel.finishValidate(viewModel.runValidate(runningValidation))
+    assertTrue(afterValidation.commandPalette.results.first { it.id == "command.validate" }.enabled)
+
+    viewModel.selectTreeItem("skill-one")
+    val dirty = viewModel.updateEditorDraft("changed\n")
+    assertTrue(dirty.commandPalette.results.first { it.id == "command.save" }.enabled)
+    val saveRequest = viewModel.beginSaveEditor()
+    val saveDuringRun = viewModel.state().commandPalette.results.first { it.id == "command.save" }
+    assertEquals("Wait for save to finish.", saveDuringRun.disabledReason)
+    viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(saveRequest)))
+
+    viewModel.beginGitRefresh()
+    val gitDuringRun = viewModel.state().commandPalette.results.first { it.id == "command.refresh-git" }
+    assertEquals("Wait for Git status refresh to finish.", gitDuringRun.disabledReason)
+  }
+
+  @Test
+  fun `palette results rebuild after scaffold refresh hook`() {
+    val treeService = MutableSkillTreeService(skillTree("skill-one"))
+    val viewModel = newViewModel(skillTreeService = treeService)
+    viewModel.selectRepoPath("/repo")
+    viewModel.openCommandPalette()
+
+    treeService.items = skillTree("skill-one", "scaffolded-skill")
+    val refreshed = viewModel.refreshAfterScaffold()
+
+    assertTrue(refreshed.commandPalette.results.any { it.treeItemId == "scaffolded-skill" })
+  }
+
+  @Test
+  fun `palette keyboard navigation selection can execute selected result`() {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+    viewModel.openCommandPalette()
+
+    val moved = viewModel.moveCommandPaletteSelection(1)
+    val selected = moved.commandPalette.results[moved.commandPalette.selectedResultIndex]
+    var validateCount = 0
+
+    assertEquals("command.validate", selected.id)
+    assertTrue(
+      executeCommandPaletteResult(
+        selected,
+        paletteActions(validate = { validateCount += 1 }),
+      ),
+    )
+    assertEquals(1, validateCount)
+  }
+
   private fun newViewModel(
     repoSessionService: RepoSessionService = FakeRepoSessionService(),
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultSkillTree()),
@@ -1193,6 +1447,28 @@ class SkillBillViewModelTest {
     recentRepoRepository = recentRepoRepository,
   )
 }
+
+private fun paletteActions(
+  selectTreeItem: (String) -> Unit = {},
+  openRepository: () -> Unit = {},
+  refresh: () -> Unit = {},
+  validate: () -> Unit = {},
+  render: () -> Unit = {},
+  showChanges: () -> Unit = {},
+  showHistory: () -> Unit = {},
+  save: () -> Unit = {},
+  refreshGitStatus: () -> Unit = {},
+): CommandPaletteActions = CommandPaletteActions(
+  selectTreeItem = selectTreeItem,
+  openRepository = openRepository,
+  refresh = refresh,
+  validate = validate,
+  render = render,
+  showChanges = showChanges,
+  showHistory = showHistory,
+  save = save,
+  refreshGitStatus = refreshGitStatus,
+)
 
 private fun defaultSkillTree(): List<SkillBillTreeItem> = listOf(
   SkillBillTreeItem(

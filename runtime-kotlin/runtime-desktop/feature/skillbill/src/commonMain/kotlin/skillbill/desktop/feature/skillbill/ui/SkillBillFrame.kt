@@ -35,12 +35,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -60,10 +66,13 @@ import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.CommandPaletteResult
+import skillbill.desktop.core.domain.model.CommandPaletteResultKind
+import skillbill.desktop.core.domain.model.CommandPaletteState
 import skillbill.desktop.core.domain.model.CommitEntry
-import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.GitAheadBehind
@@ -128,6 +137,12 @@ fun SkillBillFrame(
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
+  onCommandPaletteOpen: () -> Unit,
+  onCommandPaletteDismiss: () -> Unit,
+  onCommandPaletteQueryChanged: (String) -> Unit,
+  onCommandPaletteMoveSelection: (Int) -> Unit,
+  onCommandPaletteExecuteSelected: () -> Unit,
+  onCommandPaletteExecuteResult: (CommandPaletteResult) -> Unit,
   // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
@@ -143,105 +158,131 @@ fun SkillBillFrame(
       state.repoStatus.state == RepoLoadState.LOADED &&
       state.busyOperation == null &&
       !publishingBusy
-  Column(modifier = Modifier.fillMaxSize().background(WorkspaceBackground)) {
-    WorkspaceToolbar(
-      canNavigateBack = canNavigateBack,
-      onNavigateBack = onNavigateBack,
-      onRefresh = onRefresh,
-      onValidate = onValidate,
-      onRender = onRender,
-      validateEnabled = validateEnabled,
-      renderEnabled = renderEnabled,
-      publishingBusy = publishingBusy,
-      sourceControlLabel = state.sourceControl.branchLabel,
-      readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
-      busyOperation = state.busyOperation,
-    )
-    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-      NavigationPane(
-        repoPath = state.repoPathText,
-        repoStatus = state.repoStatus,
-        treeItems = state.treeItems,
-        selectedNodeId = state.selectedTreeItemId,
-        expandedNodeIds = state.expandedNodeIds,
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(WorkspaceBackground)
+      .onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.isCommandPaletteShortcut()) {
+          onCommandPaletteOpen()
+          true
+        } else {
+          false
+        }
+      },
+  ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+      WorkspaceToolbar(
+        canNavigateBack = canNavigateBack,
+        onNavigateBack = onNavigateBack,
+        onRefresh = onRefresh,
+        onValidate = onValidate,
+        onRender = onRender,
+        onCommandPaletteOpen = onCommandPaletteOpen,
+        validateEnabled = validateEnabled,
+        renderEnabled = renderEnabled,
+        publishingBusy = publishingBusy,
+        sourceControlLabel = state.sourceControl.branchLabel,
+        readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
         busyOperation = state.busyOperation,
-        publishingBusy = publishingBusy,
-        policyLabel = state.statusBar.policyLabel,
-        validationIssueCount = state.validation.issues.size,
-        onRepoPathChanged = onRepoPathChanged,
-        onRepoSelected = onRepoSelected,
-        onChooseRepoDirectory = onChooseRepoDirectory,
-        onNodeSelected = onTreeItemSelected,
-        onNodeExpandedToggled = onTreeItemExpandedToggled,
-        onMoveSelection = onMoveTreeSelection,
       )
-      VerticalDivider(color = WorkspaceLine)
-      CenterWorkspace(
-        editor = state.editor,
-        validation = state.validation,
-        render = state.render,
-        activeDockTab = state.activeDockTab,
-        onActiveDockTabChanged = onActiveDockTabChanged,
-        changes = state.changes,
-        changesBusy = state.changesBusy,
-        selectedChangedFile = state.selectedChangedFile,
-        selectedDiff = state.selectedDiff,
-        selectedDiffBusy = state.selectedDiffBusy,
-        history = state.history,
-        historyBusy = state.historyBusy,
-        historyErrorMessage = state.historyErrorMessage,
-        historyPathFilter = state.historyPathFilter,
-        publishingBusy = publishingBusy,
-        commitMessage = state.commitMessage,
-        canCommit = state.canCommit,
-        commitBusy = state.commitBusy,
-        commitErrorMessage = state.commitErrorMessage,
-        commitValidationFailed = state.commitValidationFailed,
-        commitValidationRunning = state.commitValidationRunning,
-        pushTarget = state.pushTarget,
-        aheadBehind = state.aheadBehind,
-        compareUrl = state.compareUrl,
-        pushBusy = state.pushBusy,
-        pushErrorMessage = state.pushErrorMessage,
-        pushStatusErrorMessage = state.pushStatusErrorMessage,
-        canonicalPushConfirmationRequired = state.canonicalPushConfirmationRequired,
-        hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
-        dirtyEditorPrompt = state.dirtyEditorPrompt,
-        editorInputEnabled = state.busyOperation == null &&
-          !state.changesBusy &&
-          !state.commitBusy &&
-          !state.commitValidationRunning &&
-          !state.pushBusy,
-        onEditorDraftChanged = onEditorDraftChanged,
-        onEditorSave = onEditorSave,
-        onEditorRevert = onEditorRevert,
-        onDirtyPromptDiscard = onDirtyPromptDiscard,
-        onDirtyPromptCancel = onDirtyPromptCancel,
-        onChangedFileSelected = onChangedFileSelected,
-        onStageChangedFile = onStageChangedFile,
-        onUnstageChangedFile = onUnstageChangedFile,
-        onRefreshGit = onRefreshGit,
-        onCommitMessageChanged = onCommitMessageChanged,
-        onCommit = onCommit,
-        onCommitAfterFailedValidation = onCommitAfterFailedValidation,
-        onPush = onPush,
-        onConfirmCanonicalPush = onConfirmCanonicalPush,
-        onCopyChangedFilePath = onCopyChangedFilePath,
-        onCopyCommitHash = onCopyCommitHash,
-        onClearHistoryPathFilter = onClearHistoryPathFilter,
-        recentlyCopiedKey = recentlyCopiedKey,
-        modifier = Modifier.weight(1f).fillMaxHeight(),
-      )
-      InspectorPane(
-        editor = state.editor,
-        repoStatus = state.repoStatus,
-        validation = state.validation,
-        render = state.render,
-        onValidationIssueSelected = onValidationIssueSelected,
-        onCopyIssueSource = onCopyIssueSource,
+      Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        NavigationPane(
+          repoPath = state.repoPathText,
+          repoStatus = state.repoStatus,
+          treeItems = state.treeItems,
+          selectedNodeId = state.selectedTreeItemId,
+          expandedNodeIds = state.expandedNodeIds,
+          busyOperation = state.busyOperation,
+          publishingBusy = publishingBusy,
+          policyLabel = state.statusBar.policyLabel,
+          validationIssueCount = state.validation.issues.size,
+          onRepoPathChanged = onRepoPathChanged,
+          onRepoSelected = onRepoSelected,
+          onChooseRepoDirectory = onChooseRepoDirectory,
+          onNodeSelected = onTreeItemSelected,
+          onNodeExpandedToggled = onTreeItemExpandedToggled,
+          onMoveSelection = onMoveTreeSelection,
+        )
+        VerticalDivider(color = WorkspaceLine)
+        CenterWorkspace(
+          editor = state.editor,
+          validation = state.validation,
+          render = state.render,
+          activeDockTab = state.activeDockTab,
+          onActiveDockTabChanged = onActiveDockTabChanged,
+          changes = state.changes,
+          changesBusy = state.changesBusy,
+          selectedChangedFile = state.selectedChangedFile,
+          selectedDiff = state.selectedDiff,
+          selectedDiffBusy = state.selectedDiffBusy,
+          history = state.history,
+          historyBusy = state.historyBusy,
+          historyErrorMessage = state.historyErrorMessage,
+          historyPathFilter = state.historyPathFilter,
+          publishingBusy = publishingBusy,
+          commitMessage = state.commitMessage,
+          canCommit = state.canCommit,
+          commitBusy = state.commitBusy,
+          commitErrorMessage = state.commitErrorMessage,
+          commitValidationFailed = state.commitValidationFailed,
+          commitValidationRunning = state.commitValidationRunning,
+          pushTarget = state.pushTarget,
+          aheadBehind = state.aheadBehind,
+          compareUrl = state.compareUrl,
+          pushBusy = state.pushBusy,
+          pushErrorMessage = state.pushErrorMessage,
+          pushStatusErrorMessage = state.pushStatusErrorMessage,
+          canonicalPushConfirmationRequired = state.canonicalPushConfirmationRequired,
+          hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
+          dirtyEditorPrompt = state.dirtyEditorPrompt,
+          editorInputEnabled = state.busyOperation == null &&
+            !state.changesBusy &&
+            !state.commitBusy &&
+            !state.commitValidationRunning &&
+            !state.pushBusy,
+          onEditorDraftChanged = onEditorDraftChanged,
+          onEditorSave = onEditorSave,
+          onEditorRevert = onEditorRevert,
+          onDirtyPromptDiscard = onDirtyPromptDiscard,
+          onDirtyPromptCancel = onDirtyPromptCancel,
+          onChangedFileSelected = onChangedFileSelected,
+          onStageChangedFile = onStageChangedFile,
+          onUnstageChangedFile = onUnstageChangedFile,
+          onRefreshGit = onRefreshGit,
+          onCommitMessageChanged = onCommitMessageChanged,
+          onCommit = onCommit,
+          onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+          onPush = onPush,
+          onConfirmCanonicalPush = onConfirmCanonicalPush,
+          onCopyChangedFilePath = onCopyChangedFilePath,
+          onCopyCommitHash = onCopyCommitHash,
+          onClearHistoryPathFilter = onClearHistoryPathFilter,
+          recentlyCopiedKey = recentlyCopiedKey,
+          modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+        InspectorPane(
+          editor = state.editor,
+          repoStatus = state.repoStatus,
+          validation = state.validation,
+          render = state.render,
+          onValidationIssueSelected = onValidationIssueSelected,
+          onCopyIssueSource = onCopyIssueSource,
+        )
+      }
+      WorkspaceStatusBar(state = state)
+    }
+    if (state.commandPalette.open) {
+      CommandPaletteOverlay(
+        palette = state.commandPalette,
+        onQueryChanged = onCommandPaletteQueryChanged,
+        onMoveSelection = onCommandPaletteMoveSelection,
+        onExecuteSelected = onCommandPaletteExecuteSelected,
+        onExecuteResult = onCommandPaletteExecuteResult,
+        onDismiss = onCommandPaletteDismiss,
+        modifier = Modifier.align(Alignment.TopCenter),
       )
     }
-    WorkspaceStatusBar(state = state)
   }
 }
 
@@ -252,6 +293,7 @@ private fun WorkspaceToolbar(
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
   onRender: () -> Unit,
+  onCommandPaletteOpen: () -> Unit,
   validateEnabled: Boolean,
   renderEnabled: Boolean,
   publishingBusy: Boolean,
@@ -286,7 +328,7 @@ private fun WorkspaceToolbar(
       BusyIndicator(busyOperation)
     }
     Spacer(modifier = Modifier.weight(1f))
-    SearchBox()
+    CommandSearchButton(onClick = onCommandPaletteOpen)
   }
 }
 
@@ -363,7 +405,7 @@ private fun ToolbarDivider() {
 }
 
 @Composable
-private fun SearchBox() {
+private fun CommandSearchButton(onClick: () -> Unit) {
   Row(
     modifier =
     Modifier
@@ -371,6 +413,7 @@ private fun SearchBox() {
       .height(28.dp)
       .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp))
       .background(WorkspaceRaised, RoundedCornerShape(6.dp))
+      .clickable(role = Role.Button, onClick = onClick)
       .padding(horizontal = 9.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -384,8 +427,215 @@ private fun SearchBox() {
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    Text(text = "⌘P", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+    Text(text = "Ctrl K", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
   }
+}
+
+private fun androidx.compose.ui.input.key.KeyEvent.isCommandPaletteShortcut(): Boolean =
+  (isCtrlPressed || isMetaPressed) && (key == Key.K || key == Key.P)
+
+@Composable
+private fun CommandPaletteOverlay(
+  palette: CommandPaletteState,
+  onQueryChanged: (String) -> Unit,
+  onMoveSelection: (Int) -> Unit,
+  onExecuteSelected: () -> Unit,
+  onExecuteResult: (CommandPaletteResult) -> Unit,
+  onDismiss: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val focusRequester = remember { FocusRequester() }
+  LaunchedEffect(palette.open) {
+    if (palette.open) {
+      focusRequester.requestFocus()
+    }
+  }
+  Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black.copy(alpha = 0.42f))
+        .clickable(role = Role.Button, onClick = onDismiss),
+    )
+    Column(
+      modifier = modifier
+        .padding(top = 54.dp)
+        .widthIn(min = 520.dp, max = 720.dp)
+        .heightIn(max = 480.dp)
+        .clip(RoundedCornerShape(8.dp))
+        .border(1.dp, WorkspaceLine, RoundedCornerShape(8.dp))
+        .background(WorkspacePanel)
+        .onPreviewKeyEvent { event ->
+          if (event.type != KeyEventType.KeyDown) {
+            false
+          } else {
+            when (event.key) {
+              Key.Escape -> {
+                onDismiss()
+                true
+              }
+              Key.DirectionDown -> {
+                onMoveSelection(1)
+                true
+              }
+              Key.DirectionUp -> {
+                onMoveSelection(-1)
+                true
+              }
+              Key.Enter, Key.NumPadEnter -> {
+                onExecuteSelected()
+                true
+              }
+              else -> false
+            }
+          }
+        },
+    ) {
+      CommandPaletteInput(
+        query = palette.query,
+        onQueryChanged = onQueryChanged,
+        focusRequester = focusRequester,
+      )
+      HorizontalDivider(color = WorkspaceLine)
+      CommandPaletteResults(
+        palette = palette,
+        onExecuteResult = onExecuteResult,
+        modifier = Modifier.fillMaxWidth().heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit, focusRequester: FocusRequester) {
+  Row(
+    modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 14.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    MiniIcon(text = "cmd", tint = WorkspaceYellow)
+    Box(modifier = Modifier.weight(1f)) {
+      if (query.isBlank()) {
+        Text(
+          text = "Search commands and source items",
+          color = WorkspaceSteel,
+          fontSize = 14.sp,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      BasicTextField(
+        value = query,
+        onValueChange = onQueryChanged,
+        singleLine = true,
+        textStyle = androidx.compose.ui.text.TextStyle(
+          color = WorkspaceText,
+          fontSize = 14.sp,
+          fontFamily = FontFamily.Monospace,
+        ),
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommandPaletteResults(
+  palette: CommandPaletteState,
+  onExecuteResult: (CommandPaletteResult) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(modifier = modifier.padding(vertical = 6.dp)) {
+    if (palette.results.isEmpty()) {
+      Text(
+        text = "No matching commands",
+        color = WorkspaceSteel,
+        fontSize = 12.sp,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+      )
+    }
+    palette.results.forEachIndexed { index, result ->
+      CommandPaletteResultRow(
+        result = result,
+        selected = index == palette.selectedResultIndex,
+        onExecute = { onExecuteResult(result) },
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Boolean, onExecute: () -> Unit) {
+  val enabled = result.enabled
+  val background =
+    when {
+      selected -> WorkspaceYellow.copy(alpha = 0.14f)
+      else -> Color.Transparent
+    }
+  val titleColor =
+    when {
+      !enabled -> WorkspaceSteel
+      selected -> WorkspaceText
+      else -> WorkspaceText.copy(alpha = 0.92f)
+    }
+  val subtitleColor = if (enabled) WorkspaceMuted else WorkspaceSteel
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .heightIn(min = 48.dp)
+      .padding(horizontal = 8.dp, vertical = 2.dp)
+      .clip(RoundedCornerShape(5.dp))
+      .background(background)
+      .semantics {
+        this.selected = selected
+        this.role = Role.Button
+        if (!enabled) {
+          disabled()
+        }
+      }
+      .clickable(enabled = enabled, role = Role.Button, onClick = onExecute)
+      .padding(horizontal = 10.dp, vertical = 7.dp),
+    verticalAlignment = Alignment.Top,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    MiniIcon(text = result.marker, tint = if (selected && enabled) WorkspaceYellow else WorkspaceSteel)
+    Column(modifier = Modifier.weight(1f)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+          text = result.title,
+          color = titleColor,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Medium,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.weight(1f),
+        )
+        CommandPaletteKindLabel(result.kind)
+      }
+      Text(
+        text = result.disabledReason ?: result.subtitle,
+        color = if (result.disabledReason == null) subtitleColor else WorkspaceAmber,
+        fontSize = 11.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+@Composable
+private fun CommandPaletteKindLabel(kind: CommandPaletteResultKind) {
+  val label = when (kind) {
+    CommandPaletteResultKind.COMMAND -> "command"
+    CommandPaletteResultKind.TREE_ITEM -> "source"
+  }
+  Text(
+    text = label,
+    color = WorkspaceSteel,
+    fontSize = 10.sp,
+    fontFamily = FontFamily.Monospace,
+    maxLines = 1,
+  )
 }
 
 @Composable
@@ -992,7 +1242,13 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Text(
-      text = if (editor.dirty) "Modified" else if (editor.editable) "Saved" else "Read-only",
+      text = if (editor.dirty) {
+        "Modified"
+      } else if (editor.editable) {
+        "Saved"
+      } else {
+        "Read-only"
+      },
       color = if (editor.dirty) WorkspaceYellow else WorkspaceMuted,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
@@ -1094,11 +1350,7 @@ private fun SaveErrorBanner(message: String) {
 }
 
 @Composable
-private fun DirtyEditorPromptBanner(
-  prompt: DirtyEditorPrompt,
-  onDiscard: () -> Unit,
-  onCancel: () -> Unit,
-) {
+private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> Unit, onCancel: () -> Unit) {
   val message = when (prompt.reason) {
     DirtyEditorPromptReason.SELECTION_CHANGE -> "Discard unsaved edits before changing selection?"
     DirtyEditorPromptReason.REFRESH -> "Discard unsaved edits before refreshing?"
@@ -1106,7 +1358,9 @@ private fun DirtyEditorPromptBanner(
     DirtyEditorPromptReason.CHOOSE_DIRECTORY -> "Discard unsaved edits before choosing another repository?"
   }
   Row(
-    modifier = Modifier.fillMaxWidth().background(WorkspaceAmber.copy(alpha = 0.16f)).padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier.fillMaxWidth().background(
+      WorkspaceAmber.copy(alpha = 0.16f),
+    ).padding(horizontal = 14.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -1224,7 +1478,11 @@ private fun InspectorPane(
         KeyValueRow("authored path", editor.authoredPath ?: "-")
         KeyValueRow("status", editor.status ?: "-", tone = toneForStatus(editor.status))
         KeyValueRow("mode", editor.readOnlyLabel ?: if (editor.editable) "editable" else "read-only")
-        KeyValueRow("draft", if (editor.dirty) "dirty" else "clean", tone = if (editor.dirty) Tone.Warning else Tone.Success)
+        KeyValueRow(
+          "draft",
+          if (editor.dirty) "dirty" else "clean",
+          tone = if (editor.dirty) Tone.Warning else Tone.Success,
+        )
         KeyValueRow(
           "editable",
           if (editor.editable) "yes" else "no",

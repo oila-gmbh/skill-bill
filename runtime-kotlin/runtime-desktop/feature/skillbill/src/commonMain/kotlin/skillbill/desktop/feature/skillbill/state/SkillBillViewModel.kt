@@ -8,9 +8,9 @@ import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
-import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
@@ -96,6 +96,9 @@ class SkillBillViewModel(
   private var editorSaveErrorMessage: String? = null
   private var dirtyEditorPrompt: DirtyEditorPrompt? = null
   private var activeSaveToken: Long = 0L
+  private var commandPaletteOpen: Boolean = false
+  private var commandPaletteQuery: String = ""
+  private var commandPaletteSelectedResultIndex: Int = 0
   private var currentState = createState()
 
   init {
@@ -195,6 +198,8 @@ class SkillBillViewModel(
     beginRefresh()
     return finishRefresh()
   }
+
+  fun refreshAfterScaffold(): SkillBillState = refresh()
 
   fun beginRefresh(): SkillBillState {
     if (isEditorDirty()) {
@@ -421,7 +426,7 @@ class SkillBillViewModel(
     val resolvedSelectedFile = selectedChangedFilePath?.let { path ->
       capturedSnapshot.files.firstOrNull { file -> file.path == path }
     }
-    return SkillBillState(
+    val state = SkillBillState(
       selectedRepoPath = session?.repoPath,
       repoPathText = repoPathText,
       repoStatus = session?.loadStatus ?: RepoLoadStatus.empty,
@@ -460,6 +465,46 @@ class SkillBillViewModel(
       canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
       dirtyEditorPrompt = dirtyEditorPrompt,
     )
+    val paletteState = buildCommandPaletteState(
+      state = state,
+      open = commandPaletteOpen,
+      query = commandPaletteQuery,
+      selectedResultIndex = commandPaletteSelectedResultIndex,
+    )
+    commandPaletteSelectedResultIndex = paletteState.selectedResultIndex
+    return state.copy(commandPalette = paletteState)
+  }
+
+  fun openCommandPalette(): SkillBillState {
+    commandPaletteOpen = true
+    commandPaletteSelectedResultIndex = 0
+    currentState = createState()
+    return currentState
+  }
+
+  fun closeCommandPalette(): SkillBillState {
+    commandPaletteOpen = false
+    currentState = createState()
+    return currentState
+  }
+
+  fun updateCommandPaletteQuery(query: String): SkillBillState {
+    commandPaletteQuery = query
+    commandPaletteSelectedResultIndex = 0
+    currentState = createState()
+    return currentState
+  }
+
+  fun moveCommandPaletteSelection(delta: Int): SkillBillState {
+    val lastIndex = currentState.commandPalette.results.lastIndex
+    commandPaletteSelectedResultIndex =
+      if (lastIndex < 0) {
+        0
+      } else {
+        (commandPaletteSelectedResultIndex + delta).coerceIn(0, lastIndex)
+      }
+    currentState = createState()
+    return currentState
   }
 
   fun updateEditorDraft(text: String): SkillBillState {

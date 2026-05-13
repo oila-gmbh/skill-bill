@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
+import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
@@ -179,6 +181,120 @@ fun SkillBillRoute(
     !state.commitValidationRunning &&
     !state.pushBusy
 
+  fun runTreeItemSelection(itemId: String) {
+    if (canStartRepoScopedAction()) {
+      val previousSelection = state.selectedTreeItemId
+      state = viewModel.selectTreeItem(itemId)
+      if (state.selectedTreeItemId != previousSelection) {
+        // AC7: tree selection narrows history to commits that touched the authored path of the
+        // selected tree item. Falls back to no filter when the selection has no authored path.
+        val authoredPath = state.editor.authoredPath
+        viewModel.setHistoryPathFilter(authoredPath)
+        loadHistory()
+        state = viewModel.state()
+        state.selectedTreeItemId?.let(onSourceRouteSelected)
+      }
+    }
+  }
+
+  fun runRefresh() {
+    if (canStartRepoScopedAction()) {
+      state = viewModel.beginRefresh()
+      if (state.dirtyEditorPrompt == null) {
+        val request = viewModel.repoLoadRequest(
+          repoPath = state.selectedRepoPath ?: state.repoPathText,
+          preserveSelection = true,
+        )
+        coroutineScope.launch {
+          val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+          state = viewModel.finishRepoLoad(result)
+          // AC10: manual refresh refreshes git status + history.
+          runGitRefresh()
+          loadHistory()
+        }
+      }
+    }
+  }
+
+  fun runValidate() {
+    if (canStartRepoScopedAction()) {
+      // beginValidate returns a request that captures the active token, the current session, and the
+      // pre-RUNNING validation summary, so the dispatcher work below does not read mutable VM fields
+      // off-thread. (F-102)
+      val request = viewModel.beginValidate()
+      state = viewModel.state()
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
+        state = viewModel.finishValidate(result)
+        // AC10: validation may touch on-disk state via scripts; refresh git status afterwards.
+        runGitRefresh()
+      }
+    }
+  }
+
+  fun runRender() {
+    if (canStartRepoScopedAction()) {
+      // F-102 mirror: beginRender captures token + session + treeItemId + previousRenderSummary on
+      // the caller dispatcher so the dispatcher work below does not read mutable VM fields off-thread.
+      val request = viewModel.beginRender()
+      state = viewModel.state()
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
+        state = viewModel.finishRender(result)
+        // AC10: render generates SKILL.md and pointer artifacts; refresh git status afterwards.
+        runGitRefresh()
+      }
+    }
+  }
+
+  fun runOpenRepository() {
+    if (canStartRepoScopedAction()) {
+      state = viewModel.beginChooseRepoDirectory()
+      if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.CHOOSE_DIRECTORY) {
+        runChooseRepoDirectory()
+      }
+    }
+  }
+
+  fun showDockTab(tab: DockTab) {
+    if (canStartRepoScopedAction()) {
+      state = viewModel.setActiveDockTab(tab)
+    }
+  }
+
+  fun runPaletteResult(result: CommandPaletteResult) {
+    val executed = executeCommandPaletteResult(
+      result = result,
+      actions = CommandPaletteActions(
+        selectTreeItem = ::runTreeItemSelection,
+        openRepository = ::runOpenRepository,
+        refresh = ::runRefresh,
+        validate = ::runValidate,
+        render = ::runRender,
+        showChanges = { showDockTab(DockTab.Changes) },
+        showHistory = { showDockTab(DockTab.History) },
+        save = {
+          if (canStartRepoScopedAction()) {
+            runEditorSave()
+          }
+        },
+        refreshGitStatus = {
+          if (canStartRepoScopedAction()) {
+            runGitRefresh()
+          }
+        },
+      ),
+    )
+    if (executed) {
+      state = viewModel.closeCommandPalette()
+    }
+  }
+
+  fun runSelectedPaletteResult() {
+    val result = state.commandPalette.results.getOrNull(state.commandPalette.selectedResultIndex) ?: return
+    runPaletteResult(result)
+  }
+
   SkillBillFrame(
     state = state,
     canNavigateBack = canNavigateBack,
@@ -208,53 +324,9 @@ fun SkillBillRoute(
         }
       }
     },
-    onRefresh = {
-      if (canStartRepoScopedAction()) {
-        state = viewModel.beginRefresh()
-        if (state.dirtyEditorPrompt == null) {
-          val request = viewModel.repoLoadRequest(
-            repoPath = state.selectedRepoPath ?: state.repoPathText,
-            preserveSelection = true,
-          )
-          coroutineScope.launch {
-            val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
-            state = viewModel.finishRepoLoad(result)
-            // AC10: manual refresh refreshes git status + history.
-            runGitRefresh()
-            loadHistory()
-          }
-        }
-      }
-    },
-    onValidate = {
-      if (canStartRepoScopedAction()) {
-        // beginValidate returns a request that captures the active token, the current session, and the
-        // pre-RUNNING validation summary, so the dispatcher work below does not read mutable VM fields
-        // off-thread. (F-102)
-        val request = viewModel.beginValidate()
-        state = viewModel.state()
-        coroutineScope.launch {
-          val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
-          state = viewModel.finishValidate(result)
-          // AC10: validation may touch on-disk state via scripts; refresh git status afterwards.
-          runGitRefresh()
-        }
-      }
-    },
-    onRender = {
-      if (canStartRepoScopedAction()) {
-        // F-102 mirror: beginRender captures token + session + treeItemId + previousRenderSummary on
-        // the caller dispatcher so the dispatcher work below does not read mutable VM fields off-thread.
-        val request = viewModel.beginRender()
-        state = viewModel.state()
-        coroutineScope.launch {
-          val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
-          state = viewModel.finishRender(result)
-          // AC10: render generates SKILL.md and pointer artifacts; refresh git status afterwards.
-          runGitRefresh()
-        }
-      }
-    },
+    onRefresh = ::runRefresh,
+    onValidate = ::runValidate,
+    onRender = ::runRender,
     onEditorDraftChanged = { draft ->
       state = viewModel.updateEditorDraft(draft)
     },
@@ -279,21 +351,7 @@ fun SkillBillRoute(
         state = viewModel.setActiveDockTab(tab)
       }
     },
-    onTreeItemSelected = { itemId ->
-      if (canStartRepoScopedAction()) {
-        val previousSelection = state.selectedTreeItemId
-        state = viewModel.selectTreeItem(itemId)
-        if (state.selectedTreeItemId != previousSelection) {
-          // AC7: tree selection narrows history to commits that touched the authored path of the
-          // selected tree item. Falls back to no filter when the selection has no authored path.
-          val authoredPath = state.editor.authoredPath
-          viewModel.setHistoryPathFilter(authoredPath)
-          loadHistory()
-          state = viewModel.state()
-          state.selectedTreeItemId?.let(onSourceRouteSelected)
-        }
-      }
-    },
+    onTreeItemSelected = ::runTreeItemSelection,
     onTreeItemExpandedToggled = { itemId ->
       if (canStartRepoScopedAction()) {
         state = viewModel.toggleExpanded(itemId)
@@ -381,6 +439,20 @@ fun SkillBillRoute(
       loadHistory()
       state = viewModel.state()
     },
+    onCommandPaletteOpen = {
+      state = viewModel.openCommandPalette()
+    },
+    onCommandPaletteDismiss = {
+      state = viewModel.closeCommandPalette()
+    },
+    onCommandPaletteQueryChanged = { query ->
+      state = viewModel.updateCommandPaletteQuery(query)
+    },
+    onCommandPaletteMoveSelection = { delta ->
+      state = viewModel.moveCommandPaletteSelection(delta)
+    },
+    onCommandPaletteExecuteSelected = ::runSelectedPaletteResult,
+    onCommandPaletteExecuteResult = ::runPaletteResult,
     recentlyCopiedKey = recentlyCopiedKey,
   )
 }
