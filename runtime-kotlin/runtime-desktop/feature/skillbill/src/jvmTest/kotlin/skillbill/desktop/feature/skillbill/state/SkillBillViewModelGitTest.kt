@@ -849,6 +849,8 @@ class SkillBillViewModelGitTest {
     validationGateway: ValidationGateway = FakeValidationGateway(),
     renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
+    scaffoldGateway: skillbill.desktop.core.domain.service.RuntimeScaffoldGateway =
+      skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -857,6 +859,7 @@ class SkillBillViewModelGitTest {
     validationGateway = validationGateway,
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
+    scaffoldGateway = scaffoldGateway,
   )
 
   private fun commitEntry(

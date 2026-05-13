@@ -20,10 +20,19 @@ import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
+import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
+import skillbill.desktop.core.domain.model.ScaffoldKind
+import skillbill.desktop.core.domain.model.ScaffoldOutcome
+import skillbill.desktop.core.domain.model.ScaffoldPayload
+import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
+import skillbill.desktop.core.domain.model.ScaffoldRunResult
+import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
+import skillbill.desktop.core.domain.model.ScaffoldWizardState
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSummary
@@ -32,6 +41,7 @@ import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
+import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
@@ -46,6 +56,7 @@ class SkillBillViewModel(
   private val validationGateway: ValidationGateway,
   private val renderGateway: RenderGateway,
   private val recentRepoRepository: RecentRepoRepository,
+  private val scaffoldGateway: RuntimeScaffoldGateway,
 ) {
   private var repoPathText: String = recentRepoRepository.recentRepoPath().orEmpty()
   private var currentSession: RepoSession? = null
@@ -99,6 +110,8 @@ class SkillBillViewModel(
   private var commandPaletteOpen: Boolean = false
   private var commandPaletteQuery: String = ""
   private var commandPaletteSelectedResultIndex: Int = 0
+  private var scaffoldWizard: ScaffoldWizardState? = null
+  private var activeScaffoldToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -199,7 +212,32 @@ class SkillBillViewModel(
     return finishRefresh()
   }
 
-  fun refreshAfterScaffold(): SkillBillState = refresh()
+  /**
+   * F-403/F-406: triplet begin/run/finish entry points so scaffold-driven refresh can hop off the
+   * UI dispatcher without blocking, and the dirty-editor gate (which is meaningful for
+   * user-initiated refreshes) does NOT short-circuit a refresh that the scaffold runtime just
+   * triggered — the scaffold already mutated the repo, so the gate's "do not lose unsaved edits"
+   * invariant does not apply here.
+   */
+  fun beginRefreshAfterScaffold(): RepoLoadRequest {
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.REFRESH
+    currentState = createState()
+    val path = currentSession?.repoPath ?: repoPathText
+    return repoLoadRequest(repoPath = path, preserveSelection = true)
+  }
+
+  fun finishRefreshAfterScaffold(result: RepoLoadResult): SkillBillState = finishRepoLoad(result)
+
+  /**
+   * Synchronous helper kept for tests and code paths that already hold the result on a worker
+   * dispatcher. Bypasses the dirty-editor gate (see [beginRefreshAfterScaffold]). The route MUST
+   * use the begin/run/finish triplet to avoid blocking the UI dispatcher.
+   */
+  fun refreshAfterScaffold(): SkillBillState {
+    val request = beginRefreshAfterScaffold()
+    return finishRefreshAfterScaffold(loadRepo(request))
+  }
 
   fun beginRefresh(): SkillBillState {
     if (isEditorDirty()) {
@@ -403,6 +441,8 @@ class SkillBillViewModel(
     pushErrorMessage = null
     canonicalPushConfirmationRequired = false
     canonicalPushConfirmationTarget = null
+    scaffoldWizard = null
+    activeScaffoldToken += 1
     loadEditorForSelection()
   }
 
@@ -472,8 +512,14 @@ class SkillBillViewModel(
       selectedResultIndex = commandPaletteSelectedResultIndex,
     )
     commandPaletteSelectedResultIndex = paletteState.selectedResultIndex
-    return state.copy(commandPalette = paletteState)
+    val wizardState = scaffoldWizard?.copy(
+      dirtyRepoWarning = computeDirtyRepoWarning(capturedSnapshot),
+    )
+    return state.copy(commandPalette = paletteState, scaffoldWizard = wizardState)
   }
+
+  private fun computeDirtyRepoWarning(snapshot: ChangesSnapshot): Boolean =
+    snapshot.files.any { file -> file.group != ChangedFileGroup.GENERATED }
 
   fun openCommandPalette(): SkillBillState {
     commandPaletteOpen = true
@@ -1287,6 +1333,428 @@ class SkillBillViewModel(
   }
 
   private fun containsTreeItem(itemId: String): Boolean = treeItems.flatten().any { item -> item.id == itemId }
+
+  // --- Scaffold wizard (SKILL-44) ---
+
+  /**
+   * Open a wizard for [kind] with a pre-fetched [snapshot]. The catalog snapshot is fetched on a
+   * background dispatcher by the route (F-002/F-404) — it walks the `platform-packs/` filesystem,
+   * so the view model never invokes it from the main dispatcher. Reuses the existing busy-gate
+   * so a wizard cannot open while another repo-scoped operation is mid-flight.
+   */
+  fun openScaffoldWizard(kind: ScaffoldKind, snapshot: ScaffoldCatalogSnapshot): SkillBillState {
+    if (!canStartScaffoldAction()) {
+      return currentState
+    }
+    scaffoldWizard = ScaffoldWizardState(
+      kind = kind,
+      formFields = ScaffoldWizardFormFields(),
+      optionCatalog = snapshot,
+      dryRunPreview = null,
+      executionResult = null,
+      dirtyRepoWarning = computeDirtyRepoWarning(changesSnapshot),
+      overrideDirtyRepo = false,
+      busy = false,
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  /** Whether [openScaffoldWizard] would actually open a wizard. The route checks this before hopping. */
+  fun canOpenScaffoldWizard(): Boolean = canStartScaffoldAction()
+
+  /**
+   * F-407-arch: build a request to fetch the wizard catalog snapshot. Captures the current
+   * `RepoSession?` on the caller dispatcher (Main) so the suspend `run` step never reads VM
+   * private state from a background dispatcher. Mirrors the begin/run/finish discipline used by
+   * every other suspend operation in this VM (gitRefresh/validate/render/push/commit/repoLoad).
+   *
+   * Returns null when the wizard cannot be opened (busy gate, equivalent to `canOpenScaffoldWizard`)
+   * so the route does not pay for a useless filesystem walk.
+   */
+  fun beginOpenScaffoldWizard(kind: ScaffoldKind): ScaffoldCatalogRequest? {
+    if (!canStartScaffoldAction()) {
+      return null
+    }
+    return ScaffoldCatalogRequest(kind = kind, session = currentSession)
+  }
+
+  /**
+   * F-407-arch: fetch the catalog snapshot on `Dispatchers.Default`. Reads only the immutable
+   * `request` captured by `beginOpenScaffoldWizard`; does not touch VM mutable state.
+   */
+  suspend fun runOpenScaffoldWizard(request: ScaffoldCatalogRequest): ScaffoldCatalogResponse {
+    val snapshot = scaffoldGateway.catalogSnapshot(request.session)
+    return ScaffoldCatalogResponse(kind = request.kind, snapshot = snapshot)
+  }
+
+  /**
+   * F-407-arch: apply the fetched snapshot on Main. Re-checks `canStartScaffoldAction` so a
+   * concurrent open-repo / repo-load that started between begin and finish cannot land a stale
+   * wizard.
+   */
+  fun finishOpenScaffoldWizard(response: ScaffoldCatalogResponse): SkillBillState =
+    openScaffoldWizard(response.kind, response.snapshot)
+
+  /**
+   * Internal-only catalog fetch used by tests and by the dirty-prompt resume path. Production
+   * callers must use the begin/run/finish triplet above so VM private state is read on the
+   * caller dispatcher (F-407-arch).
+   */
+  internal suspend fun fetchScaffoldCatalogSnapshot(): ScaffoldCatalogSnapshot =
+    scaffoldGateway.catalogSnapshot(currentSession)
+
+  /**
+   * Switch the active wizard to a different [kind]. Resets the form and previews; the catalog
+   * snapshot is preserved so the option lists remain stable across kind changes.
+   *
+   * F-402: if the current wizard is busy with an in-flight Plan/Run, the change is rejected
+   * (mirrors `updateScaffoldForm`'s busy guard). The active scaffold token is bumped so any
+   * in-flight response from the previous kind is discarded; `busy` is reset to false so the new
+   * kind is free to Plan.
+   *
+   * F-408-plat / F-102 / AC5: a Failed result with `rollbackComplete = false` engages a
+   * partial-mutation lock. The user MUST acknowledge that lock via `acknowledgeScaffoldFailure`
+   * before scaffolding can resume. Allowing a kind switch to silently clear `executionResult`
+   * would unlock Plan without the explicit acknowledgement gesture. Reject the kind switch in
+   * that case (parallels the existing `current.busy` rejection branch).
+   */
+  fun selectScaffoldWizardKind(kind: ScaffoldKind): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (current.busy) {
+      return currentState
+    }
+    if (current.kind == kind) {
+      return currentState
+    }
+    val partialMutationLock = (current.executionResult as? ScaffoldRunResult.Failed)
+      ?.let { !it.rollbackComplete } == true
+    if (partialMutationLock) {
+      // F-408-plat: partial-mutation lock can only be released via acknowledgeScaffoldFailure.
+      return currentState
+    }
+    activeScaffoldToken += 1
+    if (busyOperation == SkillBillBusyOperation.SCAFFOLD) {
+      busyOperation = null
+    }
+    scaffoldWizard = current.copy(
+      kind = kind,
+      formFields = ScaffoldWizardFormFields(),
+      dryRunPreview = null,
+      executionResult = null,
+      overrideDirtyRepo = false,
+      busy = false,
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  /**
+   * Apply a freeform form-field transform. Each call resets the dry-run preview so the runtime
+   * cannot apply a stale plan against new inputs (AC2).
+   */
+  fun updateScaffoldForm(transform: (ScaffoldWizardFormFields) -> ScaffoldWizardFormFields): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (current.busy) {
+      return currentState
+    }
+    val updatedFields = transform(current.formFields)
+    if (updatedFields == current.formFields) {
+      return currentState
+    }
+    scaffoldWizard = current.copy(
+      formFields = updatedFields,
+      dryRunPreview = null,
+      // Editing the form after a Failed result keeps the banner so the user can read it; clear it
+      // only when the success banner is displayed (we never accept further edits in that mode).
+      executionResult = current.executionResult.takeIf { it is ScaffoldRunResult.Failed },
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  fun setScaffoldDirtyOverride(override: Boolean): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (current.overrideDirtyRepo == override) {
+      return currentState
+    }
+    scaffoldWizard = current.copy(overrideDirtyRepo = override)
+    currentState = createState()
+    return currentState
+  }
+
+  /**
+   * F-401/F-UI-101: when the wizard is dismissed mid-flight, we must clear the SCAFFOLD
+   * `busyOperation` slot too — otherwise the bookkeeping that gates every repo-scoped action
+   * stays locked forever. The active-scaffold token bump ensures any in-flight response is
+   * discarded as soon as it lands.
+   */
+  fun dismissScaffoldWizard(): SkillBillState {
+    activeScaffoldToken += 1
+    if (busyOperation == SkillBillBusyOperation.SCAFFOLD) {
+      busyOperation = null
+      activeOperationToken += 1
+    }
+    scaffoldWizard = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun acknowledgeScaffoldFailure(): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    scaffoldWizard = current.copy(executionResult = null)
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginScaffoldDryRun(): ScaffoldRunRequest? {
+    val current = scaffoldWizard ?: return null
+    if (current.busy || !canStartScaffoldAction()) {
+      return null
+    }
+    if (!isScaffoldPlanAllowed(current)) {
+      return null
+    }
+    val payload = buildScaffoldPayload(current) ?: return null
+    activeScaffoldToken += 1
+    scaffoldWizard = current.copy(busy = true, dryRunPreview = null, executionResult = null)
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.SCAFFOLD
+    currentState = createState()
+    return ScaffoldRunRequest(
+      token = activeScaffoldToken,
+      payload = payload,
+      mode = ScaffoldRunMode.DRY_RUN,
+    )
+  }
+
+  suspend fun runScaffoldDryRun(request: ScaffoldRunRequest): ScaffoldRunResult =
+    scaffoldGateway.dryRun(request.payload)
+
+  fun finishScaffoldDryRun(request: ScaffoldRunRequest, result: ScaffoldRunResult): SkillBillState {
+    if (request.token != activeScaffoldToken) {
+      // F-401 mirror: a stale dry-run response lands after a dismiss/kind-switch. The previous owner
+      // bumped the token, so we are no longer the wizard's source of truth. If we still own the
+      // SCAFFOLD busy slot (a kind-switch-without-dismiss case), release it so the next operation
+      // can proceed.
+      if (busyOperation == SkillBillBusyOperation.SCAFFOLD) {
+        busyOperation = null
+      }
+      currentState = createState()
+      return currentState
+    }
+    val current = scaffoldWizard ?: return currentState
+    busyOperation = null
+    scaffoldWizard = when (result) {
+      is ScaffoldRunResult.Preview -> current.copy(
+        busy = false,
+        dryRunPreview = result.planned,
+        executionResult = null,
+      )
+      is ScaffoldRunResult.Failed -> current.copy(
+        busy = false,
+        dryRunPreview = null,
+        executionResult = result,
+      )
+      // Success is impossible for dry-run; treat as a failed contract so the UI surfaces it as an error.
+      is ScaffoldRunResult.Success -> current.copy(
+        busy = false,
+        dryRunPreview = null,
+        executionResult = ScaffoldRunResult.Failed(
+          exceptionName = "IllegalDryRunResponse",
+          exceptionMessage = "Runtime returned Success for dry-run mode.",
+          rollbackComplete = true,
+        ),
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginScaffoldExecute(): ScaffoldRunRequest? {
+    val current = scaffoldWizard ?: return null
+    if (!current.runEnabled || !canStartScaffoldAction()) {
+      return null
+    }
+    val payload = buildScaffoldPayload(current) ?: return null
+    activeScaffoldToken += 1
+    scaffoldWizard = current.copy(busy = true, executionResult = null)
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.SCAFFOLD
+    currentState = createState()
+    return ScaffoldRunRequest(
+      token = activeScaffoldToken,
+      payload = payload,
+      mode = ScaffoldRunMode.EXECUTE,
+    )
+  }
+
+  suspend fun runScaffoldExecute(request: ScaffoldRunRequest): ScaffoldRunResult =
+    scaffoldGateway.execute(request.payload)
+
+  fun finishScaffoldExecute(request: ScaffoldRunRequest, result: ScaffoldRunResult): SkillBillState {
+    if (request.token != activeScaffoldToken) {
+      // F-401 mirror (see finishScaffoldDryRun): release the SCAFFOLD busy slot if still ours.
+      if (busyOperation == SkillBillBusyOperation.SCAFFOLD) {
+        busyOperation = null
+      }
+      currentState = createState()
+      return currentState
+    }
+    val current = scaffoldWizard ?: return currentState
+    busyOperation = null
+    scaffoldWizard = when (result) {
+      is ScaffoldRunResult.Success -> current.copy(
+        busy = false,
+        executionResult = result,
+        dryRunPreview = null,
+      )
+      is ScaffoldRunResult.Failed -> current.copy(
+        busy = false,
+        executionResult = result,
+        // F-102: clear the stale plan after a failed run so `runEnabled` returns false and the
+        // user must re-Plan with fresh inputs before another Run can fire.
+        dryRunPreview = null,
+      )
+      is ScaffoldRunResult.Preview -> current.copy(
+        busy = false,
+        executionResult = ScaffoldRunResult.Failed(
+          exceptionName = "IllegalExecuteResponse",
+          exceptionMessage = "Runtime returned Preview for execute mode.",
+          rollbackComplete = true,
+        ),
+        dryRunPreview = null,
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  /**
+   * F-105/F-T01: resolve the tree-item id that surfaces the AUTHORED source for the artifact
+   * just created by a successful scaffold. Generated wrappers (TreeItemKind.GENERATED_ARTIFACT)
+   * must not be offered for editing (AC7). Returns null when no matching authored tree item
+   * exists (the caller leaves the selection alone in that case).
+   */
+  fun resolveAuthoredTreeItemForScaffold(outcome: ScaffoldOutcome): String? {
+    val skillPath = outcome.skillPath.takeIf { it.isNotBlank() } ?: return null
+    val authoredCandidates = outcome.createdFiles.filterNot { it.endsWith("SKILL.md") }
+    val needle = skillPath.trimEnd('/')
+    return treeItems.flatten()
+      .filter { it.kind != TreeItemKind.GENERATED_ARTIFACT }
+      .firstOrNull { item ->
+        val authored = item.authoredPath
+        when {
+          authored == null -> false
+          authoredCandidates.any { it.endsWith(authored) } -> true
+          authored.contains(needle) -> true
+          else -> false
+        }
+      }
+      ?.id
+  }
+
+  /**
+   * F-102: Plan must be gated until the user acknowledges a partial-mutation failure. After a
+   * Failed result with `rollbackComplete = false`, the repo may be partially mutated; we refuse
+   * to let the user fire another scaffold (which could compound the inconsistency) until they
+   * dismiss the failure banner via `acknowledgeScaffoldFailure`.
+   */
+  private fun isScaffoldPlanAllowed(wizard: ScaffoldWizardState): Boolean {
+    val failure = wizard.executionResult as? ScaffoldRunResult.Failed ?: return true
+    return failure.rollbackComplete
+  }
+
+  /**
+   * Public read of the partial-mutation Plan gate for the current wizard. Returns true when no
+   * wizard is open (the gate only applies when a wizard is on screen). Used by tests and by the
+   * route to assert the F-408-plat invariant: a partial-mutation lock can only be released by
+   * `acknowledgeScaffoldFailure`.
+   */
+  fun isScaffoldPlanAllowed(): Boolean = scaffoldWizard?.let(::isScaffoldPlanAllowed) ?: true
+
+  /**
+   * Returns true when no other repo-scoped operation is in flight. Mirrors `canStartRepoScopedAction`
+   * in `SkillBillRoute`; defined here so VM-only flows can busy-gate without route help.
+   */
+  private fun canStartScaffoldAction(): Boolean = busyOperation == null &&
+    !commitBusy &&
+    !commitValidationRunning &&
+    !pushBusy &&
+    !changesBusy
+
+  private fun buildScaffoldPayload(wizard: ScaffoldWizardState): ScaffoldPayload? {
+    val fields = wizard.formFields
+    return when (wizard.kind) {
+      ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) {
+        null
+      } else {
+        ScaffoldPayload.HorizontalSkill(
+          name = fields.name.trim(),
+          description = fields.description.trim(),
+          contentBody = fields.contentBody.takeIf { it.isNotBlank() },
+          subagentSpecialists = fields.subagentSpecialists.filter(String::isNotBlank),
+          suppressSubagents = fields.suppressSubagents,
+        )
+      }
+      ScaffoldKind.PLATFORM_PACK -> if (fields.platform.isBlank()) {
+        null
+      } else {
+        ScaffoldPayload.PlatformPack(
+          platform = fields.platform.trim(),
+          displayName = fields.displayName.trim(),
+          description = fields.description.trim(),
+          skeletonMode = if (fields.skeletonMode == "starter") {
+            ScaffoldPlatformPackSkeleton.STARTER
+          } else {
+            ScaffoldPlatformPackSkeleton.FULL
+          },
+          specialistAreas = fields.specialistAreas.filter(String::isNotBlank),
+          strongRoutingSignals = fields.strongRoutingSignals.filter(String::isNotBlank),
+          tieBreakers = fields.tieBreakers.filter(String::isNotBlank),
+          subagentSpecialists = fields.subagentSpecialists.filter(String::isNotBlank),
+          suppressSubagents = fields.suppressSubagents,
+          contentBody = fields.contentBody.takeIf { it.isNotBlank() },
+        )
+      }
+      ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> if (
+        fields.platform.isBlank() || fields.family.isBlank()
+      ) {
+        null
+      } else {
+        ScaffoldPayload.PlatformOverride(
+          platform = fields.platform.trim(),
+          family = fields.family.trim(),
+          description = fields.description.trim(),
+          contentBody = fields.contentBody.takeIf { it.isNotBlank() },
+          subagentSpecialists = fields.subagentSpecialists.filter(String::isNotBlank),
+          suppressSubagents = fields.suppressSubagents,
+        )
+      }
+      ScaffoldKind.CODE_REVIEW_AREA -> if (
+        fields.platform.isBlank() || fields.area.isBlank()
+      ) {
+        null
+      } else {
+        ScaffoldPayload.CodeReviewArea(
+          platform = fields.platform.trim(),
+          area = fields.area.trim(),
+          description = fields.description.trim(),
+          contentBody = fields.contentBody.takeIf { it.isNotBlank() },
+        )
+      }
+      ScaffoldKind.ADD_ON -> if (fields.name.isBlank() || fields.platform.isBlank()) {
+        null
+      } else {
+        ScaffoldPayload.AddOn(
+          name = fields.name.trim(),
+          platform = fields.platform.trim(),
+          description = fields.description.trim(),
+          body = fields.addonBody.takeIf { it.isNotBlank() },
+        )
+      }
+    }
+  }
 }
 
 data class RepoLoadRequest(
@@ -1430,6 +1898,36 @@ data class HistoryLoadResult(
   val request: HistoryLoadRequest,
   val commits: List<CommitEntry>,
   val errorMessage: String?,
+)
+
+enum class ScaffoldRunMode {
+  DRY_RUN,
+  EXECUTE,
+}
+
+data class ScaffoldRunRequest(
+  val token: Long,
+  val payload: ScaffoldPayload,
+  val mode: ScaffoldRunMode,
+)
+
+/**
+ * F-407-arch: request payload for the open-wizard begin/run/finish triplet. Captures the current
+ * repo session on the Main dispatcher so the suspend `run` step does not race concurrent
+ * mutations of `currentSession` (e.g. open-repo, repo-load completion) on background dispatchers.
+ */
+data class ScaffoldCatalogRequest(
+  val kind: ScaffoldKind,
+  val session: RepoSession?,
+)
+
+/**
+ * F-407-arch: response payload paired with [ScaffoldCatalogRequest]. Wraps the kind alongside
+ * the snapshot so `finishOpenScaffoldWizard` does not have to be told the kind separately.
+ */
+data class ScaffoldCatalogResponse(
+  val kind: ScaffoldKind,
+  val snapshot: ScaffoldCatalogSnapshot,
 )
 
 private fun isRenderableKind(kind: String?): Boolean = when (kind) {

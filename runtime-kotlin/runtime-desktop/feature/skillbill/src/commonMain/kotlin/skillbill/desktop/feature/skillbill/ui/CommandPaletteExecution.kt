@@ -2,6 +2,7 @@ package skillbill.desktop.feature.skillbill.ui
 
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
+import skillbill.desktop.core.domain.model.ScaffoldKind
 
 internal data class CommandPaletteActions(
   val selectTreeItem: (String) -> Unit,
@@ -13,6 +14,7 @@ internal data class CommandPaletteActions(
   val showHistory: () -> Unit,
   val save: () -> Unit,
   val refreshGitStatus: () -> Unit,
+  val openScaffoldWizard: (ScaffoldKind) -> Unit = {},
 )
 
 internal fun executeCommandPaletteResult(result: CommandPaletteResult, actions: CommandPaletteActions): Boolean {
@@ -32,6 +34,11 @@ internal fun executeCommandPaletteResult(result: CommandPaletteResult, actions: 
     CommandPaletteAction.SHOW_HISTORY -> actions.showHistory()
     CommandPaletteAction.SAVE -> actions.save()
     CommandPaletteAction.REFRESH_GIT_STATUS -> actions.refreshGitStatus()
+    CommandPaletteAction.NEW_HORIZONTAL_SKILL -> actions.openScaffoldWizard(ScaffoldKind.HORIZONTAL_SKILL)
+    CommandPaletteAction.NEW_PLATFORM_PACK -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_PACK)
+    CommandPaletteAction.NEW_PLATFORM_OVERRIDE -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_OVERRIDE_PILOTED)
+    CommandPaletteAction.NEW_CODE_REVIEW_AREA -> actions.openScaffoldWizard(ScaffoldKind.CODE_REVIEW_AREA)
+    CommandPaletteAction.NEW_ADD_ON -> actions.openScaffoldWizard(ScaffoldKind.ADD_ON)
   }
   return true
 }

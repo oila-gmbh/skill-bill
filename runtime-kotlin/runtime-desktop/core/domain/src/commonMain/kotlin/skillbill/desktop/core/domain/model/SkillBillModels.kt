@@ -58,6 +58,7 @@ data class SkillBillState(
   val canonicalPushConfirmationRequired: Boolean = false,
   val dirtyEditorPrompt: DirtyEditorPrompt? = null,
   val commandPalette: CommandPaletteState = CommandPaletteState(),
+  val scaffoldWizard: ScaffoldWizardState? = null,
 )
 
 enum class DockTab {
@@ -167,6 +168,7 @@ enum class SkillBillBusyOperation {
   VALIDATE,
   RENDER,
   SAVE,
+  SCAFFOLD,
 }
 
 data class CommandPaletteState(
@@ -206,6 +208,11 @@ enum class CommandPaletteAction {
   SHOW_HISTORY,
   SAVE,
   REFRESH_GIT_STATUS,
+  NEW_HORIZONTAL_SKILL,
+  NEW_PLATFORM_PACK,
+  NEW_PLATFORM_OVERRIDE,
+  NEW_CODE_REVIEW_AREA,
+  NEW_ADD_ON,
 }
 
 enum class RenderRunState {

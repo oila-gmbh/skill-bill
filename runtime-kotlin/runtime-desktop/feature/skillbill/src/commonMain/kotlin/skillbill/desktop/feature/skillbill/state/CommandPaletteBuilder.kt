@@ -162,7 +162,94 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
       baseRank = COMMAND_BASE_RANK - 4,
       sortGroup = 0,
     ),
+    newScaffoldCandidate(
+      id = "command.new-horizontal-skill",
+      title = "New horizontal skill",
+      subtitle = "Scaffold a new repo-wide horizontal skill",
+      marker = "nh",
+      action = CommandPaletteAction.NEW_HORIZONTAL_SKILL,
+      blockedByBusy = blockedByBusy,
+      state = state,
+      keywords = listOf("new", "scaffold", "horizontal", "skill", "create"),
+      rankOffset = -7,
+    ),
+    newScaffoldCandidate(
+      id = "command.new-platform-pack",
+      title = "New platform pack",
+      subtitle = "Scaffold a new piloted platform pack",
+      marker = "np",
+      action = CommandPaletteAction.NEW_PLATFORM_PACK,
+      blockedByBusy = blockedByBusy,
+      state = state,
+      keywords = listOf("new", "scaffold", "platform", "pack", "create"),
+      rankOffset = -9,
+    ),
+    newScaffoldCandidate(
+      id = "command.new-platform-override",
+      title = "New platform override",
+      subtitle = "Scaffold a platform-piloted family override",
+      marker = "no",
+      action = CommandPaletteAction.NEW_PLATFORM_OVERRIDE,
+      blockedByBusy = blockedByBusy,
+      state = state,
+      keywords = listOf("new", "scaffold", "platform", "override", "family", "create"),
+      rankOffset = -10,
+    ),
+    newScaffoldCandidate(
+      id = "command.new-code-review-area",
+      title = "New code-review area",
+      subtitle = "Scaffold an approved code-review specialist area",
+      marker = "nc",
+      action = CommandPaletteAction.NEW_CODE_REVIEW_AREA,
+      blockedByBusy = blockedByBusy,
+      state = state,
+      keywords = listOf("new", "scaffold", "code-review", "area", "specialist", "create"),
+      rankOffset = -11,
+    ),
+    newScaffoldCandidate(
+      id = "command.new-add-on",
+      title = "New add-on",
+      subtitle = "Scaffold a governed add-on under a platform pack",
+      marker = "na",
+      action = CommandPaletteAction.NEW_ADD_ON,
+      blockedByBusy = blockedByBusy,
+      state = state,
+      keywords = listOf("new", "scaffold", "add-on", "addon", "create"),
+      rankOffset = -12,
+    ),
   )
+}
+
+private fun newScaffoldCandidate(
+  id: String,
+  title: String,
+  subtitle: String,
+  marker: String,
+  action: CommandPaletteAction,
+  blockedByBusy: String?,
+  state: SkillBillState,
+  keywords: List<String>,
+  rankOffset: Int,
+): PaletteCandidate = PaletteCandidate(
+  result = CommandPaletteResult(
+    id = id,
+    title = title,
+    subtitle = subtitle,
+    marker = marker,
+    kind = CommandPaletteResultKind.COMMAND,
+    action = action,
+    disabledReason = blockedByBusy ?: scaffoldDisabledReason(state),
+  ),
+  keywords = keywords,
+  baseRank = COMMAND_BASE_RANK + rankOffset,
+  sortGroup = 0,
+)
+
+private fun scaffoldDisabledReason(state: SkillBillState): String? = when {
+  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
+  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
+  state.scaffoldWizard != null -> "Dismiss the current scaffold wizard first."
+  else -> null
 }
 
 private fun treeCandidates(state: SkillBillState, blockedByBusy: String?): List<PaletteCandidate> =
@@ -309,6 +396,7 @@ private fun SkillBillBusyOperation.label(): String = when (this) {
   SkillBillBusyOperation.VALIDATE -> "validation"
   SkillBillBusyOperation.RENDER -> "render"
   SkillBillBusyOperation.SAVE -> "save"
+  SkillBillBusyOperation.SCAFFOLD -> "scaffold"
 }
 
 private fun List<SkillBillTreeItem>.flattenPaletteTree(): List<SkillBillTreeItem> =

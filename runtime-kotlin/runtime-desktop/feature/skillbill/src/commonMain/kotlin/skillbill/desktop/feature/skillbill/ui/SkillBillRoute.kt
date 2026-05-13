@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
@@ -262,6 +263,74 @@ fun SkillBillRoute(
     }
   }
 
+  fun runOpenScaffoldWizard(kind: ScaffoldKind) {
+    // F-002/F-404/F-407-arch: the catalog snapshot performs filesystem I/O (it walks
+    // `platform-packs/`). Use the begin/run/finish triplet: capture VM state on Main, hop to
+    // `Dispatchers.Default` for the fetch, then return to the UI dispatcher to mutate state.
+    // The triplet guarantees VM private `var` state is never read off the Main dispatcher.
+    if (canStartRepoScopedAction()) {
+      val request = viewModel.beginOpenScaffoldWizard(kind) ?: return
+      coroutineScope.launch {
+        val response = withContext(Dispatchers.Default) { viewModel.runOpenScaffoldWizard(request) }
+        state = viewModel.finishOpenScaffoldWizard(response)
+      }
+    }
+  }
+
+  fun runScaffoldDryRun() {
+    val request = viewModel.beginScaffoldDryRun()
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runScaffoldDryRun(request) }
+        state = viewModel.finishScaffoldDryRun(request, result)
+      }
+    }
+  }
+
+  fun runScaffoldExecute() {
+    val request = viewModel.beginScaffoldExecute()
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runScaffoldExecute(request) }
+        state = viewModel.finishScaffoldExecute(request, result)
+        // F-105/F-T01: on success we must refresh the tree, select the authored source for the
+        // new artifact (NOT a generated wrapper, AC7), then auto-dismiss the wizard so the user
+        // sees the new artifact in the tree (AC6).
+        // F-403: refreshAfterScaffold previously ran loadRepo on the UI dispatcher; use the
+        // begin/run/finish triplet to keep heavy I/O off the UI thread.
+        // F-406: bypass the dirty-editor gate — the scaffold runtime just mutated the repo, the
+        // "do not lose unsaved edits" invariant does not apply.
+        // F-407-plat: gate the success fan-out on what the VM actually accepted, not the local
+        // `result` variable. If the user dismissed mid-flight (or kind-switched), `finishScaffoldExecute`
+        // takes the stale-token branch and refuses to apply the result — the wizard's
+        // `executionResult` will NOT be a Success in that case (it will be null because the
+        // wizard was cleared, or unchanged for a different kind). Reading post-finish state ensures
+        // we never auto-refresh / auto-select / auto-dismiss against the user's explicit intent.
+        val acceptedSuccess = state.scaffoldWizard?.executionResult as?
+          skillbill.desktop.core.domain.model.ScaffoldRunResult.Success
+        if (acceptedSuccess != null) {
+          val refreshRequest = viewModel.beginRefreshAfterScaffold()
+          state = viewModel.state()
+          val refreshResult = withContext(Dispatchers.Default) { viewModel.loadRepo(refreshRequest) }
+          state = viewModel.finishRefreshAfterScaffold(refreshResult)
+          viewModel.resolveAuthoredTreeItemForScaffold(acceptedSuccess.result)?.let { itemId ->
+            state = viewModel.selectTreeItem(itemId)
+            state.selectedTreeItemId?.let(onSourceRouteSelected)
+          }
+          state = viewModel.dismissScaffoldWizard()
+          // F-408-arch: every other refresh path (runChooseRepoDirectory, DirtyEditorPromptReason.REFRESH/REPO_SWITCH,
+          // runRepoLoad) calls BOTH runGitRefresh() AND loadHistory() as a fan-out. The scaffold-success
+          // path was previously skipping loadHistory(), leaving the History tab reflecting pre-scaffold
+          // state until the next refresh. Align with the standard fan-out.
+          runGitRefresh()
+          loadHistory()
+        }
+      }
+    }
+  }
+
   fun runPaletteResult(result: CommandPaletteResult) {
     val executed = executeCommandPaletteResult(
       result = result,
@@ -283,6 +352,7 @@ fun SkillBillRoute(
             runGitRefresh()
           }
         },
+        openScaffoldWizard = ::runOpenScaffoldWizard,
       ),
     )
     if (executed) {
@@ -453,6 +523,26 @@ fun SkillBillRoute(
     },
     onCommandPaletteExecuteSelected = ::runSelectedPaletteResult,
     onCommandPaletteExecuteResult = ::runPaletteResult,
+    onOpenScaffoldWizard = ::runOpenScaffoldWizard,
+    scaffoldWizardCallbacks = ScaffoldWizardCallbacks(
+      onSelectKind = { kind ->
+        state = viewModel.selectScaffoldWizardKind(kind)
+      },
+      onFormChanged = { transform ->
+        state = viewModel.updateScaffoldForm(transform)
+      },
+      onDirtyOverrideChanged = { override ->
+        state = viewModel.setScaffoldDirtyOverride(override)
+      },
+      onPlan = ::runScaffoldDryRun,
+      onRun = ::runScaffoldExecute,
+      onAcknowledgeFailure = {
+        state = viewModel.acknowledgeScaffoldFailure()
+      },
+      onDismiss = {
+        state = viewModel.dismissScaffoldWizard()
+      },
+    ),
     recentlyCopiedKey = recentlyCopiedKey,
   )
 }

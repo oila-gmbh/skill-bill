@@ -18,6 +18,7 @@ kotlin {
     jvmTest.dependencies {
       implementation(libs.junit.jupiter)
       implementation(libs.kotlin.test)
+      implementation(libs.kotlinx.coroutines.core)
     }
   }
 }

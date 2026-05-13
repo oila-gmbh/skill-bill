@@ -25,6 +25,19 @@ internal val APPROVED_CODE_REVIEW_AREAS: Set<String> =
     "ux-accessibility",
   )
 
+// F-001: Authoritative source for the pre-shell vs shelled family taxonomy. The desktop wizard's
+// `ScaffoldCatalog` delegates to these so the runtime stays the single source of truth.
+internal val SHELLED_FAMILIES: Set<String> = setOf("code-review", "quality-check")
+internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-implement", "feature-verify")
+
+// F-001: Built-in platform-pack presets keyed by slug. The full descriptors (routing signals etc.)
+// live in `ScaffoldService.kt`; this map is the wizard-facing display projection so callers can
+// render a slug -> displayName list without depending on internal runtime types.
+internal val PLATFORM_PACK_PRESETS: Map<String, String> = mapOf(
+  "java" to "Java",
+  "php" to "PHP",
+)
+
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =
   listOf("## Descriptor", "## Execution", "## Ceremony")
 
