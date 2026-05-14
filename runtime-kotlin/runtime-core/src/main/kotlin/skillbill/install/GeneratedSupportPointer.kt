@@ -20,7 +20,7 @@ internal fun generatedSupportPointersFor(
     return emptyList()
   }
   val targets = supportingFileTargets(root)
-  return requiredSupportingFilesForSkill(skillName).mapNotNull { fileName ->
+  return requiredSupportingFilesForSkill(skillName, root).mapNotNull { fileName ->
     val target = targets[fileName]?.toAbsolutePath()?.normalize() ?: return@mapNotNull null
     val sourceSidecar = resolvedSource.resolve(fileName).normalize()
     if (target == sourceSidecar) {

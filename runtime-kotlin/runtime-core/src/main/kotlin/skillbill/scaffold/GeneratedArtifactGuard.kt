@@ -127,7 +127,7 @@ private fun discoverGeneratedSupportingPointerFiles(root: Path): List<Path> {
       .filter { skillDir -> skillDir.isDirectory() && !skillDir.name.startsWith(".") }
       .flatMap { skillDir ->
         val skillName = skillDir.name
-        requiredSupportingFilesForSkill(skillName)
+        requiredSupportingFilesForSkill(skillName, root)
           .asSequence()
           .filter { fileName ->
             val target = targets[fileName]?.normalize()?.toAbsolutePath()

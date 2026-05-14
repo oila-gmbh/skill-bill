@@ -396,16 +396,18 @@ class RepoValidationRuntimeTest {
   fun `repo validation rejects content_md without authored guidance beyond title`() {
     val repoRoot = Files.createTempDirectory("skillbill-content-empty-body")
     createRepoValidationSkillFixture(repoRoot)
-    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    // Use a horizontal skill name — no class declares sections for it, so authored body is required.
+    val contentFile = repoRoot.resolve("skills/bill-horizontal-fixture/content.md")
+    Files.createDirectories(contentFile.parent)
     Files.writeString(
       contentFile,
       """
       ---
-      name: bill-code-review
-      description: Review code.
+      name: bill-horizontal-fixture
+      description: Horizontal fixture with no body.
       ---
 
-      # Code Review Content
+      # Horizontal Fixture
       """.trimIndent() + "\n",
     )
 
@@ -447,6 +449,74 @@ class RepoValidationRuntimeTest {
       report.issues.any {
         it.contains(contentFile.toString()) &&
           it.contains("unresolved TODO/FIXME placeholder")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects generated support pointer links in content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-ceremony-pointer")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance.
+
+      For the shared telemetry contract, follow [telemetry-contract.md](telemetry-contract.md).
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("generated support pointer 'telemetry-contract.md'")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects subagent runtime notes heading in content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-subagent-notes")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance.
+
+      ## Subagent Spawn Runtime Notes
+
+      Prose that belongs in the wrapper, not in content.md.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains(contentFile.toString()) &&
+          it.contains("auto-generated subagent runtime notes heading")
       },
       report.issues.joinToString("\n"),
     )
@@ -568,6 +638,7 @@ class RepoValidationRuntimeTest {
     sidecarMode: SidecarMode = SidecarMode.SymbolicLink,
     writeSidecars: Boolean = false,
   ) {
+    skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repoRoot)
     supportingFileTargets(repoRoot).values.forEach { target ->
       Files.createDirectories(target.parent)
       Files.writeString(target, "contract\n")
@@ -591,7 +662,7 @@ class RepoValidationRuntimeTest {
       return
     }
     val targets = supportingFileTargets(repoRoot)
-    requiredSupportingFilesForSkill("bill-code-review").filterNot { it == skipSidecar }.forEach { fileName ->
+    requiredSupportingFilesForSkill("bill-code-review", repoRoot).filterNot { it == skipSidecar }.forEach { fileName ->
       val sidecar = skillDir.resolve(fileName)
       val target = overrideTargets[fileName] ?: targets.getValue(fileName)
       val relativeTarget = sidecar.parent.relativize(target).toString()

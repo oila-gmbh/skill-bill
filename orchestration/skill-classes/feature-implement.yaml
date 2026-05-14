@@ -1,0 +1,20 @@
+class: feature-implement
+contract_version: "1.1"
+
+matchers:
+  - pattern: "^bill-[a-z0-9-]*feature-implement$"
+
+pointers:
+  - shell-ceremony
+  - telemetry-contract
+  - android-compose-implementation
+  - android-navigation-implementation
+  - android-interop-implementation
+  - android-design-system-implementation
+  - android-r8-implementation
+  - android-compose-edge-to-edge
+  - android-compose-adaptive-layouts
+
+ceremony_lines:
+  - "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md)."
+  - "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md)."

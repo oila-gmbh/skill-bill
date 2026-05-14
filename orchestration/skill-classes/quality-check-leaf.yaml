@@ -1,0 +1,17 @@
+class: quality-check-leaf
+contract_version: "1.1"
+
+matchers:
+  - pattern: "^bill-[a-z0-9-]+-quality-check$"
+    exclude_exact:
+      - bill-quality-check
+
+pointers:
+  - shell-ceremony
+  - stack-routing
+  - telemetry-contract
+
+ceremony_lines:
+  - "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md)."
+  - "When stack routing applies, follow [stack-routing.md](stack-routing.md)."
+  - "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md)."
