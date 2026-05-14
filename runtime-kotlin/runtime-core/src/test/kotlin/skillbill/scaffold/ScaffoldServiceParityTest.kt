@@ -332,8 +332,8 @@ class ScaffoldServiceParityTest {
     assertContains(renderWrapper(packTarget), "Platform pack: `kotlin` (Kotlin)")
     val renderedBase = renderWrapper(baseTarget)
 
-    assertContains(renderedBase, "shell-content-contract.md")
-    assertFalse("review-orchestrator.md" in renderedBase)
+    assertContains(renderedBase, "[shell-content-contract.md](shell-content-contract.md)")
+    assertFalse("[review-orchestrator.md](review-orchestrator.md)" in renderedBase)
   }
 
   @Test
@@ -534,6 +534,7 @@ private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>):
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
+  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
@@ -598,12 +599,29 @@ private fun assertSourceBundle(path: Path, vararg names: String) {
 
 private fun assertNoGeneratedWrapperOrSupportingFiles(skillDir: Path, skillName: String) {
   assertNoGeneratedWrapper(skillDir)
-  requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+  val repoRoot = locateTestRepoRoot(skillDir)
+  requiredSupportingFilesForSkill(skillName, repoRoot).forEach { fileName ->
     assertFalse(
       Files.exists(skillDir.resolve(fileName)),
       "scaffold must not create source pointer/supporting file '$fileName' at $skillDir",
     )
   }
+}
+
+private fun locateTestRepoRoot(skillDir: Path): Path {
+  var current: Path? = skillDir.toAbsolutePath().normalize().parent
+  while (current != null) {
+    if (Files.isDirectory(current.resolve("skills")) || Files.isDirectory(current.resolve("platform-packs"))) {
+      val rootCandidate = current
+      val classesDir = rootCandidate.resolve("orchestration/skill-classes")
+      if (!Files.isDirectory(classesDir)) {
+        skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
+      }
+      return rootCandidate
+    }
+    current = current.parent
+  }
+  return skillDir
 }
 
 private fun assertNoGeneratedWrapper(skillDir: Path) {

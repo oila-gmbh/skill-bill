@@ -1,7 +1,11 @@
 package skillbill.cli
 
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,7 +49,7 @@ private data class ExternalAuthorDryRunFixture(
 private fun createExternalAuthorDryRunFixture(): ExternalAuthorDryRunFixture {
   val tempRoot = Files.createTempDirectory("skillbill-external-author")
   val userHome = tempRoot.resolve("home")
-  val repoRoot = currentRepoRootForTest()
+  val repoRoot = createIsolatedRepoFixture(currentRepoRootForTest(), tempRoot.resolve("repo"))
   val platform = "external-${System.nanoTime().toString(16)}"
   Files.createDirectories(userHome)
 
@@ -56,6 +60,38 @@ private fun createExternalAuthorDryRunFixture(): ExternalAuthorDryRunFixture {
     platform = platform,
     packRoot = repoRoot.resolve("platform-packs").resolve(platform),
     context = CliRuntimeContext(userHome = userHome),
+  )
+}
+
+private fun createIsolatedRepoFixture(sourceRepoRoot: Path, targetRepoRoot: Path): Path {
+  val directories = listOf("skills", "platform-packs", "orchestration", ".agents", ".claude-plugin")
+  directories.forEach { relativePath ->
+    copyTree(sourceRepoRoot.resolve(relativePath), targetRepoRoot.resolve(relativePath))
+  }
+  Files.copy(
+    sourceRepoRoot.resolve("README.md"),
+    targetRepoRoot.resolve("README.md"),
+    StandardCopyOption.COPY_ATTRIBUTES,
+  )
+  return targetRepoRoot
+}
+
+private fun copyTree(source: Path, target: Path) {
+  Files.walkFileTree(
+    source,
+    object : SimpleFileVisitor<Path>() {
+      override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+        val targetDir = target.resolve(source.relativize(dir))
+        Files.createDirectories(targetDir)
+        return FileVisitResult.CONTINUE
+      }
+
+      override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+        val targetFile = target.resolve(source.relativize(file))
+        Files.copy(file, targetFile, StandardCopyOption.COPY_ATTRIBUTES)
+        return FileVisitResult.CONTINUE
+      }
+    },
   )
 }
 
@@ -184,7 +220,8 @@ private fun currentRepoRootForTest(): Path {
   while (true) {
     val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
     val hasSkills = Files.isDirectory(current.resolve("skills"))
-    if (hasSettings && hasSkills) {
+    val hasPlatformPacks = Files.isDirectory(current.resolve("platform-packs"))
+    if (hasSettings && hasSkills && hasPlatformPacks) {
       return current
     }
     current = current.parent ?: return Path.of("").toAbsolutePath().normalize()
