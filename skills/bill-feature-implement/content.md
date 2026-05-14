@@ -240,8 +240,6 @@ The orchestrator appends the returned `telemetry_payload` to the `child_steps` l
 
 ## Telemetry: Record Finished
 
-For the shared telemetry contract including orchestrated flag semantics, child step collection, and graceful-degradation rules, follow [telemetry-contract.md](telemetry-contract.md).
-
 After the PR is created (or when the workflow ends early due to error or user abandonment), call the `feature_implement_finished` MCP tool with:
 
 - `session_id`: from `feature_implement_started`
@@ -831,16 +829,6 @@ In all early-exit cases, close the telemetry session with the appropriate `compl
 In those same early-exit cases, also close the workflow state with
 `feature_implement_workflow_update` so the durable workflow does not remain in
 `running`.
-
-## Skills Invoked
-
-Read each skill's file and apply inline when its step is reached. Subagents read these files themselves from inside their own context; the orchestrator does not pre-read them.
-
-- `bill-feature-guard` — pre-planning subagent, if rollout uses a feature flag
-- `bill-code-review` — **orchestrator**, after implementation
-- `bill-quality-check` — quality-check subagent, final validation gate
-- `bill-boundary-history` — **orchestrator**, after completeness audit
-- `bill-pr-description` — PR-description subagent
 
 ## RESULT Block Parsing Tolerance
 

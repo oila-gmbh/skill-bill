@@ -99,19 +99,6 @@ This is a lightweight file-level classification (names + imports), not a full re
 - Keep findings attributed to each specialist before merging and deduplicating them into the final review.
 - When the selected set is larger than the host runtime can run concurrently, run specialists in deterministic waves and merge all wave outputs before the final review.
 
----
-
-### Run Context
-
-`Review session ID: <review-session-id>`
-`Review run ID: <review-run-id>`
-`Applied learnings: none | <learning references>`
-
-
-### Scope Resolution
-
-Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.
-
 ### Subagent Spawn Runtime Notes
 
 Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kotlin-code-review-api-contracts` subagent" maps to the native subagent surface of the host runtime. On Claude, the spawn becomes an `Agent` tool call against a matching subagent definition for `bill-kotlin-code-review`. On Codex, the spawn is a natural-language directive and Codex resolves it by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. On OpenCode, the spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kotlin-code-review-api-contracts`, `@bill-kotlin-code-review-architecture`, `@bill-kotlin-code-review-performance`, `@bill-kotlin-code-review-persistence`, `@bill-kotlin-code-review-platform-correctness`, `@bill-kotlin-code-review-reliability`, `@bill-kotlin-code-review-security`, `@bill-kotlin-code-review-testing`.
