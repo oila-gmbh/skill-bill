@@ -57,6 +57,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -93,6 +94,7 @@ import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.ScaffoldKind
+import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -179,16 +181,37 @@ fun SkillBillFrame(
     state.renderable &&
       state.repoStatus.state == RepoLoadState.LOADED &&
       canActivateRepoScopedAction
+  val frameAcceleratorPredicates = SkillBillAcceleratorPredicates(
+    busyOperationActive = state.busyOperation != null,
+    publishingBusy = publishingBusy,
+    saveEnabled = state.editor.editable &&
+      state.editor.dirty &&
+      !state.editor.saveInProgress,
+    refreshEnabled = canActivateRepoScopedAction,
+    renderEnabled = renderEnabled,
+    validateEnabled = validateEnabled,
+    commitEnabled = state.canCommit,
+    repoOpenEnabled = false,
+  )
   Box(
     modifier = Modifier
       .fillMaxSize()
       .background(WorkspaceBackground)
       .onPreviewKeyEvent { event ->
-        if (event.type == KeyEventType.KeyDown && event.isCommandPaletteShortcut()) {
-          onCommandPaletteOpen()
-          true
-        } else {
+        if (event.type != KeyEventType.KeyDown) {
           false
+        } else {
+          dispatchFrameKeyboardAccelerator(
+            event = event.toKeyboardAcceleratorEvent(),
+            predicates = frameAcceleratorPredicates,
+            callbacks = FrameKeyboardAcceleratorCallbacks(
+              openCommandPalette = onCommandPaletteOpen,
+              save = onEditorSave,
+              refresh = onRefresh,
+              render = onRender,
+              validate = onValidate,
+            ),
+          )
         }
       },
   ) {
@@ -267,6 +290,7 @@ fun SkillBillFrame(
           canonicalPushConfirmationRequired = state.canonicalPushConfirmationRequired,
           hasRepoOpen = state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED,
           dirtyEditorPrompt = state.dirtyEditorPrompt,
+          globalActionsEnabled = canActivateRepoScopedAction,
           editorInputEnabled = state.busyOperation == null &&
             !state.changesBusy &&
             !state.commitBusy &&
@@ -365,9 +389,27 @@ private fun WorkspaceToolbar(
     // with no clickable/Role.Button so its affordance matches its behavior.
     ToolbarStatusItem(label = sourceControlLabel, marker = "br")
     ToolbarDivider()
-    ToolbarButton(label = "Refresh", marker = "rf", enabled = !busy, onClick = onRefresh)
-    ToolbarButton(label = "Validate", marker = "ok", enabled = validateEnabled, onClick = onValidate)
-    ToolbarButton(label = "Render check", marker = "rc", enabled = renderEnabled, onClick = onRender)
+    ToolbarButton(
+      label = "Refresh",
+      marker = "rf",
+      enabled = !busy,
+      acceleratorLabel = SkillBillAcceleratorLabels.REFRESH,
+      onClick = onRefresh,
+    )
+    ToolbarButton(
+      label = "Validate",
+      marker = "ok",
+      enabled = validateEnabled,
+      acceleratorLabel = SkillBillAcceleratorLabels.VALIDATE,
+      onClick = onValidate,
+    )
+    ToolbarButton(
+      label = "Render check",
+      marker = "rc",
+      enabled = renderEnabled,
+      acceleratorLabel = SkillBillAcceleratorLabels.RENDER,
+      onClick = onRender,
+    )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
     // F-X-901 (AC6): read-only mode is a workspace policy indicator, not a toggle. Render as a
@@ -393,6 +435,7 @@ private fun ToolbarButton(
   primary: Boolean = false,
   enabled: Boolean = true,
   contentDescription: String = label,
+  acceleratorLabel: String? = null,
 ) {
   val background = if (primary) WorkspaceYellow else WorkspaceRaised
   val foreground =
@@ -402,35 +445,64 @@ private fun ToolbarButton(
       else -> WorkspaceText
     }
   val border = if (primary) WorkspaceYellow else WorkspaceLine
-  Row(
-    modifier =
-    Modifier
-      .height(28.dp)
-      .padding(end = 6.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, border, RoundedCornerShape(6.dp))
-      .background(background)
-      // F-X-901-A: merge child Text/icon semantics into the clickable node so screen readers
-      // announce a single actionable element instead of three, and `disabled()` propagates to the
-      // merged node when `enabled = false`.
-      .semantics(mergeDescendants = true) {
-        this.contentDescription = contentDescription
-        if (!enabled) this.disabled()
-      }
-      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 9.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    MiniIcon(text = marker, tint = foreground)
-    Text(
-      text = label,
-      color = foreground,
-      fontSize = 12.sp,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-    )
+  AcceleratorTooltip(label = label, acceleratorLabel = acceleratorLabel) {
+    Row(
+      modifier =
+      Modifier
+        .height(28.dp)
+        .padding(end = 6.dp)
+        .clip(RoundedCornerShape(6.dp))
+        .border(1.dp, border, RoundedCornerShape(6.dp))
+        .background(background)
+        // F-X-901-A: merge child Text/icon semantics into the clickable node so screen readers
+        // announce a single actionable element instead of three, and `disabled()` propagates to the
+        // merged node when `enabled = false`.
+        .semantics(mergeDescendants = true) {
+          this.contentDescription = contentDescription
+          if (!enabled) this.disabled()
+        }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        .padding(horizontal = 9.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      MiniIcon(text = marker, tint = foreground)
+      Text(
+        text = label,
+        color = foreground,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
   }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AcceleratorTooltip(label: String, acceleratorLabel: String?, content: @Composable () -> Unit) {
+  if (acceleratorLabel == null) {
+    content()
+    return
+  }
+  TooltipArea(
+    tooltip = {
+      Box(
+        modifier = Modifier
+          .background(WorkspaceRaised, RoundedCornerShape(4.dp))
+          .border(1.dp, WorkspaceLine, RoundedCornerShape(4.dp))
+          .padding(horizontal = 8.dp, vertical = 6.dp),
+      ) {
+        Text(
+          text = "$label - $acceleratorLabel",
+          color = WorkspaceText,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+        )
+      }
+    },
+    content = content,
+  )
 }
 
 /**
@@ -591,14 +663,34 @@ private fun CommandSearchButton(onClick: () -> Unit) {
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    Text(text = "Ctrl K", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+    Text(
+      text = SkillBillAcceleratorLabels.COMMAND_PALETTE,
+      color = WorkspaceSteel,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+    )
   }
 }
 
-private fun androidx.compose.ui.input.key.KeyEvent.isCommandPaletteShortcut(): Boolean =
-  (isCtrlPressed || isMetaPressed) && (key == Key.K || key == Key.P)
-
 private fun androidx.compose.ui.input.key.KeyEvent.isActivationKey(): Boolean = generatedArtifactRowActivatesForKey(key)
+
+private fun androidx.compose.ui.input.key.KeyEvent.toKeyboardAcceleratorEvent(): KeyboardAcceleratorEvent =
+  KeyboardAcceleratorEvent(
+    key = key.toKeyboardAcceleratorKey(),
+    commandPressed = isCtrlPressed || isMetaPressed,
+    shiftPressed = isShiftPressed,
+  )
+
+private fun Key.toKeyboardAcceleratorKey(): KeyboardAcceleratorKey = when (this) {
+  Key.Enter -> KeyboardAcceleratorKey.ENTER
+  Key.NumPadEnter -> KeyboardAcceleratorKey.NUMPAD_ENTER
+  Key.K -> KeyboardAcceleratorKey.K
+  Key.P -> KeyboardAcceleratorKey.P
+  Key.R -> KeyboardAcceleratorKey.R
+  Key.S -> KeyboardAcceleratorKey.S
+  Key.V -> KeyboardAcceleratorKey.V
+  else -> KeyboardAcceleratorKey.UNKNOWN
+}
 
 internal fun generatedArtifactRowActivatesForKey(key: Key): Boolean =
   key == Key.Enter || key == Key.NumPadEnter || key == Key.Spacebar
@@ -779,6 +871,9 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f),
         )
+        result.acceleratorLabel?.let { acceleratorLabel ->
+          CommandPaletteAcceleratorLabel(acceleratorLabel)
+        }
         CommandPaletteKindLabel(result.kind)
       }
       Text(
@@ -790,6 +885,17 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
       )
     }
   }
+}
+
+@Composable
+private fun CommandPaletteAcceleratorLabel(label: String) {
+  Text(
+    text = label,
+    color = WorkspaceMuted,
+    fontSize = 10.sp,
+    fontFamily = FontFamily.Monospace,
+    maxLines = 1,
+  )
 }
 
 @Composable
@@ -938,6 +1044,16 @@ private fun RepositorySelector(
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
 ) {
+  val acceleratorPredicates = SkillBillAcceleratorPredicates(
+    busyOperationActive = busy,
+    publishingBusy = false,
+    saveEnabled = false,
+    refreshEnabled = false,
+    renderEnabled = false,
+    validateEnabled = false,
+    commitEnabled = false,
+    repoOpenEnabled = !busy,
+  )
   Column(
     modifier =
     Modifier
@@ -968,19 +1084,33 @@ private fun RepositorySelector(
           fontFamily = FontFamily.Monospace,
         ),
         singleLine = true,
-        modifier = Modifier.weight(1f),
+        modifier = Modifier
+          .weight(1f)
+          .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) {
+              false
+            } else {
+              dispatchRepositoryPathKeyboardAccelerator(
+                event = event.toKeyboardAcceleratorEvent(),
+                predicates = acceleratorPredicates,
+                onOpenRepositoryPath = { onRepoSelected(repoPath) },
+              )
+            }
+          },
       )
       // F-U05 / F-X-501: enlarge hit target and announce intent for the text-as-button actions.
-      Text(
-        text = if (busy) "Busy" else "Open",
-        color = if (busy) WorkspaceSteel else WorkspaceYellow,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-          .iconButtonSemantics(description = "Open repository at path")
-          .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
-          .padding(horizontal = 6.dp, vertical = 4.dp),
-      )
+      AcceleratorTooltip(label = "Open repository at path", acceleratorLabel = SkillBillAcceleratorLabels.REPO_OPEN) {
+        Text(
+          text = if (busy) "Busy" else "Open",
+          color = if (busy) WorkspaceSteel else WorkspaceYellow,
+          fontSize = 11.sp,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Open repository at path")
+            .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+      }
       Text(
         text = "...",
         color = if (busy) WorkspaceSteel else WorkspaceYellow,
@@ -1275,6 +1405,7 @@ private fun CenterWorkspace(
   canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
   dirtyEditorPrompt: DirtyEditorPrompt?,
+  globalActionsEnabled: Boolean,
   editorInputEnabled: Boolean,
   onEditorDraftChanged: (String) -> Unit,
   onEditorSave: () -> Unit,
@@ -1341,6 +1472,7 @@ private fun CenterWorkspace(
       pushStatusErrorMessage = pushStatusErrorMessage,
       canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
       hasRepoOpen = hasRepoOpen,
+      globalActionsEnabled = globalActionsEnabled,
       onChangedFileSelected = onChangedFileSelected,
       onStageChangedFile = onStageChangedFile,
       onUnstageChangedFile = onUnstageChangedFile,
@@ -1529,6 +1661,7 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
       marker = "sv",
       enabled = editor.editable && editor.dirty && !editor.saveInProgress,
       primary = editor.dirty,
+      acceleratorLabel = SkillBillAcceleratorLabels.SAVE,
       onClick = onSave,
     )
     EditorActionButton(
@@ -1546,6 +1679,7 @@ private fun EditorActionButton(
   marker: String,
   enabled: Boolean,
   primary: Boolean = false,
+  acceleratorLabel: String? = null,
   onClick: () -> Unit,
 ) {
   val background = if (primary && enabled) WorkspaceYellow else WorkspacePanel
@@ -1555,20 +1689,22 @@ private fun EditorActionButton(
       primary -> Color(0xFF0B0B0D)
       else -> WorkspaceText
     }
-  Row(
-    modifier =
-    Modifier
-      .height(26.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, if (enabled) WorkspaceLine else WorkspacePanel, RoundedCornerShape(6.dp))
-      .background(background, RoundedCornerShape(6.dp))
-      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 9.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    MiniIcon(text = marker, tint = foreground)
-    Text(text = label, color = foreground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+  AcceleratorTooltip(label = label, acceleratorLabel = acceleratorLabel) {
+    Row(
+      modifier =
+      Modifier
+        .height(26.dp)
+        .clip(RoundedCornerShape(6.dp))
+        .border(1.dp, if (enabled) WorkspaceLine else WorkspacePanel, RoundedCornerShape(6.dp))
+        .background(background, RoundedCornerShape(6.dp))
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        .padding(horizontal = 9.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      MiniIcon(text = marker, tint = foreground)
+      Text(text = label, color = foreground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
   }
 }
 
@@ -2145,6 +2281,7 @@ private fun BottomDock(
   pushStatusErrorMessage: String?,
   canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
+  globalActionsEnabled: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
@@ -2216,6 +2353,7 @@ private fun BottomDock(
           pushStatusErrorMessage = pushStatusErrorMessage,
           canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
           hasRepoOpen = hasRepoOpen,
+          globalActionsEnabled = globalActionsEnabled,
           onChangedFileSelected = onChangedFileSelected,
           onStageChangedFile = onStageChangedFile,
           onUnstageChangedFile = onUnstageChangedFile,
@@ -2381,6 +2519,7 @@ private fun ChangesPanel(
   pushStatusErrorMessage: String?,
   canonicalPushConfirmationRequired: Boolean,
   hasRepoOpen: Boolean,
+  globalActionsEnabled: Boolean,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
@@ -2423,6 +2562,7 @@ private fun ChangesPanel(
         commitErrorMessage = commitErrorMessage,
         commitValidationFailed = commitValidationFailed,
         commitValidationRunning = commitValidationRunning,
+        globalActionsEnabled = globalActionsEnabled,
         onCommitMessageChanged = onCommitMessageChanged,
         onCommit = onCommit,
         onCommitAfterFailedValidation = onCommitAfterFailedValidation,
@@ -2691,6 +2831,7 @@ private fun CommitControls(
   commitErrorMessage: String?,
   commitValidationFailed: Boolean,
   commitValidationRunning: Boolean,
+  globalActionsEnabled: Boolean,
   onCommitMessageChanged: (String) -> Unit,
   onCommit: () -> Unit,
   onCommitAfterFailedValidation: () -> Unit,
@@ -2698,6 +2839,17 @@ private fun CommitControls(
   val commitInputEnabled = !publishingBusy
   val commitInputDescription =
     if (commitInputEnabled) "Commit message" else "Commit message disabled while publishing is running"
+  val commitEnabled = canCommit && !publishingBusy
+  val acceleratorPredicates = SkillBillAcceleratorPredicates(
+    busyOperationActive = !globalActionsEnabled && !publishingBusy,
+    publishingBusy = publishingBusy,
+    saveEnabled = false,
+    refreshEnabled = false,
+    renderEnabled = false,
+    validateEnabled = false,
+    commitEnabled = commitEnabled,
+    repoOpenEnabled = false,
+  )
   Column(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2715,7 +2867,6 @@ private fun CommitControls(
           }
         },
         enabled = commitInputEnabled,
-        singleLine = true,
         textStyle = androidx.compose.ui.text.TextStyle(
           color = WorkspaceText,
           fontSize = 12.sp,
@@ -2723,9 +2874,20 @@ private fun CommitControls(
         ),
         modifier = Modifier
           .weight(1f)
-          .height(30.dp)
+          .heightIn(min = 30.dp, max = 72.dp)
           .background(if (commitInputEnabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
           .border(1.dp, if (commitInputEnabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+          .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) {
+              false
+            } else {
+              dispatchCommitKeyboardAccelerator(
+                event = event.toKeyboardAcceleratorEvent(),
+                predicates = acceleratorPredicates,
+                onCommit = onCommit,
+              )
+            }
+          }
           .semantics {
             contentDescription = commitInputDescription
             if (!commitInputEnabled) {
@@ -2746,18 +2908,19 @@ private fun CommitControls(
           innerTextField()
         },
       )
-      val commitEnabled = canCommit && !publishingBusy
-      Text(
-        text = if (commitBusy) "committing" else "commit",
-        color = if (commitEnabled) WorkspaceYellow else WorkspaceSteel,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier
-          .height(30.dp)
-          .iconButtonSemantics(description = "Commit staged changes")
-          .clickable(enabled = commitEnabled, role = Role.Button, onClick = onCommit)
-          .padding(horizontal = 8.dp, vertical = 7.dp),
-      )
+      AcceleratorTooltip(label = "Commit staged changes", acceleratorLabel = SkillBillAcceleratorLabels.COMMIT) {
+        Text(
+          text = if (commitBusy) "committing" else "commit",
+          color = if (commitEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .height(30.dp)
+            .iconButtonSemantics(description = "Commit staged changes (${SkillBillAcceleratorLabels.COMMIT})")
+            .clickable(enabled = commitEnabled, role = Role.Button, onClick = onCommit)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        )
+      }
     }
     if (commitValidationRunning) {
       Text(text = "Running validation before commit...", color = WorkspaceSteel, fontSize = 11.sp)

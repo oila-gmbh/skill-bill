@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-14] keyboard-accelerators
+Areas: runtime-kotlin/runtime-desktop/feature/skillbill, runtime-kotlin/runtime-desktop/core/domain
+- Added desktop accelerators for repo open, commit, save, refresh, render, validate through existing route callbacks.
+- Followed route-owned busy/dirty guards; key handlers dispatch on UI state and do not add view-model commands.
+- Reusable: `KeyboardAccelerators.kt` centralizes resolver and callback dispatch helpers for focused fake-callback tests.
+- Command palette and toolbar discoverability share `SkillBillAcceleratorLabels` with Cmd/Ctrl labels.
+- Breaking changes or known limitations: shortcuts are fixed, not user-rebindable.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-05-14] SKILL-44 compare-url-browser (subtask 11)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/common, runtime-desktop app DI graph
 - Compare URL in the Push controls is now an actionable row that opens through route-owned `onOpenCompareUrl`, keeps selectable URL text, and preserves `Role.Button` + `Open compare URL: <url>` semantics on the clickable node.

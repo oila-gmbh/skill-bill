@@ -5,6 +5,7 @@ import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
 import skillbill.desktop.core.domain.model.CommandPaletteState
 import skillbill.desktop.core.domain.model.RepoLoadState
+import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -73,6 +74,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
         kind = CommandPaletteResultKind.COMMAND,
         action = CommandPaletteAction.REFRESH,
         disabledReason = blockedByBusy,
+        acceleratorLabel = SkillBillAcceleratorLabels.REFRESH,
       ),
       keywords = listOf("refresh", "reload", "repository", "tree"),
       baseRank = COMMAND_BASE_RANK,
@@ -87,6 +89,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
         kind = CommandPaletteResultKind.COMMAND,
         action = CommandPaletteAction.VALIDATE,
         disabledReason = blockedByBusy ?: validateDisabledReason(state),
+        acceleratorLabel = SkillBillAcceleratorLabels.VALIDATE,
       ),
       keywords = listOf("validate", "validation", "check", "contract"),
       baseRank = COMMAND_BASE_RANK - 1,
@@ -101,6 +104,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
         kind = CommandPaletteResultKind.COMMAND,
         action = CommandPaletteAction.RENDER,
         disabledReason = blockedByBusy ?: renderDisabledReason(state),
+        acceleratorLabel = SkillBillAcceleratorLabels.RENDER,
       ),
       keywords = listOf("render", "console", "generated", "artifact", "check"),
       baseRank = COMMAND_BASE_RANK - 2,
@@ -143,6 +147,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
         kind = CommandPaletteResultKind.COMMAND,
         action = CommandPaletteAction.SAVE,
         disabledReason = blockedByBusy ?: saveDisabledReason(state),
+        acceleratorLabel = SkillBillAcceleratorLabels.SAVE,
       ),
       keywords = listOf("save", "editor", "authored", "content", "draft"),
       baseRank = COMMAND_BASE_RANK - 3,

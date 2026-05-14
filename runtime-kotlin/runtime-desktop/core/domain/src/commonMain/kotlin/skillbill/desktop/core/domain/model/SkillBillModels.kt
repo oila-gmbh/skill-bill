@@ -187,6 +187,7 @@ data class CommandPaletteResult(
   val action: CommandPaletteAction,
   val treeItemId: String? = null,
   val disabledReason: String? = null,
+  val acceleratorLabel: String? = null,
   val rank: Int = 0,
 ) {
   val enabled: Boolean
@@ -213,6 +214,16 @@ enum class CommandPaletteAction {
   NEW_PLATFORM_OVERRIDE,
   NEW_CODE_REVIEW_AREA,
   NEW_ADD_ON,
+}
+
+object SkillBillAcceleratorLabels {
+  const val SAVE = "Cmd/Ctrl S"
+  const val REFRESH = "Cmd/Ctrl R"
+  const val RENDER = "Cmd/Ctrl Shift R"
+  const val VALIDATE = "Cmd/Ctrl Shift V"
+  const val COMMIT = "Cmd/Ctrl Enter"
+  const val REPO_OPEN = "Enter"
+  const val COMMAND_PALETTE = "Cmd/Ctrl K"
 }
 
 enum class RenderRunState {
