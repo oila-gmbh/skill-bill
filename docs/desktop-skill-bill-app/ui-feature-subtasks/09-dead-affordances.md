@@ -1,6 +1,6 @@
 # Subtask 09: Dead and Misleading Affordances
 
-Status: In Progress
+Status: Complete
 
 ## Parent Context
 

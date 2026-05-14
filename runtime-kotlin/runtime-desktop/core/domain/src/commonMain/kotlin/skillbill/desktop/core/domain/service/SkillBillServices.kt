@@ -26,6 +26,8 @@ interface RecentRepoRepository {
 
 interface SkillTreeService {
   fun treeFor(session: RepoSession?): List<SkillBillTreeItem>
+
+  fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? = null
 }
 
 interface AuthoringGateway {

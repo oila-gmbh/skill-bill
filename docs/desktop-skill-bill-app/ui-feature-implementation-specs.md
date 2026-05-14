@@ -36,6 +36,10 @@ and status surface.
 6. [Commit, Push, and Fork Publishing](ui-feature-subtasks/06-publishing.md)
 7. [Command Search and Quick Open](ui-feature-subtasks/07-command-search.md)
 8. [Scaffold Entry Points and Wizards](ui-feature-subtasks/08-scaffold-wizards.md)
+9. [Dead and Misleading Affordances](ui-feature-subtasks/09-dead-affordances.md)
+10. [Inspector Generated-Artifact Reveal](ui-feature-subtasks/10-inspector-artifact-reveal.md)
+11. [Open Compare URL in System Browser](ui-feature-subtasks/11-compare-url-browser.md)
+12. [Keyboard Accelerators](ui-feature-subtasks/12-keyboard-accelerators.md)
 
 ## UI Feature Map
 
@@ -78,6 +82,15 @@ and status surface.
    commands.
 8. Subtask 08, because scaffold creation is the broadest write path and should
    land after validation, dirty-state, and Git review are reliable.
+9. Subtask 09, because misleading affordances make every later polish pass
+   harder to evaluate. Land before any further UI work on the same surfaces.
+10. Subtask 10, because Inspector artifact reveal builds on the same
+    dirty-editor selection seam subtasks 02 and 03 already established.
+11. Subtask 11, because the compare URL only exists once publishing
+    (subtask 06) is real.
+12. Subtask 12, because the accelerators wrap callbacks that subtasks 02-06
+    already expose and should land after 09 to avoid binding shortcuts to
+    dead buttons.
 
 Each subtask file is intended to be small enough to hand directly to
 `bill-feature-implement`.

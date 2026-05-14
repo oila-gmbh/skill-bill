@@ -39,8 +39,15 @@ class FakeRepoSessionService : RepoSessionService {
   )
 }
 
-class FakeSkillTreeService(private val items: List<SkillBillTreeItem>) : SkillTreeService {
+class FakeSkillTreeService(
+  private val items: List<SkillBillTreeItem>,
+  var generatedArtifactIdsByPath: Map<String, String> = emptyMap(),
+) : SkillTreeService {
   override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> = items
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? =
+    generatedArtifactIdsByPath[artifactPath]
 }
 
 class FakeAuthoringGateway : AuthoringGateway {

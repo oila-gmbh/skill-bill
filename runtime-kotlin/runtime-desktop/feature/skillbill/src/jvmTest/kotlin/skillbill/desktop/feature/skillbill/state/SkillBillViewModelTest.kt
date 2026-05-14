@@ -1,8 +1,11 @@
 package skillbill.desktop.feature.skillbill.state
 
+import androidx.compose.ui.input.key.Key
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
+import skillbill.desktop.core.domain.model.CommitEntry
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
@@ -36,6 +39,9 @@ import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.feature.skillbill.ui.CommandPaletteActions
 import skillbill.desktop.feature.skillbill.ui.executeCommandPaletteResult
+import skillbill.desktop.feature.skillbill.ui.executeGeneratedArtifactSelection
+import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowActivatesForKey
+import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowContentDescription
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1431,6 +1437,143 @@ class SkillBillViewModelTest {
     assertEquals(1, validateCount)
   }
 
+  @Test
+  fun `generated artifact resolver exposes only existing tree item ids`() {
+    val artifactPath = "skills/bill-alpha/SKILL.md"
+    val artifactId = "generated-alpha"
+    val treeService = MutableSkillTreeService(
+      items = generatedArtifactTree(artifactId, artifactPath),
+      generatedArtifactIdsByPath = mapOf(
+        artifactPath to artifactId,
+        "skills/missing/SKILL.md" to "missing-id",
+      ),
+    )
+    val viewModel = newViewModel(skillTreeService = treeService)
+    viewModel.selectRepoPath("/repo")
+
+    assertEquals(artifactId, viewModel.resolveGeneratedArtifactTreeItemId(artifactPath))
+    assertNull(viewModel.resolveGeneratedArtifactTreeItemId("skills/unknown/SKILL.md"))
+    assertNull(viewModel.resolveGeneratedArtifactTreeItemId("skills/missing/SKILL.md"))
+  }
+
+  @Test
+  fun `generated artifact selection no-ops when resolver cannot match a tree item`() {
+    var selectedTreeItemId: String? = null
+
+    val executed = executeGeneratedArtifactSelection(
+      artifactPath = "skills/missing/SKILL.md",
+      resolveTreeItemId = { null },
+      selectTreeItem = { selectedTreeItemId = it },
+    )
+
+    assertFalse(executed)
+    assertNull(selectedTreeItemId)
+  }
+
+  @Test
+  fun `generated artifact selection uses tree selection fan-out for editor route and history filter`() {
+    val artifactPath = "skills/bill-alpha/SKILL.md"
+    val artifactId = "generated-alpha"
+    val gitGateway = FakeGitGateway(
+      scriptedCommits = listOf(
+        CommitEntry(
+          shortHash = "abc1234",
+          fullHash = "abc123456789",
+          author = "A",
+          isoDate = "2025-04-30T14:22:00+00:00",
+          subject = "Generate wrapper",
+          changedPaths = listOf(artifactPath),
+        ),
+      ),
+    )
+    val authoringGateway = FakeAuthoringGateway().apply {
+      documentsByTreeItemId[artifactId] = AuthoredContentDocument(
+        treeItemId = artifactId,
+        title = "SKILL.md",
+        skillName = null,
+        kind = "generated artifact",
+        authoredPath = artifactPath,
+        text = "# Generated\n",
+        editable = false,
+        readOnlyReason = "Generated runtime wrapper",
+      )
+    }
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        items = generatedArtifactTree(artifactId, artifactPath),
+        generatedArtifactIdsByPath = mapOf(artifactPath to artifactId),
+      ),
+      authoringGateway = authoringGateway,
+      gitGateway = gitGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    var sourceRouteSelection: String? = null
+
+    val executed = executeGeneratedArtifactSelection(
+      artifactPath = artifactPath,
+      resolveTreeItemId = viewModel::resolveGeneratedArtifactTreeItemId,
+      selectTreeItem = { itemId ->
+        val previousSelection = viewModel.state().selectedTreeItemId
+        val selected = viewModel.selectTreeItem(itemId)
+        if (selected.selectedTreeItemId != previousSelection) {
+          viewModel.setHistoryPathFilter(selected.editor.authoredPath)
+          val request = viewModel.beginLoadHistory()
+          viewModel.finishLoadHistory(viewModel.runLoadHistory(request))
+          selected.selectedTreeItemId?.let { sourceRouteSelection = it }
+        }
+      },
+    )
+    val selected = viewModel.state()
+
+    assertTrue(executed)
+    assertEquals(artifactId, selected.selectedTreeItemId)
+    assertTrue("generated-artifacts" in selected.expandedNodeIds)
+    assertFalse(selected.editor.editable)
+    assertEquals("generated artifact", selected.editor.kind)
+    assertEquals(artifactPath, selected.historyPathFilter)
+    assertEquals(artifactPath, gitGateway.lastRecentCommitsPathFilter)
+    assertEquals(artifactId, sourceRouteSelection)
+  }
+
+  @Test
+  fun `generated artifact selection prompts before leaving dirty editor`() {
+    val artifactPath = "skills/bill-alpha/SKILL.md"
+    val artifactId = "generated-alpha"
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "original\n")
+    }
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        items = generatedArtifactTree(artifactId, artifactPath),
+        generatedArtifactIdsByPath = mapOf(artifactPath to artifactId),
+      ),
+      authoringGateway = authoringGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("changed\n")
+
+    executeGeneratedArtifactSelection(
+      artifactPath = artifactPath,
+      resolveTreeItemId = viewModel::resolveGeneratedArtifactTreeItemId,
+      selectTreeItem = viewModel::selectTreeItem,
+    )
+    val prompted = viewModel.state()
+
+    assertEquals(DirtyEditorPromptReason.SELECTION_CHANGE, prompted.dirtyEditorPrompt?.reason)
+    assertEquals(artifactId, prompted.dirtyEditorPrompt?.targetTreeItemId)
+  }
+
+  @Test
+  fun `generated artifact row semantics announce artifact path`() {
+    val artifact = GeneratedArtifactDetail("skills/bill-alpha/SKILL.md", "Generated runtime wrapper")
+
+    assertEquals("Open artifact: skills/bill-alpha/SKILL.md", generatedArtifactRowContentDescription(artifact))
+    assertTrue(generatedArtifactRowActivatesForKey(Key.Enter))
+    assertTrue(generatedArtifactRowActivatesForKey(Key.NumPadEnter))
+    assertTrue(generatedArtifactRowActivatesForKey(Key.Spacebar))
+  }
+
   private fun newViewModel(
     repoSessionService: RepoSessionService = FakeRepoSessionService(),
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultSkillTree()),
@@ -1525,8 +1668,15 @@ private class MutableRepoSessionService(var nextSession: RepoSession) : RepoSess
     nextSession.copy(repoPath = nextSession.repoPath.ifBlank { repoPath })
 }
 
-private class MutableSkillTreeService(var items: List<SkillBillTreeItem>) : SkillTreeService {
+private class MutableSkillTreeService(
+  var items: List<SkillBillTreeItem>,
+  var generatedArtifactIdsByPath: Map<String, String> = emptyMap(),
+) : SkillTreeService {
   override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> = items
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? =
+    generatedArtifactIdsByPath[artifactPath]
 }
 
 private class StaticAuthoringGateway(private val editor: EditorPlaceholder) : AuthoringGateway {
@@ -1573,5 +1723,32 @@ private fun skillTree(vararg ids: String): List<SkillBillTreeItem> = listOf(
     label = "Skills",
     kind = TreeItemKind.GROUP,
     children = ids.map { id -> SkillBillTreeItem(id = id, label = id, kind = TreeItemKind.SKILL) },
+  ),
+)
+
+private fun generatedArtifactTree(artifactId: String, artifactPath: String): List<SkillBillTreeItem> = listOf(
+  SkillBillTreeItem(
+    id = "skills",
+    label = "Skills",
+    kind = TreeItemKind.GROUP,
+    children = listOf(
+      SkillBillTreeItem(id = "skill-one", label = "skill-one", kind = TreeItemKind.SKILL),
+    ),
+  ),
+  SkillBillTreeItem(
+    id = "generated-artifacts",
+    label = "Generated Artifacts",
+    kind = TreeItemKind.GROUP,
+    children = listOf(
+      SkillBillTreeItem(
+        id = artifactId,
+        label = artifactPath,
+        kind = TreeItemKind.GENERATED_ARTIFACT,
+        authoredPath = artifactPath,
+        status = "read-only",
+        editable = false,
+        readOnlyLabel = "RO",
+      ),
+    ),
   ),
 )

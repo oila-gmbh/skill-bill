@@ -198,6 +198,16 @@ fun SkillBillRoute(
     }
   }
 
+  fun runGeneratedArtifactSelection(artifactPath: String) {
+    if (canStartRepoScopedAction()) {
+      executeGeneratedArtifactSelection(
+        artifactPath = artifactPath,
+        resolveTreeItemId = viewModel::resolveGeneratedArtifactTreeItemId,
+        selectTreeItem = ::runTreeItemSelection,
+      )
+    }
+  }
+
   fun runRefresh() {
     if (canStartRepoScopedAction()) {
       state = viewModel.beginRefresh()
@@ -437,6 +447,10 @@ fun SkillBillRoute(
         state = viewModel.revealValidationIssue(issue)
       }
     },
+    onGeneratedArtifactResolvable = { artifactPath ->
+      viewModel.resolveGeneratedArtifactTreeItemId(artifactPath) != null
+    },
+    onGeneratedArtifactSelected = ::runGeneratedArtifactSelection,
     // F-106: clipboard side effect is hoisted into the route so the inspector stays pure.
     onCopyIssueSource = { sourcePath ->
       clipboardManager.setText(AnnotatedString(sourcePath))
@@ -550,3 +564,13 @@ fun SkillBillRoute(
 // F-X-512: duration in milliseconds the "copied" affordance stays visible before the route clears
 // the key. Kept conservative so the affordance is visible but not distracting.
 private const val COPY_FEEDBACK_DURATION_MILLIS: Long = 1500L
+
+internal fun executeGeneratedArtifactSelection(
+  artifactPath: String,
+  resolveTreeItemId: (String) -> String?,
+  selectTreeItem: (String) -> Unit,
+): Boolean {
+  val resolvedTreeItemId = resolveTreeItemId(artifactPath) ?: return false
+  selectTreeItem(resolvedTreeItemId)
+  return true
+}

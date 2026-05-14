@@ -291,6 +291,28 @@ class RuntimeRepoBrowserService :
       ?.key
   }
 
+  override fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? {
+    if (session?.isRecognizedSkillBillRepo != true) {
+      return null
+    }
+    val capturedSnapshot = snapshot
+    if (capturedSnapshot.repoRoot?.toString() != session.repoPath) {
+      return null
+    }
+    val root = capturedSnapshot.repoRoot
+    val normalized = normalizeSourcePath(root, artifactPath)
+    if (normalized.isBlank()) {
+      return null
+    }
+    return capturedSnapshot.selections.entries
+      .firstOrNull { (_, detail) ->
+        detail.repoToken == capturedSnapshot.repoToken &&
+          detail.kind == "generated artifact" &&
+          detail.authoredPath?.replace('\\', '/') == normalized
+      }
+      ?.key
+  }
+
   private fun validateRoot(root: Path): RepoLoadStatus {
     if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
       return RepoLoadStatus(
@@ -547,6 +569,7 @@ class RuntimeRepoBrowserService :
           editable = false,
           readOnlyLabel = READ_ONLY_LABEL,
           readOnlyReason = generated.reason,
+          contentFile = artifact,
         )
       SkillBillTreeItem(
         id = id,

@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-14] SKILL-44 inspector-artifact-reveal (subtask 10)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
+- Inspector Generated artifacts rows now reveal the exact generated tree item through `SkillTreeService.resolveGeneratedArtifactTreeItemId`, not `ValidationGateway.resolveTreeItemIdForSource`; keep these resolvers separate because validation intentionally maps `SKILL.md` siblings back to authored `content.md`.
+- Artifact activation routes through `SkillBillRoute.runGeneratedArtifactSelection -> runTreeItemSelection`, preserving dirty-editor prompts, ancestor expansion, read-only editor loading, source-route fan-out, and history path filtering.
+- Reusable UI pattern: rows compute resolvability from the in-memory tree snapshot before enabling `.clickable`; stale/deleted artifacts render disabled/demoted, use `Modifier.iconButtonSemantics("Open artifact: <path>")`, and support Enter/NumPadEnter/Space.
+- Generated artifact `SelectionDetail` now carries `contentFile` so selecting a generated wrapper opens the generated file content in the read-only editor.
+- Known limitation: route-level artifact clicks are covered through extracted pure helpers and VM tests, not Compose UI automation.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-13] SKILL-44 dead-affordances (subtask 09)
 Areas: runtime-desktop/feature/skillbill
 - Closes prior-subtask review debt F-102 (toolbar `NEW...` only opened HORIZONTAL_SKILL) and F-107 (`Role.Button` on non-interactive surfaces): every visible button-affordance element either has a real handler or drops `.clickable` + `Role.Button`.

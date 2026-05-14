@@ -116,6 +116,7 @@ class RuntimeRepoBrowserServiceTest {
     val result = service.saveDocument(session, generatedId, "attempt")
 
     assertFalse(document.editable)
+    assertTrue(document.text.contains("Generated wrapper"))
     assertTrue(document.readOnlyReason.orEmpty().contains("Generated runtime wrapper"))
     assertFalse(result.success)
     assertTrue(result.runtimeErrorMessage.orEmpty().contains("Generated runtime wrapper"))
@@ -393,6 +394,43 @@ class RuntimeRepoBrowserServiceTest {
 
     assertNotNull(contentResolved)
     assertEquals(contentResolved, siblingResolved)
+  }
+
+  @Test
+  fun `resolveGeneratedArtifactTreeItemId matches exact generated artifact tree id from snapshot`() {
+    val repo = seedRepo("generated-artifact-resolve")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val generatedId = service.treeForSessionLocalId(session, "generated:skills/bill-alpha/SKILL.md")
+
+    val resolved = service.resolveGeneratedArtifactTreeItemId(session, "skills/bill-alpha/SKILL.md")
+
+    assertEquals(generatedId, resolved)
+  }
+
+  @Test
+  fun `resolveGeneratedArtifactTreeItemId does not use source sibling remapping`() {
+    val repo = seedRepo("generated-artifact-no-source-remap")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val authoredId = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/SKILL.md")
+    val generatedId = service.resolveGeneratedArtifactTreeItemId(session, "skills/bill-alpha/SKILL.md")
+
+    assertNotNull(authoredId)
+    assertNotNull(generatedId)
+    assertTrue(generatedId != authoredId)
+    assertNull(service.resolveGeneratedArtifactTreeItemId(session, "skills/bill-alpha/content.md"))
+  }
+
+  @Test
+  fun `resolveGeneratedArtifactTreeItemId returns null for unknown artifact path`() {
+    val repo = seedRepo("generated-artifact-resolve-unknown")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+
+    val resolved = service.resolveGeneratedArtifactTreeItemId(session, "skills/does-not-exist/SKILL.md")
+
+    assertNull(resolved)
   }
 
   @Test

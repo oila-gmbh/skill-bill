@@ -194,9 +194,14 @@ class SkillBillViewModel(
     return selectTreeItemIgnoringDirty(itemId)
   }
 
+  fun resolveGeneratedArtifactTreeItemId(artifactPath: String): String? = skillTreeService
+    .resolveGeneratedArtifactTreeItemId(currentSession, artifactPath)
+    ?.takeIf(::containsTreeItem)
+
   private fun selectTreeItemIgnoringDirty(itemId: String): SkillBillState {
     val previousSelectedTreeItemId = selectedTreeItemId
     selectedTreeItemId = itemId.takeIf(::containsTreeItem)
+    selectedTreeItemId?.let { selected -> expandedNodeIds = expandedNodeIds + ancestorIdsOf(selected) }
     if (selectedTreeItemId != previousSelectedTreeItemId) {
       // F-202: render output is keyed by tree-item id, so the prior selection's PASSED/FAILED
       // summary must not bleed into a new selection. Mirror the refresh/repo-switch reset (F-103).

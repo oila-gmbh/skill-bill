@@ -10,6 +10,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,6 +134,8 @@ fun SkillBillFrame(
   onTreeItemExpandedToggled: (String) -> Unit,
   onMoveTreeSelection: (Int) -> Unit,
   onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onGeneratedArtifactResolvable: (String) -> Boolean,
+  onGeneratedArtifactSelected: (String) -> Unit,
   onCopyIssueSource: (String) -> Unit,
   onActiveDockTabChanged: (DockTab) -> Unit,
   onChangedFileSelected: (String) -> Unit,
@@ -290,6 +295,8 @@ fun SkillBillFrame(
           validation = state.validation,
           render = state.render,
           onValidationIssueSelected = onValidationIssueSelected,
+          onGeneratedArtifactResolvable = onGeneratedArtifactResolvable,
+          onGeneratedArtifactSelected = onGeneratedArtifactSelected,
           onCopyIssueSource = onCopyIssueSource,
         )
       }
@@ -585,6 +592,11 @@ private fun CommandSearchButton(onClick: () -> Unit) {
 
 private fun androidx.compose.ui.input.key.KeyEvent.isCommandPaletteShortcut(): Boolean =
   (isCtrlPressed || isMetaPressed) && (key == Key.K || key == Key.P)
+
+private fun androidx.compose.ui.input.key.KeyEvent.isActivationKey(): Boolean = generatedArtifactRowActivatesForKey(key)
+
+internal fun generatedArtifactRowActivatesForKey(key: Key): Boolean =
+  key == Key.Enter || key == Key.NumPadEnter || key == Key.Spacebar
 
 @Composable
 private fun CommandPaletteOverlay(
@@ -1707,6 +1719,8 @@ private fun InspectorPane(
   validation: ValidationSummary,
   render: RenderSummary,
   onValidationIssueSelected: (ValidationIssue) -> Unit,
+  onGeneratedArtifactResolvable: (String) -> Boolean,
+  onGeneratedArtifactSelected: (String) -> Unit,
   onCopyIssueSource: (String) -> Unit,
 ) {
   Column(
@@ -1777,7 +1791,11 @@ private fun InspectorPane(
           KeyValueRow("visible", "none")
         } else {
           artifactsForInspector.forEach { artifact ->
-            KeyValueRow(artifact.path, "read-only", tone = Tone.Warning)
+            GeneratedArtifactRow(
+              artifact = artifact,
+              enabled = onGeneratedArtifactResolvable(artifact.path),
+              onGeneratedArtifactSelected = onGeneratedArtifactSelected,
+            )
           }
         }
       }
@@ -1987,6 +2005,69 @@ private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
     )
   }
 }
+
+@Composable
+private fun GeneratedArtifactRow(
+  artifact: GeneratedArtifactDetail,
+  enabled: Boolean,
+  onGeneratedArtifactSelected: (String) -> Unit,
+) {
+  val interactionSource = remember { MutableInteractionSource() }
+  val hovered by interactionSource.collectIsHoveredAsState()
+  val rowBackground =
+    if (enabled && hovered) {
+      WorkspaceRaised.copy(alpha = 0.65f)
+    } else {
+      Color.Transparent
+    }
+  val labelAlpha = if (enabled) 1f else 0.55f
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .height(28.dp)
+      .clip(RoundedCornerShape(3.dp))
+      .background(rowBackground)
+      .iconButtonSemantics(description = generatedArtifactRowContentDescription(artifact))
+      .semantics(mergeDescendants = true) {
+        if (!enabled) disabled()
+      }
+      .onPreviewKeyEvent { event ->
+        if (enabled && event.type == KeyEventType.KeyDown && event.isActivationKey()) {
+          onGeneratedArtifactSelected(artifact.path)
+          true
+        } else {
+          false
+        }
+      }
+      .hoverable(interactionSource = interactionSource, enabled = enabled)
+      .clickable(enabled = enabled, role = Role.Button) { onGeneratedArtifactSelected(artifact.path) }
+      .focusable(enabled = enabled),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(
+      text = artifact.path,
+      color = WorkspaceSteel.copy(alpha = labelAlpha),
+      fontSize = 10.sp,
+      fontWeight = FontWeight.Medium,
+      letterSpacing = 0.sp,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    Text(
+      text = "read-only",
+      color = Tone.Warning.color().copy(alpha = labelAlpha),
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+internal fun generatedArtifactRowContentDescription(artifact: GeneratedArtifactDetail): String =
+  "Open artifact: ${artifact.path}"
 
 @Composable
 private fun CheckRow(ok: Boolean, label: String) {
