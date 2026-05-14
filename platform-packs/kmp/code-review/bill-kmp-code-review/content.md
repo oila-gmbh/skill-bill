@@ -30,7 +30,7 @@ Classify the review as one of:
 
 ### Decision Rules
 
-- If the shared stack-routing playbook indicates Android/KMP signals are strong, keep the Android/KMP route.
+- If Android/KMP signals are strong, keep the Android/KMP route.
 - If Android/KMP signals are weak or absent, delegate to `bill-kotlin-code-review` and stop instead of pretending mobile-specific coverage exists.
 - If backend/server files are also touched, keep the `kmp` route and use `bill-kotlin-code-review` as the baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
 - When uncertain, prefer the safer route that preserves Android/KMP review depth.
@@ -109,15 +109,3 @@ This is a lightweight file-level classification (names + imports), not a full re
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
 
----
-
-## Run Context
-
-`Review session ID: <review-session-id>`
-`Review run ID: <review-run-id>`
-`Applied learnings: none | <learning references>`
-
-
-## Scope Resolution
-
-Resolve the scope before reviewing. If the caller asks for staged changes, inspect only the staged diff and keep unstaged edits out of findings except for repo markers needed for classification.

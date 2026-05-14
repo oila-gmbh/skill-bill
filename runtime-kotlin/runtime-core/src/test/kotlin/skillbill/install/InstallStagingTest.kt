@@ -9,6 +9,7 @@ import skillbill.scaffold.renderWrapper
 import skillbill.scaffold.requiredSupportingFilesForSkill
 import skillbill.scaffold.resolveTarget
 import skillbill.scaffold.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -97,15 +98,16 @@ class InstallStagingTest {
     val skillDir = repoRoot.resolve("skills/bill-code-review")
     Files.createDirectories(skillDir)
     seedTopLevelSkillContent(skillDir)
+    SkillClassFixtures.seedShippedSkillClasses(repoRoot)
     val targets = supportingFileTargets(repoRoot)
-    requiredSupportingFilesForSkill("bill-code-review").map(targets::getValue).forEach { target ->
+    requiredSupportingFilesForSkill("bill-code-review", repoRoot).map(targets::getValue).forEach { target ->
       Files.createDirectories(target.parent)
       Files.writeString(target, "supporting target\n")
     }
 
     val rendered = stageInstalledSkill(repoRoot, skillDir, home)
 
-    requiredSupportingFilesForSkill("bill-code-review").forEach { fileName ->
+    requiredSupportingFilesForSkill("bill-code-review", repoRoot).forEach { fileName ->
       val sourceSidecar = skillDir.resolve(fileName)
       assertFalse(Files.exists(sourceSidecar, LinkOption.NOFOLLOW_LINKS), "source must not contain $fileName")
       val staged = rendered.stagingDir.resolve(fileName)

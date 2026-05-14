@@ -22,6 +22,7 @@ internal fun renderWrapper(target: AuthoringTarget): String {
       area = target.area,
       displayName = target.displayName,
     )
+  val skillClass = resolveSkillClassForSkill(target.skillName, target.contentFile)
   return buildString {
     append(frontmatter.trimEnd())
     appendLine()
@@ -29,9 +30,16 @@ internal fun renderWrapper(target: AuthoringTarget): String {
     append(renderDescriptorSection(context, defaultAreaFocus(target.area)).trimEnd())
     appendLine()
     appendLine()
+    if (skillClass != null && skillClass.sections.isNotEmpty()) {
+      append(renderClassSections(skillClass.sections).trimEnd())
+      appendLine()
+      appendLine()
+    }
     appendLine("## Execution")
-    appendLine()
-    append(executionBody.trimEnd())
+    if (executionBody.isNotBlank()) {
+      appendLine()
+      append(executionBody.trimEnd())
+    }
     val subagentRuntimeNotes = renderGeneratedSubagentSpawnRuntimeNotes(target)
     if (subagentRuntimeNotes.isNotBlank()) {
       appendLine()
@@ -40,7 +48,7 @@ internal fun renderWrapper(target: AuthoringTarget): String {
     }
     appendLine()
     appendLine()
-    append(renderCeremonySection(context).trimEnd())
+    append(renderCeremonySection(skillClass).trimEnd())
     appendLine()
   }
 }

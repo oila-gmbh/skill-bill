@@ -103,7 +103,7 @@ internal fun renderSkillBody(context: TemplateContext, description: String, area
     appendLine()
     append(CANONICAL_EXECUTION_SECTION)
     appendLine()
-    append(renderCeremonySection(context))
+    append(renderCeremonySection(skillClass = null))
   }
 
 internal fun renderAddonBody(skillName: String, description: String, explicitBody: String?): String {

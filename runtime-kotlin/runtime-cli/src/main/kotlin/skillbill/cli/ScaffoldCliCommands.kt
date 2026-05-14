@@ -509,10 +509,14 @@ private fun runNativeScaffoldPayload(
 
 private fun runNativeScaffoldPayload(payload: Map<String, *>, dryRun: Boolean, format: CliFormat): CliExecutionResult {
   val sessionId = generateScaffoldSessionId()
-  val repoRoot = findRepoRoot()
+  val payloadWithRepoRoot = if ((payload["repo_root"] as? String).isNullOrBlank()) {
+    payload + ("repo_root" to findRepoRoot().toString())
+  } else {
+    payload
+  }
   val result =
     try {
-      scaffold(payload + ("repo_root" to repoRoot.toString()), dryRun = dryRun)
+      scaffold(payloadWithRepoRoot, dryRun = dryRun)
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), format)
     }

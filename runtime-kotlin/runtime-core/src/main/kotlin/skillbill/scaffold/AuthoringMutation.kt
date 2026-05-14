@@ -72,7 +72,7 @@ private fun isSourceOwnedSkillTarget(repoRoot: Path, target: AuthoringTarget): B
 }
 
 private fun collectSourceSidecarIssues(repoRoot: Path, target: AuthoringTarget, issues: MutableList<String>) {
-  requiredSupportingFilesForSkill(target.skillName).forEach { fileName ->
+  requiredSupportingFilesForSkill(target.skillName, repoRoot).forEach { fileName ->
     val expectedTarget = supportingFileTargets(repoRoot)[fileName]
     if (expectedTarget == null) {
       issues += "${target.contentFile}: supporting sidecar '$fileName' has no registered target"
