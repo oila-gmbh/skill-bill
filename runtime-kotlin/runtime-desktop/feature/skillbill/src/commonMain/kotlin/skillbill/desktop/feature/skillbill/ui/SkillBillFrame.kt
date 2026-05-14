@@ -9,6 +9,7 @@ import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -266,6 +267,7 @@ fun SkillBillFrame(
     )
     openEditorTabs = openEditorTabs.upsertTab(nextTab)
   }
+  val openEditorTabIds = openEditorTabs.mapTo(mutableSetOf(), OpenEditorTab::id)
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -321,6 +323,7 @@ fun SkillBillFrame(
           repoStatus = state.repoStatus,
           treeItems = state.treeItems,
           selectedNodeId = state.selectedTreeItemId,
+          openEditorTabIds = openEditorTabIds,
           expandedNodeIds = state.expandedNodeIds,
           busyOperation = state.busyOperation,
           publishingBusy = publishingBusy,
@@ -332,6 +335,7 @@ fun SkillBillFrame(
           onRepoSelected = onRepoSelected,
           onChooseRepoDirectory = onChooseRepoDirectory,
           onNodeSelected = onTreeItemSelected,
+          onNodeOpened = onTreeItemSelected,
           onNodeExpandedToggled = onTreeItemExpandedToggled,
           onMoveSelection = onMoveTreeSelection,
           onActivateValidationTab = { onActiveDockTabChanged(DockTab.Validation) },
@@ -1173,6 +1177,7 @@ private fun NavigationPane(
   repoStatus: RepoLoadStatus,
   treeItems: List<SkillBillTreeItem>,
   selectedNodeId: String?,
+  openEditorTabIds: Set<String>,
   expandedNodeIds: Set<String>,
   busyOperation: SkillBillBusyOperation?,
   publishingBusy: Boolean,
@@ -1186,6 +1191,7 @@ private fun NavigationPane(
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
   onNodeSelected: (String) -> Unit,
+  onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
   onActivateValidationTab: () -> Unit,
@@ -1239,9 +1245,11 @@ private fun NavigationPane(
         NavGroup(
           group = group,
           selectedNodeId = selectedNodeId,
+          openEditorTabIds = openEditorTabIds,
           expanded = group.id in expandedNodeIds,
           enabled = !busy,
           onNodeSelected = onNodeSelected,
+          onNodeOpened = onNodeOpened,
           onNodeExpandedToggled = onNodeExpandedToggled,
         )
       }
@@ -1401,9 +1409,11 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
 private fun NavGroup(
   group: SkillBillTreeItem,
   selectedNodeId: String?,
+  openEditorTabIds: Set<String>,
   expanded: Boolean,
   enabled: Boolean,
   onNodeSelected: (String) -> Unit,
+  onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
 ) {
   val selected = selectedNodeId == group.id
@@ -1459,27 +1469,37 @@ private fun NavGroup(
         NavNodeRow(
           node = node,
           selected = selectedNodeId == node.id,
+          open = treeSingleClickSwitchesToOpenTab(node.id, openEditorTabIds),
           enabled = enabled,
           onNodeSelected = onNodeSelected,
+          onNodeOpened = onNodeOpened,
         )
       }
     }
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NavNodeRow(
   node: SkillBillTreeItem,
   selected: Boolean,
+  open: Boolean,
   enabled: Boolean,
   onNodeSelected: (String) -> Unit,
+  onNodeOpened: (String) -> Unit,
 ) {
-  val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
-  val iconTint = if (selected) WorkspaceYellow else WorkspaceSteel
+  val rowBackground = when {
+    selected -> WorkspaceYellow.copy(alpha = 0.15f)
+    open -> WorkspaceYellow.copy(alpha = 0.06f)
+    else -> Color.Transparent
+  }
+  val iconTint = if (selected || open) WorkspaceYellow else WorkspaceSteel
   val textAlpha =
     when {
       !enabled -> 0.42f
       selected -> 1f
+      open -> 0.96f
       else -> 0.86f
     }
   Row(
@@ -1490,8 +1510,20 @@ private fun NavNodeRow(
       .padding(start = 2.dp, end = 4.dp)
       .clip(RoundedCornerShape(3.dp))
       .background(rowBackground)
-      .semantics { this.selected = selected }
-      .clickable(enabled = enabled, role = Role.Button) { onNodeSelected(node.id) },
+      .semantics {
+        this.selected = selected
+        stateDescription = treeRowStateDescription(open)
+      }
+      .combinedClickable(
+        enabled = enabled,
+        role = Role.Button,
+        onDoubleClick = { onNodeOpened(node.id) },
+        onClick = {
+          if (open) {
+            onNodeSelected(node.id)
+          }
+        },
+      ),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Box(
@@ -1513,6 +1545,7 @@ private fun NavNodeRow(
       overflow = TextOverflow.Ellipsis,
     )
     val readOnlyLabel = node.readOnlyLabel ?: "RO".takeIf { !node.editable }
+    OpenEditorTabIndicator(open = open)
     if (readOnlyLabel != null) {
       Text(
         text = readOnlyLabel,
@@ -1524,6 +1557,23 @@ private fun NavNodeRow(
     }
     StatusDot(level = validationLevelFor(node.status))
     Spacer(modifier = Modifier.width(8.dp))
+  }
+}
+
+@Composable
+private fun OpenEditorTabIndicator(open: Boolean) {
+  Box(
+    modifier = Modifier.size(width = 10.dp, height = 10.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    if (open) {
+      Box(
+        modifier = Modifier
+          .size(5.dp)
+          .clip(CircleShape)
+          .background(WorkspaceYellow),
+      )
+    }
   }
 }
 
@@ -3898,6 +3948,12 @@ private fun phaseHeaderForBlock(header: String, index: Int): String? = when {
 
 private fun EditorPlaceholder.isDocumentLike(): Boolean =
   content != null || !authoredPath.isNullOrBlank() || !skillName.isNullOrBlank()
+
+internal fun treeSingleClickSwitchesToOpenTab(itemId: String, openEditorTabIds: Set<String>): Boolean =
+  itemId in openEditorTabIds
+
+internal fun treeRowStateDescription(open: Boolean): String =
+  if (open) "Open in editor tab" else "Not open in editor tab"
 
 private fun List<OpenEditorTab>.upsertTab(tab: OpenEditorTab): List<OpenEditorTab> {
   val existingIndex = indexOfFirst { it.id == tab.id }

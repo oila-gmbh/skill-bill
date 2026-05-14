@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,9 +34,6 @@ private val ChromeText = Color(0xFFF6F3E7)
 private val ChromeMuted = Color(0xFFB7B1A0)
 private val ChromeSteel = Color(0xFF6F7882)
 private val ChromeYellow = Color(0xFFF4C430)
-private val ChromeRed = Color(0xFFFF5F57)
-private val ChromeAmber = Color(0xFFFFBD2E)
-private val ChromeGreen = Color(0xFF60D394)
 
 @Composable
 fun SkillBillWindow(title: String, content: @Composable () -> Unit) {
@@ -66,9 +62,8 @@ private fun TitleBar(title: String) {
       .padding(horizontal = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    WindowDots()
     Row(
-      modifier = Modifier.padding(start = 16.dp).weight(1f),
+      modifier = Modifier.weight(1f),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -102,20 +97,6 @@ private fun TitleBar(title: String) {
     }
     Text(text = "st", color = ChromeSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
   }
-}
-
-@Composable
-private fun WindowDots() {
-  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    Dot(ChromeRed)
-    Dot(ChromeAmber)
-    Dot(ChromeGreen)
-  }
-}
-
-@Composable
-private fun Dot(color: Color) {
-  Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(color))
 }
 
 @Composable

@@ -6,6 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import skillbill.desktop.app.di.DesktopUserComponentManager
 import skillbill.desktop.app.state.rememberSkillBillDesktopAppState
 import skillbill.desktop.core.designsystem.SkillBillAppTheme
@@ -17,11 +20,18 @@ import skillbill.desktop.core.ui.di.ProvideScreenComponentFactory
 import skillbill.desktop.feature.skillbill.ui.SkillBillRoute
 
 @Composable
-fun SkillBillDesktopApp(userComponentManager: DesktopUserComponentManager) {
+fun SkillBillDesktopApp(userComponentManager: DesktopUserComponentManager, contentDensity: Float? = null) {
   val appState = rememberSkillBillDesktopAppState(userComponentManager = userComponentManager)
   val navigationState by appState.navigator.state.collectAsState()
+  val baseDensity = LocalDensity.current
+  val effectiveDensity = remember(baseDensity, contentDensity) {
+    contentDensity?.let { Density(density = it, fontScale = baseDensity.fontScale) } ?: baseDensity
+  }
 
-  CompositionLocalProvider(LocalUserComponentManager provides userComponentManager) {
+  CompositionLocalProvider(
+    LocalDensity provides effectiveDensity,
+    LocalUserComponentManager provides userComponentManager,
+  ) {
     ProvideScreenComponentFactory {
       SkillBillAppTheme {
         SkillBillWindow(title = "SkillBill") {
