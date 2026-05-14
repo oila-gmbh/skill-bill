@@ -1,0 +1,25 @@
+class: code-review-orchestrator
+contract_version: "1.1"
+
+matchers:
+  - pattern: "^bill-[a-z0-9-]+-code-review$"
+    exclude_exact:
+      - bill-code-review
+
+pointers:
+  - shell-ceremony
+  - review-scope
+  - stack-routing
+  - review-orchestrator
+  - specialist-contract
+  - review-delegation
+  - telemetry-contract
+
+ceremony_lines:
+  - "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md)."
+  - "Determine the review scope using [review-scope.md](review-scope.md)."
+  - "When stack routing applies, follow [stack-routing.md](stack-routing.md)."
+  - "When delegated specialist review applies, use [specialist-contract.md](specialist-contract.md)."
+  - "When delegated review execution applies, follow [review-delegation.md](review-delegation.md)."
+  - "When review reporting applies, follow [review-orchestrator.md](review-orchestrator.md)."
+  - "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md)."

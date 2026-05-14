@@ -263,7 +263,7 @@ object RepoValidationRuntime {
     } catch (error: InvalidSkillMdShapeError) {
       issues += error.message.orEmpty()
     }
-    requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+    requiredSupportingFilesForSkill(skillName, root).forEach { fileName ->
       val expectedTarget = supportingFileTargets(root)[fileName]
       if (expectedTarget == null) {
         issues += "$contentFile: supporting file '$fileName' has no registered target"
@@ -470,7 +470,7 @@ object RepoValidationRuntime {
   }
 
   private fun validateSupportingTargets(root: Path, skillNames: Set<String>, issues: MutableList<String>) {
-    skillNames.flatMap(::requiredSupportingFilesForSkill).toSet().forEach { fileName ->
+    skillNames.flatMap { name -> requiredSupportingFilesForSkill(name, root) }.toSet().forEach { fileName ->
       val target = supportingFileTargets(root)[fileName]
       if (target == null || !Files.exists(target)) {
         issues += "supporting file '$fileName' target is missing"

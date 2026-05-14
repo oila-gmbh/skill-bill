@@ -133,8 +133,6 @@ Persist `verdict_result` after the verdict is delivered. Update workflow state s
 
 This skill emits `skillbill_feature_verify_started` and `_finished` events via the `feature_verify_started` / `feature_verify_finished` MCP tools.
 
-For the shared telemetry contract including the `orchestrated` flag semantics, follow [telemetry-contract.md](telemetry-contract.md).
-
 Skill-specific telemetry fields, standalone invocation:
 
 1. Call `feature_verify_started` after Step 2 (criteria confirmed) with `acceptance_criteria_count`, `rollout_relevant`, and `spec_summary`. Save the returned `session_id`.
@@ -152,20 +150,6 @@ Before or immediately after `feature_verify_finished`, call `feature_verify_work
 - set `workflow_status` to `completed`, `abandoned`, or `failed`
 - keep `current_step_id` at the step where the workflow stopped
 - persist any final artifact patch needed to explain the terminal state
-
-## Nested Child Tools
-
-When this skill runs `bill-code-review` as part of the verify workflow, this skill is itself a parent. Pass `orchestrated=true` to `import_review` and `triage_findings`, collect the returned `telemetry_payload`, and include it in the verify-owned `review_result` or final verify payload. Standalone feature-verify still emits only its own `skillbill_feature_verify_finished` event; the nested review remains parent-owned.
-
-## Subagent Runtime Notes
-
-`bill-feature-verify` has no verify-specific specialist fan-out. Its only child review path is Step 5, which runs `bill-code-review` against the resolved PR diff and lets the code-review router own any stack-specific or native-subagent delegation. Keep the feature-flag audit, completeness audit, and consolidated verdict inline via the rubric sections below; do not spawn empty or fictional verify-specific native subagents for those audit steps.
-
-Because feature-verify does not directly select native specialists, there is no verify-owned Codex or OpenCode concurrency wave to chunk. If the nested `bill-code-review` route selects a stack review whose own specialist fan-out exceeds a runtime limit, that routed review skill owns chunking under its own runtime notes.
-
-## Skills Reused
-
-- `bill-code-review` — shared router for stack-specific code review
 
 ## Audit Rubrics
 
