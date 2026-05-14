@@ -30,6 +30,7 @@ import skillbill.nativeagent.parseNativeAgentSourceFile
 import skillbill.nativeagent.renderNativeAgentSource
 import skillbill.scaffold.AuthoringOperations
 import skillbill.scaffold.AuthoringRenderResult
+import skillbill.scaffold.RepoValidationIssue
 import skillbill.scaffold.RepoValidationIssueSeverity
 import skillbill.scaffold.RepoValidationReport
 import skillbill.scaffold.RepoValidationRuntime
@@ -170,21 +171,7 @@ class RuntimeRepoBrowserService :
     val root = resolveRepoPath(session.repoPath) ?: return ValidationSummary.unavailable
     return runCatching { validator(root) }
       .fold(
-        onSuccess = { report ->
-          val issues = report.structuredIssues.map { issue ->
-            ValidationIssue(
-              severity = issue.severity.toDomain(),
-              code = issue.code,
-              message = issue.message,
-              sourcePath = issue.sourcePath?.let { path -> normalizeSourcePath(root, path) },
-              exceptionName = issue.exceptionName,
-            )
-          }
-          ValidationSummary(
-            state = if (report.passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
-            issues = issues,
-          )
-        },
+        onSuccess = { report -> report.toValidationSummary(root) },
         onFailure = { error ->
           ValidationSummary(
             state = ValidationRunState.FAILED,
@@ -194,6 +181,29 @@ class RuntimeRepoBrowserService :
           )
         },
       )
+  }
+
+  override fun validateSelected(session: RepoSession?, treeItemId: String): ValidationSummary {
+    if (session == null || !session.isRecognizedSkillBillRepo) {
+      return ValidationSummary.unavailable
+    }
+    val capturedSnapshot = snapshot
+    val root = capturedSnapshot.repoRoot ?: return ValidationSummary.unavailable
+    if (root.toString() != session.repoPath) {
+      return ValidationSummary.unavailable
+    }
+    val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
+      ?: return ValidationSummary.unavailable
+    val skillName = detail.skillName ?: return ValidationSummary.unavailable
+    return runCatching { AuthoringOperations.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
+      .getOrElse { error ->
+        ValidationSummary(
+          state = ValidationRunState.FAILED,
+          issues = emptyList(),
+          runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
+          runtimeExceptionMessage = error.message,
+        )
+      }
   }
 
   override fun render(session: RepoSession?, treeItemId: String): RenderSummary {
@@ -773,6 +783,32 @@ private fun RepoValidationIssueSeverity.toDomain(): ValidationSeverity = when (t
   RepoValidationIssueSeverity.WARNING -> ValidationSeverity.WARNING
   RepoValidationIssueSeverity.INFO -> ValidationSeverity.INFO
 }
+
+private fun RepoValidationReport.toValidationSummary(root: Path): ValidationSummary =
+  ValidationSummary(
+    state = if (passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
+    issues = structuredIssues.map { issue -> issue.toValidationIssue(root) },
+  )
+
+private fun Map<String, Any?>.toSelectedValidationSummary(root: Path): ValidationSummary {
+  val status = this["status"] as? String
+  val rawIssues = this["issues"] as? List<*> ?: emptyList<Any?>()
+  return ValidationSummary(
+    state = if (status == "pass") ValidationRunState.PASSED else ValidationRunState.FAILED,
+    issues = rawIssues
+      .filterIsInstance<String>()
+      .map { rawIssue -> RepoValidationIssue.fromRawIssue(rawIssue).toValidationIssue(root) },
+  )
+}
+
+private fun RepoValidationIssue.toValidationIssue(root: Path): ValidationIssue =
+  ValidationIssue(
+    severity = severity.toDomain(),
+    code = code,
+    message = message,
+    sourcePath = sourcePath?.let { path -> normalizeSourcePath(root, path) },
+    exceptionName = exceptionName,
+  )
 
 private fun normalizeSourcePath(root: Path, sourcePath: String): String {
   val trimmed = sourcePath.trim()

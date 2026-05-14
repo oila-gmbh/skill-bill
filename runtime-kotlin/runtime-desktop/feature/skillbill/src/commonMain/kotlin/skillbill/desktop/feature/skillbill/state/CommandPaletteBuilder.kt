@@ -83,8 +83,8 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
     PaletteCandidate(
       result = CommandPaletteResult(
         id = "command.validate",
-        title = "Validate",
-        subtitle = "Run Skill Bill validation",
+        title = "Validate all",
+        subtitle = "Run full Skill Bill repository validation",
         marker = "ok",
         kind = CommandPaletteResultKind.COMMAND,
         action = CommandPaletteAction.VALIDATE,
@@ -97,8 +97,22 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
     ),
     PaletteCandidate(
       result = CommandPaletteResult(
+        id = "command.validate-selected",
+        title = "Validate selected",
+        subtitle = "Run validation for the current skill",
+        marker = "vs",
+        kind = CommandPaletteResultKind.COMMAND,
+        action = CommandPaletteAction.VALIDATE_SELECTED,
+        disabledReason = blockedByBusy ?: validateSelectedDisabledReason(state),
+      ),
+      keywords = listOf("validate", "validation", "selected", "skill", "check", "contract"),
+      baseRank = COMMAND_BASE_RANK - 2,
+      sortGroup = 0,
+    ),
+    PaletteCandidate(
+      result = CommandPaletteResult(
         id = "command.render",
-        title = "Render check",
+        title = "Render selected",
         subtitle = "Render generated runtime artifacts for the current selection",
         marker = "rc",
         kind = CommandPaletteResultKind.COMMAND,
@@ -107,7 +121,21 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
         acceleratorLabel = SkillBillAcceleratorLabels.RENDER,
       ),
       keywords = listOf("render", "console", "generated", "artifact", "check"),
-      baseRank = COMMAND_BASE_RANK - 2,
+      baseRank = COMMAND_BASE_RANK - 3,
+      sortGroup = 0,
+    ),
+    PaletteCandidate(
+      result = CommandPaletteResult(
+        id = "command.render-all",
+        title = "Render all",
+        subtitle = "Render generated runtime artifacts for every renderable source",
+        marker = "ra",
+        kind = CommandPaletteResultKind.COMMAND,
+        action = CommandPaletteAction.RENDER_ALL,
+        disabledReason = blockedByBusy ?: renderAllDisabledReason(state),
+      ),
+      keywords = listOf("render", "all", "full", "repo", "repository", "console", "generated", "artifact", "check"),
+      baseRank = COMMAND_BASE_RANK - 4,
       sortGroup = 0,
     ),
     PaletteCandidate(
@@ -300,11 +328,26 @@ private fun validateDisabledReason(state: SkillBillState): String? = when {
   else -> null
 }
 
+private fun validateSelectedDisabledReason(state: SkillBillState): String? = when {
+  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
+  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
+  state.selectedTreeItemId == null -> "Select a skill first."
+  !state.treeItems.isSelectedSkill(state.selectedTreeItemId) -> "The current selection is not a skill."
+  else -> null
+}
+
 private fun renderDisabledReason(state: SkillBillState): String? = when {
   state.selectedRepoPath == null -> "Open a Skill Bill repository first."
   state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
   state.selectedTreeItemId == null -> "Select a renderable skill, add-on, or native agent first."
   !state.renderable -> "The current selection cannot be rendered."
+  else -> null
+}
+
+private fun renderAllDisabledReason(state: SkillBillState): String? = when {
+  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
+  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
+  !state.treeItems.hasRenderableTreeItem() -> "No renderable skills, add-ons, or native agents were found."
   else -> null
 }
 
@@ -406,6 +449,26 @@ private fun SkillBillBusyOperation.label(): String = when (this) {
 
 private fun List<SkillBillTreeItem>.flattenPaletteTree(): List<SkillBillTreeItem> =
   flatMap { item -> listOf(item) + item.children.flattenPaletteTree() }
+
+private fun List<SkillBillTreeItem>.hasRenderableTreeItem(): Boolean =
+  any { item -> item.kind.isRenderableTreeItemKind() || item.children.hasRenderableTreeItem() }
+
+private fun List<SkillBillTreeItem>.isSelectedSkill(selectedTreeItemId: String?): Boolean = any { item ->
+  (item.id == selectedTreeItemId && item.kind == TreeItemKind.SKILL) ||
+    item.children.isSelectedSkill(selectedTreeItemId)
+}
+
+private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
+  TreeItemKind.SKILL,
+  TreeItemKind.PLATFORM_PACK,
+  TreeItemKind.ADD_ON,
+  TreeItemKind.NATIVE_AGENT,
+  -> true
+  TreeItemKind.GROUP,
+  TreeItemKind.GENERATED_ARTIFACT,
+  TreeItemKind.PLACEHOLDER,
+  -> false
+}
 
 private data class PaletteCandidate(
   val result: CommandPaletteResult,

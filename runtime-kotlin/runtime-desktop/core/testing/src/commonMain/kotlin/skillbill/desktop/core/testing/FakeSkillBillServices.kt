@@ -300,6 +300,7 @@ class FakeGitGateway(
 
 class FakeValidationGateway(
   var scriptedSummary: ValidationSummary = ValidationSummary.unavailable,
+  var scriptedSummariesByTreeItemId: Map<String, ValidationSummary> = emptyMap(),
   var resolveBySourcePath: Map<String, String> = emptyMap(),
   var throwOnValidate: Throwable? = null,
 ) : ValidationGateway {
@@ -313,6 +314,19 @@ class FakeValidationGateway(
     return scriptedSummary
   }
 
+  var validateSelectedCallCount: Int = 0
+    private set
+
+  val requestedValidationTreeItemIds: MutableList<String> = mutableListOf()
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun validateSelected(session: RepoSession?, treeItemId: String): ValidationSummary {
+    validateSelectedCallCount += 1
+    requestedValidationTreeItemIds += treeItemId
+    throwOnValidate?.let { throw it }
+    return scriptedSummariesByTreeItemId[treeItemId] ?: scriptedSummary
+  }
+
   @Suppress("UNUSED_PARAMETER")
   override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? =
     resolveBySourcePath[sourcePath]
@@ -320,10 +334,13 @@ class FakeValidationGateway(
 
 class FakeRenderGateway(
   var scriptedSummary: RenderSummary = RenderSummary.unavailable,
+  var scriptedSummariesByTreeItemId: Map<String, RenderSummary> = emptyMap(),
   var throwOnRender: Throwable? = null,
 ) : RenderGateway {
   var callCount: Int = 0
     private set
+
+  val requestedTreeItemIds: MutableList<String> = mutableListOf()
 
   var lastRequestedTreeItemId: String? = null
     private set
@@ -331,9 +348,10 @@ class FakeRenderGateway(
   @Suppress("UNUSED_PARAMETER")
   override fun render(session: RepoSession?, treeItemId: String): RenderSummary {
     callCount += 1
+    requestedTreeItemIds += treeItemId
     lastRequestedTreeItemId = treeItemId
     throwOnRender?.let { throw it }
-    return scriptedSummary
+    return scriptedSummariesByTreeItemId[treeItemId] ?: scriptedSummary
   }
 }
 

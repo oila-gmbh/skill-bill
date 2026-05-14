@@ -731,6 +731,57 @@ class SkillBillViewModelTest {
   }
 
   @Test
+  fun `selected validation validates only the selected skill`() {
+    val selectedSummary = ValidationSummary(
+      state = ValidationRunState.FAILED,
+      issues = listOf(
+        ValidationIssue(
+          severity = ValidationSeverity.ERROR,
+          code = "BILL001",
+          message = "selected issue",
+          sourcePath = "skills/skill-one/content.md",
+        ),
+      ),
+    )
+    val validationGateway = FakeValidationGateway(
+      scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED),
+      scriptedSummariesByTreeItemId = mapOf("skill-one" to selectedSummary),
+    )
+    val viewModel = newViewModel(
+      validationGateway = validationGateway,
+      skillTreeService = MutableSkillTreeService(skillTree("skill-one", "skill-two")),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem("skill-one")
+
+    val request = viewModel.beginValidateSelected()
+    val running = viewModel.state()
+    val finished = viewModel.finishValidate(viewModel.runValidate(request))
+
+    assertEquals(ValidationRunState.RUNNING, running.validation.state)
+    assertEquals(DockTab.Validation, running.activeDockTab)
+    assertEquals(ValidationRunState.FAILED, finished.validation.state)
+    assertEquals("selected issue", finished.validation.issues.single().message)
+    assertEquals(0, validationGateway.validateCallCount)
+    assertEquals(1, validationGateway.validateSelectedCallCount)
+    assertEquals(listOf("skill-one"), validationGateway.requestedValidationTreeItemIds)
+  }
+
+  @Test
+  fun `selected validation with no selection stays unavailable and does not run repo validation`() {
+    val validationGateway =
+      FakeValidationGateway(scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED))
+    val viewModel = newViewModel(validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val finished = viewModel.finishValidate(viewModel.runValidate(viewModel.beginValidateSelected()))
+
+    assertEquals(ValidationRunState.UNAVAILABLE, finished.validation.state)
+    assertEquals(0, validationGateway.validateCallCount)
+    assertEquals(0, validationGateway.validateSelectedCallCount)
+  }
+
+  @Test
   fun `failed validation preserves editor selection`() {
     val validationGateway = FakeValidationGateway()
     val viewModel = newViewModel(validationGateway = validationGateway)
@@ -986,6 +1037,86 @@ class SkillBillViewModelTest {
     assertNull(finished.busyOperation)
     assertEquals(1, renderGateway.callCount)
     assertEquals("skill-one", renderGateway.lastRequestedTreeItemId)
+  }
+
+  @Test
+  fun `render all renders every renderable tree item and aggregates output`() {
+    val renderGateway = FakeRenderGateway(
+      scriptedSummariesByTreeItemId = mapOf(
+        "skill-one" to passedRenderSummary("skills/one/SKILL.md"),
+        "skill-two" to passedRenderSummary("skills/two/SKILL.md"),
+        "addon" to passedRenderSummary("platform-packs/kotlin/addons/addon.md"),
+        "agent" to passedRenderSummary("skills/bill-alpha/native-agents/agent.md"),
+      ),
+    )
+    val viewModel = newViewModel(
+      renderGateway = renderGateway,
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "skill-one", label = "Skill One", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "skill-two", label = "Skill Two", kind = TreeItemKind.PLATFORM_PACK),
+              SkillBillTreeItem(id = "addon", label = "Addon", kind = TreeItemKind.ADD_ON),
+              SkillBillTreeItem(id = "agent", label = "Agent", kind = TreeItemKind.NATIVE_AGENT),
+              SkillBillTreeItem(id = "generated", label = "SKILL.md", kind = TreeItemKind.GENERATED_ARTIFACT),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+
+    val request = viewModel.beginRenderAll()
+    val finished = viewModel.finishRender(viewModel.runRender(request))
+
+    assertEquals(RenderRunState.PASSED, finished.render.state)
+    assertEquals(listOf("skill-one", "skill-two", "addon", "agent"), renderGateway.requestedTreeItemIds)
+    assertEquals(4, finished.render.generatedArtifacts.size)
+    assertTrue(finished.render.blocks.any { it.header == "===== render target: Skill One (skill-one) =====" })
+    assertFalse(renderGateway.requestedTreeItemIds.contains("generated"))
+  }
+
+  @Test
+  fun `render all returns failed when any target fails but still renders remaining targets`() {
+    val renderGateway = FakeRenderGateway(
+      scriptedSummariesByTreeItemId = mapOf(
+        "skill-one" to passedRenderSummary("skills/one/SKILL.md"),
+        "skill-two" to RenderSummary(
+          state = RenderRunState.FAILED,
+          runtimeExceptionName = "IllegalStateException",
+          runtimeExceptionMessage = "boom",
+        ),
+      ),
+    )
+    val viewModel = newViewModel(
+      renderGateway = renderGateway,
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "skills",
+            label = "Skills",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(id = "skill-one", label = "Skill One", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(id = "skill-two", label = "Skill Two", kind = TreeItemKind.SKILL),
+            ),
+          ),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+
+    val finished = viewModel.finishRender(viewModel.runRender(viewModel.beginRenderAll()))
+
+    assertEquals(RenderRunState.FAILED, finished.render.state)
+    assertEquals("RenderAllFailed", finished.render.runtimeExceptionName)
+    assertEquals("1 render target(s) failed.", finished.render.runtimeExceptionMessage)
+    assertEquals(listOf("skill-one", "skill-two"), renderGateway.requestedTreeItemIds)
+    assertTrue(finished.render.blocks.any { it.content.contains("exception: IllegalStateException: boom") })
   }
 
   @Test
@@ -1278,14 +1409,20 @@ class SkillBillViewModelTest {
 
     val state = viewModel.selectRepoPath("/not-skill-bill").let { viewModel.openCommandPalette() }
     val validate = state.commandPalette.results.first { it.id == "command.validate" }
+    val validateSelected = state.commandPalette.results.first { it.id == "command.validate-selected" }
     val render = state.commandPalette.results.first { it.id == "command.render" }
+    val renderAll = state.commandPalette.results.first { it.id == "command.render-all" }
     val showChanges = state.commandPalette.results.first { it.id == "command.show-changes" }
     val showHistory = state.commandPalette.results.first { it.id == "command.show-history" }
 
     assertFalse(validate.enabled)
     assertEquals("Open a valid Skill Bill repository first.", validate.disabledReason)
+    assertFalse(validateSelected.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", validateSelected.disabledReason)
     assertFalse(render.enabled)
     assertEquals("Open a valid Skill Bill repository first.", render.disabledReason)
+    assertFalse(renderAll.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", renderAll.disabledReason)
     assertFalse(showChanges.enabled)
     assertEquals("Open a valid Skill Bill repository first.", showChanges.disabledReason)
     assertFalse(showHistory.enabled)
@@ -1308,6 +1445,12 @@ class SkillBillViewModelTest {
       marker = "ok",
       action = CommandPaletteAction.VALIDATE,
     )
+    val validateSelected = refresh.copy(
+      id = "command.validate-selected",
+      title = "Validate selected",
+      marker = "vs",
+      action = CommandPaletteAction.VALIDATE_SELECTED,
+    )
     val openRepository = refresh.copy(
       id = "command.open-repository",
       title = "Open repository",
@@ -1326,15 +1469,33 @@ class SkillBillViewModelTest {
       marker = "hst",
       action = CommandPaletteAction.SHOW_HISTORY,
     )
+    val render = refresh.copy(
+      id = "command.render",
+      title = "Render selected",
+      marker = "rc",
+      action = CommandPaletteAction.RENDER,
+    )
+    val renderAll = refresh.copy(
+      id = "command.render-all",
+      title = "Render all",
+      marker = "ra",
+      action = CommandPaletteAction.RENDER_ALL,
+    )
     var openRepositoryCount = 0
     var refreshCount = 0
     var validateCount = 0
+    var validateSelectedCount = 0
+    var renderCount = 0
+    var renderAllCount = 0
     var showChangesCount = 0
     var showHistoryCount = 0
     val actions = paletteActions(
       openRepository = { openRepositoryCount += 1 },
       refresh = { refreshCount += 1 },
       validate = { validateCount += 1 },
+      validateSelected = { validateSelectedCount += 1 },
+      render = { renderCount += 1 },
+      renderAll = { renderAllCount += 1 },
       showChanges = { showChangesCount += 1 },
       showHistory = { showHistoryCount += 1 },
     )
@@ -1342,12 +1503,18 @@ class SkillBillViewModelTest {
     assertTrue(executeCommandPaletteResult(openRepository, actions))
     assertTrue(executeCommandPaletteResult(refresh, actions))
     assertTrue(executeCommandPaletteResult(validate, actions))
+    assertTrue(executeCommandPaletteResult(validateSelected, actions))
+    assertTrue(executeCommandPaletteResult(render, actions))
+    assertTrue(executeCommandPaletteResult(renderAll, actions))
     assertTrue(executeCommandPaletteResult(showChanges, actions))
     assertTrue(executeCommandPaletteResult(showHistory, actions))
 
     assertEquals(1, openRepositoryCount)
     assertEquals(1, refreshCount)
     assertEquals(1, validateCount)
+    assertEquals(1, validateSelectedCount)
+    assertEquals(1, renderCount)
+    assertEquals(1, renderAllCount)
     assertEquals(1, showChangesCount)
     assertEquals(1, showHistoryCount)
   }
@@ -1601,7 +1768,9 @@ private fun paletteActions(
   openRepository: () -> Unit = {},
   refresh: () -> Unit = {},
   validate: () -> Unit = {},
+  validateSelected: () -> Unit = {},
   render: () -> Unit = {},
+  renderAll: () -> Unit = {},
   showChanges: () -> Unit = {},
   showHistory: () -> Unit = {},
   save: () -> Unit = {},
@@ -1612,7 +1781,9 @@ private fun paletteActions(
   openRepository = openRepository,
   refresh = refresh,
   validate = validate,
+  validateSelected = validateSelected,
   render = render,
+  renderAll = renderAll,
   showChanges = showChanges,
   showHistory = showHistory,
   save = save,
@@ -1724,6 +1895,13 @@ private fun skillTree(vararg ids: String): List<SkillBillTreeItem> = listOf(
     kind = TreeItemKind.GROUP,
     children = ids.map { id -> SkillBillTreeItem(id = id, label = id, kind = TreeItemKind.SKILL) },
   ),
+)
+
+private fun passedRenderSummary(artifactPath: String): RenderSummary = RenderSummary(
+  state = RenderRunState.PASSED,
+  blocks = listOf(RenderBlock(header = "===== SKILL.md: $artifactPath =====", content = "# generated\n")),
+  generatedArtifacts = listOf(GeneratedArtifactDetail(artifactPath, "Generated runtime wrapper")),
+  durationMillis = 1L,
 )
 
 private fun generatedArtifactTree(artifactId: String, artifactPath: String): List<SkillBillTreeItem> = listOf(

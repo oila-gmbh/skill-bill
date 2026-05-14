@@ -92,6 +92,8 @@ interface GitGateway {
 interface ValidationGateway {
   fun validate(session: RepoSession?): ValidationSummary
 
+  fun validateSelected(session: RepoSession?, treeItemId: String): ValidationSummary = validate(session)
+
   fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String?
 }
 

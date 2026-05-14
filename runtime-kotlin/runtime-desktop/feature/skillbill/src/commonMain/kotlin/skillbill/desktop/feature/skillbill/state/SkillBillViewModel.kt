@@ -15,6 +15,7 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.RenderBlock
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -825,12 +826,36 @@ class SkillBillViewModel(
     return ValidationRunRequest(
       token = activeOperationToken,
       session = currentSession,
+      selectedOnly = false,
+      treeItemId = null,
+      previousValidationSummary = previousValidationSummary,
+    )
+  }
+
+  fun beginValidateSelected(): ValidationRunRequest {
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.VALIDATE
+    val previousValidationSummary = validation
+    validation = ValidationSummary(state = ValidationRunState.RUNNING)
+    activeDockTab = DockTab.Validation
+    currentState = createState()
+    return ValidationRunRequest(
+      token = activeOperationToken,
+      session = currentSession,
+      selectedOnly = true,
+      treeItemId = selectedTreeItemId,
       previousValidationSummary = previousValidationSummary,
     )
   }
 
   fun runValidate(request: ValidationRunRequest): ValidationRunResult {
-    val summary = validationGateway.validate(request.session)
+    val summary = if (request.selectedOnly) {
+      request.treeItemId
+        ?.let { treeItemId -> validationGateway.validateSelected(request.session, treeItemId) }
+        ?: ValidationSummary.unavailable
+    } else {
+      validationGateway.validate(request.session)
+    }
     return ValidationRunResult(request = request, summary = summary)
   }
 
@@ -852,6 +877,22 @@ class SkillBillViewModel(
   }
 
   fun beginRender(): RenderRunRequest {
+    val selectedTarget = selectedTreeItemId?.let { id ->
+      RenderTarget(
+        treeItemId = id,
+        label = treeItems.flatten().firstOrNull { item -> item.id == id }?.label ?: id,
+      )
+    }
+    return beginRenderForTargets(listOfNotNull(selectedTarget))
+  }
+
+  fun beginRenderAll(): RenderRunRequest = beginRenderForTargets(
+    treeItems.flatten()
+      .filter { item -> item.kind.isRenderableTreeItemKind() }
+      .map { item -> RenderTarget(treeItemId = item.id, label = item.label) },
+  )
+
+  private fun beginRenderForTargets(targets: List<RenderTarget>): RenderRunRequest {
     activeOperationToken += 1
     busyOperation = SkillBillBusyOperation.RENDER
     val previousRenderSummary = render
@@ -861,18 +902,39 @@ class SkillBillViewModel(
     return RenderRunRequest(
       token = activeOperationToken,
       session = currentSession,
-      treeItemId = selectedTreeItemId,
+      targets = targets,
       previousRenderSummary = previousRenderSummary,
     )
   }
 
   fun runRender(request: RenderRunRequest): RenderRunResult {
-    val summary = if (request.treeItemId == null) {
-      RenderSummary.unavailable
-    } else {
-      renderGateway.render(request.session, request.treeItemId)
+    val summary = when (request.targets.size) {
+      0 -> RenderSummary.unavailable
+      1 -> renderGateway.render(request.session, request.targets.single().treeItemId)
+      else -> renderAllTargets(request.session, request.targets)
     }
     return RenderRunResult(request = request, summary = summary)
+  }
+
+  private fun renderAllTargets(session: RepoSession?, targets: List<RenderTarget>): RenderSummary {
+    val renderedTargets = targets.map { target ->
+      target to runCatching { renderGateway.render(session, target.treeItemId) }.getOrElse { error ->
+        RenderSummary(
+          state = RenderRunState.FAILED,
+          runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName ?: "Throwable",
+          runtimeExceptionMessage = error.message,
+        )
+      }
+    }
+    val failedTargetCount = renderedTargets.count { (_, summary) -> summary.state != RenderRunState.PASSED }
+    return RenderSummary(
+      state = if (failedTargetCount == 0) RenderRunState.PASSED else RenderRunState.FAILED,
+      blocks = renderedTargets.flatMap { (target, summary) -> target.renderBlocks(summary) },
+      generatedArtifacts = renderedTargets.flatMap { (_, summary) -> summary.generatedArtifacts },
+      durationMillis = renderedTargets.sumOf { (_, summary) -> summary.durationMillis },
+      runtimeExceptionName = if (failedTargetCount == 0) null else "RenderAllFailed",
+      runtimeExceptionMessage = if (failedTargetCount == 0) null else "$failedTargetCount render target(s) failed.",
+    )
   }
 
   fun finishRender(result: RenderRunResult): SkillBillState {
@@ -1780,6 +1842,8 @@ data class RepoLoadResult(
 data class ValidationRunRequest(
   val token: Long,
   val session: RepoSession?,
+  val selectedOnly: Boolean,
+  val treeItemId: String?,
   val previousValidationSummary: ValidationSummary,
 )
 
@@ -1791,8 +1855,13 @@ data class ValidationRunResult(
 data class RenderRunRequest(
   val token: Long,
   val session: RepoSession?,
-  val treeItemId: String?,
+  val targets: List<RenderTarget>,
   val previousRenderSummary: RenderSummary,
+)
+
+data class RenderTarget(
+  val treeItemId: String,
+  val label: String,
 )
 
 data class RenderRunResult(
@@ -1938,6 +2007,44 @@ data class ScaffoldCatalogResponse(
 private fun isRenderableKind(kind: String?): Boolean = when (kind) {
   "horizontal skill", "platform pack skill", "add-on", "native agent" -> true
   else -> false
+}
+
+private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
+  TreeItemKind.SKILL,
+  TreeItemKind.PLATFORM_PACK,
+  TreeItemKind.ADD_ON,
+  TreeItemKind.NATIVE_AGENT,
+  -> true
+  TreeItemKind.GROUP,
+  TreeItemKind.GENERATED_ARTIFACT,
+  TreeItemKind.PLACEHOLDER,
+  -> false
+}
+
+private fun RenderTarget.renderBlocks(summary: RenderSummary): List<RenderBlock> {
+  val statusBlock = RenderBlock(
+    header = "===== render target: $label ($treeItemId) =====",
+    content = buildString {
+      append("state: ")
+      append(summary.state.name.lowercase())
+      append('\n')
+      if (summary.runtimeExceptionName != null) {
+        append("exception: ")
+        append(summary.runtimeExceptionName)
+        if (!summary.runtimeExceptionMessage.isNullOrBlank()) {
+          append(": ")
+          append(summary.runtimeExceptionMessage)
+        }
+        append('\n')
+      }
+      append("generated artifacts: ")
+      append(summary.generatedArtifacts.size)
+      append('\n')
+    },
+  )
+  return listOf(statusBlock) + summary.blocks.map { block ->
+    block.copy(header = "[$label] ${block.header}")
+  }
 }
 
 private fun List<SkillBillTreeItem>.flatten(): List<SkillBillTreeItem> =

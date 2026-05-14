@@ -100,23 +100,7 @@ private fun TitleBar(title: String) {
         overflow = TextOverflow.Ellipsis,
       )
     }
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      Text(
-        text = "⌘K  Quick action",
-        color = ChromeMuted,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier =
-        Modifier
-          .border(1.dp, ChromeLine, RoundedCornerShape(4.dp))
-          .background(ChromeRaised, RoundedCornerShape(4.dp))
-          .padding(horizontal = 8.dp, vertical = 2.dp),
-      )
-      Text(text = "st", color = ChromeSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-    }
+    Text(text = "st", color = ChromeSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
   }
 }
 

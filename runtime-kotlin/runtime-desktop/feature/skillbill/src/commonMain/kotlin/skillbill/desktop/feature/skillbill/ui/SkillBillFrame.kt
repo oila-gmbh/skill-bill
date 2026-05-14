@@ -3,12 +3,16 @@
 package skillbill.desktop.feature.skillbill.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -46,13 +50,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -61,6 +69,8 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -74,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
@@ -116,6 +127,22 @@ private val WorkspaceYellow = Color(0xFFF4C430)
 private val WorkspaceGreen = Color(0xFF60D394)
 private val WorkspaceRed = Color(0xFFFF5F57)
 private val WorkspaceAmber = Color(0xFFFFBD2E)
+private val BottomDockMinHeight = 132.dp
+private val BottomDockResizeHandleHeight = 7.dp
+
+private fun Dp.coerceBottomDockHeight(): Dp = when {
+  this < BottomDockMinHeight -> BottomDockMinHeight
+  else -> this
+}
+
+private data class OpenEditorTab(
+  val id: String,
+  val title: String,
+  val marker: String,
+  val dirty: Boolean,
+  val readOnly: Boolean,
+  val readOnlyLabel: String?,
+)
 
 @Composable
 fun SkillBillFrame(
@@ -127,7 +154,9 @@ fun SkillBillFrame(
   onChooseRepoDirectory: () -> Unit,
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
+  onValidateSelected: () -> Unit,
   onRender: () -> Unit,
+  onRenderAll: () -> Unit,
   onEditorDraftChanged: (String) -> Unit,
   onEditorSave: () -> Unit,
   onEditorRevert: () -> Unit,
@@ -139,7 +168,6 @@ fun SkillBillFrame(
   onValidationIssueSelected: (ValidationIssue) -> Unit,
   onGeneratedArtifactResolvable: (String) -> Boolean,
   onGeneratedArtifactSelected: (String) -> Unit,
-  onCopyIssueSource: (String) -> Unit,
   onActiveDockTabChanged: (DockTab) -> Unit,
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
@@ -167,6 +195,10 @@ fun SkillBillFrame(
   recentlyCopiedKey: String? = null,
   recentlyOpenedCompareUrlKey: String? = null,
 ) {
+  var inspectorVisible by remember { mutableStateOf(true) }
+  var bottomDockVisible by remember { mutableStateOf(true) }
+  var bottomDockHeight by remember { mutableStateOf(SkillBillMetrics.bottomDockHeight) }
+  var openEditorTabs by remember { mutableStateOf<List<OpenEditorTab>>(emptyList()) }
   val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
   // F-X-901-B: mirrors the route's `canStartRepoScopedAction()` predicate so the sidebar
   // Validation row can render `disabled()` semantics whenever the route would silently drop the
@@ -177,9 +209,19 @@ fun SkillBillFrame(
     state.selectedRepoPath != null &&
       state.repoStatus.state == RepoLoadState.LOADED &&
       canActivateRepoScopedAction
+  val validateSelectedEnabled =
+    state.selectedRepoPath != null &&
+      state.repoStatus.state == RepoLoadState.LOADED &&
+      state.treeItems.isSelectedSkill(state.selectedTreeItemId) &&
+      canActivateRepoScopedAction
   val renderEnabled =
     state.renderable &&
       state.repoStatus.state == RepoLoadState.LOADED &&
+      canActivateRepoScopedAction
+  val renderAllEnabled =
+    state.selectedRepoPath != null &&
+      state.repoStatus.state == RepoLoadState.LOADED &&
+      state.treeItems.hasRenderableTreeItem() &&
       canActivateRepoScopedAction
   val frameAcceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = state.busyOperation != null,
@@ -193,6 +235,37 @@ fun SkillBillFrame(
     commitEnabled = state.canCommit,
     repoOpenEnabled = false,
   )
+  LaunchedEffect(state.selectedRepoPath, state.treeItems) {
+    openEditorTabs =
+      if (state.selectedRepoPath == null) {
+        emptyList()
+      } else {
+        openEditorTabs.filter { tab -> state.treeItems.containsTreeItemId(tab.id) }
+      }
+  }
+  LaunchedEffect(
+    state.selectedTreeItemId,
+    state.editor.title,
+    state.editor.authoredPath,
+    state.editor.dirty,
+    state.editor.editable,
+    state.editor.readOnlyLabel,
+  ) {
+    val selectedId = state.selectedTreeItemId ?: return@LaunchedEffect
+    val selectedItem = state.treeItems.findTreeItem(selectedId) ?: return@LaunchedEffect
+    if (!state.editor.isDocumentLike()) {
+      return@LaunchedEffect
+    }
+    val nextTab = OpenEditorTab(
+      id = selectedId,
+      title = state.editor.authoredPath ?: state.editor.title,
+      marker = markerFor(selectedItem.kind),
+      dirty = state.editor.dirty,
+      readOnly = !state.editor.editable,
+      readOnlyLabel = state.editor.readOnlyLabel,
+    )
+    openEditorTabs = openEditorTabs.upsertTab(nextTab)
+  }
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -221,11 +294,17 @@ fun SkillBillFrame(
         onNavigateBack = onNavigateBack,
         onRefresh = onRefresh,
         onValidate = onValidate,
+        onValidateSelected = onValidateSelected,
         onRender = onRender,
+        onRenderAll = onRenderAll,
+        inspectorVisible = inspectorVisible,
+        onInspectorVisibilityToggle = { inspectorVisible = !inspectorVisible },
         onCommandPaletteOpen = onCommandPaletteOpen,
         onOpenScaffoldWizard = onOpenScaffoldWizard,
         validateEnabled = validateEnabled,
+        validateSelectedEnabled = validateSelectedEnabled,
         renderEnabled = renderEnabled,
+        renderAllEnabled = renderAllEnabled,
         publishingBusy = publishingBusy,
         sourceControlLabel = state.sourceControl.branchLabel,
         readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
@@ -314,20 +393,44 @@ fun SkillBillFrame(
           onCopyChangedFilePath = onCopyChangedFilePath,
           onCopyCommitHash = onCopyCommitHash,
           onClearHistoryPathFilter = onClearHistoryPathFilter,
+          onValidationIssueSelected = onValidationIssueSelected,
           recentlyCopiedKey = recentlyCopiedKey,
           recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
+          bottomDockVisible = bottomDockVisible,
+          onBottomDockVisibilityToggle = { bottomDockVisible = !bottomDockVisible },
+          bottomDockHeight = bottomDockHeight,
+          onBottomDockResize = { delta ->
+            bottomDockHeight = (bottomDockHeight + delta).coerceBottomDockHeight()
+          },
+          openEditorTabs = openEditorTabs,
+          selectedTreeItemId = state.selectedTreeItemId,
+          onEditorTabSelected = onTreeItemSelected,
+          onEditorTabClosed = { tabId ->
+            val closingActiveTab = tabId == state.selectedTreeItemId
+            val closingDirtyActiveTab = closingActiveTab && state.editor.dirty
+            if (!closingDirtyActiveTab) {
+              val nextTabs = openEditorTabs.filterNot { tab -> tab.id == tabId }
+              val nextSelection = if (closingActiveTab) {
+                openEditorTabs.nextEditorTabIdAfter(tabId)
+              } else {
+                null
+              }
+              openEditorTabs = nextTabs
+              nextSelection?.let(onTreeItemSelected)
+            }
+          },
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
-        InspectorPane(
-          editor = state.editor,
-          repoStatus = state.repoStatus,
-          validation = state.validation,
-          render = state.render,
-          onValidationIssueSelected = onValidationIssueSelected,
-          onGeneratedArtifactResolvable = onGeneratedArtifactResolvable,
-          onGeneratedArtifactSelected = onGeneratedArtifactSelected,
-          onCopyIssueSource = onCopyIssueSource,
-        )
+        if (inspectorVisible) {
+          VerticalDivider(color = WorkspaceLine, modifier = Modifier.fillMaxHeight())
+          InspectorPane(
+            editor = state.editor,
+            repoStatus = state.repoStatus,
+            render = state.render,
+            onGeneratedArtifactResolvable = onGeneratedArtifactResolvable,
+            onGeneratedArtifactSelected = onGeneratedArtifactSelected,
+          )
+        }
       }
       WorkspaceStatusBar(state = state)
     }
@@ -358,11 +461,17 @@ private fun WorkspaceToolbar(
   onNavigateBack: () -> Unit,
   onRefresh: () -> Unit,
   onValidate: () -> Unit,
+  onValidateSelected: () -> Unit,
   onRender: () -> Unit,
+  onRenderAll: () -> Unit,
+  inspectorVisible: Boolean,
+  onInspectorVisibilityToggle: () -> Unit,
   onCommandPaletteOpen: () -> Unit,
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   validateEnabled: Boolean,
+  validateSelectedEnabled: Boolean,
   renderEnabled: Boolean,
+  renderAllEnabled: Boolean,
   publishingBusy: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
@@ -397,18 +506,30 @@ private fun WorkspaceToolbar(
       onClick = onRefresh,
     )
     ToolbarButton(
-      label = "Validate",
+      label = "Validate selected",
+      marker = "vs",
+      enabled = validateSelectedEnabled,
+      onClick = onValidateSelected,
+    )
+    ToolbarButton(
+      label = "Validate all",
       marker = "ok",
       enabled = validateEnabled,
       acceleratorLabel = SkillBillAcceleratorLabels.VALIDATE,
       onClick = onValidate,
     )
     ToolbarButton(
-      label = "Render check",
+      label = "Render selected",
       marker = "rc",
       enabled = renderEnabled,
       acceleratorLabel = SkillBillAcceleratorLabels.RENDER,
       onClick = onRender,
+    )
+    ToolbarButton(
+      label = "Render all",
+      marker = "ra",
+      enabled = renderAllEnabled,
+      onClick = onRenderAll,
     )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
@@ -420,6 +541,13 @@ private fun WorkspaceToolbar(
     }
     Spacer(modifier = Modifier.weight(1f))
     CommandSearchButton(onClick = onCommandPaletteOpen)
+    Spacer(modifier = Modifier.width(10.dp))
+    ToolbarSidePanelButton(
+      contentDescription = if (inspectorVisible) "Hide details panel" else "Show details panel",
+      selected = inspectorVisible,
+      enabled = !busy,
+      onClick = onInspectorVisibilityToggle,
+    )
   }
 }
 
@@ -473,6 +601,132 @@ private fun ToolbarButton(
         fontSize = 12.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+@Composable
+private fun ToolbarSidePanelButton(
+  contentDescription: String,
+  selected: Boolean,
+  enabled: Boolean,
+  onClick: () -> Unit,
+) {
+  val foreground =
+    when {
+      !enabled -> WorkspaceSteel
+      selected -> WorkspaceYellow
+      else -> WorkspaceText
+    }
+  val border = if (selected) WorkspaceYellow else WorkspaceLine
+  Box(
+    modifier = Modifier
+      .size(width = 30.dp, height = 28.dp)
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .background(WorkspaceRaised)
+      .semantics(mergeDescendants = true) {
+        this.contentDescription = contentDescription
+        this.stateDescription = if (selected) "visible" else "hidden"
+        if (!enabled) this.disabled()
+      }
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+    contentAlignment = Alignment.Center,
+  ) {
+    SidePanelIcon(tint = foreground, panelVisible = selected)
+  }
+}
+
+@Composable
+private fun SidePanelIcon(tint: Color, panelVisible: Boolean) {
+  Canvas(modifier = Modifier.size(width = 15.dp, height = 14.dp)) {
+    val strokeWidth = 1.4.dp.toPx()
+    val cornerInset = strokeWidth / 2f
+    val bodyWidth = size.width - strokeWidth
+    val bodyHeight = size.height - strokeWidth
+    val panelWidth = bodyWidth * 0.34f
+    drawRect(
+      color = tint,
+      topLeft = Offset(cornerInset, cornerInset),
+      size = Size(bodyWidth, bodyHeight),
+      style = Stroke(width = strokeWidth),
+    )
+    if (panelVisible) {
+      drawRect(
+        color = tint.copy(alpha = 0.28f),
+        topLeft = Offset(size.width - panelWidth, cornerInset + strokeWidth),
+        size = Size(panelWidth - strokeWidth, bodyHeight - strokeWidth * 2f),
+      )
+    }
+    val dividerX = size.width - panelWidth
+    drawLine(
+      color = tint,
+      start = Offset(dividerX, cornerInset),
+      end = Offset(dividerX, size.height - cornerInset),
+      strokeWidth = strokeWidth,
+    )
+  }
+}
+
+@Composable
+private fun DockVisibilityButton(
+  contentDescription: String,
+  selected: Boolean,
+  enabled: Boolean,
+  onClick: () -> Unit,
+) {
+  val foreground =
+    when {
+      !enabled -> WorkspaceSteel
+      selected -> WorkspaceYellow
+      else -> WorkspaceText
+    }
+  val border = if (selected) WorkspaceYellow else WorkspaceLine
+  Box(
+    modifier = Modifier
+      .size(width = 30.dp, height = 24.dp)
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .background(WorkspaceRaised)
+      .semantics(mergeDescendants = true) {
+        this.contentDescription = contentDescription
+        this.stateDescription = if (selected) "visible" else "hidden"
+        if (!enabled) this.disabled()
+      }
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+    contentAlignment = Alignment.Center,
+  ) {
+    BottomPanelIcon(tint = foreground, panelVisible = selected)
+  }
+}
+
+@Composable
+private fun BottomPanelIcon(tint: Color, panelVisible: Boolean) {
+  Canvas(modifier = Modifier.size(width = 15.dp, height = 14.dp)) {
+    val strokeWidth = 1.4.dp.toPx()
+    val cornerInset = strokeWidth / 2f
+    val bodyWidth = size.width - strokeWidth
+    val bodyHeight = size.height - strokeWidth
+    val panelHeight = bodyHeight * 0.36f
+    drawRect(
+      color = tint,
+      topLeft = Offset(cornerInset, cornerInset),
+      size = Size(bodyWidth, bodyHeight),
+      style = Stroke(width = strokeWidth),
+    )
+    val dividerY = size.height - panelHeight
+    drawLine(
+      color = tint,
+      start = Offset(cornerInset, dividerY),
+      end = Offset(size.width - cornerInset, dividerY),
+      strokeWidth = strokeWidth,
+    )
+    if (panelVisible) {
+      drawRect(
+        color = tint.copy(alpha = 0.28f),
+        topLeft = Offset(cornerInset + strokeWidth, dividerY + strokeWidth),
+        size = Size(bodyWidth - strokeWidth * 2f, panelHeight - strokeWidth * 1.5f),
       )
     }
   }
@@ -1425,12 +1679,27 @@ private fun CenterWorkspace(
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
   recentlyCopiedKey: String?,
   recentlyOpenedCompareUrlKey: String?,
+  bottomDockVisible: Boolean,
+  onBottomDockVisibilityToggle: () -> Unit,
+  bottomDockHeight: Dp,
+  onBottomDockResize: (Dp) -> Unit,
+  openEditorTabs: List<OpenEditorTab>,
+  selectedTreeItemId: String?,
+  onEditorTabSelected: (String) -> Unit,
+  onEditorTabClosed: (String) -> Unit,
   modifier: Modifier,
 ) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
-    EditorTabs(editor)
+    EditorTabs(
+      editor = editor,
+      tabs = openEditorTabs,
+      activeTabId = selectedTreeItemId,
+      onTabSelected = onEditorTabSelected,
+      onTabClosed = onEditorTabClosed,
+    )
     CodeEditor(
       editor = editor,
       dirtyEditorPrompt = dirtyEditorPrompt,
@@ -1442,87 +1711,219 @@ private fun CenterWorkspace(
       onDirtyPromptCancel = onDirtyPromptCancel,
       modifier = Modifier.weight(1f),
     )
-    BottomDock(
-      editor = editor,
-      validation = validation,
-      render = render,
-      activeTab = activeDockTab,
-      onActiveTabSelected = onActiveDockTabChanged,
-      changes = changes,
-      changesBusy = changesBusy,
-      selectedChangedFile = selectedChangedFile,
-      selectedDiff = selectedDiff,
-      selectedDiffBusy = selectedDiffBusy,
-      history = history,
-      historyBusy = historyBusy,
-      historyErrorMessage = historyErrorMessage,
-      historyPathFilter = historyPathFilter,
-      publishingBusy = publishingBusy,
-      commitMessage = commitMessage,
-      canCommit = canCommit,
-      commitBusy = commitBusy,
-      commitErrorMessage = commitErrorMessage,
-      commitValidationFailed = commitValidationFailed,
-      commitValidationRunning = commitValidationRunning,
-      pushTarget = pushTarget,
-      aheadBehind = aheadBehind,
-      compareUrl = compareUrl,
-      pushBusy = pushBusy,
-      pushErrorMessage = pushErrorMessage,
-      pushStatusErrorMessage = pushStatusErrorMessage,
-      canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
-      hasRepoOpen = hasRepoOpen,
-      globalActionsEnabled = globalActionsEnabled,
-      onChangedFileSelected = onChangedFileSelected,
-      onStageChangedFile = onStageChangedFile,
-      onUnstageChangedFile = onUnstageChangedFile,
-      onRefreshGit = onRefreshGit,
-      onCommitMessageChanged = onCommitMessageChanged,
-      onCommit = onCommit,
-      onCommitAfterFailedValidation = onCommitAfterFailedValidation,
-      onPush = onPush,
-      onConfirmCanonicalPush = onConfirmCanonicalPush,
-      onOpenCompareUrl = onOpenCompareUrl,
-      onCopyChangedFilePath = onCopyChangedFilePath,
-      onCopyCommitHash = onCopyCommitHash,
-      onClearHistoryPathFilter = onClearHistoryPathFilter,
-      recentlyCopiedKey = recentlyCopiedKey,
-      recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
-    )
+    if (bottomDockVisible) {
+      BottomDock(
+        editor = editor,
+        validation = validation,
+        render = render,
+        activeTab = activeDockTab,
+        onActiveTabSelected = onActiveDockTabChanged,
+        changes = changes,
+        changesBusy = changesBusy,
+        selectedChangedFile = selectedChangedFile,
+        selectedDiff = selectedDiff,
+        selectedDiffBusy = selectedDiffBusy,
+        history = history,
+        historyBusy = historyBusy,
+        historyErrorMessage = historyErrorMessage,
+        historyPathFilter = historyPathFilter,
+        publishingBusy = publishingBusy,
+        commitMessage = commitMessage,
+        canCommit = canCommit,
+        commitBusy = commitBusy,
+        commitErrorMessage = commitErrorMessage,
+        commitValidationFailed = commitValidationFailed,
+        commitValidationRunning = commitValidationRunning,
+        pushTarget = pushTarget,
+        aheadBehind = aheadBehind,
+        compareUrl = compareUrl,
+        pushBusy = pushBusy,
+        pushErrorMessage = pushErrorMessage,
+        pushStatusErrorMessage = pushStatusErrorMessage,
+        canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
+        hasRepoOpen = hasRepoOpen,
+        globalActionsEnabled = globalActionsEnabled,
+        onChangedFileSelected = onChangedFileSelected,
+        onStageChangedFile = onStageChangedFile,
+        onUnstageChangedFile = onUnstageChangedFile,
+        onRefreshGit = onRefreshGit,
+        onCommitMessageChanged = onCommitMessageChanged,
+        onCommit = onCommit,
+        onCommitAfterFailedValidation = onCommitAfterFailedValidation,
+        onPush = onPush,
+        onConfirmCanonicalPush = onConfirmCanonicalPush,
+        onOpenCompareUrl = onOpenCompareUrl,
+        onCopyChangedFilePath = onCopyChangedFilePath,
+        onCopyCommitHash = onCopyCommitHash,
+        onClearHistoryPathFilter = onClearHistoryPathFilter,
+        onValidationIssueSelected = onValidationIssueSelected,
+        recentlyCopiedKey = recentlyCopiedKey,
+        recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
+        onVisibilityToggle = onBottomDockVisibilityToggle,
+        dockHeight = bottomDockHeight,
+        onResize = onBottomDockResize,
+      )
+    } else {
+      CollapsedBottomDock(
+        editor = editor,
+        validation = validation,
+        activeTab = activeDockTab,
+        changes = changes,
+        publishingBusy = publishingBusy,
+        onActiveTabSelected = { tab ->
+          onActiveDockTabChanged(tab)
+          onBottomDockVisibilityToggle()
+        },
+        onVisibilityToggle = onBottomDockVisibilityToggle,
+      )
+    }
   }
 }
 
 @Composable
-private fun EditorTabs(editor: EditorPlaceholder) {
-  Row(
+private fun EditorTabs(
+  editor: EditorPlaceholder,
+  tabs: List<OpenEditorTab>,
+  activeTabId: String?,
+  onTabSelected: (String) -> Unit,
+  onTabClosed: (String) -> Unit,
+) {
+  val visibleTabs = tabs.takeIf { it.isNotEmpty() } ?: listOf(
+    OpenEditorTab(
+      id = "empty",
+      title = editor.authoredPath ?: editor.title,
+      marker = "fl",
+      dirty = editor.dirty,
+      readOnly = !editor.editable,
+      readOnlyLabel = editor.readOnlyLabel,
+    ),
+  )
+  val scrollState = rememberScrollState()
+  val coroutineScope = rememberCoroutineScope()
+  val closeableTabCount = visibleTabs.count { tab -> tab.id != "empty" }
+  Box(
     modifier =
     Modifier
       .fillMaxWidth()
       .height(36.dp)
       .background(WorkspacePanel)
-      .horizontalScroll(rememberScrollState()),
-    verticalAlignment = Alignment.Bottom,
+      .pointerInput(scrollState) {
+        awaitPointerEventScope {
+          while (true) {
+            val event = awaitPointerEvent()
+            if (event.type == PointerEventType.Scroll && scrollState.maxValue > 0) {
+              val scrollDelta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero
+              val tabScrollDelta = when {
+                scrollDelta.x != 0f -> scrollDelta.x
+                scrollDelta.y != 0f -> scrollDelta.y
+                else -> 0f
+              }
+              if (tabScrollDelta != 0f) {
+                coroutineScope.launch { scrollState.scrollBy(tabScrollDelta) }
+                event.changes.forEach { change -> change.consume() }
+              }
+            }
+          }
+        }
+      },
   ) {
-    EditorTab(
-      name = editor.authoredPath ?: editor.title,
-      active = true,
-      dirty = editor.dirty,
-      readOnly = !editor.editable,
-      readOnlyLabel = editor.readOnlyLabel,
-    )
+    Row(
+      modifier =
+      Modifier
+        .fillMaxSize()
+        .horizontalScroll(scrollState),
+      verticalAlignment = Alignment.Bottom,
+    ) {
+      visibleTabs.forEach { tab ->
+        val active = tab.id == activeTabId || visibleTabs.size == 1 && tab.id == "empty"
+        EditorTab(
+          tab = tab,
+          active = active,
+          closeEnabled = tab.id != "empty" && closeableTabCount > 1 && (!active || !tab.dirty),
+          onSelected = { if (tab.id != "empty") onTabSelected(tab.id) },
+          onClosed = { if (tab.id != "empty") onTabClosed(tab.id) },
+        )
+      }
+    }
+    if (scrollState.maxValue > 0) {
+      EditorTabsScrollbar(
+        scrollState = scrollState,
+        scrollValue = scrollState.value,
+        maxScrollValue = scrollState.maxValue,
+        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+      )
+    }
   }
 }
 
 @Composable
-private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: Boolean, readOnlyLabel: String?) {
+private fun EditorTabsScrollbar(
+  scrollState: androidx.compose.foundation.ScrollState,
+  scrollValue: Int,
+  maxScrollValue: Int,
+  modifier: Modifier = Modifier,
+) {
+  val coroutineScope = rememberCoroutineScope()
+  Box(
+    modifier = modifier
+      .height(10.dp)
+      .pointerInput(scrollState, maxScrollValue) {
+        detectHorizontalDragGestures { change, dragAmount ->
+          change.consume()
+          if (maxScrollValue > 0 && size.width > 0) {
+            val viewportWidth = size.width.toFloat()
+            val contentWidth = viewportWidth + maxScrollValue
+            coroutineScope.launch { scrollState.scrollBy(dragAmount * contentWidth / viewportWidth) }
+          }
+        }
+      },
+    contentAlignment = Alignment.BottomStart,
+  ) {
+    Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
+      val maxScroll = maxScrollValue.toFloat().takeIf { it > 0f } ?: return@Canvas
+      val viewportWidth = size.width
+      val contentWidth = viewportWidth + maxScroll
+      val thumbWidth = (viewportWidth / contentWidth * viewportWidth).coerceAtLeast(48.dp.toPx())
+      val thumbLeft = scrollValue / maxScroll * (viewportWidth - thumbWidth)
+      drawRect(
+        color = WorkspaceLine,
+        topLeft = Offset.Zero,
+        size = Size(viewportWidth, size.height),
+      )
+      drawRect(
+        color = WorkspaceYellow.copy(alpha = 0.72f),
+        topLeft = Offset(thumbLeft, 0f),
+        size = Size(thumbWidth, size.height),
+      )
+    }
+  }
+}
+
+@Composable
+private fun EditorTab(
+  tab: OpenEditorTab,
+  active: Boolean,
+  closeEnabled: Boolean,
+  onSelected: () -> Unit,
+  onClosed: () -> Unit,
+) {
   val background = if (active) WorkspaceBackground else WorkspacePanel
   val textColor = if (active) WorkspaceText else WorkspaceMuted
+  val tabWidth = when {
+    tab.title.length > 28 -> 230.dp
+    tab.title.length > 18 -> 190.dp
+    else -> 134.dp
+  }
   Column(
     modifier =
     Modifier
       .height(36.dp)
-      .width(if (name.length > 18) 190.dp else 118.dp)
-      .background(background),
+      .width(tabWidth)
+      .background(background)
+      .clickable(enabled = !active, role = Role.Tab, onClick = onSelected)
+      .semantics {
+        selected = active
+      },
   ) {
     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(if (active) WorkspaceYellow else Color.Transparent))
     Row(
@@ -1535,9 +1936,9 @@ private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: B
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-      MiniIcon(text = "fl", tint = textColor)
+      MiniIcon(text = tab.marker, tint = textColor)
       Text(
-        text = name,
+        text = tab.title,
         color = textColor,
         fontSize = 12.sp,
         fontFamily = FontFamily.Monospace,
@@ -1545,11 +1946,30 @@ private fun EditorTab(name: String, active: Boolean, dirty: Boolean, readOnly: B
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
-      if (dirty) {
+      if (tab.dirty) {
         Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(WorkspaceYellow))
       }
-      if (readOnly) {
-        Text(text = readOnlyLabel ?: "RO", color = WorkspaceSteel, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+      if (tab.readOnly) {
+        Text(
+          text = tab.readOnlyLabel ?: "RO",
+          color = WorkspaceSteel,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+        )
+      }
+      if (closeEnabled) {
+        Text(
+          text = "x",
+          color = if (active) WorkspaceMuted else WorkspaceSteel,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .size(18.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(role = Role.Button, onClick = onClosed)
+            .semantics { contentDescription = "Close ${tab.title}" },
+          maxLines = 1,
+        )
       }
     }
   }
@@ -1861,12 +2281,9 @@ private fun SyntaxText(line: String) {
 private fun InspectorPane(
   editor: EditorPlaceholder,
   repoStatus: RepoLoadStatus,
-  validation: ValidationSummary,
   render: RenderSummary,
-  onValidationIssueSelected: (ValidationIssue) -> Unit,
   onGeneratedArtifactResolvable: (String) -> Boolean,
   onGeneratedArtifactSelected: (String) -> Unit,
-  onCopyIssueSource: (String) -> Unit,
 ) {
   Column(
     modifier =
@@ -1876,7 +2293,7 @@ private fun InspectorPane(
       .background(WorkspaceBackground)
       .border(BorderStroke(0.dp, Color.Transparent)),
   ) {
-    InspectorHeader(editor)
+    InspectorHeader(editor = editor)
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
       InspectorSection(title = "Metadata", marker = "mt") {
         KeyValueRow("name", editor.skillName ?: editor.title)
@@ -1906,17 +2323,6 @@ private fun InspectorPane(
         KeyValueRow("add-ons", repoStatus.addonCount.toString())
         KeyValueRow("native agents", repoStatus.nativeAgentCount.toString())
       }
-      InspectorSection(
-        title = "Validation issues",
-        marker = "x",
-        badge = validation.issues.size.takeIf { it > 0 }?.toString(),
-      ) {
-        ValidationIssuesInspector(
-          validation = validation,
-          onValidationIssueSelected = onValidationIssueSelected,
-          onCopyIssueSource = onCopyIssueSource,
-        )
-      }
       val artifactsForInspector: List<GeneratedArtifactDetail> =
         if (render.state == RenderRunState.PASSED || render.state == RenderRunState.FAILED) {
           render.generatedArtifacts
@@ -1944,134 +2350,6 @@ private fun InspectorPane(
           }
         }
       }
-    }
-  }
-}
-
-@Composable
-private fun ValidationIssuesInspector(
-  validation: ValidationSummary,
-  onValidationIssueSelected: (ValidationIssue) -> Unit,
-  onCopyIssueSource: (String) -> Unit,
-) {
-  when (validation.state) {
-    ValidationRunState.UNAVAILABLE -> {
-      CheckRow(ok = true, label = "Validation has not run for this repo.")
-      return
-    }
-    ValidationRunState.RUNNING -> {
-      CheckRow(ok = true, label = "Validation in progress...")
-      return
-    }
-    ValidationRunState.PASSED -> {
-      if (validation.issues.isEmpty()) {
-        CheckRow(ok = true, label = "Validation passed with no issues.")
-        return
-      }
-    }
-    ValidationRunState.FAILED -> {
-      val exceptionName = validation.runtimeExceptionName
-      if (exceptionName != null) {
-        val exceptionMessage = validation.runtimeExceptionMessage
-        CheckRow(
-          ok = false,
-          label = buildString {
-            append(exceptionName)
-            if (!exceptionMessage.isNullOrBlank()) {
-              append(": ")
-              append(exceptionMessage)
-            }
-          },
-        )
-      } else if (validation.issues.isEmpty()) {
-        // F-105: avoid a silent empty inspector when validation failed with no structured signal.
-        CheckRow(ok = false, label = "Validation failed - no details available.")
-      }
-    }
-  }
-  validation.issues.forEach { issue ->
-    ValidationIssueRow(
-      issue = issue,
-      onValidationIssueSelected = onValidationIssueSelected,
-      onCopyIssueSource = onCopyIssueSource,
-    )
-  }
-}
-
-@Composable
-private fun ValidationIssueRow(
-  issue: ValidationIssue,
-  onValidationIssueSelected: (ValidationIssue) -> Unit,
-  onCopyIssueSource: (String) -> Unit,
-) {
-  val sourcePath = issue.sourcePath
-  Row(
-    modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onValidationIssueSelected(issue) }
-      .padding(vertical = 3.dp),
-    verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    MiniIcon(
-      text = severityMarker(issue.severity),
-      tint = severityTone(issue.severity).color(),
-    )
-    Column(modifier = Modifier.weight(1f)) {
-      // F-104: surface severity text label + code beside the colored marker, so screen readers and
-      // colorblind users can still distinguish issue severities.
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        Text(
-          text = issue.severity.name,
-          color = severityTone(issue.severity).color(),
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
-          fontWeight = FontWeight.SemiBold,
-        )
-        val code = issue.code
-        if (!code.isNullOrBlank()) {
-          Text(
-            text = code,
-            color = WorkspaceSteel,
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-          )
-        }
-      }
-      Text(text = issue.message, color = WorkspaceText.copy(alpha = 0.9f), fontSize = 12.sp)
-      if (!sourcePath.isNullOrBlank()) {
-        Text(
-          text = sourcePath,
-          color = WorkspaceSteel,
-          fontSize = 10.5.sp,
-          fontFamily = FontFamily.Monospace,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-        )
-      }
-      if (!issue.exceptionName.isNullOrBlank()) {
-        Text(
-          text = "exception: ${issue.exceptionName}",
-          color = WorkspaceRed,
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-        )
-      }
-    }
-    if (!sourcePath.isNullOrBlank()) {
-      Text(
-        text = "copy",
-        color = WorkspaceYellow,
-        fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier.clickable(role = Role.Button) {
-          // F-106: clipboard side effect is owned by the route; this is now a pure callback.
-          onCopyIssueSource(sourcePath)
-        },
-      )
     }
   }
 }
@@ -2215,18 +2493,6 @@ internal fun generatedArtifactRowContentDescription(artifact: GeneratedArtifactD
   "Open artifact: ${artifact.path}"
 
 @Composable
-private fun CheckRow(ok: Boolean, label: String) {
-  Row(
-    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-    verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    MiniIcon(text = if (ok) "ok" else "x", tint = if (ok) WorkspaceGreen else WorkspaceRed)
-    Text(text = label, color = WorkspaceText.copy(alpha = 0.9f), fontSize = 12.sp)
-  }
-}
-
-@Composable
 private fun DependencyRow(name: String, range: String, resolved: String) {
   Row(
     modifier = Modifier.fillMaxWidth().height(26.dp),
@@ -2295,16 +2561,21 @@ private fun BottomDock(
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
+  onValidationIssueSelected: (ValidationIssue) -> Unit,
   recentlyCopiedKey: String?,
   recentlyOpenedCompareUrlKey: String?,
+  onVisibilityToggle: () -> Unit,
+  dockHeight: Dp,
+  onResize: (Dp) -> Unit,
 ) {
   Column(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(SkillBillMetrics.bottomDockHeight)
+      .height(dockHeight)
       .background(WorkspacePanel),
   ) {
+    BottomDockResizeHandle(onResize = onResize)
     Row(
       modifier = Modifier.fillMaxWidth().height(33.dp).background(WorkspacePanel),
       verticalAlignment = Alignment.Bottom,
@@ -2320,18 +2591,32 @@ private fun BottomDock(
       }
       Spacer(modifier = Modifier.weight(1f))
       Row(
-        modifier = Modifier.padding(end = 10.dp, bottom = 8.dp),
+        modifier = Modifier.padding(end = 8.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        MiniIcon(text = "run", tint = WorkspaceMuted)
-        Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          MiniIcon(text = "run", tint = WorkspaceMuted)
+          Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
+        }
+        DockVisibilityButton(
+          contentDescription = "Hide bottom panel",
+          selected = true,
+          enabled = true,
+          onClick = onVisibilityToggle,
+        )
       }
     }
     HorizontalDivider(color = WorkspaceLine)
     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(WorkspaceBackground)) {
       when (activeTab) {
-        DockTab.Validation -> ValidationTable(validation)
+        DockTab.Validation -> ValidationTable(
+          validation = validation,
+          onValidationIssueSelected = onValidationIssueSelected,
+        )
         DockTab.Changes -> ChangesPanel(
           changes = changes,
           changesBusy = changesBusy,
@@ -2379,6 +2664,84 @@ private fun BottomDock(
           recentlyCopiedKey = recentlyCopiedKey,
         )
         DockTab.Console -> InstallConsole(editor = editor, render = render)
+      }
+    }
+  }
+}
+
+@Composable
+private fun BottomDockResizeHandle(onResize: (Dp) -> Unit) {
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(BottomDockResizeHandleHeight)
+      .background(WorkspacePanel)
+      .pointerInput(Unit) {
+        detectVerticalDragGestures { change, dragAmount ->
+          change.consume()
+          onResize(-dragAmount.toDp())
+        }
+      },
+    contentAlignment = Alignment.Center,
+  ) {
+    Box(
+      modifier = Modifier
+        .width(44.dp)
+        .height(2.dp)
+        .background(WorkspaceLine, RoundedCornerShape(1.dp)),
+    )
+  }
+}
+
+@Composable
+private fun CollapsedBottomDock(
+  editor: EditorPlaceholder,
+  validation: ValidationSummary,
+  activeTab: DockTab,
+  changes: ChangesSnapshot,
+  publishingBusy: Boolean,
+  onActiveTabSelected: (DockTab) -> Unit,
+  onVisibilityToggle: () -> Unit,
+) {
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(36.dp)
+      .background(WorkspacePanel),
+  ) {
+    HorizontalDivider(color = WorkspaceLine)
+    Row(
+      modifier = Modifier.fillMaxWidth().height(35.dp).background(WorkspacePanel),
+      verticalAlignment = Alignment.Bottom,
+    ) {
+      DockTab.entries.forEach { tab ->
+        DockTabButton(
+          tab = tab,
+          badge = badgeForDockTab(tab, validation, changes),
+          active = activeTab == tab,
+          enabled = !publishingBusy,
+          onSelected = { onActiveTabSelected(tab) },
+        )
+      }
+      Spacer(modifier = Modifier.weight(1f))
+      Row(
+        modifier = Modifier.padding(end = 8.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          MiniIcon(text = "run", tint = WorkspaceMuted)
+          Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
+        }
+        DockVisibilityButton(
+          contentDescription = "Show bottom panel",
+          selected = false,
+          enabled = true,
+          onClick = onVisibilityToggle,
+        )
       }
     }
   }
@@ -2434,9 +2797,26 @@ private fun dockTabMetadata(tab: DockTab): DockTabMetadata = when (tab) {
 }
 
 @Composable
-private fun ValidationTable(validation: ValidationSummary) {
+private fun ValidationTable(validation: ValidationSummary, onValidationIssueSelected: (ValidationIssue) -> Unit) {
   Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     TableHeader("Lvl", "Code", "Message", "Source")
+    when (validation.state) {
+      ValidationRunState.UNAVAILABLE -> {
+        TableRow("ok", "-", "Validation has not run for this repo.", "-", Tone.Neutral)
+        return@Column
+      }
+      ValidationRunState.RUNNING -> {
+        TableRow("ok", "-", "Validation in progress...", "-", Tone.Warning)
+        return@Column
+      }
+      ValidationRunState.PASSED -> {
+        if (validation.issues.isEmpty()) {
+          TableRow("ok", "-", "Validation passed with no issues.", "-", Tone.Success)
+          return@Column
+        }
+      }
+      ValidationRunState.FAILED -> Unit
+    }
     val exceptionName = validation.runtimeExceptionName
     if (exceptionName != null) {
       val exceptionMessage = validation.runtimeExceptionMessage
@@ -2480,6 +2860,7 @@ private fun ValidationTable(validation: ValidationSummary) {
         third = message,
         fourth = issue.sourcePath ?: "-",
         tone = severityTone(issue.severity),
+        onClick = { onValidationIssueSelected(issue) },
       )
     }
   }
@@ -3470,7 +3851,11 @@ private fun InstallConsole(editor: EditorPlaceholder, render: RenderSummary) {
 }
 
 private fun buildInstallConsoleLines(editor: EditorPlaceholder, render: RenderSummary): List<ConsoleLine> {
-  val target = editor.skillName ?: editor.authoredPath ?: editor.title
+  val target = if (render.blocks.any { it.header.startsWith("===== render target:") }) {
+    "all renderable sources"
+  } else {
+    editor.skillName ?: editor.authoredPath ?: editor.title
+  }
   return when (render.state) {
     RenderRunState.UNAVAILABLE -> listOf(
       ConsoleLine("Selected: ${editor.title}", Tone.Neutral),
@@ -3499,11 +3884,72 @@ private fun buildInstallConsoleLines(editor: EditorPlaceholder, render: RenderSu
 }
 
 private fun phaseHeaderForBlock(header: String, index: Int): String? = when {
+  header.startsWith("===== render target:") -> "checking target"
   header.startsWith("===== SKILL.md:") -> "rendering wrapper"
+  header.contains("===== SKILL.md:") -> "rendering wrapper"
   header.startsWith("===== pointer:") -> "rendering pointer $index"
+  header.contains("===== pointer:") -> "rendering pointer $index"
   header.startsWith("===== native-agent:") -> "rendering native agent"
+  header.contains("===== native-agent:") -> "rendering native agent"
   header.startsWith("===== addon:") -> "rendering add-on"
+  header.contains("===== addon:") -> "rendering add-on"
   else -> null
+}
+
+private fun EditorPlaceholder.isDocumentLike(): Boolean =
+  content != null || !authoredPath.isNullOrBlank() || !skillName.isNullOrBlank()
+
+private fun List<OpenEditorTab>.upsertTab(tab: OpenEditorTab): List<OpenEditorTab> {
+  val existingIndex = indexOfFirst { it.id == tab.id }
+  return if (existingIndex < 0) {
+    this + tab
+  } else {
+    toMutableList().also { tabs -> tabs[existingIndex] = tab }
+  }
+}
+
+private fun List<OpenEditorTab>.nextEditorTabIdAfter(closedTabId: String): String? {
+  val closedIndex = indexOfFirst { it.id == closedTabId }
+  if (closedIndex < 0 || size <= 1) {
+    return null
+  }
+  val nextIndex = if (closedIndex == lastIndex) closedIndex - 1 else closedIndex + 1
+  return getOrNull(nextIndex)?.id
+}
+
+private fun List<SkillBillTreeItem>.containsTreeItemId(itemId: String): Boolean = findTreeItem(itemId) != null
+
+private fun List<SkillBillTreeItem>.findTreeItem(itemId: String): SkillBillTreeItem? {
+  for (item in this) {
+    if (item.id == itemId) {
+      return item
+    }
+    val childMatch = item.children.findTreeItem(itemId)
+    if (childMatch != null) {
+      return childMatch
+    }
+  }
+  return null
+}
+
+private fun List<SkillBillTreeItem>.hasRenderableTreeItem(): Boolean =
+  any { item -> item.kind.isRenderableTreeItemKind() || item.children.hasRenderableTreeItem() }
+
+private fun List<SkillBillTreeItem>.isSelectedSkill(selectedTreeItemId: String?): Boolean = any { item ->
+  (item.id == selectedTreeItemId && item.kind == TreeItemKind.SKILL) ||
+    item.children.isSelectedSkill(selectedTreeItemId)
+}
+
+private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
+  TreeItemKind.SKILL,
+  TreeItemKind.PLATFORM_PACK,
+  TreeItemKind.ADD_ON,
+  TreeItemKind.NATIVE_AGENT,
+  -> true
+  TreeItemKind.GROUP,
+  TreeItemKind.GENERATED_ARTIFACT,
+  TreeItemKind.PLACEHOLDER,
+  -> false
 }
 
 private fun terminalRenderLine(render: RenderSummary): ConsoleLine = when (render.state) {
@@ -3549,13 +3995,27 @@ private fun HeaderCell(text: String, width: Dp?, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun TableRow(first: String, second: String, third: String, fourth: String, tone: Tone) {
+private fun TableRow(
+  first: String,
+  second: String,
+  third: String,
+  fourth: String,
+  tone: Tone,
+  onClick: (() -> Unit)? = null,
+) {
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
       .height(30.dp)
-      .border(BorderStroke(0.dp, Color.Transparent)),
+      .border(BorderStroke(0.dp, Color.Transparent))
+      .then(
+        if (onClick == null) {
+          Modifier
+        } else {
+          Modifier.clickable(role = Role.Button, onClick = onClick)
+        },
+      ),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(

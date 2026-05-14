@@ -9,7 +9,9 @@ internal data class CommandPaletteActions(
   val openRepository: () -> Unit,
   val refresh: () -> Unit,
   val validate: () -> Unit,
+  val validateSelected: () -> Unit = {},
   val render: () -> Unit,
+  val renderAll: () -> Unit = {},
   val showChanges: () -> Unit,
   val showHistory: () -> Unit,
   val save: () -> Unit,
@@ -29,7 +31,9 @@ internal fun executeCommandPaletteResult(result: CommandPaletteResult, actions: 
     CommandPaletteAction.OPEN_REPOSITORY -> actions.openRepository()
     CommandPaletteAction.REFRESH -> actions.refresh()
     CommandPaletteAction.VALIDATE -> actions.validate()
+    CommandPaletteAction.VALIDATE_SELECTED -> actions.validateSelected()
     CommandPaletteAction.RENDER -> actions.render()
+    CommandPaletteAction.RENDER_ALL -> actions.renderAll()
     CommandPaletteAction.SHOW_CHANGES -> actions.showChanges()
     CommandPaletteAction.SHOW_HISTORY -> actions.showHistory()
     CommandPaletteAction.SAVE -> actions.save()

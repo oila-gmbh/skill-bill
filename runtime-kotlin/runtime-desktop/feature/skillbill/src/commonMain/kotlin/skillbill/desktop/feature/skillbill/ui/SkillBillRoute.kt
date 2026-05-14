@@ -21,6 +21,7 @@ import skillbill.desktop.core.common.browser.BrowserLauncher
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
@@ -219,6 +220,13 @@ fun SkillBillRoute(
     }
   }
 
+  LaunchedEffect(viewModel) {
+    if (state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED) {
+      runGitRefresh()
+      loadHistory()
+    }
+  }
+
   fun runRefresh() {
     if (canStartRepoScopedAction()) {
       state = viewModel.beginRefresh()
@@ -254,6 +262,18 @@ fun SkillBillRoute(
     }
   }
 
+  fun runValidateSelected() {
+    if (canStartRepoScopedAction()) {
+      val request = viewModel.beginValidateSelected()
+      state = viewModel.state()
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
+        state = viewModel.finishValidate(result)
+        runGitRefresh()
+      }
+    }
+  }
+
   fun runRender() {
     if (canStartRepoScopedAction()) {
       // F-102 mirror: beginRender captures token + session + treeItemId + previousRenderSummary on
@@ -264,6 +284,18 @@ fun SkillBillRoute(
         val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
         state = viewModel.finishRender(result)
         // AC10: render generates SKILL.md and pointer artifacts; refresh git status afterwards.
+        runGitRefresh()
+      }
+    }
+  }
+
+  fun runRenderAll() {
+    if (canStartRepoScopedAction()) {
+      val request = viewModel.beginRenderAll()
+      state = viewModel.state()
+      coroutineScope.launch {
+        val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
+        state = viewModel.finishRender(result)
         runGitRefresh()
       }
     }
@@ -360,7 +392,9 @@ fun SkillBillRoute(
         openRepository = ::runOpenRepository,
         refresh = ::runRefresh,
         validate = ::runValidate,
+        validateSelected = ::runValidateSelected,
         render = ::runRender,
+        renderAll = ::runRenderAll,
         showChanges = { showDockTab(DockTab.Changes) },
         showHistory = { showDockTab(DockTab.History) },
         save = {
@@ -417,7 +451,9 @@ fun SkillBillRoute(
     },
     onRefresh = ::runRefresh,
     onValidate = ::runValidate,
+    onValidateSelected = ::runValidateSelected,
     onRender = ::runRender,
+    onRenderAll = ::runRenderAll,
     onEditorDraftChanged = { draft ->
       state = viewModel.updateEditorDraft(draft)
     },
@@ -462,10 +498,6 @@ fun SkillBillRoute(
       viewModel.resolveGeneratedArtifactTreeItemId(artifactPath) != null
     },
     onGeneratedArtifactSelected = ::runGeneratedArtifactSelection,
-    // F-106: clipboard side effect is hoisted into the route so the inspector stays pure.
-    onCopyIssueSource = { sourcePath ->
-      clipboardManager.setText(AnnotatedString(sourcePath))
-    },
     onChangedFileSelected = { path ->
       val request = viewModel.selectChangedFile(path)
       state = viewModel.state()

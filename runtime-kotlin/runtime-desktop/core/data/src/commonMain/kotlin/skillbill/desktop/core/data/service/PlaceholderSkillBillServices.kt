@@ -90,6 +90,10 @@ class PlaceholderValidationGateway : ValidationGateway {
   override fun validate(session: RepoSession?): ValidationSummary = ValidationSummary.unavailable
 
   @Suppress("UNUSED_PARAMETER")
+  override fun validateSelected(session: RepoSession?, treeItemId: String): ValidationSummary =
+    ValidationSummary.unavailable
+
+  @Suppress("UNUSED_PARAMETER")
   override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? = null
 }
 
