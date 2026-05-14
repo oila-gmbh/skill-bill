@@ -95,4 +95,54 @@ class NativeAgentOperationsTest {
     assertEquals(NativeAgentProvider.entries.size, result.regeneratedFiles.size)
     assertTrue(result.regeneratedFiles.all { path -> path.fileName.toString().startsWith("bill-selected-worker.") })
   }
+
+  @Test
+  fun `install render promotes from provider cache staging and removes staging directory`() {
+    val home = Files.createTempDirectory("skillbill-native-agent-install-home")
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-install-repo")
+    val platformPacks = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    val skills = Files.createDirectories(repoRoot.resolve("skills"))
+    val nativeAgentDir = Files.createDirectories(skills.resolve("bill-basic/native-agents"))
+    Files.writeString(
+      nativeAgentDir.resolve("bill-basic-worker.md"),
+      """
+      ---
+      name: bill-basic-worker
+      description: Basic worker.
+      ---
+
+      # Worker
+      """.trimIndent(),
+    )
+
+    val first = NativeAgentOperations.renderInstallArtifacts(
+      platformPacksRoot = platformPacks,
+      skillsRoot = skills,
+      selectedPlatforms = null,
+      provider = NativeAgentProvider.Claude,
+      home = home,
+    )
+    val providerRoot = first.cacheRoot.resolve(NativeAgentProvider.Claude.directoryName)
+    Files.writeString(providerRoot.resolve("orphan.md"), "# stale\n")
+
+    val second = NativeAgentOperations.renderInstallArtifacts(
+      platformPacksRoot = platformPacks,
+      skillsRoot = skills,
+      selectedPlatforms = null,
+      provider = NativeAgentProvider.Claude,
+      home = home,
+    )
+
+    assertEquals(listOf(providerRoot.resolve("bill-basic-worker.md")), second.generatedFiles)
+    assertFalse(Files.exists(providerRoot.resolve("orphan.md")), "orphan provider artifact should be pruned")
+    Files.list(providerRoot).use { stream ->
+      assertFalse(
+        stream.anyMatch { path ->
+          Files.isDirectory(path) &&
+            path.fileName.toString().startsWith(".skill-bill-native-agent-render-")
+        },
+        "install render staging directory should be cleaned up",
+      )
+    }
+  }
 }
