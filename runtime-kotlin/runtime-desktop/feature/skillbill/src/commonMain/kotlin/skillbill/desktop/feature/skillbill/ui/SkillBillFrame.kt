@@ -12,6 +12,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -147,6 +148,7 @@ fun SkillBillFrame(
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
@@ -161,6 +163,7 @@ fun SkillBillFrame(
   // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
+  recentlyOpenedCompareUrlKey: String? = null,
 ) {
   val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
   // F-X-901-B: mirrors the route's `canStartRepoScopedAction()` predicate so the sidebar
@@ -283,10 +286,12 @@ fun SkillBillFrame(
           onCommitAfterFailedValidation = onCommitAfterFailedValidation,
           onPush = onPush,
           onConfirmCanonicalPush = onConfirmCanonicalPush,
+          onOpenCompareUrl = onOpenCompareUrl,
           onCopyChangedFilePath = onCopyChangedFilePath,
           onCopyCommitHash = onCopyCommitHash,
           onClearHistoryPathFilter = onClearHistoryPathFilter,
           recentlyCopiedKey = recentlyCopiedKey,
+          recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         InspectorPane(
@@ -1285,10 +1290,12 @@ private fun CenterWorkspace(
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
   recentlyCopiedKey: String?,
+  recentlyOpenedCompareUrlKey: String?,
   modifier: Modifier,
 ) {
   Column(modifier = modifier.background(WorkspaceBackground)) {
@@ -1343,10 +1350,12 @@ private fun CenterWorkspace(
       onCommitAfterFailedValidation = onCommitAfterFailedValidation,
       onPush = onPush,
       onConfirmCanonicalPush = onConfirmCanonicalPush,
+      onOpenCompareUrl = onOpenCompareUrl,
       onCopyChangedFilePath = onCopyChangedFilePath,
       onCopyCommitHash = onCopyCommitHash,
       onClearHistoryPathFilter = onClearHistoryPathFilter,
       recentlyCopiedKey = recentlyCopiedKey,
+      recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
     )
   }
 }
@@ -2145,10 +2154,12 @@ private fun BottomDock(
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
   onClearHistoryPathFilter: () -> Unit,
   recentlyCopiedKey: String?,
+  recentlyOpenedCompareUrlKey: String?,
 ) {
   Column(
     modifier =
@@ -2214,8 +2225,10 @@ private fun BottomDock(
           onCommitAfterFailedValidation = onCommitAfterFailedValidation,
           onPush = onPush,
           onConfirmCanonicalPush = onConfirmCanonicalPush,
+          onOpenCompareUrl = onOpenCompareUrl,
           onCopyChangedFilePath = onCopyChangedFilePath,
           recentlyCopiedKey = recentlyCopiedKey,
+          recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
         )
         DockTab.History -> HistoryPanel(
           history = history,
@@ -2377,8 +2390,10 @@ private fun ChangesPanel(
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   recentlyCopiedKey: String?,
+  recentlyOpenedCompareUrlKey: String?,
 ) {
   Row(modifier = Modifier.fillMaxSize()) {
     Column(
@@ -2423,6 +2438,9 @@ private fun ChangesPanel(
         canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
         onPush = onPush,
         onConfirmCanonicalPush = onConfirmCanonicalPush,
+        onOpenCompareUrl = onOpenCompareUrl,
+        recentlyCopiedKey = recentlyCopiedKey,
+        recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
       )
       if (changes.files.isEmpty() && !changesBusy && changes.errorMessage == null) {
         Text(
@@ -2506,6 +2524,9 @@ private fun PushControls(
   canonicalPushConfirmationRequired: Boolean,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onOpenCompareUrl: (String) -> Unit,
+  recentlyCopiedKey: String?,
+  recentlyOpenedCompareUrlKey: String?,
 ) {
   Column(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
@@ -2575,16 +2596,12 @@ private fun PushControls(
       }
     }
     if (compareUrl != null) {
-      SelectionContainer {
-        Text(
-          text = compareUrl,
-          color = WorkspaceYellow,
-          fontSize = 11.sp,
-          fontFamily = FontFamily.Monospace,
-          modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-          maxLines = 1,
-        )
-      }
+      CompareUrlRow(
+        url = compareUrl,
+        showCopied = recentlyCopiedKey == compareUrl,
+        showOpened = recentlyOpenedCompareUrlKey == compareUrl,
+        onOpenCompareUrl = onOpenCompareUrl,
+      )
     }
     val error = pushErrorMessage ?: pushStatusErrorMessage
     if (error != null) {
@@ -2597,6 +2614,72 @@ private fun PushControls(
       )
     }
   }
+}
+
+@Composable
+private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean, onOpenCompareUrl: (String) -> Unit) {
+  val interactionSource = remember { MutableInteractionSource() }
+  val hovered by interactionSource.collectIsHoveredAsState()
+  val focused by interactionSource.collectIsFocusedAsState()
+  val rowBackground =
+    if (hovered || focused) {
+      WorkspaceRaised.copy(alpha = 0.65f)
+    } else {
+      Color.Transparent
+    }
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .height(30.dp)
+      .clip(RoundedCornerShape(3.dp))
+      .background(rowBackground)
+      .iconButtonSemantics(description = compareUrlRowContentDescription(url))
+      .semantics(mergeDescendants = true) {}
+      .onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.isActivationKey()) {
+          onOpenCompareUrl(url)
+          true
+        } else {
+          false
+        }
+      }
+      .hoverable(interactionSource = interactionSource)
+      .clickable(interactionSource = interactionSource, indication = null, role = Role.Button) {
+        onOpenCompareUrl(url)
+      }
+      .focusable(interactionSource = interactionSource)
+      .padding(horizontal = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    SelectionContainer(modifier = Modifier.weight(1f)) {
+      Text(
+        text = url,
+        color = WorkspaceYellow,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+    Text(
+      text = compareUrlActionLabel(showCopied = showCopied, showOpened = showOpened),
+      color = if (showCopied || showOpened) Tone.Success.color() else WorkspaceYellow,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+internal fun compareUrlRowContentDescription(url: String): String = "Open compare URL: $url"
+
+internal fun compareUrlActionLabel(showCopied: Boolean, showOpened: Boolean): String = when {
+  showCopied -> "Copied"
+  showOpened -> "Opened in browser"
+  else -> "open"
 }
 
 @Composable

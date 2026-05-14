@@ -1,5 +1,14 @@
 # SkillBill desktop feature — history
 
+## [2026-05-14] SKILL-44 compare-url-browser (subtask 11)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/common, runtime-desktop app DI graph
+- Compare URL in the Push controls is now an actionable row that opens through route-owned `onOpenCompareUrl`, keeps selectable URL text, and preserves `Role.Button` + `Open compare URL: <url>` semantics on the clickable node.
+- Reusable platform service: `BrowserLauncher` lives in core/common with typed `Opened` / `Failed` outcomes; JVM AWT `Desktop.getDesktop().browse` is isolated in `JvmBrowserLauncher`, never in UI code.
+- Route pattern: potentially blocking platform browser work runs in `Dispatchers.Default`, then the UI coroutine sets transient opened/copied keys; fallback copies only on typed failure or thrown launcher error.
+- Review catch: do not drop `SelectionContainer` when converting selectable text to a clickable row, and provide success feedback (`Opened in browser`) in addition to fallback `Copied`.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-14] SKILL-44 inspector-artifact-reveal (subtask 10)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
 - Inspector Generated artifacts rows now reveal the exact generated tree item through `SkillTreeService.resolveGeneratedArtifactTreeItemId`, not `ValidationGateway.resolveTreeItemIdForSource`; keep these resolvers separate because validation intentionally maps `SKILL.md` siblings back to authored `content.md`.

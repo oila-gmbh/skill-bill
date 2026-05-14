@@ -15,6 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import skillbill.desktop.core.common.browser.BrowserLaunchFailure
+import skillbill.desktop.core.common.browser.BrowserLaunchOutcome
+import skillbill.desktop.core.common.browser.BrowserLauncher
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
@@ -32,6 +35,7 @@ fun SkillBillRoute(
   onSourceRouteSelected: (String) -> Unit = {},
 ) {
   val component = rememberScreenComponent<SkillBillComponent>()
+  val browserLauncher = component.browserLauncher
   val viewModel = component.viewModel
   val coroutineScope = rememberCoroutineScope()
   val clipboardManager = LocalClipboardManager.current
@@ -43,6 +47,13 @@ fun SkillBillRoute(
     if (recentlyCopiedKey != null) {
       delay(COPY_FEEDBACK_DURATION_MILLIS)
       recentlyCopiedKey = null
+    }
+  }
+  var recentlyOpenedCompareUrlKey by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(recentlyOpenedCompareUrlKey) {
+    if (recentlyOpenedCompareUrlKey != null) {
+      delay(COPY_FEEDBACK_DURATION_MILLIS)
+      recentlyOpenedCompareUrlKey = null
     }
   }
 
@@ -508,6 +519,28 @@ fun SkillBillRoute(
     onConfirmCanonicalPush = {
       runPush(allowCanonicalRemote = true)
     },
+    onOpenCompareUrl = { url ->
+      coroutineScope.launch {
+        val outcome = withContext(Dispatchers.Default) {
+          openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
+        }
+        when (outcome) {
+          BrowserLaunchOutcome.Opened -> {
+            if (recentlyCopiedKey == url) {
+              recentlyCopiedKey = null
+            }
+            recentlyOpenedCompareUrlKey = url
+          }
+          is BrowserLaunchOutcome.Failed -> {
+            if (recentlyOpenedCompareUrlKey == url) {
+              recentlyOpenedCompareUrlKey = null
+            }
+            clipboardManager.setText(AnnotatedString(url))
+            recentlyCopiedKey = url
+          }
+        }
+      }
+    },
     onCopyChangedFilePath = { path ->
       // F-106 mirror: clipboard side effect lives in the route; UI emits pure copy callbacks.
       clipboardManager.setText(AnnotatedString(path))
@@ -558,6 +591,7 @@ fun SkillBillRoute(
       },
     ),
     recentlyCopiedKey = recentlyCopiedKey,
+    recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
   )
 }
 
@@ -573,4 +607,22 @@ internal fun executeGeneratedArtifactSelection(
   val resolvedTreeItemId = resolveTreeItemId(artifactPath) ?: return false
   selectTreeItem(resolvedTreeItemId)
   return true
+}
+
+internal fun handleCompareUrlActivation(
+  url: String,
+  browserLauncher: BrowserLauncher,
+  copyUrl: (String) -> Unit,
+): BrowserLaunchOutcome {
+  val outcome = openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
+  if (outcome is BrowserLaunchOutcome.Failed) {
+    copyUrl(url)
+  }
+  return outcome
+}
+
+internal fun openCompareUrlSafely(url: String, browserLauncher: BrowserLauncher): BrowserLaunchOutcome = try {
+  browserLauncher.openCompareUrl(url)
+} catch (exception: Exception) {
+  BrowserLaunchOutcome.Failed(BrowserLaunchFailure.LaunchFailed(exception.message))
 }
