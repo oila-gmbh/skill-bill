@@ -43,13 +43,26 @@ private val SUPPORTED_SKILL_KINDS =
     SKILL_KIND_ADD_ON,
   )
 
-private val SHELLED_FAMILIES = setOf("code-review", "quality-check")
-private val PRE_SHELL_FAMILIES = setOf("feature-implement", "feature-verify")
+// F-001: The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and the
+// slug->displayName platform-pack preset map (`PLATFORM_PACK_PRESETS`) are declared as `internal`
+// in `ScaffoldSupport.kt` so the desktop wizard catalog (`ScaffoldCatalog`) can delegate to them,
+// keeping the runtime as the single source of truth for which families and presets exist. The
+// richer descriptor map (with routing signals and tie-breakers) lives below as
+// `PLATFORM_PACK_PRESET_DESCRIPTORS` and references the same set of slugs.
+
 private val ORCHESTRATOR_KINDS_FOR_SUBAGENTS =
   setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_PLATFORM_PACK)
 private val SUBAGENT_NAME_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 
-private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
+internal data class PlatformPackPreset(
+  val displayName: String,
+  val strongSignals: List<String>,
+  val tieBreakers: List<String>,
+)
+
+// Full runtime descriptors for built-in platform-pack presets. The slugs MUST match the keys of
+// the simpler [PLATFORM_PACK_PRESETS] wizard projection in `ScaffoldSupport.kt`.
+private val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
   mapOf(
     "java" to PlatformPackPreset(
       displayName = "Java",
@@ -57,12 +70,6 @@ private val PLATFORM_PACK_PRESETS: Map<String, PlatformPackPreset> =
       tieBreakers = listOf("Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."),
     ),
   )
-
-private data class PlatformPackPreset(
-  val displayName: String,
-  val strongSignals: List<String>,
-  val tieBreakers: List<String>,
-)
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -106,6 +113,7 @@ private data class ScaffoldPlan(
   val contentBody: String? = null,
   val addonBody: String? = null,
   val subagentSpecialists: List<String> = emptyList(),
+  val subagentDescriptions: Map<String, String> = emptyMap(),
   val subagentsSuppressed: Boolean = false,
 )
 
@@ -334,6 +342,24 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
     }
   val specialistMetadata =
     selectedAreas.associateWith { area -> defaultAreaFocus(area) }
+  val platformPackSubagents = when {
+    subagents.suppressed -> emptyList()
+    subagents.specialists.isNotEmpty() -> subagents.specialists
+    else -> selectedAreas.map { area -> specialistNames.getValue(area) }
+  }
+  val platformPackSubagentDescriptions =
+    if (!subagents.suppressed && subagents.specialists.isEmpty()) {
+      selectedAreas.associate { area ->
+        val name = specialistNames.getValue(area)
+        val description = inferSkillDescription(
+          TemplateContext(name, "code-review", platform, area, defaults.displayName),
+          defaultAreaFocus(area),
+        )
+        name to description
+      }
+    } else {
+      emptyMap()
+    }
   val notes = platformPackNotes(platform, defaults.presetUsed, selectedAreas)
 
   return ScaffoldPlan(
@@ -368,7 +394,8 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
       selectedAreas = selectedAreas,
     ),
     contentBody = payload["content_body"] as? String,
-    subagentSpecialists = subagents.specialists,
+    subagentSpecialists = platformPackSubagents,
+    subagentDescriptions = platformPackSubagentDescriptions,
     subagentsSuppressed = subagents.suppressed,
   )
 }
@@ -561,7 +588,7 @@ private data class PlatformPackDefaults(
 )
 
 private fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: String): PlatformPackDefaults {
-  val preset = PLATFORM_PACK_PRESETS[platform]
+  val preset = PLATFORM_PACK_PRESET_DESCRIPTORS[platform]
   val routing = payload["routing_signals"] as? Map<*, *>
   val strong = routing?.get("strong")?.let { requireStringList(it, "routing_signals.strong") }
   val tieBreakers = routing?.get("tie_breakers")?.let { requireStringList(it, "routing_signals.tie_breakers") }
@@ -608,6 +635,7 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
       txn,
       orchestratorSkillPath = baselineSkillPath,
       specialists = plan.subagentSpecialists,
+      descriptions = plan.subagentDescriptions,
     )
   }
   return ScaffoldExecutionResult(
@@ -638,6 +666,7 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
       txn,
       orchestratorSkillPath = plan.skillPath,
       specialists = plan.subagentSpecialists,
+      descriptions = plan.subagentDescriptions,
     )
   }
   return ScaffoldExecutionResult(
@@ -701,9 +730,10 @@ private fun stageSubagentStubs(
   txn: ScaffoldTransaction,
   orchestratorSkillPath: Path,
   specialists: List<String>,
+  descriptions: Map<String, String>,
 ): List<Path> {
   val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
-  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists))
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions))
   return listOf(sourcePath)
 }
 

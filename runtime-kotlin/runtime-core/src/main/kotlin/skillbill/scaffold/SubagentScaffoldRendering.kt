@@ -18,11 +18,15 @@ internal fun renderNativeAgentSourceStub(name: String, parentSkill: String): Str
   )
 }
 
-internal fun renderNativeAgentBundleStubs(names: List<String>): String = renderNativeAgentBundle(
+internal fun renderNativeAgentBundleStubs(
+  names: List<String>,
+  descriptions: Map<String, String> = emptyMap(),
+): String = renderNativeAgentBundle(
   names.map { name ->
     NativeAgentSource(
       name = name,
-      description = "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
+      description = descriptions[name]
+        ?: "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
       body = "",
       composition = NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent),
     )

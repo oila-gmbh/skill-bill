@@ -134,7 +134,7 @@ Treat platform-pack authoring as a product test, not only a customization task. 
 - Could the author proceed without maintainer context?
 - Did the pack stay cleanly manifest-driven, or did it require local hacks?
 
-PHP and Golang packs authored outside the bundled reference set are the kind of evidence this framework is designed to support. They do not need to become bundled packs for the authoring path to be successful.
+Platform packs authored outside the bundled reference set are the kind of evidence this framework is designed to support. They do not need to become bundled packs for the authoring path to be successful.
 
 ## Customization Layers
 

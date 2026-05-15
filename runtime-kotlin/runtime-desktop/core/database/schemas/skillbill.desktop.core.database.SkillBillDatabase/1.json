@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c02e916ab1eb1c4c49685b9d8254c443",
+    "entities": [
+      {
+        "tableName": "recent_repo",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`repoPath` TEXT NOT NULL, `openedAtEpochMillis` INTEGER NOT NULL, `openedOrder` INTEGER NOT NULL, PRIMARY KEY(`repoPath`))",
+        "fields": [
+          {
+            "fieldPath": "repoPath",
+            "columnName": "repoPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openedAtEpochMillis",
+            "columnName": "openedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openedOrder",
+            "columnName": "openedOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "repoPath"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c02e916ab1eb1c4c49685b9d8254c443')"
+    ]
+  }
+}
