@@ -95,7 +95,8 @@ object NativeAgentOperations {
         contents = provider.render(composed).toByteArray(Charsets.UTF_8),
       )
     }
-    val staging = Files.createTempDirectory("skill-bill-native-agent-render-")
+    Files.createDirectories(providerRoot)
+    val staging = Files.createTempDirectory(providerRoot, ".skill-bill-native-agent-render-")
     return try {
       rendered.forEach { entry ->
         Files.write(staging.resolve(entry.targetName), entry.contents)
@@ -121,12 +122,21 @@ object NativeAgentOperations {
     pruneOrphanArtifacts(providerRoot, expectedNames)
     return rendered.map { entry ->
       val target = providerRoot.resolve(entry.targetName)
-      Files.move(
-        staging.resolve(entry.targetName),
-        target,
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE,
-      )
+      val source = staging.resolve(entry.targetName)
+      try {
+        Files.move(
+          source,
+          target,
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE,
+        )
+      } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+        Files.move(
+          source,
+          target,
+          StandardCopyOption.REPLACE_EXISTING,
+        )
+      }
       target
     }
   }

@@ -6,8 +6,13 @@ SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
 RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
-RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
-RUNTIME_MCP_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+RUNTIME_CLI_BUILD_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
+SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
+RUNTIME_INSTALL_ROOT="${SKILL_BILL_RUNTIME_DIR:-$SKILL_BILL_STATE_DIR/runtime}"
+RUNTIME_CLI_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-cli"
+RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
+RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
+RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'
@@ -22,7 +27,7 @@ warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 err()   { printf "${RED}✗${NC} %s\n" "$1"; }
 
 locate_packaged_runtime_bin() {
-  if [[ ! -x "$RUNTIME_CLI_BIN" ]]; then
+  if [[ ! -x "$RUNTIME_CLI_BIN" && ! -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
     err "Missing packaged Kotlin CLI runtime: $RUNTIME_CLI_BIN"
     return 1
   fi
@@ -46,12 +51,19 @@ build_kotlin_runtime_distribution() {
     cd "$RUNTIME_KOTLIN_DIR"
     ./gradlew -q :runtime-cli:installDist
   )
-  locate_packaged_runtime_bin
+  mkdir -p "$RUNTIME_INSTALL_ROOT"
+  rm -rf "$RUNTIME_CLI_INSTALL_DIR.tmp" "$RUNTIME_CLI_INSTALL_DIR"
+  cp -R "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli" "$RUNTIME_CLI_INSTALL_DIR.tmp"
+  mv "$RUNTIME_CLI_INSTALL_DIR.tmp" "$RUNTIME_CLI_INSTALL_DIR"
   ok "Kotlin CLI runtime distribution ready"
 }
 
 run_runtime_cli() {
-  "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+  local runtime_cli="$RUNTIME_CLI_BIN"
+  if [[ ! -x "$runtime_cli" && -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
+    runtime_cli="$RUNTIME_CLI_BUILD_BIN"
+  fi
+  "$runtime_cli" --home "$HOME" "$@"
 }
 
 remove_runtime_launcher() {
@@ -356,7 +368,6 @@ done
 
 remove_runtime_launchers
 
-SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 if [[ -d "$SKILL_BILL_STATE_DIR" ]]; then
   info "Removing skill-bill state directory."
   rm -rf "$SKILL_BILL_STATE_DIR"

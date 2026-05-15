@@ -3,6 +3,7 @@
 package skillbill.scaffold
 
 import skillbill.error.ShellContentContractException
+import skillbill.nativeagent.discoverNativeAgentGeneratedArtifactFiles
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -16,7 +17,44 @@ data class GeneratedArtifactGuardReport(
   val passed: Boolean = issues.isEmpty()
 }
 
+data class GeneratedArtifactFile(
+  val path: Path,
+  val reason: String,
+)
+
 internal typealias TrackedRepoFilesProvider = (Path) -> Set<String>?
+
+fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile> {
+  val root = repoRoot.toAbsolutePath().normalize()
+  return (
+    discoverGovernedSkillOutputs(root).map { artifact ->
+      GeneratedArtifactFile(
+        path = artifact,
+        reason = "Generated runtime wrapper. Edit content.md instead.",
+      )
+    } +
+      discoverDeclaredPointerFiles(root).map { artifact ->
+        GeneratedArtifactFile(
+          path = artifact,
+          reason = "Generated platform.yaml-declared support pointer. Runtime/install output is read-only.",
+        )
+      } +
+      discoverGeneratedSupportingPointerFiles(root).map { artifact ->
+        GeneratedArtifactFile(
+          path = artifact,
+          reason = "Generated support pointer. Runtime/install output is read-only.",
+        )
+      } +
+      discoverNativeAgentGeneratedArtifactFiles(root).map { artifact ->
+        GeneratedArtifactFile(
+          path = artifact,
+          reason = "Generated provider-specific native-agent output.",
+        )
+      }
+    )
+    .distinctBy { artifact -> artifact.path.toAbsolutePath().normalize() }
+    .sortedBy { artifact -> artifact.path.toString() }
+}
 
 fun validateGeneratedArtifactGuard(repoRoot: Path): GeneratedArtifactGuardReport =
   validateGeneratedArtifactGuard(repoRoot, ::trackedRepoFiles)
@@ -127,7 +165,7 @@ private fun discoverGeneratedSupportingPointerFiles(root: Path): List<Path> {
       .filter { skillDir -> skillDir.isDirectory() && !skillDir.name.startsWith(".") }
       .flatMap { skillDir ->
         val skillName = skillDir.name
-        requiredSupportingFilesForSkill(skillName)
+        requiredSupportingFilesForSkill(skillName, root)
           .asSequence()
           .filter { fileName ->
             val target = targets[fileName]?.normalize()?.toAbsolutePath()

@@ -6,8 +6,14 @@ SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
 MANAGED_INSTALL_MARKER=".skill-bill-install"
 RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
-RUNTIME_CLI_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
-RUNTIME_MCP_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+RUNTIME_CLI_BUILD_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
+RUNTIME_MCP_BUILD_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
+RUNTIME_INSTALL_ROOT="${SKILL_BILL_RUNTIME_DIR:-$SKILL_BILL_STATE_DIR/runtime}"
+RUNTIME_CLI_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-cli"
+RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
+RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
+RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
 
 RED='\033[0;31m'
@@ -52,14 +58,52 @@ locate_packaged_runtime_bin() {
   fi
 }
 
+install_packaged_runtime_distribution() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local label="$3"
+  local tmp_dir="$target_dir.tmp"
+
+  if [[ ! -d "$source_dir" ]]; then
+    err "Missing packaged Kotlin $label distribution: $source_dir"
+    return 1
+  fi
+
+  rm -rf "$tmp_dir"
+  mkdir -p "$(dirname "$target_dir")"
+  cp -R "$source_dir" "$tmp_dir"
+  rm -rf "$target_dir"
+  mv "$tmp_dir" "$target_dir"
+}
+
+install_packaged_runtime_distributions() {
+  info "Installing packaged Kotlin runtime to: $RUNTIME_INSTALL_ROOT"
+  install_packaged_runtime_distribution \
+    "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli" \
+    "$RUNTIME_CLI_INSTALL_DIR" \
+    "CLI"
+  install_packaged_runtime_distribution \
+    "$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp" \
+    "$RUNTIME_MCP_INSTALL_DIR" \
+    "MCP"
+  locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
+  locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+  ok "Kotlin runtime installed"
+}
+
 build_kotlin_runtime_distributions() {
-  # Installed runtime path: Gradle application installDist bin scripts at:
+  # Build output path: Gradle application installDist bin scripts at:
   # runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
   # runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp
+  # Install path: durable copied distributions under ~/.skill-bill/runtime/.
   if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
     warn "Skipping packaged Kotlin runtime distribution build because SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD=1."
-    locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
-    locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+    if [[ -x "$RUNTIME_CLI_BUILD_BIN" && -x "$RUNTIME_MCP_BUILD_BIN" ]]; then
+      install_packaged_runtime_distributions
+    else
+      locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
+      locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+    fi
     return 0
   fi
 
@@ -74,9 +118,10 @@ build_kotlin_runtime_distributions() {
     cd "$RUNTIME_KOTLIN_DIR"
     ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
   )
-  locate_packaged_runtime_bin "$RUNTIME_CLI_BIN" "CLI"
-  locate_packaged_runtime_bin "$RUNTIME_MCP_BIN" "MCP"
+  locate_packaged_runtime_bin "$RUNTIME_CLI_BUILD_BIN" "CLI"
+  locate_packaged_runtime_bin "$RUNTIME_MCP_BUILD_BIN" "MCP"
   ok "Kotlin runtime distributions ready"
+  install_packaged_runtime_distributions
 }
 
 run_runtime_cli() {
@@ -1103,7 +1148,6 @@ for i in "${!AGENT_NAMES[@]}"; do
   echo ""
 done
 
-SKILL_BILL_STATE_DIR="${HOME}/.skill-bill"
 export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
 export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
 

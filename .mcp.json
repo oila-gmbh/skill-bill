@@ -2,7 +2,7 @@
   "mcpServers": {
     "skill-bill": {
       "type": "stdio",
-      "command": "runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp",
+      "command": "skill-bill-mcp",
       "args": []
     }
   }

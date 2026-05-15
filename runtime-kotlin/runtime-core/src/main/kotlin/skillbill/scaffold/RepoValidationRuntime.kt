@@ -21,6 +21,7 @@ data class RepoValidationReport(
   val addonCount: Int,
   val platformPackCount: Int,
   val nativeAgentCount: Int,
+  val structuredIssues: List<RepoValidationIssue> = issues.map(RepoValidationIssue::fromRawIssue),
 ) {
   val passed: Boolean = issues.isEmpty()
 
@@ -32,6 +33,42 @@ data class RepoValidationReport(
     "native_agent_count" to nativeAgentCount,
     "issues" to issues,
   )
+}
+
+data class RepoValidationIssue(
+  val severity: RepoValidationIssueSeverity,
+  val message: String,
+  val sourcePath: String?,
+  val code: String? = null,
+  val name: String? = null,
+  val exceptionName: String? = null,
+) {
+  companion object {
+    fun fromRawIssue(raw: String): RepoValidationIssue {
+      val separator = raw.indexOf(": ")
+      return if (separator > 0 && raw.substring(0, separator).isNotBlank() &&
+        !raw.substring(0, separator).contains(' ')
+      ) {
+        RepoValidationIssue(
+          severity = RepoValidationIssueSeverity.ERROR,
+          sourcePath = raw.substring(0, separator),
+          message = raw.substring(separator + 2),
+        )
+      } else {
+        RepoValidationIssue(
+          severity = RepoValidationIssueSeverity.ERROR,
+          sourcePath = null,
+          message = raw,
+        )
+      }
+    }
+  }
+}
+
+enum class RepoValidationIssueSeverity {
+  ERROR,
+  WARNING,
+  INFO,
 }
 
 data class ReleaseRefMetadata(
@@ -263,7 +300,7 @@ object RepoValidationRuntime {
     } catch (error: InvalidSkillMdShapeError) {
       issues += error.message.orEmpty()
     }
-    requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+    requiredSupportingFilesForSkill(skillName, root).forEach { fileName ->
       val expectedTarget = supportingFileTargets(root)[fileName]
       if (expectedTarget == null) {
         issues += "$contentFile: supporting file '$fileName' has no registered target"
@@ -470,7 +507,7 @@ object RepoValidationRuntime {
   }
 
   private fun validateSupportingTargets(root: Path, skillNames: Set<String>, issues: MutableList<String>) {
-    skillNames.flatMap(::requiredSupportingFilesForSkill).toSet().forEach { fileName ->
+    skillNames.flatMap { name -> requiredSupportingFilesForSkill(name, root) }.toSet().forEach { fileName ->
       val target = supportingFileTargets(root)[fileName]
       if (target == null || !Files.exists(target)) {
         issues += "supporting file '$fileName' target is missing"

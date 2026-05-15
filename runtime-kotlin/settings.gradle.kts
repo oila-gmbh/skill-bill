@@ -3,6 +3,7 @@ pluginManagement {
 
   repositories {
     gradlePluginPortal()
+    google()
     mavenCentral()
   }
 }
@@ -15,7 +16,10 @@ plugins {
 
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-  repositories { mavenCentral() }
+  repositories {
+    google()
+    mavenCentral()
+  }
 }
 
 include(
@@ -27,6 +31,17 @@ include(
   "runtime-infra-http",
   "runtime-infra-sqlite",
   "runtime-cli",
+  "runtime-desktop",
+  "runtime-desktop:core:common",
+  "runtime-desktop:core:data",
+  "runtime-desktop:core:database",
+  "runtime-desktop:core:datastore",
+  "runtime-desktop:core:designsystem",
+  "runtime-desktop:core:domain",
+  "runtime-desktop:core:navigation",
+  "runtime-desktop:core:testing",
+  "runtime-desktop:core:ui",
+  "runtime-desktop:feature:skillbill",
   "runtime-mcp",
   "runtime-ports",
 )

@@ -3,6 +3,7 @@
 package skillbill.scaffold
 
 import skillbill.error.MissingSupportingFileTargetError
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
 
@@ -23,6 +24,19 @@ internal val APPROVED_CODE_REVIEW_AREAS: Set<String> =
     "ui",
     "ux-accessibility",
   )
+
+// F-001: Authoritative source for the pre-shell vs shelled family taxonomy. The desktop wizard's
+// `ScaffoldCatalog` delegates to these so the runtime stays the single source of truth.
+internal val SHELLED_FAMILIES: Set<String> = setOf("code-review", "quality-check")
+internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-implement", "feature-verify")
+
+// F-001: Built-in platform-pack presets keyed by slug. The full descriptors (routing signals etc.)
+// live in `ScaffoldService.kt`; this map is the wizard-facing display projection so callers can
+// render a slug -> displayName list without depending on internal runtime types.
+internal val PLATFORM_PACK_PRESETS: Map<String, String> = mapOf(
+  "java" to "Java",
+  "php" to "PHP",
+)
 
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =
   listOf("## Descriptor", "## Execution", "## Ceremony")
@@ -111,51 +125,16 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   ),
 )
 
-internal fun requiredSupportingFilesForSkill(skillName: String): List<String> = when {
-  skillName == "bill-code-review" -> listOf(
-    "review-scope.md",
-    "stack-routing.md",
-    "review-delegation.md",
-    "telemetry-contract.md",
-    "shell-content-contract.md",
-    "shell-ceremony.md",
-  )
-  skillName.startsWith("bill-") && skillName.endsWith("-code-review") -> listOf(
-    "review-scope.md",
-    "stack-routing.md",
-    "review-orchestrator.md",
-    "specialist-contract.md",
-    "review-delegation.md",
-    "telemetry-contract.md",
-    "shell-ceremony.md",
-  )
-  skillName.startsWith("bill-") && "-code-review-" in skillName -> listOf(
-    "review-orchestrator.md",
-    "telemetry-contract.md",
-    "shell-ceremony.md",
-  )
-  skillName == "bill-quality-check" -> listOf("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md")
-  skillName.startsWith("bill-") && skillName.endsWith("-quality-check") -> listOf(
-    "stack-routing.md",
-    "telemetry-contract.md",
-    "shell-ceremony.md",
-  )
-  skillName.startsWith("bill-") && skillName.endsWith("-feature-implement") -> listOf(
-    "shell-ceremony.md",
-    "telemetry-contract.md",
-    "android-compose-implementation.md",
-    "android-navigation-implementation.md",
-    "android-interop-implementation.md",
-    "android-design-system-implementation.md",
-    "android-r8-implementation.md",
-    "android-compose-edge-to-edge.md",
-    "android-compose-adaptive-layouts.md",
-  )
-  skillName.startsWith(
-    "bill-",
-  ) && skillName.endsWith("-feature-verify") -> listOf("shell-ceremony.md", "telemetry-contract.md")
-  skillName == "bill-pr-description" -> listOf("shell-ceremony.md", "telemetry-contract.md")
-  else -> emptyList()
+/**
+ * Returns the install-time support pointer filenames a skill needs. Sourced from the matched
+ * class manifest under `orchestration/skill-classes/`. Returns an empty list when the directory
+ * is absent (non-governed test fixtures, ad-hoc repos) or no class matches; production repos
+ * always carry the directory and the matched class declares the canonical pointer set.
+ */
+internal fun requiredSupportingFilesForSkill(skillName: String, repoRoot: Path): List<String> {
+  if (!Files.isDirectory(repoRoot.resolve(SKILL_CLASSES_DIR))) return emptyList()
+  val skillClass = resolveSkillClass(skillName, discoverSkillClasses(repoRoot))
+  return skillClass?.pointers?.map { "$it.md" } ?: emptyList()
 }
 
 internal fun requireSupportingFileTarget(skillName: String, fileName: String, repoRoot: Path): Path =

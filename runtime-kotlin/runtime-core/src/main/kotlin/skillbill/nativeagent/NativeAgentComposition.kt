@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.nativeagent
 
 import skillbill.scaffold.loadPlatformPack
@@ -80,6 +82,9 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
   return source.copy(body = inlineDeclaredMarkdownSidecars(repoRoot, target, composedBody), composition = null)
 }
 
+fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSource): String =
+  renderNativeAgentSource(composeNativeAgentSource(repoRoot, source))
+
 private fun resolvePlatformManifestContentTarget(
   repoRoot: Path,
   packRoot: Path,
@@ -119,15 +124,26 @@ private fun resolveSiblingContentTarget(sourcePath: Path, source: NativeAgentSou
     }
 
 internal fun platformPackRoot(repoRoot: Path, sourcePath: Path): Path? {
+  // `repoRoot` and `sourcePath` may carry different symlink resolution states (e.g. macOS
+  // `/var` -> `/private/var` for tmpdirs). `startsWith` is purely lexical, so compare through
+  // canonicalized variants while returning a path rooted at the caller's original `repoRoot` form
+  // so downstream output stays consistent with the input.
   val packsRoot = repoRoot.resolve("platform-packs")
-  if (!sourcePath.startsWith(packsRoot)) {
+  val canonicalPacksRoot = canonicalize(packsRoot)
+  val canonicalSourcePath = canonicalize(sourcePath)
+  if (!canonicalSourcePath.startsWith(canonicalPacksRoot)) {
     return null
   }
-  return runCatching { sourcePath.relativeTo(packsRoot) }
+  return runCatching { canonicalSourcePath.relativeTo(canonicalPacksRoot) }
     .getOrNull()
     ?.firstOrNull()
     ?.toString()
     ?.let(packsRoot::resolve)
+}
+
+private fun canonicalize(path: Path): Path {
+  val normalized = path.toAbsolutePath().normalize()
+  return runCatching { normalized.toRealPath() }.getOrDefault(normalized)
 }
 
 private fun declaredContentPaths(pack: PlatformManifest): List<Path> = listOf(pack.declaredFiles.baseline) +

@@ -3,6 +3,8 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.nativeagent.NativeAgentOperations
+import skillbill.nativeagent.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -151,6 +153,16 @@ class ScaffoldServiceParityTest {
     assertTrue(manifest.indexOf("  - \"architecture\"") < manifest.indexOf("  - \"security\""))
     assertContains(manifest, "architecture: \"code-review/bill-php-code-review-architecture/content.md\"")
     assertContains(manifest, "security: \"code-review/bill-php-code-review-security/content.md\"")
+    assertComposedSourceBundle(
+      repo.resolve("platform-packs/php/code-review/bill-php-code-review/native-agents/agents.yaml"),
+      mapOf(
+        "bill-php-code-review-architecture" to
+          "Use when reviewing PHP changes for architecture, boundaries, and dependency direction.",
+        "bill-php-code-review-security" to
+          "Use when reviewing PHP changes for secrets handling, auth, and sensitive-data exposure.",
+      ),
+    )
+    assertDistinctProviderAgents(repo)
     assertNoGeneratedWrapperOrSupportingFiles(
       repo.resolve("platform-packs/php/code-review/bill-php-code-review-architecture"),
       "bill-php-code-review-architecture",
@@ -167,6 +179,21 @@ class ScaffoldServiceParityTest {
     assertEquals(
       repo.resolve("platform-packs/php/code-review/bill-php-code-review-security/content.md"),
       pack.declaredFiles.areas.getValue("security"),
+    )
+  }
+
+  @Test
+  fun `platform pack no_subagents suppresses default specialist native agents`() = withIsolatedUserHome {
+    val repo = seedRepo()
+
+    scaffold(
+      payload(repo, "platform-pack", "platform" to "php") +
+        mapOf("specialist_areas" to listOf("security"), "no_subagents" to true),
+    )
+
+    assertFalse(
+      Files.exists(repo.resolve("platform-packs/php/code-review/bill-php-code-review/native-agents")),
+      "no_subagents=true must opt out of default platform-pack native-agent source generation",
     )
   }
 
@@ -332,8 +359,8 @@ class ScaffoldServiceParityTest {
     assertContains(renderWrapper(packTarget), "Platform pack: `kotlin` (Kotlin)")
     val renderedBase = renderWrapper(baseTarget)
 
-    assertContains(renderedBase, "shell-content-contract.md")
-    assertFalse("review-orchestrator.md" in renderedBase)
+    assertContains(renderedBase, "[shell-content-contract.md](shell-content-contract.md)")
+    assertFalse("[review-orchestrator.md](review-orchestrator.md)" in renderedBase)
   }
 
   @Test
@@ -534,6 +561,7 @@ private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>):
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
+  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
@@ -596,14 +624,63 @@ private fun assertSourceBundle(path: Path, vararg names: String) {
   assertFalse("mode: subagent" in text)
 }
 
+private fun assertDistinctProviderAgents(repo: Path) {
+  val generatedAgents = NativeAgentOperations.renderInstallArtifacts(
+    platformPacksRoot = repo.resolve("platform-packs"),
+    skillsRoot = repo.resolve("skills"),
+    selectedPlatforms = listOf("php"),
+    provider = NativeAgentProvider.Codex,
+    home = Path.of(System.getProperty("user.home")),
+  )
+  val generatedArchitecture = Files.readString(
+    generatedAgents.cacheRoot.resolve("codex-agents/bill-php-code-review-architecture.toml"),
+  )
+  val generatedSecurity = Files.readString(
+    generatedAgents.cacheRoot.resolve("codex-agents/bill-php-code-review-security.toml"),
+  )
+  assertContains(generatedArchitecture, "architecture, boundaries, and dependency direction")
+  assertContains(generatedSecurity, "secrets handling, auth, and sensitive-data exposure")
+  assertFalse(generatedArchitecture == generatedSecurity, "provider-native agents must render distinct content")
+}
+
+private fun assertComposedSourceBundle(path: Path, descriptions: Map<String, String>) {
+  val text = Files.readString(path)
+  assertContains(text, "agents:")
+  descriptions.forEach { (name, description) ->
+    assertContains(text, "name: $name")
+    assertContains(text, "description: \"$description\"")
+  }
+  assertEquals(descriptions.size, Regex("""(?m)^    compose: governed-content$""").findAll(text).count())
+  assertFalse("TODO:" in text)
+  assertFalse("body: |-" in text)
+  assertFalse("mode: subagent" in text)
+}
+
 private fun assertNoGeneratedWrapperOrSupportingFiles(skillDir: Path, skillName: String) {
   assertNoGeneratedWrapper(skillDir)
-  requiredSupportingFilesForSkill(skillName).forEach { fileName ->
+  val repoRoot = locateTestRepoRoot(skillDir)
+  requiredSupportingFilesForSkill(skillName, repoRoot).forEach { fileName ->
     assertFalse(
       Files.exists(skillDir.resolve(fileName)),
       "scaffold must not create source pointer/supporting file '$fileName' at $skillDir",
     )
   }
+}
+
+private fun locateTestRepoRoot(skillDir: Path): Path {
+  var current: Path? = skillDir.toAbsolutePath().normalize().parent
+  while (current != null) {
+    if (Files.isDirectory(current.resolve("skills")) || Files.isDirectory(current.resolve("platform-packs"))) {
+      val rootCandidate = current
+      val classesDir = rootCandidate.resolve("orchestration/skill-classes")
+      if (!Files.isDirectory(classesDir)) {
+        skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
+      }
+      return rootCandidate
+    }
+    current = current.parent
+  }
+  return skillDir
 }
 
 private fun assertNoGeneratedWrapper(skillDir: Path) {
