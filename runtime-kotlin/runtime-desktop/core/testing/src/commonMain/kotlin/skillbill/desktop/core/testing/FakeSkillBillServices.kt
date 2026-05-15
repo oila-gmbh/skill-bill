@@ -12,6 +12,8 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.PrPublishingRequest
+import skillbill.desktop.core.domain.model.PrPublishingResult
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
@@ -21,6 +23,7 @@ import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
@@ -179,6 +182,9 @@ class FakeGitGateway(
   var lastCommitMessage: String? = null
     private set
 
+  var lastCommitPaths: List<String> = emptyList()
+    private set
+
   var lastPushTarget: GitPushTarget? = null
     private set
 
@@ -265,9 +271,10 @@ class FakeGitGateway(
   }
 
   @Suppress("UNUSED_PARAMETER")
-  override fun commit(session: RepoSession?, message: String): GitOperationResult {
+  override fun commit(session: RepoSession?, message: String, paths: List<String>): GitOperationResult {
     commitCallCount += 1
     lastCommitMessage = message
+    lastCommitPaths = paths
     throwOnCommit?.let { throw it }
     return scriptedCommitResult
   }
@@ -295,6 +302,28 @@ class FakeGitGateway(
   @Suppress("unused")
   fun setFiles(files: List<ChangedFile>) {
     scriptedSnapshot = scriptedSnapshot.copy(files = files)
+  }
+}
+
+class FakePrPublishingGateway(
+  var scriptedResult: PrPublishingResult =
+    PrPublishingResult.CompareUrlFallback(
+      url = "https://github.com/acme/repo/compare/feature",
+      reason = "PR unavailable",
+    ),
+  var throwOnPublish: Throwable? = null,
+) : PrPublishingGateway {
+  var publishCallCount: Int = 0
+    private set
+
+  var lastRequest: PrPublishingRequest? = null
+    private set
+
+  override fun publish(request: PrPublishingRequest): PrPublishingResult {
+    publishCallCount += 1
+    lastRequest = request
+    throwOnPublish?.let { throw it }
+    return scriptedResult
   }
 }
 

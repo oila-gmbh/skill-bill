@@ -7,6 +7,9 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.PrPublishingErrorType
+import skillbill.desktop.core.domain.model.PrPublishingRequest
+import skillbill.desktop.core.domain.model.PrPublishingResult
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -15,6 +18,7 @@ import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
@@ -133,10 +137,26 @@ class PlaceholderGitGateway : GitGateway {
   override fun publishingStatus(session: RepoSession?): GitPublishingStatus = GitPublishingStatus.empty
 
   @Suppress("UNUSED_PARAMETER")
-  override fun commit(session: RepoSession?, message: String): GitOperationResult =
+  override fun commit(session: RepoSession?, message: String, paths: List<String>): GitOperationResult =
     GitOperationResult.failed("Git is unavailable in this runtime.")
 
   @Suppress("UNUSED_PARAMETER")
   override fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult =
     GitOperationResult.failed("Git is unavailable in this runtime.")
+}
+
+@Inject
+class PlaceholderPrPublishingGateway : PrPublishingGateway {
+  override fun publish(request: PrPublishingRequest): PrPublishingResult = request.compareUrl
+    ?.takeIf(String::isNotBlank)
+    ?.let { url ->
+      PrPublishingResult.CompareUrlFallback(
+        url = url,
+        reason = "Pull request creation is unavailable in this runtime.",
+      )
+    }
+    ?: PrPublishingResult.Failed(
+      type = PrPublishingErrorType.PROVIDER,
+      message = "Pull request creation is unavailable in this runtime.",
+    )
 }

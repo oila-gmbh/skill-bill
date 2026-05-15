@@ -32,6 +32,7 @@ import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeGitGateway
+import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
@@ -320,6 +321,7 @@ class SkillBillViewModelTest {
       skillTreeService = FakeSkillTreeService(emptyList()),
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
+      prPublishingGateway = FakePrPublishingGateway(),
       validationGateway = FakeValidationGateway(),
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = recentRepoRepository,
@@ -353,6 +355,7 @@ class SkillBillViewModelTest {
       skillTreeService = skillTreeService,
       authoringGateway = FakeAuthoringGateway(),
       gitGateway = FakeGitGateway(),
+      prPublishingGateway = FakePrPublishingGateway(),
       validationGateway = FakeValidationGateway(),
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
@@ -1783,6 +1786,7 @@ class SkillBillViewModelTest {
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultSkillTree()),
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
     gitGateway: GitGateway = FakeGitGateway(),
+    prPublishingGateway: skillbill.desktop.core.domain.service.PrPublishingGateway = FakePrPublishingGateway(),
     validationGateway: ValidationGateway = FakeValidationGateway(),
     renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
@@ -1793,6 +1797,7 @@ class SkillBillViewModelTest {
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
     gitGateway = gitGateway,
+    prPublishingGateway = prPublishingGateway,
     validationGateway = validationGateway,
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,

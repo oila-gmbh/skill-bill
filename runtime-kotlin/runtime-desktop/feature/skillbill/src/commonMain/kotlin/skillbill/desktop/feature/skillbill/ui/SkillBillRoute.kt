@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -21,11 +22,13 @@ import skillbill.desktop.core.common.browser.BrowserLauncher
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
+import skillbill.desktop.feature.skillbill.state.PublishRunResult
 
 @Suppress("DEPRECATION")
 @Composable
@@ -86,6 +89,60 @@ fun SkillBillRoute(
       coroutineScope.launch {
         val result = withContext(Dispatchers.Default) { viewModel.runCommit(request) }
         state = viewModel.finishCommit(result)
+      }
+    }
+  }
+
+  fun openPublishLink(url: String) {
+    coroutineScope.launch {
+      val outcome = withContext(Dispatchers.Default) {
+        openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
+      }
+      when (outcome) {
+        BrowserLaunchOutcome.Opened -> {
+          if (recentlyCopiedKey == url) {
+            recentlyCopiedKey = null
+          }
+          recentlyOpenedCompareUrlKey = url
+        }
+        is BrowserLaunchOutcome.Failed -> {
+          if (recentlyOpenedCompareUrlKey == url) {
+            recentlyOpenedCompareUrlKey = null
+          }
+          clipboardManager.setText(AnnotatedString(url))
+          recentlyCopiedKey = url
+        }
+      }
+    }
+  }
+
+  fun runPublish(allowFailedValidation: Boolean = false, allowCanonicalRemote: Boolean = false) {
+    val request = viewModel.beginPublish(
+      allowFailedValidation = allowFailedValidation,
+      allowCanonicalRemote = allowCanonicalRemote,
+    )
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        var finished = false
+        try {
+          val result = withContext(Dispatchers.Default) { viewModel.runPublish(request) }
+          state = viewModel.finishPublish(result)
+          finished = true
+          state.publishLink?.url?.let(::openPublishLink)
+        } finally {
+          if (!finished) {
+            withContext(NonCancellable) {
+              state = viewModel.finishPublish(
+                PublishRunResult(
+                  request = request,
+                  validationSummary = request.previousValidationSummary,
+                  pushResult = GitOperationResult.failed("Publish was cancelled."),
+                ),
+              )
+            }
+          }
+        }
       }
     }
   }
@@ -190,6 +247,7 @@ fun SkillBillRoute(
   }
 
   fun canStartRepoScopedAction(): Boolean = state.busyOperation == null &&
+    !state.publishBusy &&
     !state.commitBusy &&
     !state.commitValidationRunning &&
     !state.pushBusy
@@ -535,9 +593,30 @@ fun SkillBillRoute(
       }
     },
     onCommitMessageChanged = { message ->
-      if (!state.commitBusy && !state.commitValidationRunning) {
+      if (!state.publishBusy && !state.commitBusy && !state.commitValidationRunning) {
         state = viewModel.updateCommitMessage(message)
       }
+    },
+    onPublishPrTitleChanged = { title ->
+      state = viewModel.updatePublishPrTitle(title)
+    },
+    onPublishPrBodyChanged = { body ->
+      state = viewModel.updatePublishPrBody(body)
+    },
+    onPublishDraftChanged = { draft ->
+      state = viewModel.setPublishDraft(draft)
+    },
+    onPublishPathSelectionChanged = { path, selected ->
+      state = viewModel.setPublishPathSelected(path, selected)
+    },
+    onPublish = {
+      runPublish()
+    },
+    onPublishAfterFailedValidation = {
+      runPublish(
+        allowFailedValidation = true,
+        allowCanonicalRemote = state.pushTarget?.isLikelyCanonical == true,
+      )
     },
     onCommit = {
       runCommit(allowFailedValidation = false)
@@ -550,6 +629,12 @@ fun SkillBillRoute(
     },
     onConfirmCanonicalPush = {
       runPush(allowCanonicalRemote = true)
+    },
+    onConfirmCanonicalPublish = {
+      runPublish(
+        allowFailedValidation = state.commitValidationFailed,
+        allowCanonicalRemote = true,
+      )
     },
     onOpenCompareUrl = { url ->
       coroutineScope.launch {

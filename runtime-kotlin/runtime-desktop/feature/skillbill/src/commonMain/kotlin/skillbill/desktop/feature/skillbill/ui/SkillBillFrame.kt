@@ -102,6 +102,10 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.GitAheadBehind
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.GovernedChangeGroup
+import skillbill.desktop.core.domain.model.GovernedChangedFile
+import skillbill.desktop.core.domain.model.PublishLink
+import skillbill.desktop.core.domain.model.PublishLinkKind
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -186,10 +190,17 @@ fun SkillBillFrame(
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
+  onPublishPrTitleChanged: (String) -> Unit,
+  onPublishPrBodyChanged: (String) -> Unit,
+  onPublishDraftChanged: (Boolean) -> Unit,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onPublish: () -> Unit,
+  onPublishAfterFailedValidation: () -> Unit,
   onCommit: () -> Unit,
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onConfirmCanonicalPublish: () -> Unit,
   onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
@@ -214,7 +225,7 @@ fun SkillBillFrame(
   var bottomDockVisible by remember { mutableStateOf(true) }
   var bottomDockHeight by remember { mutableStateOf(SkillBillMetrics.bottomDockHeight) }
   var openEditorTabs by remember { mutableStateOf<List<OpenEditorTab>>(emptyList()) }
-  val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
+  val publishingBusy = state.publishBusy || state.commitBusy || state.commitValidationRunning || state.pushBusy
   // F-X-901-B: mirrors the route's `canStartRepoScopedAction()` predicate so the sidebar
   // Validation row can render `disabled()` semantics whenever the route would silently drop the
   // dock-tab activation and validate call. The route owns the gating contract; this is purely a
@@ -378,6 +389,15 @@ fun SkillBillFrame(
           historyPathFilter = state.historyPathFilter,
           publishingBusy = publishingBusy,
           commitMessage = state.commitMessage,
+          publishPrTitle = state.publishPrTitle,
+          publishPrBody = state.publishPrBody,
+          publishDraft = state.publishDraft,
+          selectedPublishPaths = state.selectedPublishPaths,
+          canPublish = state.canPublish,
+          publishDisabledReason = state.publishDisabledReason,
+          publishBusy = state.publishBusy,
+          publishErrorMessage = state.publishErrorMessage,
+          publishLink = state.publishLink,
           canCommit = state.canCommit,
           commitBusy = state.commitBusy,
           commitErrorMessage = state.commitErrorMessage,
@@ -395,6 +415,7 @@ fun SkillBillFrame(
           globalActionsEnabled = canActivateRepoScopedAction,
           editorInputEnabled = state.busyOperation == null &&
             !state.changesBusy &&
+            !state.publishBusy &&
             !state.commitBusy &&
             !state.commitValidationRunning &&
             !state.pushBusy,
@@ -408,10 +429,17 @@ fun SkillBillFrame(
           onUnstageChangedFile = onUnstageChangedFile,
           onRefreshGit = onRefreshGit,
           onCommitMessageChanged = onCommitMessageChanged,
+          onPublishPrTitleChanged = onPublishPrTitleChanged,
+          onPublishPrBodyChanged = onPublishPrBodyChanged,
+          onPublishDraftChanged = onPublishDraftChanged,
+          onPublishPathSelectionChanged = onPublishPathSelectionChanged,
+          onPublish = onPublish,
+          onPublishAfterFailedValidation = onPublishAfterFailedValidation,
           onCommit = onCommit,
           onCommitAfterFailedValidation = onCommitAfterFailedValidation,
           onPush = onPush,
           onConfirmCanonicalPush = onConfirmCanonicalPush,
+          onConfirmCanonicalPublish = onConfirmCanonicalPublish,
           onOpenCompareUrl = onOpenCompareUrl,
           onCopyChangedFilePath = onCopyChangedFilePath,
           onCopyCommitHash = onCopyCommitHash,
@@ -1789,6 +1817,15 @@ private fun CenterWorkspace(
   historyPathFilter: String?,
   publishingBusy: Boolean,
   commitMessage: String,
+  publishPrTitle: String,
+  publishPrBody: String,
+  publishDraft: Boolean,
+  selectedPublishPaths: Set<String>,
+  canPublish: Boolean,
+  publishDisabledReason: String?,
+  publishBusy: Boolean,
+  publishErrorMessage: String?,
+  publishLink: PublishLink?,
   canCommit: Boolean,
   commitBusy: Boolean,
   commitErrorMessage: String?,
@@ -1815,10 +1852,17 @@ private fun CenterWorkspace(
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
+  onPublishPrTitleChanged: (String) -> Unit,
+  onPublishPrBodyChanged: (String) -> Unit,
+  onPublishDraftChanged: (Boolean) -> Unit,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onPublish: () -> Unit,
+  onPublishAfterFailedValidation: () -> Unit,
   onCommit: () -> Unit,
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onConfirmCanonicalPublish: () -> Unit,
   onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
@@ -1873,6 +1917,15 @@ private fun CenterWorkspace(
         historyPathFilter = historyPathFilter,
         publishingBusy = publishingBusy,
         commitMessage = commitMessage,
+        publishPrTitle = publishPrTitle,
+        publishPrBody = publishPrBody,
+        publishDraft = publishDraft,
+        selectedPublishPaths = selectedPublishPaths,
+        canPublish = canPublish,
+        publishDisabledReason = publishDisabledReason,
+        publishBusy = publishBusy,
+        publishErrorMessage = publishErrorMessage,
+        publishLink = publishLink,
         canCommit = canCommit,
         commitBusy = commitBusy,
         commitErrorMessage = commitErrorMessage,
@@ -1892,10 +1945,17 @@ private fun CenterWorkspace(
         onUnstageChangedFile = onUnstageChangedFile,
         onRefreshGit = onRefreshGit,
         onCommitMessageChanged = onCommitMessageChanged,
+        onPublishPrTitleChanged = onPublishPrTitleChanged,
+        onPublishPrBodyChanged = onPublishPrBodyChanged,
+        onPublishDraftChanged = onPublishDraftChanged,
+        onPublishPathSelectionChanged = onPublishPathSelectionChanged,
+        onPublish = onPublish,
+        onPublishAfterFailedValidation = onPublishAfterFailedValidation,
         onCommit = onCommit,
         onCommitAfterFailedValidation = onCommitAfterFailedValidation,
         onPush = onPush,
         onConfirmCanonicalPush = onConfirmCanonicalPush,
+        onConfirmCanonicalPublish = onConfirmCanonicalPublish,
         onOpenCompareUrl = onOpenCompareUrl,
         onCopyChangedFilePath = onCopyChangedFilePath,
         onCopyCommitHash = onCopyCommitHash,
@@ -2679,6 +2739,15 @@ private fun BottomDock(
   historyPathFilter: String?,
   publishingBusy: Boolean,
   commitMessage: String,
+  publishPrTitle: String,
+  publishPrBody: String,
+  publishDraft: Boolean,
+  selectedPublishPaths: Set<String>,
+  canPublish: Boolean,
+  publishDisabledReason: String?,
+  publishBusy: Boolean,
+  publishErrorMessage: String?,
+  publishLink: PublishLink?,
   canCommit: Boolean,
   commitBusy: Boolean,
   commitErrorMessage: String?,
@@ -2698,10 +2767,17 @@ private fun BottomDock(
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
+  onPublishPrTitleChanged: (String) -> Unit,
+  onPublishPrBodyChanged: (String) -> Unit,
+  onPublishDraftChanged: (Boolean) -> Unit,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onPublish: () -> Unit,
+  onPublishAfterFailedValidation: () -> Unit,
   onCommit: () -> Unit,
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onConfirmCanonicalPublish: () -> Unit,
   onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   onCopyCommitHash: (String) -> Unit,
@@ -2770,6 +2846,15 @@ private fun BottomDock(
           selectedDiff = selectedDiff,
           selectedDiffBusy = selectedDiffBusy,
           commitMessage = commitMessage,
+          publishPrTitle = publishPrTitle,
+          publishPrBody = publishPrBody,
+          publishDraft = publishDraft,
+          selectedPublishPaths = selectedPublishPaths,
+          canPublish = canPublish,
+          publishDisabledReason = publishDisabledReason,
+          publishBusy = publishBusy,
+          publishErrorMessage = publishErrorMessage,
+          publishLink = publishLink,
           canCommit = canCommit,
           commitBusy = commitBusy,
           commitErrorMessage = commitErrorMessage,
@@ -2789,10 +2874,17 @@ private fun BottomDock(
           onUnstageChangedFile = onUnstageChangedFile,
           onRefreshGit = onRefreshGit,
           onCommitMessageChanged = onCommitMessageChanged,
+          onPublishPrTitleChanged = onPublishPrTitleChanged,
+          onPublishPrBodyChanged = onPublishPrBodyChanged,
+          onPublishDraftChanged = onPublishDraftChanged,
+          onPublishPathSelectionChanged = onPublishPathSelectionChanged,
+          onPublish = onPublish,
+          onPublishAfterFailedValidation = onPublishAfterFailedValidation,
           onCommit = onCommit,
           onCommitAfterFailedValidation = onCommitAfterFailedValidation,
           onPush = onPush,
           onConfirmCanonicalPush = onConfirmCanonicalPush,
+          onConfirmCanonicalPublish = onConfirmCanonicalPublish,
           onOpenCompareUrl = onOpenCompareUrl,
           onCopyChangedFilePath = onCopyChangedFilePath,
           recentlyCopiedKey = recentlyCopiedKey,
@@ -3032,6 +3124,15 @@ private fun ChangesPanel(
   selectedDiff: String,
   selectedDiffBusy: Boolean,
   commitMessage: String,
+  publishPrTitle: String,
+  publishPrBody: String,
+  publishDraft: Boolean,
+  selectedPublishPaths: Set<String>,
+  canPublish: Boolean,
+  publishDisabledReason: String?,
+  publishBusy: Boolean,
+  publishErrorMessage: String?,
+  publishLink: PublishLink?,
   canCommit: Boolean,
   commitBusy: Boolean,
   commitErrorMessage: String?,
@@ -3051,10 +3152,17 @@ private fun ChangesPanel(
   onUnstageChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
+  onPublishPrTitleChanged: (String) -> Unit,
+  onPublishPrBodyChanged: (String) -> Unit,
+  onPublishDraftChanged: (Boolean) -> Unit,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onPublish: () -> Unit,
+  onPublishAfterFailedValidation: () -> Unit,
   onCommit: () -> Unit,
   onCommitAfterFailedValidation: () -> Unit,
   onPush: () -> Unit,
   onConfirmCanonicalPush: () -> Unit,
+  onConfirmCanonicalPublish: () -> Unit,
   onOpenCompareUrl: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   recentlyCopiedKey: String?,
@@ -3080,30 +3188,33 @@ private fun ChangesPanel(
         )
         return@Column
       }
-      CommitControls(
+      PublishControls(
         publishingBusy = publishingBusy,
         commitMessage = commitMessage,
-        canCommit = canCommit,
-        commitBusy = commitBusy,
-        commitErrorMessage = commitErrorMessage,
+        publishPrTitle = publishPrTitle,
+        publishPrBody = publishPrBody,
+        publishDraft = publishDraft,
+        selectedPublishPaths = selectedPublishPaths,
+        canPublish = canPublish,
+        publishDisabledReason = publishDisabledReason,
+        publishBusy = publishBusy,
+        publishErrorMessage = publishErrorMessage,
+        publishLink = publishLink,
         commitValidationFailed = commitValidationFailed,
         commitValidationRunning = commitValidationRunning,
-        globalActionsEnabled = globalActionsEnabled,
-        onCommitMessageChanged = onCommitMessageChanged,
-        onCommit = onCommit,
-        onCommitAfterFailedValidation = onCommitAfterFailedValidation,
-      )
-      PushControls(
-        publishingBusy = publishingBusy,
         pushTarget = pushTarget,
         aheadBehind = aheadBehind,
         compareUrl = compareUrl,
-        pushBusy = pushBusy,
-        pushErrorMessage = pushErrorMessage,
         pushStatusErrorMessage = pushStatusErrorMessage,
         canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
-        onPush = onPush,
-        onConfirmCanonicalPush = onConfirmCanonicalPush,
+        globalActionsEnabled = globalActionsEnabled,
+        onCommitMessageChanged = onCommitMessageChanged,
+        onPublishPrTitleChanged = onPublishPrTitleChanged,
+        onPublishPrBodyChanged = onPublishPrBodyChanged,
+        onPublishDraftChanged = onPublishDraftChanged,
+        onPublish = onPublish,
+        onPublishAfterFailedValidation = onPublishAfterFailedValidation,
+        onConfirmCanonicalPublish = onConfirmCanonicalPublish,
         onOpenCompareUrl = onOpenCompareUrl,
         recentlyCopiedKey = recentlyCopiedKey,
         recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
@@ -3116,56 +3227,21 @@ private fun ChangesPanel(
           modifier = Modifier.padding(8.dp),
         )
       }
-      // AC9: grouped sections in deterministic order. Generated stays last so authored changes
-      // surface first.
-      ChangedFileGroupSection(
-        title = "Staged",
-        group = ChangedFileGroup.STAGED,
-        files = changes.files,
-        selectedPath = selectedChangedFile?.path,
-        stageActionsEnabled = !changesBusy && !publishingBusy,
-        onChangedFileSelected = onChangedFileSelected,
-        onStageChangedFile = onStageChangedFile,
-        onUnstageChangedFile = onUnstageChangedFile,
-        onCopyChangedFilePath = onCopyChangedFilePath,
-        recentlyCopiedKey = recentlyCopiedKey,
-      )
-      ChangedFileGroupSection(
-        title = "Unstaged",
-        group = ChangedFileGroup.UNSTAGED,
-        files = changes.files,
-        selectedPath = selectedChangedFile?.path,
-        stageActionsEnabled = !changesBusy && !publishingBusy,
-        onChangedFileSelected = onChangedFileSelected,
-        onStageChangedFile = onStageChangedFile,
-        onUnstageChangedFile = onUnstageChangedFile,
-        onCopyChangedFilePath = onCopyChangedFilePath,
-        recentlyCopiedKey = recentlyCopiedKey,
-      )
-      ChangedFileGroupSection(
-        title = "Untracked",
-        group = ChangedFileGroup.UNTRACKED,
-        files = changes.files,
-        selectedPath = selectedChangedFile?.path,
-        stageActionsEnabled = !changesBusy && !publishingBusy,
-        onChangedFileSelected = onChangedFileSelected,
-        onStageChangedFile = onStageChangedFile,
-        onUnstageChangedFile = onUnstageChangedFile,
-        onCopyChangedFilePath = onCopyChangedFilePath,
-        recentlyCopiedKey = recentlyCopiedKey,
-      )
-      ChangedFileGroupSection(
-        title = "Generated",
-        group = ChangedFileGroup.GENERATED,
-        files = changes.files,
-        selectedPath = selectedChangedFile?.path,
-        stageActionsEnabled = !changesBusy && !publishingBusy,
-        onChangedFileSelected = onChangedFileSelected,
-        onStageChangedFile = onStageChangedFile,
-        onUnstageChangedFile = onUnstageChangedFile,
-        onCopyChangedFilePath = onCopyChangedFilePath,
-        recentlyCopiedKey = recentlyCopiedKey,
-      )
+      changes.governedGroups.forEach { group ->
+        GovernedChangeGroupSection(
+          group = group,
+          selectedPublishPaths = selectedPublishPaths,
+          selectedPath = selectedChangedFile?.path,
+          publishSelectionEnabled = !changesBusy && !publishingBusy,
+          stageActionsEnabled = !changesBusy && !publishingBusy,
+          onPublishPathSelectionChanged = onPublishPathSelectionChanged,
+          onChangedFileSelected = onChangedFileSelected,
+          onStageChangedFile = onStageChangedFile,
+          onUnstageChangedFile = onUnstageChangedFile,
+          onCopyChangedFilePath = onCopyChangedFilePath,
+          recentlyCopiedKey = recentlyCopiedKey,
+        )
+      }
     }
     VerticalDivider(color = WorkspaceLine)
     // F-U03: the diff column must not collapse below a readable width when the dock is narrow.
@@ -3179,57 +3255,187 @@ private fun ChangesPanel(
 }
 
 @Composable
-private fun PushControls(
+private fun PublishControls(
   publishingBusy: Boolean,
+  commitMessage: String,
+  publishPrTitle: String,
+  publishPrBody: String,
+  publishDraft: Boolean,
+  selectedPublishPaths: Set<String>,
+  canPublish: Boolean,
+  publishDisabledReason: String?,
+  publishBusy: Boolean,
+  publishErrorMessage: String?,
+  publishLink: PublishLink?,
+  commitValidationFailed: Boolean,
+  commitValidationRunning: Boolean,
   pushTarget: GitPushTarget?,
   aheadBehind: GitAheadBehind?,
   compareUrl: String?,
-  pushBusy: Boolean,
-  pushErrorMessage: String?,
   pushStatusErrorMessage: String?,
   canonicalPushConfirmationRequired: Boolean,
-  onPush: () -> Unit,
-  onConfirmCanonicalPush: () -> Unit,
+  globalActionsEnabled: Boolean,
+  onCommitMessageChanged: (String) -> Unit,
+  onPublishPrTitleChanged: (String) -> Unit,
+  onPublishPrBodyChanged: (String) -> Unit,
+  onPublishDraftChanged: (Boolean) -> Unit,
+  onPublish: () -> Unit,
+  onPublishAfterFailedValidation: () -> Unit,
+  onConfirmCanonicalPublish: () -> Unit,
   onOpenCompareUrl: (String) -> Unit,
   recentlyCopiedKey: String?,
   recentlyOpenedCompareUrlKey: String?,
 ) {
+  val commitInputEnabled = !publishingBusy
+  val publishEnabled = canPublish && !publishingBusy && !commitValidationFailed
+  val acceleratorPredicates = SkillBillAcceleratorPredicates(
+    busyOperationActive = !globalActionsEnabled && !publishingBusy,
+    publishingBusy = publishingBusy,
+    saveEnabled = false,
+    refreshEnabled = false,
+    renderEnabled = false,
+    validateEnabled = false,
+    commitEnabled = publishEnabled,
+    repoOpenEnabled = false,
+  )
   Column(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
-    verticalArrangement = Arrangement.spacedBy(5.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Row(
       modifier = Modifier.fillMaxWidth(),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Text(text = "Push target", color = WorkspaceSteel, fontSize = 10.sp)
+      BasicTextField(
+        value = commitMessage,
+        onValueChange = { message ->
+          if (commitInputEnabled) {
+            onCommitMessageChanged(message)
+          }
+        },
+        enabled = commitInputEnabled,
+        textStyle = androidx.compose.ui.text.TextStyle(
+          color = WorkspaceText,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+        ),
+        cursorBrush = SolidColor(WorkspaceYellow),
+        modifier = Modifier
+          .weight(1f)
+          .heightIn(min = 30.dp, max = 72.dp)
+          .background(if (commitInputEnabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
+          .border(1.dp, if (commitInputEnabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+          .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) {
+              false
+            } else {
+              dispatchCommitKeyboardAccelerator(
+                event = event.toKeyboardAcceleratorEvent(),
+                predicates = acceleratorPredicates,
+                onCommit = onPublish,
+              )
+            }
+          }
+          .semantics {
+            contentDescription = "Commit message for Publish"
+            if (!commitInputEnabled) {
+              disabled()
+            }
+          }
+          .padding(horizontal = 8.dp, vertical = 7.dp),
+        decorationBox = { innerTextField ->
+          if (commitMessage.isBlank()) {
+            Text(
+              text = "Commit message",
+              color = WorkspaceSteel,
+              fontSize = 12.sp,
+              fontFamily = FontFamily.Monospace,
+              maxLines = 1,
+            )
+          }
+          innerTextField()
+        },
+      )
+      AcceleratorTooltip(label = "Publish selected changes", acceleratorLabel = SkillBillAcceleratorLabels.COMMIT) {
+        Text(
+          text = if (publishBusy) "publishing" else "Publish",
+          color = if (publishEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier
+            .height(30.dp)
+            .iconButtonSemantics(description = "Publish selected governed changes")
+            .clickable(enabled = publishEnabled, role = Role.Button, onClick = onPublish)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        )
+      }
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      PublishTextField(
+        value = publishPrTitle,
+        placeholder = commitMessage.trim().ifBlank { "PR title" },
+        description = "Pull request title",
+        enabled = commitInputEnabled,
+        singleLine = true,
+        onValueChange = onPublishPrTitleChanged,
+        modifier = Modifier.weight(1f),
+      )
+      Text(
+        text = if (publishDraft) "Draft PR" else "Ready PR",
+        color = if (commitInputEnabled) WorkspaceYellow else WorkspaceSteel,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+          .height(30.dp)
+          .semantics {
+            this.role = Role.Checkbox
+            stateDescription = if (publishDraft) "Draft pull request" else "Ready pull request"
+            contentDescription = "Create draft pull request"
+            if (!commitInputEnabled) disabled()
+          }
+          .clickable(enabled = commitInputEnabled, role = Role.Checkbox) {
+            onPublishDraftChanged(!publishDraft)
+          }
+          .padding(horizontal = 8.dp, vertical = 7.dp),
+      )
+    }
+    PublishTextField(
+      value = publishPrBody,
+      placeholder = "PR body",
+      description = "Pull request body",
+      enabled = commitInputEnabled,
+      singleLine = false,
+      onValueChange = onPublishPrBodyChanged,
+      modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp, max = 96.dp),
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Text(text = "Selected ${selectedPublishPaths.size}", color = WorkspaceSteel, fontSize = 10.sp)
+      Text(text = "technical target", color = WorkspaceSteel, fontSize = 10.sp)
       Text(
         text = pushTarget?.displayName ?: "No target",
-        color = if (pushTarget == null) WorkspaceSteel else WorkspaceText,
-        fontSize = 11.sp,
+        color = WorkspaceSteel,
+        fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.weight(1f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
-      val pushEnabled = pushTarget != null && !publishingBusy
-      Text(
-        text = if (pushBusy) "pushing" else "push",
-        color = if (pushEnabled) WorkspaceYellow else WorkspaceSteel,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier
-          .iconButtonSemantics(description = "Push current branch")
-          .clickable(enabled = pushEnabled, role = Role.Button, onClick = onPush)
-          .padding(horizontal = 8.dp, vertical = 5.dp),
-      )
     }
     if (aheadBehind != null) {
       Text(
-        text = "Ahead ${aheadBehind.ahead} / behind ${aheadBehind.behind}",
+        text = "technical status: ahead ${aheadBehind.ahead}, behind ${aheadBehind.behind}",
         color = WorkspaceSteel,
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
       )
     }
@@ -3250,13 +3456,41 @@ private fun PushControls(
           overflow = TextOverflow.Ellipsis,
         )
         Text(
-          text = "confirm push",
+          text = "confirm technical push target",
           color = if (confirmEnabled) WorkspaceYellow else WorkspaceSteel,
-          fontSize = 11.sp,
+          fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
             .iconButtonSemantics(description = "Confirm canonical remote push")
-            .clickable(enabled = confirmEnabled, role = Role.Button, onClick = onConfirmCanonicalPush)
+            .clickable(enabled = confirmEnabled, role = Role.Button, onClick = onConfirmCanonicalPublish)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+      }
+    }
+    if (commitValidationRunning) {
+      Text(text = "Running preflight checks before commit...", color = WorkspaceSteel, fontSize = 11.sp)
+    }
+    if (commitValidationFailed) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = "Preflight failed. Review the Validation tab before overriding.",
+          color = Tone.Warning.color(),
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier.weight(1f),
+        )
+        Text(
+          text = "publish anyway",
+          color = if (!publishingBusy) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Publish despite failed preflight")
+            .clickable(enabled = !publishingBusy, role = Role.Button, onClick = onPublishAfterFailedValidation)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         )
       }
@@ -3269,7 +3503,14 @@ private fun PushControls(
         onOpenCompareUrl = onOpenCompareUrl,
       )
     }
-    val error = pushErrorMessage ?: pushStatusErrorMessage
+    publishLink?.let { link ->
+      PublishLinkRow(
+        link = link,
+        showOpened = recentlyOpenedCompareUrlKey == link.url,
+        onOpenCompareUrl = onOpenCompareUrl,
+      )
+    }
+    val error = publishErrorMessage ?: pushStatusErrorMessage
     if (error != null) {
       Text(
         text = error,
@@ -3279,7 +3520,68 @@ private fun PushControls(
         modifier = Modifier.fillMaxWidth(),
       )
     }
+    if (error == null && publishLink == null && publishDisabledReason != null) {
+      Text(
+        text = publishDisabledReason,
+        color = WorkspaceSteel,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.fillMaxWidth(),
+      )
+    }
   }
+}
+
+@Composable
+private fun PublishTextField(
+  value: String,
+  placeholder: String,
+  description: String,
+  enabled: Boolean,
+  singleLine: Boolean,
+  onValueChange: (String) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  BasicTextField(
+    value = value,
+    onValueChange = { next ->
+      if (enabled) {
+        onValueChange(next)
+      }
+    },
+    enabled = enabled,
+    singleLine = singleLine,
+    textStyle = androidx.compose.ui.text.TextStyle(
+      color = WorkspaceText,
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+    ),
+    cursorBrush = SolidColor(WorkspaceYellow),
+    modifier = modifier
+      .heightIn(min = 30.dp)
+      .background(if (enabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
+      .border(1.dp, if (enabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+      .semantics {
+        contentDescription = description
+        if (!enabled) {
+          disabled()
+        }
+      }
+      .padding(horizontal = 8.dp, vertical = 7.dp),
+    decorationBox = { innerTextField ->
+      if (value.isBlank()) {
+        Text(
+          text = placeholder,
+          color = WorkspaceSteel,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      innerTextField()
+    },
+  )
 }
 
 @Composable
@@ -3332,6 +3634,47 @@ private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean,
     Text(
       text = compareUrlActionLabel(showCopied = showCopied, showOpened = showOpened),
       color = if (showCopied || showOpened) Tone.Success.color() else WorkspaceYellow,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+@Composable
+private fun PublishLinkRow(link: PublishLink, showOpened: Boolean, onOpenCompareUrl: (String) -> Unit) {
+  val label = when (link.kind) {
+    PublishLinkKind.EXISTING_PR -> "Existing PR"
+    PublishLinkKind.DRAFT_PR -> "Draft PR"
+    PublishLinkKind.COMPARE_URL -> "Compare"
+  }
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(30.dp)
+      .clip(RoundedCornerShape(3.dp))
+      .background(WorkspaceRaised.copy(alpha = 0.45f))
+      .iconButtonSemantics(description = "$label: ${link.url}")
+      .clickable(role = Role.Button) { onOpenCompareUrl(link.url) }
+      .padding(horizontal = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(text = label, color = Tone.Success.color(), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    SelectionContainer(modifier = Modifier.weight(1f)) {
+      Text(
+        text = link.url,
+        color = WorkspaceYellow,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+    Text(
+      text = if (showOpened) "Opened in browser" else "open",
+      color = if (showOpened) Tone.Success.color() else WorkspaceYellow,
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -3591,6 +3934,194 @@ private fun ChangedFileGroupSection(
       onCopyChangedFilePath = onCopyChangedFilePath,
       recentlyCopiedKey = recentlyCopiedKey,
     )
+  }
+}
+
+@Composable
+private fun GovernedChangeGroupSection(
+  group: GovernedChangeGroup,
+  selectedPublishPaths: Set<String>,
+  selectedPath: String?,
+  publishSelectionEnabled: Boolean,
+  stageActionsEnabled: Boolean,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  if (group.files.isEmpty()) {
+    return
+  }
+  Text(
+    text = "${group.concept.label} (${group.files.size})",
+    color = WorkspaceSteel,
+    fontSize = 10.sp,
+    fontWeight = FontWeight.SemiBold,
+    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp, start = 6.dp),
+  )
+  group.files.forEach { governedFile ->
+    GovernedChangedFileRow(
+      governedFile = governedFile,
+      selectedForPublish = governedFile.path in selectedPublishPaths,
+      selected = governedFile.path == selectedPath,
+      publishSelectionEnabled = publishSelectionEnabled,
+      stageActionsEnabled = stageActionsEnabled,
+      onPublishPathSelectionChanged = onPublishPathSelectionChanged,
+      onChangedFileSelected = onChangedFileSelected,
+      onStageChangedFile = onStageChangedFile,
+      onUnstageChangedFile = onUnstageChangedFile,
+      onCopyChangedFilePath = onCopyChangedFilePath,
+      recentlyCopiedKey = recentlyCopiedKey,
+    )
+  }
+}
+
+@Composable
+private fun GovernedChangedFileRow(
+  governedFile: GovernedChangedFile,
+  selectedForPublish: Boolean,
+  selected: Boolean,
+  publishSelectionEnabled: Boolean,
+  stageActionsEnabled: Boolean,
+  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
+  onChangedFileSelected: (String) -> Unit,
+  onStageChangedFile: (String) -> Unit,
+  onUnstageChangedFile: (String) -> Unit,
+  onCopyChangedFilePath: (String) -> Unit,
+  recentlyCopiedKey: String?,
+) {
+  val file = governedFile.file
+  val tone = when (file.group) {
+    ChangedFileGroup.STAGED -> Tone.Success
+    ChangedFileGroup.UNSTAGED -> Tone.Warning
+    ChangedFileGroup.UNTRACKED -> Tone.Neutral
+    ChangedFileGroup.GENERATED -> Tone.Warning
+  }
+  val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent
+  Row(
+    modifier =
+    Modifier
+      .fillMaxWidth()
+      .heightIn(min = 40.dp)
+      .clip(RoundedCornerShape(3.dp))
+      .background(background)
+      .semantics { this.selected = selected }
+      .clickable(role = Role.Button) { onChangedFileSelected(file.path) }
+      .padding(horizontal = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    val selectable = !governedFile.selectionLocked && publishSelectionEnabled
+    Box(
+      modifier = Modifier
+        .size(40.dp)
+        .semantics {
+          this.role = Role.Checkbox
+          contentDescription = "Include in publish: ${file.path}"
+          stateDescription = if (selectedForPublish) "Included" else "Excluded"
+          if (!selectable) disabled()
+        }
+        .clickable(enabled = selectable, role = Role.Checkbox) {
+          onPublishPathSelectionChanged(file.path, !selectedForPublish)
+        },
+      contentAlignment = Alignment.Center,
+    ) {
+      Box(
+        modifier = Modifier
+          .size(14.dp)
+          .border(
+            1.dp,
+            when {
+              governedFile.selectionLocked -> WorkspaceSteel
+              selectedForPublish -> WorkspaceYellow
+              else -> WorkspaceMuted
+            },
+            RoundedCornerShape(2.dp),
+          )
+          .background(
+            if (selectedForPublish) WorkspaceYellow.copy(alpha = 0.22f) else Color.Transparent,
+            RoundedCornerShape(2.dp),
+          ),
+      )
+      if (selectedForPublish) {
+        Box(
+          modifier = Modifier
+            .size(6.dp)
+            .background(
+              if (governedFile.selectionLocked) WorkspaceSteel else WorkspaceYellow,
+              RoundedCornerShape(1.dp),
+            ),
+        )
+      }
+    }
+    Text(
+      text = file.statusCode,
+      color = tone.color(),
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      fontWeight = FontWeight.Bold,
+      modifier = Modifier.width(28.dp),
+    )
+    Text(
+      text = file.path,
+      color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    val detail = if (file.isGenerated) "generated/read-only" else file.group.name.lowercase()
+    Text(
+      text = detail,
+      color = if (file.isGenerated) Tone.Warning.color() else WorkspaceSteel,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.widthIn(max = 112.dp),
+    )
+    val showCopied = recentlyCopiedKey == file.path
+    Text(
+      text = if (showCopied) "copied" else "copy",
+      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      fontSize = 10.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      modifier = Modifier
+        .iconButtonSemantics(description = "Copy path: ${file.path}")
+        .clickable(role = Role.Button) { onCopyChangedFilePath(file.path) }
+        .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+    if (!file.isGenerated) {
+      when (file.group) {
+        ChangedFileGroup.STAGED -> Text(
+          text = "unstage",
+          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          maxLines = 1,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Unstage file: ${file.path}")
+            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onUnstageChangedFile(file.path) }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
+          text = "stage",
+          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          fontSize = 10.sp,
+          fontFamily = FontFamily.Monospace,
+          maxLines = 1,
+          modifier = Modifier
+            .iconButtonSemantics(description = "Stage file: ${file.path}")
+            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onStageChangedFile(file.path) }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        ChangedFileGroup.GENERATED -> Unit
+      }
+    }
   }
 }
 

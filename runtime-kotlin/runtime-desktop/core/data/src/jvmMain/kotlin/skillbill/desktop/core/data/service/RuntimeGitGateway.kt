@@ -125,13 +125,19 @@ class RuntimeGitGateway : GitGateway {
       .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) }
   }
 
-  override fun commit(session: RepoSession?, message: String): GitOperationResult {
+  override fun commit(session: RepoSession?, message: String, paths: List<String>): GitOperationResult {
     val root = sessionRoot(session) ?: return GitOperationResult.failed("Open a Git repository before committing.")
     val trimmed = message.trim()
     if (trimmed.isBlank()) {
       return GitOperationResult.failed("Commit message is required.")
     }
-    val result = runCatching { runGit(root, listOf("commit", "-m", trimmed)) }
+    val safePaths = paths.map(String::trim).filter(String::isNotEmpty).distinct()
+    val args = if (safePaths.isEmpty()) {
+      listOf("commit", "-m", trimmed)
+    } else {
+      listOf("commit", "-m", trimmed, "--") + expandRenameCommitPathspecs(root, safePaths)
+    }
+    val result = runCatching { runGit(root, args) }
       .getOrElse { error -> return GitOperationResult.failed(describe(error)) }
     return if (result.exitCode == 0) {
       GitOperationResult.success
@@ -352,6 +358,7 @@ class RuntimeGitGateway : GitGateway {
       displayName = "$targetRemote/$targetBranch",
       isLikelyCanonical = likelyCanonical,
       canonicalWarning = if (likelyCanonical) canonicalWarning(targetRemoteInfo, remotes) else null,
+      branchOwner = targetRemoteInfo?.singleGithubPushRepo()?.owner,
     )
     return GitPublishingStatus(
       pushTarget = target,
@@ -393,7 +400,9 @@ class RuntimeGitGateway : GitGateway {
     val remoteRef = "refs/remotes/${target.remoteName}/${target.branchName}"
     val remoteExists = runGit(root, listOf("show-ref", "--verify", "--quiet", remoteRef)).exitCode == 0
     if (!remoteExists) {
-      return null
+      val countResult = runGit(root, listOf("rev-list", "--count", "HEAD"))
+      val ahead = countResult.stdout.trim().toIntOrNull() ?: return null
+      return GitAheadBehind(ahead = ahead, behind = 0)
     }
     val result = runGit(root, listOf("rev-list", "--left-right", "--count", "HEAD...$remoteRef"))
     if (result.exitCode != 0) {
@@ -511,6 +520,45 @@ class RuntimeGitGateway : GitGateway {
     return GitResult(exitCode = process.exitValue(), stdout = output)
   }
 
+  private fun expandRenameCommitPathspecs(root: Path, selectedPaths: List<String>): List<String> {
+    val selected = selectedPaths.toSet()
+    val sources = stagedRenameSourcesForDestinations(root, selected)
+    return (selectedPaths + sources).distinct()
+  }
+
+  private fun stagedRenameSourcesForDestinations(root: Path, selectedDestinations: Set<String>): List<String> {
+    if (selectedDestinations.isEmpty()) {
+      return emptyList()
+    }
+    val result = runGit(root, listOf("status", "--porcelain=v1", "-z"))
+    if (result.exitCode != 0 || result.stdout.isEmpty()) {
+      return emptyList()
+    }
+    val records = result.stdout.split(NUL).filter { it.isNotEmpty() }
+    val sources = mutableListOf<String>()
+    var index = 0
+    while (index < records.size) {
+      val record = records[index]
+      if (record.length < 3) {
+        index += 1
+        continue
+      }
+      val xy = record.take(2)
+      val destination = record.substring(3).replace('\\', '/')
+      val isStagedRename = xy[0] == 'R'
+      if (isStagedRename && index + 1 < records.size) {
+        val source = records[index + 1].replace('\\', '/')
+        if (destination in selectedDestinations) {
+          sources += source
+        }
+        index += 2
+      } else {
+        index += 1
+      }
+    }
+    return sources
+  }
+
   // F-C704 + F-S03 helper: copy stdin into [sink] in fixed-size chunks. When the running total
   // exceeds MAX_GIT_OUTPUT_BYTES we set [truncated] and stop reading. We swallow IOException because
   // the most common cause here is the producer being killed (destroyForcibly) which closes the pipe.
@@ -601,6 +649,7 @@ class RuntimeGitGateway : GitGateway {
     // `--no-ext-diff` flag (see readDiff). Other subcommands (status, log, add, restore, branch)
     // don't consult `diff.external` so the global override is unnecessary for them.
     private val GIT_HARDENING_FLAGS: List<String> = listOf(
+      "--literal-pathspecs",
       "--no-optional-locks",
       "-c",
       "core.fsmonitor=",

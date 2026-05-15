@@ -15,6 +15,10 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.PrPublishingRequest
+import skillbill.desktop.core.domain.model.PrPublishingResult
+import skillbill.desktop.core.domain.model.PublishLink
+import skillbill.desktop.core.domain.model.PublishLinkKind
 import skillbill.desktop.core.domain.model.RenderBlock
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
@@ -39,6 +43,7 @@ import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
@@ -54,6 +59,7 @@ class SkillBillViewModel(
   private val skillTreeService: SkillTreeService,
   private val authoringGateway: AuthoringGateway,
   private val gitGateway: GitGateway,
+  private val prPublishingGateway: PrPublishingGateway,
   private val validationGateway: ValidationGateway,
   private val renderGateway: RenderGateway,
   private val recentRepoRepository: RecentRepoRepository,
@@ -89,6 +95,15 @@ class SkillBillViewModel(
   private var activeGitDiffToken: Long = 0L
   private var activeHistoryToken: Long = 0L
   private var commitMessage: String = ""
+  private var selectedPublishPaths: Set<String> = emptySet()
+  private var publishSelectionInitialized: Boolean = false
+  private var publishSelectionDirty: Boolean = false
+  private var publishPrTitle: String = ""
+  private var publishPrBody: String = ""
+  private var publishDraft: Boolean = true
+  private var publishBusy: Boolean = false
+  private var publishErrorMessage: String? = null
+  private var publishLink: PublishLink? = null
   private var commitBusy: Boolean = false
   private var commitErrorMessage: String? = null
   private var commitValidationFailed: Boolean = false
@@ -101,6 +116,7 @@ class SkillBillViewModel(
   private var canonicalPushConfirmationTarget: GitPushTarget? = null
   private var activeCommitToken: Long = 0L
   private var activePushToken: Long = 0L
+  private var activePublishToken: Long = 0L
   private var loadedEditorDocument: AuthoredContentDocument? = null
   private var editorSelectionId: String? = null
   private var editorDraftText: String = ""
@@ -425,7 +441,11 @@ class SkillBillViewModel(
     activeHistoryToken += 1
     activeCommitToken += 1
     activePushToken += 1
+    activePublishToken += 1
     changesSnapshot = ChangesSnapshot.empty
+    selectedPublishPaths = emptySet()
+    publishSelectionInitialized = false
+    publishSelectionDirty = false
     currentBranchLabel = null
     changesBusy = false
     selectedChangedFilePath = null
@@ -437,6 +457,12 @@ class SkillBillViewModel(
     historyErrorMessage = null
     historyPathFilter = null
     commitMessage = ""
+    publishPrTitle = ""
+    publishPrBody = ""
+    publishDraft = true
+    publishBusy = false
+    publishErrorMessage = null
+    publishLink = null
     commitBusy = false
     commitErrorMessage = null
     commitValidationFailed = false
@@ -498,6 +524,15 @@ class SkillBillViewModel(
       historyPathFilter = historyPathFilter,
       commitMessage = commitMessage,
       canCommit = canCommit(),
+      selectedPublishPaths = selectedPublishPaths,
+      publishPrTitle = publishPrTitle,
+      publishPrBody = publishPrBody,
+      publishDraft = publishDraft,
+      canPublish = canPublish(),
+      publishDisabledReason = publishDisabledReason(),
+      publishBusy = publishBusy,
+      publishErrorMessage = publishErrorMessage,
+      publishLink = publishLink,
       commitBusy = commitBusy,
       commitErrorMessage = commitErrorMessage,
       commitValidationFailed = commitValidationFailed,
@@ -566,6 +601,7 @@ class SkillBillViewModel(
       editorSaveInProgress ||
       busyOperation != null ||
       changesBusy ||
+      publishBusy ||
       commitBusy ||
       commitValidationRunning ||
       pushBusy
@@ -599,6 +635,7 @@ class SkillBillViewModel(
       editorSaveInProgress ||
       busyOperation != null ||
       changesBusy ||
+      publishBusy ||
       commitBusy ||
       commitValidationRunning ||
       pushBusy
@@ -684,16 +721,77 @@ class SkillBillViewModel(
   }
 
   fun updateCommitMessage(message: String): SkillBillState {
-    if (commitBusy || commitValidationRunning) {
+    if (commitBusy || commitValidationRunning || publishBusy) {
       currentState = createState()
       return currentState
     }
     commitMessage = message
     commitErrorMessage = null
+    publishErrorMessage = null
     if (commitValidationFailed) {
       commitValidationFailed = false
       failedValidationStagedAuthoredPaths = null
     }
+    currentState = createState()
+    return currentState
+  }
+
+  fun setPublishPathSelected(path: String, selected: Boolean): SkillBillState {
+    if (publishBusy || commitBusy || commitValidationRunning || pushBusy || changesBusy) {
+      currentState = createState()
+      return currentState
+    }
+    val file = changesSnapshot.files.firstOrNull { it.path == path } ?: return currentState
+    if (file.isGenerated) {
+      currentState = createState()
+      return currentState
+    }
+    selectedPublishPaths =
+      if (selected) {
+        selectedPublishPaths + path
+      } else {
+        selectedPublishPaths - path
+      }
+    publishSelectionInitialized = true
+    publishSelectionDirty = true
+    publishErrorMessage = null
+    if (commitValidationFailed) {
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun updatePublishPrTitle(title: String): SkillBillState {
+    if (publishBusy || commitBusy || commitValidationRunning || pushBusy) {
+      currentState = createState()
+      return currentState
+    }
+    publishPrTitle = title
+    publishErrorMessage = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun updatePublishPrBody(body: String): SkillBillState {
+    if (publishBusy || commitBusy || commitValidationRunning || pushBusy) {
+      currentState = createState()
+      return currentState
+    }
+    publishPrBody = body
+    publishErrorMessage = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun setPublishDraft(draft: Boolean): SkillBillState {
+    if (publishBusy || commitBusy || commitValidationRunning || pushBusy) {
+      currentState = createState()
+      return currentState
+    }
+    publishDraft = draft
+    publishErrorMessage = null
     currentState = createState()
     return currentState
   }
@@ -705,6 +803,7 @@ class SkillBillViewModel(
       busyOperation != null ||
       changesBusy ||
       pushBusy ||
+      publishBusy ||
       (!allowFailedValidation && !canCommit()) ||
       (allowFailedValidation && !hasCurrentFailedValidationOverride())
     ) {
@@ -800,6 +899,7 @@ class SkillBillViewModel(
           changesSnapshot = changesSnapshot.copy(errorMessage = snapshot.errorMessage)
         } else {
           changesSnapshot = snapshot
+          reconcilePublishSelection(snapshot)
           if (snapshot.branchLabel.isNotEmpty()) {
             currentBranchLabel = snapshot.branchLabel
           }
@@ -1000,6 +1100,7 @@ class SkillBillViewModel(
       return currentState
     }
     changesSnapshot = result.snapshot
+    reconcilePublishSelection(result.snapshot)
     invalidateFailedValidationOverrideIfStagedAuthoredChanged()
     result.publishingStatus?.let { replacePublishingStatus(it, clearConfirmation = true) }
     // F-C701: cache branch label so createState() can derive sourceControl without forking git.
@@ -1125,7 +1226,7 @@ class SkillBillViewModel(
   // --- Push ---
 
   fun beginPush(allowCanonicalRemote: Boolean = false): PushRunRequest? {
-    if (busyOperation != null || pushBusy || commitBusy || commitValidationRunning || changesBusy) {
+    if (busyOperation != null || pushBusy || commitBusy || commitValidationRunning || changesBusy || publishBusy) {
       currentState = createState()
       return null
     }
@@ -1142,7 +1243,13 @@ class SkillBillViewModel(
       currentState = createState()
       return null
     }
-    if (allowCanonicalRemote && (!canonicalPushConfirmationRequired || canonicalPushConfirmationTarget != target)) {
+    val reusingCanonicalConfirmationAfterValidationFailure =
+      commitValidationFailed && target.isLikelyCanonical
+    if (
+      allowCanonicalRemote &&
+      !reusingCanonicalConfirmationAfterValidationFailure &&
+      (!canonicalPushConfirmationRequired || canonicalPushConfirmationTarget != target)
+    ) {
       currentState = createState()
       return null
     }
@@ -1189,6 +1296,270 @@ class SkillBillViewModel(
     }
     currentState = createState()
     return currentState
+  }
+
+  // --- Publish ---
+
+  fun beginPublish(allowFailedValidation: Boolean = false, allowCanonicalRemote: Boolean = false): PublishRunRequest? {
+    val disabled = publishDisabledReason()
+    val canReuseFailedValidationOverride =
+      allowFailedValidation &&
+        (
+          hasCurrentFailedPublishValidationOverride() ||
+            (allowCanonicalRemote && commitValidationFailed && publishingStatus.pushTarget?.isLikelyCanonical == true)
+          )
+    if (disabled != null && !canReuseFailedValidationOverride) {
+      publishErrorMessage = disabled
+      currentState = createState()
+      return null
+    }
+    val target = publishingStatus.pushTarget
+    if (target == null) {
+      publishErrorMessage = publishingStatus.errorMessage ?: "No push target is available."
+      currentState = createState()
+      return null
+    }
+    if (target.isLikelyCanonical && !allowCanonicalRemote) {
+      canonicalPushConfirmationRequired = true
+      canonicalPushConfirmationTarget = target
+      publishErrorMessage = null
+      currentState = createState()
+      return null
+    }
+    if (
+      allowCanonicalRemote &&
+      !canReuseFailedValidationOverride &&
+      (!canonicalPushConfirmationRequired || canonicalPushConfirmationTarget != target)
+    ) {
+      currentState = createState()
+      return null
+    }
+    if (allowFailedValidation && !canReuseFailedValidationOverride) {
+      currentState = createState()
+      return null
+    }
+    val selectedPaths = selectedPublishPaths
+      .filter { path -> changesSnapshot.files.any { file -> file.path == path && !file.isGenerated } }
+      .sorted()
+    activePublishToken += 1
+    publishBusy = true
+    publishErrorMessage = null
+    publishLink = null
+    commitErrorMessage = null
+    pushErrorMessage = null
+    canonicalPushConfirmationRequired = false
+    canonicalPushConfirmationTarget = null
+    val previousValidationSummary = validation
+    if (selectedPaths.isNotEmpty()) {
+      commitValidationRunning = true
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+      validation = ValidationSummary(state = ValidationRunState.RUNNING)
+    }
+    currentState = createState()
+    return PublishRunRequest(
+      token = activePublishToken,
+      session = currentSession,
+      selectedPaths = selectedPaths,
+      message = commitMessage,
+      prTitle = publishPrTitle.trim().ifBlank { commitMessage.trim().ifBlank { "Publish Skill Bill changes" } },
+      prBody = publishPrBody.trim(),
+      draftPr = publishDraft,
+      allowFailedValidation = allowFailedValidation,
+      target = target,
+      compareUrl = publishingStatus.compareUrl,
+      previousValidationSummary = previousValidationSummary,
+      previousSnapshot = changesSnapshot,
+      previousHistory = history,
+      previousHistoryErrorMessage = historyErrorMessage,
+      historyLimit = DEFAULT_HISTORY_LIMIT,
+      historyPathFilter = historyPathFilter,
+    )
+  }
+
+  fun runPublish(request: PublishRunRequest): PublishRunResult {
+    val needsCommit = request.selectedPaths.isNotEmpty()
+    val validationSummary =
+      if (needsCommit) {
+        runCatching { validationGateway.validate(request.session) }
+          .getOrElse { error ->
+            ValidationSummary(
+              state = ValidationRunState.FAILED,
+              runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName ?: "Throwable",
+              runtimeExceptionMessage = error.message,
+            )
+          }
+      } else {
+        request.previousValidationSummary
+      }
+    if (needsCommit && validationSummary.failedForCommit() && !request.allowFailedValidation) {
+      return PublishRunResult(
+        request = request,
+        validationSummary = validationSummary,
+        validationBlockedCommit = true,
+      )
+    }
+    if (needsCommit) {
+      val stageSnapshot = runCatching { gitGateway.stage(request.session, request.selectedPaths) }
+        .getOrElse { error -> ChangesSnapshot.failed(describe(error)) }
+      if (stageSnapshot.isFailed || stageSnapshot.errorMessage != null) {
+        return PublishRunResult(
+          request = request,
+          validationSummary = validationSummary,
+          commitResult = GitOperationResult.failed(stageSnapshot.errorMessage ?: "Selected files could not be staged."),
+          refreshedSnapshot = refreshSnapshot(request),
+          refreshedHistory = refreshHistory(request),
+          refreshedPublishingStatus = refreshPublishingStatus(request),
+        )
+      }
+      val commitResult = runCatching { gitGateway.commit(request.session, request.message, request.selectedPaths) }
+        .getOrElse { error -> GitOperationResult.failed(describe(error)) }
+      if (!commitResult.success) {
+        return PublishRunResult(
+          request = request,
+          validationSummary = validationSummary,
+          commitResult = commitResult,
+          refreshedSnapshot = refreshSnapshot(request),
+          refreshedHistory = refreshHistory(request),
+          refreshedPublishingStatus = refreshPublishingStatus(request),
+        )
+      }
+    }
+    val pushResult = runCatching { gitGateway.push(request.session, request.target) }
+      .getOrElse { error -> GitOperationResult.failed(describe(error)) }
+    if (!pushResult.success) {
+      return PublishRunResult(
+        request = request,
+        validationSummary = validationSummary,
+        commitResult = if (needsCommit) GitOperationResult.success else null,
+        pushResult = pushResult,
+        refreshedSnapshot = refreshSnapshot(request),
+        refreshedHistory = refreshHistory(request),
+        refreshedPublishingStatus = refreshPublishingStatus(request),
+      )
+    }
+    val refreshedStatus = refreshPublishingStatus(request)
+    val prResult = runCatching {
+      prPublishingGateway.publish(
+        PrPublishingRequest(
+          session = request.session,
+          pushTarget = refreshedStatus.pushTarget ?: request.target,
+          compareUrl = refreshedStatus.compareUrl ?: request.compareUrl,
+          title = request.prTitle,
+          body = request.prBody,
+          draft = request.draftPr,
+        ),
+      )
+    }.getOrElse { error ->
+      PrPublishingResult.Failed(
+        type = skillbill.desktop.core.domain.model.PrPublishingErrorType.PROVIDER,
+        message = describe(error),
+      )
+    }
+    return PublishRunResult(
+      request = request,
+      validationSummary = validationSummary,
+      commitResult = if (needsCommit) GitOperationResult.success else null,
+      pushResult = pushResult,
+      refreshedSnapshot = refreshSnapshot(request),
+      refreshedHistory = refreshHistory(request),
+      refreshedHistoryErrorMessage = null,
+      refreshedPublishingStatus = refreshedStatus,
+      prPublishingResult = prResult,
+    )
+  }
+
+  fun finishPublish(result: PublishRunResult): SkillBillState {
+    if (result.request.token != activePublishToken) {
+      return currentState
+    }
+    publishBusy = false
+    commitValidationRunning = false
+    validation = result.validationSummary
+    if (result.validationBlockedCommit) {
+      commitValidationFailed = true
+      failedValidationStagedAuthoredPaths = result.request.selectedPaths.toSet()
+      currentState = createState()
+      return currentState
+    }
+    val commitResult = result.commitResult
+    if (commitResult?.success == false) {
+      commitErrorMessage = commitResult.errorMessage ?: "Commit failed."
+      publishErrorMessage = commitErrorMessage
+      commitValidationFailed = false
+      failedValidationStagedAuthoredPaths = null
+      currentState = createState()
+      return currentState
+    }
+    val pushResult = result.pushResult
+    if (pushResult?.success == false) {
+      pushErrorMessage = pushResult.errorMessage ?: "Push failed."
+      publishErrorMessage = pushErrorMessage
+      applyPublishRefreshes(result)
+      currentState = createState()
+      return currentState
+    }
+    result.prPublishingResult?.let { prResult ->
+      when (prResult) {
+        is PrPublishingResult.ExistingPullRequest -> {
+          publishLink = PublishLink(PublishLinkKind.EXISTING_PR, prResult.url, "Existing pull request")
+          publishErrorMessage = null
+        }
+        is PrPublishingResult.CreatedDraftPullRequest -> {
+          publishLink = PublishLink(PublishLinkKind.DRAFT_PR, prResult.url, "Draft pull request created")
+          publishErrorMessage = null
+        }
+        is PrPublishingResult.CompareUrlFallback -> {
+          publishLink = PublishLink(PublishLinkKind.COMPARE_URL, prResult.url, prResult.reason)
+          publishErrorMessage = prResult.reason
+        }
+        is PrPublishingResult.Failed -> {
+          publishErrorMessage = prResult.message
+        }
+      }
+    }
+    if (commitResult?.success == true) {
+      commitMessage = ""
+      selectedPublishPaths = emptySet()
+      publishSelectionInitialized = false
+      publishSelectionDirty = false
+    }
+    commitErrorMessage = null
+    pushErrorMessage = null
+    commitValidationFailed = false
+    failedValidationStagedAuthoredPaths = null
+    applyPublishRefreshes(result)
+    currentState = createState()
+    return currentState
+  }
+
+  private fun refreshSnapshot(request: PublishRunRequest): ChangesSnapshot =
+    runCatching { gitGateway.snapshotFor(request.session) }
+      .getOrElse { error -> ChangesSnapshot.failed(describe(error)) }
+
+  private fun refreshHistory(request: PublishRunRequest): List<CommitEntry> =
+    runCatching { gitGateway.recentCommits(request.session, request.historyLimit, request.historyPathFilter) }
+      .getOrDefault(request.previousHistory)
+
+  private fun refreshPublishingStatus(request: PublishRunRequest): GitPublishingStatus =
+    runCatching { gitGateway.publishingStatus(request.session) }
+      .getOrElse { error -> GitPublishingStatus(errorMessage = describe(error)) }
+
+  private fun applyPublishRefreshes(result: PublishRunResult) {
+    result.refreshedSnapshot?.let { snapshot ->
+      if (snapshot.isFailed) {
+        changesSnapshot = changesSnapshot.copy(errorMessage = snapshot.errorMessage)
+      } else {
+        changesSnapshot = snapshot
+        reconcilePublishSelection(snapshot)
+        if (snapshot.branchLabel.isNotEmpty()) {
+          currentBranchLabel = snapshot.branchLabel
+        }
+      }
+    }
+    result.refreshedHistory?.let { commits -> history = commits }
+    historyErrorMessage = result.refreshedHistoryErrorMessage
+    result.refreshedPublishingStatus?.let { status -> replacePublishingStatus(status, clearConfirmation = true) }
   }
 
   // --- History ---
@@ -1372,6 +1743,7 @@ class SkillBillViewModel(
   private fun canCommit(): Boolean = hasCommitInputs() &&
     busyOperation == null &&
     !changesBusy &&
+    !publishBusy &&
     !commitBusy &&
     !commitValidationRunning &&
     !pushBusy
@@ -1380,8 +1752,31 @@ class SkillBillViewModel(
     commitMessage.isNotBlank() &&
     changesSnapshot.files.any { it.group == ChangedFileGroup.STAGED && !it.isGenerated }
 
+  private fun canPublish(): Boolean = publishDisabledReason() == null
+
+  private fun publishDisabledReason(): String? {
+    if (currentSession?.isRecognizedSkillBillRepo != true) {
+      return "Open a recognized Git repository before publishing."
+    }
+    if (busyOperation != null || changesBusy || publishBusy || commitBusy || commitValidationRunning || pushBusy) {
+      return "Repository operation is already running."
+    }
+    val hasLocalSelection = selectedPublishPaths.isNotEmpty()
+    val hasUnpushedCommit = publishingStatus.hasUnpushedCommits
+    if (!hasLocalSelection && !hasUnpushedCommit) {
+      return "No selected local changes or unpushed commits to publish."
+    }
+    if (hasLocalSelection && commitMessage.isBlank()) {
+      return "Commit message is required before publishing local changes."
+    }
+    return null
+  }
+
   private fun hasCurrentFailedValidationOverride(): Boolean =
     commitValidationFailed && failedValidationStagedAuthoredPaths == stagedAuthoredPaths(changesSnapshot)
+
+  private fun hasCurrentFailedPublishValidationOverride(): Boolean =
+    commitValidationFailed && failedValidationStagedAuthoredPaths == selectedPublishPaths
 
   private fun invalidateFailedValidationOverrideIfStagedAuthoredChanged() {
     val failedPaths = failedValidationStagedAuthoredPaths ?: return
@@ -1395,6 +1790,20 @@ class SkillBillViewModel(
     .filter { file -> file.group == ChangedFileGroup.STAGED && !file.isGenerated }
     .map { file -> file.path }
     .toSet()
+
+  private fun reconcilePublishSelection(snapshot: ChangesSnapshot) {
+    val selectablePaths = snapshot.files
+      .filterNot(ChangedFile::isGenerated)
+      .map(ChangedFile::path)
+      .toSet()
+    selectedPublishPaths =
+      if (!publishSelectionInitialized || !publishSelectionDirty) {
+        selectablePaths
+      } else {
+        selectedPublishPaths.intersect(selectablePaths)
+      }
+    publishSelectionInitialized = true
+  }
 
   private fun replacePublishingStatus(status: GitPublishingStatus, clearConfirmation: Boolean) {
     if (clearConfirmation || status.pushTarget != publishingStatus.pushTarget) {
@@ -1750,6 +2159,7 @@ class SkillBillViewModel(
    * in `SkillBillRoute`; defined here so VM-only flows can busy-gate without route help.
    */
   private fun canStartScaffoldAction(): Boolean = busyOperation == null &&
+    !publishBusy &&
     !commitBusy &&
     !commitValidationRunning &&
     !pushBusy &&
@@ -1968,6 +2378,38 @@ data class PushRunResult(
   val request: PushRunRequest,
   val pushResult: GitOperationResult,
   val refreshedPublishingStatus: GitPublishingStatus? = null,
+)
+
+data class PublishRunRequest(
+  val token: Long,
+  val session: RepoSession?,
+  val selectedPaths: List<String>,
+  val message: String,
+  val prTitle: String,
+  val prBody: String,
+  val draftPr: Boolean,
+  val allowFailedValidation: Boolean,
+  val target: GitPushTarget,
+  val compareUrl: String?,
+  val previousValidationSummary: ValidationSummary,
+  val previousSnapshot: ChangesSnapshot,
+  val previousHistory: List<CommitEntry>,
+  val previousHistoryErrorMessage: String?,
+  val historyLimit: Int,
+  val historyPathFilter: String?,
+)
+
+data class PublishRunResult(
+  val request: PublishRunRequest,
+  val validationSummary: ValidationSummary,
+  val validationBlockedCommit: Boolean = false,
+  val commitResult: GitOperationResult? = null,
+  val pushResult: GitOperationResult? = null,
+  val refreshedSnapshot: ChangesSnapshot? = null,
+  val refreshedHistory: List<CommitEntry>? = null,
+  val refreshedHistoryErrorMessage: String? = null,
+  val refreshedPublishingStatus: GitPublishingStatus? = null,
+  val prPublishingResult: PrPublishingResult? = null,
 )
 
 data class HistoryLoadRequest(
