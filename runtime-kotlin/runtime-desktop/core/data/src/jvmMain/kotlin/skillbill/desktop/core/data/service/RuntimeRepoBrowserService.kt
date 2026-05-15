@@ -64,6 +64,9 @@ class RuntimeRepoBrowserService :
   internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
     AuthoringOperations.fill(root, skillName, body, sectionName = null)
   }
+  internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
+    Files.writeString(sourceFile, body)
+  }
   private var snapshot: RepoBrowserSnapshot = RepoBrowserSnapshot.empty
 
   override fun open(repoPath: String): RepoSession {
@@ -151,10 +154,15 @@ class RuntimeRepoBrowserService :
     if (!detail.canEdit()) {
       return AuthoringSaveResult.failed(detail.readOnlyReasonForDocument())
     }
-    val skillName = detail.skillName
-      ?: return AuthoringSaveResult.failed("Only governed skill content.md files can be saved through authoring.")
     return runCatching {
-      authoringSaver(root, skillName, body)
+      val skillName = detail.skillName
+      if (skillName != null) {
+        authoringSaver(root, skillName, body)
+      } else if (detail.kind == "add-on") {
+        sourceFileSaver(detail.contentFile ?: error("Editable add-on selection is missing a source file."), body)
+      } else {
+        error("Only governed content.md files and add-ons can be saved through authoring.")
+      }
       AuthoringSaveResult(
         success = true,
         document = detail.toDocument(treeItemId),
@@ -472,8 +480,7 @@ class RuntimeRepoBrowserService :
             authoredPath = relative,
             status = "authored",
             contentFile = addon,
-            readOnlyLabel = READ_ONLY_LABEL,
-            readOnlyReason = "Add-ons are not editable in this workbench.",
+            editable = true,
           )
         SkillBillTreeItem(
           id = id,
@@ -481,9 +488,8 @@ class RuntimeRepoBrowserService :
           kind = TreeItemKind.ADD_ON,
           authoredPath = relative,
           status = "authored",
-          editable = false,
+          editable = true,
           metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = addonFile.packSlug),
-          readOnlyLabel = READ_ONLY_LABEL,
         )
       }
   }
@@ -512,8 +518,9 @@ class RuntimeRepoBrowserService :
                   authoredPath = relative,
                   status = agent.composition?.kind?.wireValue ?: "authored",
                   contentFile = sourceFile,
+                  editable = false,
                   readOnlyLabel = READ_ONLY_LABEL,
-                  readOnlyReason = "Native-agent source editing is not supported in this workbench.",
+                  readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
                 )
               SkillBillTreeItem(
                 id = id,
@@ -539,8 +546,9 @@ class RuntimeRepoBrowserService :
                 authoredPath = relative,
                 status = "invalid",
                 contentFile = sourceFile,
+                editable = false,
                 readOnlyLabel = READ_ONLY_LABEL,
-                readOnlyReason = "Invalid native-agent sources cannot enter editable mode.",
+                readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
               )
             listOf(
               SkillBillTreeItem(
@@ -666,9 +674,9 @@ class RuntimeRepoBrowserService :
         kind = kind ?: metadata?.kind,
         authoredPath = authoredPath,
         status = status,
-        editable = editable,
+        editable = canEdit(),
         readOnlyLabel = readOnlyLabel,
-        readOnlyReason = if (editable) null else readOnlyReasonForDocument(),
+        readOnlyReason = if (canEdit()) null else readOnlyReasonForDocument(),
         content = content,
         generatedArtifacts = generatedArtifacts,
       )
@@ -693,19 +701,22 @@ class RuntimeRepoBrowserService :
 
     fun canEdit(): Boolean = editable &&
       contentFile != null &&
-      (kind == "horizontal skill" || kind == "platform pack skill") &&
       Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
       !isInstallCachePath(contentFile) &&
-      contentFile.fileName.toString() == "content.md"
+      when {
+        kind == "add-on" -> true
+        skillName != null && (kind == "horizontal skill" || kind == "platform pack skill") ->
+          isAuthoredContentFile(contentFile)
+        else -> false
+      }
 
     fun readOnlyReasonForDocument(): String = readOnlyReason
       ?: when {
         isInstallCachePath(contentFile) -> "Install cache files are runtime output and cannot be edited here."
         kind == "generated artifact" -> detail
-        kind == "native agent" -> "Provider-native output and native-agent sources cannot enter editable mode here."
-        kind == "add-on" -> "Add-ons are not editable in this workbench."
         contentFile?.fileName?.toString() == "SKILL.md" ->
           "Generated SKILL.md is runtime output. Edit content.md instead."
+        !isAuthoredContentFile(contentFile) -> AUTHORED_SOURCE_READ_ONLY_REASON
         else -> "This selection cannot enter editable mode."
       }
   }
@@ -724,6 +735,8 @@ class RuntimeRepoBrowserService :
   companion object {
     val SkillItemKind = TreeItemKind.SKILL
     private const val READ_ONLY_LABEL = "RO"
+    private const val AUTHORED_SOURCE_READ_ONLY_REASON =
+      "Only governed content.md files and add-ons can be edited in this window."
   }
 }
 
@@ -750,6 +763,8 @@ private fun invalidSession(repoPath: String, message: String): RepoSession = Rep
 
 private fun looksLikeSkillBillRepo(root: Path): Boolean =
   root.resolve("skills").isDirectory() || root.resolve("platform-packs").isDirectory()
+
+private fun isAuthoredContentFile(contentFile: Path?): Boolean = contentFile?.fileName?.toString() == "content.md"
 
 private fun group(id: String, label: String, children: List<SkillBillTreeItem>): SkillBillTreeItem? =
   children.takeIf { it.isNotEmpty() }?.let {
@@ -784,11 +799,10 @@ private fun RepoValidationIssueSeverity.toDomain(): ValidationSeverity = when (t
   RepoValidationIssueSeverity.INFO -> ValidationSeverity.INFO
 }
 
-private fun RepoValidationReport.toValidationSummary(root: Path): ValidationSummary =
-  ValidationSummary(
-    state = if (passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
-    issues = structuredIssues.map { issue -> issue.toValidationIssue(root) },
-  )
+private fun RepoValidationReport.toValidationSummary(root: Path): ValidationSummary = ValidationSummary(
+  state = if (passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
+  issues = structuredIssues.map { issue -> issue.toValidationIssue(root) },
+)
 
 private fun Map<String, Any?>.toSelectedValidationSummary(root: Path): ValidationSummary {
   val status = this["status"] as? String
@@ -801,14 +815,13 @@ private fun Map<String, Any?>.toSelectedValidationSummary(root: Path): Validatio
   )
 }
 
-private fun RepoValidationIssue.toValidationIssue(root: Path): ValidationIssue =
-  ValidationIssue(
-    severity = severity.toDomain(),
-    code = code,
-    message = message,
-    sourcePath = sourcePath?.let { path -> normalizeSourcePath(root, path) },
-    exceptionName = exceptionName,
-  )
+private fun RepoValidationIssue.toValidationIssue(root: Path): ValidationIssue = ValidationIssue(
+  severity = severity.toDomain(),
+  code = code,
+  message = message,
+  sourcePath = sourcePath?.let { path -> normalizeSourcePath(root, path) },
+  exceptionName = exceptionName,
+)
 
 private fun normalizeSourcePath(root: Path, sourcePath: String): String {
   val trimmed = sourcePath.trim()

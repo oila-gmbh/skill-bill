@@ -61,6 +61,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -109,6 +110,7 @@ import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
+import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationIssue
@@ -537,9 +539,13 @@ private fun WorkspaceToolbar(
     )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
-    // F-X-901 (AC6): read-only mode is a workspace policy indicator, not a toggle. Render as a
-    // status chip — primary tone preserved so it remains visually prominent.
-    ToolbarStatusItem(label = readOnlyModeLabel, marker = "ro", primary = true)
+    // F-X-901 (AC6): file editability is a status indicator, not a toggle. Render as a status chip
+    // without click semantics.
+    ToolbarStatusItem(
+      label = readOnlyModeLabel,
+      marker = fileModeMarker(readOnlyModeLabel),
+      primary = readOnlyModeLabel != SkillBillStatusBar.READ_ONLY_MODE_LABEL,
+    )
     if (busyOperation != null) {
       BusyIndicator(busyOperation)
     }
@@ -764,10 +770,10 @@ private fun AcceleratorTooltip(label: String, acceleratorLabel: String?, content
 }
 
 /**
- * F-X-901 (AC5/AC6): toolbar chip used for status indicators (branch label, read-only mode). Has
- * the same visual treatment as [ToolbarButton] but no .clickable, no Role.Button, no hover/press
- * affordance. Accessibility announces the value as plain text so screen readers do not advertise a
- * tappable affordance.
+ * F-X-901 (AC5/AC6): toolbar chip used for status indicators (branch label, file editability).
+ * Has the same visual treatment as [ToolbarButton] but no .clickable, no Role.Button, no
+ * hover/press affordance. Accessibility announces the value as plain text so screen readers do not
+ * advertise a tappable affordance.
  */
 @Composable
 private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = false) {
@@ -1052,6 +1058,7 @@ private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit,
           fontSize = 14.sp,
           fontFamily = FontFamily.Monospace,
         ),
+        cursorBrush = SolidColor(WorkspaceYellow),
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
       )
     }
@@ -1269,13 +1276,13 @@ private fun NavigationPane(
           )
         },
       )
-      // F-X-901: Read-only browsing is a workspace-wide status indicator, not an action. Render it
+      // F-X-901: File editability is a workspace-wide status indicator, not an action. Render it
       // as a labeled status row (no clickable, no Role.Button) mirroring StatusItem in the bottom
       // status bar, so accessibility semantics match real behavior.
       RepositoryStatusItem(
-        label = "Read-only browsing",
+        label = "File mode",
         statusText = readOnlyModeLabel,
-        marker = "ro",
+        marker = fileModeMarker(readOnlyModeLabel),
         enabled = !busy,
       )
     }
@@ -1346,6 +1353,7 @@ private fun RepositorySelector(
           fontFamily = FontFamily.Monospace,
         ),
         singleLine = true,
+        cursorBrush = SolidColor(WorkspaceYellow),
         modifier = Modifier
           .weight(1f)
           .onPreviewKeyEvent { event ->
@@ -2072,6 +2080,7 @@ private fun CodeEditor(
             fontFamily = FontFamily.Monospace,
             lineHeight = 20.sp,
           ),
+          cursorBrush = SolidColor(WorkspaceYellow),
           modifier =
           Modifier
             .fillMaxWidth()
@@ -3303,6 +3312,7 @@ private fun CommitControls(
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
         ),
+        cursorBrush = SolidColor(WorkspaceYellow),
         modifier = Modifier
           .weight(1f)
           .heightIn(min = 30.dp, max = 72.dp)
@@ -4129,7 +4139,11 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
     val renderStatus = describeRenderStatus(state.render)
     StatusItem("rn", renderStatus.label, renderStatus.tone)
     Spacer(modifier = Modifier.weight(1f))
-    StatusItem("ro", state.statusBar.readOnlyModeLabel, Tone.Warning)
+    StatusItem(
+      fileModeMarker(state.statusBar.readOnlyModeLabel),
+      state.statusBar.readOnlyModeLabel,
+      fileModeTone(state.statusBar.readOnlyModeLabel),
+    )
     StatusItem("lk", state.statusBar.policyLabel, Tone.Neutral)
   }
 }
@@ -4137,6 +4151,18 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
 private data class ValidationStatusDescription(val label: String, val tone: Tone)
 
 private data class RenderStatusDescription(val label: String, val tone: Tone)
+
+private fun fileModeMarker(label: String): String = if (label == SkillBillStatusBar.READ_ONLY_MODE_LABEL) {
+  "ro"
+} else {
+  "ed"
+}
+
+private fun fileModeTone(label: String): Tone = when (label) {
+  SkillBillStatusBar.EDITABLE_MODE_LABEL -> Tone.Success
+  "dirty" -> Tone.Warning
+  else -> Tone.Warning
+}
 
 private fun renderHeaderLabelFor(render: RenderSummary): String? = when (render.state) {
   RenderRunState.PASSED -> "passed in ${render.durationMillis} ms"

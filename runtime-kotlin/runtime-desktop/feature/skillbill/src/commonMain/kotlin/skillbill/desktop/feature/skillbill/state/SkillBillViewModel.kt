@@ -482,7 +482,7 @@ class SkillBillViewModel(
       busyOperation = busyOperation,
       editor = editor,
       sourceControl = sourceControl,
-      statusBar = statusBarFor(session?.repoPath, sourceControl.branchLabel),
+      statusBar = statusBarFor(session?.repoPath, sourceControl.branchLabel, editor),
       validation = validation,
       render = render,
       activeDockTab = activeDockTab,
@@ -1356,13 +1356,18 @@ class SkillBillViewModel(
     return document.editable && editorDraftText != document.text
   }
 
-  private fun statusBarFor(repoPath: String?, branchLabel: String): SkillBillStatusBar = SkillBillStatusBar(
-    targetCount = treeItems.flatten().count { it.children.isEmpty() },
-    repoPathLabel = repoPath ?: "no repo",
-    branchLabel = branchLabel,
-    readOnlyModeLabel = if (isEditorDirty()) "dirty" else SkillBillStatusBar.READ_ONLY_MODE_LABEL,
-    policyLabel = SkillBillStatusBar.POLICY_LABEL,
-  )
+  private fun statusBarFor(repoPath: String?, branchLabel: String, editor: EditorPlaceholder): SkillBillStatusBar =
+    SkillBillStatusBar(
+      targetCount = treeItems.flatten().count { it.children.isEmpty() },
+      repoPathLabel = repoPath ?: "no repo",
+      branchLabel = branchLabel,
+      readOnlyModeLabel = when {
+        isEditorDirty() -> "dirty"
+        editor.editable -> SkillBillStatusBar.EDITABLE_MODE_LABEL
+        else -> SkillBillStatusBar.READ_ONLY_MODE_LABEL
+      },
+      policyLabel = SkillBillStatusBar.POLICY_LABEL,
+    )
 
   private fun canCommit(): Boolean = hasCommitInputs() &&
     busyOperation == null &&
