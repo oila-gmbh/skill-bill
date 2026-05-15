@@ -8,6 +8,10 @@ import skillbill.desktop.core.domain.model.GitAheadBehind
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.GovernedChangeConcept
+import skillbill.desktop.core.domain.model.PrPublishingErrorType
+import skillbill.desktop.core.domain.model.PrPublishingResult
+import skillbill.desktop.core.domain.model.PublishLinkKind
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -27,6 +31,7 @@ import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeGitGateway
+import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeSkillTreeService
@@ -839,6 +844,461 @@ class SkillBillViewModelGitTest {
     assertEquals(before.aheadBehind, state.aheadBehind)
   }
 
+  @Test
+  fun `governed change groups drive default publish selection and exclude generated artifacts`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(path = "skills/bill-demo/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(
+            path = "platform-packs/kotlin/addons/strict.md",
+            group = ChangedFileGroup.UNTRACKED,
+            statusCode = "??",
+          ),
+          ChangedFile(path = "local-notes.txt", group = ChangedFileGroup.UNTRACKED, statusCode = "??"),
+          ChangedFile(
+            path = "skills/bill-demo/SKILL.md",
+            group = ChangedFileGroup.GENERATED,
+            statusCode = "M",
+            isGenerated = true,
+          ),
+        ),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val state = viewModel.refreshGit()
+
+    assertEquals(
+      listOf(
+        GovernedChangeConcept.SKILLS,
+        GovernedChangeConcept.ADD_ONS,
+        GovernedChangeConcept.UNKNOWN_OTHER,
+        GovernedChangeConcept.GENERATED_READ_ONLY,
+      ),
+      state.changes.governedGroups.map { it.concept },
+    )
+    assertEquals(
+      setOf("skills/bill-demo/content.md", "platform-packs/kotlin/addons/strict.md", "local-notes.txt"),
+      state.selectedPublishPaths,
+    )
+    assertTrue(
+      state.changes.governedGroups
+        .single { it.concept == GovernedChangeConcept.GENERATED_READ_ONLY }
+        .files
+        .single()
+        .selectionLocked,
+    )
+  }
+
+  @Test
+  fun `publish selection stays empty after user clears all files and snapshot refreshes`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.setPublishPathSelected("skills/x/content.md", false)
+    gitGateway.scriptedSnapshot = ChangesSnapshot(
+      files = listOf(
+        ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+        ChangedFile(path = "docs/notes.md", group = ChangedFileGroup.UNTRACKED, statusCode = "??"),
+      ),
+    )
+
+    val refreshed = viewModel.refreshGit()
+
+    assertTrue(refreshed.selectedPublishPaths.isEmpty())
+    assertFalse(refreshed.canPublish)
+  }
+
+  @Test
+  fun `publish is disabled without a recognized repo or without selected changes and unpushed commits`() {
+    val viewModel = newViewModel()
+
+    val noRepoState = viewModel.state()
+    assertFalse(noRepoState.canPublish)
+    assertTrue(noRepoState.publishDisabledReason.orEmpty().contains("recognized Git repository"))
+
+    viewModel.selectRepoPath("/repo")
+    val cleanState = viewModel.refreshGit()
+
+    assertFalse(cleanState.canPublish)
+    assertTrue(cleanState.publishDisabledReason.orEmpty().contains("No selected local changes"))
+  }
+
+  @Test
+  fun `publish requires commit message before committing selected local changes`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    val state = viewModel.refreshGit()
+
+    assertFalse(state.canPublish)
+    assertTrue(state.publishDisabledReason.orEmpty().contains("Commit message is required"))
+    assertNull(viewModel.beginPublish())
+    assertEquals(0, gitGateway.commitCallCount)
+  }
+
+  @Test
+  fun `publish runs preflight before selected-file commit and requires explicit override after failure`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(path = "docs/notes.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+        ),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        compareUrl = "https://github.com/acme/repo/compare/feature",
+      ),
+    )
+    val prGateway = FakePrPublishingGateway(
+      scriptedResult = PrPublishingResult.CreatedDraftPullRequest("https://github.com/acme/repo/pull/10"),
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      prPublishingGateway = prGateway,
+      validationGateway = validationGateway,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.setPublishPathSelected("docs/notes.md", false)
+    viewModel.updateCommitMessage("publish x")
+
+    val blockedRequest = viewModel.beginPublish()
+    assertNotNull(blockedRequest)
+    val blocked = viewModel.finishPublish(viewModel.runPublish(blockedRequest))
+
+    assertTrue(blocked.commitValidationFailed)
+    assertEquals(1, validationGateway.validateCallCount)
+    assertEquals(0, gitGateway.stageCallCount)
+    assertEquals(0, gitGateway.commitCallCount)
+
+    val overrideRequest = viewModel.beginPublish(allowFailedValidation = true)
+    assertNotNull(overrideRequest)
+    val published = viewModel.finishPublish(viewModel.runPublish(overrideRequest))
+
+    assertEquals(listOf("skills/x/content.md"), gitGateway.lastStagedPaths)
+    assertEquals(listOf("skills/x/content.md"), gitGateway.lastCommitPaths)
+    assertEquals(1, gitGateway.pushCallCount)
+    assertEquals(PublishLinkKind.DRAFT_PR, published.publishLink?.kind)
+    assertEquals("https://github.com/acme/repo/pull/10", published.publishLink?.url)
+  }
+
+  @Test
+  fun `publish stops before commit push and pr when staging selected files fails`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+      throwOnStage = IllegalStateException("stage failed"),
+    )
+    val prGateway = FakePrPublishingGateway()
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      prPublishingGateway = prGateway,
+      validationGateway = FakeValidationGateway(scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(1, gitGateway.stageCallCount)
+    assertEquals(0, gitGateway.commitCallCount)
+    assertEquals(0, gitGateway.pushCallCount)
+    assertEquals(0, prGateway.publishCallCount)
+    assertTrue(gitGateway.snapshotForCallCount >= 2)
+    assertTrue(gitGateway.recentCommitsCallCount >= 1)
+    assertTrue(gitGateway.publishingStatusCallCount >= 2)
+    assertTrue(state.publishErrorMessage.orEmpty().contains("stage failed"))
+  }
+
+  @Test
+  fun `publish stops before push and pr when commit fails`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+      scriptedCommitResult = GitOperationResult.failed("commit failed"),
+    )
+    val prGateway = FakePrPublishingGateway()
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      prPublishingGateway = prGateway,
+      validationGateway = FakeValidationGateway(scriptedSummary = ValidationSummary(state = ValidationRunState.PASSED)),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(1, gitGateway.commitCallCount)
+    assertEquals(0, gitGateway.pushCallCount)
+    assertEquals(0, prGateway.publishCallCount)
+    assertTrue(gitGateway.snapshotForCallCount >= 2)
+    assertTrue(gitGateway.recentCommitsCallCount >= 1)
+    assertTrue(gitGateway.publishingStatusCallCount >= 2)
+    assertEquals("commit failed", state.publishErrorMessage)
+  }
+
+  @Test
+  fun `publish stops before pr when push fails`() {
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+      scriptedPushResult = GitOperationResult.failed("push failed"),
+    )
+    val prGateway = FakePrPublishingGateway()
+    val viewModel = newViewModel(gitGateway = gitGateway, prPublishingGateway = prGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(1, gitGateway.pushCallCount)
+    assertEquals(0, prGateway.publishCallCount)
+    assertEquals("push failed", state.publishErrorMessage)
+  }
+
+  @Test
+  fun `publish of unpushed commits opens an existing PR instead of creating a duplicate`() {
+    val target = GitPushTarget(remoteName = "origin", branchName = "feature")
+    val beforeStatus = GitPublishingStatus(
+      pushTarget = target,
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+    )
+    val afterStatus = beforeStatus.copy(
+      aheadBehind = GitAheadBehind(ahead = 0, behind = 0),
+      compareUrl = "https://github.com/acme/repo/compare/feature",
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = beforeStatus,
+      scriptedCommits = listOf(commitEntry("publish x", paths = listOf("skills/x/content.md"))),
+    )
+    val prGateway = FakePrPublishingGateway(
+      scriptedResult = PrPublishingResult.ExistingPullRequest("https://github.com/acme/repo/pull/3"),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway, prPublishingGateway = prGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updatePublishPrTitle("Publish runtime shell")
+    viewModel.updatePublishPrBody("Review body")
+    viewModel.setPublishDraft(false)
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    gitGateway.scriptedPublishingStatus = afterStatus
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(0, gitGateway.commitCallCount)
+    assertEquals(1, gitGateway.pushCallCount)
+    assertEquals(1, prGateway.publishCallCount)
+    assertEquals("Publish runtime shell", prGateway.lastRequest?.title)
+    assertEquals("Review body", prGateway.lastRequest?.body)
+    assertFalse(prGateway.lastRequest?.draft ?: true)
+    assertEquals(afterStatus.aheadBehind, state.aheadBehind)
+    assertEquals(afterStatus.compareUrl, state.compareUrl)
+    assertEquals(listOf("publish x"), state.history.map { it.subject })
+    assertEquals(PublishLinkKind.EXISTING_PR, state.publishLink?.kind)
+    assertEquals("https://github.com/acme/repo/pull/3", state.publishLink?.url)
+  }
+
+  @Test
+  fun `failed validation override can confirm canonical publish`() {
+    val target = GitPushTarget(
+      remoteName = "origin",
+      branchName = "main",
+      isLikelyCanonical = true,
+      canonicalWarning = "origin may be canonical",
+    )
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = target,
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
+    val viewModel = newViewModel(gitGateway = gitGateway, validationGateway = validationGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    viewModel.updateCommitMessage("publish x")
+    assertNull(viewModel.beginPublish())
+
+    val blocked = viewModel.beginPublish(allowCanonicalRemote = true)
+    assertNotNull(blocked)
+    viewModel.finishPublish(viewModel.runPublish(blocked))
+    assertTrue(viewModel.state().commitValidationFailed)
+
+    val confirmedOverride = viewModel.beginPublish(allowFailedValidation = true, allowCanonicalRemote = true)
+
+    assertNotNull(confirmedOverride)
+    assertEquals(target, confirmedOverride.target)
+  }
+
+  @Test
+  fun `publish falls back to compare URL when PR creation is unavailable`() {
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+        compareUrl = "https://github.com/acme/repo/compare/feature",
+      ),
+    )
+    val prGateway = FakePrPublishingGateway(
+      scriptedResult = PrPublishingResult.CompareUrlFallback(
+        url = "https://github.com/acme/repo/compare/feature",
+        reason = "GitHub CLI is unavailable.",
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway, prPublishingGateway = prGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(PublishLinkKind.COMPARE_URL, state.publishLink?.kind)
+    assertEquals("GitHub CLI is unavailable.", state.publishErrorMessage)
+  }
+
+  @Test
+  fun `publish surfaces provider errors after completed push`() {
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val prGateway = FakePrPublishingGateway(
+      scriptedResult = PrPublishingResult.Failed(
+        type = PrPublishingErrorType.AUTH,
+        message = "Authentication required.",
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway, prPublishingGateway = prGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertEquals(1, gitGateway.pushCallCount)
+    assertEquals("Authentication required.", state.publishErrorMessage)
+    assertNull(state.publishLink)
+  }
+
+  @Test
+  fun `publish to likely canonical remote is blocked by default`() {
+    val target = GitPushTarget(
+      remoteName = "origin",
+      branchName = "main",
+      isLikelyCanonical = true,
+      canonicalWarning = "origin may be canonical",
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = target,
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    val state = viewModel.state()
+
+    assertNull(request)
+    assertTrue(state.canonicalPushConfirmationRequired)
+    assertEquals(0, gitGateway.pushCallCount)
+  }
+
+  @Test
+  fun `confirmed canonical publish starts only for the same confirmed target`() {
+    val target = GitPushTarget(
+      remoteName = "origin",
+      branchName = "main",
+      isLikelyCanonical = true,
+      canonicalWarning = "origin may be canonical",
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = target,
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    assertNull(viewModel.beginPublish())
+
+    val confirmed = viewModel.beginPublish(allowCanonicalRemote = true)
+
+    assertNotNull(confirmed)
+    assertEquals(target, confirmed.target)
+  }
+
+  @Test
+  fun `stale canonical publish confirmation does not start after target changes`() {
+    val targetA = GitPushTarget(remoteName = "origin", branchName = "main", isLikelyCanonical = true)
+    val targetB = GitPushTarget(remoteName = "origin", branchName = "release", isLikelyCanonical = true)
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = targetA,
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    assertNull(viewModel.beginPublish())
+    gitGateway.scriptedPublishingStatus = GitPublishingStatus(
+      pushTarget = targetB,
+      aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+    )
+    viewModel.refreshGit()
+
+    val stale = viewModel.beginPublish(allowCanonicalRemote = true)
+
+    assertNull(stale)
+    assertEquals(0, gitGateway.pushCallCount)
+  }
+
   // ---- helpers ----
 
   private fun newViewModel(
@@ -846,6 +1306,7 @@ class SkillBillViewModelGitTest {
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultTree()),
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
     gitGateway: GitGateway = FakeGitGateway(),
+    prPublishingGateway: skillbill.desktop.core.domain.service.PrPublishingGateway = FakePrPublishingGateway(),
     validationGateway: ValidationGateway = FakeValidationGateway(),
     renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
@@ -856,6 +1317,7 @@ class SkillBillViewModelGitTest {
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
     gitGateway = gitGateway,
+    prPublishingGateway = prPublishingGateway,
     validationGateway = validationGateway,
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,

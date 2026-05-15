@@ -405,6 +405,74 @@ class RuntimeGitGatewayTest {
   }
 
   @Test
+  fun `commit with selected paths writes only those paths`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    Files.writeString(repo.resolve("selected.md"), "selected\n")
+    Files.writeString(repo.resolve("not-selected.md"), "not selected\n")
+    runGit(repo, "add", "selected.md", "not-selected.md")
+
+    val result = service.commit(session, "commit selected", paths = listOf("selected.md"))
+    val snapshot = service.snapshotFor(session)
+
+    assertTrue(result.success, "commit failed: ${result.errorMessage}")
+    assertFalse(snapshot.files.any { it.path == "selected.md" })
+    assertEquals(ChangedFileGroup.STAGED, snapshot.files.single { it.path == "not-selected.md" }.group)
+  }
+
+  @Test
+  fun `commit with selected magic pathspec treats it as a literal file`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    Files.writeString(repo.resolve("secret.txt"), "baseline\n")
+    runGit(repo, "add", "secret.txt")
+    runGit(repo, "commit", "-q", "-m", "add secret")
+    Files.writeString(repo.resolve("secret.txt"), "do not publish\n")
+    Files.writeString(repo.resolve(":(top)"), "selected magic path\n")
+    runGit(repo, "add", "secret.txt")
+    runGit(repo, "--literal-pathspecs", "add", "--", ":(top)")
+
+    val result = service.commit(session, "commit literal magic path", paths = listOf(":(top)"))
+    val committedPaths = gitOutput(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lineSequence()
+      .map(String::trim)
+      .filter(String::isNotEmpty)
+      .toList()
+    val snapshot = service.snapshotFor(session)
+
+    assertTrue(result.success, "commit failed: ${result.errorMessage}")
+    assertEquals(listOf(":(top)"), committedPaths)
+    assertEquals(ChangedFileGroup.STAGED, snapshot.files.single { it.path == "secret.txt" }.group)
+  }
+
+  @Test
+  fun `commit with selected rename includes source deletion`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    runGit(repo, "mv", "skills/bill-alpha/content.md", "skills/bill-alpha/renamed.md")
+
+    val result = service.commit(session, "commit selected rename", paths = listOf("skills/bill-alpha/renamed.md"))
+    val snapshot = service.snapshotFor(session)
+    val committedNames = gitOutput(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lineSequence()
+      .map(String::trim)
+      .filter(String::isNotEmpty)
+      .toSet()
+
+    assertTrue(result.success, "commit failed: ${result.errorMessage}")
+    assertTrue("skills/bill-alpha/content.md" in committedNames, "committed paths: $committedNames")
+    assertTrue("skills/bill-alpha/renamed.md" in committedNames, "committed paths: $committedNames")
+    assertTrue(
+      snapshot.files.none {
+        it.path == "skills/bill-alpha/content.md" || it.path == "skills/bill-alpha/renamed.md"
+      },
+    )
+  }
+
+  @Test
   fun `push error redacts credentialed remote URL through gateway result`() {
     val repo = newRepoWithCommit()
     runGit(repo, "remote", "add", "origin", "https://user:secret-token@localhost:9/owner/repo.git")
@@ -516,6 +584,19 @@ class RuntimeGitGatewayTest {
       error("git ${args.joinToString(" ")} timed out")
     }
     return process.exitValue()
+  }
+
+  private fun gitOutput(root: Path, vararg args: String): String {
+    val command = mutableListOf("git", "-C", root.toString())
+    command.addAll(args)
+    val process = ProcessBuilder(command).redirectErrorStream(true).start()
+    if (!process.waitFor(10, TimeUnit.SECONDS)) {
+      process.destroyForcibly()
+      error("git ${args.joinToString(" ")} timed out")
+    }
+    val output = process.inputStream.bufferedReader().use { it.readText() }
+    check(process.exitValue() == 0) { "git ${args.joinToString(" ")} failed: $output" }
+    return output
   }
 }
 

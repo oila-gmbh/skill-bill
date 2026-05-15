@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-15] SKILL-44 create-pr-publishing
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/core/testing
+- Replaced raw Git-style change publishing with a governed `Publish Changes` flow that groups files by Skill Bill concepts, keeps Git status secondary, and defaults generated/read-only artifacts out of selection.
+- Added PR publishing gateway behavior behind the ViewModel publish state machine: validate, selected-file commit, push, existing PR open, draft PR create, or compare URL fallback.
+- Reused runtime Git hardening patterns: literal pathspecs, selected rename handling, canonical remote blocking, redacted provider errors, and route-owned browser side effects.
+- Reusable: `RuntimePrPublishingGateway`, governed change classifiers, and fake gateway scripts cover provider unavailable, existing PR, draft creation, fallback, and failure paths.
+- Known limitation: PR provider support is GitHub CLI based; unavailable/auth/network/provider errors surface without credential setup.
+Feature flag: N/A
+Acceptance criteria: 16/16 implemented
+
 ## [2026-05-14] keyboard-accelerators
 Areas: runtime-kotlin/runtime-desktop/feature/skillbill, runtime-kotlin/runtime-desktop/core/domain
 - Added desktop accelerators for repo open, commit, save, refresh, render, validate through existing route callbacks.

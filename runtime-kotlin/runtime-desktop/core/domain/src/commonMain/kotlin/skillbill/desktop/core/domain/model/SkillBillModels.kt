@@ -45,6 +45,15 @@ data class SkillBillState(
   val historyPathFilter: String? = null,
   val commitMessage: String = "",
   val canCommit: Boolean = false,
+  val selectedPublishPaths: Set<String> = emptySet(),
+  val publishPrTitle: String = "",
+  val publishPrBody: String = "",
+  val publishDraft: Boolean = true,
+  val canPublish: Boolean = false,
+  val publishDisabledReason: String? = null,
+  val publishBusy: Boolean = false,
+  val publishErrorMessage: String? = null,
+  val publishLink: PublishLink? = null,
   val commitBusy: Boolean = false,
   val commitErrorMessage: String? = null,
   val commitValidationFailed: Boolean = false,
@@ -372,6 +381,33 @@ data class ChangedFile(
   val isGenerated: Boolean = group == ChangedFileGroup.GENERATED,
 )
 
+enum class GovernedChangeConcept(val label: String) {
+  SKILLS("Skills"),
+  AGENTS_NATIVE_AGENTS("Agents / native agents"),
+  ADD_ONS("Add-ons"),
+  PLATFORM_PACKS("Platform packs"),
+  ORCHESTRATION("Orchestration"),
+  RUNTIME_SUPPORT("Runtime support"),
+  DOCS("Docs"),
+  TESTS("Tests"),
+  UNKNOWN_OTHER("Unknown / other"),
+  GENERATED_READ_ONLY("Generated / read-only output"),
+}
+
+data class GovernedChangedFile(
+  val file: ChangedFile,
+  val selectedByDefault: Boolean,
+  val selectionLocked: Boolean,
+  val readOnlyLabel: String? = null,
+) {
+  val path: String get() = file.path
+}
+
+data class GovernedChangeGroup(
+  val concept: GovernedChangeConcept,
+  val files: List<GovernedChangedFile>,
+)
+
 data class CommitEntry(
   val shortHash: String,
   val fullHash: String,
@@ -392,6 +428,7 @@ data class ChangesSnapshot(
   // F-A02: when true, this snapshot represents a stage/unstage failure that produced no fresh
   // file list. The VM merges the errorMessage into its existing snapshot instead of replacing files.
   val isFailed: Boolean = false,
+  val governedGroups: List<GovernedChangeGroup> = classifyGovernedChanges(files),
 ) {
   companion object {
     val empty: ChangesSnapshot = ChangesSnapshot()
@@ -424,6 +461,50 @@ data class GitAheadBehind(
   val behind: Int,
 )
 
+enum class PublishLinkKind {
+  EXISTING_PR,
+  DRAFT_PR,
+  COMPARE_URL,
+}
+
+data class PublishLink(
+  val kind: PublishLinkKind,
+  val url: String,
+  val message: String? = null,
+)
+
+data class PrPublishingRequest(
+  val session: RepoSession?,
+  val pushTarget: GitPushTarget?,
+  val compareUrl: String?,
+  val title: String,
+  val body: String,
+  val draft: Boolean = true,
+)
+
+sealed interface PrPublishingResult {
+  data class ExistingPullRequest(val url: String) : PrPublishingResult
+
+  data class CreatedDraftPullRequest(val url: String) : PrPublishingResult
+
+  data class CompareUrlFallback(
+    val url: String,
+    val reason: String,
+  ) : PrPublishingResult
+
+  data class Failed(
+    val type: PrPublishingErrorType,
+    val message: String,
+  ) : PrPublishingResult
+}
+
+enum class PrPublishingErrorType {
+  AUTH,
+  NETWORK,
+  REMOTE,
+  PROVIDER,
+}
+
 data class GitPushTarget(
   val remoteName: String,
   val branchName: String,
@@ -431,6 +512,7 @@ data class GitPushTarget(
   val displayName: String = "$remoteName/$branchName",
   val isLikelyCanonical: Boolean = false,
   val canonicalWarning: String? = null,
+  val branchOwner: String? = null,
 )
 
 data class GitPublishingStatus(
@@ -439,7 +521,44 @@ data class GitPublishingStatus(
   val compareUrl: String? = null,
   val errorMessage: String? = null,
 ) {
+  val hasUnpushedCommits: Boolean get() = aheadBehind?.ahead?.let { it > 0 } == true
+
   companion object {
     val empty: GitPublishingStatus = GitPublishingStatus()
+  }
+}
+
+fun classifyGovernedChanges(files: List<ChangedFile>): List<GovernedChangeGroup> = files
+  .map { file ->
+    val concept = governedConceptFor(file)
+    concept to GovernedChangedFile(
+      file = file,
+      selectedByDefault = !file.isGenerated,
+      selectionLocked = file.isGenerated,
+      readOnlyLabel = "generated/read-only".takeIf { file.isGenerated },
+    )
+  }
+  .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+  .map { (concept, groupedFiles) -> GovernedChangeGroup(concept = concept, files = groupedFiles) }
+  .sortedBy { group -> GovernedChangeConcept.values().indexOf(group.concept) }
+
+private fun governedConceptFor(file: ChangedFile): GovernedChangeConcept {
+  val path = file.path.trim().replace('\\', '/')
+  return when {
+    file.isGenerated -> GovernedChangeConcept.GENERATED_READ_ONLY
+    path.contains("/src/") && path.contains("Test") || path.startsWith("tests/") || path.contains("/tests/") ->
+      GovernedChangeConcept.TESTS
+    path.contains("/native-agents/") || path.startsWith("native-agents/") ||
+      path.contains("/agents.yaml") || path.endsWith("/agents.yaml") ->
+      GovernedChangeConcept.AGENTS_NATIVE_AGENTS
+    path.startsWith("platform-packs/") && path.contains("/addons/") -> GovernedChangeConcept.ADD_ONS
+    path.startsWith("platform-packs/") -> GovernedChangeConcept.PLATFORM_PACKS
+    path.startsWith("skills/") -> GovernedChangeConcept.SKILLS
+    path.startsWith("orchestration/") -> GovernedChangeConcept.ORCHESTRATION
+    path.startsWith("runtime-kotlin/") || path.startsWith("install") || path.startsWith("scripts/") ->
+      GovernedChangeConcept.RUNTIME_SUPPORT
+    path.startsWith("docs/") || path == "README.md" || path == "AGENTS.md" || path == "CLAUDE.md" ->
+      GovernedChangeConcept.DOCS
+    else -> GovernedChangeConcept.UNKNOWN_OTHER
   }
 }

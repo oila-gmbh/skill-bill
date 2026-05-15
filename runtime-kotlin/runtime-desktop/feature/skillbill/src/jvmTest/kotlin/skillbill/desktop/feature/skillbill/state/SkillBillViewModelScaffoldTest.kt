@@ -24,6 +24,7 @@ import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeGitGateway
+import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
@@ -650,6 +651,7 @@ class SkillBillViewModelScaffoldTest {
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultTree()),
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
     gitGateway: GitGateway = FakeGitGateway(),
+    prPublishingGateway: skillbill.desktop.core.domain.service.PrPublishingGateway = FakePrPublishingGateway(),
     validationGateway: ValidationGateway = FakeValidationGateway(),
     renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
@@ -659,6 +661,7 @@ class SkillBillViewModelScaffoldTest {
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
     gitGateway = gitGateway,
+    prPublishingGateway = prPublishingGateway,
     validationGateway = validationGateway,
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
