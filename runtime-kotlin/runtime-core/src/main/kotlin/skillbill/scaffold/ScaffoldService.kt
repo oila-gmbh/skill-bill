@@ -118,6 +118,7 @@ private data class ScaffoldPlan(
   val contentBody: String? = null,
   val addonBody: String? = null,
   val subagentSpecialists: List<String> = emptyList(),
+  val subagentDescriptions: Map<String, String> = emptyMap(),
   val subagentsSuppressed: Boolean = false,
 )
 
@@ -346,6 +347,24 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
     }
   val specialistMetadata =
     selectedAreas.associateWith { area -> defaultAreaFocus(area) }
+  val platformPackSubagents = when {
+    subagents.suppressed -> emptyList()
+    subagents.specialists.isNotEmpty() -> subagents.specialists
+    else -> selectedAreas.map { area -> specialistNames.getValue(area) }
+  }
+  val platformPackSubagentDescriptions =
+    if (!subagents.suppressed && subagents.specialists.isEmpty()) {
+      selectedAreas.associate { area ->
+        val name = specialistNames.getValue(area)
+        val description = inferSkillDescription(
+          TemplateContext(name, "code-review", platform, area, defaults.displayName),
+          defaultAreaFocus(area),
+        )
+        name to description
+      }
+    } else {
+      emptyMap()
+    }
   val notes = platformPackNotes(platform, defaults.presetUsed, selectedAreas)
 
   return ScaffoldPlan(
@@ -380,7 +399,8 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
       selectedAreas = selectedAreas,
     ),
     contentBody = payload["content_body"] as? String,
-    subagentSpecialists = subagents.specialists,
+    subagentSpecialists = platformPackSubagents,
+    subagentDescriptions = platformPackSubagentDescriptions,
     subagentsSuppressed = subagents.suppressed,
   )
 }
@@ -620,6 +640,7 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
       txn,
       orchestratorSkillPath = baselineSkillPath,
       specialists = plan.subagentSpecialists,
+      descriptions = plan.subagentDescriptions,
     )
   }
   return ScaffoldExecutionResult(
@@ -650,6 +671,7 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
       txn,
       orchestratorSkillPath = plan.skillPath,
       specialists = plan.subagentSpecialists,
+      descriptions = plan.subagentDescriptions,
     )
   }
   return ScaffoldExecutionResult(
@@ -713,9 +735,10 @@ private fun stageSubagentStubs(
   txn: ScaffoldTransaction,
   orchestratorSkillPath: Path,
   specialists: List<String>,
+  descriptions: Map<String, String>,
 ): List<Path> {
   val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
-  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists))
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions))
   return listOf(sourcePath)
 }
 

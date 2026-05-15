@@ -130,8 +130,17 @@ private val WorkspaceYellow = Color(0xFFF4C430)
 private val WorkspaceGreen = Color(0xFF60D394)
 private val WorkspaceRed = Color(0xFFFF5F57)
 private val WorkspaceAmber = Color(0xFFFFBD2E)
+private val NavigationPaneMinWidth = 220.dp
+private val NavigationPaneMaxWidth = 540.dp
+private val NavigationPaneResizeHandleWidth = 7.dp
 private val BottomDockMinHeight = 132.dp
 private val BottomDockResizeHandleHeight = 7.dp
+
+private fun Dp.coerceNavigationPaneWidth(): Dp = when {
+  this < NavigationPaneMinWidth -> NavigationPaneMinWidth
+  this > NavigationPaneMaxWidth -> NavigationPaneMaxWidth
+  else -> this
+}
 
 private fun Dp.coerceBottomDockHeight(): Dp = when {
   this < BottomDockMinHeight -> BottomDockMinHeight
@@ -199,6 +208,9 @@ fun SkillBillFrame(
   recentlyOpenedCompareUrlKey: String? = null,
 ) {
   var inspectorVisible by remember { mutableStateOf(true) }
+  var navigationPaneWidth by remember {
+    mutableStateOf(SkillBillMetrics.treePaneWidth.coerceNavigationPaneWidth())
+  }
   var bottomDockVisible by remember { mutableStateOf(true) }
   var bottomDockHeight by remember { mutableStateOf(SkillBillMetrics.bottomDockHeight) }
   var openEditorTabs by remember { mutableStateOf<List<OpenEditorTab>>(emptyList()) }
@@ -321,6 +333,7 @@ fun SkillBillFrame(
       )
       Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         NavigationPane(
+          paneWidth = navigationPaneWidth,
           repoPath = state.repoPathText,
           repoStatus = state.repoStatus,
           treeItems = state.treeItems,
@@ -343,7 +356,11 @@ fun SkillBillFrame(
           onActivateValidationTab = { onActiveDockTabChanged(DockTab.Validation) },
           onValidate = onValidate,
         )
-        VerticalDivider(color = WorkspaceLine)
+        NavigationPaneResizeHandle(
+          onResize = { delta ->
+            navigationPaneWidth = (navigationPaneWidth + delta).coerceNavigationPaneWidth()
+          },
+        )
         CenterWorkspace(
           editor = state.editor,
           validation = state.validation,
@@ -1180,6 +1197,7 @@ private fun CommandPaletteKindLabel(kind: CommandPaletteResultKind) {
 
 @Composable
 private fun NavigationPane(
+  paneWidth: Dp,
   repoPath: String,
   repoStatus: RepoLoadStatus,
   treeItems: List<SkillBillTreeItem>,
@@ -1208,7 +1226,7 @@ private fun NavigationPane(
   Column(
     modifier =
     Modifier
-      .width(SkillBillMetrics.treePaneWidth)
+      .width(paneWidth)
       .fillMaxHeight()
       .background(WorkspaceSidebar),
   ) {
@@ -1253,6 +1271,7 @@ private fun NavigationPane(
           group = group,
           selectedNodeId = selectedNodeId,
           openEditorTabIds = openEditorTabIds,
+          expandedNodeIds = expandedNodeIds,
           expanded = group.id in expandedNodeIds,
           enabled = !busy,
           onNodeSelected = onNodeSelected,
@@ -1414,10 +1433,35 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
 }
 
 @Composable
+private fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
+  Box(
+    modifier = Modifier
+      .fillMaxHeight()
+      .width(NavigationPaneResizeHandleWidth)
+      .background(WorkspaceBackground)
+      .pointerInput(Unit) {
+        detectHorizontalDragGestures { change, dragAmount ->
+          change.consume()
+          onResize(dragAmount.toDp())
+        }
+      },
+    contentAlignment = Alignment.Center,
+  ) {
+    Box(
+      modifier = Modifier
+        .width(2.dp)
+        .fillMaxHeight()
+        .background(WorkspaceLine),
+    )
+  }
+}
+
+@Composable
 private fun NavGroup(
   group: SkillBillTreeItem,
   selectedNodeId: String?,
   openEditorTabIds: Set<String>,
+  expandedNodeIds: Set<String>,
   expanded: Boolean,
   enabled: Boolean,
   onNodeSelected: (String) -> Unit,
@@ -1474,13 +1518,18 @@ private fun NavGroup(
     }
     if (expanded) {
       group.children.forEach { node ->
-        NavNodeRow(
+        NavTreeNode(
           node = node,
           selected = selectedNodeId == node.id,
           open = treeSingleClickSwitchesToOpenTab(node.id, openEditorTabIds),
+          selectedNodeId = selectedNodeId,
+          openEditorTabIds = openEditorTabIds,
+          expandedNodeIds = expandedNodeIds,
           enabled = enabled,
+          depth = 0,
           onNodeSelected = onNodeSelected,
           onNodeOpened = onNodeOpened,
+          onNodeExpandedToggled = onNodeExpandedToggled,
         )
       }
     }
@@ -1489,14 +1538,21 @@ private fun NavGroup(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NavNodeRow(
+private fun NavTreeNode(
   node: SkillBillTreeItem,
   selected: Boolean,
   open: Boolean,
+  selectedNodeId: String?,
+  openEditorTabIds: Set<String>,
+  expandedNodeIds: Set<String>,
   enabled: Boolean,
+  depth: Int,
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
+  onNodeExpandedToggled: (String) -> Unit,
 ) {
+  val expandable = node.children.isNotEmpty()
+  val expanded = node.id in expandedNodeIds
   val rowBackground = when {
     selected -> WorkspaceYellow.copy(alpha = 0.15f)
     open -> WorkspaceYellow.copy(alpha = 0.06f)
@@ -1525,9 +1581,17 @@ private fun NavNodeRow(
       .combinedClickable(
         enabled = enabled,
         role = Role.Button,
-        onDoubleClick = { onNodeOpened(node.id) },
+        onDoubleClick = {
+          if (expandable) {
+            onNodeExpandedToggled(node.id)
+          } else {
+            onNodeOpened(node.id)
+          }
+        },
         onClick = {
-          if (open) {
+          if (expandable) {
+            onNodeExpandedToggled(node.id)
+          } else if (open) {
             onNodeSelected(node.id)
           }
         },
@@ -1541,7 +1605,12 @@ private fun NavNodeRow(
         .fillMaxHeight()
         .background(if (selected) WorkspaceYellow else Color.Transparent),
     )
-    Spacer(modifier = Modifier.width(22.dp))
+    Spacer(modifier = Modifier.width((22 + depth * 16).dp))
+    if (expandable) {
+      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+    } else {
+      Spacer(modifier = Modifier.width(7.dp))
+    }
     MiniIcon(text = markerFor(node.kind), tint = iconTint)
     Text(
       text = node.label,
@@ -1565,6 +1634,23 @@ private fun NavNodeRow(
     }
     StatusDot(level = validationLevelFor(node.status))
     Spacer(modifier = Modifier.width(8.dp))
+  }
+  if (expandable && expanded) {
+    node.children.forEach { child ->
+      NavTreeNode(
+        node = child,
+        selected = selectedNodeId == child.id,
+        open = treeSingleClickSwitchesToOpenTab(child.id, openEditorTabIds),
+        selectedNodeId = selectedNodeId,
+        openEditorTabIds = openEditorTabIds,
+        expandedNodeIds = expandedNodeIds,
+        enabled = enabled,
+        depth = depth + 1,
+        onNodeSelected = onNodeSelected,
+        onNodeOpened = onNodeOpened,
+        onNodeExpandedToggled = onNodeExpandedToggled,
+      )
+    }
   }
 }
 

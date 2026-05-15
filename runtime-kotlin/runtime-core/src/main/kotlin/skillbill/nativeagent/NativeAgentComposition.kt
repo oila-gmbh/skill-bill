@@ -82,6 +82,9 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
   return source.copy(body = inlineDeclaredMarkdownSidecars(repoRoot, target, composedBody), composition = null)
 }
 
+fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSource): String =
+  renderNativeAgentSource(composeNativeAgentSource(repoRoot, source))
+
 private fun resolvePlatformManifestContentTarget(
   repoRoot: Path,
   packRoot: Path,
