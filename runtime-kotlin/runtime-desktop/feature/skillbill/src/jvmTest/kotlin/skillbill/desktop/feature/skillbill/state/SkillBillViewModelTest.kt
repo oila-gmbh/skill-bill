@@ -101,6 +101,7 @@ class SkillBillViewModelTest {
     val edited = viewModel.updateEditorDraft("line 1\nchanged\n")
 
     assertEquals("line 1\nline 2\n", loaded.editor.draftContent)
+    assertEquals(SkillBillStatusBar.EDITABLE_MODE_LABEL, loaded.statusBar.readOnlyModeLabel)
     assertTrue(edited.editor.dirty)
     assertEquals("dirty", edited.statusBar.readOnlyModeLabel)
   }

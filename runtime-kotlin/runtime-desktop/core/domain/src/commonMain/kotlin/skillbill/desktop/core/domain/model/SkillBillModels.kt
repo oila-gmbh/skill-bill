@@ -271,6 +271,7 @@ data class SkillBillStatusBar(
       )
 
     const val READ_ONLY_MODE_LABEL = "read-only"
+    const val EDITABLE_MODE_LABEL = "editable"
     const val POLICY_LABEL = "strict"
   }
 }

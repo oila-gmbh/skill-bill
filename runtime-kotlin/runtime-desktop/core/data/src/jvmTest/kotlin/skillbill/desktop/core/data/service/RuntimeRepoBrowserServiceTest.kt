@@ -90,6 +90,46 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
+  fun `content md and governed add-on sources are editable and saveable`() {
+    val repo = seedRepo("authoring-content-md-and-addons")
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val flattened = service.treeFor(session).flatten()
+    val skillItem = flattened.first { it.kind == TreeItemKind.SKILL && it.label == "bill-alpha" }
+    val addonItem = flattened.first { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" }
+    val nativeAgentItem = flattened.first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "alpha-agent" }
+    val nativeAgentBefore = Files.readString(repo.resolve("skills/bill-alpha/native-agents/alpha-agent.md"))
+
+    val skillDocument = service.loadDocument(session, skillItem.id)
+    val skillResult = service.saveDocument(session, skillItem.id, "# Rewritten\n\nSaved content.md body.\n")
+    val addonDocument = service.loadDocument(session, addonItem.id)
+    val addonResult = service.saveDocument(session, addonItem.id, "# Tracing\n\nUpdated add-on guidance.\n")
+    val nativeAgentBody = """
+      |---
+      |name: alpha-agent
+      |description: Updated alpha native agent.
+      |---
+      |
+      |Updated native agent body.
+    """.trimMargin()
+    val nativeAgentDocument = service.loadDocument(session, nativeAgentItem.id)
+    val nativeAgentResult = service.saveDocument(session, nativeAgentItem.id, nativeAgentBody)
+
+    assertTrue(skillDocument.editable)
+    assertTrue(skillResult.success, skillResult.runtimeErrorMessage.orEmpty())
+    assertTrue(Files.readString(repo.resolve("skills/bill-alpha/content.md")).contains("Saved content.md body."))
+    assertTrue(addonDocument.editable)
+    assertTrue(addonResult.success, addonResult.runtimeErrorMessage.orEmpty())
+    assertTrue(
+      Files.readString(repo.resolve("platform-packs/kotlin/addons/tracing-otel.md")).contains("Updated add-on"),
+    )
+    assertFalse(nativeAgentDocument.editable)
+    assertFalse(nativeAgentResult.success)
+    assertTrue(nativeAgentResult.runtimeErrorMessage.orEmpty().contains("Only governed content.md files and add-ons"))
+    assertEquals(nativeAgentBefore, Files.readString(repo.resolve("skills/bill-alpha/native-agents/alpha-agent.md")))
+  }
+
+  @Test
   fun `save failure returns runtime message and leaves source intact`() {
     val repo = seedRepo("authoring-save-failure")
     val before = Files.readString(repo.resolve("skills/bill-alpha/content.md"))
@@ -630,6 +670,20 @@ class RuntimeRepoBrowserServiceTest {
 
   private fun writeQualityCheckWithGeneratedSupportPointer(repo: Path) {
     writeContentSkill(repo, "bill-quality-check", "Quality guidance.")
+    Files.createDirectories(repo.resolve("orchestration/skill-classes"))
+    Files.writeString(
+      repo.resolve("orchestration/skill-classes/quality-check-shell.yaml"),
+      """
+        |class: quality-check-shell
+        |contract_version: "1.1"
+        |
+        |matchers:
+        |  - exact: bill-quality-check
+        |
+        |pointers:
+        |  - stack-routing
+      """.trimMargin(),
+    )
     Files.writeString(repo.resolve("skills/bill-quality-check/stack-routing.md"), "Generated pointer\n")
   }
 
