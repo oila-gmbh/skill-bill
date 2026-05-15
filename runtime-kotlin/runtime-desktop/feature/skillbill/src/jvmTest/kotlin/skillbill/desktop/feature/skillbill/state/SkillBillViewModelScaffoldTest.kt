@@ -273,6 +273,32 @@ class SkillBillViewModelScaffoldTest {
     }
   }
 
+  @Test
+  fun `platform-pack scaffold payload uses selected repo root`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.PLATFORM_PACK,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "platform-pack",
+            skillName = "bill-php-code-review",
+            skillPath = "/repo/platform-packs/php",
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+    viewModel.updateScaffoldForm { it.copy(platform = "php", displayName = "PHP") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    assertEquals("/repo", request.payload.toContractMap()["repo_root"])
+    assertEquals("/repo", gateway.lastDryRunPayload?.toContractMap()?.get("repo_root"))
+  }
+
   // F-T03: per-kind exhaustive payload map asserted against a golden derived from
   // SCAFFOLD_PAYLOAD.md so the wizard contract surface is enforced (not just spot-checked).
   @Test
