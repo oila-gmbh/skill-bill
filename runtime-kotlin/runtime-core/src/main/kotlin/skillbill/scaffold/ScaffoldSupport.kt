@@ -35,7 +35,6 @@ internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-implement", "featu
 // render a slug -> displayName list without depending on internal runtime types.
 internal val PLATFORM_PACK_PRESETS: Map<String, String> = mapOf(
   "java" to "Java",
-  "php" to "PHP",
 )
 
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =

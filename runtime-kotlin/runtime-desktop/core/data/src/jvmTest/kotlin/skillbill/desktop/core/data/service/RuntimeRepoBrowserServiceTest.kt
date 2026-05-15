@@ -29,10 +29,40 @@ class RuntimeRepoBrowserServiceTest {
     val flattened = tree.flatten()
 
     assertEquals(RepoLoadState.LOADED, session.loadStatus.state)
-    assertTrue(flattened.any { it.id.hasLocalId("skill:bill-alpha") })
-    assertTrue(flattened.any { it.kind == TreeItemKind.PLATFORM_PACK && it.label == "kotlin" })
+    assertTrue(flattened.any { it.id.hasLocalId("skill:bill-alpha") && it.label == "alpha" })
+    val kotlinPack = flattened.single { it.kind == TreeItemKind.PLATFORM_PACK && it.label == "kotlin" }
+    assertTrue(
+      kotlinPack.children.any { it.id.hasLocalId("skill:bill-kotlin-code-review") && it.label == "code-review" },
+    )
+    assertTrue(
+      kotlinPack.children.any {
+        it.id.hasLocalId("skill:bill-kotlin-code-review-architecture") && it.label == "architecture"
+      },
+    )
     assertTrue(flattened.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
-    assertTrue(flattened.any { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "alpha-agent" })
+    val addonGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
+    assertTrue(kotlinAddons.children.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
+    assertTrue(flattened.any { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" })
+    val platformNativeAgentId =
+      "native-agent:" +
+        "platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/bill-kotlin-code-review-ui.md:" +
+        "bill-kotlin-code-review-ui"
+    assertTrue(
+      flattened.any {
+        it.id.hasLocalId(platformNativeAgentId) && it.label == "ui"
+      },
+    )
+    val nativeAgentGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Native Agents" }
+    val alphaNativeAgents = nativeAgentGroup.children.single { it.label == "alpha" }
+    assertTrue(alphaNativeAgents.children.any { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" })
+    val kotlinNativeAgents = nativeAgentGroup.children.single { it.label == "kotlin" }
+    val kotlinCodeReviewNativeAgents = kotlinNativeAgents.children.single { it.label == "code-review" }
+    assertTrue(
+      kotlinCodeReviewNativeAgents.children.any {
+        it.kind == TreeItemKind.NATIVE_AGENT && it.label == "ui"
+      },
+    )
 
     val generated = flattened.single { it.id.endsWith("skills/bill-alpha/SKILL.md") }
     assertEquals(TreeItemKind.GENERATED_ARTIFACT, generated.kind)
@@ -95,9 +125,9 @@ class RuntimeRepoBrowserServiceTest {
     val service = RuntimeRepoBrowserService()
     val session = service.open(repo.toString())
     val flattened = service.treeFor(session).flatten()
-    val skillItem = flattened.first { it.kind == TreeItemKind.SKILL && it.label == "bill-alpha" }
+    val skillItem = flattened.first { it.id.hasLocalId("skill:bill-alpha") }
     val addonItem = flattened.first { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" }
-    val nativeAgentItem = flattened.first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "alpha-agent" }
+    val nativeAgentItem = flattened.first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" }
     val nativeAgentBefore = Files.readString(repo.resolve("skills/bill-alpha/native-agents/alpha-agent.md"))
 
     val skillDocument = service.loadDocument(session, skillItem.id)
@@ -546,7 +576,7 @@ class RuntimeRepoBrowserServiceTest {
     val session = service.open(repo.toString())
     val flattened = service.treeFor(session).flatten()
     val agentItem = flattened.first {
-      it.kind == TreeItemKind.NATIVE_AGENT && it.label == "alpha-agent"
+      it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent"
     }
 
     val summary = service.render(session, agentItem.id)
@@ -559,6 +589,73 @@ class RuntimeRepoBrowserServiceTest {
     assertTrue(block.content.contains("name: alpha-agent"))
     // Native agents do not emit generated artifacts in the desktop render preview.
     assertTrue(summary.generatedArtifacts.isEmpty())
+  }
+
+  @Test
+  fun `bundled native agent rows expose individual entry content`() {
+    val repo = seedRepo("bundled-native-agent")
+    Files.writeString(
+      repo.resolve("skills/bill-alpha/native-agents/agents.yaml"),
+      """
+        |agents:
+        |  - name: alpha-one
+        |    description: First bundled agent.
+        |    body: |-
+        |      First body.
+        |  - name: alpha-two
+        |    description: Second bundled agent.
+        |    body: |-
+        |      Second body.
+      """.trimMargin(),
+    )
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val flattened = service.treeFor(session).flatten()
+    val first = flattened.first {
+      it.id.hasLocalId("native-agent:skills/bill-alpha/native-agents/agents.yaml:alpha-one")
+    }
+    val second = flattened.first {
+      it.id.hasLocalId("native-agent:skills/bill-alpha/native-agents/agents.yaml:alpha-two")
+    }
+
+    val firstDocument = service.loadDocument(session, first.id)
+    val secondDocument = service.loadDocument(session, second.id)
+
+    assertTrue(firstDocument.text.contains("name: alpha-one"))
+    assertTrue(firstDocument.text.contains("First body."))
+    assertFalse(firstDocument.text.contains("alpha-two"))
+    assertTrue(secondDocument.text.contains("name: alpha-two"))
+    assertTrue(secondDocument.text.contains("Second body."))
+    assertFalse(firstDocument.text == secondDocument.text)
+  }
+
+  @Test
+  fun `composed platform native agent rows expose governed content`() {
+    val repo = seedRepo("composed-platform-native-agent")
+    Files.writeString(
+      repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/agents.yaml"),
+      """
+        |agents:
+        |  - name: bill-kotlin-code-review-architecture
+        |    description: Kotlin architecture native agent.
+        |    compose: governed-content
+      """.trimMargin(),
+    )
+    val service = RuntimeRepoBrowserService()
+    val session = service.open(repo.toString())
+    val item = service.treeFor(session).flatten().first {
+      it.id.hasLocalId(
+        "native-agent:" +
+          "platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/agents.yaml:" +
+          "bill-kotlin-code-review-architecture",
+      )
+    }
+
+    val document = service.loadDocument(session, item.id)
+
+    assertTrue(document.text.contains("name: bill-kotlin-code-review-architecture"))
+    assertFalse(document.text.contains("compose: governed-content"))
+    assertTrue(document.text.contains("Architecture guidance."))
   }
 
   @Test
@@ -603,7 +700,7 @@ class RuntimeRepoBrowserServiceTest {
     val before = repoFileSnapshot(repo)
     val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
     val agentItem = service.treeFor(session).flatten()
-      .first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "alpha-agent" }
+      .first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" }
     val addonItem = service.treeFor(session).flatten()
       .first { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" }
 
@@ -690,6 +787,8 @@ class RuntimeRepoBrowserServiceTest {
   private fun writePlatformPack(repo: Path) {
     val packRoot = repo.resolve("platform-packs/kotlin")
     Files.createDirectories(packRoot.resolve("code-review/bill-kotlin-code-review"))
+    Files.createDirectories(packRoot.resolve("code-review/bill-kotlin-code-review/native-agents"))
+    Files.createDirectories(packRoot.resolve("code-review/bill-kotlin-code-review-architecture"))
     Files.createDirectories(packRoot.resolve("addons"))
     Files.writeString(
       packRoot.resolve("platform.yaml"),
@@ -703,13 +802,17 @@ class RuntimeRepoBrowserServiceTest {
         |    - ".kt"
         |  tie_breakers: []
         |
-        |declared_code_review_areas: []
+        |declared_code_review_areas:
+        |  - architecture
         |
         |declared_files:
         |  baseline: code-review/bill-kotlin-code-review/content.md
-        |  areas: {}
+        |  areas:
+        |    architecture: code-review/bill-kotlin-code-review-architecture/content.md
         |
-        |area_metadata: {}
+        |area_metadata:
+        |  architecture:
+        |    focus: Architecture.
       """.trimMargin(),
     )
     Files.writeString(
@@ -723,6 +826,30 @@ class RuntimeRepoBrowserServiceTest {
         |# Kotlin review
         |
         |Review guidance.
+      """.trimMargin(),
+    )
+    Files.writeString(
+      packRoot.resolve("code-review/bill-kotlin-code-review/native-agents/bill-kotlin-code-review-ui.md"),
+      """
+        |---
+        |name: bill-kotlin-code-review-ui
+        |description: Kotlin review native agent.
+        |---
+        |
+        |Native agent body.
+      """.trimMargin(),
+    )
+    Files.writeString(
+      packRoot.resolve("code-review/bill-kotlin-code-review-architecture/content.md"),
+      """
+        |---
+        |name: bill-kotlin-code-review-architecture
+        |description: Kotlin architecture review.
+        |---
+        |
+        |# Kotlin architecture review
+        |
+        |Architecture guidance.
       """.trimMargin(),
     )
     Files.writeString(packRoot.resolve("addons/tracing-otel.md"), "# Tracing\n")

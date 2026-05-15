@@ -57,7 +57,7 @@ Skill Bill is succeeding when most of the following are true:
 5. Project-specific customization is possible without degrading the shared taxonomy.
 6. New skills and edits are constrained by tests and validators, not only maintainer judgment.
 7. Teams start treating Skill Bill as part of engineering process, not as an experimental side tool.
-8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External PHP and Golang packs are early proof; the next bar is repeatability.
+8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External platform packs are early proof; the next bar is repeatability.
 9. **At least one lighthouse team uses it in production.** Early friend/colleague usage is a strong signal; one concrete before/after from a real engineering org does more to validate the project than any amount of internal polish.
 
 ## Recent milestones
@@ -68,7 +68,7 @@ Skill Bill is succeeding when most of the following are true:
 - **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-quality-check`, `bill-feature-implement`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
 - **Workflow runtime and resume surfaces (shipped):** Durable workflow state, resume, continue, local stats, and matching MCP tools now exist for both `bill-feature-implement` and `bill-feature-verify`, so long-running orchestrators no longer depend only on chat history.
 - **Operator docs split (shipped):** The documentation surface is now split into a shorter `README.md`, a primary `docs/getting-started.md`, and a team-focused `docs/getting-started-for-teams.md`, which is a healthier structure for adoption than a single overloaded README.
-- **Early external adoption signal (observed):** Multiple external users have used Skill Bill for real work, `bill-feature-implement` has emerged as the strongest day-to-day workflow, `bill-code-review` is the strongest standalone phase, and non-maintainers have created PHP and Golang platform packs for themselves.
+- **Early external adoption signal (observed):** Multiple external users have used Skill Bill for real work, `bill-feature-implement` has emerged as the strongest day-to-day workflow, `bill-code-review` is the strongest standalone phase, and non-maintainers have created platform packs for themselves.
 - **Next architectural move:** Separate framework from reference packs even more aggressively so adoption, forking, and adding maintained packs stay distinct from the governance system itself.
 
 ## Current position
@@ -175,7 +175,7 @@ Key outcome:
 
 ### 5. Turn early external authoring into a repeatable path
 
-The framework is only complete if someone other than the maintainer can use it successfully. PHP and Golang packs created outside the bundled reference set show that the model can work. The next job is making that success repeatable without maintainer context.
+The framework is only complete if someone other than the maintainer can use it successfully. Platform packs created outside the bundled reference set show that the model can work. The next job is making that success repeatable without maintainer context.
 
 The highest-value validation now is:
 
