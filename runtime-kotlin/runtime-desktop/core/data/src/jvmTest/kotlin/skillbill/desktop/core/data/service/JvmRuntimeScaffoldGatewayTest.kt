@@ -1,0 +1,228 @@
+package skillbill.desktop.core.data.service
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import skillbill.desktop.core.domain.model.RepoLoadState
+import skillbill.desktop.core.domain.model.RepoLoadStatus
+import skillbill.desktop.core.domain.model.RepoSession
+import skillbill.desktop.core.domain.model.ScaffoldPayload
+import skillbill.desktop.core.domain.model.ScaffoldRunResult
+import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.MissingRequiredSectionError
+import skillbill.error.ScaffoldRollbackError
+import skillbill.scaffold.model.ScaffoldResult
+import java.nio.file.Path
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class JvmRuntimeScaffoldGatewayTest {
+
+  // F-004: Preview/Success is distinguished by the `dryRun` input flag, NOT by scanning notes.
+  @Test
+  fun `dryRun produces Preview when scaffolder is invoked with dryRun true`() = runBlocking {
+    var capturedPayload: Map<String, Any?>? = null
+    var capturedDryRun: Boolean? = null
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { payload, dryRun ->
+        capturedPayload = payload
+        capturedDryRun = dryRun
+        ScaffoldResult(
+          kind = "horizontal",
+          skillName = "bill-foo",
+          skillPath = Path.of("/tmp/skills/bill-foo"),
+          createdFiles = listOf(Path.of("/tmp/skills/bill-foo/content.md")),
+          manifestEdits = emptyList(),
+          symlinks = emptyList(),
+          installTargets = emptyList(),
+          // F-004: no dry-run marker note required for Preview classification.
+          notes = emptyList(),
+        )
+      }
+    }
+
+    val payload = ScaffoldPayload.HorizontalSkill(name = "bill-foo")
+    val result = gateway.dryRun(payload)
+
+    val preview = result as ScaffoldRunResult.Preview
+    assertEquals("horizontal", preview.planned.kind)
+    assertEquals("bill-foo", preview.planned.skillName)
+    assertEquals(1, preview.planned.createdFiles.size)
+    assertEquals(true, capturedDryRun)
+    val map = checkNotNull(capturedPayload)
+    assertEquals("1.0", map["scaffold_payload_version"])
+    assertEquals("horizontal", map["kind"])
+    assertEquals("bill-foo", map["name"])
+  }
+
+  // F-004: execute returns Success even when the runtime ALSO emits a "dry run" marker note. The
+  // distinction is the input flag the gateway carries, never note string-matching.
+  @Test
+  fun `execute produces Success even when runtime notes include dry-run wording`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ ->
+        ScaffoldResult(
+          kind = "platform-pack",
+          skillName = "bill-java-code-review",
+          skillPath = Path.of("/tmp/platform-packs/java"),
+          createdFiles = listOf(
+            Path.of("/tmp/platform-packs/java/platform.yaml"),
+            Path.of("/tmp/platform-packs/java/code-review/bill-java-code-review/content.md"),
+          ),
+          manifestEdits = listOf(Path.of("/tmp/platform-packs/java/platform.yaml")),
+          // Deliberately include the legacy dry-run marker to assert F-004: it is IGNORED.
+          notes = listOf("Dry run - no filesystem changes applied."),
+        )
+      }
+    }
+
+    val payload = ScaffoldPayload.PlatformPack(platform = "java")
+    val result = gateway.execute(payload)
+
+    val success = result as ScaffoldRunResult.Success
+    assertEquals("platform-pack", success.result.kind)
+    assertEquals(2, success.result.createdFiles.size)
+    assertTrue(success.result.createdFiles.any { it.endsWith("platform.yaml") })
+  }
+
+  @Test
+  fun `payload parity holds between dry-run and execute for every kind`() = runBlocking {
+    val recorded = mutableListOf<Map<String, Any?>>()
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { payload, _ ->
+        recorded += payload
+        ScaffoldResult(
+          kind = payload["kind"] as String,
+          skillName = "bill-x",
+          skillPath = Path.of("/tmp/x"),
+        )
+      }
+    }
+
+    val payloads: List<ScaffoldPayload> = listOf(
+      ScaffoldPayload.HorizontalSkill(name = "bill-horizontal"),
+      ScaffoldPayload.PlatformPack(platform = "java"),
+      ScaffoldPayload.PlatformOverride(platform = "java", family = "code-review"),
+      ScaffoldPayload.CodeReviewArea(platform = "java", area = "security"),
+      ScaffoldPayload.AddOn(name = "bill-addon", platform = "java"),
+    )
+    payloads.forEach { payload ->
+      gateway.dryRun(payload)
+      gateway.execute(payload)
+    }
+    val pairs = recorded.chunked(2)
+    pairs.forEach { (dryMap, executeMap) ->
+      assertEquals(dryMap, executeMap, "dry-run and execute payloads must be identical (AC2)")
+    }
+  }
+
+  @Test
+  fun `runtime exception maps to Failed with rollbackComplete true`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ -> throw InvalidScaffoldPayloadError("bad payload") }
+    }
+
+    val result = gateway.execute(ScaffoldPayload.HorizontalSkill(name = "bill-x"))
+
+    val failed = result as ScaffoldRunResult.Failed
+    assertEquals("InvalidScaffoldPayloadError", failed.exceptionName)
+    assertEquals("bad payload", failed.exceptionMessage)
+    assertTrue(failed.rollbackComplete)
+  }
+
+  @Test
+  fun `ScaffoldRollbackError sets rollbackComplete false`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ -> throw ScaffoldRollbackError("rollback failed: dir x") }
+    }
+
+    val result = gateway.execute(ScaffoldPayload.HorizontalSkill(name = "bill-x"))
+
+    val failed = result as ScaffoldRunResult.Failed
+    assertEquals("ScaffoldRollbackError", failed.exceptionName)
+    assertFalse(failed.rollbackComplete)
+  }
+
+  @Test
+  fun `shell-content-contract exception is caught and reported`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ -> throw MissingRequiredSectionError("missing Description") }
+    }
+
+    val result = gateway.execute(ScaffoldPayload.HorizontalSkill(name = "bill-x"))
+
+    val failed = result as ScaffoldRunResult.Failed
+    assertEquals("MissingRequiredSectionError", failed.exceptionName)
+    assertTrue(failed.rollbackComplete)
+  }
+
+  // F-003/F-405: non-runtime exceptions map to Failed but `rollbackComplete = false` because we
+  // cannot promise the rollback machinery ran.
+  @Test
+  fun `non-runtime exception maps to Failed with rollbackComplete false`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ -> throw IllegalStateException("programmer error") }
+    }
+
+    val result = gateway.execute(ScaffoldPayload.HorizontalSkill(name = "bill-x"))
+
+    val failed = result as ScaffoldRunResult.Failed
+    assertEquals("IllegalStateException", failed.exceptionName)
+    assertEquals("programmer error", failed.exceptionMessage)
+    assertFalse(failed.rollbackComplete, "non-runtime exceptions cannot guarantee rollback ran")
+  }
+
+  // F-003/F-405: CancellationException must be re-thrown verbatim so coroutine cancellation works.
+  // Use a dedicated coroutine scope here rather than runBlocking, because runBlocking propagates
+  // CancellationException by cancelling the runner itself instead of returning it to JUnit.
+  @Test
+  fun `CancellationException is re-thrown verbatim`() {
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ -> throw CancellationException("cancelled") }
+    }
+    val cancellation = assertFailsWith<CancellationException> {
+      kotlinx.coroutines.runBlocking {
+        gateway.execute(ScaffoldPayload.HorizontalSkill(name = "bill-x"))
+      }
+    }
+    assertEquals("cancelled", cancellation.message)
+  }
+
+  @Test
+  fun `catalog snapshot returns static lists even without a session`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway()
+    val snapshot = gateway.catalogSnapshot(session = null)
+
+    assertNotNull(snapshot)
+    assertTrue(snapshot.approvedCodeReviewAreas.isNotEmpty())
+    assertEquals("1.0", snapshot.scaffoldPayloadVersion)
+    assertTrue(snapshot.preShellFamilies.contains("feature-implement"))
+    assertTrue(snapshot.shelledFamilies.contains("code-review"))
+    assertTrue(snapshot.platformPackPresets.any { it.platform == "java" })
+    assertTrue(snapshot.pilotedPlatformPacks.isEmpty())
+  }
+
+  @Test
+  fun `catalog snapshot tolerates unrecognized session`() = runBlocking {
+    val gateway = JvmRuntimeScaffoldGateway()
+    val session = RepoSession(
+      repoPath = "/nope",
+      isRecognizedSkillBillRepo = false,
+      loadStatus = RepoLoadStatus(state = RepoLoadState.INVALID, message = "bad"),
+    )
+
+    val snapshot = gateway.catalogSnapshot(session)
+    assertTrue(snapshot.pilotedPlatformPacks.isEmpty())
+    assertTrue(snapshot.approvedCodeReviewAreas.isNotEmpty())
+  }
+
+  @Test
+  fun `payload contract version is stamped automatically`() {
+    val map = ScaffoldPayload.HorizontalSkill(name = "bill-x").toContractMap()
+    assertEquals("1.0", map["scaffold_payload_version"])
+    assertEquals("horizontal", map["kind"])
+  }
+}

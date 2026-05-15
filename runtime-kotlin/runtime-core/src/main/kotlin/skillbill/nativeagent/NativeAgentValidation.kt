@@ -111,14 +111,15 @@ private fun containsProviderConditional(body: String): Boolean {
 }
 
 private fun validateNoCheckedInGeneratedArtifacts(root: Path, issues: MutableList<String>) {
-  nativeAgentGeneratedArtifacts(root)
+  discoverNativeAgentGeneratedArtifactFiles(root)
     .forEach { artifact ->
       issues += "${displayPath(root, artifact)}: generated native agent artifacts must not be checked in; " +
         "keep the source in $NATIVE_AGENT_SOURCE_DIR/ and let install render provider files"
     }
 }
 
-private fun nativeAgentGeneratedArtifacts(root: Path): List<Path> {
+fun discoverNativeAgentGeneratedArtifactFiles(repoRoot: Path): List<Path> {
+  val root = repoRoot.toAbsolutePath().normalize()
   val providerDirs = NativeAgentProvider.entries.map { it.directoryName }.toSet()
   return listOf(root.resolve("skills"), root.resolve("platform-packs"))
     .filter(Files::isDirectory)

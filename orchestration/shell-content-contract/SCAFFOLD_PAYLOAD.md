@@ -99,18 +99,23 @@ Every payload MUST include:
   `^[a-z][a-z0-9-]*$`, be non-empty, and unique within the list. Honored
   ONLY for orchestrator kinds: `horizontal`, `platform-override-piloted`,
   and `platform-pack`. For `platform-pack`, stubs are attached to the
-  baseline orchestrator skill (`bill-<platform>-code-review`) only — never
-  to the per-area specialist skills or the quality-check skill. Supplying
-  this field for `code-review-area` or `add-on` raises
-  `InvalidScaffoldPayloadError`. Default: `[]`.
+  baseline orchestrator skill (`bill-<platform>-code-review`) only, never
+  to the per-area specialist skills or the quality-check skill. When omitted
+  for `platform-pack`, the scaffolder defaults to one native-agent source per
+  selected code-review specialist area, named after the generated specialist
+  skill (`bill-<platform>-code-review-<area>`) and described with the same
+  per-area review focus as the specialist `content.md`. Supplying this field
+  for `code-review-area` or `add-on` raises `InvalidScaffoldPayloadError`.
+  Default: `[]` for non-platform-pack orchestrators.
 - `no_subagents` — boolean opt-out. When `true`, the scaffolder skips the
   default subagent stub emission for an orchestrator kind even when
   `subagent_specialists` is empty. Setting `no_subagents: true` together
   with a non-empty `subagent_specialists` raises
   `InvalidScaffoldPayloadError`. Default: `false`.
 
-When `subagent_specialists` is non-empty (and not suppressed), the
-scaffolder emits one provider-neutral source bundle at
+When `subagent_specialists` is non-empty, or when platform-pack defaults
+derive specialists from selected code-review areas, and subagents are not
+suppressed, the scaffolder emits one provider-neutral source bundle at
 `<orchestrator-skill-dir>/native-agents/agents.yaml` with one entry per specialist.
 Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are
 self-contained install-cache outputs generated from those logical sources during
@@ -118,12 +123,14 @@ install. Authors edit `native-agents/agents.yaml`, then run
 `skill-bill render` to validate source renderability. The scaffolder also
 injects a `## Subagent Spawn Runtime Notes` section into the
 orchestrator's `content.md` that documents how Claude, Codex, OpenCode,
-and Junie resolve specialist spawns. Source stubs ship with a `TODO:`
-description and body plus a free-text pointer to `specialist-contract.md`
-for the F-XXX Risk Register format used by review specialists; they do
-NOT include literal `F-XXX` markers. Authors fill in the TODO placeholders
-before shipping, and repo validation fails if generated provider artifacts
-are checked into the repo.
+and Junie resolve specialist spawns. Explicit `subagent_specialists` source
+stubs ship with a `TODO:` description and body plus a free-text pointer to
+`specialist-contract.md` for the F-XXX Risk Register format used by review
+specialists; they do NOT include literal `F-XXX` markers. Platform-pack
+default specialist bundles are not TODO stubs: each entry composes from
+governed content and uses the generated specialist's per-area review
+description. Authors fill in any TODO placeholders before shipping, and repo
+validation fails if generated provider artifacts are checked into the repo.
 
 ## Worked Examples
 

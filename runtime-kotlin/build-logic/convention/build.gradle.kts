@@ -73,6 +73,26 @@ gradlePlugin {
       id = "skillbill.jvm-library"
       implementationClass = "JvmLibraryConventionPlugin"
     }
+    register("kmpComposeApplication") {
+      id = "skillbill.kmp-compose-application"
+      implementationClass = "KmpComposeApplicationConventionPlugin"
+    }
+    register("kmpLibrary") {
+      id = "skillbill.kmp-library"
+      implementationClass = "KmpLibraryConventionPlugin"
+    }
+    register("kmpCompose") {
+      id = "skillbill.kmp-compose"
+      implementationClass = "KmpComposeConventionPlugin"
+    }
+    register("kmpApplication") {
+      id = "skillbill.kmp-application"
+      implementationClass = "KmpApplicationConventionPlugin"
+    }
+    register("kmpKotlinInject") {
+      id = "skillbill.kmp-kotlininject"
+      implementationClass = "KmpKotlinInjectConventionPlugin"
+    }
     register("quality") {
       id = "skillbill.quality"
       implementationClass = "QualityConventionPlugin"
