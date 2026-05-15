@@ -8,6 +8,8 @@ import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.PrPublishingRequest
+import skillbill.desktop.core.domain.model.PrPublishingResult
 import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -82,11 +84,15 @@ interface GitGateway {
 
   // Commits currently staged changes with [message]. Callers are responsible for validation gating.
   // Failures surface in the result without refreshing or replacing local repo state.
-  fun commit(session: RepoSession?, message: String): GitOperationResult
+  fun commit(session: RepoSession?, message: String, paths: List<String> = emptyList()): GitOperationResult
 
   // Pushes to [target]. Callers are responsible for canonical-remote confirmation.
   // Failures surface in the result without refreshing or replacing local repo state.
   fun push(session: RepoSession?, target: GitPushTarget): GitOperationResult
+}
+
+interface PrPublishingGateway {
+  fun publish(request: PrPublishingRequest): PrPublishingResult
 }
 
 interface ValidationGateway {

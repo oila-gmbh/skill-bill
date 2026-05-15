@@ -191,6 +191,21 @@ class KeyboardAcceleratorsTest {
   }
 
   @Test
+  fun `command palette disables repo commands while publish is busy`() {
+    val palette = buildCommandPaletteState(
+      state = paletteState().copy(publishBusy = true),
+      open = true,
+      query = "",
+      selectedResultIndex = 0,
+    )
+
+    assertEquals(
+      "Wait for the publishing operation to finish.",
+      palette.command(CommandPaletteAction.REFRESH).disabledReason,
+    )
+  }
+
+  @Test
   fun `accelerator labels advertise command and control modifiers`() {
     assertEquals("Cmd/Ctrl S", SkillBillAcceleratorLabels.SAVE)
     assertEquals("Cmd/Ctrl R", SkillBillAcceleratorLabels.REFRESH)

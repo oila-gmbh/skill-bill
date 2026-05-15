@@ -40,7 +40,7 @@ internal fun buildCommandPaletteState(
 }
 
 private fun commandPaletteCandidates(state: SkillBillState): List<PaletteCandidate> {
-  val publishingBusy = state.commitBusy || state.commitValidationRunning || state.pushBusy
+  val publishingBusy = state.publishBusy || state.commitBusy || state.commitValidationRunning || state.pushBusy
   val blockedByBusy = busyDisabledReason(state.busyOperation, publishingBusy)
   return commandCandidates(state, blockedByBusy) + treeCandidates(state, blockedByBusy)
 }
