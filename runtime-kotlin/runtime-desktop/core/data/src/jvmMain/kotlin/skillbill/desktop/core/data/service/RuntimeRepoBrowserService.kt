@@ -421,7 +421,7 @@ class RuntimeRepoBrowserService :
       val item =
         SkillBillTreeItem(
           id = id,
-          label = skillName,
+          label = displayLabelForSkill(skillName = skillName, platform = platform, family = family, area = area),
           kind = SkillItemKind,
           authoredPath = relativePath(root, contentFile),
           status = status,
@@ -461,13 +461,29 @@ class RuntimeRepoBrowserService :
     return AuthoredSkillGroups(horizontal = horizontal.sortedBy { it.label }, platform = platform.sortedBy { it.label })
   }
 
+  private fun displayLabelForSkill(skillName: String, platform: String, family: String, area: String): String {
+    if (platform.isBlank()) {
+      return skillName.removePrefix("bill-")
+    }
+    if (area.isNotBlank()) {
+      return area
+    }
+    if (family.isNotBlank()) {
+      return family
+    }
+    return skillName
+      .removePrefix("bill-$platform-")
+      .removePrefix("bill-")
+  }
+
   private fun loadAddons(
     root: Path,
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): List<SkillBillTreeItem> {
-    return discoverGovernedAddonFiles(root)
-      .map { addonFile ->
+    val addonsByPlatform = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
+    discoverGovernedAddonFiles(root)
+      .forEach { addonFile ->
         val addon = addonFile.addonPath
         val relative = addon.relativeTo(root).portablePath()
         val id = selectionId(repoToken, "addon:$relative")
@@ -482,7 +498,7 @@ class RuntimeRepoBrowserService :
             contentFile = addon,
             editable = true,
           )
-        SkillBillTreeItem(
+        addonsByPlatform.getOrPut(addonFile.packSlug) { mutableListOf() } += SkillBillTreeItem(
           id = id,
           label = addonFile.addonSlug,
           kind = TreeItemKind.ADD_ON,
@@ -492,80 +508,181 @@ class RuntimeRepoBrowserService :
           metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = addonFile.packSlug),
         )
       }
+    return addonsByPlatform.map { (platform, addons) ->
+      SkillBillTreeItem(
+        id = selectionId(repoToken, "addon-platform:$platform"),
+        label = platform,
+        kind = TreeItemKind.GROUP,
+        editable = false,
+        children = addons.sortedBy { item -> item.label },
+        metadata = SkillBillTreeItemMetadata(kind = "add-on group", platform = platform),
+      )
+    }.sortedBy { item -> item.label }
   }
 
   private fun loadNativeAgents(
     root: Path,
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
-  ): List<SkillBillTreeItem> = discoverNativeAgentSourceFiles(
-    platformPacksRoot = root.resolve("platform-packs"),
-    skillsRoot = root.resolve("skills"),
-  )
-    .flatMap { sourceFile ->
-      val relative = sourceFile.relativeTo(root).portablePath()
-      runCatching { parseNativeAgentSourceFile(sourceFile) }
-        .fold(
-          onSuccess = { agents ->
-            agents.map { agent ->
-              val id = selectionId(repoToken, "native-agent:$relative:${agent.bundleEntryName ?: agent.name}")
+  ): List<SkillBillTreeItem> {
+    val leaves = discoverNativeAgentSourceFiles(
+      platformPacksRoot = root.resolve("platform-packs"),
+      skillsRoot = root.resolve("skills"),
+    )
+      .flatMap { sourceFile ->
+        val relative = sourceFile.relativeTo(root).portablePath()
+        runCatching { parseNativeAgentSourceFile(sourceFile) }
+          .fold(
+            onSuccess = { agents ->
+              agents.map { agent ->
+                val id = selectionId(repoToken, "native-agent:$relative:${agent.bundleEntryName ?: agent.name}")
+                val groupPath = nativeAgentOwnerGroupPath(relative)
+                selections[id] =
+                  SelectionDetail(
+                    repoToken = repoToken,
+                    title = agent.name,
+                    detail = "Provider-neutral native-agent source.",
+                    kind = "native agent",
+                    authoredPath = relative,
+                    status = agent.composition?.kind?.wireValue ?: "authored",
+                    contentFile = sourceFile,
+                    editable = false,
+                    readOnlyLabel = READ_ONLY_LABEL,
+                    readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
+                  )
+                NativeAgentTreeLeaf(
+                  groupPath = groupPath,
+                  item = SkillBillTreeItem(
+                    id = id,
+                    label = displayLabelForNativeAgent(agent.name, relative, groupPath),
+                    kind = TreeItemKind.NATIVE_AGENT,
+                    authoredPath = relative,
+                    status = agent.composition?.kind?.wireValue ?: "authored",
+                    editable = false,
+                    readOnlyLabel = READ_ONLY_LABEL,
+                    metadata = SkillBillTreeItemMetadata(kind = "native agent"),
+                  ),
+                )
+              }
+            },
+            onFailure = { error ->
+              val id = selectionId(repoToken, "native-agent-error:$relative")
+              val message = error.message.orEmpty().ifBlank { "Native-agent source could not be parsed." }
+              val groupPath = nativeAgentOwnerGroupPath(relative)
               selections[id] =
                 SelectionDetail(
                   repoToken = repoToken,
-                  title = agent.name,
-                  detail = "Provider-neutral native-agent source.",
+                  title = sourceFile.fileName.toString(),
+                  detail = "Invalid native-agent source: $message",
                   kind = "native agent",
                   authoredPath = relative,
-                  status = agent.composition?.kind?.wireValue ?: "authored",
+                  status = "invalid",
                   contentFile = sourceFile,
                   editable = false,
                   readOnlyLabel = READ_ONLY_LABEL,
                   readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
                 )
-              SkillBillTreeItem(
-                id = id,
-                label = agent.name,
-                kind = TreeItemKind.NATIVE_AGENT,
-                authoredPath = relative,
-                status = agent.composition?.kind?.wireValue ?: "authored",
-                editable = false,
-                readOnlyLabel = READ_ONLY_LABEL,
-                metadata = SkillBillTreeItemMetadata(kind = "native agent"),
+              listOf(
+                NativeAgentTreeLeaf(
+                  groupPath = groupPath,
+                  item = SkillBillTreeItem(
+                    id = id,
+                    label = "${displayLabelForNativeAgent(
+                      sourceFile.fileName.toString().removeSuffix(".md"),
+                      relative,
+                      groupPath,
+                    )} (invalid)",
+                    kind = TreeItemKind.NATIVE_AGENT,
+                    authoredPath = relative,
+                    status = "invalid",
+                    editable = false,
+                    readOnlyLabel = READ_ONLY_LABEL,
+                    metadata = SkillBillTreeItemMetadata(kind = "native agent"),
+                  ),
+                ),
               )
-            }
-          },
-          onFailure = { error ->
-            val id = selectionId(repoToken, "native-agent-error:$relative")
-            val message = error.message.orEmpty().ifBlank { "Native-agent source could not be parsed." }
-            selections[id] =
-              SelectionDetail(
-                repoToken = repoToken,
-                title = sourceFile.fileName.toString(),
-                detail = "Invalid native-agent source: $message",
-                kind = "native agent",
-                authoredPath = relative,
-                status = "invalid",
-                contentFile = sourceFile,
-                editable = false,
-                readOnlyLabel = READ_ONLY_LABEL,
-                readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
-              )
-            listOf(
-              SkillBillTreeItem(
-                id = id,
-                label = "${sourceFile.fileName} (invalid)",
-                kind = TreeItemKind.NATIVE_AGENT,
-                authoredPath = relative,
-                status = "invalid",
-                editable = false,
-                readOnlyLabel = READ_ONLY_LABEL,
-                metadata = SkillBillTreeItemMetadata(kind = "native agent"),
-              ),
-            )
-          },
-        )
+            },
+          )
+      }
+    return groupNativeAgentLeaves(repoToken, leaves)
+  }
+
+  private fun groupNativeAgentLeaves(repoToken: String, leaves: List<NativeAgentTreeLeaf>): List<SkillBillTreeItem> {
+    val root = MutableNativeAgentGroup(label = "", path = emptyList())
+    leaves.forEach { leaf ->
+      leaf.groupPath.fold(root) { group, label ->
+        group.groups.getOrPut(label) { MutableNativeAgentGroup(label = label, path = group.path + label) }
+      }.items += leaf.item
     }
-    .sortedBy { item -> item.label }
+    return root.children(repoToken)
+  }
+
+  private fun MutableNativeAgentGroup.children(repoToken: String): List<SkillBillTreeItem> = groups.values
+    .sortedBy { group -> group.label }
+    .map { group -> group.toTreeItem(repoToken) } +
+    items.sortedBy { item -> item.label }
+
+  private fun MutableNativeAgentGroup.toTreeItem(repoToken: String): SkillBillTreeItem = SkillBillTreeItem(
+    id = selectionId(repoToken, "native-agent-group:${path.joinToString("/")}"),
+    label = label,
+    kind = TreeItemKind.GROUP,
+    editable = false,
+    children = children(repoToken),
+    metadata = SkillBillTreeItemMetadata(kind = "native agent group"),
+  )
+
+  private fun nativeAgentOwnerGroupPath(relativePath: String): List<String> {
+    val parts = relativePath.split('/')
+    if (parts.size >= 4 && parts[0] == "skills") {
+      return listOf(parts[1].removePrefix("bill-"))
+    }
+    if (parts.size >= 5 && parts[0] == "platform-packs") {
+      val platform = parts[1]
+      val family = parts[2]
+      val skillName = parts[3]
+      val baselineName = "bill-$platform-$family"
+      val areaPrefix = "$baselineName-"
+      val area = skillName.removePrefix(areaPrefix).takeIf { skillName.startsWith(areaPrefix) }.orEmpty()
+      return listOf(platform, displayLabelForSkill(skillName, platform, family, area))
+    }
+    return listOf("unowned")
+  }
+
+  private fun displayLabelForNativeAgent(
+    agentName: String,
+    relativePath: String,
+    groupPath: List<String> = nativeAgentOwnerGroupPath(relativePath),
+  ): String {
+    val platform = platformFromRelativePath(relativePath)
+    var label = agentName.removePrefix("bill-")
+    if (platform.isNotBlank()) {
+      label = label.removeDisplayPrefix("$platform-")
+    }
+    groupPath.forEach { groupLabel ->
+      label = label.removeDisplayPrefix("$groupLabel-")
+    }
+    return label
+  }
+
+  private fun String.removeDisplayPrefix(prefix: String): String =
+    if (startsWith(prefix) && length > prefix.length) removePrefix(prefix) else this
+
+  private fun platformFromRelativePath(relativePath: String): String {
+    val parts = relativePath.split('/')
+    return if (parts.size >= 2 && parts[0] == "platform-packs") parts[1] else ""
+  }
+
+  private data class NativeAgentTreeLeaf(
+    val groupPath: List<String>,
+    val item: SkillBillTreeItem,
+  )
+
+  private data class MutableNativeAgentGroup(
+    val label: String,
+    val path: List<String>,
+    val groups: MutableMap<String, MutableNativeAgentGroup> = linkedMapOf(),
+    val items: MutableList<SkillBillTreeItem> = mutableListOf(),
+  )
 
   private fun loadGeneratedArtifacts(
     root: Path,

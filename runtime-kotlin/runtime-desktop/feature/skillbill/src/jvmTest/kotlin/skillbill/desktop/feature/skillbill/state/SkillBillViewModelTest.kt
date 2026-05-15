@@ -598,6 +598,42 @@ class SkillBillViewModelTest {
   }
 
   @Test
+  fun `platform pack nodes are expanded by default so nested skills are visible`() {
+    val viewModel = newViewModel(
+      skillTreeService = MutableSkillTreeService(
+        listOf(
+          SkillBillTreeItem(
+            id = "platform-pack-skills",
+            label = "Platform Packs",
+            kind = TreeItemKind.GROUP,
+            children = listOf(
+              SkillBillTreeItem(
+                id = "platform:kotlin",
+                label = "kotlin",
+                kind = TreeItemKind.PLATFORM_PACK,
+                children = listOf(
+                  SkillBillTreeItem(
+                    id = "skill:bill-kotlin-code-review",
+                    label = "bill-kotlin-code-review",
+                    kind = TreeItemKind.SKILL,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    val loaded = viewModel.selectRepoPath("/repo")
+
+    assertTrue("platform-pack-skills" in loaded.expandedNodeIds)
+    assertTrue("platform:kotlin" in loaded.expandedNodeIds)
+    assertEquals("platform-pack-skills", viewModel.moveSelection(1).selectedTreeItemId)
+    assertEquals("platform:kotlin", viewModel.moveSelection(1).selectedTreeItemId)
+    assertEquals("skill:bill-kotlin-code-review", viewModel.moveSelection(1).selectedTreeItemId)
+  }
+
+  @Test
   fun `keyboard movement skips children of collapsed groups`() {
     val viewModel = newViewModel(
       skillTreeService = MutableSkillTreeService(

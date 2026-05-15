@@ -1757,11 +1757,13 @@ class SkillBillViewModel(
 
   private fun buildScaffoldPayload(wizard: ScaffoldWizardState): ScaffoldPayload? {
     val fields = wizard.formFields
+    val repoRoot = currentSession?.repoPath?.takeIf { it.isNotBlank() } ?: return null
     return when (wizard.kind) {
       ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) {
         null
       } else {
         ScaffoldPayload.HorizontalSkill(
+          repoRoot = repoRoot,
           name = fields.name.trim(),
           description = fields.description.trim(),
           contentBody = fields.contentBody.takeIf { it.isNotBlank() },
@@ -1773,6 +1775,7 @@ class SkillBillViewModel(
         null
       } else {
         ScaffoldPayload.PlatformPack(
+          repoRoot = repoRoot,
           platform = fields.platform.trim(),
           displayName = fields.displayName.trim(),
           description = fields.description.trim(),
@@ -1795,6 +1798,7 @@ class SkillBillViewModel(
         null
       } else {
         ScaffoldPayload.PlatformOverride(
+          repoRoot = repoRoot,
           platform = fields.platform.trim(),
           family = fields.family.trim(),
           description = fields.description.trim(),
@@ -1809,6 +1813,7 @@ class SkillBillViewModel(
         null
       } else {
         ScaffoldPayload.CodeReviewArea(
+          repoRoot = repoRoot,
           platform = fields.platform.trim(),
           area = fields.area.trim(),
           description = fields.description.trim(),
@@ -1819,6 +1824,7 @@ class SkillBillViewModel(
         null
       } else {
         ScaffoldPayload.AddOn(
+          repoRoot = repoRoot,
           name = fields.name.trim(),
           platform = fields.platform.trim(),
           description = fields.description.trim(),
@@ -2073,14 +2079,20 @@ private fun reconcileExpandedNodeIds(
 ): Set<String> {
   val expandableIds = treeItems.flatten().filter { it.children.isNotEmpty() }.map(SkillBillTreeItem::id).toSet()
   return if (preserveExpansion) {
-    previousExpandedNodeIds.intersect(expandableIds) + topLevelExpandableIds(treeItems)
+    previousExpandedNodeIds.intersect(expandableIds) + defaultExpandedNodeIds(treeItems)
   } else {
-    topLevelExpandableIds(treeItems)
+    defaultExpandedNodeIds(treeItems)
   }
 }
 
-private fun topLevelExpandableIds(treeItems: List<SkillBillTreeItem>): Set<String> =
-  treeItems.filter { item -> item.children.isNotEmpty() }.map(SkillBillTreeItem::id).toSet()
+private fun defaultExpandedNodeIds(treeItems: List<SkillBillTreeItem>): Set<String> = treeItems
+  .flatten()
+  .filter { item ->
+    item.children.isNotEmpty() &&
+      (item.kind == TreeItemKind.GROUP || item.kind == TreeItemKind.PLATFORM_PACK)
+  }
+  .map(SkillBillTreeItem::id)
+  .toSet()
 
 private fun ValidationSummary.failedForCommit(): Boolean =
   state == ValidationRunState.FAILED || errorCount > 0 || runtimeExceptionName != null
