@@ -420,20 +420,21 @@ class SkillBillViewModel(
     treeItems = loadedTreeItems
     repoPathText = session.repoPath.ifBlank { request.repoPath }
     val sameRepo = session.isRecognizedSkillBillRepo && request.previousRepoPath == session.repoPath
+    val preserveSameRepoUi = request.preserveSelection && sameRepo
     selectedTreeItemId =
       request.previousSelection
-        ?.takeIf { request.preserveSelection && sameRepo }
+        ?.takeIf { preserveSameRepoUi }
         ?.takeIf(::containsTreeItem)
     resetEditorDocument()
     expandedNodeIds =
-      reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, request.preserveSelection && sameRepo)
+      reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, preserveSameRepoUi)
     busyOperation = null
     // Reset validation on every successful refresh: on-disk state may have changed since the last run,
     // so prior PASSED/FAILED results are no longer trustworthy. (F-103)
     validation = ValidationSummary.unavailable
     // F-103: render output mirrors on-disk state and must also reset on refresh / repo-switch.
     render = RenderSummary.unavailable
-    activeDockTab = DockTab.Validation
+    activeDockTab = if (preserveSameRepoUi) activeDockTab else DockTab.Validation
     // F-103: every per-snapshot git slice mirrors on-disk state and must reset on refresh / repo-switch.
     // Invalidate any in-flight git work so a late finish cannot reseed the stale slice on the new repo.
     activeGitOperationToken += 1
@@ -2521,20 +2522,11 @@ private fun reconcileExpandedNodeIds(
 ): Set<String> {
   val expandableIds = treeItems.flatten().filter { it.children.isNotEmpty() }.map(SkillBillTreeItem::id).toSet()
   return if (preserveExpansion) {
-    previousExpandedNodeIds.intersect(expandableIds) + defaultExpandedNodeIds(treeItems)
+    previousExpandedNodeIds.intersect(expandableIds)
   } else {
-    defaultExpandedNodeIds(treeItems)
+    emptySet()
   }
 }
-
-private fun defaultExpandedNodeIds(treeItems: List<SkillBillTreeItem>): Set<String> = treeItems
-  .flatten()
-  .filter { item ->
-    item.children.isNotEmpty() &&
-      (item.kind == TreeItemKind.GROUP || item.kind == TreeItemKind.PLATFORM_PACK)
-  }
-  .map(SkillBillTreeItem::id)
-  .toSet()
 
 private fun ValidationSummary.failedForCommit(): Boolean =
   state == ValidationRunState.FAILED || errorCount > 0 || runtimeExceptionName != null

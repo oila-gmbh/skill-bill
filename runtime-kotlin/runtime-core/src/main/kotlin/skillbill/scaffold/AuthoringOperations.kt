@@ -161,6 +161,15 @@ object AuthoringOperations {
     )
   }
 
+  fun saveExactContent(repoRoot: Path, skillName: String, content: String): Map<String, Any?> {
+    val resolvedRoot = repoRoot.toAbsolutePath().normalize()
+    val target = resolveTarget(resolvedRoot, skillName)
+    return mutateContent(resolvedRoot, target, content) + mapOf(
+      "updated_section" to null,
+      "validator_ran" to true,
+    )
+  }
+
   fun editWithBodyFile(repoRoot: Path, skillName: String, body: String, sectionName: String?): Map<String, Any?> {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val target = resolveTarget(resolvedRoot, skillName)

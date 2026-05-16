@@ -108,4 +108,3 @@ This is a lightweight file-level classification (names + imports), not a full re
 - Keep findings attributed to each layer before merging and deduplicating them into the final review.
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
-

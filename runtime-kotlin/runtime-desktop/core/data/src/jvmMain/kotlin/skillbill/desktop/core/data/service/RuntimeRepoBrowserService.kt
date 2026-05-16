@@ -64,7 +64,7 @@ class RuntimeRepoBrowserService :
   // without needing to physically corrupt the on-disk source.
   internal var renderer: (Path, String) -> AuthoringRenderResult = ::renderAuthoringTarget
   internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
-    AuthoringOperations.fill(root, skillName, body, sectionName = null)
+    AuthoringOperations.saveExactContent(root, skillName, body)
   }
   internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)

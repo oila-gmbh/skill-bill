@@ -40,11 +40,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -1284,6 +1286,20 @@ private fun NavigationPane(
                 onMoveSelection(-1)
                 true
               }
+              Key.DirectionRight -> toggleSelectedNavigationExpansion(
+                treeItems = treeItems,
+                selectedNodeId = selectedNodeId,
+                expandedNodeIds = expandedNodeIds,
+                expand = true,
+                onNodeExpandedToggled = onNodeExpandedToggled,
+              )
+              Key.DirectionLeft -> toggleSelectedNavigationExpansion(
+                treeItems = treeItems,
+                selectedNodeId = selectedNodeId,
+                expandedNodeIds = expandedNodeIds,
+                expand = false,
+                onNodeExpandedToggled = onNodeExpandedToggled,
+              )
               else -> false
             }
           }
@@ -1482,6 +1498,38 @@ private fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
         .background(WorkspaceLine),
     )
   }
+}
+
+internal fun toggleSelectedNavigationExpansion(
+  treeItems: List<SkillBillTreeItem>,
+  selectedNodeId: String?,
+  expandedNodeIds: Set<String>,
+  expand: Boolean,
+  onNodeExpandedToggled: (String) -> Unit,
+): Boolean {
+  val selectedNode = treeItems.findNavigationNode(selectedNodeId) ?: return false
+  if (selectedNode.children.isEmpty()) {
+    return false
+  }
+  val currentlyExpanded = selectedNode.id in expandedNodeIds
+  if (currentlyExpanded == expand) {
+    return false
+  }
+  onNodeExpandedToggled(selectedNode.id)
+  return true
+}
+
+private fun List<SkillBillTreeItem>.findNavigationNode(nodeId: String?): SkillBillTreeItem? {
+  if (nodeId == null) {
+    return null
+  }
+  for (item in this) {
+    if (item.id == nodeId) {
+      return item
+    }
+    item.children.findNavigationNode(nodeId)?.let { return it }
+  }
+  return null
 }
 
 @Composable
@@ -2191,6 +2239,7 @@ private fun CodeEditor(
   onDirtyPromptCancel: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  var dismissedSaveErrorDialogKey by remember { mutableStateOf<String?>(null) }
   Column(
     modifier =
     modifier
@@ -2207,6 +2256,15 @@ private fun CodeEditor(
     }
     editor.saveErrorMessage?.let { message ->
       SaveErrorBanner(message)
+      val dialogKey = "${editor.draftContent.hashCode()}:$message"
+      if (dismissedSaveErrorDialogKey != dialogKey) {
+        SaveErrorDialog(
+          message = message,
+          onDismiss = {
+            dismissedSaveErrorDialogKey = dialogKey
+          },
+        )
+      }
     }
     if (editor.editable) {
       Box(
@@ -2252,6 +2310,27 @@ private fun CodeEditor(
       }
     }
   }
+}
+
+@Composable
+private fun SaveErrorDialog(message: String, onDismiss: () -> Unit) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = {
+      Text(text = "Save blocked", color = WorkspaceText)
+    },
+    text = {
+      Text(text = message, color = WorkspaceMuted)
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        Text(text = "OK")
+      }
+    },
+    containerColor = WorkspaceRaised,
+    titleContentColor = WorkspaceText,
+    textContentColor = WorkspaceMuted,
+  )
 }
 
 @Composable
@@ -2986,10 +3065,16 @@ private fun CollapsedBottomDock(
 
 private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary, changes: ChangesSnapshot): String? =
   when (tab) {
-    DockTab.Validation -> validation.issues.size.takeIf { it > 0 }?.toString()
-    DockTab.Changes -> changes.files.size.takeIf { it > 0 }?.toString()
+    DockTab.Validation -> dockBadgeCountText(validation.issues.size)
+    DockTab.Changes -> dockBadgeCountText(changes.files.size)
     else -> dockTabMetadata(tab).badge
   }
+
+internal fun dockBadgeCountText(count: Int): String? = when {
+  count <= 0 -> null
+  count > 99 -> "99+"
+  else -> count.toString()
+}
 
 @Composable
 private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, enabled: Boolean, onSelected: () -> Unit) {
@@ -3027,8 +3112,8 @@ private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, enabled
 private data class DockTabMetadata(val label: String, val badge: String?, val tone: Tone, val width: Dp)
 
 private fun dockTabMetadata(tab: DockTab): DockTabMetadata = when (tab) {
-  DockTab.Validation -> DockTabMetadata("Validation", null, Tone.Error, 118.dp)
-  DockTab.Changes -> DockTabMetadata("Changes", null, Tone.Warning, 106.dp)
+  DockTab.Validation -> DockTabMetadata("Validation", null, Tone.Error, 128.dp)
+  DockTab.Changes -> DockTabMetadata("Changes", null, Tone.Warning, 124.dp)
   DockTab.History -> DockTabMetadata("History", null, Tone.Neutral, 102.dp)
   DockTab.Console -> DockTabMetadata("Install console", null, Tone.Neutral, 132.dp)
 }
@@ -3996,7 +4081,7 @@ private fun GovernedChangedFileRow(
   val tone = when (file.group) {
     ChangedFileGroup.STAGED -> Tone.Success
     ChangedFileGroup.UNSTAGED -> Tone.Warning
-    ChangedFileGroup.UNTRACKED -> Tone.Neutral
+    ChangedFileGroup.UNTRACKED -> Tone.Error
     ChangedFileGroup.GENERATED -> Tone.Warning
   }
   val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent
@@ -4073,16 +4158,17 @@ private fun GovernedChangedFileRow(
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    val detail = if (file.isGenerated) "generated/read-only" else file.group.name.lowercase()
-    Text(
-      text = detail,
-      color = if (file.isGenerated) Tone.Warning.color() else WorkspaceSteel,
-      fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-      modifier = Modifier.widthIn(max = 112.dp),
-    )
+    if (file.isGenerated) {
+      Text(
+        text = "generated/read-only",
+        color = Tone.Warning.color(),
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.widthIn(max = 112.dp),
+      )
+    }
     val showCopied = recentlyCopiedKey == file.path
     Text(
       text = if (showCopied) "copied" else "copy",
@@ -4139,7 +4225,7 @@ private fun ChangedFileRow(
   val tone = when (file.group) {
     ChangedFileGroup.STAGED -> Tone.Success
     ChangedFileGroup.UNSTAGED -> Tone.Warning
-    ChangedFileGroup.UNTRACKED -> Tone.Neutral
+    ChangedFileGroup.UNTRACKED -> Tone.Error
     ChangedFileGroup.GENERATED -> Tone.Warning
   }
   val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent

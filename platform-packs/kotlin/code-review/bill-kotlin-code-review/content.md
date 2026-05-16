@@ -90,4 +90,3 @@ This is a lightweight file-level classification (names + imports), not a full re
 - Read each specialist skill file as the primary rubric for that lane.
 - Keep findings attributed to each specialist before merging and deduplicating them into the final review.
 - When the selected set is larger than the host runtime can run concurrently, run specialists in deterministic waves and merge all wave outputs before the final review.
-

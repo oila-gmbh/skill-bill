@@ -26,6 +26,7 @@ import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
+import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
 import skillbill.desktop.feature.skillbill.state.PublishRunResult
@@ -44,6 +45,9 @@ fun SkillBillRoute(
   val coroutineScope = rememberCoroutineScope()
   val clipboardManager = LocalClipboardManager.current
   var state by remember(viewModel, selectedSourceId) { mutableStateOf(viewModel.state(selectedSourceId)) }
+  var repoFileChangePulse by remember(viewModel) { mutableStateOf(0) }
+  var pendingRepoFileChangeKind by remember(viewModel) { mutableStateOf<RepoFileChangeKind?>(null) }
+  var pendingRepoFileChangeRefresh by remember(viewModel) { mutableStateOf(false) }
   // F-X-512: transient "copied" feedback. We set this key when a copy callback fires, and a
   // LaunchedEffect keyed on this state clears it after a short delay so the UI flashes "copied".
   var recentlyCopiedKey by remember { mutableStateOf<String?>(null) }
@@ -301,6 +305,59 @@ fun SkillBillRoute(
           loadHistory()
         }
       }
+    }
+  }
+
+  LaunchedEffect(state.selectedRepoPath, state.repoStatus.state) {
+    val repoPath = state.selectedRepoPath ?: return@LaunchedEffect
+    if (state.repoStatus.state != RepoLoadState.LOADED) {
+      return@LaunchedEffect
+    }
+    observeRepoFileChanges(repoPath).collect { changeKind ->
+      pendingRepoFileChangeKind = mergeRepoFileChangeKind(pendingRepoFileChangeKind, changeKind)
+      repoFileChangePulse += 1
+    }
+  }
+
+  LaunchedEffect(repoFileChangePulse) {
+    if (repoFileChangePulse > 0) {
+      delay(REPO_CHANGE_REFRESH_DEBOUNCE_MILLIS)
+      pendingRepoFileChangeRefresh = true
+    }
+  }
+
+  LaunchedEffect(
+    pendingRepoFileChangeRefresh,
+    pendingRepoFileChangeKind,
+    state.selectedRepoPath,
+    state.repoStatus.state,
+    state.busyOperation,
+    state.changesBusy,
+    state.editor.saveInProgress,
+    state.publishBusy,
+    state.commitBusy,
+    state.commitValidationRunning,
+    state.pushBusy,
+  ) {
+    if (!pendingRepoFileChangeRefresh) {
+      return@LaunchedEffect
+    }
+    when (pendingRepoFileChangeKind) {
+      RepoFileChangeKind.GitStatus -> {
+        if (canAutoRefreshGitStatus(state)) {
+          pendingRepoFileChangeKind = null
+          pendingRepoFileChangeRefresh = false
+          runGitRefresh()
+        }
+      }
+      RepoFileChangeKind.RepoSnapshot -> {
+        if (canAutoRefreshRepoSnapshot(state)) {
+          pendingRepoFileChangeKind = null
+          pendingRepoFileChangeRefresh = false
+          runRefresh()
+        }
+      }
+      null -> pendingRepoFileChangeRefresh = false
     }
   }
 
@@ -715,6 +772,26 @@ fun SkillBillRoute(
 // F-X-512: duration in milliseconds the "copied" affordance stays visible before the route clears
 // the key. Kept conservative so the affordance is visible but not distracting.
 private const val COPY_FEEDBACK_DURATION_MILLIS: Long = 1500L
+private const val REPO_CHANGE_REFRESH_DEBOUNCE_MILLIS: Long = 500L
+
+internal fun canAutoRefreshGitStatus(state: SkillBillState): Boolean = state.selectedRepoPath != null &&
+  state.repoStatus.state == RepoLoadState.LOADED &&
+  state.busyOperation == null &&
+  !state.changesBusy &&
+  !state.publishBusy &&
+  !state.commitBusy &&
+  !state.commitValidationRunning &&
+  !state.pushBusy
+
+internal fun canAutoRefreshRepoSnapshot(state: SkillBillState): Boolean =
+  canAutoRefreshGitStatus(state) && !state.editor.saveInProgress
+
+internal fun mergeRepoFileChangeKind(current: RepoFileChangeKind?, next: RepoFileChangeKind): RepoFileChangeKind =
+  when {
+    current == RepoFileChangeKind.RepoSnapshot -> RepoFileChangeKind.RepoSnapshot
+    next == RepoFileChangeKind.RepoSnapshot -> RepoFileChangeKind.RepoSnapshot
+    else -> RepoFileChangeKind.GitStatus
+  }
 
 internal fun executeGeneratedArtifactSelection(
   artifactPath: String,
