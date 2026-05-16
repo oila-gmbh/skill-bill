@@ -446,6 +446,30 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `detect-agents CLI reports all supported detected agent flows`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-install-detect-all")
+    Files.createDirectories(tempDir.resolve(".copilot"))
+    Files.createDirectories(tempDir.resolve(".claude"))
+    Files.createDirectories(tempDir.resolve(".codex"))
+    Files.createDirectories(tempDir.resolve(".config/opencode"))
+    Files.createDirectories(tempDir.resolve(".junie"))
+
+    val result = CliRuntime.run(listOf("install", "detect-agents"), CliRuntimeContext(userHome = tempDir))
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(
+      """
+      copilot	${tempDir.resolve(".copilot/skills")}
+      claude	${tempDir.resolve(".claude/commands")}
+      codex	${tempDir.resolve(".codex/skills")}
+      opencode	${tempDir.resolve(".config/opencode/skills")}
+      junie	${tempDir.resolve(".junie/skills")}
+      """.trimIndent(),
+      result.stdout.trim(),
+    )
+  }
+
+  @Test
   fun `link-skill stages content managed skills when repo root is supplied`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install-staged")
     val context = CliRuntimeContext(userHome = tempDir.resolve("home"))

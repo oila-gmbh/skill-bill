@@ -23,6 +23,9 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.AfterTest
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 abstract class InstallApplyTestSupport {
   protected val tempDirs = mutableListOf<Path>()
@@ -58,6 +61,16 @@ abstract class InstallApplyTestSupport {
       }
   }
 
+  protected fun assertSourceUnchanged(root: Path, before: Map<String, String>) {
+    assertEquals(before, snapshotSource(root), "install flow mutated source files")
+  }
+
+  protected fun assertStagingUnderHomeCacheAndOutsideSource(fixture: ApplyFixture, stagingDir: Path?, label: String) {
+    val staged = assertNotNull(stagingDir, "$label did not expose a staging directory")
+    assertTrue(staged.startsWith(fixture.home.resolve(".skill-bill/installed-skills")), "$label staged outside cache")
+    assertFalse(staged.startsWith(fixture.repoRoot), "$label staged inside source")
+  }
+
   protected fun assertNativeProviders(actual: Set<NativeAgentProviderId>, expected: Set<NativeAgentProviderId>) {
     assertEquals(expected, actual.filter { provider -> provider in expected }.toSet())
   }
@@ -88,7 +101,7 @@ abstract class InstallApplyTestSupport {
     nativeAgentName?.let { seedNativeAgent(skillDir, it) }
   }
 
-  private fun seedPlatformPack(repoRoot: Path, slug: String, nativeAgentName: String? = null) {
+  protected fun seedPlatformPack(repoRoot: Path, slug: String, nativeAgentName: String? = null) {
     val packRoot = repoRoot.resolve("platform-packs/$slug")
     val codeReviewName = "bill-$slug-code-review"
     val qualityCheckName = "bill-$slug-quality-check"
@@ -148,6 +161,10 @@ abstract class InstallApplyTestSupport {
     |Test body.
     |
   """.trimMargin()
+
+  protected companion object {
+    val allInstallAgents: Set<InstallAgent> = InstallAgent.entries.toSet()
+  }
 }
 
 data class ApplyFixture(

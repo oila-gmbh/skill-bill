@@ -8,6 +8,7 @@ import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallSkillStagingStatus
 import skillbill.install.model.InstallTelemetryApplyStatus
 import skillbill.install.model.InstallTelemetryLevel
+import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.NativeAgentApplyStatus
@@ -41,11 +42,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallTelemetryLevel.ANONYMOUS, result.telemetryLevel)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
     assertTrue(result.mcpRegistrationIntent.register)
-    assertEquals(
-      setOf(InstallAgent.CODEX, InstallAgent.CLAUDE),
-      result.mcpRegistrationOutcomes.map { outcome -> outcome.agent }.toSet(),
-    )
-    assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SUCCESS })
+    assertSuccessfulMcpOutcomes(result.mcpRegistrationOutcomes, setOf(InstallAgent.CODEX, InstallAgent.CLAUDE))
     val skillsByName = result.skills.associateBy { skill -> skill.skillName }
     assertEquals(
       setOf(
@@ -61,13 +58,11 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"), "unselected platform skill was applied")
     result.skills.forEach { skill ->
       assertEquals(InstallSkillStagingStatus.STAGED, skill.staging.status)
-      val stagingDir = assertNotNull(skill.staging.stagingDir)
-      assertTrue(stagingDir.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
-      assertFalse(stagingDir.startsWith(fixture.repoRoot), "staging escaped into source for ${skill.skillName}")
+      assertStagingUnderHomeCacheAndOutsideSource(fixture, skill.staging.stagingDir, skill.skillName)
       assertEquals(setOf(InstallAgent.CODEX, InstallAgent.CLAUDE), skill.links.map { link -> link.agent }.toSet())
       assertTrue(skill.links.all { link -> link.status == InstallAgentLinkStatus.CREATED })
     }
-    assertEquals(sourceBefore, snapshotSource(fixture.repoRoot), "apply mutated source files")
+    assertSourceUnchanged(fixture.repoRoot, sourceBefore)
     assertNativeProviders(
       result.nativeAgents.map { native -> native.provider }.toSet(),
       setOf(NativeAgentProviderId.CLAUDE, NativeAgentProviderId.CODEX),
@@ -89,6 +84,19 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertFalse(result.nativeAgents.any { native -> native.provider == NativeAgentProviderId.JUNIE })
   }
 
+  private fun assertSuccessfulMcpOutcomes(
+    outcomes: List<McpRegistrationApplyOutcome>,
+    expectedAgents: Set<InstallAgent>,
+  ) {
+    assertEquals(expectedAgents, outcomes.map { outcome -> outcome.agent }.toSet())
+    assertTrue(outcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SUCCESS })
+    outcomes.forEach { outcome ->
+      assertNotNull(outcome.configPath, "successful MCP registration should report config path")
+      assertTrue(outcome.changed)
+      assertEquals("MCP registration updated.", outcome.message)
+    }
+  }
+
   @Test
   fun `apply configures full telemetry as a structured success outcome`() {
     val fixture = setupApplyFixture()
@@ -104,6 +112,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryLevel.FULL, result.telemetryOutcome.level)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
+    assertEquals(fixture.home.resolve(".skill-bill/config.json"), result.telemetryOutcome.configPath)
+    assertEquals("Telemetry level set to 'full'.", result.telemetryOutcome.message)
     assertTrue(Files.readString(fixture.home.resolve(".skill-bill/config.json")).contains("\"level\":\"full\""))
   }
 
@@ -130,6 +140,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
+    assertEquals(InstallTelemetryLevel.OFF, result.telemetryOutcome.level)
+    assertEquals("Telemetry level set to 'off'.", result.telemetryOutcome.message)
     assertFalse(Files.exists(configPath), "off should remove existing telemetry config")
   }
 
@@ -148,6 +160,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SKIPPED, result.telemetryOutcome.status)
+    assertEquals("Telemetry was already off.", result.telemetryOutcome.message)
     assertFalse(Files.exists(configPath), "off should not materialize telemetry config")
   }
 
@@ -157,6 +170,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val configPath = fixture.home.resolve(".skill-bill/config.json")
     Files.createDirectories(configPath.parent)
     Files.writeString(configPath, "{\n  \"telemetry\": \n")
+    val sourceBefore = snapshotSource(fixture.repoRoot)
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
@@ -168,12 +182,15 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(InstallTelemetryApplyStatus.FAILED, result.telemetryOutcome.status)
+    assertEquals(configPath, result.telemetryOutcome.configPath)
+    assertNotNull(result.telemetryOutcome.issue)
     assertTrue(
       result.warnings.any { warning ->
         warning.kind == InstallApplyIssueKind.TELEMETRY_APPLY_FAILED
       },
     )
     assertEquals("{\n  \"telemetry\": \n", Files.readString(configPath))
+    assertSourceUnchanged(fixture.repoRoot, sourceBefore)
   }
 
   @Test
@@ -191,6 +208,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(listOf(InstallAgent.CODEX), result.mcpRegistrationOutcomes.map { outcome -> outcome.agent })
     assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SKIPPED })
+    assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.configPath == null && !outcome.changed })
+    assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.message == "MCP registration not requested." })
     assertFalse(Files.exists(fixture.home.resolve(".codex/config.toml")))
   }
 
@@ -200,6 +219,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val configPath = fixture.home.resolve(".config/opencode/opencode.json")
     Files.createDirectories(configPath.parent)
     Files.writeString(configPath, "{\n  \"theme\": \"opencode\",\n  \"mcp\": \n")
+    val sourceBefore = snapshotSource(fixture.repoRoot)
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.OPENCODE),
@@ -210,6 +230,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(McpRegistrationApplyStatus.FAILED, result.mcpRegistrationOutcomes.single().status)
+    assertEquals("MCP registration failed.", result.mcpRegistrationOutcomes.single().message)
+    assertNotNull(result.mcpRegistrationOutcomes.single().issue)
     assertTrue(
       result.warnings.any { warning ->
         warning.kind == InstallApplyIssueKind.MCP_REGISTRATION_FAILED &&
@@ -217,6 +239,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       },
     )
     assertEquals("{\n  \"theme\": \"opencode\",\n  \"mcp\": \n", Files.readString(configPath))
+    assertSourceUnchanged(fixture.repoRoot, sourceBefore)
   }
 
   @Test
@@ -266,10 +289,34 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.FAILURE, result.status)
     assertEquals(WindowsSymlinkFallbackState.USER_ACTION_REQUIRED, result.windowsSymlinkOutcome.fallbackState)
+    assertEquals(WindowsSymlinkPreflightState.DECISION_REQUIRED, result.windowsSymlinkOutcome.preflight.state)
+    assertEquals(WindowsSymlinkDecision.REQUIRE_USER_ACTION, result.windowsSymlinkOutcome.preflight.decision)
     assertContains(result.windowsSymlinkOutcome.guidance, "Developer Mode")
     assertContains(result.windowsSymlinkOutcome.guidance, "elevated shell")
+    val failure = result.failures.single { failure ->
+      failure.kind == InstallApplyIssueKind.WINDOWS_SYMLINK_PRECHECK_FAILED
+    }
+    assertContains(failure.guidance.orEmpty(), "Developer Mode")
+    assertContains(failure.guidance.orEmpty(), "elevated shell")
     assertTrue(result.skills.isEmpty(), "preflight failure should stop before staging/linking")
+    assertEquals(InstallTelemetryApplyStatus.SKIPPED, result.telemetryOutcome.status)
+    assertEquals("Skipped because install preflight failed.", result.telemetryOutcome.message)
+    assertEquals(
+      setOf(InstallAgent.CODEX, InstallAgent.CLAUDE),
+      result.mcpRegistrationOutcomes.map { outcome -> outcome.agent }.toSet(),
+    )
+    assertTrue(
+      result.mcpRegistrationOutcomes.all { outcome ->
+        outcome.status == McpRegistrationApplyStatus.SKIPPED &&
+          outcome.configPath == null &&
+          !outcome.changed &&
+          outcome.message == "Skipped because install preflight failed."
+      },
+    )
     assertEquals(sourceBefore, snapshotSource(fixture.repoRoot))
+    assertFalse(Files.exists(fixture.home.resolve(".skill-bill/config.json"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(fixture.home.resolve(".codex/config.toml"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(fixture.home.resolve(".claude.json"), LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(fixture.home.resolve(".skill-bill/installed-skills"), LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(fixture.home.resolve("agent-skill-targets"), LinkOption.NOFOLLOW_LINKS))
   }
@@ -445,6 +492,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       fixture.repoRoot.resolve("skills/bill-code-review/content.md"),
       content("bill-code-review").replace("Test body.", "Changed after planning."),
     )
+    val sourceBeforeApply = snapshotSource(fixture.repoRoot)
 
     val result = InstallOperations.applyInstall(plan)
 
@@ -465,6 +513,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       Files.exists(fixture.home.resolve(".codex/agents/bill-code-review-worker.toml"), LinkOption.NOFOLLOW_LINKS),
       "stale plan should not install native-agent links",
     )
+    assertSourceUnchanged(fixture.repoRoot, sourceBeforeApply)
   }
 
   @Test
@@ -583,6 +632,12 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(WindowsSymlinkFallbackState.PROCEEDING, result.windowsSymlinkOutcome.fallbackState)
+    assertEquals(
+      WindowsSymlinkPreflightState.REQUIRES_ELEVATION_OR_DEVELOPER_MODE,
+      result.windowsSymlinkOutcome.preflight.state,
+    )
+    assertEquals(WindowsSymlinkDecision.PROCEED_WITH_SYMLINKS, result.windowsSymlinkOutcome.preflight.decision)
+    assertContains(result.windowsSymlinkOutcome.guidance, "elevated shell")
     assertTrue(result.skills.any { skill -> skill.staging.status == InstallSkillStagingStatus.STAGED })
     assertTrue(
       result.skills

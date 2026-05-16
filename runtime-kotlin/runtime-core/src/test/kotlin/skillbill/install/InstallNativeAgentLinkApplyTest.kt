@@ -3,10 +3,15 @@ package skillbill.install
 import org.junit.jupiter.api.Assumptions
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallAgentLinkStatus
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.McpRegistrationApplyStatus
+import skillbill.install.model.NativeAgentApplyStatus
+import skillbill.install.model.NativeAgentProviderId
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.nativeagent.NativeAgentProvider
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,6 +20,58 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
+  @Test
+  fun `selected all-agent apply distinguishes Copilot skill and MCP handling from native providers`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".claude"))
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".config/opencode"))
+    Files.createDirectories(fixture.home.resolve(".junie"))
+    val sourceBefore = snapshotSource(fixture.repoRoot)
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = allInstallAgents,
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallAgent.entries.sortedBy(InstallAgent::id), result.mcpRegistrationIntent.agents)
+    assertEquals(InstallAgent.entries.toSet(), result.mcpRegistrationOutcomes.map { outcome -> outcome.agent }.toSet())
+    assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SUCCESS })
+    result.skills.forEach { skill ->
+      assertEquals(
+        InstallAgent.entries.toSet(),
+        skill.links.map { link -> link.agent }.toSet(),
+        "${skill.skillName} did not link to every selected skill target",
+      )
+      assertTrue(skill.links.all { link -> link.status == InstallAgentLinkStatus.CREATED })
+      assertTrue(
+        Files.isSymbolicLink(
+          fixture.home.resolve("agent-skill-targets/copilot/${skill.skillName}"),
+        ),
+        "Copilot should receive the skill link surface",
+      )
+    }
+    assertEquals(
+      setOf(
+        NativeAgentProviderId.CLAUDE,
+        NativeAgentProviderId.CODEX,
+        NativeAgentProviderId.OPENCODE,
+        NativeAgentProviderId.JUNIE,
+      ),
+      result.nativeAgents
+        .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
+        .map { native -> native.provider }
+        .toSet(),
+    )
+    assertFalse(result.nativeAgents.any { native -> native.agent == InstallAgent.COPILOT })
+    assertFalse(Files.exists(fixture.home.resolve(".copilot/agents"), LinkOption.NOFOLLOW_LINKS))
+    assertSourceUnchanged(fixture.repoRoot, sourceBefore)
+  }
+
   @Test
   fun `new symlink creation preserves destination that appears before move`() {
     val targetDir = Files.createTempDirectory("skillbill-new-link-target").also(tempDirs::add)
