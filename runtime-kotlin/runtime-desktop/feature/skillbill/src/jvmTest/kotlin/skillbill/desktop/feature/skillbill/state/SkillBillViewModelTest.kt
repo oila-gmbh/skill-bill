@@ -233,6 +233,19 @@ class SkillBillViewModelTest {
   }
 
   @Test
+  fun `same repo refresh preserves active dock tab`() {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+    viewModel.setActiveDockTab(DockTab.Changes)
+
+    viewModel.beginRefresh()
+    val request = viewModel.repoLoadRequest(repoPath = "/repo", preserveSelection = true)
+    val refreshed = viewModel.finishRepoLoad(viewModel.loadRepo(request))
+
+    assertEquals(DockTab.Changes, refreshed.activeDockTab)
+  }
+
+  @Test
   fun `dirty repo switch prompts before opening target repo`() {
     val repoSessionService = CountingRepoSessionService()
     val authoringGateway = FakeAuthoringGateway().apply {
@@ -565,6 +578,7 @@ class SkillBillViewModelTest {
     val repoSessionService = CountingRepoSessionService()
     val viewModel = newViewModel(repoSessionService = repoSessionService)
     val loaded = viewModel.selectRepoPath("/repo")
+    viewModel.toggleExpanded(loaded.treeItems.single().id)
     viewModel.selectTreeItem("skill-one")
 
     val collapsed = viewModel.toggleExpanded(loaded.treeItems.single().id)
@@ -594,14 +608,12 @@ class SkillBillViewModelTest {
     viewModel.selectRepoPath("/repo")
 
     val first = viewModel.moveSelection(1)
-    val second = viewModel.moveSelection(1)
 
     assertEquals("skills", first.selectedTreeItemId)
-    assertEquals("skill-one", second.selectedTreeItemId)
   }
 
   @Test
-  fun `platform pack nodes are expanded by default so nested skills are visible`() {
+  fun `tree nodes are collapsed by default and reveal children after user expansion`() {
     val viewModel = newViewModel(
       skillTreeService = MutableSkillTreeService(
         listOf(
@@ -629,10 +641,12 @@ class SkillBillViewModelTest {
     )
     val loaded = viewModel.selectRepoPath("/repo")
 
-    assertTrue("platform-pack-skills" in loaded.expandedNodeIds)
-    assertTrue("platform:kotlin" in loaded.expandedNodeIds)
+    assertFalse("platform-pack-skills" in loaded.expandedNodeIds)
+    assertFalse("platform:kotlin" in loaded.expandedNodeIds)
     assertEquals("platform-pack-skills", viewModel.moveSelection(1).selectedTreeItemId)
+    viewModel.toggleExpanded("platform-pack-skills")
     assertEquals("platform:kotlin", viewModel.moveSelection(1).selectedTreeItemId)
+    viewModel.toggleExpanded("platform:kotlin")
     assertEquals("skill:bill-kotlin-code-review", viewModel.moveSelection(1).selectedTreeItemId)
   }
 
@@ -668,7 +682,7 @@ class SkillBillViewModelTest {
     val visited = mutableListOf<String?>()
     repeat(5) { visited += viewModel.moveSelection(1).selectedTreeItemId }
 
-    assertEquals(listOf<String?>("group-a", "a-one", "a-two", "group-b", "group-b"), visited)
+    assertEquals(listOf<String?>("group-a", "group-b", "b-one", "b-two", "b-two"), visited)
   }
 
   @Test
