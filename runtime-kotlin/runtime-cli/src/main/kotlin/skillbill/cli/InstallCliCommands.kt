@@ -10,6 +10,7 @@ import skillbill.install.InstallCleanupOperations
 import skillbill.install.InstallNativeAgentOperations
 import skillbill.install.InstallOperations
 import skillbill.install.NativeAgentLinkOutcome
+import skillbill.install.NativeAgentLinkRequest
 import skillbill.launcher.McpRegistrationOperations
 import java.nio.file.Path
 
@@ -103,10 +104,12 @@ class InstallLinkClaudeAgentsCommand(
     completeNativeAgentLinkOutcome(
       state,
       InstallNativeAgentOperations.linkClaudeAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       ),
     )
   }
@@ -144,10 +147,12 @@ class InstallLinkCodexAgentsCommand(
     completeNativeAgentLinkOutcome(
       state,
       InstallNativeAgentOperations.linkCodexAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       ),
     )
   }
@@ -188,10 +193,12 @@ class InstallLinkOpencodeAgentsCommand(
     completeNativeAgentLinkOutcome(
       state,
       InstallNativeAgentOperations.linkOpencodeAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       ),
     )
   }
@@ -229,10 +236,12 @@ class InstallLinkJunieAgentsCommand(
     completeNativeAgentLinkOutcome(
       state,
       InstallNativeAgentOperations.linkJunieAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       ),
     )
   }

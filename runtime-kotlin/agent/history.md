@@ -1,3 +1,12 @@
+## [2026-05-16] apply-staging-agent-links
+Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-core install, runtime-kotlin/runtime-core nativeagent, runtime-kotlin/runtime-cli install
+- Added typed `InstallOperations.applyInstall` and structured apply outcomes for staging, skill links, native-agent links, Windows symlink states, telemetry/MCP intent carry-through.
+- Apply validates planned staging hash/dir before linking and fails stale plans instead of installing changed source; native-agent apply renders only selected planned skill roots. reusable
+- Native-agent apply reuses render/link operations with request/override objects, materializes apply-time provider artifacts under `~/.skill-bill/installed-skills`, and preserves legacy generated-cache links only for replacement. reusable
+- Symlink replacement uses temp-link then non-overwriting move, preserves user-owned files/symlinks, and reports structured failures with Developer Mode/elevated shell guidance.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-05-16] shared-install-plan-contract-builder
 Areas: runtime-core install plan/build, runtime-domain install model, runtime-core contract/tests
 - SKILL-45 subtask 1 added a pure typed install-plan API (`InstallPlanRequest` -> `InstallPlan`) plus `InstallOperations.planInstall`; it models agent/platform/telemetry/MCP/runtime/target/staging/Windows-preflight intent without applying symlinks, rendering staging output, or registering MCP. reusable

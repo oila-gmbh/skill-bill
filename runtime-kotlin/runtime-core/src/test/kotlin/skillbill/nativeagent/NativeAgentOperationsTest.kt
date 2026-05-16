@@ -116,21 +116,27 @@ class NativeAgentOperationsTest {
     )
 
     val first = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = platformPacks,
-      skillsRoot = skills,
-      selectedPlatforms = null,
-      provider = NativeAgentProvider.Claude,
-      home = home,
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = platformPacks,
+        skillsRoot = skills,
+        selectedPlatforms = null,
+        provider = NativeAgentProvider.Claude,
+        home = home,
+      ),
     )
     val providerRoot = first.cacheRoot.resolve(NativeAgentProvider.Claude.directoryName)
+    assertEquals(NativeAgentOperations.installCacheRoot(home, platformPacks, skills), first.cacheRoot)
+    assertTrue(providerRoot.startsWith(home.resolve(".skill-bill/native-agents")))
     Files.writeString(providerRoot.resolve("orphan.md"), "# stale\n")
 
     val second = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = platformPacks,
-      skillsRoot = skills,
-      selectedPlatforms = null,
-      provider = NativeAgentProvider.Claude,
-      home = home,
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = platformPacks,
+        skillsRoot = skills,
+        selectedPlatforms = null,
+        provider = NativeAgentProvider.Claude,
+        home = home,
+      ),
     )
 
     assertEquals(listOf(providerRoot.resolve("bill-basic-worker.md")), second.generatedFiles)

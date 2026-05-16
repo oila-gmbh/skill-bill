@@ -194,3 +194,118 @@ data class RenderedSkill(
   val copiedAuthoredFiles: List<Path>,
   val contentHash: String,
 )
+
+enum class InstallApplyStatus {
+  SUCCESS,
+  WARNING,
+  FAILURE,
+}
+
+enum class InstallApplyIssueKind {
+  STAGING_FAILED,
+  SKILL_LINK_FAILED,
+  NATIVE_AGENT_LINK_FAILED,
+  WINDOWS_SYMLINK_PRECHECK_FAILED,
+  WINDOWS_SYMLINK_WARNING,
+}
+
+data class InstallApplyIssue(
+  val kind: InstallApplyIssueKind,
+  val message: String,
+  val skillName: String? = null,
+  val agent: InstallAgent? = null,
+  val path: Path? = null,
+  val guidance: String? = null,
+  val causeClass: String? = null,
+)
+
+enum class InstallSkillStagingStatus {
+  STAGED,
+  FAILED,
+}
+
+data class InstallSkillStagingOutcome(
+  val status: InstallSkillStagingStatus,
+  val sourceDir: Path,
+  val stagingDir: Path? = null,
+  val renderedSkillFile: Path? = null,
+  val renderedPointerFiles: List<Path> = emptyList(),
+  val copiedAuthoredFiles: List<Path> = emptyList(),
+  val contentHash: String? = null,
+  val issue: InstallApplyIssue? = null,
+)
+
+enum class InstallAgentLinkStatus {
+  CREATED,
+  SKIPPED,
+  WARNING,
+  FAILED,
+}
+
+enum class WindowsSymlinkFallbackState {
+  NOT_REQUIRED,
+  PROCEEDING,
+  USER_ACTION_REQUIRED,
+  LINK_FAILED,
+}
+
+data class WindowsSymlinkApplyOutcome(
+  val preflight: WindowsSymlinkPreflight,
+  val fallbackState: WindowsSymlinkFallbackState,
+  val guidance: String = "",
+)
+
+data class InstallAgentSkillLinkOutcome(
+  val agent: InstallAgent,
+  val targetDir: Path,
+  val linkPath: Path,
+  val linkTarget: Path,
+  val status: InstallAgentLinkStatus,
+  val message: String = "",
+  val issue: InstallApplyIssue? = null,
+)
+
+data class InstallAppliedSkill(
+  val skillName: String,
+  val kind: InstallPlanSkillKind,
+  val platformSlug: String? = null,
+  val sourceDir: Path,
+  val staging: InstallSkillStagingOutcome,
+  val links: List<InstallAgentSkillLinkOutcome> = emptyList(),
+)
+
+enum class NativeAgentProviderId(
+  val id: String,
+) {
+  CLAUDE("claude"),
+  CODEX("codex"),
+  OPENCODE("opencode"),
+  JUNIE("junie"),
+}
+
+enum class NativeAgentApplyStatus {
+  LINKED,
+  SKIPPED,
+  WARNING,
+  FAILED,
+}
+
+data class NativeAgentApplyOutcome(
+  val provider: NativeAgentProviderId,
+  val agent: InstallAgent,
+  val status: NativeAgentApplyStatus,
+  val path: Path? = null,
+  val message: String = "",
+  val issue: InstallApplyIssue? = null,
+)
+
+data class InstallApplyResult(
+  val status: InstallApplyStatus,
+  val skills: List<InstallAppliedSkill>,
+  val nativeAgents: List<NativeAgentApplyOutcome>,
+  val warnings: List<InstallApplyIssue>,
+  val failures: List<InstallApplyIssue>,
+  val windowsSymlinkOutcome: WindowsSymlinkApplyOutcome,
+  val telemetryLevel: InstallTelemetryLevel,
+  val mcpRegistrationIntent: McpRegistrationIntent,
+)

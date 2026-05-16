@@ -25,6 +25,9 @@ fun discoverNativeAgentSourceEntries(
   selectedPlatforms = selectedPlatforms,
 ).flatMap(::parseNativeAgentSourceFile)
 
+internal fun discoverNativeAgentSourceEntriesInRoots(roots: List<Path>): List<NativeAgentSource> =
+  discoverNativeAgentSourceFilesInRoots(roots).flatMap(::parseNativeAgentSourceFile)
+
 fun discoverNativeAgentSourceFiles(
   platformPacksRoot: Path,
   skillsRoot: Path? = null,
@@ -43,8 +46,26 @@ fun discoverNativeAgentFilesByDir(
   directoryName: String,
   extension: String? = null,
 ): List<Path> {
+  return discoverNativeAgentFilesByDirInRoots(
+    roots = nativeAgentSourceDiscoveryRoots(platformPacksRoot, skillsRoot, selectedPlatforms),
+    directoryName = directoryName,
+    extension = extension,
+  )
+}
+
+internal fun discoverNativeAgentSourceFilesInRoots(roots: List<Path>): List<Path> =
+  discoverNativeAgentFilesByDirInRoots(
+    roots = roots,
+    directoryName = NATIVE_AGENT_SOURCE_DIR,
+  )
+
+private fun discoverNativeAgentFilesByDirInRoots(
+  roots: List<Path>,
+  directoryName: String,
+  extension: String? = null,
+): List<Path> {
   val discovered = linkedSetOf<Path>()
-  nativeAgentSourceDiscoveryRoots(platformPacksRoot, skillsRoot, selectedPlatforms).forEach { root ->
+  roots.map { root -> root.toAbsolutePath().normalize() }.forEach { root ->
     if (Files.isDirectory(root)) {
       val allowedRoot = root.toRealPath()
       Files.walk(root).use { stream ->

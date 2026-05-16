@@ -1,8 +1,11 @@
 package skillbill.install
 
 import skillbill.install.model.AgentTarget
+import skillbill.nativeagent.NativeAgentInstallRenderOverrides
+import skillbill.nativeagent.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.nativeagent.NativeAgentProvider
+import skillbill.nativeagent.nativeAgentCompositionRepoRoot
 import skillbill.nativeagent.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
 import java.nio.file.Path
@@ -14,22 +17,24 @@ data class NativeAgentLinkOutcome(
 
 data class NativeAgentSkippedLink(val path: Path, val reason: String)
 
-private data class NativeAgentInstallScope(
+data class NativeAgentLinkOverrides(
+  val installCacheRoot: Path? = null,
+  val sourceRoots: List<Path>? = null,
+  val legacyManagedRoot: Path? = null,
+)
+
+data class NativeAgentLinkRequest(
   val platformPacksRoot: Path,
-  val skillsRoot: Path?,
-  val home: Path?,
-  val selectedPlatforms: List<String>?,
+  val skillsRoot: Path? = null,
+  val home: Path? = null,
+  val selectedPlatforms: List<String>? = null,
+  val overrides: NativeAgentLinkOverrides = NativeAgentLinkOverrides(),
 )
 
 object InstallNativeAgentOperations {
-  fun linkClaudeAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): NativeAgentLinkOutcome = linkProviderAgents(
+  fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Claude,
-    scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = request,
     detectTarget = { resolvedHome ->
       val targetPath = NativeAgentProvider.Claude.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".claude"))) {
@@ -47,17 +52,12 @@ object InstallNativeAgentOperations {
     selectedPlatforms: List<String>? = null,
   ): List<Path> = unlinkProviderAgents(
     provider = NativeAgentProvider.Claude,
-    scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, home, selectedPlatforms),
   )
 
-  fun linkCodexAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): NativeAgentLinkOutcome = linkProviderAgents(
+  fun linkCodexAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Codex,
-    scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = request,
     detectTarget = { detectCodexAgentsTarget(it) },
   )
 
@@ -68,19 +68,14 @@ object InstallNativeAgentOperations {
     selectedPlatforms: List<String>? = null,
   ): List<Path> {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
-    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Codex, scope = scope)
+    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Codex, request = request)
     return uninstallCodexAgentTomls(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) + unlinkedFromCache
   }
 
-  fun linkOpencodeAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): NativeAgentLinkOutcome = linkProviderAgents(
+  fun linkOpencodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Opencode,
-    scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = request,
     detectTarget = { detectOpencodeAgentsTarget(it) },
   )
 
@@ -91,20 +86,15 @@ object InstallNativeAgentOperations {
     selectedPlatforms: List<String>? = null,
   ): List<Path> {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
-    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Opencode, scope = scope)
+    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Opencode, request = request)
     return uninstallOpencodeAgentMarkdown(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) +
       unlinkedFromCache
   }
 
-  fun linkJunieAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): NativeAgentLinkOutcome = linkProviderAgents(
+  fun linkJunieAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Junie,
-    scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = request,
     detectTarget = { resolvedHome ->
       val targetPath = NativeAgentProvider.Junie.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".junie"))) {
@@ -122,32 +112,41 @@ object InstallNativeAgentOperations {
     selectedPlatforms: List<String>? = null,
   ): List<Path> {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val scope = NativeAgentInstallScope(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
-    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Junie, scope = scope)
+    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Junie, request = request)
     return uninstallJunieAgentMarkdown(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) +
       unlinkedFromCache
   }
 
   private fun linkProviderAgents(
     provider: NativeAgentProvider,
-    scope: NativeAgentInstallScope,
+    request: NativeAgentLinkRequest,
     detectTarget: (Path) -> AgentTarget?,
   ): NativeAgentLinkOutcome {
-    validateNativeAgentArtifactsForInstall(scope.platformPacksRoot, scope.skillsRoot, scope.selectedPlatforms)
-    val resolvedHome = scope.home ?: Path.of(System.getProperty("user.home"))
+    val validationRoot = nativeAgentCompositionRepoRoot(request.platformPacksRoot, request.skillsRoot)
+    request.overrides.sourceRoots
+      ?.let { roots -> validateNativeAgentArtifactsForInstall(roots, validationRoot) }
+      ?: validateNativeAgentArtifactsForInstall(
+        request.platformPacksRoot,
+        request.skillsRoot,
+        request.selectedPlatforms,
+      )
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val target = detectTarget(resolvedHome) ?: return NativeAgentLinkOutcome(emptyList(), emptyList())
     val generated = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = scope.platformPacksRoot,
-      skillsRoot = scope.skillsRoot,
-      selectedPlatforms = scope.selectedPlatforms,
-      provider = provider,
-      home = resolvedHome,
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = request.platformPacksRoot,
+        skillsRoot = request.skillsRoot,
+        selectedPlatforms = request.selectedPlatforms,
+        provider = provider,
+        home = resolvedHome,
+        overrides = NativeAgentInstallRenderOverrides(
+          cacheRoot = request.overrides.installCacheRoot,
+          sourceRoots = request.overrides.sourceRoots,
+        ),
+      ),
     )
-    val managedRoots = nativeAgentDiscoveryRoots(
-      scope.platformPacksRoot,
-      scope.skillsRoot,
-      scope.selectedPlatforms,
-    ) + generated.cacheRoot
+    val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
     val linked = mutableListOf<Path>()
     val skipped = mutableListOf<NativeAgentSkippedLink>()
     generated.generatedFiles.forEach { file ->
@@ -159,14 +158,16 @@ object InstallNativeAgentOperations {
     return NativeAgentLinkOutcome(linked, skipped)
   }
 
-  private fun unlinkProviderAgents(provider: NativeAgentProvider, scope: NativeAgentInstallScope): List<Path> {
-    val resolvedHome = scope.home ?: Path.of(System.getProperty("user.home"))
+  private fun unlinkProviderAgents(provider: NativeAgentProvider, request: NativeAgentLinkRequest): List<Path> {
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val generated = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = scope.platformPacksRoot,
-      skillsRoot = scope.skillsRoot,
-      selectedPlatforms = scope.selectedPlatforms,
-      provider = provider,
-      home = resolvedHome,
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = request.platformPacksRoot,
+        skillsRoot = request.skillsRoot,
+        selectedPlatforms = request.selectedPlatforms,
+        provider = provider,
+        home = resolvedHome,
+      ),
     )
     return uninstallNativeAgentFiles(generated.generatedFiles, provider.homeAgentDirs(resolvedHome))
   }

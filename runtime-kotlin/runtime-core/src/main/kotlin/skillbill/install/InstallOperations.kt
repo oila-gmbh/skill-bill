@@ -1,6 +1,7 @@
 package skillbill.install
 
 import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import java.nio.file.Files
@@ -9,6 +10,8 @@ import java.nio.file.Path
 /** Public CLI-facing install operations backed by the internal install primitives. */
 object InstallOperations {
   fun planInstall(request: InstallPlanRequest): InstallPlan = buildInstallPlan(request)
+
+  fun applyInstall(plan: InstallPlan): InstallApplyResult = applyInstallPlan(plan)
 
   fun agentPath(agent: String, home: Path? = null): Path {
     require(agent in SUPPORTED_AGENTS) {

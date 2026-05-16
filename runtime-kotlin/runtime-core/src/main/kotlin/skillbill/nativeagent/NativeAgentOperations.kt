@@ -20,6 +20,20 @@ data class NativeAgentInstallRenderResult(
   val cacheRoot: Path,
 )
 
+data class NativeAgentInstallRenderOverrides(
+  val cacheRoot: Path? = null,
+  val sourceRoots: List<Path>? = null,
+)
+
+data class NativeAgentInstallRenderRequest(
+  val platformPacksRoot: Path,
+  val skillsRoot: Path?,
+  val selectedPlatforms: List<String>?,
+  val provider: NativeAgentProvider,
+  val home: Path,
+  val overrides: NativeAgentInstallRenderOverrides = NativeAgentInstallRenderOverrides(),
+)
+
 object NativeAgentOperations {
   fun regenerate(
     repoRoot: Path,
@@ -76,18 +90,23 @@ object NativeAgentOperations {
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
-  fun renderInstallArtifacts(
-    platformPacksRoot: Path,
-    skillsRoot: Path?,
-    selectedPlatforms: List<String>?,
-    provider: NativeAgentProvider,
-    home: Path,
-  ): NativeAgentInstallRenderResult {
-    validateNativeAgentArtifactsForInstall(platformPacksRoot, skillsRoot, selectedPlatforms)
-    val cacheRoot = installCacheRoot(home, platformPacksRoot, skillsRoot)
-    val providerRoot = cacheRoot.resolve(provider.directoryName)
-    val sources = discoverNativeAgentSourceEntries(platformPacksRoot, skillsRoot, selectedPlatforms)
+  fun renderInstallArtifacts(request: NativeAgentInstallRenderRequest): NativeAgentInstallRenderResult {
+    val platformPacksRoot = request.platformPacksRoot
+    val skillsRoot = request.skillsRoot
+    val selectedPlatforms = request.selectedPlatforms
+    val provider = request.provider
     val repoRoot = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
+    if (request.overrides.sourceRoots == null) {
+      validateNativeAgentArtifactsForInstall(platformPacksRoot, skillsRoot, selectedPlatforms)
+    } else {
+      validateNativeAgentArtifactsForInstall(request.overrides.sourceRoots, repoRoot)
+    }
+    val cacheRoot = request.overrides.cacheRoot?.toAbsolutePath()?.normalize()
+      ?: installCacheRoot(request.home, platformPacksRoot, skillsRoot)
+    val providerRoot = cacheRoot.resolve(provider.directoryName)
+    val sources = request.overrides.sourceRoots
+      ?.let(::discoverNativeAgentSourceEntriesInRoots)
+      ?: discoverNativeAgentSourceEntries(platformPacksRoot, skillsRoot, selectedPlatforms)
     val rendered = sources.map { source ->
       val composed = composeNativeAgentSource(repoRoot, source)
       RenderedAgent(

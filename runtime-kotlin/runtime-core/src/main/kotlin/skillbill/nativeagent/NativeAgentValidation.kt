@@ -27,10 +27,21 @@ internal fun validateNativeAgentArtifactsForInstall(
   selectedPlatforms: List<String>?,
 ) {
   val sourceFiles = discoverNativeAgentSourceFiles(platformPacksRoot, skillsRoot, selectedPlatforms)
+  validateNativeAgentSourceFilesForInstall(
+    sourceFiles = sourceFiles,
+    root = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot),
+  )
+}
+
+internal fun validateNativeAgentArtifactsForInstall(sourceRoots: List<Path>, root: Path) {
+  val sourceFiles = discoverNativeAgentSourceFilesInRoots(sourceRoots)
+  validateNativeAgentSourceFilesForInstall(sourceFiles, root)
+}
+
+private fun validateNativeAgentSourceFilesForInstall(sourceFiles: List<Path>, root: Path) {
   if (sourceFiles.isEmpty()) {
     return
   }
-  val root = commonValidationRoot(platformPacksRoot, skillsRoot)
   val issues = mutableListOf<String>()
   val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
   validateNativeAgentSources(root, sources, issues)
@@ -131,8 +142,4 @@ fun discoverNativeAgentGeneratedArtifactFiles(repoRoot: Path): List<Path> {
           .toList()
       }
     }.sortedBy { it.toString() }
-}
-
-private fun commonValidationRoot(platformPacksRoot: Path, skillsRoot: Path?): Path {
-  return nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
 }

@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.nativeagent.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.nativeagent.NativeAgentProvider
 import java.nio.file.Files
@@ -626,11 +627,13 @@ private fun assertSourceBundle(path: Path, vararg names: String) {
 
 private fun assertDistinctProviderAgents(repo: Path) {
   val generatedAgents = NativeAgentOperations.renderInstallArtifacts(
-    platformPacksRoot = repo.resolve("platform-packs"),
-    skillsRoot = repo.resolve("skills"),
-    selectedPlatforms = listOf("php"),
-    provider = NativeAgentProvider.Codex,
-    home = Path.of(System.getProperty("user.home")),
+    NativeAgentInstallRenderRequest(
+      platformPacksRoot = repo.resolve("platform-packs"),
+      skillsRoot = repo.resolve("skills"),
+      selectedPlatforms = listOf("php"),
+      provider = NativeAgentProvider.Codex,
+      home = Path.of(System.getProperty("user.home")),
+    ),
   )
   val generatedArchitecture = Files.readString(
     generatedAgents.cacheRoot.resolve("codex-agents/bill-php-code-review-architecture.toml"),
