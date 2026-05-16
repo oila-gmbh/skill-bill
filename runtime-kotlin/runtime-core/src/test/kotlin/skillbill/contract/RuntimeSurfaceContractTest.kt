@@ -36,6 +36,7 @@ class RuntimeSurfaceContractTest {
       ownerPackage = "skillbill.install",
       supportedOperations =
       listOf(
+        "plan-install",
         "agent-path",
         "detect-agents",
         "codex-agents-path",

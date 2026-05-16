@@ -13,6 +13,7 @@ object InstallRuntime {
     summary = "Agent-path detection, skill symlink installation, and install rollback primitives.",
     placeholderReason = "",
     supportedOperations = listOf(
+      "plan-install",
       "agent-path",
       "detect-agents",
       "codex-agents-path",
