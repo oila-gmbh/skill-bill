@@ -2,6 +2,7 @@ package skillbill.cli
 
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -144,6 +145,10 @@ abstract class InstallRequestCommand(
     .default("not-required")
   private val windowsSymlinkMessage by option("--windows-symlink-message", help = "Structured Windows symlink message.")
     .default("")
+  private val replaceExistingSkillBillLinks by option(
+    "--replace-existing-skill-bill-links",
+    help = "Remove existing Skill Bill skill links for selected agents before applying this install.",
+  ).flag(default = false)
   protected val format by formatOption()
 
   protected fun toRequest(state: CliRunState): InstallPlanRequest {
@@ -184,6 +189,7 @@ abstract class InstallRequestCommand(
         decision = windowsSymlinkPreflightDecision(),
         message = windowsSymlinkMessage,
       ),
+      replaceExistingSkillBillLinks = replaceExistingSkillBillLinks,
     )
   }
 
@@ -335,10 +341,12 @@ class InstallUnlinkClaudeAgentsCommand(
   override fun run() {
     val removed =
       InstallNativeAgentOperations.unlinkClaudeAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       )
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
@@ -378,10 +386,12 @@ class InstallUnlinkCodexAgentsCommand(
   override fun run() {
     val removed =
       InstallNativeAgentOperations.unlinkCodexAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       )
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
@@ -424,10 +434,12 @@ class InstallUnlinkOpencodeAgentsCommand(
   override fun run() {
     val removed =
       InstallNativeAgentOperations.unlinkOpencodeAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       )
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
@@ -467,10 +479,12 @@ class InstallUnlinkJunieAgentsCommand(
   override fun run() {
     val removed =
       InstallNativeAgentOperations.unlinkJunieAgents(
-        platformPacksRoot = Path.of(platformPacks),
-        skillsRoot = skills?.let(Path::of),
-        home = state.userHome,
-        selectedPlatforms = platforms.ifEmpty { null },
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
       )
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }

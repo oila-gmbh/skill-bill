@@ -115,6 +115,7 @@ data class InstallPlanRequest(
   val runtimeDistributionInputs: RuntimeDistributionInputs,
   val targetPaths: InstallationTargetPaths,
   val windowsSymlinkPreflight: WindowsSymlinkPreflight,
+  val replaceExistingSkillBillLinks: Boolean = false,
 )
 
 enum class InstallPlanSkillKind {

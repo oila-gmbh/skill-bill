@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliInstallPlanApplyRuntimeTest {
@@ -44,10 +45,134 @@ class CliInstallPlanApplyRuntimeTest {
       assertEquals(false, payload.mapValue("mcp_registration")["register"])
       assertEquals(supportedAgents, payload.agents().map { agent -> agent["agent"] }.toSet())
       assertTrue(payload.agents().all { agent -> agent["source"] == "detected" })
-      assertEquals(listOf("kotlin"), payload["selected_platforms"])
+      assertEquals(setOf("kmp", "kotlin"), (payload["selected_platforms"] as List<*>).toSet())
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-code-review" })
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-kotlin-code-review" })
     }
+  }
+
+  @Test
+  fun `install apply maps all manual agent targets base staging telemetry and skipped mcp`() {
+    val fixture = installPlanApplyFixture()
+    val targetsByAgent = supportedAgents.associateWith { agent -> fixture.home.resolve("manual-targets/$agent") }
+
+    val result = CliRuntime.run(
+      manualBaseOnlyApplyArguments(fixture, targetsByAgent),
+      CliRuntimeContext(userHome = fixture.home),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeInstallPlanApplyJson(result.stdout)
+    assertEquals("success", payload["status"])
+    assertEquals(emptyList<String>(), payload["selected_platforms"])
+    assertEquals(supportedAgents, payload.agents().map { agent -> agent["agent"] }.toSet())
+    payload.agents().forEach { agent ->
+      val agentName = agent["agent"] as String
+      assertEquals(targetsByAgent.getValue(agentName).toString(), agent["path"])
+      assertEquals("manual", agent["source"])
+    }
+    val stagingRoot = fixture.home.resolve(".skill-bill/installed-skills").toString()
+    assertEquals(stagingRoot, payload["staging_root"])
+    assertTrue(
+      payload.listOfMaps("staging").all { staging -> staging["staging_dir"].toString().startsWith(stagingRoot) },
+    )
+    val skills = payload.listOfMaps("skills")
+    assertEquals(setOf("bill-code-review", "bill-quality-check"), skills.map { skill -> skill["name"] }.toSet())
+    assertTrue(skills.all { skill -> skill["kind"] == "base" })
+    assertTrue(skills.all { skill -> skill.mapValue("staging")["status"] == "staged" })
+    val links = skills.flatMap { skill -> skill.listOfMaps("links") }
+    assertEquals(supportedAgents.size * skills.size, links.size)
+    assertEquals(supportedAgents, links.map { link -> link["agent"] }.toSet())
+    supportedAgents.forEach { agent ->
+      val agentLinks = links.filter { link -> link["agent"] == agent }
+      val targetDir = targetsByAgent.getValue(agent).toString()
+      assertEquals(skills.size, agentLinks.size)
+      assertTrue(agentLinks.all { link -> link["target_dir"] == targetDir })
+      assertEquals(
+        skills.map { skill -> "$targetDir/${skill["name"]}" }.toSet(),
+        agentLinks.map { link -> link["link_path"] }.toSet(),
+      )
+    }
+    assertTrue(links.all { link -> link["status"] == "created" })
+    assertTrue(links.all { link -> link["link_target"].toString().startsWith(stagingRoot) })
+    val telemetry = payload.mapValue("telemetry")
+    assertEquals("anonymous", telemetry["level"])
+    assertEquals("success", telemetry["status"])
+    val mcp = payload.mapValue("mcp_registration")
+    assertEquals(false, mcp["register"])
+    assertEquals(supportedAgents, (mcp["agents"] as List<*>).toSet())
+    assertTrue(mcp.listOfMaps("outcomes").all { outcome -> outcome["status"] == "skipped" })
+  }
+
+  @Test
+  fun `install apply links selected and all platform pack payloads through cli contract`() {
+    val selectedFixture = installPlanApplyFixture()
+    assertApplyPlatformSkills(
+      payload = decodeInstallPlanApplyJson(
+        CliRuntime.run(
+          singleCodexApplyArguments(selectedFixture, platformMode = "selected", platforms = listOf("kotlin")),
+          CliRuntimeContext(userHome = selectedFixture.home),
+        ).also { result -> assertEquals(0, result.exitCode, result.stdout) }.stdout,
+      ),
+      expectedSelectedPlatforms = setOf("kotlin"),
+      expectedSkillNames = setOf(
+        "bill-code-review",
+        "bill-quality-check",
+        "bill-kotlin-code-review",
+        "bill-kotlin-quality-check",
+      ),
+      targetDir = selectedFixture.home.resolve("manual-targets/codex"),
+    )
+
+    val allFixture = installPlanApplyFixture()
+    assertApplyPlatformSkills(
+      payload = decodeInstallPlanApplyJson(
+        CliRuntime.run(
+          singleCodexApplyArguments(allFixture, platformMode = "all"),
+          CliRuntimeContext(userHome = allFixture.home),
+        ).also { result -> assertEquals(0, result.exitCode, result.stdout) }.stdout,
+      ),
+      expectedSelectedPlatforms = setOf("kmp", "kotlin"),
+      expectedSkillNames = setOf(
+        "bill-code-review",
+        "bill-quality-check",
+        "bill-kmp-code-review",
+        "bill-kmp-quality-check",
+        "bill-kotlin-code-review",
+        "bill-kotlin-quality-check",
+      ),
+      targetDir = allFixture.home.resolve("manual-targets/codex"),
+    )
+  }
+
+  @Test
+  fun `install apply parses replace existing flag and removes legacy managed targets`() {
+    val fixture = installPlanApplyFixture()
+    val targetDir = fixture.home.resolve("manual-targets/codex")
+    val legacyManaged = targetDir.resolve("mdp-gcheck")
+    val stalePlatformManaged = targetDir.resolve("bill-kotlin-code-review")
+    listOf(legacyManaged, stalePlatformManaged).forEach { managed ->
+      Files.createDirectories(managed)
+      Files.writeString(managed.resolve(".skill-bill-install"), "")
+      Files.writeString(managed.resolve("SKILL.md"), "old managed install")
+    }
+
+    val result = CliRuntime.run(
+      singleCodexApplyArguments(
+        fixture = fixture,
+        platformMode = "none",
+        extraArgs = listOf("--replace-existing-skill-bill-links"),
+      ),
+      CliRuntimeContext(userHome = fixture.home),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertFalse(Files.exists(legacyManaged))
+    assertFalse(Files.exists(stalePlatformManaged))
+    val payload = decodeInstallPlanApplyJson(result.stdout)
+    assertEquals("success", payload["status"])
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-quality-check")))
   }
 
   @Test
@@ -78,6 +203,28 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals("base", skills.getValue("bill-quality-check")["kind"])
     assertEquals("platform_pack", skills.getValue("bill-kotlin-code-review")["kind"])
     assertEquals("platform_pack", skills.getValue("bill-kotlin-quality-check")["kind"])
+  }
+
+  private fun assertApplyPlatformSkills(
+    payload: Map<String, Any?>,
+    expectedSelectedPlatforms: Set<String>,
+    expectedSkillNames: Set<String>,
+    targetDir: Path,
+  ) {
+    assertEquals("success", payload["status"])
+    assertEquals(expectedSelectedPlatforms, (payload["selected_platforms"] as List<*>).toSet())
+    val skills = payload.listOfMaps("skills")
+    assertEquals(expectedSkillNames, skills.map { skill -> skill["name"] }.toSet())
+    assertTrue(skills.all { skill -> skill.mapValue("staging")["status"] == "staged" })
+    val links = skills.flatMap { skill -> skill.listOfMaps("links") }
+    assertEquals(expectedSkillNames.size, links.size)
+    assertTrue(links.all { link -> link["agent"] == "codex" })
+    assertTrue(links.all { link -> link["target_dir"] == targetDir.toString() })
+    assertEquals(
+      expectedSkillNames.map { skillName -> targetDir.resolve(skillName).toString() }.toSet(),
+      links.map { link -> link["link_path"] }.toSet(),
+    )
+    assertTrue(links.all { link -> link["status"] == "created" })
   }
 
   private fun manualPlanArguments(fixture: InstallPlanApplyFixture): List<String> = listOf(
@@ -114,6 +261,63 @@ class CliInstallPlanApplyRuntimeTest {
     "--format",
     "json",
   )
+
+  private fun manualBaseOnlyApplyArguments(
+    fixture: InstallPlanApplyFixture,
+    targetsByAgent: Map<String, Path>,
+  ): List<String> = buildList {
+    add("install")
+    add("apply")
+    add("--repo-root")
+    add(fixture.repoRoot.toString())
+    add("--agent-mode")
+    add("manual")
+    supportedAgents.sorted().forEach { agent ->
+      add("--agent")
+      add(agent)
+      add("--agent-target")
+      add("$agent=${targetsByAgent.getValue(agent)}")
+    }
+    add("--platform-mode")
+    add("none")
+    add("--telemetry")
+    add("anonymous")
+    add("--mcp")
+    add("skip")
+    add("--format")
+    add("json")
+  }
+
+  private fun singleCodexApplyArguments(
+    fixture: InstallPlanApplyFixture,
+    platformMode: String,
+    platforms: List<String> = emptyList(),
+    extraArgs: List<String> = emptyList(),
+  ): List<String> = buildList {
+    add("install")
+    add("apply")
+    add("--repo-root")
+    add(fixture.repoRoot.toString())
+    add("--agent-mode")
+    add("manual")
+    add("--agent")
+    add("codex")
+    add("--agent-target")
+    add("codex=${fixture.home.resolve("manual-targets/codex")}")
+    add("--platform-mode")
+    add(platformMode)
+    platforms.forEach { platform ->
+      add("--platform")
+      add(platform)
+    }
+    add("--telemetry")
+    add("anonymous")
+    add("--mcp")
+    add("skip")
+    addAll(extraArgs)
+    add("--format")
+    add("json")
+  }
 
   private fun detectedPlanArguments(fixture: InstallPlanApplyFixture, telemetry: String): List<String> = listOf(
     "install",
@@ -163,6 +367,7 @@ private fun installPlanApplyFixture(): InstallPlanApplyFixture {
   val repoRoot = Files.createTempDirectory("skillbill-cli-install-plan-apply-repo")
   seedCliBaseSkill(repoRoot, "bill-code-review")
   seedCliBaseSkill(repoRoot, "bill-quality-check")
+  seedCliPlatformPack(repoRoot, "kmp")
   seedCliPlatformPack(repoRoot, "kotlin")
   return InstallPlanApplyFixture(repoRoot = repoRoot, home = home)
 }

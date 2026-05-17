@@ -4,7 +4,6 @@ set -euo pipefail
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
-MANAGED_INSTALL_MARKER=".skill-bill-install"
 RUNTIME_KOTLIN_DIR="$PLUGIN_DIR/runtime-kotlin"
 RUNTIME_CLI_BUILD_BIN="$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
 RUNTIME_MCP_BUILD_BIN="$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
@@ -26,6 +25,18 @@ info()  { printf "${CYAN}▸${NC} %s\n" "$1"; }
 ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 err()   { printf "${RED}✗${NC} %s\n" "$1"; }
+
+declare -a SUPPORTED_AGENTS=(copilot claude codex opencode junie)
+declare -a AGENT_NAMES=()
+declare -a AGENT_PATHS=()
+declare -a PLATFORM_PACKAGES=()
+declare -a SELECTED_PLATFORM_PACKAGES=()
+declare -a RUNTIME_INSTALL_ARGS=()
+
+AGENT_SELECTION_MODE="manual"
+PLATFORM_SELECTION_MODE="none"
+TELEMETRY_LEVEL="anonymous"
+MCP_REGISTRATION="register"
 
 usage() {
   cat <<USAGE
@@ -168,232 +179,6 @@ get_agent_path() {
   run_runtime_cli install agent-path "$1"
 }
 
-get_codex_agents_path() {
-  run_runtime_cli install codex-agents-path
-}
-
-get_claude_agents_path() {
-  run_runtime_cli install claude-agents-path
-}
-
-get_opencode_agents_path() {
-  run_runtime_cli install opencode-agents-path
-}
-
-get_junie_agents_path() {
-  run_runtime_cli install junie-agents-path
-}
-
-install_codex_agents_tomls() {
-  # Install Codex native subagent TOML defs under the resolved agents dir.
-  # Renders provider-neutral native-agents/*.md sources into the user cache,
-  # then links the generated TOMLs. Runs only when codex was selected by the user.
-  local target_dir
-  target_dir="$(get_codex_agents_path)"
-  mkdir -p "$target_dir"
-  info "Installing Codex subagent TOMLs to: $target_dir"
-
-  local args=()
-  local platform
-  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
-    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
-      args+=(--platform "$platform")
-    done
-  fi
-
-  run_runtime_cli install link-codex-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR" \
-    ${args[@]+"${args[@]}"} >/dev/null
-  ok "  Codex subagent TOMLs linked"
-}
-
-install_claude_agent_mds() {
-  # Install Claude native subagent markdown defs under ~/.claude/agents.
-  # Renders provider-neutral native-agents/*.md sources into the user cache,
-  # then links the generated markdown. Runs only when claude was selected by the user.
-  local target_dir
-  target_dir="$(get_claude_agents_path)"
-  mkdir -p "$target_dir"
-  info "Installing Claude subagent markdown to: $target_dir"
-
-  local args=()
-  local platform
-  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
-    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
-      args+=(--platform "$platform")
-    done
-  fi
-
-  run_runtime_cli install link-claude-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR" \
-    ${args[@]+"${args[@]}"} >/dev/null
-  ok "  Claude subagent markdown linked"
-}
-
-install_opencode_agent_mds() {
-  # Install OpenCode native subagent markdown defs under ~/.config/opencode/agents.
-  # Renders provider-neutral native-agents/*.md sources into the user cache,
-  # then links the generated markdown. Runs only when opencode was selected by the user.
-  local target_dir
-  target_dir="$(get_opencode_agents_path)"
-  mkdir -p "$target_dir"
-  info "Installing OpenCode subagent markdown to: $target_dir"
-
-  local args=()
-  local platform
-  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
-    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
-      args+=(--platform "$platform")
-    done
-  fi
-
-  run_runtime_cli install link-opencode-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR" \
-    ${args[@]+"${args[@]}"} >/dev/null
-  ok "  OpenCode subagent markdown linked"
-}
-
-install_junie_agent_mds() {
-  # Install Junie native subagent markdown defs under ~/.junie/agents.
-  # Renders provider-neutral native-agents/*.md sources into the user cache,
-  # then links the generated markdown.
-  local target_dir
-  target_dir="$(get_junie_agents_path)"
-  mkdir -p "$target_dir"
-  info "Installing Junie subagent markdown to: $target_dir"
-
-  local args=()
-  local platform
-  if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
-    for platform in "${SELECTED_PLATFORM_PACKAGES[@]}"; do
-      args+=(--platform "$platform")
-    done
-  fi
-
-  run_runtime_cli install link-junie-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR" \
-    ${args[@]+"${args[@]}"} >/dev/null
-  ok "  Junie subagent markdown installed"
-}
-
-# SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
-# same (for example, moving
-# skills/kotlin/bill-kotlin-quality-check/ to
-# platform-packs/kotlin/quality-check/bill-kotlin-quality-check/) do NOT need
-# RENAMED_SKILL_PAIRS entries. The installer's build_skill_names walks both
-# skills/ AND platform-packs/, and the uninstaller removes
-# $agent_dir/<skill_name> symlinks by name — so relocations are discovered
-# automatically. Only use this array when the skill's canonical name changes.
-declare -a RENAMED_SKILL_PAIRS=(
-  'bill-module-history:bill-boundary-history'
-  'bill-backend-kotlin-code-review:bill-kotlin-code-review'
-  'bill-code-review-architecture:bill-kotlin-code-review-architecture'
-  'bill-code-review-backend-api-contracts:bill-kotlin-code-review-api-contracts'
-  'bill-kotlin-code-review-backend-api-contracts:bill-kotlin-code-review-api-contracts'
-  'bill-backend-kotlin-code-review-api-contracts:bill-kotlin-code-review-api-contracts'
-  'bill-code-review-backend-persistence:bill-kotlin-code-review-persistence'
-  'bill-kotlin-code-review-backend-persistence:bill-kotlin-code-review-persistence'
-  'bill-backend-kotlin-code-review-persistence:bill-kotlin-code-review-persistence'
-  'bill-code-review-backend-reliability:bill-kotlin-code-review-reliability'
-  'bill-kotlin-code-review-backend-reliability:bill-kotlin-code-review-reliability'
-  'bill-backend-kotlin-code-review-reliability:bill-kotlin-code-review-reliability'
-  'bill-code-review-compose-check:bill-kmp-code-review-ui'
-  'bill-kotlin-code-review-compose-check:bill-kmp-code-review-ui'
-  'bill-kmp-code-review-compose-check:bill-kmp-code-review-ui'
-  'bill-code-review-performance:bill-kotlin-code-review-performance'
-  'bill-code-review-platform-correctness:bill-kotlin-code-review-platform-correctness'
-  'bill-code-review-security:bill-kotlin-code-review-security'
-  'bill-code-review-testing:bill-kotlin-code-review-testing'
-  'bill-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
-  'bill-kotlin-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
-  'bill-kotlin-feature-implement:bill-feature-implement'
-  'bill-feature-implement-agentic:bill-feature-implement'
-  'bill-kotlin-feature-verify:bill-feature-verify'
-  'bill-gcheck:bill-quality-check'
-  'bill-skill-scaffold:bill-create-skill'
-  'bill-new-skill-all-agents:bill-create-skill'
-)
-
-declare -a SUPPORTED_AGENTS=(copilot claude codex opencode junie)
-declare -a SKILL_NAMES=()
-declare -a SKILL_PATHS=()
-declare -a INSTALL_SKILL_NAMES=()
-declare -a INSTALL_SKILL_PATHS=()
-declare -a PLATFORM_PACKAGES=()
-declare -a REQUIRED_PLATFORM_PACKAGES=()
-declare -a SELECTED_PLATFORM_PACKAGES=()
-declare -a LEGACY_SKILL_NAMES=()
-TELEMETRY_LEVEL="anonymous"
-
-remove_if_allowed() {
-  local target="$1"
-
-  if [[ ! -e "$target" && ! -L "$target" ]]; then
-    return 0
-  fi
-
-  if [[ -L "$target" ]]; then
-    rm -f "$target"
-    return 0
-  fi
-
-  if [[ -d "$target" ]]; then
-    if [[ -f "$target/$MANAGED_INSTALL_MARKER" ]] || path_has_matching_skill_name "$target"; then
-      rm -rf "$target"
-      return 0
-    fi
-  fi
-
-  err "Refusing to overwrite existing non-Skill-Bill path: $target"
-  return 1
-}
-
-lookup_renamed_skill() {
-  local query="$1"
-  local pair old_name new_name
-
-  for pair in "${RENAMED_SKILL_PAIRS[@]}"; do
-    old_name="${pair%%:*}"
-    new_name="${pair##*:}"
-    if [[ "$old_name" == "$query" ]]; then
-      printf '%s\n' "$new_name"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-find_skill_index() {
-  local query="$1"
-  local idx
-
-  for idx in "${!SKILL_NAMES[@]}"; do
-    if [[ "${SKILL_NAMES[$idx]}" == "$query" ]]; then
-      printf '%s\n' "$idx"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-array_contains() {
-  local needle="$1"
-  shift
-  local item
-  for item in "$@"; do
-    if [[ "$item" == "$needle" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
 trim_string() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -407,6 +192,18 @@ normalize_platform_token() {
 
 normalize_agent_token() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
+}
+
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 add_agent_selection() {
@@ -472,7 +269,40 @@ format_agent_list() {
   printf '%s' "$result"
 }
 
-prompt_for_agent_selection() {
+prompt_for_agent_mode() {
+  local input
+  local normalized
+
+  while true; do
+    echo ""
+    info "Choose agent selection mode."
+    printf "  1. manual - choose one or more supported agents\n"
+    printf "  2. detected - let the runtime detect configured agents from your home directory\n"
+    printf "${CYAN}▸${NC} Enter agent mode [1]: "
+    if ! read -r input; then
+      input=""
+    fi
+
+    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
+      ""|1|manual)
+        AGENT_SELECTION_MODE="manual"
+        return 0
+        ;;
+      2|detected|auto)
+        AGENT_SELECTION_MODE="detected"
+        AGENT_NAMES=()
+        AGENT_PATHS=()
+        return 0
+        ;;
+      *)
+        warn "Enter 1, 2, manual, detected, or press Enter for manual."
+        ;;
+    esac
+  done
+}
+
+prompt_for_manual_agent_selection() {
   local input
   local raw_tokens=()
   local invalid_tokens=()
@@ -535,45 +365,33 @@ prompt_for_agent_selection() {
   done
 }
 
+prompt_for_agent_selection() {
+  prompt_for_agent_mode
+  if [[ "$AGENT_SELECTION_MODE" == "manual" ]]; then
+    prompt_for_manual_agent_selection
+  fi
+}
+
 display_platform_name() {
-  case "$1" in
-    kotlin) printf 'Kotlin' ;;
-    kmp) printf 'KMP' ;;
-    *)
-      local label="${1//-/ }"
-      printf '%s' "$label"
-      ;;
-  esac
+  local label="${1//-/ }"
+  printf '%s' "$label"
 }
 
 build_platform_packages() {
-  local discovered=()
+  local pack_dir
   local package
 
-  while IFS= read -r package; do
-    [[ "$package" == "base" || "$package" == bill-* ]] && continue
-    discovered+=("$package")
-  done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
-
-  # Platform packs contribute package names as well. With SKILL-14, most
-  # platform code-review content lives under platform-packs/<slug>/. These
-  # slugs may or may not overlap with skills/<package>/ entries; union both.
-  if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
-    while IFS= read -r package; do
-      if ! array_contains "$package" "${discovered[@]:-}"; then
-        discovered+=("$package")
-      fi
-    done < <(find "$PLATFORM_PACKS_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
-  fi
-
   PLATFORM_PACKAGES=()
-  if [[ ${#discovered[@]} -gt 0 ]]; then
-    for package in "${discovered[@]}"; do
-      if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
-        PLATFORM_PACKAGES+=("$package")
-      fi
-    done
+  if [[ ! -d "$PLATFORM_PACKS_DIR" ]]; then
+    return 0
   fi
+
+  while IFS= read -r pack_dir; do
+    package="$(basename "$pack_dir")"
+    if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
+      PLATFORM_PACKAGES+=("$package")
+    fi
+  done < <(find "$PLATFORM_PACKS_DIR" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/platform.yaml' ';' -print | sort)
 }
 
 resolve_platform_selection() {
@@ -582,6 +400,7 @@ resolve_platform_selection() {
   local package
   local index
   local all_index
+  local none_index
 
   token="$(trim_string "$token")"
   [[ -n "$token" ]] || return 1
@@ -593,8 +412,13 @@ resolve_platform_selection() {
       return 0
     fi
     all_index=${#PLATFORM_PACKAGES[@]}
+    none_index=$(( ${#PLATFORM_PACKAGES[@]} + 1 ))
     if (( index == all_index )); then
       printf '__all__\n'
+      return 0
+    fi
+    if (( index == none_index )); then
+      printf '__none__\n'
       return 0
     fi
     return 1
@@ -606,12 +430,8 @@ resolve_platform_selection() {
       printf '__all__\n'
       return 0
       ;;
-    kotlin)
-      printf 'kotlin\n'
-      return 0
-      ;;
-    kmp|androidkmp)
-      printf 'kmp\n'
+    none|base|baseskills|baseonly)
+      printf '__none__\n'
       return 0
       ;;
   esac
@@ -647,28 +467,11 @@ format_platform_list() {
   printf '%s' "$result"
 }
 
-append_required_platform_packages() {
-  local package
-
-  if [[ ${#REQUIRED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
-    return 0
-  fi
-
-  for package in "${REQUIRED_PLATFORM_PACKAGES[@]}"; do
-    # A required package is present if it exists under skills/ OR under
-    # platform-packs/. The check spans both trees so future required packs
-    # continue to work if they live under platform-packs/.
-    if { [[ -d "$SKILLS_DIR/$package" ]] || [[ -d "$PLATFORM_PACKS_DIR/$package" ]]; } \
-      && { [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${SELECTED_PLATFORM_PACKAGES[@]}"; }; then
-      SELECTED_PLATFORM_PACKAGES+=("$package")
-    fi
-  done
-}
-
 prompt_for_platform_selection() {
   local input
   local i
   local option_number
+  local none_option_number
   local package
   local token
   local resolved
@@ -676,8 +479,8 @@ prompt_for_platform_selection() {
   local raw_tokens=()
 
   if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+    PLATFORM_SELECTION_MODE="none"
     SELECTED_PLATFORM_PACKAGES=()
-    append_required_platform_packages
     return 0
   fi
 
@@ -689,19 +492,21 @@ prompt_for_platform_selection() {
       printf "  %s. %s (%s)\n" "$((i + 1))" "$(display_platform_name "$package")" "$package"
     done
     option_number=$(( ${#PLATFORM_PACKAGES[@]} + 1 ))
-    printf "  %s. all (install every platform package)\n" "$option_number"
-    info "Base skills are always installed."
-    info "Optional platform packages are discovered from platform-packs/ at install time."
-    info "Governed add-on assets under platform-packs/<platform>/addons/ ship with their owning platform package."
+    none_option_number=$(( ${#PLATFORM_PACKAGES[@]} + 2 ))
+    printf "  %s. all (install every platform pack)\n" "$option_number"
+    printf "  %s. base only (skip optional platform packs)\n" "$none_option_number"
+    info "Base skills are always installed by the runtime plan."
+    info "Optional platform packs are resolved by the runtime from platform-packs/ manifests."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms (e.g. 1,3 or %s): " "$option_number"
     read -r input
 
     if [[ -z "$(trim_string "$input")" ]]; then
-      warn "No platforms provided. Choose at least one optional platform."
+      warn "No platforms provided. Choose a platform, all, or base only."
       continue
     fi
 
+    PLATFORM_SELECTION_MODE="selected"
     SELECTED_PLATFORM_PACKAGES=()
     invalid_tokens=()
     IFS=',' read -ra raw_tokens <<< "$input"
@@ -715,7 +520,13 @@ prompt_for_platform_selection() {
         continue
       fi
       if [[ "$resolved" == "__all__" ]]; then
+        PLATFORM_SELECTION_MODE="all"
         SELECTED_PLATFORM_PACKAGES=("${PLATFORM_PACKAGES[@]}")
+        break
+      fi
+      if [[ "$resolved" == "__none__" ]]; then
+        PLATFORM_SELECTION_MODE="none"
+        SELECTED_PLATFORM_PACKAGES=()
         break
       fi
       if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$resolved" "${SELECTED_PLATFORM_PACKAGES[@]}"; then
@@ -728,12 +539,11 @@ prompt_for_platform_selection() {
       continue
     fi
 
-    if [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
-      warn "No valid platforms selected. Choose at least one optional platform."
+    if [[ "$PLATFORM_SELECTION_MODE" == "selected" && ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+      warn "No valid platforms selected. Choose a platform, all, or base only."
       continue
     fi
 
-    append_required_platform_packages
     return 0
   done
 }
@@ -744,10 +554,10 @@ prompt_for_telemetry_preference() {
 
   while true; do
     echo ""
-    info "Choose a telemetry level. You can change it later with 'skill-bill telemetry set-level'."
-    printf "  1. anonymous (default) — aggregate counts, no content\n"
-    printf "  2. full — includes finding details, learnings, rejection notes\n"
-    printf "  3. off — no telemetry\n"
+    info "Choose a telemetry level. You can change it later with the Skill Bill telemetry command."
+    printf "  1. anonymous (default) - aggregate counts, no content\n"
+    printf "  2. full - includes finding details, learnings, rejection notes\n"
+    printf "  3. off - no telemetry\n"
     printf "${CYAN}▸${NC} Enter telemetry level [1]: "
     if ! read -r input; then
       input=""
@@ -774,426 +584,156 @@ prompt_for_telemetry_preference() {
   done
 }
 
-build_skill_names() {
-  local skill_file skill_dir skill_name
-  local existing_idx
+prompt_for_mcp_registration() {
+  local input
+  local normalized
 
-  SKILL_NAMES=()
-  SKILL_PATHS=()
-
-  while IFS= read -r content_file; do
-    skill_dir="$(dirname "$content_file")"
-    skill_name="$(basename "$skill_dir")"
-
-    if existing_idx="$(find_skill_index "$skill_name" 2>/dev/null)"; then
-      if [[ "${SKILL_PATHS[$existing_idx]}" == "$skill_dir" ]]; then
-        continue
-      fi
-      err "Duplicate skill name '$skill_name' found at:"
-      err "  ${SKILL_PATHS[$existing_idx]}"
-      err "  $skill_dir"
-      exit 1
+  while true; do
+    echo ""
+    info "Register the Skill Bill MCP server for selected agents?"
+    printf "  1. register (default)\n"
+    printf "  2. skip\n"
+    printf "${CYAN}▸${NC} Enter MCP choice [1]: "
+    if ! read -r input; then
+      input=""
     fi
 
-    SKILL_NAMES+=("$skill_name")
-    SKILL_PATHS+=("$skill_dir")
-  done < <(
-    {
-      find "$SKILLS_DIR" -type f -name 'content.md'
-      if [[ -d "$PLATFORM_PACKS_DIR" ]]; then
-        find "$PLATFORM_PACKS_DIR" -type f -name 'content.md'
-      fi
-    } | sort
+    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
+      ""|1|register|yes|y)
+        MCP_REGISTRATION="register"
+        return 0
+        ;;
+      2|skip|no|n)
+        MCP_REGISTRATION="skip"
+        return 0
+        ;;
+      *)
+        warn "Enter 1, 2, register, skip, or press Enter for register."
+        ;;
+    esac
+  done
+}
+
+build_runtime_install_args() {
+  local i
+
+  RUNTIME_INSTALL_ARGS=(
+    install
+    apply
+    --repo-root "$PLUGIN_DIR"
+    --skills "$SKILLS_DIR"
+    --platform-packs "$PLATFORM_PACKS_DIR"
+    --agent-mode "$AGENT_SELECTION_MODE"
+    --platform-mode "$PLATFORM_SELECTION_MODE"
+    --telemetry "$TELEMETRY_LEVEL"
+    --mcp "$MCP_REGISTRATION"
+    --replace-existing-skill-bill-links
+    --runtime-install-root "$RUNTIME_INSTALL_ROOT"
+    --runtime-cli-build-dir "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli"
+    --runtime-mcp-build-dir "$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp"
+    --runtime-cli-install-dir "$RUNTIME_CLI_INSTALL_DIR"
+    --runtime-mcp-install-dir "$RUNTIME_MCP_INSTALL_DIR"
+    --runtime-launcher-bin-dir "$RUNTIME_LAUNCHER_BIN_DIR"
+    --runtime-mcp-bin "$RUNTIME_MCP_BIN"
   )
-}
 
-resolve_package_name_for_skill_path() {
-  # Map a skill directory to its owning package name.
-  # - skills/<skill>/content.md                               -> base
-  # - skills/<pkg>/<skill>/content.md                         -> <pkg>
-  # - platform-packs/<slug>/code-review/<skill>/content.md    -> <slug>
-  # - platform-packs/<slug>/quality-check/<skill>/content.md  -> <slug>
-  # Falls back to the immediate parent directory name for any other shape.
-  local skill_dir="$1"
-  local parent parent_parent parent_name grand skill_name
-  parent="$(dirname "$skill_dir")"
-  parent_parent="$(dirname "$parent")"
-  parent_name="$(basename "$parent")"
-  grand="$(basename "$parent_parent")"
-  skill_name="$(basename "$skill_dir")"
-
-  if [[ "$parent" == "$SKILLS_DIR" && "$skill_name" == bill-* ]]; then
-    printf 'base'
-    return 0
-  fi
-
-  if [[ ( "$parent_name" == "code-review" || "$parent_name" == "quality-check" ) && -d "$parent_parent" ]]; then
-    # platform-packs/<slug>/{code-review,quality-check}/<skill>
-    printf '%s' "$grand"
-    return 0
-  fi
-
-  printf '%s' "$parent_name"
-}
-
-build_install_skill_names() {
-  local idx
-  local skill_dir
-  local package_name
-  local canonical_name
-
-  INSTALL_SKILL_NAMES=()
-  INSTALL_SKILL_PATHS=()
-
-  for idx in "${!SKILL_NAMES[@]}"; do
-    skill_dir="${SKILL_PATHS[$idx]}"
-    package_name="$(resolve_package_name_for_skill_path "$skill_dir")"
-    canonical_name="${SKILL_NAMES[$idx]}"
-
-    if [[ "$package_name" == "base" ]] || { [[ ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]] && array_contains "$package_name" "${SELECTED_PLATFORM_PACKAGES[@]}"; }; then
-      INSTALL_SKILL_NAMES+=("$canonical_name")
-      INSTALL_SKILL_PATHS+=("$skill_dir")
-    fi
-  done
-}
-
-add_legacy_name() {
-  local candidate="$1"
-  local existing
-  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
-    for existing in "${LEGACY_SKILL_NAMES[@]}"; do
-      if [[ "$existing" == "$candidate" ]]; then
-        return
-      fi
-    done
-  fi
-  LEGACY_SKILL_NAMES+=("$candidate")
-}
-
-build_legacy_skill_names() {
-  LEGACY_SKILL_NAMES=()
-  add_legacy_name ".bill-shared"
-
-  local skill pair old_name
-  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
-    for skill in "${SKILL_NAMES[@]}"; do
-      if [[ "$skill" == bill-* ]]; then
-        add_legacy_name "mdp-${skill#bill-}"
-      fi
+  if [[ "$AGENT_SELECTION_MODE" == "manual" && ${#AGENT_NAMES[@]} -gt 0 ]]; then
+    for i in "${!AGENT_NAMES[@]}"; do
+      RUNTIME_INSTALL_ARGS+=(--agent "${AGENT_NAMES[$i]}")
+      RUNTIME_INSTALL_ARGS+=(--agent-target "${AGENT_NAMES[$i]}=${AGENT_PATHS[$i]}")
     done
   fi
 
-  for pair in "${RENAMED_SKILL_PAIRS[@]}"; do
-    old_name="${pair%%:*}"
-    add_legacy_name "$old_name"
-    add_legacy_name "mdp-${old_name#bill-}"
-  done
-}
-
-remove_legacy_skill_paths() {
-  local target_dir="$1"
-  local legacy_skill replacement legacy_target
-
-  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
-    for legacy_skill in "${LEGACY_SKILL_NAMES[@]}"; do
-      legacy_target="$target_dir/$legacy_skill"
-      if [[ ! -e "$legacy_target" && ! -L "$legacy_target" ]]; then
-        continue
-      fi
-      if replacement="$(lookup_renamed_skill "$legacy_skill" 2>/dev/null)"; then
-        :
-      else
-        replacement=""
-      fi
-      if [[ -z "$replacement" && "$legacy_skill" == mdp-* ]]; then
-        local bill_name="bill-${legacy_skill#mdp-}"
-        if replacement="$(lookup_renamed_skill "$bill_name" 2>/dev/null)"; then
-          :
-        else
-          replacement="$bill_name"
-        fi
-      fi
-
-      if remove_if_allowed "$legacy_target"; then
-        if [[ -e "$legacy_target" || -L "$legacy_target" ]]; then
-          :
-        else
-          if [[ -n "$replacement" ]]; then
-            ok "  removed legacy $legacy_skill (use $replacement)"
-          else
-            ok "  removed legacy $legacy_skill"
-          fi
-        fi
-      fi
+  if [[ "$PLATFORM_SELECTION_MODE" == "selected" && ${#SELECTED_PLATFORM_PACKAGES[@]} -gt 0 ]]; then
+    for i in "${!SELECTED_PLATFORM_PACKAGES[@]}"; do
+      RUNTIME_INSTALL_ARGS+=(--platform "${SELECTED_PLATFORM_PACKAGES[$i]}")
     done
   fi
-  return 0
 }
 
-cleanup_selected_agent_target() {
-  local agent="$1"
-  local target_dir="$2"
-  local output
+apply_runtime_install() {
   local status=0
-  local skill_name
-  local args=()
 
-  if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
-    for skill_name in "${SKILL_NAMES[@]}"; do
-      args+=(--skill-name "$skill_name")
-    done
-  fi
-  if [[ ${#LEGACY_SKILL_NAMES[@]} -gt 0 ]]; then
-    for skill_name in "${LEGACY_SKILL_NAMES[@]}"; do
-      args+=(--legacy-name "$skill_name")
-    done
-  fi
-
-  output="$(run_runtime_cli install cleanup-agent-target \
-    --target-dir "$target_dir" \
-    --marker "$MANAGED_INSTALL_MARKER" \
-    ${args[@]+"${args[@]}"} || status=$?)"
-  if [[ "${status:-0}" -ne 0 ]]; then
-    err "Failed to clean existing Skill Bill installs for $agent: $target_dir"
+  info "Applying install through the runtime plan/apply path."
+  run_runtime_cli "${RUNTIME_INSTALL_ARGS[@]}" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    err "Runtime install apply failed."
     return "$status"
   fi
-  if [[ -z "$output" ]]; then
-    info "  no existing Skill Bill installs found for $agent"
+  ok "Runtime install apply completed"
+}
+
+selected_agent_label() {
+  if [[ "$AGENT_SELECTION_MODE" == "detected" ]]; then
+    printf 'runtime detection'
     return 0
   fi
-  while IFS=$'\t' read -r cleanup_status cleanup_path; do
-    [[ -n "$cleanup_status" && -n "$cleanup_path" ]] || continue
-    if [[ "$cleanup_status" == "removed" ]]; then
-      ok "  removed $(basename "$cleanup_path")"
-    elif [[ "$cleanup_status" == "skipped" ]]; then
-      warn "  skipped $(basename "$cleanup_path") (not a Skill Bill link)"
-    fi
-  done <<< "$output"
+  format_agent_list "${AGENT_NAMES[@]}"
 }
 
-cleanup_selected_codex_agents() {
-  local output
-  output="$(run_runtime_cli install unlink-codex-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
-  if [[ -z "$output" ]]; then
-    info "  no existing Codex subagent TOMLs found"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-cleanup_selected_claude_agents() {
-  local output
-  output="$(run_runtime_cli install unlink-claude-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
-  if [[ -z "$output" ]]; then
-    info "  no existing Claude subagent markdown found"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-cleanup_selected_opencode_agents() {
-  local output
-  output="$(run_runtime_cli install unlink-opencode-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
-  if [[ -z "$output" ]]; then
-    info "  no existing OpenCode subagent markdown found"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-cleanup_selected_junie_agents() {
-  local output
-  output="$(run_runtime_cli install unlink-junie-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
-  if [[ -z "$output" ]]; then
-    info "  no existing Junie subagent markdown found"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-cleanup_selected_agent_installs() {
-  local i
-  local agent
-  local agent_dir
-
-  info "Removing existing Skill Bill installs for selected agents before reinstalling selected platforms."
-  for i in "${!AGENT_NAMES[@]}"; do
-    agent="${AGENT_NAMES[$i]}"
-    agent_dir="${AGENT_PATHS[$i]}"
-    info "Checking $agent: $agent_dir"
-    cleanup_selected_agent_target "$agent" "$agent_dir"
-    if [[ "$agent" == "claude" ]]; then
-      cleanup_selected_claude_agents
-    fi
-    if [[ "$agent" == "codex" ]]; then
-      cleanup_selected_codex_agents
-    fi
-    if [[ "$agent" == "opencode" ]]; then
-      cleanup_selected_opencode_agents
-    fi
-    if [[ "$agent" == "junie" ]]; then
-      cleanup_selected_junie_agents
-    fi
-  done
-}
-
-install_skill() {
-  local target="$1"
-  local source="$2"
-  local label="$3"
-
-  if [[ -e "$target" || -L "$target" ]]; then
-    remove_if_allowed "$target"
-  fi
-
-  # Content-managed skills install through staging so generated SKILL.md and
-  # pointer files are visible without writing generated artifacts into source.
-  run_runtime_cli install link-skill \
-    --source "$source" \
-    --target-dir "$(dirname "$target")" \
-    --agent manual \
-    --repo-root "$PLUGIN_DIR" >/dev/null
-  ok "  $label"
-}
-
-path_has_matching_skill_name() {
-  local target="$1"
-  local skill_file="$target/SKILL.md"
-  local declared_name=""
-  local expected_name
-
-  [[ -d "$target" ]] || return 1
-  [[ -f "$skill_file" ]] || return 1
-
-  expected_name="$(basename "$target")"
-  declared_name="$(sed -n 's/^name:[[:space:]]*//p' "$skill_file" | head -n 1)"
-  [[ "$declared_name" == "$expected_name" ]]
+selected_platform_label() {
+  case "$PLATFORM_SELECTION_MODE" in
+    all)
+      printf 'all'
+      ;;
+    none)
+      printf 'base only'
+      ;;
+    *)
+      format_platform_list "${SELECTED_PLATFORM_PACKAGES[@]}"
+      ;;
+  esac
 }
 
 parse_args "$@"
 build_kotlin_runtime_distributions
-build_skill_names
-build_legacy_skill_names
 build_platform_packages
 
 echo ""
 printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
 echo ""
 info "Supported agents: copilot, claude, codex, opencode, junie"
-info "Install behavior: replace existing Skill Bill installs and reinstall the selected platforms."
+info "Install behavior: collect choices, then delegate planning and apply to the Kotlin runtime."
 prompt_for_agent_selection
 prompt_for_platform_selection
 prompt_for_telemetry_preference
-build_install_skill_names
+prompt_for_mcp_registration
 install_runtime_launchers
+build_runtime_install_args
 
 echo ""
-SELECTED_PLATFORM_LABEL="$(format_platform_list ${SELECTED_PLATFORM_PACKAGES[@]+"${SELECTED_PLATFORM_PACKAGES[@]}"})"
-[[ -n "$SELECTED_PLATFORM_LABEL" ]] || SELECTED_PLATFORM_LABEL="none"
-info "Plugin:  $PLUGIN_DIR"
-info "Agents selected: $(format_agent_list ${AGENT_NAMES[@]+"${AGENT_NAMES[@]}"})"
-info "Skills found: ${#SKILL_NAMES[@]}"
-info "Skills selected: ${#INSTALL_SKILL_NAMES[@]} (base + $SELECTED_PLATFORM_LABEL)"
+SELECTED_PLATFORM_LABEL="$(selected_platform_label)"
+info "Plugin:         $PLUGIN_DIR"
+info "Agents:         $(selected_agent_label)"
+info "Platforms:      $SELECTED_PLATFORM_LABEL"
 info "Telemetry:      $TELEMETRY_LEVEL"
+info "MCP:            $MCP_REGISTRATION"
 echo ""
 
-cleanup_selected_agent_installs
-echo ""
-
-for i in "${!AGENT_NAMES[@]}"; do
-  agent="${AGENT_NAMES[$i]}"
-  agent_dir="${AGENT_PATHS[$i]}"
-
-  mkdir -p "$agent_dir"
-  info "Installing to $agent: $agent_dir"
-  remove_legacy_skill_paths "$agent_dir"
-
-  for idx in "${!INSTALL_SKILL_NAMES[@]}"; do
-    skill="${INSTALL_SKILL_NAMES[$idx]}"
-    install_skill "$agent_dir/$skill" "${INSTALL_SKILL_PATHS[$idx]}" "$skill → plugin"
-  done
-
-  if [[ "$agent" == "codex" ]]; then
-    install_codex_agents_tomls
-  fi
-  if [[ "$agent" == "claude" ]]; then
-    install_claude_agent_mds
-  fi
-  if [[ "$agent" == "opencode" ]]; then
-    install_opencode_agent_mds
-  fi
-  if [[ "$agent" == "junie" ]]; then
-    install_junie_agent_mds
-  fi
-  echo ""
-done
-
-export SKILL_BILL_CONFIG_PATH="${SKILL_BILL_CONFIG_PATH:-${SKILL_BILL_STATE_DIR}/config.json}"
-export SKILL_BILL_REVIEW_DB="${SKILL_BILL_REVIEW_DB:-${SKILL_BILL_STATE_DIR}/review-metrics.db}"
-
-configure_telemetry_level() {
-  local level="$1"
-  run_runtime_cli --db "$SKILL_BILL_REVIEW_DB" telemetry set-level "$level" >/dev/null
-}
-
-info "Registering Skill Bill MCP server."
-for i in "${!AGENT_NAMES[@]}"; do
-  if run_runtime_cli install register-mcp "${AGENT_NAMES[$i]}" --runtime-mcp-bin "$RUNTIME_MCP_BIN" >/dev/null 2>&1; then
-    ok "  skill-bill MCP server registered (${AGENT_NAMES[$i]})"
-  else
-    warn "  Could not register MCP server (${AGENT_NAMES[$i]})."
-  fi
-done
-
-if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
-  if ! configure_telemetry_level "$TELEMETRY_LEVEL" >/dev/null 2>&1; then
-    warn "Telemetry setup failed."
-    TELEMETRY_LEVEL="setup_failed"
-  fi
-elif [[ -e "$SKILL_BILL_CONFIG_PATH" || -e "$SKILL_BILL_REVIEW_DB" ]]; then
-  configure_telemetry_level "off" >/dev/null 2>&1 || warn "Telemetry setup failed."
-fi
+apply_runtime_install
 
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
 info "Source of truth: $PLUGIN_DIR/skills/"
+info "Staging cache:   $SKILL_BILL_STATE_DIR/installed-skills"
 info "Platforms:       $SELECTED_PLATFORM_LABEL"
 info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
-if [[ "$TELEMETRY_LEVEL" == "setup_failed" ]]; then
-  info "Telemetry:       setup failed"
+info "Telemetry:       $TELEMETRY_LEVEL"
+info "MCP:             $MCP_REGISTRATION"
+
+if [[ "$AGENT_SELECTION_MODE" == "manual" && ${#AGENT_NAMES[@]} -gt 0 ]]; then
+  for i in "${!AGENT_NAMES[@]}"; do
+    info "Installed agent: ${AGENT_NAMES[$i]} → ${AGENT_PATHS[$i]}"
+  done
 else
-  info "Telemetry:       $TELEMETRY_LEVEL"
+  info "Installed agents were resolved by runtime detection."
 fi
-for i in "${!AGENT_NAMES[@]}"; do
-  agent="${AGENT_NAMES[$i]}"
-  agent_dir="${AGENT_PATHS[$i]}"
-  info "Installed agent: $agent → $agent_dir"
-done
 
 echo ""
 info "Edit skills in: $PLUGIN_DIR/skills/"
-if [[ "$TELEMETRY_LEVEL" != "off" && "$TELEMETRY_LEVEL" != "setup_failed" ]]; then
+if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
 fi
-info "Run './install.sh' again to reinstall with a different agent or platform selection."
+info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or MCP choices."
 echo ""

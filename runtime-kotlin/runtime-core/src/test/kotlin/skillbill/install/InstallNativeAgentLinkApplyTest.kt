@@ -166,6 +166,50 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `replacement apply removes native agent links from deselected platforms`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val kmpPlan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kmp"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+    val first = InstallOperations.applyInstall(kmpPlan)
+    assertEquals(InstallApplyStatus.SUCCESS, first.status)
+    val targetDir = fixture.home.resolve(".codex/agents")
+    val baseNativeAgent = targetDir.resolve("bill-code-review-worker.toml")
+    val kmpNativeAgent = targetDir.resolve("bill-kmp-code-review-worker.toml")
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertTrue(Files.isSymbolicLink(kmpNativeAgent))
+    val legacyRoot = NativeAgentOperations.installCacheRoot(
+      home = fixture.home,
+      platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    val legacyKmpNativeAgent = legacyRoot
+      .resolve(NativeAgentProvider.Codex.directoryName)
+      .resolve(kmpNativeAgent.fileName)
+    Files.createDirectories(legacyKmpNativeAgent.parent)
+    Files.writeString(legacyKmpNativeAgent, "legacy kmp")
+    Files.delete(kmpNativeAgent)
+    createSymlinkOrSkip(kmpNativeAgent, legacyKmpNativeAgent)
+    assertEquals(legacyKmpNativeAgent.toAbsolutePath().normalize(), readSymlinkTarget(kmpNativeAgent))
+
+    val baseOnlyReplacementPlan = InstallOperations.planInstall(
+      fixture.request(
+        agents = setOf(InstallAgent.CODEX),
+        replaceExistingSkillBillLinks = true,
+      ),
+    )
+    val second = InstallOperations.applyInstall(baseOnlyReplacementPlan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, second.status)
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertFalse(Files.exists(kmpNativeAgent, LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
   fun `native agent replacement preserves existing link when replacement symlink creation fails`() {
     val targetDir = Files.createTempDirectory("skillbill-native-readonly-target").also(tempDirs::add)
     val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)

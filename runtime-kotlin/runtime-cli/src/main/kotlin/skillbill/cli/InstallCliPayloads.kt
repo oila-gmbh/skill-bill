@@ -49,6 +49,7 @@ internal fun installPlanPayload(plan: InstallPlan): Map<String, Any?> = mapOf(
     "runtime_launcher_bin_dir" to plan.runtimeDistributionInputs.runtimeLauncherBinDir?.toString(),
   ),
   "windows_symlink_preflight" to windowsPreflightPayload(plan.windowsSymlinkPreflight),
+  "replace_existing_skill_bill_links" to plan.request.replaceExistingSkillBillLinks,
 )
 
 private fun agentTargetPayload(target: InstallAgentTarget): Map<String, Any?> = mapOf(

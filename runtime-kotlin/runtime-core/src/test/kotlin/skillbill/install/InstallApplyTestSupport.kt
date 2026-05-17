@@ -27,7 +27,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-abstract class InstallApplyTestSupport {
+open class InstallApplyTestSupport {
   protected val tempDirs = mutableListOf<Path>()
 
   @AfterTest
@@ -179,11 +179,12 @@ data class ApplyFixture(
       register = true,
       runtimeMcpBin = home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp"),
     ),
-    windowsSymlinkPreflight: WindowsSymlinkPreflight = WindowsSymlinkPreflight(
+    replaceExistingSkillBillLinks: Boolean = false,
+  ): InstallPlanRequest {
+    val windowsSymlinkPreflight = WindowsSymlinkPreflight(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,
       decision = WindowsSymlinkDecision.NOT_REQUIRED,
-    ),
-  ): InstallPlanRequest {
+    )
     val platformSelectionMode = if (selectedPlatforms.isEmpty()) {
       PlatformPackSelectionMode.NONE
     } else {
@@ -218,6 +219,10 @@ data class ApplyFixture(
       ),
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,
+      replaceExistingSkillBillLinks = replaceExistingSkillBillLinks,
     )
   }
+
+  fun requestWithWindowsSymlinkPreflight(windowsSymlinkPreflight: WindowsSymlinkPreflight): InstallPlanRequest =
+    request().copy(windowsSymlinkPreflight = windowsSymlinkPreflight)
 }

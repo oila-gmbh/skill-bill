@@ -1,3 +1,12 @@
+## [2026-05-17] install-sh-runtime-delegation
+Areas: install.sh, runtime-kotlin/runtime-cli install commands, runtime-kotlin/runtime-core install apply/native-agent cleanup
+- `install.sh` now owns prompting/runtime distribution only and delegates typed install apply to the durable runtime CLI, including manual/detected agents, platform modes, telemetry, MCP, runtime dirs, and replacement cleanup. reusable
+- Runtime apply gained `replaceExistingSkillBillLinks` cleanup for current and legacy Skill Bill links so base-only or selected reinstall removes stale platform and renamed skill entries before relinking staged skills. reusable
+- Native-agent replacement cleanup now unlinks manifest-declared deselected platform agents from both current staged output and the legacy generated cache before linking selected provider artifacts.
+- Regression coverage moved shell argv execution and replacement cleanup into focused tests; future install.sh changes should assert the single `install apply` argv rather than reintroducing shell-owned install loops.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-17] runtime-cli-install-plan-apply
 Areas: runtime-kotlin/runtime-cli install commands, runtime-kotlin/runtime-core install plan/apply contract
 - Added stable `skill-bill install plan` and `skill-bill install apply` entrypoints that build `InstallPlanRequest`, call `InstallOperations.planInstall` / `applyInstall`, and keep CLI handlers as thin parse/render adapters. reusable

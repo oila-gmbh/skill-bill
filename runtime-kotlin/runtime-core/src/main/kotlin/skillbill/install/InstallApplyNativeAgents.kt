@@ -8,10 +8,12 @@ import skillbill.install.model.NativeAgentApplyOutcome
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
 import skillbill.nativeagent.NativeAgentOperations
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 internal fun applyNativeAgents(
   plan: InstallPlan,
+  platformManifests: List<PlatformManifest>,
   failures: MutableList<InstallApplyIssue>,
 ): List<NativeAgentApplyOutcome> {
   val selectedAgents = plan.agents.map { target -> target.agent }.toSet()
@@ -21,6 +23,7 @@ internal fun applyNativeAgents(
     installCacheRoot = nativeAgentApplyCacheRoot(plan),
     legacyManagedRoot = nativeAgentLegacyCacheRoot(plan),
     sourceRoots = selectedNativeAgentSourceRoots(plan),
+    replacementCleanupSourceRoots = allReplacementCleanupNativeAgentSourceRoots(plan, platformManifests),
   )
   return nativeAgentInstallers
     .filter { installer -> installer.agent in selectedAgents }
@@ -36,6 +39,9 @@ private fun applyNativeAgentProvider(
   installer: NativeAgentInstaller,
   context: NativeAgentApplyContext,
 ): List<NativeAgentApplyOutcome> = runCatching {
+  if (context.plan.request.replaceExistingSkillBillLinks) {
+    installer.unlink(nativeAgentReplacementCleanupRequest(context))
+  }
   installer.link(nativeAgentLinkRequest(context))
 }.fold(
   onSuccess = { outcome -> nativeAgentProviderOutcomes(installer, outcome) },
@@ -54,6 +60,7 @@ private data class NativeAgentApplyContext(
   val installCacheRoot: Path,
   val legacyManagedRoot: Path,
   val sourceRoots: List<Path>,
+  val replacementCleanupSourceRoots: List<Path>,
 )
 
 private fun nativeAgentLinkRequest(context: NativeAgentApplyContext): NativeAgentLinkRequest {
@@ -66,6 +73,21 @@ private fun nativeAgentLinkRequest(context: NativeAgentApplyContext): NativeAgen
     overrides = NativeAgentLinkOverrides(
       installCacheRoot = context.installCacheRoot,
       sourceRoots = context.sourceRoots,
+      legacyManagedRoot = context.legacyManagedRoot,
+    ),
+  )
+}
+
+private fun nativeAgentReplacementCleanupRequest(context: NativeAgentApplyContext): NativeAgentLinkRequest {
+  val plan = context.plan
+  return NativeAgentLinkRequest(
+    platformPacksRoot = plan.installationTargetPaths.platformPacksRoot,
+    skillsRoot = plan.installationTargetPaths.skillsRoot,
+    home = plan.request.home,
+    selectedPlatforms = null,
+    overrides = NativeAgentLinkOverrides(
+      installCacheRoot = context.installCacheRoot,
+      sourceRoots = context.replacementCleanupSourceRoots,
       legacyManagedRoot = context.legacyManagedRoot,
     ),
   )
@@ -129,6 +151,7 @@ private data class NativeAgentInstaller(
   val agent: InstallAgent,
   val provider: NativeAgentProviderId,
   val link: (NativeAgentLinkRequest) -> NativeAgentLinkOutcome,
+  val unlink: (NativeAgentLinkRequest) -> List<Path>,
 )
 
 private fun nativeAgentApplyCacheRoot(plan: InstallPlan): Path {
@@ -156,25 +179,39 @@ private fun selectedNativeAgentSourceRoots(plan: InstallPlan): List<Path> {
     .map { skill -> skill.sourceDir }
 }
 
+private fun allReplacementCleanupNativeAgentSourceRoots(
+  plan: InstallPlan,
+  platformManifests: List<PlatformManifest>,
+): List<Path> = (
+  plan.skills +
+    platformManifests.flatMap(::platformSkills)
+  )
+  .map { skill -> skill.sourceDir }
+  .distinct()
+
 private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
   NativeAgentInstaller(
     agent = InstallAgent.CLAUDE,
     provider = NativeAgentProviderId.CLAUDE,
     link = InstallNativeAgentOperations::linkClaudeAgents,
+    unlink = InstallNativeAgentOperations::unlinkClaudeAgents,
   ),
   NativeAgentInstaller(
     agent = InstallAgent.CODEX,
     provider = NativeAgentProviderId.CODEX,
     link = InstallNativeAgentOperations::linkCodexAgents,
+    unlink = InstallNativeAgentOperations::unlinkCodexAgents,
   ),
   NativeAgentInstaller(
     agent = InstallAgent.OPENCODE,
     provider = NativeAgentProviderId.OPENCODE,
     link = InstallNativeAgentOperations::linkOpencodeAgents,
+    unlink = InstallNativeAgentOperations::unlinkOpencodeAgents,
   ),
   NativeAgentInstaller(
     agent = InstallAgent.JUNIE,
     provider = NativeAgentProviderId.JUNIE,
     link = InstallNativeAgentOperations::linkJunieAgents,
+    unlink = InstallNativeAgentOperations::unlinkJunieAgents,
   ),
 )

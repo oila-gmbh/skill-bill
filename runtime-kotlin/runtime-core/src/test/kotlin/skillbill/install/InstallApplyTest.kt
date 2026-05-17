@@ -276,8 +276,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     val sourceBefore = snapshotSource(fixture.repoRoot)
     val plan = InstallOperations.planInstall(
-      fixture.request(
-        windowsSymlinkPreflight = WindowsSymlinkPreflight(
+      fixture.requestWithWindowsSymlinkPreflight(
+        WindowsSymlinkPreflight(
           state = WindowsSymlinkPreflightState.DECISION_REQUIRED,
           decision = WindowsSymlinkDecision.REQUIRE_USER_ACTION,
           message = "Windows requires elevation or Developer Mode before symlink install.",
@@ -619,8 +619,8 @@ class InstallApplyTest : InstallApplyTestSupport() {
   fun `apply surfaces Windows symlink warning state without parsing shell output`() {
     val fixture = setupApplyFixture()
     val plan = InstallOperations.planInstall(
-      fixture.request(
-        windowsSymlinkPreflight = WindowsSymlinkPreflight(
+      fixture.requestWithWindowsSymlinkPreflight(
+        WindowsSymlinkPreflight(
           state = WindowsSymlinkPreflightState.REQUIRES_ELEVATION_OR_DEVELOPER_MODE,
           decision = WindowsSymlinkDecision.PROCEED_WITH_SYMLINKS,
           message = "Windows symlink support was not confirmed.",

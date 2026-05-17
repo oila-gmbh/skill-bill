@@ -45,14 +45,9 @@ object InstallNativeAgentOperations {
     },
   )
 
-  fun unlinkClaudeAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): List<Path> = unlinkProviderAgents(
+  fun unlinkClaudeAgents(request: NativeAgentLinkRequest): List<Path> = unlinkProviderAgents(
     provider = NativeAgentProvider.Claude,
-    request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, home, selectedPlatforms),
+    request = request,
   )
 
   fun linkCodexAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
@@ -61,16 +56,15 @@ object InstallNativeAgentOperations {
     detectTarget = { detectCodexAgentsTarget(it) },
   )
 
-  fun unlinkCodexAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): List<Path> {
-    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+  fun unlinkCodexAgents(request: NativeAgentLinkRequest): List<Path> {
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Codex, request = request)
-    return uninstallCodexAgentTomls(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) + unlinkedFromCache
+    return uninstallCodexAgentTomls(
+      request.platformPacksRoot,
+      resolvedHome,
+      request.skillsRoot,
+      request.selectedPlatforms,
+    ) + unlinkedFromCache
   }
 
   fun linkOpencodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
@@ -79,16 +73,15 @@ object InstallNativeAgentOperations {
     detectTarget = { detectOpencodeAgentsTarget(it) },
   )
 
-  fun unlinkOpencodeAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): List<Path> {
-    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+  fun unlinkOpencodeAgents(request: NativeAgentLinkRequest): List<Path> {
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Opencode, request = request)
-    return uninstallOpencodeAgentMarkdown(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) +
+    return uninstallOpencodeAgentMarkdown(
+      request.platformPacksRoot,
+      resolvedHome,
+      request.skillsRoot,
+      request.selectedPlatforms,
+    ) +
       unlinkedFromCache
   }
 
@@ -105,16 +98,15 @@ object InstallNativeAgentOperations {
     },
   )
 
-  fun unlinkJunieAgents(
-    platformPacksRoot: Path,
-    skillsRoot: Path? = null,
-    home: Path? = null,
-    selectedPlatforms: List<String>? = null,
-  ): List<Path> {
-    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    val request = NativeAgentLinkRequest(platformPacksRoot, skillsRoot, resolvedHome, selectedPlatforms)
+  fun unlinkJunieAgents(request: NativeAgentLinkRequest): List<Path> {
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Junie, request = request)
-    return uninstallJunieAgentMarkdown(platformPacksRoot, resolvedHome, skillsRoot, selectedPlatforms) +
+    return uninstallJunieAgentMarkdown(
+      request.platformPacksRoot,
+      resolvedHome,
+      request.skillsRoot,
+      request.selectedPlatforms,
+    ) +
       unlinkedFromCache
   }
 
@@ -167,8 +159,32 @@ object InstallNativeAgentOperations {
         selectedPlatforms = request.selectedPlatforms,
         provider = provider,
         home = resolvedHome,
+        overrides = NativeAgentInstallRenderOverrides(
+          cacheRoot = request.overrides.installCacheRoot,
+          sourceRoots = request.overrides.sourceRoots,
+        ),
       ),
     )
-    return uninstallNativeAgentFiles(generated.generatedFiles, provider.homeAgentDirs(resolvedHome))
+    val legacyGenerated = request.overrides.legacyManagedRoot
+      ?.takeIf { legacyRoot -> legacyRoot != generated.cacheRoot }
+      ?.let { legacyRoot ->
+        NativeAgentOperations.renderInstallArtifacts(
+          NativeAgentInstallRenderRequest(
+            platformPacksRoot = request.platformPacksRoot,
+            skillsRoot = request.skillsRoot,
+            selectedPlatforms = request.selectedPlatforms,
+            provider = provider,
+            home = resolvedHome,
+            overrides = NativeAgentInstallRenderOverrides(
+              cacheRoot = legacyRoot,
+              sourceRoots = request.overrides.sourceRoots,
+            ),
+          ),
+        )
+      }
+    return uninstallNativeAgentFiles(
+      (generated.generatedFiles + legacyGenerated?.generatedFiles.orEmpty()).distinct(),
+      provider.homeAgentDirs(resolvedHome),
+    )
   }
 }
