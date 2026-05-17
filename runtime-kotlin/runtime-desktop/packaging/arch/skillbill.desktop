@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SkillBill
+GenericName=SkillBill Desktop Runtime
+Comment=Compose Desktop runtime for SkillBill
+Exec=/opt/skillbill/bin/SkillBill
+Icon=skillbill
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=SkillBill
