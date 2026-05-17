@@ -1,0 +1,252 @@
+package skillbill.install
+
+import org.junit.jupiter.api.Assumptions
+import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallAgentLinkStatus
+import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.McpRegistrationApplyStatus
+import skillbill.install.model.NativeAgentApplyStatus
+import skillbill.install.model.NativeAgentProviderId
+import skillbill.nativeagent.NativeAgentOperations
+import skillbill.nativeagent.NativeAgentProvider
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.attribute.PosixFilePermission
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
+  @Test
+  fun `selected all-agent apply distinguishes Copilot skill and MCP handling from native providers`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".claude"))
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".config/opencode"))
+    Files.createDirectories(fixture.home.resolve(".junie"))
+    val sourceBefore = snapshotSource(fixture.repoRoot)
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = allInstallAgents,
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallAgent.entries.sortedBy(InstallAgent::id), result.mcpRegistrationIntent.agents)
+    assertEquals(InstallAgent.entries.toSet(), result.mcpRegistrationOutcomes.map { outcome -> outcome.agent }.toSet())
+    assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SUCCESS })
+    result.skills.forEach { skill ->
+      assertEquals(
+        InstallAgent.entries.toSet(),
+        skill.links.map { link -> link.agent }.toSet(),
+        "${skill.skillName} did not link to every selected skill target",
+      )
+      assertTrue(skill.links.all { link -> link.status == InstallAgentLinkStatus.CREATED })
+      assertTrue(
+        Files.isSymbolicLink(
+          fixture.home.resolve("agent-skill-targets/copilot/${skill.skillName}"),
+        ),
+        "Copilot should receive the skill link surface",
+      )
+    }
+    assertEquals(
+      setOf(
+        NativeAgentProviderId.CLAUDE,
+        NativeAgentProviderId.CODEX,
+        NativeAgentProviderId.OPENCODE,
+        NativeAgentProviderId.JUNIE,
+      ),
+      result.nativeAgents
+        .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
+        .map { native -> native.provider }
+        .toSet(),
+    )
+    assertFalse(result.nativeAgents.any { native -> native.agent == InstallAgent.COPILOT })
+    assertFalse(Files.exists(fixture.home.resolve(".copilot/agents"), LinkOption.NOFOLLOW_LINKS))
+    assertSourceUnchanged(fixture.repoRoot, sourceBefore)
+  }
+
+  @Test
+  fun `new symlink creation preserves destination that appears before move`() {
+    val targetDir = Files.createTempDirectory("skillbill-new-link-target").also(tempDirs::add)
+    val source = Files.createTempFile("skillbill-new-link-source", ".md").also(tempDirs::add)
+    val linkPath = targetDir.resolve("bill-worker.md")
+    Files.writeString(linkPath, "user owned")
+
+    val failure = runCatching { createNewSymlinkWithGuidance(linkPath, source) }.exceptionOrNull()
+
+    assertNotNull(failure, "new link creation should fail when destination exists")
+    assertEquals("user owned", Files.readString(linkPath))
+    assertFalse(Files.isSymbolicLink(linkPath), "user-owned file should not be replaced")
+  }
+
+  @Test
+  fun `native agent install preserves unmanaged legacy symlink outside current roots`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
+    val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
+    val otherRepo = Files.createTempDirectory("skillbill-native-other-repo").also(tempDirs::add)
+    val newSource = managedRoot.resolve("bill-worker.md")
+    val userSource = otherRepo.resolve("skills/codex/bill-worker.md")
+    Files.createDirectories(userSource.parent)
+    Files.writeString(newSource, "new")
+    Files.writeString(userSource, "user")
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, userSource)
+
+    val result = installNativeAgentFile(
+      source = newSource,
+      agentTarget = AgentTarget("codex", targetDir),
+      managedSourceRoots = listOf(managedRoot),
+    )
+
+    assertTrue(result is InstallNativeAgentResult.Skipped)
+    assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
+  fun `native agent install preserves non agent symlink inside source roots`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
+    val cacheRoot = Files.createTempDirectory("skillbill-native-cache-root").also(tempDirs::add)
+    val repoRoot = Files.createTempDirectory("skillbill-native-repo-root").also(tempDirs::add)
+    val newSource = cacheRoot.resolve("bill-worker.md")
+    val userSource = repoRoot.resolve("platform-packs/kotlin/README.md")
+    Files.createDirectories(userSource.parent)
+    Files.writeString(newSource, "new")
+    Files.writeString(userSource, "user")
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, userSource)
+
+    val result = installNativeAgentFile(
+      source = newSource,
+      agentTarget = AgentTarget("codex", targetDir),
+      managedSourceRoots = listOf(cacheRoot),
+    )
+
+    assertTrue(result is InstallNativeAgentResult.Skipped)
+    assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
+  fun `apply replaces existing native agent links from legacy generated cache`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val targetDir = fixture.home.resolve(".codex/agents")
+    Files.createDirectories(targetDir)
+    val legacyRoot = NativeAgentOperations.installCacheRoot(
+      home = fixture.home,
+      platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    val legacyFile = legacyRoot
+      .resolve(NativeAgentProvider.Codex.directoryName)
+      .resolve("bill-code-review-worker.${NativeAgentProvider.Codex.extension}")
+    Files.createDirectories(legacyFile.parent)
+    Files.writeString(legacyFile, "legacy")
+    val linkPath = targetDir.resolve(legacyFile.fileName)
+    createSymlinkOrSkip(linkPath, legacyFile)
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val newTarget = readSymlinkTarget(linkPath)
+    assertTrue(newTarget.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
+    assertFalse(newTarget.startsWith(legacyRoot))
+  }
+
+  @Test
+  fun `replacement apply removes native agent links from deselected platforms`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val kmpPlan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kmp"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+    val first = InstallOperations.applyInstall(kmpPlan)
+    assertEquals(InstallApplyStatus.SUCCESS, first.status)
+    val targetDir = fixture.home.resolve(".codex/agents")
+    val baseNativeAgent = targetDir.resolve("bill-code-review-worker.toml")
+    val kmpNativeAgent = targetDir.resolve("bill-kmp-code-review-worker.toml")
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertTrue(Files.isSymbolicLink(kmpNativeAgent))
+    val legacyRoot = NativeAgentOperations.installCacheRoot(
+      home = fixture.home,
+      platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    val legacyKmpNativeAgent = legacyRoot
+      .resolve(NativeAgentProvider.Codex.directoryName)
+      .resolve(kmpNativeAgent.fileName)
+    Files.createDirectories(legacyKmpNativeAgent.parent)
+    Files.writeString(legacyKmpNativeAgent, "legacy kmp")
+    Files.delete(kmpNativeAgent)
+    createSymlinkOrSkip(kmpNativeAgent, legacyKmpNativeAgent)
+    assertEquals(legacyKmpNativeAgent.toAbsolutePath().normalize(), readSymlinkTarget(kmpNativeAgent))
+
+    val baseOnlyReplacementPlan = InstallOperations.planInstall(
+      fixture.request(
+        agents = setOf(InstallAgent.CODEX),
+        replaceExistingSkillBillLinks = true,
+      ),
+    )
+    val second = InstallOperations.applyInstall(baseOnlyReplacementPlan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, second.status)
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertFalse(Files.exists(kmpNativeAgent, LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `native agent replacement preserves existing link when replacement symlink creation fails`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-readonly-target").also(tempDirs::add)
+    val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
+    val newRoot = Files.createTempDirectory("skillbill-native-new-root").also(tempDirs::add)
+    val oldSource = managedRoot.resolve("bill-worker.md")
+    val newSource = newRoot.resolve("bill-worker.md")
+    Files.writeString(oldSource, "old")
+    Files.writeString(newSource, "new")
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, oldSource)
+    val originalPermissions = readPosixPermissionsOrSkip(targetDir)
+    try {
+      Files.setPosixFilePermissions(
+        targetDir,
+        originalPermissions - PosixFilePermission.OWNER_WRITE -
+          PosixFilePermission.GROUP_WRITE -
+          PosixFilePermission.OTHERS_WRITE,
+      )
+      val probe = targetDir.resolve("probe")
+      val canStillCreateSymlink = runCatching {
+        Files.createSymbolicLink(probe, newSource)
+        Files.deleteIfExists(probe)
+      }.isSuccess
+      Assumptions.assumeFalse(canStillCreateSymlink, "read-only directory still allows symlink creation")
+
+      val failure = runCatching {
+        installNativeAgentFile(
+          source = newSource,
+          agentTarget = AgentTarget("codex", targetDir),
+          managedSourceRoots = listOf(managedRoot),
+        )
+      }.exceptionOrNull()
+
+      assertNotNull(failure, "replacement should fail in read-only target dir")
+      assertEquals(oldSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+    } finally {
+      Files.setPosixFilePermissions(targetDir, originalPermissions)
+    }
+  }
+}

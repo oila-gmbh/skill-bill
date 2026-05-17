@@ -2,11 +2,13 @@ package skillbill.desktop.core.data.di
 
 import me.tatarka.inject.annotations.Provides
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.service.JvmDesktopFirstRunGateway
 import skillbill.desktop.core.data.service.JvmRuntimeScaffoldGateway
 import skillbill.desktop.core.data.service.RuntimeGitGateway
 import skillbill.desktop.core.data.service.RuntimePrPublishingGateway
 import skillbill.desktop.core.data.service.RuntimeRepoBrowserService
 import skillbill.desktop.core.domain.service.AuthoringGateway
+import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RenderGateway
@@ -41,4 +43,7 @@ interface JvmDataBindings {
 
   @Provides
   fun JvmRuntimeScaffoldGateway.bindRuntimeScaffoldGateway(): RuntimeScaffoldGateway = this
+
+  @Provides
+  fun JvmDesktopFirstRunGateway.bindDesktopFirstRunGateway(): DesktopFirstRunGateway = this
 }

@@ -1,6 +1,6 @@
 # Desktop Skill Bill App Spec
 
-Status: Draft
+Status: Complete for SKILL-45 scope
 
 ## Summary
 
@@ -316,21 +316,132 @@ End-to-end smoke:
 - commit
 - push to a local bare remote
 
-## Release Shape
+## Build, Install, and Runtime Bundle
 
-Early release should be developer-run:
+Developer source run:
 
 ```bash
 cd runtime-kotlin
 ./gradlew :runtime-desktop:run
 ```
 
-Later release can add:
+Build a loose app directory:
 
-- packaged desktop distribution
-- launch script from repo root
-- README entry
-- optional installer task
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:createDistributable
+```
+
+Build the native package for the current host:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:packageDistributionForCurrentOS
+```
+
+Host-specific native package tasks:
+
+| Platform | Task | Notes |
+|----------|------|-------|
+| macOS | `:runtime-desktop:packageDmg` | Requires a macOS host and native package tooling. |
+| Windows | `:runtime-desktop:packageMsi` | Requires a Windows host and native package tooling. |
+| Linux | `:runtime-desktop:packageDeb` | Debian/Ubuntu-style package. |
+| Linux | `:runtime-desktop:packageRpm` | RPM package; preferred Arch/CachyOS-friendly artifact when local tooling supports it. |
+| Any desktop | `:runtime-desktop:createDistributable` | Loose app directory fallback when native package production is unavailable. |
+
+Compose Desktop native packaging is host-limited. A Linux workstation can verify
+Linux packages and the loose distribution, but should not be treated as proof
+that macOS DMG or Windows MSI production works. CI should run the current-OS
+package task on each OS runner, or explicitly record the missing host/toolchain
+as a package-production limitation. The SKILL-45 final pass verified the loose
+app image on CachyOS with `:runtime-desktop:createDistributable`; local native
+package production was blocked because this host's `jpackage` rejected both
+`rpm` and `deb` types and neither `rpmbuild` nor `dpkg-deb` was installed.
+
+The package build stages `skill-bill-runtime` into app resources. That bundle
+contains:
+
+- packaged `runtime-cli`
+- packaged `runtime-mcp`
+- authored `skills/`
+- dynamic `platform-packs/`
+- `orchestration/`
+
+The desktop install gateway resolves runtime assets in this order:
+
+1. explicit `skillbill.runtime.assets.dir`
+2. explicit `SKILL_BILL_RUNTIME_ASSETS`
+3. installed Compose app resources containing `skill-bill-runtime`
+4. a development checkout discovered from the working directory
+
+Resolved runtime paths are passed to shared install plan/apply. The desktop app
+does not scrape `install.sh` output and does not implement a second installer.
+
+## First-Run Setup
+
+The first-run wizard is the desktop adapter over the reusable install contract.
+It asks for:
+
+- agents: detected or manually selected `copilot`, `claude`, `codex`,
+  `opencode`, and `junie`
+- platform packs: all, selected, or none; packs are discovered from
+  `platform-packs/` manifests
+- telemetry: `anonymous`, `full`, or `off`, matching CLI behavior
+- MCP registration: an install intent that applies supported agent config
+  changes through the runtime
+
+Base skills are always included even when optional platform packs are skipped.
+Applying the wizard writes rendered skill output under
+`~/.skill-bill/installed-skills/` and links agent entries to that staging cache.
+Windows symlink/elevation outcomes are surfaced from structured runtime
+preflight/apply results, including Developer Mode or elevated-shell guidance
+when symlink support is unavailable.
+
+The wizard does not change the governed source-shape rules. Authored source is
+still `content.md`, pack manifests, add-ons, and provider-neutral
+`native-agents/`; generated `SKILL.md` wrappers, support pointers,
+provider-native agent files, install staging, and packaged binary outputs remain
+generated artifacts and must not be committed.
+
+## Release Shape
+
+The current release can be developer-run:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:run
+```
+
+Native release artifacts are produced by the package tasks above. Do not commit
+the generated package outputs or loose app directories.
+
+## SKILL-45 Acceptance Traceability
+
+Parent SKILL-45 acceptance criteria are closed as follows:
+
+1. Native installables are configured for DMG, MSI, Deb, and RPM in
+   `runtime-kotlin/runtime-desktop/build.gradle.kts`; actual package production
+   is host/toolchain-limited and should run on matching OS hosts.
+2. Desktop packages stage the `skill-bill-runtime` app-resource bundle, and the
+   desktop gateway can locate bundled, explicit, or development runtime assets.
+3. First launch includes setup choices for agents, platform packs, telemetry,
+   and MCP registration.
+4. Platform packs are discovered dynamically from `platform-packs/` manifests;
+   base skills are always included by install planning.
+5. Telemetry choices are `anonymous`, `full`, and `off`.
+6. Supported agents are `copilot`, `claude`, `codex`, `opencode`, and `junie`,
+   with detection plus manual selection.
+7. Install apply preserves staging under `~/.skill-bill/installed-skills/`.
+8. CLI, shell, and desktop use reusable install plan/apply contracts rather than
+   parsing interactive shell output.
+9. `install.sh` remains usable as a prompt/bootstrap wrapper that delegates to
+   `skill-bill install apply`.
+10. Windows symlink/elevation behavior is represented in structured runtime
+    outcomes and documented as Developer Mode, elevated shell, or explicit
+    failure guidance.
+11. Regression coverage exists for install plan/apply, agent/platform
+    selection, telemetry configuration, desktop wizard state, packaged runtime
+    lookup, and package task wiring.
 
 ## Open Questions
 
@@ -380,63 +491,65 @@ Use this checklist as the lightweight implementation tracker. Keep detailed acce
 
 ### Iteration 03: Content Editor and Validation
 
-- [ ] Load full `content.md` for selected governed skills.
-- [ ] Add Markdown text editor.
-- [ ] Track saved text, draft text, and dirty state.
-- [ ] Save through runtime authoring operation.
-- [ ] Preserve draft text on save failure.
-- [ ] Display validation errors inline.
-- [ ] Add repo validation action.
-- [ ] Add read-only rendered preview, if included.
-- [ ] Confirm generated `SKILL.md` is never editable.
-- [ ] Add editor and validation tests.
+- [x] Load full `content.md` for selected governed skills.
+- [x] Add Markdown text editor.
+- [x] Track saved text, draft text, and dirty state.
+- [x] Save through runtime authoring operation.
+- [x] Preserve draft text on save failure.
+- [x] Display validation errors inline.
+- [x] Add repo validation action.
+- [x] Add read-only rendered preview, if included.
+- [x] Confirm generated `SKILL.md` is never editable.
+- [x] Add editor and validation tests.
 
 ### Iteration 04: Scaffold Wizards
 
-- [ ] Add `New...` action entrypoints.
-- [ ] Add horizontal skill wizard.
-- [ ] Add platform pack wizard.
-- [ ] Add platform override wizard.
-- [ ] Add code-review area wizard.
-- [ ] Add add-on wizard.
-- [ ] Generate scaffold payload contract JSON.
-- [ ] Run dry-run before apply when available.
-- [ ] Show planned operations.
-- [ ] Execute scaffold through runtime operation.
-- [ ] Refresh tree after scaffold.
-- [ ] Add scaffold wizard tests.
+- [x] Add `New...` action entrypoints.
+- [x] Add horizontal skill wizard.
+- [x] Add platform pack wizard.
+- [x] Add platform override wizard.
+- [x] Add code-review area wizard.
+- [x] Add add-on wizard.
+- [x] Generate scaffold payload contract JSON.
+- [x] Run dry-run before apply when available.
+- [x] Show planned operations.
+- [x] Execute scaffold through runtime operation.
+- [x] Refresh tree after scaffold.
+- [x] Add scaffold wizard tests.
 
 ### Iteration 05: Git Fork Publishing
 
-- [ ] Add `GitGateway`.
-- [ ] Detect branch, remotes, dirty files, staged files, and ahead/behind state.
-- [ ] Show changed-file list.
-- [ ] Show selected-file diff.
-- [ ] Stage and unstage files.
-- [ ] Commit staged files with user message.
-- [ ] Push current branch to `origin`.
-- [ ] Detect canonical-vs-fork remote risk.
-- [ ] Support explicit remote configuration.
-- [ ] Generate GitHub compare URL when possible.
-- [ ] Add local bare-remote Git smoke test.
+- [x] Add `GitGateway`.
+- [x] Detect branch, remotes, dirty files, staged files, and ahead/behind state.
+- [x] Show changed-file list.
+- [x] Show selected-file diff.
+- [x] Stage and unstage files.
+- [x] Commit staged files with user message.
+- [x] Push current branch to `origin`.
+- [x] Detect canonical-vs-fork remote risk.
+- [x] Support explicit remote configuration.
+- [x] Generate GitHub compare URL when possible.
+- [x] Add local bare-remote Git smoke test.
 
 ### Iteration 06: Packaging and Release Polish
 
-- [ ] Document source-run command.
-- [ ] Add package task documentation.
-- [ ] Add first-run repo selection guidance.
-- [ ] Document fork setup workflow.
-- [ ] Document authored-source-only editing boundary.
-- [ ] Add README or getting-started link to the Skill Bill app.
-- [ ] Add launch smoke coverage.
-- [ ] Verify `:runtime-desktop:packageDistributionForCurrentOS` on primary platform.
-- [ ] Include desktop checks in the appropriate validation path.
+- [x] Document source-run command.
+- [x] Add package task documentation.
+- [x] Add first-run repo selection guidance.
+- [x] Document fork setup workflow.
+- [x] Document authored-source-only editing boundary.
+- [x] Add README or getting-started link to the Skill Bill app.
+- [x] Add launch smoke coverage.
+- [x] Verify primary-platform package path: `:runtime-desktop:createDistributable`
+  produced the loose app image on CachyOS; native `deb`/`rpm` package
+  production is blocked on this host by local `jpackage`/packaging-tool support.
+- [x] Include desktop checks in the appropriate validation path.
 
 ### Cross-Cutting Done Criteria
 
-- [ ] UI calls shared Skill Bill runtime services or CLI-equivalent adapters for governed behavior.
-- [ ] UI does not duplicate manifest, scaffold, routing, validation, or native-agent render rules.
-- [ ] Generated wrappers and pointer files are never editable.
-- [ ] Scaffold and save failures surface runtime errors clearly.
-- [ ] Fork publishing never rewrites remotes without explicit confirmation.
-- [ ] Documentation explains that the app is optional and repo-based.
+- [x] UI calls shared Skill Bill runtime services or CLI-equivalent adapters for governed behavior.
+- [x] UI does not duplicate manifest, scaffold, routing, validation, or native-agent render rules.
+- [x] Generated wrappers and pointer files are never editable.
+- [x] Scaffold and save failures surface runtime errors clearly.
+- [x] Fork publishing never rewrites remotes without explicit confirmation.
+- [x] Documentation explains that the app is optional and repo-based.

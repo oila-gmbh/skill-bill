@@ -176,6 +176,14 @@ source skill directory.
 Re-run `./install.sh` after source, renderer, or support pointer changes so
 installed agents receive a fresh staging hash.
 
+The terminal installer and desktop first-run wizard both use this same
+runtime-owned install plan/apply path. Their choices may change which agents,
+platform packs, telemetry level, or MCP registrations are applied, but they do
+not change the governed source shape. Base skills remain part of every install;
+optional platform packs are selected from manifests; generated wrappers,
+support pointers, provider-native agent files, and packaged desktop outputs
+remain install/render artifacts instead of authored source.
+
 ## Native-Agent Generation
 
 Provider-neutral native-agent sources live under `native-agents/` in source

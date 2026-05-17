@@ -1,9 +1,13 @@
 package skillbill.install
 
 import skillbill.install.model.AgentTarget
-import java.nio.file.FileSystemException
+import skillbill.nativeagent.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
+
+private val generatedNativeAgentProviderDirs = NativeAgentProvider.entries
+  .map { provider -> provider.directoryName }
+  .toSet()
 
 internal fun installNativeAgentFile(
   source: Path,
@@ -19,7 +23,7 @@ internal fun installNativeAgentFile(
   return applyInstallDecision(
     linkPath = linkPath,
     resolvedSource = resolvedSource,
-    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots, agentTarget.name),
+    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots),
   )
 }
 
@@ -50,39 +54,20 @@ private fun applyInstallDecision(
   )
   InstallAction.AlreadyLinked -> InstallNativeAgentResult.Skipped(linkPath, "already linked to $resolvedSource")
   InstallAction.Replace, InstallAction.Create -> {
-    if (decision == InstallAction.Replace) {
-      Files.deleteIfExists(linkPath)
+    when (decision) {
+      InstallAction.Replace -> createReplacementSymlinkWithGuidance(linkPath, resolvedSource)
+      InstallAction.Create -> createNewSymlinkWithGuidance(linkPath, resolvedSource)
+      InstallAction.Skip,
+      InstallAction.AlreadyLinked,
+      -> error("Unexpected native-agent install decision '$decision'.")
     }
-    createSymbolicLinkOrFail(linkPath, resolvedSource)
     InstallNativeAgentResult.Linked(linkPath)
   }
 }
 
-private fun createSymbolicLinkOrFail(linkPath: Path, resolvedSource: Path) {
-  try {
-    Files.createSymbolicLink(linkPath, resolvedSource)
-  } catch (error: UnsupportedOperationException) {
-    throw symbolicLinkFailure(linkPath, error)
-  } catch (error: FileSystemException) {
-    throw symbolicLinkFailure(linkPath, error)
-  }
-}
-
-private fun symbolicLinkFailure(linkPath: Path, cause: Exception): RuntimeException = IllegalStateException(
-  "Failed to create native agent symlink at $linkPath. " +
-    "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) " +
-    "or run the install command from an elevated shell so the JVM can create symlinks.",
-  cause,
-)
-
 private enum class InstallAction { Skip, AlreadyLinked, Replace, Create }
 
-private fun decideInstallAction(
-  linkPath: Path,
-  resolvedSource: Path,
-  managedSourceRoots: List<Path>,
-  agentKind: String,
-): InstallAction {
+private fun decideInstallAction(linkPath: Path, resolvedSource: Path, managedSourceRoots: List<Path>): InstallAction {
   if (!Files.isSymbolicLink(linkPath)) {
     return if (Files.exists(linkPath)) InstallAction.Skip else InstallAction.Create
   }
@@ -91,26 +76,13 @@ private fun decideInstallAction(
     existingTarget == resolvedSource -> InstallAction.AlreadyLinked
     existingTarget != null && managedSourceRoots.any { root -> existingTarget.startsWith(root) } ->
       InstallAction.Replace
-    existingTarget != null && isReplaceableManagedNativeAgentSymlink(
-      existingTarget,
-      resolvedSource,
-      agentKind,
-    ) -> InstallAction.Replace
+    existingTarget != null && existingTarget.isLegacyGeneratedNativeAgentArtifact() -> InstallAction.Replace
     else -> InstallAction.Skip
   }
 }
 
-private fun isReplaceableManagedNativeAgentSymlink(existingTarget: Path, source: Path, agentKind: String): Boolean {
-  val parts = existingTarget.map { part -> part.toString() }.toSet()
-  val pointsAtSkillBillCache = ".skill-bill" in parts && "native-agents" in parts
-  val pointsAtLegacyRepoArtifact = "skills" in parts || "platform-packs" in parts
-  return existingTarget.fileName == source.fileName &&
-    source.fileName.toString().startsWith("bill-") &&
-    (
-      pointsAtSkillBillCache ||
-        existingTarget.parent?.fileName?.toString() == agentKind && pointsAtLegacyRepoArtifact
-      )
-}
+private fun Path.isLegacyGeneratedNativeAgentArtifact(): Boolean =
+  parent?.fileName?.toString() in generatedNativeAgentProviderDirs
 
 private fun resolveSymlinkTarget(linkPath: Path): Path? = runCatching {
   val rawTarget = Files.readSymbolicLink(linkPath)

@@ -16,6 +16,7 @@ internal data class CommandPaletteActions(
   val showHistory: () -> Unit,
   val save: () -> Unit,
   val refreshGitStatus: () -> Unit,
+  val openInstallSetup: () -> Unit = {},
   val openScaffoldWizard: (ScaffoldKind) -> Unit = {},
 )
 
@@ -38,6 +39,7 @@ internal fun executeCommandPaletteResult(result: CommandPaletteResult, actions: 
     CommandPaletteAction.SHOW_HISTORY -> actions.showHistory()
     CommandPaletteAction.SAVE -> actions.save()
     CommandPaletteAction.REFRESH_GIT_STATUS -> actions.refreshGitStatus()
+    CommandPaletteAction.INSTALL_SETUP -> actions.openInstallSetup()
     CommandPaletteAction.NEW_HORIZONTAL_SKILL -> actions.openScaffoldWizard(ScaffoldKind.HORIZONTAL_SKILL)
     CommandPaletteAction.NEW_PLATFORM_PACK -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_PACK)
     CommandPaletteAction.NEW_PLATFORM_OVERRIDE -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_OVERRIDE_PILOTED)

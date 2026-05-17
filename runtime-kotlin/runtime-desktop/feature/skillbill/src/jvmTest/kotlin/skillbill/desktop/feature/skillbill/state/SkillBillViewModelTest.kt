@@ -192,7 +192,7 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `dirty refresh prompts before reloading tree data`() {
+  fun `dirty refresh runs quietly and keeps draft while reloading tree data`() {
     val repoSessionService = CountingRepoSessionService()
     val authoringGateway = FakeAuthoringGateway().apply {
       putDocument("skill-one", "one\n")
@@ -202,16 +202,19 @@ class SkillBillViewModelTest {
     viewModel.selectTreeItem("skill-one")
     viewModel.updateEditorDraft("dirty\n")
 
-    val prompted = viewModel.beginRefresh()
-    val discarded = viewModel.discardDirtyEditorPrompt()
+    val started = viewModel.beginRefresh()
+    authoringGateway.putDocument("skill-one", "reloaded\n")
+    val refreshed = viewModel.finishRefresh()
 
-    assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
-    assertEquals(DirtyEditorPromptReason.REFRESH, prompted.dirtyEditorPrompt?.reason)
-    assertEquals(SkillBillBusyOperation.REFRESH, discarded.busyOperation)
+    assertEquals(listOf("/repo", "/repo"), repoSessionService.openedRepoPaths)
+    assertNull(started.dirtyEditorPrompt)
+    assertNull(started.busyOperation)
+    assertTrue(refreshed.editor.dirty)
+    assertEquals("dirty\n", refreshed.editor.draftContent)
   }
 
   @Test
-  fun `draft changes are ignored while repo refresh is in flight`() {
+  fun `draft changes are preserved while quiet repo refresh is in flight`() {
     val authoringGateway = FakeAuthoringGateway().apply {
       putDocument("skill-one", "saved\n")
     }
@@ -223,13 +226,13 @@ class SkillBillViewModelTest {
     val request = viewModel.repoLoadRequest(repoPath = "/repo", preserveSelection = true)
     val editedDuringRefresh = viewModel.updateEditorDraft("draft after refresh started\n")
     authoringGateway.putDocument("skill-one", "reloaded\n")
-    val refreshed = viewModel.finishRepoLoad(viewModel.loadRepo(request))
+    val refreshed = viewModel.finishRefresh(viewModel.loadRepo(request))
 
-    assertEquals(SkillBillBusyOperation.REFRESH, refreshState.busyOperation)
-    assertFalse(editedDuringRefresh.editor.dirty)
-    assertEquals("saved\n", editedDuringRefresh.editor.draftContent)
-    assertFalse(refreshed.editor.dirty)
-    assertEquals("reloaded\n", refreshed.editor.draftContent)
+    assertNull(refreshState.busyOperation)
+    assertTrue(editedDuringRefresh.editor.dirty)
+    assertEquals("draft after refresh started\n", editedDuringRefresh.editor.draftContent)
+    assertTrue(refreshed.editor.dirty)
+    assertEquals("draft after refresh started\n", refreshed.editor.draftContent)
   }
 
   @Test
@@ -339,6 +342,8 @@ class SkillBillViewModelTest {
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = recentRepoRepository,
       scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
+      firstRunGateway = defaultFirstRunGateway(),
+      desktopPreferenceStore = completedFirstRunStore(),
     )
 
     val state = viewModel.selectRepoPath("/not-skill-bill")
@@ -373,6 +378,8 @@ class SkillBillViewModelTest {
       renderGateway = FakeRenderGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
       scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
+      firstRunGateway = defaultFirstRunGateway(),
+      desktopPreferenceStore = completedFirstRunStore(),
     )
     viewModel.selectRepoPath("/repo")
     skillTreeService.items =
@@ -510,7 +517,7 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `begin and finish refresh expose busy state around runtime reload`() {
+  fun `begin and finish refresh quietly reload runtime data`() {
     val repoSessionService = CountingRepoSessionService()
     val viewModel = newViewModel(repoSessionService = repoSessionService)
     viewModel.selectRepoPath("/repo")
@@ -518,7 +525,7 @@ class SkillBillViewModelTest {
 
     val busy = viewModel.beginRefresh()
 
-    assertEquals(SkillBillBusyOperation.REFRESH, busy.busyOperation)
+    assertNull(busy.busyOperation)
     assertEquals(emptyList(), repoSessionService.openedRepoPaths)
 
     val refreshed = viewModel.finishRefresh()
@@ -874,8 +881,7 @@ class SkillBillViewModelTest {
     viewModel.beginRefresh()
     val state = viewModel.finishValidate(staleResult)
 
-    // Refresh operation is still in flight; validation should not have overwritten its busy state.
-    assertEquals(SkillBillBusyOperation.REFRESH, state.busyOperation)
+    assertEquals(SkillBillBusyOperation.VALIDATE, state.busyOperation)
     // F-101: the stale finish must unwind the RUNNING validation marker; otherwise the validation
     // slice would stay stuck on RUNNING after the unrelated operation completes.
     assertEquals(ValidationRunState.UNAVAILABLE, state.validation.state)
@@ -984,12 +990,11 @@ class SkillBillViewModelTest {
     // F-101: the stale finish must unwind RUNNING back to the previous-summary captured at
     // beginValidate time (PASSED in this scenario), not leave validation stuck on RUNNING.
     assertEquals(ValidationRunState.PASSED, afterStale.validation.state)
-    // Refresh is still the in-flight op.
-    assertEquals(SkillBillBusyOperation.REFRESH, afterStale.busyOperation)
+    assertEquals(SkillBillBusyOperation.VALIDATE, afterStale.busyOperation)
   }
 
   @Test
-  fun `successful refresh on same repo resets validation to UNAVAILABLE`() {
+  fun `successful refresh on same repo preserves validation state`() {
     val passedSummary = ValidationSummary(state = ValidationRunState.PASSED)
     val validationGateway = FakeValidationGateway(scriptedSummary = passedSummary)
     val viewModel = newViewModel(validationGateway = validationGateway)
@@ -1000,9 +1005,7 @@ class SkillBillViewModelTest {
 
     val refreshed = viewModel.refresh()
 
-    // F-103: a refresh re-reads on-disk state; the prior validation result is now stale and must
-    // be cleared even when the repo path is unchanged.
-    assertEquals(ValidationRunState.UNAVAILABLE, refreshed.validation.state)
+    assertEquals(ValidationRunState.PASSED, refreshed.validation.state)
   }
 
   @Test
@@ -1099,6 +1102,7 @@ class SkillBillViewModelTest {
       scriptedSummariesByTreeItemId = mapOf(
         "skill-one" to passedRenderSummary("skills/one/SKILL.md"),
         "skill-two" to passedRenderSummary("skills/two/SKILL.md"),
+        "skill-three" to passedRenderSummary("platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md"),
         "addon" to passedRenderSummary("platform-packs/kotlin/addons/addon.md"),
         "agent" to passedRenderSummary("skills/bill-alpha/native-agents/agent.md"),
       ),
@@ -1113,7 +1117,15 @@ class SkillBillViewModelTest {
             kind = TreeItemKind.GROUP,
             children = listOf(
               SkillBillTreeItem(id = "skill-one", label = "Skill One", kind = TreeItemKind.SKILL),
-              SkillBillTreeItem(id = "skill-two", label = "Skill Two", kind = TreeItemKind.PLATFORM_PACK),
+              SkillBillTreeItem(id = "skill-two", label = "Skill Two", kind = TreeItemKind.SKILL),
+              SkillBillTreeItem(
+                id = "platform:kotlin",
+                label = "kotlin",
+                kind = TreeItemKind.PLATFORM_PACK,
+                children = listOf(
+                  SkillBillTreeItem(id = "skill-three", label = "Skill Three", kind = TreeItemKind.SKILL),
+                ),
+              ),
               SkillBillTreeItem(id = "addon", label = "Addon", kind = TreeItemKind.ADD_ON),
               SkillBillTreeItem(id = "agent", label = "Agent", kind = TreeItemKind.NATIVE_AGENT),
               SkillBillTreeItem(id = "generated", label = "SKILL.md", kind = TreeItemKind.GENERATED_ARTIFACT),
@@ -1128,10 +1140,11 @@ class SkillBillViewModelTest {
     val finished = viewModel.finishRender(viewModel.runRender(request))
 
     assertEquals(RenderRunState.PASSED, finished.render.state)
-    assertEquals(listOf("skill-one", "skill-two", "addon", "agent"), renderGateway.requestedTreeItemIds)
-    assertEquals(4, finished.render.generatedArtifacts.size)
+    assertEquals(listOf("skill-one", "skill-two", "skill-three", "addon", "agent"), renderGateway.requestedTreeItemIds)
+    assertEquals(5, finished.render.generatedArtifacts.size)
     assertTrue(finished.render.blocks.any { it.header == "===== render target: Skill One (skill-one) =====" })
     assertFalse(renderGateway.requestedTreeItemIds.contains("generated"))
+    assertFalse(renderGateway.requestedTreeItemIds.contains("platform:kotlin"))
   }
 
   @Test
@@ -1224,14 +1237,13 @@ class SkillBillViewModelTest {
     val afterStale = viewModel.finishRender(staleResult)
 
     // F-101: stale finish must unwind RUNNING back to the previous-summary captured at beginRender
-    // time (PASSED in this scenario). Refresh has not yet completed, so refresh's reset-to-UNAVAILABLE
-    // has not landed; the stale finish must restore PASSED rather than leave the slice on RUNNING.
+    // time (PASSED in this scenario). Refresh is still in flight and must not leave RUNNING behind.
     assertEquals(RenderRunState.PASSED, afterStale.render.state)
-    assertEquals(SkillBillBusyOperation.REFRESH, afterStale.busyOperation)
+    assertEquals(SkillBillBusyOperation.RENDER, afterStale.busyOperation)
   }
 
   @Test
-  fun `refresh resets render summary to UNAVAILABLE even with prior PASSED state`() {
+  fun `refresh on same repo preserves render summary with prior PASSED state`() {
     val renderGateway = FakeRenderGateway(
       scriptedSummary = RenderSummary(state = RenderRunState.PASSED, durationMillis = 5L),
     )
@@ -1246,7 +1258,7 @@ class SkillBillViewModelTest {
 
     val refreshed = viewModel.refresh()
 
-    assertEquals(RenderRunState.UNAVAILABLE, refreshed.render.state)
+    assertEquals(RenderRunState.PASSED, refreshed.render.state)
   }
 
   @Test
@@ -1468,6 +1480,7 @@ class SkillBillViewModelTest {
     val renderAll = state.commandPalette.results.first { it.id == "command.render-all" }
     val showChanges = state.commandPalette.results.first { it.id == "command.show-changes" }
     val showHistory = state.commandPalette.results.first { it.id == "command.show-history" }
+    val installSetup = state.commandPalette.results.first { it.id == "command.install-setup" }
 
     assertFalse(validate.enabled)
     assertEquals("Open a valid Skill Bill repository first.", validate.disabledReason)
@@ -1481,6 +1494,8 @@ class SkillBillViewModelTest {
     assertEquals("Open a valid Skill Bill repository first.", showChanges.disabledReason)
     assertFalse(showHistory.enabled)
     assertEquals("Open a valid Skill Bill repository first.", showHistory.disabledReason)
+    assertFalse(installSetup.enabled)
+    assertEquals("Open a valid Skill Bill repository first.", installSetup.disabledReason)
   }
 
   @Test
@@ -1535,6 +1550,12 @@ class SkillBillViewModelTest {
       marker = "ra",
       action = CommandPaletteAction.RENDER_ALL,
     )
+    val installSetup = refresh.copy(
+      id = "command.install-setup",
+      title = "Install setup",
+      marker = "in",
+      action = CommandPaletteAction.INSTALL_SETUP,
+    )
     var openRepositoryCount = 0
     var refreshCount = 0
     var validateCount = 0
@@ -1543,6 +1564,7 @@ class SkillBillViewModelTest {
     var renderAllCount = 0
     var showChangesCount = 0
     var showHistoryCount = 0
+    var installSetupCount = 0
     val actions = paletteActions(
       openRepository = { openRepositoryCount += 1 },
       refresh = { refreshCount += 1 },
@@ -1552,6 +1574,7 @@ class SkillBillViewModelTest {
       renderAll = { renderAllCount += 1 },
       showChanges = { showChangesCount += 1 },
       showHistory = { showHistoryCount += 1 },
+      openInstallSetup = { installSetupCount += 1 },
     )
 
     assertTrue(executeCommandPaletteResult(openRepository, actions))
@@ -1562,6 +1585,7 @@ class SkillBillViewModelTest {
     assertTrue(executeCommandPaletteResult(renderAll, actions))
     assertTrue(executeCommandPaletteResult(showChanges, actions))
     assertTrue(executeCommandPaletteResult(showHistory, actions))
+    assertTrue(executeCommandPaletteResult(installSetup, actions))
 
     assertEquals(1, openRepositoryCount)
     assertEquals(1, refreshCount)
@@ -1571,6 +1595,7 @@ class SkillBillViewModelTest {
     assertEquals(1, renderAllCount)
     assertEquals(1, showChangesCount)
     assertEquals(1, showHistoryCount)
+    assertEquals(1, installSetupCount)
   }
 
   @Test
@@ -1581,6 +1606,7 @@ class SkillBillViewModelTest {
     val resultIds = viewModel.openCommandPalette().commandPalette.results.map { it.id }
 
     assertTrue("command.open-repository" in resultIds)
+    assertTrue("command.install-setup" in resultIds)
     assertTrue("command.show-changes" in resultIds)
     assertTrue("command.show-history" in resultIds)
   }
@@ -1806,6 +1832,8 @@ class SkillBillViewModelTest {
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
     scaffoldGateway: skillbill.desktop.core.domain.service.RuntimeScaffoldGateway =
       skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
+    firstRunGateway: skillbill.desktop.core.domain.service.DesktopFirstRunGateway = defaultFirstRunGateway(),
+    desktopPreferenceStore: skillbill.desktop.core.datastore.DesktopPreferenceStore = completedFirstRunStore(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1816,8 +1844,32 @@ class SkillBillViewModelTest {
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
     scaffoldGateway = scaffoldGateway,
+    firstRunGateway = firstRunGateway,
+    desktopPreferenceStore = desktopPreferenceStore,
   )
 }
+
+private fun defaultFirstRunGateway(): skillbill.desktop.core.domain.service.DesktopFirstRunGateway =
+  skillbill.desktop.core.testing.install.FakeDesktopFirstRunGateway(
+    discoveryResult = skillbill.desktop.core.domain.model.FirstRunDiscoveryResult.Success(
+      skillbill.desktop.core.domain.model.FirstRunSetupDiscovery(
+        agents = emptyList(),
+        platformPacks = emptyList(),
+      ),
+    ),
+    planResult = skillbill.desktop.core.domain.model.FirstRunPlanResult.Failed("not scripted"),
+    applyResult = skillbill.desktop.core.domain.model.FirstRunApplyResult.Failed(
+      skillbill.desktop.core.domain.model.FirstRunInstallOutcome(
+        status = skillbill.desktop.core.domain.model.FirstRunInstallStatus.FAILURE,
+        title = "not scripted",
+      ),
+    ),
+  )
+
+private fun completedFirstRunStore(): skillbill.desktop.core.datastore.DesktopPreferenceStore =
+  skillbill.desktop.core.testing.FakeDesktopPreferenceStore(
+    initialFirstRunPreferences = skillbill.desktop.core.datastore.DesktopFirstRunPreferences(completed = true),
+  )
 
 private fun paletteActions(
   selectTreeItem: (String) -> Unit = {},
@@ -1831,6 +1883,7 @@ private fun paletteActions(
   showHistory: () -> Unit = {},
   save: () -> Unit = {},
   refreshGitStatus: () -> Unit = {},
+  openInstallSetup: () -> Unit = {},
   openScaffoldWizard: (skillbill.desktop.core.domain.model.ScaffoldKind) -> Unit = {},
 ): CommandPaletteActions = CommandPaletteActions(
   selectTreeItem = selectTreeItem,
@@ -1844,6 +1897,7 @@ private fun paletteActions(
   showHistory = showHistory,
   save = save,
   refreshGitStatus = refreshGitStatus,
+  openInstallSetup = openInstallSetup,
   openScaffoldWizard = openScaffoldWizard,
 )
 

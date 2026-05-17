@@ -43,6 +43,32 @@ cd ~/Development/skill-bill
 
 The installer builds the Kotlin CLI and MCP distributions, copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
 
+`./install.sh` collects install choices and delegates the durable work to the
+packaged runtime command `skill-bill install apply`. The shell script still owns
+bootstrap prompts and runtime distribution installation, but the runtime owns
+planning, staging, symlink/native-agent linking, telemetry configuration, MCP
+registration, replacement cleanup, and structured failure reporting.
+
+Installer prompts cover:
+
+- agent selection: manual or detected `copilot`, `claude`, `codex`,
+  `opencode`, and `junie`
+- platform packs: all packs, selected packs, or base skills only; selected
+  packs are discovered from `platform-packs/` manifests
+- telemetry: `anonymous`, `full`, or `off`
+- MCP registration: register supported agent config entries or skip
+
+Base skills are always included. Optional platform packs add their declared
+review and quality-check skills after manifest validation. All installed
+content-managed skills are rendered into `~/.skill-bill/installed-skills/` and
+agent entries link to that staging cache, not directly to source directories.
+
+On Windows, Skill Bill uses explicit symlink preflight outcomes. If symlink
+support is not available, install output tells the operator to enable Developer
+Mode, run an elevated shell, or rerun after fixing the target filesystem. The
+runtime preserves user-owned files and reports a structured failure rather than
+silently replacing non-Skill-Bill content.
+
 Supported install targets:
 
 | Agent                                      | Install path                              |
@@ -74,6 +100,70 @@ Normal use is Kotlin-only:
 - Repo validation commands are Kotlin-backed. The legacy maintainer stack is no longer required for current install, validation, or maintainer workflows.
 
 If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to a legacy runtime.
+
+## Desktop App
+
+The optional Skill Bill desktop app lives in `runtime-kotlin/runtime-desktop`.
+It is a Compose Desktop client over the same runtime contracts used by the CLI;
+it does not implement separate governance, manifest parsing, scaffold rules, or
+install staging.
+
+Run from source:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:run
+```
+
+Build a loose desktop distribution:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:createDistributable
+```
+
+Build a native package for the current host:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:packageDistributionForCurrentOS
+```
+
+Specific package tasks are available when the host OS and native packaging
+toolchain support them:
+
+| Host        | Package task                         | Output intent                              |
+|-------------|--------------------------------------|--------------------------------------------|
+| macOS       | `:runtime-desktop:packageDmg`         | DMG desktop installer                       |
+| Windows     | `:runtime-desktop:packageMsi`         | MSI desktop installer                       |
+| Linux       | `:runtime-desktop:packageDeb`         | Debian/Ubuntu-style package                 |
+| Linux       | `:runtime-desktop:packageRpm`         | RPM package, the Arch/CachyOS-friendly path |
+| Any desktop | `:runtime-desktop:createDistributable` | Loose app directory fallback                |
+
+Compose Desktop native packaging is host-limited: a Linux workstation should not
+be expected to produce the macOS DMG or Windows MSI locally. For Arch/CachyOS,
+try the RPM task first when the local packaging tools are present; otherwise use
+the loose distributable or `packageDistributionForCurrentOS` output.
+
+The package build stages a `skill-bill-runtime` app-resource bundle containing
+the packaged `runtime-cli`, packaged `runtime-mcp`, authored `skills/`, dynamic
+`platform-packs/`, and `orchestration/`. The installed desktop app locates that
+bundle from app resources, or an explicit `skillbill.runtime.assets.dir` /
+`SKILL_BILL_RUNTIME_ASSETS` override, and feeds those paths into the same
+install plan/apply backend.
+
+On first launch, the setup wizard asks for:
+
+- agents: detected or manually selected supported agents
+- platform packs: dynamically discovered packs, with base skills always included
+- telemetry: `anonymous`, `full`, or `off`, matching CLI behavior
+- MCP registration: an install intent for supported agent config files
+
+The wizard writes through shared install plan/apply behavior and preserves the
+governed source boundary. Authored `content.md`, manifests, add-ons, and
+provider-neutral native-agent sources remain source; generated `SKILL.md`,
+support pointer files, provider-native agent files, install staging, and native
+package outputs remain generated artifacts.
 
 ## First Checks
 

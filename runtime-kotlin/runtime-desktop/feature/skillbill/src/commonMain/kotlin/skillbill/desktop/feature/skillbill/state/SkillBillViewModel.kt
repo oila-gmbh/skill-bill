@@ -2,6 +2,8 @@ package skillbill.desktop.feature.skillbill.state
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
+import skillbill.desktop.core.datastore.DesktopFirstRunPreferences
+import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.ChangedFile
@@ -12,6 +14,16 @@ import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.FirstRunApplyResult
+import skillbill.desktop.core.domain.model.FirstRunDiscoveryResult
+import skillbill.desktop.core.domain.model.FirstRunInstallOutcome
+import skillbill.desktop.core.domain.model.FirstRunInstallStatus
+import skillbill.desktop.core.domain.model.FirstRunPlanResult
+import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
+import skillbill.desktop.core.domain.model.FirstRunSetupRequest
+import skillbill.desktop.core.domain.model.FirstRunSetupState
+import skillbill.desktop.core.domain.model.FirstRunSetupStep
+import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
@@ -42,6 +54,7 @@ import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
+import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.GitGateway
 import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
@@ -64,6 +77,8 @@ class SkillBillViewModel(
   private val renderGateway: RenderGateway,
   private val recentRepoRepository: RecentRepoRepository,
   private val scaffoldGateway: RuntimeScaffoldGateway,
+  private val firstRunGateway: DesktopFirstRunGateway,
+  private val desktopPreferenceStore: DesktopPreferenceStore,
 ) {
   private var repoPathText: String = recentRepoRepository.recentRepoPath().orEmpty()
   private var currentSession: RepoSession? = null
@@ -129,6 +144,13 @@ class SkillBillViewModel(
   private var commandPaletteSelectedResultIndex: Int = 0
   private var scaffoldWizard: ScaffoldWizardState? = null
   private var activeScaffoldToken: Long = 0L
+  private var firstRunSetup: FirstRunSetupState? =
+    if (desktopPreferenceStore.firstRunPreferences.value.completed) {
+      null
+    } else {
+      desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
+    }
+  private var activeFirstRunToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -221,7 +243,7 @@ class SkillBillViewModel(
     selectedTreeItemId?.let { selected -> expandedNodeIds = expandedNodeIds + ancestorIdsOf(selected) }
     if (selectedTreeItemId != previousSelectedTreeItemId) {
       // F-202: render output is keyed by tree-item id, so the prior selection's PASSED/FAILED
-      // summary must not bleed into a new selection. Mirror the refresh/repo-switch reset (F-103).
+      // summary must not bleed into a new selection. Mirror the repo-switch reset (F-103).
       resetRenderForSelectionChange()
     }
     loadEditorForSelection()
@@ -262,13 +284,7 @@ class SkillBillViewModel(
   }
 
   fun beginRefresh(): SkillBillState {
-    if (isEditorDirty()) {
-      dirtyEditorPrompt = DirtyEditorPrompt(reason = DirtyEditorPromptReason.REFRESH)
-      currentState = createState()
-      return currentState
-    }
     activeOperationToken += 1
-    busyOperation = SkillBillBusyOperation.REFRESH
     currentState = createState()
     return currentState
   }
@@ -278,7 +294,15 @@ class SkillBillViewModel(
       return currentState
     }
     val path = currentSession?.repoPath ?: repoPathText
-    currentState = finishRepoLoad(loadRepo(repoLoadRequest(repoPath = path, preserveSelection = true)))
+    return finishRefresh(loadRepo(repoLoadRequest(repoPath = path, preserveSelection = true)))
+  }
+
+  fun finishRefresh(result: RepoLoadResult): SkillBillState {
+    if (result.request.token != activeOperationToken) {
+      return currentState
+    }
+    applyRefreshResult(result)
+    currentState = createState()
     return currentState
   }
 
@@ -412,6 +436,39 @@ class SkillBillViewModel(
   private fun openRepo(repoPath: String, preserveSelection: Boolean): SkillBillState =
     finishRepoLoad(loadRepo(repoLoadRequest(repoPath = repoPath, preserveSelection = preserveSelection)))
 
+  private fun applyRefreshResult(result: RepoLoadResult) {
+    val request = result.request
+    val session = result.session
+    val sameRecognizedRepo =
+      request.preserveSelection &&
+        session.isRecognizedSkillBillRepo &&
+        request.previousRepoPath == session.repoPath
+    if (!sameRecognizedRepo) {
+      applyRepoLoadResult(result)
+      return
+    }
+
+    val loadedTreeItems = result.treeItems
+    val previousSelection = selectedTreeItemId
+    val preserveDirtyEditor = isEditorDirty()
+    currentSession = session
+    treeItems = loadedTreeItems
+    repoPathText = session.repoPath.ifBlank { request.repoPath }
+    selectedTreeItemId = request.previousSelection?.takeIf(::containsTreeItem)
+    expandedNodeIds = reconcileExpandedNodeIds(
+      request.previousExpandedNodeIds,
+      loadedTreeItems,
+      preserveExpansion = true,
+    )
+    busyOperation = null
+    if (selectedTreeItemId != previousSelection) {
+      resetRenderForSelectionChange()
+      loadEditorForSelection()
+    } else if (!preserveDirtyEditor) {
+      loadEditorForSelection()
+    }
+  }
+
   private fun applyRepoLoadResult(result: RepoLoadResult) {
     val request = result.request
     val session = result.session
@@ -429,13 +486,13 @@ class SkillBillViewModel(
     expandedNodeIds =
       reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, preserveSameRepoUi)
     busyOperation = null
-    // Reset validation on every successful refresh: on-disk state may have changed since the last run,
+    // Full repo-load resets validation: repo identity or validity may have changed since the last run,
     // so prior PASSED/FAILED results are no longer trustworthy. (F-103)
     validation = ValidationSummary.unavailable
-    // F-103: render output mirrors on-disk state and must also reset on refresh / repo-switch.
+    // F-103: render output mirrors full repo-load state and must reset on repo-switch.
     render = RenderSummary.unavailable
     activeDockTab = if (preserveSameRepoUi) activeDockTab else DockTab.Validation
-    // F-103: every per-snapshot git slice mirrors on-disk state and must reset on refresh / repo-switch.
+    // F-103: every per-snapshot git slice mirrors full repo-load state and must reset on repo-switch.
     // Invalidate any in-flight git work so a late finish cannot reseed the stale slice on the new repo.
     activeGitOperationToken += 1
     activeGitDiffToken += 1
@@ -497,7 +554,7 @@ class SkillBillViewModel(
     // consistent slice even if refresh()/openRepo() rewrites changesSnapshot between reads.
     val capturedSnapshot = changesSnapshot
     val resolvedSelectedFile = selectedChangedFilePath?.let { path ->
-      capturedSnapshot.files.firstOrNull { file -> file.path == path }
+      capturedSnapshot.skillContentFiles.firstOrNull { file -> file.path == path }
     }
     val state = SkillBillState(
       selectedRepoPath = session?.repoPath,
@@ -557,11 +614,252 @@ class SkillBillViewModel(
     val wizardState = scaffoldWizard?.copy(
       dirtyRepoWarning = computeDirtyRepoWarning(capturedSnapshot),
     )
-    return state.copy(commandPalette = paletteState, scaffoldWizard = wizardState)
+    return state.copy(
+      commandPalette = paletteState,
+      scaffoldWizard = wizardState,
+      firstRunSetup = firstRunSetup,
+    )
   }
 
   private fun computeDirtyRepoWarning(snapshot: ChangesSnapshot): Boolean =
     snapshot.files.any { file -> file.group != ChangedFileGroup.GENERATED }
+
+  fun beginFirstRunDiscovery(): FirstRunDiscoveryRequest? {
+    val setup = firstRunSetup ?: return null
+    if (setup.busy || setup.discoveryLoaded || setup.errorMessage != null) {
+      return null
+    }
+    activeFirstRunToken += 1
+    firstRunSetup = setup.copy(busy = true, errorMessage = null)
+    currentState = createState()
+    return FirstRunDiscoveryRequest(token = activeFirstRunToken)
+  }
+
+  fun openFirstRunSetup(): SkillBillState {
+    if (busyOperation != null || scaffoldWizard != null || firstRunSetup != null) {
+      return currentState
+    }
+    firstRunSetup = desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
+    currentState = createState()
+    return currentState
+  }
+
+  suspend fun runFirstRunDiscovery(request: FirstRunDiscoveryRequest): FirstRunDiscoveryResponse =
+    FirstRunDiscoveryResponse(
+      request = request,
+      result = firstRunGateway.discoverSetup(),
+    )
+
+  fun finishFirstRunDiscovery(response: FirstRunDiscoveryResponse): SkillBillState {
+    if (response.request.token != activeFirstRunToken) {
+      return currentState
+    }
+    val setup = firstRunSetup ?: return currentState
+    firstRunSetup = when (val result = response.result) {
+      is FirstRunDiscoveryResult.Success -> setup.applyDiscovery(
+        discovery = result.discovery,
+        preferences = desktopPreferenceStore.firstRunPreferences.value,
+      )
+      is FirstRunDiscoveryResult.Failed -> setup.copy(
+        busy = false,
+        errorMessage = result.message,
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun selectFirstRunAgent(agentId: String, selected: Boolean): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (setup.busy) {
+      return currentState
+    }
+    val selectedAgents = if (selected) {
+      setup.selectedAgentIds + agentId
+    } else {
+      setup.selectedAgentIds - agentId
+    }
+    firstRunSetup = setup.copy(
+      selectedAgentIds = selectedAgents,
+      agentOptions = setup.agentOptions.map { option ->
+        if (option.agentId == agentId) option.copy(selected = selected) else option
+      },
+      plan = null,
+      outcome = null,
+      errorMessage = null,
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  fun selectFirstRunPlatform(slug: String, selected: Boolean): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (setup.busy) {
+      return currentState
+    }
+    firstRunSetup = setup.copy(
+      selectedPlatformSlugs = if (selected) {
+        setup.selectedPlatformSlugs + slug
+      } else {
+        setup.selectedPlatformSlugs - slug
+      },
+      platformPacks = setup.platformPacks.map { pack ->
+        if (pack.slug == slug) pack.copy(selected = selected) else pack
+      },
+      plan = null,
+      outcome = null,
+      errorMessage = null,
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  fun selectFirstRunTelemetry(level: FirstRunTelemetryLevel): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (!setup.busy) {
+      firstRunSetup = setup.copy(telemetryLevel = level, plan = null, outcome = null, errorMessage = null)
+      currentState = createState()
+    }
+    return currentState
+  }
+
+  fun setFirstRunMcpRegistration(register: Boolean): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (!setup.busy) {
+      firstRunSetup = setup.copy(registerMcp = register, plan = null, outcome = null, errorMessage = null)
+      currentState = createState()
+    }
+    return currentState
+  }
+
+  fun advanceFirstRunStep(): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (!setup.canContinue || setup.step == FirstRunSetupStep.RESULT) {
+      return currentState
+    }
+    firstRunSetup = setup.copy(step = setup.step.next())
+    currentState = createState()
+    return currentState
+  }
+
+  fun retreatFirstRunStep(): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (setup.busy) {
+      return currentState
+    }
+    firstRunSetup = setup.copy(step = setup.step.previous(), errorMessage = null)
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginFirstRunApply(): FirstRunApplyRequest? {
+    val setup = firstRunSetup ?: return null
+    if (!setup.canContinue || setup.busy) {
+      return null
+    }
+    activeFirstRunToken += 1
+    firstRunSetup = setup.copy(
+      step = FirstRunSetupStep.APPLY,
+      busy = true,
+      errorMessage = null,
+      outcome = null,
+    )
+    currentState = createState()
+    return FirstRunApplyRequest(
+      token = activeFirstRunToken,
+      setupRequest = setup.request(),
+    )
+  }
+
+  suspend fun runFirstRunApply(request: FirstRunApplyRequest): FirstRunApplyResponse {
+    val planResult = firstRunGateway.planSetup(request.setupRequest)
+    val applyResult = when (planResult) {
+      is FirstRunPlanResult.Planned -> firstRunGateway.applySetup(planResult.plan)
+      is FirstRunPlanResult.Failed -> null
+    }
+    return FirstRunApplyResponse(
+      request = request,
+      planResult = planResult,
+      applyResult = applyResult,
+    )
+  }
+
+  fun finishFirstRunApply(response: FirstRunApplyResponse): SkillBillState {
+    if (response.request.token != activeFirstRunToken) {
+      return currentState
+    }
+    val setup = firstRunSetup ?: return currentState
+    val nextSetup = when (val planResult = response.planResult) {
+      is FirstRunPlanResult.Failed -> setup.copy(
+        step = FirstRunSetupStep.RESULT,
+        busy = false,
+        errorMessage = planResult.message,
+        outcome = FirstRunInstallOutcome(
+          status = FirstRunInstallStatus.FAILURE,
+          title = "Install planning failed.",
+        ),
+      )
+      is FirstRunPlanResult.Planned -> {
+        val outcome = when (val applyResult = response.applyResult) {
+          is FirstRunApplyResult.Applied -> applyResult.outcome
+          is FirstRunApplyResult.Failed -> applyResult.outcome
+          null -> FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.FAILURE,
+            title = "Install did not run.",
+          )
+        }
+        setup.copy(
+          step = FirstRunSetupStep.RESULT,
+          busy = false,
+          plan = planResult.plan,
+          outcome = outcome,
+          errorMessage = outcome.takeIf { it.status == FirstRunInstallStatus.FAILURE }?.title,
+        )
+      }
+    }
+    firstRunSetup = nextSetup
+    val preferences = nextSetup.toPreferences()
+    if (nextSetup.outcome?.status == FirstRunInstallStatus.FAILURE) {
+      desktopPreferenceStore.saveFirstRunPreferences(preferences)
+    } else {
+      desktopPreferenceStore.markFirstRunCompleted(preferences)
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun finishFirstRunSetup(): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (setup.outcome?.status != FirstRunInstallStatus.FAILURE) {
+      firstRunSetup = null
+      busyOperation = null
+      currentState = createState()
+    }
+    return currentState
+  }
+
+  fun dismissFirstRunSetup(): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    if (setup.busy) {
+      return currentState
+    }
+    firstRunSetup = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun retryFirstRunSetup(): SkillBillState {
+    val setup = firstRunSetup ?: return currentState
+    firstRunSetup = setup.copy(
+      step = FirstRunSetupStep.AGENTS,
+      busy = false,
+      errorMessage = null,
+      plan = null,
+      outcome = null,
+    )
+    currentState = createState()
+    return currentState
+  }
 
   fun openCommandPalette(): SkillBillState {
     commandPaletteOpen = true
@@ -743,7 +1041,7 @@ class SkillBillViewModel(
       return currentState
     }
     val file = changesSnapshot.files.firstOrNull { it.path == path } ?: return currentState
-    if (file.isGenerated) {
+    if (!file.isSkillContent) {
       currentState = createState()
       return currentState
     }
@@ -1060,15 +1358,18 @@ class SkillBillViewModel(
   // separate `run` step so callers can hop to Dispatchers.Default, and uses a per-slice token so
   // stale finishes restore the previously captured snapshot (F-101).
 
-  fun beginGitRefresh(): GitRefreshRequest {
+  fun beginGitRefresh(quiet: Boolean = false): GitRefreshRequest {
     activeGitOperationToken += 1
     val previousSnapshot = changesSnapshot
-    changesBusy = true
+    if (!quiet) {
+      changesBusy = true
+    }
     currentState = createState()
     return GitRefreshRequest(
       token = activeGitOperationToken,
       session = currentSession,
       previousSnapshot = previousSnapshot,
+      quiet = quiet,
     )
   }
 
@@ -1111,7 +1412,7 @@ class SkillBillViewModel(
     // If the previously-selected changed file is no longer in the new snapshot, clear it so the diff
     // pane does not stay attached to a stale path.
     val stillExists = selectedChangedFilePath?.let { path ->
-      result.snapshot.files.any { it.path == path }
+      result.snapshot.skillContentFiles.any { it.path == path }
     } ?: false
     if (!stillExists) {
       selectedChangedFilePath = null
@@ -1136,7 +1437,7 @@ class SkillBillViewModel(
     // F-201: capture the snapshot once so the lookup is consistent even if a parallel refresh swaps
     // changesSnapshot before we resolve the file.
     val captured = changesSnapshot
-    val file = captured.files.firstOrNull { it.path == path } ?: run {
+    val file = captured.skillContentFiles.firstOrNull { it.path == path } ?: run {
       selectedChangedFilePath = null
       selectedDiff = ""
       selectedDiffStaged = false
@@ -1340,7 +1641,7 @@ class SkillBillViewModel(
       return null
     }
     val selectedPaths = selectedPublishPaths
-      .filter { path -> changesSnapshot.files.any { file -> file.path == path && !file.isGenerated } }
+      .filter { path -> changesSnapshot.files.any { file -> file.path == path && file.isSkillContent } }
       .sorted()
     activePublishToken += 1
     publishBusy = true
@@ -1565,9 +1866,11 @@ class SkillBillViewModel(
 
   // --- History ---
 
-  fun beginLoadHistory(limit: Int = DEFAULT_HISTORY_LIMIT): HistoryLoadRequest {
+  fun beginLoadHistory(limit: Int = DEFAULT_HISTORY_LIMIT, quiet: Boolean = false): HistoryLoadRequest {
     activeHistoryToken += 1
-    historyBusy = true
+    if (!quiet) {
+      historyBusy = true
+    }
     val previousHistory = history
     val previousError = historyErrorMessage
     currentState = createState()
@@ -1578,6 +1881,7 @@ class SkillBillViewModel(
       pathFilter = historyPathFilter,
       previousHistory = previousHistory,
       previousErrorMessage = previousError,
+      quiet = quiet,
     )
   }
 
@@ -1751,7 +2055,7 @@ class SkillBillViewModel(
 
   private fun hasCommitInputs(): Boolean = currentSession?.isRecognizedSkillBillRepo == true &&
     commitMessage.isNotBlank() &&
-    changesSnapshot.files.any { it.group == ChangedFileGroup.STAGED && !it.isGenerated }
+    changesSnapshot.files.any { it.group == ChangedFileGroup.STAGED && it.isSkillContent }
 
   private fun canPublish(): Boolean = publishDisabledReason() == null
 
@@ -1761,6 +2065,9 @@ class SkillBillViewModel(
     }
     if (busyOperation != null || changesBusy || publishBusy || commitBusy || commitValidationRunning || pushBusy) {
       return "Repository operation is already running."
+    }
+    if (changesSnapshot.nonSkillContentFiles.isNotEmpty()) {
+      return "Repository has non-content.md changes. Resolve or stash those files before publishing from Skill Bill."
     }
     val hasLocalSelection = selectedPublishPaths.isNotEmpty()
     val hasUnpushedCommit = publishingStatus.hasUnpushedCommits
@@ -1788,13 +2095,12 @@ class SkillBillViewModel(
   }
 
   private fun stagedAuthoredPaths(snapshot: ChangesSnapshot): Set<String> = snapshot.files
-    .filter { file -> file.group == ChangedFileGroup.STAGED && !file.isGenerated }
+    .filter { file -> file.group == ChangedFileGroup.STAGED && file.isSkillContent }
     .map { file -> file.path }
     .toSet()
 
   private fun reconcilePublishSelection(snapshot: ChangesSnapshot) {
-    val selectablePaths = snapshot.files
-      .filterNot(ChangedFile::isGenerated)
+    val selectablePaths = snapshot.skillContentFiles
       .map(ChangedFile::path)
       .toSet()
     selectedPublishPaths =
@@ -2311,6 +2617,7 @@ data class GitRefreshRequest(
   val token: Long,
   val session: RepoSession?,
   val previousSnapshot: ChangesSnapshot,
+  val quiet: Boolean = false,
 )
 
 data class GitRefreshResult(
@@ -2420,6 +2727,7 @@ data class HistoryLoadRequest(
   val pathFilter: String?,
   val previousHistory: List<CommitEntry>,
   val previousErrorMessage: String?,
+  val quiet: Boolean = false,
 )
 
 data class HistoryLoadResult(
@@ -2458,6 +2766,83 @@ data class ScaffoldCatalogResponse(
   val snapshot: ScaffoldCatalogSnapshot,
 )
 
+data class FirstRunDiscoveryRequest(
+  val token: Long,
+)
+
+data class FirstRunDiscoveryResponse(
+  val request: FirstRunDiscoveryRequest,
+  val result: FirstRunDiscoveryResult,
+)
+
+data class FirstRunApplyRequest(
+  val token: Long,
+  val setupRequest: FirstRunSetupRequest,
+)
+
+data class FirstRunApplyResponse(
+  val request: FirstRunApplyRequest,
+  val planResult: FirstRunPlanResult,
+  val applyResult: FirstRunApplyResult?,
+)
+
+private fun DesktopFirstRunPreferences.toFirstRunSetupState(): FirstRunSetupState = FirstRunSetupState(
+  selectedAgentIds = selectedAgentIds,
+  selectedPlatformSlugs = selectedPlatformSlugs,
+  telemetryLevel = FirstRunTelemetryLevel.fromId(telemetryLevelId),
+  registerMcp = registerMcp,
+)
+
+private fun FirstRunSetupState.applyDiscovery(
+  discovery: FirstRunSetupDiscovery,
+  preferences: DesktopFirstRunPreferences,
+): FirstRunSetupState {
+  val preferredAgents = preferences.selectedAgentIds.takeIf(Set<String>::isNotEmpty)
+  val selectedAgents = preferredAgents ?: discovery.agents
+    .filter { option -> option.selected }
+    .mapTo(mutableSetOf()) { option -> option.agentId }
+  val selectedPlatforms = preferences.selectedPlatformSlugs.ifEmpty { discovery.selectedPlatformSlugs }
+  return copy(
+    busy = false,
+    discoveryLoaded = true,
+    errorMessage = null,
+    agentOptions = discovery.agents.map { option ->
+      option.copy(selected = option.agentId in selectedAgents)
+    },
+    platformPacks = discovery.platformPacks.map { pack ->
+      pack.copy(selected = pack.slug in selectedPlatforms)
+    },
+    selectedAgentIds = selectedAgents,
+    selectedPlatformSlugs = selectedPlatforms,
+    telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
+    registerMcp = preferences.registerMcp,
+  )
+}
+
+private fun FirstRunSetupState.toPreferences(): DesktopFirstRunPreferences = DesktopFirstRunPreferences(
+  completed = false,
+  selectedAgentIds = selectedAgentIds,
+  selectedPlatformSlugs = selectedPlatformSlugs,
+  telemetryLevelId = telemetryLevel.id,
+  registerMcp = registerMcp,
+)
+
+private fun FirstRunSetupStep.next(): FirstRunSetupStep = when (this) {
+  FirstRunSetupStep.AGENTS -> FirstRunSetupStep.PLATFORM_PACKS
+  FirstRunSetupStep.PLATFORM_PACKS -> FirstRunSetupStep.PREFERENCES
+  FirstRunSetupStep.PREFERENCES -> FirstRunSetupStep.APPLY
+  FirstRunSetupStep.APPLY -> FirstRunSetupStep.RESULT
+  FirstRunSetupStep.RESULT -> FirstRunSetupStep.RESULT
+}
+
+private fun FirstRunSetupStep.previous(): FirstRunSetupStep = when (this) {
+  FirstRunSetupStep.AGENTS -> FirstRunSetupStep.AGENTS
+  FirstRunSetupStep.PLATFORM_PACKS -> FirstRunSetupStep.AGENTS
+  FirstRunSetupStep.PREFERENCES -> FirstRunSetupStep.PLATFORM_PACKS
+  FirstRunSetupStep.APPLY -> FirstRunSetupStep.PREFERENCES
+  FirstRunSetupStep.RESULT -> FirstRunSetupStep.PREFERENCES
+}
+
 private fun isRenderableKind(kind: String?): Boolean = when (kind) {
   "horizontal skill", "platform pack skill", "add-on", "native agent" -> true
   else -> false
@@ -2465,11 +2850,11 @@ private fun isRenderableKind(kind: String?): Boolean = when (kind) {
 
 private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.SKILL,
-  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.ADD_ON,
   TreeItemKind.NATIVE_AGENT,
   -> true
   TreeItemKind.GROUP,
+  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
   -> false

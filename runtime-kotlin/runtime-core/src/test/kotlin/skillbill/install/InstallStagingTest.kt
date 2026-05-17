@@ -299,6 +299,17 @@ class InstallStagingTest {
       rendered.stagingDir.toAbsolutePath().normalize().startsWith(expectedRoot),
       "staging dir ${rendered.stagingDir} not under expected cache root $expectedRoot",
     )
+    assertEquals(expectedRoot, installedSkillsCacheRoot(fixture.home))
+    assertTrue(
+      rendered.renderedSkillFile.toAbsolutePath().normalize().startsWith(rendered.stagingDir),
+      "rendered SKILL.md ${rendered.renderedSkillFile} was not written under ${rendered.stagingDir}",
+    )
+    assertTrue(
+      rendered.renderedPointerFiles.all { pointer ->
+        pointer.toAbsolutePath().normalize().startsWith(rendered.stagingDir)
+      },
+      "rendered pointer files must stay inside the install staging dir",
+    )
     assertFalse(
       rendered.stagingDir.toAbsolutePath().normalize().startsWith(fixture.repoRoot.toAbsolutePath().normalize()),
       "staging dir ${rendered.stagingDir} unexpectedly inside repo ${fixture.repoRoot}",

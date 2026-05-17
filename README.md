@@ -85,6 +85,13 @@ The installer:
 - installs selected platform packs
 - registers the local Skill Bill MCP server for agents that support MCP config
 
+`./install.sh` is the terminal installer. It prompts for manual or detected
+agents, optional platform packs, telemetry level (`anonymous`, `full`, or
+`off`), and MCP registration, then delegates the actual install to
+`skill-bill install apply`. The reusable runtime path owns staging, symlinks,
+native-agent output, telemetry configuration, MCP registration, and Windows
+symlink preflight outcomes.
+
 Supported install targets today:
 
 - GitHub Copilot
@@ -96,6 +103,46 @@ Supported install targets today:
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
 Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+
+## Desktop App
+
+Skill Bill also ships an optional Compose Desktop app from
+`runtime-kotlin/runtime-desktop`. The app is repo-based and uses the same
+runtime services as the CLI for authoring, validation, scaffold, install, and
+pack discovery.
+
+Developer run:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:run
+```
+
+Native package tasks are host/toolchain constrained:
+
+```bash
+cd runtime-kotlin
+./gradlew :runtime-desktop:createDistributable
+./gradlew :runtime-desktop:packageDistributionForCurrentOS
+./gradlew :runtime-desktop:packageDmg   # macOS host
+./gradlew :runtime-desktop:packageMsi   # Windows host
+./gradlew :runtime-desktop:packageDeb   # Linux host
+./gradlew :runtime-desktop:packageRpm   # Linux host, useful for Arch/CachyOS users
+```
+
+The package build stages a loose `skill-bill-runtime` app-resource bundle with
+`runtime-cli`, `runtime-mcp`, authored `skills/`, dynamic `platform-packs/`, and
+`orchestration/`. On Arch/CachyOS, prefer the RPM artifact when the local Linux
+toolchain can produce it; otherwise use `createDistributable` or
+`packageDistributionForCurrentOS` as the installable fallback. Packaged binary
+outputs are release artifacts and are not committed.
+
+On first launch, the desktop wizard asks for the same install choices as the
+terminal installer: supported agents, optional platform packs, telemetry level,
+and MCP registration. Base skills are always included, platform packs are
+discovered from manifests, installs stage rendered outputs under
+`~/.skill-bill/installed-skills/`, and generated `SKILL.md`, support pointers,
+and provider-native artifacts remain install/render output rather than source.
 
 ## Start here
 

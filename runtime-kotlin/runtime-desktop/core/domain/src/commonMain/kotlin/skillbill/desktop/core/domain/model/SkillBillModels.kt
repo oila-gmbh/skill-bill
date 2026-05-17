@@ -68,6 +68,7 @@ data class SkillBillState(
   val dirtyEditorPrompt: DirtyEditorPrompt? = null,
   val commandPalette: CommandPaletteState = CommandPaletteState(),
   val scaffoldWizard: ScaffoldWizardState? = null,
+  val firstRunSetup: FirstRunSetupState? = null,
 )
 
 enum class DockTab {
@@ -178,6 +179,7 @@ enum class SkillBillBusyOperation {
   RENDER,
   SAVE,
   SCAFFOLD,
+  FIRST_RUN_SETUP,
 }
 
 data class CommandPaletteState(
@@ -220,6 +222,7 @@ enum class CommandPaletteAction {
   SHOW_HISTORY,
   SAVE,
   REFRESH_GIT_STATUS,
+  INSTALL_SETUP,
   NEW_HORIZONTAL_SKILL,
   NEW_PLATFORM_PACK,
   NEW_PLATFORM_OVERRIDE,
@@ -379,7 +382,15 @@ data class ChangedFile(
   val statusCode: String,
   // Whether this file is a generated artifact (cannot be opened in editable mode).
   val isGenerated: Boolean = group == ChangedFileGroup.GENERATED,
-)
+) {
+  val isSkillContent: Boolean
+    get() {
+      val normalized = path.trim().replace('\\', '/')
+      return !isGenerated &&
+        normalized.endsWith("/content.md") &&
+        (normalized.startsWith("skills/") || normalized.startsWith("platform-packs/"))
+    }
+}
 
 enum class GovernedChangeConcept(val label: String) {
   SKILLS("Skills"),
@@ -430,6 +441,13 @@ data class ChangesSnapshot(
   val isFailed: Boolean = false,
   val governedGroups: List<GovernedChangeGroup> = classifyGovernedChanges(files),
 ) {
+  val skillContentFiles: List<ChangedFile> get() = files.filter(ChangedFile::isSkillContent)
+
+  val nonSkillContentFiles: List<ChangedFile> get() = files.filterNot(ChangedFile::isSkillContent)
+
+  val skillContentGovernedGroups: List<GovernedChangeGroup>
+    get() = classifyGovernedChanges(skillContentFiles)
+
   companion object {
     val empty: ChangesSnapshot = ChangesSnapshot()
 

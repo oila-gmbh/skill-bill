@@ -18,7 +18,8 @@ class JvmBrowserLauncherTest {
   @Test
   fun `returns unsupported when desktop browse is unavailable`() {
     val desktopAccess = FakeBrowserDesktopAccess(browseSupported = false)
-    val outcome = JvmBrowserLauncher(desktopAccess).openCompareUrl(COMPARE_URL)
+    val commandAccess = FakeBrowserCommandAccess(launchException = IllegalStateException("missing"))
+    val outcome = JvmBrowserLauncher(desktopAccess, commandAccess).openCompareUrl(COMPARE_URL)
 
     assertEquals(
       BrowserLaunchOutcome.Failed(BrowserLaunchFailure.UnsupportedPlatform),
@@ -28,9 +29,21 @@ class JvmBrowserLauncherTest {
   }
 
   @Test
+  fun `opens compare URL with platform opener when desktop browse is unavailable`() {
+    val desktopAccess = FakeBrowserDesktopAccess(browseSupported = false)
+    val commandAccess = FakeBrowserCommandAccess()
+    val outcome = JvmBrowserLauncher(desktopAccess, commandAccess).openCompareUrl(COMPARE_URL)
+
+    assertEquals(BrowserLaunchOutcome.Opened, outcome)
+    assertEquals(COMPARE_URL, commandAccess.launchedCommands.single().last())
+    assertFalse(desktopAccess.browseCalled)
+  }
+
+  @Test
   fun `returns launch failure when browse throws`() {
     val desktopAccess = FakeBrowserDesktopAccess(launchException = IllegalStateException("blocked"))
-    val outcome = JvmBrowserLauncher(desktopAccess).openCompareUrl(COMPARE_URL)
+    val commandAccess = FakeBrowserCommandAccess(launchException = IllegalStateException("missing"))
+    val outcome = JvmBrowserLauncher(desktopAccess, commandAccess).openCompareUrl(COMPARE_URL)
 
     assertEquals(
       BrowserLaunchOutcome.Failed(BrowserLaunchFailure.LaunchFailed("blocked")),
@@ -56,6 +69,17 @@ class JvmBrowserLauncherTest {
     override fun browse(uri: URI) {
       launchException?.let { throw it }
       browsedUri = uri
+    }
+  }
+
+  private class FakeBrowserCommandAccess(
+    private val launchException: Exception? = null,
+  ) : BrowserCommandAccess {
+    val launchedCommands = mutableListOf<List<String>>()
+
+    override fun launch(command: List<String>) {
+      launchException?.let { throw it }
+      launchedCommands += command
     }
   }
 

@@ -239,11 +239,13 @@ class NativeAgentValidationTest {
     val repo = newRepoWithKmpPointerSidecars()
 
     val result = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = repo.resolve("platform-packs"),
-      skillsRoot = null,
-      selectedPlatforms = listOf("kmp"),
-      provider = NativeAgentProvider.Claude,
-      home = repo.resolve("home"),
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = repo.resolve("platform-packs"),
+        skillsRoot = null,
+        selectedPlatforms = listOf("kmp"),
+        provider = NativeAgentProvider.Claude,
+        home = repo.resolve("home"),
+      ),
     )
 
     val rendered = Files.readString(result.generatedFiles.single())
@@ -261,11 +263,13 @@ class NativeAgentValidationTest {
 
     val error = assertFailsWith<IllegalArgumentException> {
       NativeAgentOperations.renderInstallArtifacts(
-        platformPacksRoot = repo.resolve("platform-packs"),
-        skillsRoot = null,
-        selectedPlatforms = listOf("fixture"),
-        provider = NativeAgentProvider.Claude,
-        home = home,
+        NativeAgentInstallRenderRequest(
+          platformPacksRoot = repo.resolve("platform-packs"),
+          skillsRoot = null,
+          selectedPlatforms = listOf("fixture"),
+          provider = NativeAgentProvider.Claude,
+          home = home,
+        ),
       )
     }
 
@@ -500,11 +504,13 @@ class NativeAgentValidationTest {
     )
 
     val result = NativeAgentOperations.renderInstallArtifacts(
-      platformPacksRoot = repo.resolve("platform-packs"),
-      skillsRoot = null,
-      selectedPlatforms = listOf("fixture"),
-      provider = NativeAgentProvider.Claude,
-      home = repo.resolve("home"),
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = repo.resolve("platform-packs"),
+        skillsRoot = null,
+        selectedPlatforms = listOf("fixture"),
+        provider = NativeAgentProvider.Claude,
+        home = repo.resolve("home"),
+      ),
     )
 
     assertEquals(

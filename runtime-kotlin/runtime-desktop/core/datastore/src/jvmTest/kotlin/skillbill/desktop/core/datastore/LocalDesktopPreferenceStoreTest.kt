@@ -4,7 +4,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class LocalDesktopPreferenceStoreTest {
   @Test
@@ -51,6 +53,29 @@ class LocalDesktopPreferenceStoreTest {
         System.setProperty(PREFERENCES_PATH_PROPERTY, originalPath)
       }
       System.setProperty("user.dir", originalUserDir)
+    }
+  }
+
+  @Test
+  fun `first run preferences persist to desktop properties`() {
+    withTemporaryStore {
+      val store = LocalDesktopPreferenceStore()
+
+      store.markFirstRunCompleted(
+        DesktopFirstRunPreferences(
+          selectedAgentIds = setOf("codex", "claude"),
+          selectedPlatformSlugs = setOf("kotlin"),
+          telemetryLevelId = "full",
+          registerMcp = false,
+        ),
+      )
+
+      val reloaded = LocalDesktopPreferenceStore().firstRunPreferences.value
+      assertTrue(reloaded.completed)
+      assertEquals(setOf("claude", "codex"), reloaded.selectedAgentIds)
+      assertEquals(setOf("kotlin"), reloaded.selectedPlatformSlugs)
+      assertEquals("full", reloaded.telemetryLevelId)
+      assertFalse(reloaded.registerMcp)
     }
   }
 

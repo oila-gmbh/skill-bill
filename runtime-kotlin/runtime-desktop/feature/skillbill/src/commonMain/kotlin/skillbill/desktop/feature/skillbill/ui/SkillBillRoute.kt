@@ -68,18 +68,22 @@ fun SkillBillRoute(
   // Centralized git refresh fan-out. AC10: every editing/validation/scaffold/render seam funnels
   // through this single entry point so the Changes tab always reflects on-disk state. begin/run/finish
   // captures all VM fields on the caller dispatcher before hopping to Dispatchers.Default (F-102).
-  fun runGitRefresh() {
-    val request = viewModel.beginGitRefresh()
-    state = viewModel.state()
+  fun runGitRefresh(quiet: Boolean = false) {
+    val request = viewModel.beginGitRefresh(quiet = quiet)
+    if (!quiet) {
+      state = viewModel.state()
+    }
     coroutineScope.launch {
       val result = withContext(Dispatchers.Default) { viewModel.runGitRefresh(request) }
       state = viewModel.finishGitRefresh(result)
     }
   }
 
-  fun loadHistory() {
-    val request = viewModel.beginLoadHistory()
-    state = viewModel.state()
+  fun loadHistory(quiet: Boolean = false) {
+    val request = viewModel.beginLoadHistory(quiet = quiet)
+    if (!quiet) {
+      state = viewModel.state()
+    }
     coroutineScope.launch {
       val result = withContext(Dispatchers.Default) { viewModel.runLoadHistory(request) }
       state = viewModel.finishLoadHistory(result)
@@ -102,20 +106,11 @@ fun SkillBillRoute(
       val outcome = withContext(Dispatchers.Default) {
         openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
       }
-      when (outcome) {
-        BrowserLaunchOutcome.Opened -> {
-          if (recentlyCopiedKey == url) {
-            recentlyCopiedKey = null
-          }
-          recentlyOpenedCompareUrlKey = url
+      if (outcome == BrowserLaunchOutcome.Opened) {
+        if (recentlyCopiedKey == url) {
+          recentlyCopiedKey = null
         }
-        is BrowserLaunchOutcome.Failed -> {
-          if (recentlyOpenedCompareUrlKey == url) {
-            recentlyOpenedCompareUrlKey = null
-          }
-          clipboardManager.setText(AnnotatedString(url))
-          recentlyCopiedKey = url
-        }
+        recentlyOpenedCompareUrlKey = url
       }
     }
   }
@@ -159,7 +154,7 @@ fun SkillBillRoute(
         val result = withContext(Dispatchers.Default) { viewModel.runSaveEditor(request) }
         state = viewModel.finishSaveEditor(result)
         if (result.result.success) {
-          runGitRefresh()
+          runGitRefresh(quiet = true)
         }
       }
     }
@@ -185,6 +180,20 @@ fun SkillBillRoute(
     }
   }
 
+  fun runRefreshLoad() {
+    val request = viewModel.repoLoadRequest(
+      repoPath = state.selectedRepoPath ?: state.repoPathText,
+      preserveSelection = true,
+    )
+    coroutineScope.launch {
+      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      state = viewModel.finishRefresh(result)
+      // AC10: manual/filesystem refreshes refresh git status + history without resetting UI slices.
+      runGitRefresh(quiet = true)
+      loadHistory(quiet = true)
+    }
+  }
+
   fun runChooseRepoDirectory() {
     val repoPath = chooseRepoDirectory(state.repoPathText)
     if (repoPath.isNullOrBlank()) {
@@ -193,8 +202,8 @@ fun SkillBillRoute(
       state = viewModel.beginSelectRepoPath(repoPath)
       if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
         runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
-          runGitRefresh()
-          loadHistory()
+          runGitRefresh(quiet = true)
+          loadHistory(quiet = true)
         }
       }
     }
@@ -209,24 +218,19 @@ fun SkillBillRoute(
         val selected = state.selectedTreeItemId
         if (selected != null && selected != previousSelection) {
           viewModel.setHistoryPathFilter(state.editor.authoredPath)
-          loadHistory()
+          loadHistory(quiet = true)
           state = viewModel.state()
           onSourceRouteSelected(selected)
         }
       }
       DirtyEditorPromptReason.REFRESH -> {
-        if (state.busyOperation == SkillBillBusyOperation.REFRESH) {
-          runRepoLoad(preserveSelection = true) {
-            runGitRefresh()
-            loadHistory()
-          }
-        }
+        runRefreshLoad()
       }
       DirtyEditorPromptReason.REPO_SWITCH -> {
         if (state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
           runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
-            runGitRefresh()
-            loadHistory()
+            runGitRefresh(quiet = true)
+            loadHistory(quiet = true)
           }
         }
       }
@@ -251,10 +255,29 @@ fun SkillBillRoute(
   }
 
   fun canStartRepoScopedAction(): Boolean = state.busyOperation == null &&
+    state.firstRunSetup == null &&
     !state.publishBusy &&
     !state.commitBusy &&
     !state.commitValidationRunning &&
     !state.pushBusy
+
+  fun runFirstRunDiscovery() {
+    val request = viewModel.beginFirstRunDiscovery() ?: return
+    state = viewModel.state()
+    coroutineScope.launch {
+      val response = withContext(Dispatchers.Default) { viewModel.runFirstRunDiscovery(request) }
+      state = viewModel.finishFirstRunDiscovery(response)
+    }
+  }
+
+  fun runFirstRunApply() {
+    val request = viewModel.beginFirstRunApply() ?: return
+    state = viewModel.state()
+    coroutineScope.launch {
+      val response = withContext(Dispatchers.Default) { viewModel.runFirstRunApply(request) }
+      state = viewModel.finishFirstRunApply(response)
+    }
+  }
 
   fun runTreeItemSelection(itemId: String) {
     if (canStartRepoScopedAction()) {
@@ -265,7 +288,7 @@ fun SkillBillRoute(
         // selected tree item. Falls back to no filter when the selection has no authored path.
         val authoredPath = state.editor.authoredPath
         viewModel.setHistoryPathFilter(authoredPath)
-        loadHistory()
+        loadHistory(quiet = true)
         state = viewModel.state()
         state.selectedTreeItemId?.let(onSourceRouteSelected)
       }
@@ -284,8 +307,14 @@ fun SkillBillRoute(
 
   LaunchedEffect(viewModel) {
     if (state.selectedRepoPath != null && state.repoStatus.state == RepoLoadState.LOADED) {
-      runGitRefresh()
-      loadHistory()
+      runGitRefresh(quiet = true)
+      loadHistory(quiet = true)
+    }
+  }
+
+  LaunchedEffect(viewModel, state.firstRunSetup) {
+    if (state.firstRunSetup != null) {
+      runFirstRunDiscovery()
     }
   }
 
@@ -293,17 +322,7 @@ fun SkillBillRoute(
     if (canStartRepoScopedAction()) {
       state = viewModel.beginRefresh()
       if (state.dirtyEditorPrompt == null) {
-        val request = viewModel.repoLoadRequest(
-          repoPath = state.selectedRepoPath ?: state.repoPathText,
-          preserveSelection = true,
-        )
-        coroutineScope.launch {
-          val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
-          state = viewModel.finishRepoLoad(result)
-          // AC10: manual refresh refreshes git status + history.
-          runGitRefresh()
-          loadHistory()
-        }
+        runRefreshLoad()
       }
     }
   }
@@ -347,7 +366,7 @@ fun SkillBillRoute(
         if (canAutoRefreshGitStatus(state)) {
           pendingRepoFileChangeKind = null
           pendingRepoFileChangeRefresh = false
-          runGitRefresh()
+          runGitRefresh(quiet = true)
         }
       }
       RepoFileChangeKind.RepoSnapshot -> {
@@ -372,7 +391,7 @@ fun SkillBillRoute(
         val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
         state = viewModel.finishValidate(result)
         // AC10: validation may touch on-disk state via scripts; refresh git status afterwards.
-        runGitRefresh()
+        runGitRefresh(quiet = true)
       }
     }
   }
@@ -384,7 +403,7 @@ fun SkillBillRoute(
       coroutineScope.launch {
         val result = withContext(Dispatchers.Default) { viewModel.runValidate(request) }
         state = viewModel.finishValidate(result)
-        runGitRefresh()
+        runGitRefresh(quiet = true)
       }
     }
   }
@@ -399,7 +418,7 @@ fun SkillBillRoute(
         val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
         state = viewModel.finishRender(result)
         // AC10: render generates SKILL.md and pointer artifacts; refresh git status afterwards.
-        runGitRefresh()
+        runGitRefresh(quiet = true)
       }
     }
   }
@@ -411,7 +430,7 @@ fun SkillBillRoute(
       coroutineScope.launch {
         val result = withContext(Dispatchers.Default) { viewModel.runRender(request) }
         state = viewModel.finishRender(result)
-        runGitRefresh()
+        runGitRefresh(quiet = true)
       }
     }
   }
@@ -442,6 +461,12 @@ fun SkillBillRoute(
         val response = withContext(Dispatchers.Default) { viewModel.runOpenScaffoldWizard(request) }
         state = viewModel.finishOpenScaffoldWizard(response)
       }
+    }
+  }
+
+  fun runInstallSetup() {
+    if (canStartRepoScopedAction()) {
+      state = viewModel.openFirstRunSetup()
     }
   }
 
@@ -492,8 +517,8 @@ fun SkillBillRoute(
           // runRepoLoad) calls BOTH runGitRefresh() AND loadHistory() as a fan-out. The scaffold-success
           // path was previously skipping loadHistory(), leaving the History tab reflecting pre-scaffold
           // state until the next refresh. Align with the standard fan-out.
-          runGitRefresh()
-          loadHistory()
+          runGitRefresh(quiet = true)
+          loadHistory(quiet = true)
         }
       }
     }
@@ -522,6 +547,7 @@ fun SkillBillRoute(
             runGitRefresh()
           }
         },
+        openInstallSetup = ::runInstallSetup,
         openScaffoldWizard = ::runOpenScaffoldWizard,
       ),
     )
@@ -550,8 +576,8 @@ fun SkillBillRoute(
         if (state.dirtyEditorPrompt == null) {
           runRepoLoad(preserveSelection = false, repoPath = state.repoPathText) {
             // AC10: after a successful repo switch we want a fresh status snapshot + history.
-            runGitRefresh()
-            loadHistory()
+            runGitRefresh(quiet = true)
+            loadHistory(quiet = true)
           }
         }
       }
@@ -569,6 +595,7 @@ fun SkillBillRoute(
     onValidateSelected = ::runValidateSelected,
     onRender = ::runRender,
     onRenderAll = ::runRenderAll,
+    onInstallSetup = ::runInstallSetup,
     onEditorDraftChanged = { draft ->
       state = viewModel.updateEditorDraft(draft)
     },
@@ -698,20 +725,11 @@ fun SkillBillRoute(
         val outcome = withContext(Dispatchers.Default) {
           openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
         }
-        when (outcome) {
-          BrowserLaunchOutcome.Opened -> {
-            if (recentlyCopiedKey == url) {
-              recentlyCopiedKey = null
-            }
-            recentlyOpenedCompareUrlKey = url
+        if (outcome == BrowserLaunchOutcome.Opened) {
+          if (recentlyCopiedKey == url) {
+            recentlyCopiedKey = null
           }
-          is BrowserLaunchOutcome.Failed -> {
-            if (recentlyOpenedCompareUrlKey == url) {
-              recentlyOpenedCompareUrlKey = null
-            }
-            clipboardManager.setText(AnnotatedString(url))
-            recentlyCopiedKey = url
-          }
+          recentlyOpenedCompareUrlKey = url
         }
       }
     },
@@ -727,7 +745,7 @@ fun SkillBillRoute(
     },
     onClearHistoryPathFilter = {
       viewModel.setHistoryPathFilter(null)
-      loadHistory()
+      loadHistory(quiet = true)
       state = viewModel.state()
     },
     onCommandPaletteOpen = {
@@ -762,6 +780,36 @@ fun SkillBillRoute(
       },
       onDismiss = {
         state = viewModel.dismissScaffoldWizard()
+      },
+    ),
+    firstRunSetupCallbacks = FirstRunSetupCallbacks(
+      onAgentSelectionChanged = { agentId, selected ->
+        state = viewModel.selectFirstRunAgent(agentId, selected)
+      },
+      onPlatformSelectionChanged = { slug, selected ->
+        state = viewModel.selectFirstRunPlatform(slug, selected)
+      },
+      onTelemetryChanged = { level ->
+        state = viewModel.selectFirstRunTelemetry(level)
+      },
+      onMcpRegistrationChanged = { register ->
+        state = viewModel.setFirstRunMcpRegistration(register)
+      },
+      onBack = {
+        state = viewModel.retreatFirstRunStep()
+      },
+      onNext = {
+        state = viewModel.advanceFirstRunStep()
+      },
+      onApply = ::runFirstRunApply,
+      onRetry = {
+        state = viewModel.retryFirstRunSetup()
+      },
+      onFinish = {
+        state = viewModel.finishFirstRunSetup()
+      },
+      onDismiss = {
+        state = viewModel.dismissFirstRunSetup()
       },
     ),
     recentlyCopiedKey = recentlyCopiedKey,
@@ -803,16 +851,8 @@ internal fun executeGeneratedArtifactSelection(
   return true
 }
 
-internal fun handleCompareUrlActivation(
-  url: String,
-  browserLauncher: BrowserLauncher,
-  copyUrl: (String) -> Unit,
-): BrowserLaunchOutcome {
-  val outcome = openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
-  if (outcome is BrowserLaunchOutcome.Failed) {
-    copyUrl(url)
-  }
-  return outcome
+internal fun handleCompareUrlActivation(url: String, browserLauncher: BrowserLauncher): BrowserLaunchOutcome {
+  return openCompareUrlSafely(url = url, browserLauncher = browserLauncher)
 }
 
 internal fun openCompareUrlSafely(url: String, browserLauncher: BrowserLauncher): BrowserLaunchOutcome = try {

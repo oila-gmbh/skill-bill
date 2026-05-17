@@ -34,7 +34,7 @@ fun SkillBillDesktopApp(userComponentManager: DesktopUserComponentManager, conte
   ) {
     ProvideScreenComponentFactory {
       SkillBillAppTheme {
-        SkillBillWindow(title = "SkillBill") {
+        SkillBillWindow {
           when (navigationState.currentRoute) {
             SkillBillHomeRoute -> SkillBillRoute(
               selectedSourceId = null,

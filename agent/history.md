@@ -1,3 +1,11 @@
+## [2026-05-17] final-integration-docs-validation
+Areas: README.md, docs/getting-started.md, docs/desktop-skill-bill-app, docs/skill-source-generation.md, runtime-kotlin install/desktop validation
+- Closed SKILL-45 parent traceability in user-facing docs, including native package host/toolchain limits for DMG/MSI/Deb/RPM production and Arch/CachyOS RPM or loose-distribution fallback guidance.
+- Reaffirmed the install source boundary: `install.sh` and desktop first-run choices feed runtime install plan/apply, while generated `SKILL.md`, support pointers, provider-native outputs, install staging, and native package outputs remain generated artifacts. reusable
+- Regression evidence maps to existing Kotlin tests for install plan/apply, shell delegation, agent/platform/telemetry/MCP selection, desktop wizard state, runtime lookup, and package task wiring.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-09] generated-skill-artifact-deletion-policy
 Areas: AGENTS.md, skills/, platform-packs/{kotlin,kmp}/, runtime-kotlin/runtime-core scaffold validation/install
 - SKILL-40 subtask 4 retired committed governed generated outputs: source now keeps authored `content.md`, sidecars, manifests, renderer code, and install staging behavior, while `SKILL.md` wrappers and platform.yaml pointer files are render/install output only. reusable

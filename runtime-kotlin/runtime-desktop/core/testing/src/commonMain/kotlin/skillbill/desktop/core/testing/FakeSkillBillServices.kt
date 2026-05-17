@@ -2,6 +2,7 @@ package skillbill.desktop.core.testing
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import skillbill.desktop.core.datastore.DesktopFirstRunPreferences
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
@@ -384,11 +385,18 @@ class FakeRenderGateway(
   }
 }
 
-class FakeDesktopPreferenceStore(initialRepoPath: String? = null) : DesktopPreferenceStore {
+class FakeDesktopPreferenceStore(
+  initialRepoPath: String? = null,
+  initialFirstRunPreferences: DesktopFirstRunPreferences = DesktopFirstRunPreferences(),
+) : DesktopPreferenceStore {
   private val recentRepoPathState = MutableStateFlow(initialRepoPath)
+  private val firstRunState = MutableStateFlow(initialFirstRunPreferences)
 
   override val recentRepoPath: StateFlow<String?>
     get() = recentRepoPathState
+
+  override val firstRunPreferences: StateFlow<DesktopFirstRunPreferences>
+    get() = firstRunState
 
   override fun rememberRepoPath(repoPath: String) {
     recentRepoPathState.value = repoPath.trim().takeIf(String::isNotEmpty)
@@ -396,6 +404,14 @@ class FakeDesktopPreferenceStore(initialRepoPath: String? = null) : DesktopPrefe
 
   override fun clearRecentRepoPath() {
     recentRepoPathState.value = null
+  }
+
+  override fun saveFirstRunPreferences(preferences: DesktopFirstRunPreferences) {
+    firstRunState.value = preferences
+  }
+
+  override fun markFirstRunCompleted(preferences: DesktopFirstRunPreferences) {
+    firstRunState.value = preferences.copy(completed = true)
   }
 }
 

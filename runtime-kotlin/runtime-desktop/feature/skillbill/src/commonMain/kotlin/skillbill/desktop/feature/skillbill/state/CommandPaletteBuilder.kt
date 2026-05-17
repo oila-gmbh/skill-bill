@@ -195,6 +195,20 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
       baseRank = COMMAND_BASE_RANK - 4,
       sortGroup = 0,
     ),
+    PaletteCandidate(
+      result = CommandPaletteResult(
+        id = "command.install-setup",
+        title = "Install setup",
+        subtitle = "Reopen the Skill Bill setup wizard",
+        marker = "in",
+        kind = CommandPaletteResultKind.COMMAND,
+        action = CommandPaletteAction.INSTALL_SETUP,
+        disabledReason = blockedByBusy ?: installSetupDisabledReason(state),
+      ),
+      keywords = listOf("install", "setup", "wizard", "reinstall", "agents", "packs", "telemetry", "mcp"),
+      baseRank = COMMAND_BASE_RANK - 5,
+      sortGroup = 0,
+    ),
     newScaffoldCandidate(
       id = "command.new-horizontal-skill",
       title = "New horizontal skill",
@@ -372,6 +386,14 @@ private fun gitRefreshDisabledReason(state: SkillBillState): String? = when {
   else -> null
 }
 
+private fun installSetupDisabledReason(state: SkillBillState): String? = when {
+  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
+  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
+  state.scaffoldWizard != null -> "Dismiss the current scaffold wizard first."
+  state.firstRunSetup != null -> "Finish or dismiss the current setup wizard first."
+  else -> null
+}
+
 private fun PaletteCandidate.toRankedResult(query: String): RankedPaletteResult? {
   val score = score(query, result.title, result.subtitle, result.id, keywords)
     ?: return null
@@ -445,6 +467,7 @@ private fun SkillBillBusyOperation.label(): String = when (this) {
   SkillBillBusyOperation.RENDER -> "render"
   SkillBillBusyOperation.SAVE -> "save"
   SkillBillBusyOperation.SCAFFOLD -> "scaffold"
+  SkillBillBusyOperation.FIRST_RUN_SETUP -> "setup"
 }
 
 private fun List<SkillBillTreeItem>.flattenPaletteTree(): List<SkillBillTreeItem> =
@@ -460,11 +483,11 @@ private fun List<SkillBillTreeItem>.isSelectedSkill(selectedTreeItemId: String?)
 
 private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.SKILL,
-  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.ADD_ON,
   TreeItemKind.NATIVE_AGENT,
   -> true
   TreeItemKind.GROUP,
+  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
   -> false

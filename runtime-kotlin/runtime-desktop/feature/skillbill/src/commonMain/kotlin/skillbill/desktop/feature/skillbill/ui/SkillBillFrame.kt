@@ -5,6 +5,7 @@ package skillbill.desktop.feature.skillbill.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -175,6 +176,7 @@ fun SkillBillFrame(
   onValidateSelected: () -> Unit,
   onRender: () -> Unit,
   onRenderAll: () -> Unit,
+  onInstallSetup: () -> Unit,
   onEditorDraftChanged: (String) -> Unit,
   onEditorSave: () -> Unit,
   onEditorRevert: () -> Unit,
@@ -215,6 +217,7 @@ fun SkillBillFrame(
   onCommandPaletteExecuteResult: (CommandPaletteResult) -> Unit,
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
+  firstRunSetupCallbacks: FirstRunSetupCallbacks,
   // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
@@ -326,6 +329,7 @@ fun SkillBillFrame(
         onValidateSelected = onValidateSelected,
         onRender = onRender,
         onRenderAll = onRenderAll,
+        onInstallSetup = onInstallSetup,
         inspectorVisible = inspectorVisible,
         onInspectorVisibilityToggle = { inspectorVisible = !inspectorVisible },
         onCommandPaletteOpen = onCommandPaletteOpen,
@@ -334,6 +338,12 @@ fun SkillBillFrame(
         validateSelectedEnabled = validateSelectedEnabled,
         renderEnabled = renderEnabled,
         renderAllEnabled = renderAllEnabled,
+        installSetupEnabled = state.selectedRepoPath != null &&
+          state.repoStatus.state == RepoLoadState.LOADED &&
+          state.busyOperation == null &&
+          !publishingBusy &&
+          state.scaffoldWizard == null &&
+          state.firstRunSetup == null,
         publishingBusy = publishingBusy,
         sourceControlLabel = state.sourceControl.branchLabel,
         readOnlyModeLabel = state.statusBar.readOnlyModeLabel,
@@ -505,6 +515,9 @@ fun SkillBillFrame(
         callbacks = scaffoldWizardCallbacks,
       )
     }
+    state.firstRunSetup?.let { setup ->
+      FirstRunSetupDialog(state = setup, callbacks = firstRunSetupCallbacks)
+    }
   }
 }
 
@@ -517,6 +530,7 @@ private fun WorkspaceToolbar(
   onValidateSelected: () -> Unit,
   onRender: () -> Unit,
   onRenderAll: () -> Unit,
+  onInstallSetup: () -> Unit,
   inspectorVisible: Boolean,
   onInspectorVisibilityToggle: () -> Unit,
   onCommandPaletteOpen: () -> Unit,
@@ -525,6 +539,7 @@ private fun WorkspaceToolbar(
   validateSelectedEnabled: Boolean,
   renderEnabled: Boolean,
   renderAllEnabled: Boolean,
+  installSetupEnabled: Boolean,
   publishingBusy: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
@@ -583,6 +598,12 @@ private fun WorkspaceToolbar(
       marker = "ra",
       enabled = renderAllEnabled,
       onClick = onRenderAll,
+    )
+    ToolbarButton(
+      label = "Install",
+      marker = "in",
+      enabled = installSetupEnabled,
+      onClick = onInstallSetup,
     )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
@@ -928,6 +949,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.RENDER -> "Rendering..."
     SkillBillBusyOperation.SAVE -> "Saving..."
     SkillBillBusyOperation.SCAFFOLD -> "Scaffolding..."
+    SkillBillBusyOperation.FIRST_RUN_SETUP -> "Setting up..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),
@@ -2110,7 +2132,22 @@ private fun EditorTabs(
 
 @Composable
 private fun EditorTabsScrollbar(
-  scrollState: androidx.compose.foundation.ScrollState,
+  scrollState: ScrollState,
+  scrollValue: Int,
+  maxScrollValue: Int,
+  modifier: Modifier = Modifier,
+) {
+  HorizontalScrollIndicator(
+    scrollState = scrollState,
+    scrollValue = scrollValue,
+    maxScrollValue = maxScrollValue,
+    modifier = modifier,
+  )
+}
+
+@Composable
+private fun HorizontalScrollIndicator(
+  scrollState: ScrollState,
   scrollValue: Int,
   maxScrollValue: Int,
   modifier: Modifier = Modifier,
@@ -3066,7 +3103,7 @@ private fun CollapsedBottomDock(
 private fun badgeForDockTab(tab: DockTab, validation: ValidationSummary, changes: ChangesSnapshot): String? =
   when (tab) {
     DockTab.Validation -> dockBadgeCountText(validation.issues.size)
-    DockTab.Changes -> dockBadgeCountText(changes.files.size)
+    DockTab.Changes -> dockBadgeCountText(changes.skillContentFiles.size)
     else -> dockTabMetadata(tab).badge
   }
 
@@ -3253,6 +3290,9 @@ private fun ChangesPanel(
   recentlyCopiedKey: String?,
   recentlyOpenedCompareUrlKey: String?,
 ) {
+  val visibleChangeGroups = changes.skillContentGovernedGroups
+  val visibleChangeCount = changes.skillContentFiles.size
+  val hiddenChangeCount = changes.nonSkillContentFiles.size
   Row(modifier = Modifier.fillMaxSize()) {
     Column(
       modifier = Modifier.weight(1f).fillMaxHeight().padding(6.dp).verticalScroll(rememberScrollState()),
@@ -3272,6 +3312,9 @@ private fun ChangesPanel(
           modifier = Modifier.padding(8.dp),
         )
         return@Column
+      }
+      if (hiddenChangeCount > 0) {
+        HiddenNonContentChangesBanner(hiddenChangeCount)
       }
       PublishControls(
         publishingBusy = publishingBusy,
@@ -3304,15 +3347,19 @@ private fun ChangesPanel(
         recentlyCopiedKey = recentlyCopiedKey,
         recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
       )
-      if (changes.files.isEmpty() && !changesBusy && changes.errorMessage == null) {
+      if (visibleChangeCount == 0 && !changesBusy && changes.errorMessage == null) {
         Text(
-          text = "No local changes.",
+          text = if (hiddenChangeCount > 0) {
+            "No editable content.md changes."
+          } else {
+            "No local content.md changes."
+          },
           color = WorkspaceSteel,
           fontSize = 11.sp,
           modifier = Modifier.padding(8.dp),
         )
       }
-      changes.governedGroups.forEach { group ->
+      visibleChangeGroups.forEach { group ->
         GovernedChangeGroupSection(
           group = group,
           selectedPublishPaths = selectedPublishPaths,
@@ -3335,6 +3382,31 @@ private fun ChangesPanel(
       selectedDiff = selectedDiff,
       selectedDiffBusy = selectedDiffBusy,
       modifier = Modifier.weight(1f).fillMaxHeight().widthIn(min = 220.dp),
+    )
+  }
+}
+
+@Composable
+private fun HiddenNonContentChangesBanner(hiddenChangeCount: Int) {
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(horizontal = 6.dp, vertical = 4.dp)
+      .background(WorkspaceAmber.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+      .padding(horizontal = 10.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    MiniIcon(text = "!", tint = WorkspaceAmber)
+    Text(
+      text = "$hiddenChangeCount non-content.md change(s) hidden. " +
+        "Resolve or stash them outside Skill Bill before publishing.",
+      color = WorkspaceText,
+      fontSize = 11.sp,
+      fontWeight = FontWeight.SemiBold,
+      modifier = Modifier.weight(1f),
+      maxLines = 2,
+      overflow = TextOverflow.Ellipsis,
     )
   }
 }
@@ -4045,6 +4117,7 @@ private fun GovernedChangeGroupSection(
     fontSize = 10.sp,
     fontWeight = FontWeight.SemiBold,
     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp, start = 6.dp),
+    maxLines = 1,
   )
   group.files.forEach { governedFile ->
     GovernedChangedFileRow(
@@ -4150,7 +4223,7 @@ private fun GovernedChangedFileRow(
       modifier = Modifier.width(28.dp),
     )
     Text(
-      text = file.path,
+      text = file.displayPath(),
       color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
@@ -4262,7 +4335,7 @@ private fun ChangedFileRow(
       statusText()
     }
     Text(
-      text = file.path,
+      text = file.displayPath(),
       color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
@@ -4315,6 +4388,8 @@ private fun ChangedFileRow(
   }
 }
 
+private fun ChangedFile.displayPath(): String = path.removePrefix("skills/")
+
 // F-X-502: TooltipArea wrapper for the "RO" badge on Generated rows. Mirrors the project tone
 // styling so the tooltip surface is consistent with other ambient surfaces.
 @OptIn(ExperimentalFoundationApi::class)
@@ -4346,10 +4421,17 @@ private fun ChangesDiffPane(
   selectedDiffBusy: Boolean,
   modifier: Modifier = Modifier,
 ) {
-  // F-U04: padding lives on the outer column so it stays fixed while content scrolls. The inner
-  // scrolled column inherits the padded viewport without the padding scrolling out of view.
-  Column(modifier = modifier.background(WorkspaceBackground).padding(10.dp)) {
-    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+  val horizontalScrollState = rememberScrollState()
+  // F-U04: padding lives on the scroll content so the horizontal indicator can sit flush against
+  // the panel bottom instead of floating above the left-pane indicator.
+  Box(modifier = modifier.background(WorkspaceBackground)) {
+    Column(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(10.dp)
+        .padding(bottom = if (horizontalScrollState.maxValue > 0) 10.dp else 0.dp)
+        .verticalScroll(rememberScrollState()),
+    ) {
       if (selectedChangedFile == null) {
         Text(
           text = "Select a changed file to view its diff.",
@@ -4358,27 +4440,27 @@ private fun ChangesDiffPane(
         )
         return@Column
       }
-      Text(
-        text = selectedChangedFile.path,
-        color = WorkspaceMuted,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier.padding(bottom = 6.dp),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-      )
-      if (selectedDiffBusy) {
-        Text(text = "Loading diff...", color = WorkspaceSteel, fontSize = 11.sp)
-        return@Column
-      }
-      if (selectedDiff.isBlank()) {
-        Text(text = "(no diff available)", color = WorkspaceSteel, fontSize = 11.sp)
-        return@Column
-      }
-      // F-601 mirror: shared horizontalScroll lets long diff lines stay reachable without clipping.
-      // F-U01: softWrap=false + maxLines=1 so long unbreakable tokens (paths, hashes) push out to
-      // the right and become reachable via the horizontal scroll instead of silently wrapping.
-      Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+      Column(modifier = Modifier.horizontalScroll(horizontalScrollState)) {
+        Text(
+          text = selectedChangedFile.displayPath(),
+          color = WorkspaceMuted,
+          fontSize = 11.sp,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier.padding(bottom = 6.dp),
+          maxLines = 1,
+          softWrap = false,
+        )
+        if (selectedDiffBusy) {
+          Text(text = "Loading diff...", color = WorkspaceSteel, fontSize = 11.sp)
+          return@Column
+        }
+        if (selectedDiff.isBlank()) {
+          Text(text = "(no diff available)", color = WorkspaceSteel, fontSize = 11.sp)
+          return@Column
+        }
+        // F-601 mirror: shared horizontalScroll lets long diff lines stay reachable without clipping.
+        // F-U01: softWrap=false + maxLines=1 so long unbreakable tokens (paths, hashes) push out to
+        // the right and become reachable via the horizontal scroll instead of silently wrapping.
         selectedDiff.lines().forEach { line ->
           Text(
             text = line,
@@ -4390,6 +4472,14 @@ private fun ChangesDiffPane(
           )
         }
       }
+    }
+    if (horizontalScrollState.maxValue > 0) {
+      HorizontalScrollIndicator(
+        scrollState = horizontalScrollState,
+        scrollValue = horizontalScrollState.value,
+        maxScrollValue = horizontalScrollState.maxValue,
+        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 10.dp),
+      )
     }
   }
 }
@@ -4594,23 +4684,114 @@ private fun InstallConsole(editor: EditorPlaceholder, render: RenderSummary) {
   // aligned and lets the user scroll right to reach any clipped failure text. softWrap stays at its
   // default `true` so wrappable content still wraps. Do NOT use maxLines/Ellipsis here — that would
   // hide AC5 failure text.
+  val renderAllSections = buildRenderAllConsoleSections(render)
+  var expandedRenderAllSectionIds by remember(render) { mutableStateOf(emptySet<String>()) }
   Column(modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
     Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-      val lines = buildInstallConsoleLines(editor = editor, render = render)
-      lines.forEachIndexed { index, line ->
-        Row(modifier = Modifier.padding(vertical = 2.dp)) {
-          Text(
-            text = (index + 1).toString().padStart(2, '0'),
-            color = WorkspaceSteel,
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(34.dp),
-          )
-          Text(text = line.text, color = line.tone.color(), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+      if (renderAllSections.isEmpty()) {
+        val lines = buildInstallConsoleLines(editor = editor, render = render)
+        lines.forEachIndexed { index, line ->
+          ConsoleLineRow(number = index + 1, text = line.text, tone = line.tone)
         }
+      } else {
+        var lineNumber = 1
+        ConsoleLineRow(number = lineNumber++, text = "> render all renderable sources", tone = Tone.Neutral)
+        ConsoleLineRow(number = lineNumber++, text = "  resolving target...", tone = Tone.Neutral)
+        renderAllSections.forEach { section ->
+          val expanded = section.id in expandedRenderAllSectionIds
+          RenderAllConsoleSectionHeader(
+            number = lineNumber++,
+            section = section,
+            expanded = expanded,
+            onToggle = {
+              expandedRenderAllSectionIds = if (expanded) {
+                expandedRenderAllSectionIds - section.id
+              } else {
+                expandedRenderAllSectionIds + section.id
+              }
+            },
+          )
+          if (expanded) {
+            section.detailLines.forEach { detailLine ->
+              ConsoleLineRow(number = lineNumber++, text = detailLine, tone = Tone.Neutral)
+            }
+          }
+        }
+        renderAllSections.failedSections().forEachIndexed { index, section ->
+          val prefix = if (index == 0) "failed targets:" else "               "
+          val suffix = section.exception?.let { " - $it" }.orEmpty()
+          ConsoleLineRow(number = lineNumber++, text = "$prefix ${section.title}$suffix", tone = Tone.Error)
+        }
+        val terminalLine = terminalRenderLine(render)
+        ConsoleLineRow(number = lineNumber, text = terminalLine.text, tone = terminalLine.tone)
       }
     }
   }
+}
+
+@Composable
+private fun ConsoleLineRow(number: Int, text: String, tone: Tone) {
+  Row(modifier = Modifier.padding(vertical = 2.dp)) {
+    ConsoleLineNumber(number)
+    Text(text = text, color = tone.color(), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+  }
+}
+
+@Composable
+private fun RenderAllConsoleSectionHeader(
+  number: Int,
+  section: RenderAllConsoleSection,
+  expanded: Boolean,
+  onToggle: () -> Unit,
+) {
+  Row(
+    modifier = Modifier
+      .padding(vertical = 2.dp)
+      .clickable(role = Role.Button, onClick = onToggle)
+      .semantics {
+        stateDescription = if (expanded) "Expanded" else "Collapsed"
+        contentDescription = "Render target ${section.title}"
+      },
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    ConsoleLineNumber(number)
+    Text(
+      text = if (expanded) "v" else ">",
+      color = WorkspaceYellow,
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier = Modifier.width(14.dp),
+    )
+    Text(
+      text = section.title,
+      color = WorkspaceText,
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.widthIn(min = 220.dp, max = 520.dp),
+    )
+    Text(
+      text = "  ${section.summary()}",
+      color = section.tone().color(),
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.widthIn(min = 220.dp, max = 620.dp),
+    )
+  }
+}
+
+@Composable
+private fun ConsoleLineNumber(number: Int) {
+  Text(
+    text = number.toString().padStart(2, '0'),
+    color = WorkspaceSteel,
+    fontSize = 12.sp,
+    fontFamily = FontFamily.Monospace,
+    modifier = Modifier.width(34.dp),
+  )
 }
 
 private fun buildInstallConsoleLines(editor: EditorPlaceholder, render: RenderSummary): List<ConsoleLine> {
@@ -4645,6 +4826,87 @@ private fun buildInstallConsoleLines(editor: EditorPlaceholder, render: RenderSu
     }
   }
 }
+
+internal data class RenderAllConsoleSection(
+  val id: String,
+  val title: String,
+  val state: String,
+  val generatedArtifacts: String?,
+  val exception: String?,
+  val detailLines: List<String>,
+)
+
+internal fun buildRenderAllConsoleSections(render: RenderSummary): List<RenderAllConsoleSection> {
+  if (render.state != RenderRunState.PASSED && render.state != RenderRunState.FAILED) {
+    return emptyList()
+  }
+  val sections = mutableListOf<MutableRenderAllConsoleSection>()
+  var currentSection: MutableRenderAllConsoleSection? = null
+  render.blocks.forEachIndexed { index, block ->
+    if (block.header.startsWith("===== render target:")) {
+      val title = renderTargetTitle(block.header)
+      currentSection = MutableRenderAllConsoleSection(
+        id = "$index:$title",
+        title = title,
+        statusLines = block.content.nonBlankLines(),
+        detailLines = listOf(block.header) + block.content.nonBlankLines(),
+      )
+      sections += requireNotNull(currentSection)
+    } else {
+      currentSection?.let { section ->
+        section.detailLines = section.detailLines +
+          listOfNotNull(phaseHeaderForBlock(block.header, index)?.let { "  $it" }) +
+          block.header +
+          block.content.nonBlankLines()
+      }
+    }
+  }
+  return sections.map { section ->
+    val state = section.statusValue("state") ?: "unknown"
+    RenderAllConsoleSection(
+      id = section.id,
+      title = section.title,
+      state = state,
+      generatedArtifacts = section.statusValue("generated artifacts"),
+      exception = section.statusValue("exception"),
+      detailLines = section.detailLines,
+    )
+  }
+}
+
+private data class MutableRenderAllConsoleSection(
+  val id: String,
+  val title: String,
+  val statusLines: List<String>,
+  var detailLines: List<String>,
+) {
+  fun statusValue(prefix: String): String? =
+    statusLines.firstOrNull { line -> line.startsWith("$prefix:") }?.substringAfter(':')?.trim()
+}
+
+private fun RenderAllConsoleSection.summary(): String = buildList {
+  add(state)
+  if (!exception.isNullOrBlank()) {
+    add(exception)
+  }
+  if (!generatedArtifacts.isNullOrBlank()) {
+    add("$generatedArtifacts generated artifact(s)")
+  }
+}.joinToString(" - ")
+
+private fun RenderAllConsoleSection.tone(): Tone = when (state) {
+  "passed" -> Tone.Success
+  "failed" -> Tone.Error
+  else -> Tone.Warning
+}
+
+internal fun List<RenderAllConsoleSection>.failedSections(): List<RenderAllConsoleSection> =
+  filter { section -> section.state == "failed" }
+
+private fun renderTargetTitle(header: String): String =
+  header.removePrefix("===== render target:").removeSuffix("=====").trim()
+
+private fun String.nonBlankLines(): List<String> = lines().filter { line -> line.isNotBlank() }
 
 private fun phaseHeaderForBlock(header: String, index: Int): String? = when {
   header.startsWith("===== render target:") -> "checking target"
@@ -4711,11 +4973,11 @@ private fun List<SkillBillTreeItem>.isSelectedSkill(selectedTreeItemId: String?)
 
 private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.SKILL,
-  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.ADD_ON,
   TreeItemKind.NATIVE_AGENT,
   -> true
   TreeItemKind.GROUP,
+  TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
   -> false

@@ -13,10 +13,12 @@ internal fun generatedSupportPointersFor(
   repoRoot: Path,
   sourceSkillDir: Path,
   skillName: String,
+  skillsRoot: Path = repoRoot.resolve("skills"),
 ): List<GeneratedSupportPointer> {
   val root = repoRoot.toAbsolutePath().normalize()
+  val resolvedSkillsRoot = skillsRoot.toAbsolutePath().normalize()
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
-  if (!resolvedSource.startsWith(root.resolve("skills"))) {
+  if (!resolvedSource.startsWith(resolvedSkillsRoot)) {
     return emptyList()
   }
   val targets = supportingFileTargets(root)

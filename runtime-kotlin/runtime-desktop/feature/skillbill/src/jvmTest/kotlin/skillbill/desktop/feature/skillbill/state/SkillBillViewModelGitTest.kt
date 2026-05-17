@@ -66,6 +66,24 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
+  fun `quiet git refresh updates changes without exposing busy state`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(ChangedFile(path = "skills/x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val request = viewModel.beginGitRefresh(quiet = true)
+    assertFalse(viewModel.state().changesBusy)
+    val state = viewModel.finishGitRefresh(viewModel.runGitRefresh(request))
+
+    assertFalse(state.changesBusy)
+    assertEquals(1, state.changes.files.size)
+  }
+
+  @Test
   fun `stale finishGitRefresh after a newer changes-slice op keeps current state (F-A01)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
@@ -96,7 +114,7 @@ class SkillBillViewModelGitTest {
   fun `stale finish does not overwrite newer stage effect (F-A01)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
@@ -104,10 +122,10 @@ class SkillBillViewModelGitTest {
     viewModel.refreshGit()
 
     // Begin a refresh, then start a newer stage before finishing the first refresh. The stage
-    // moves x.md from UNSTAGED to STAGED.
+    // Moves the selected content.md from UNSTAGED to STAGED.
     val staleRefreshRequest = viewModel.beginGitRefresh()
     val staleRefreshResult = viewModel.runGitRefresh(staleRefreshRequest)
-    val stageRequest = viewModel.beginStage(listOf("x.md"))
+    val stageRequest = viewModel.beginStage(listOf("skills/x/content.md"))
     val stageResult = viewModel.runStage(stageRequest)
     viewModel.finishGitRefresh(stageResult)
     val afterStaleRefresh = viewModel.finishGitRefresh(staleRefreshResult)
@@ -149,9 +167,9 @@ class SkillBillViewModelGitTest {
   fun `selectTreeItem resets selectedDiff and history path filter slices (F-202)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "skills/a.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/a/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
-      scriptedDiff = "diff --git a/skills/a.md\n+update",
+      scriptedDiff = "diff --git a/skills/a/content.md\n+update",
     )
     val viewModel = newViewModel(
       gitGateway = gitGateway,
@@ -171,12 +189,12 @@ class SkillBillViewModelGitTest {
     )
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
-    val diffRequest = viewModel.selectChangedFile("skills/a.md")
+    val diffRequest = viewModel.selectChangedFile("skills/a/content.md")
     assertNotNull(diffRequest)
     viewModel.finishDiff(viewModel.runDiff(diffRequest))
-    viewModel.setHistoryPathFilter("skills/a.md")
+    viewModel.setHistoryPathFilter("skills/a/content.md")
     val seeded = viewModel.state()
-    assertEquals("skills/a.md", seeded.selectedChangedFile?.path)
+    assertEquals("skills/a/content.md", seeded.selectedChangedFile?.path)
     assertTrue(seeded.selectedDiff.contains("+update"))
 
     val switched = viewModel.selectTreeItem("skill-two")
@@ -192,8 +210,8 @@ class SkillBillViewModelGitTest {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
         files = listOf(
-          ChangedFile(path = "staged.md", group = ChangedFileGroup.STAGED, statusCode = "A"),
-          ChangedFile(path = "unstaged.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(path = "skills/staged/content.md", group = ChangedFileGroup.STAGED, statusCode = "A"),
+          ChangedFile(path = "skills/unstaged/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
         ),
       ),
       scriptedDiff = "diff!",
@@ -202,12 +220,12 @@ class SkillBillViewModelGitTest {
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
 
-    val stagedRequest = viewModel.selectChangedFile("staged.md")
+    val stagedRequest = viewModel.selectChangedFile("skills/staged/content.md")
     assertNotNull(stagedRequest)
     viewModel.finishDiff(viewModel.runDiff(stagedRequest))
     assertEquals(true, gitGateway.lastDiffRequestedStaged)
 
-    val unstagedRequest = viewModel.selectChangedFile("unstaged.md")
+    val unstagedRequest = viewModel.selectChangedFile("skills/unstaged/content.md")
     assertNotNull(unstagedRequest)
     viewModel.finishDiff(viewModel.runDiff(unstagedRequest))
     assertEquals(false, gitGateway.lastDiffRequestedStaged)
@@ -217,21 +235,21 @@ class SkillBillViewModelGitTest {
   fun `stage and unstage update snapshot via FakeGitGateway and clear busy state`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
 
-    val stageRequest = viewModel.beginStage(listOf("x.md"))
+    val stageRequest = viewModel.beginStage(listOf("skills/x/content.md"))
     val stageResult = viewModel.runStage(stageRequest)
     val staged = viewModel.finishGitRefresh(stageResult)
     assertEquals(ChangedFileGroup.STAGED, staged.changes.files.single().group)
     assertEquals(1, gitGateway.stageCallCount)
     assertFalse(staged.changesBusy)
 
-    val unstageRequest = viewModel.beginUnstage(listOf("x.md"))
+    val unstageRequest = viewModel.beginUnstage(listOf("skills/x/content.md"))
     val unstageResult = viewModel.runStage(unstageRequest)
     val unstaged = viewModel.finishGitRefresh(unstageResult)
     assertEquals(ChangedFileGroup.UNSTAGED, unstaged.changes.files.single().group)
@@ -275,6 +293,22 @@ class SkillBillViewModelGitTest {
     assertEquals(1, filtered.history.size)
     assertEquals("alpha", filtered.history.single().subject)
     assertEquals("skills/a.md", gitGateway.lastRecentCommitsPathFilter)
+  }
+
+  @Test
+  fun `quiet history load updates commits without exposing busy state`() {
+    val gitGateway = FakeGitGateway(
+      scriptedCommits = listOf(commitEntry(subject = "alpha", paths = listOf("skills/a.md"))),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+
+    val request = viewModel.beginLoadHistory(quiet = true)
+    assertFalse(viewModel.state().historyBusy)
+    val state = viewModel.finishLoadHistory(viewModel.runLoadHistory(request))
+
+    assertFalse(state.historyBusy)
+    assertEquals(listOf("alpha"), state.history.map { it.subject })
   }
 
   @Test
@@ -369,7 +403,7 @@ class SkillBillViewModelGitTest {
   fun `stage advances snapshotForCallCount via gateway stage (F-T02 AC10)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
@@ -390,7 +424,7 @@ class SkillBillViewModelGitTest {
   fun `unstage advances snapshotForCallCount via gateway unstage (F-T02 AC10)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
@@ -413,7 +447,7 @@ class SkillBillViewModelGitTest {
   fun `throwOnDiff surfaces empty diff without changing other slices (F-T03 AC11)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
       throwOnDiff = IllegalStateException("diff exploded"),
     )
@@ -423,7 +457,7 @@ class SkillBillViewModelGitTest {
     val beforeValidation = viewModel.state().validation
     val beforeRender = viewModel.state().render
 
-    val request = viewModel.selectChangedFile("x.md")
+    val request = viewModel.selectChangedFile("skills/x/content.md")
     assertNotNull(request)
     val state = viewModel.finishDiff(viewModel.runDiff(request))
 
@@ -484,7 +518,7 @@ class SkillBillViewModelGitTest {
   fun `throwOnUnstage surfaces error and preserves existing snapshot files (F-T03 AC11 + F-A02)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
       throwOnUnstage = IllegalStateException("unstage exploded"),
     )
@@ -506,20 +540,20 @@ class SkillBillViewModelGitTest {
   fun `refreshGit retains selected file when it still exists and clears when it does not`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
       ),
       scriptedDiff = "d",
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
-    val req = viewModel.selectChangedFile("x.md")
+    val req = viewModel.selectChangedFile("skills/x/content.md")
     assertNotNull(req)
     viewModel.finishDiff(viewModel.runDiff(req))
 
     // File still exists across refresh -> selection preserved.
     val stillThere = viewModel.refreshGit()
-    assertEquals("x.md", stillThere.selectedChangedFile?.path)
+    assertEquals("skills/x/content.md", stillThere.selectedChangedFile?.path)
 
     // File disappears -> selection cleared.
     gitGateway.scriptedSnapshot = ChangesSnapshot(files = emptyList())
@@ -532,7 +566,7 @@ class SkillBillViewModelGitTest {
   fun `commit is disabled until staged changes and message are present`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
     )
     val viewModel = newViewModel(gitGateway = gitGateway)
@@ -572,7 +606,7 @@ class SkillBillViewModelGitTest {
   fun `commit and push do not start while git refresh is in flight`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
       scriptedPublishingStatus = GitPublishingStatus(
         pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
@@ -595,7 +629,7 @@ class SkillBillViewModelGitTest {
   fun `commit runs validation before git commit and blocks on failed validation`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
     )
     val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
@@ -621,9 +655,9 @@ class SkillBillViewModelGitTest {
     )
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
-      scriptedCommits = listOf(commitEntry("published", paths = listOf("x.md"))),
+      scriptedCommits = listOf(commitEntry("published", paths = listOf("skills/x/content.md"))),
       scriptedPublishingStatus = refreshedStatus,
     )
     val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
@@ -653,7 +687,7 @@ class SkillBillViewModelGitTest {
   fun `failed validation override is invalidated when staged authored files change`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
     )
     val validationGateway = FakeValidationGateway(scriptedSummary = failedValidationSummary())
@@ -666,7 +700,7 @@ class SkillBillViewModelGitTest {
     viewModel.finishCommit(viewModel.runCommit(blocked))
     gitGateway.scriptedSnapshot = ChangesSnapshot(
       files = listOf(
-        ChangedFile(path = "y.md", group = ChangedFileGroup.STAGED, statusCode = "A"),
+        ChangedFile(path = "skills/y/content.md", group = ChangedFileGroup.STAGED, statusCode = "A"),
       ),
     )
     viewModel.refreshGit()
@@ -687,7 +721,7 @@ class SkillBillViewModelGitTest {
     val afterStatus = beforeStatus.copy(aheadBehind = GitAheadBehind(ahead = 0, behind = 0))
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
       scriptedPublishingStatus = beforeStatus,
     )
@@ -701,7 +735,7 @@ class SkillBillViewModelGitTest {
     val request = viewModel.beginCommit()
     assertNotNull(request)
     gitGateway.scriptedSnapshot = ChangesSnapshot(files = emptyList())
-    gitGateway.scriptedCommits = listOf(commitEntry("publish x", paths = listOf("x.md")))
+    gitGateway.scriptedCommits = listOf(commitEntry("publish x", paths = listOf("skills/x/content.md")))
     gitGateway.scriptedPublishingStatus = afterStatus
 
     val state = viewModel.finishCommit(viewModel.runCommit(request))
@@ -716,7 +750,7 @@ class SkillBillViewModelGitTest {
   fun `commit git error is visible and preserves existing changes`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
-        files = listOf(ChangedFile(path = "x.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
+        files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.STAGED, statusCode = "M")),
       ),
       scriptedCommitResult = GitOperationResult.failed("git exited with code 1: no identity"),
     )
@@ -733,7 +767,7 @@ class SkillBillViewModelGitTest {
     val state = viewModel.finishCommit(viewModel.runCommit(request))
 
     assertEquals("git exited with code 1: no identity", state.commitErrorMessage)
-    assertEquals(listOf("x.md"), state.changes.files.map { it.path })
+    assertEquals(listOf("skills/x/content.md"), state.changes.files.map { it.path })
   }
 
   @Test
@@ -851,7 +885,7 @@ class SkillBillViewModelGitTest {
         files = listOf(
           ChangedFile(path = "skills/bill-demo/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
           ChangedFile(
-            path = "platform-packs/kotlin/addons/strict.md",
+            path = "platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md",
             group = ChangedFileGroup.UNTRACKED,
             statusCode = "??",
           ),
@@ -873,15 +907,19 @@ class SkillBillViewModelGitTest {
     assertEquals(
       listOf(
         GovernedChangeConcept.SKILLS,
-        GovernedChangeConcept.ADD_ONS,
+        GovernedChangeConcept.PLATFORM_PACKS,
         GovernedChangeConcept.UNKNOWN_OTHER,
         GovernedChangeConcept.GENERATED_READ_ONLY,
       ),
       state.changes.governedGroups.map { it.concept },
     )
     assertEquals(
-      setOf("skills/bill-demo/content.md", "platform-packs/kotlin/addons/strict.md", "local-notes.txt"),
+      setOf("skills/bill-demo/content.md", "platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md"),
       state.selectedPublishPaths,
+    )
+    assertEquals(
+      listOf(GovernedChangeConcept.SKILLS, GovernedChangeConcept.PLATFORM_PACKS),
+      state.changes.skillContentGovernedGroups.map { it.concept },
     )
     assertTrue(
       state.changes.governedGroups
@@ -952,12 +990,37 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
+  fun `publish is blocked while non content files are dirty`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(path = "runtime-kotlin/app.kt", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+        ),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    val state = viewModel.updateCommitMessage("publish x")
+
+    assertEquals(setOf("skills/x/content.md"), state.selectedPublishPaths)
+    assertFalse(state.canPublish)
+    assertTrue(state.publishDisabledReason.orEmpty().contains("non-content.md changes"))
+    assertNull(viewModel.beginPublish())
+    assertEquals(0, gitGateway.stageCallCount)
+    assertEquals(0, gitGateway.commitCallCount)
+  }
+
+  @Test
   fun `publish runs preflight before selected-file commit and requires explicit override after failure`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
         files = listOf(
           ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
-          ChangedFile(path = "docs/notes.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
         ),
       ),
       scriptedPublishingStatus = GitPublishingStatus(
@@ -976,7 +1039,6 @@ class SkillBillViewModelGitTest {
     )
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
-    viewModel.setPublishPathSelected("docs/notes.md", false)
     viewModel.updateCommitMessage("publish x")
 
     val blockedRequest = viewModel.beginPublish()
@@ -1312,6 +1374,23 @@ class SkillBillViewModelGitTest {
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
     scaffoldGateway: skillbill.desktop.core.domain.service.RuntimeScaffoldGateway =
       skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
+    firstRunGateway: skillbill.desktop.core.domain.service.DesktopFirstRunGateway =
+      skillbill.desktop.core.testing.install.FakeDesktopFirstRunGateway(
+        discoveryResult = skillbill.desktop.core.domain.model.FirstRunDiscoveryResult.Success(
+          skillbill.desktop.core.domain.model.FirstRunSetupDiscovery(agents = emptyList(), platformPacks = emptyList()),
+        ),
+        planResult = skillbill.desktop.core.domain.model.FirstRunPlanResult.Failed("not scripted"),
+        applyResult = skillbill.desktop.core.domain.model.FirstRunApplyResult.Failed(
+          skillbill.desktop.core.domain.model.FirstRunInstallOutcome(
+            status = skillbill.desktop.core.domain.model.FirstRunInstallStatus.FAILURE,
+            title = "not scripted",
+          ),
+        ),
+      ),
+    desktopPreferenceStore: skillbill.desktop.core.datastore.DesktopPreferenceStore =
+      skillbill.desktop.core.testing.FakeDesktopPreferenceStore(
+        initialFirstRunPreferences = skillbill.desktop.core.datastore.DesktopFirstRunPreferences(completed = true),
+      ),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1322,6 +1401,8 @@ class SkillBillViewModelGitTest {
     renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
     scaffoldGateway = scaffoldGateway,
+    firstRunGateway = firstRunGateway,
+    desktopPreferenceStore = desktopPreferenceStore,
   )
 
   private fun commitEntry(

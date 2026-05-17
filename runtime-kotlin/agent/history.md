@@ -1,3 +1,83 @@
+## [2026-05-17] final-integration-docs-validation
+Areas: runtime-kotlin runtime-core install, runtime-cli install, runtime-desktop packaging/runtime lookup, docs
+- Final SKILL-45 integration kept the runtime install contract unchanged: CLI, install.sh, and desktop all route through typed install plan/apply instead of parsing shell output. reusable
+- Documentation now names package tasks, app-resource runtime bundle lookup, `~/.skill-bill/installed-skills` staging, telemetry anonymous/full/off, MCP intent, and Windows Developer Mode/elevated-shell guidance.
+- Coverage audit found existing focused tests for plan/apply, shell delegation argv, dynamic platform selection, telemetry/MCP, Windows symlink outcomes, desktop gateway state, runtime asset lookup, and package task wiring; no new test files were needed.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-05-17] desktop-packaging-runtime-bundling
+Areas: runtime-kotlin/runtime-desktop packaging, runtime-desktop/core/data first-run gateway, runtime-cli installDist, runtime-mcp installDist
+- Desktop packages now stage a loose `skill-bill-runtime` app-resource bundle from authored `skills`, dynamic `platform-packs`, `orchestration`, and packaged runtime-cli/runtime-mcp installDist outputs. reusable
+- `JvmRuntimeAssetLocator` resolves runtime assets from dev checkouts, explicit `skillbill.runtime.assets.dir` / `SKILL_BILL_RUNTIME_ASSETS`, or Compose installed resources before the gateway builds shared install plans. reusable
+- First-run install planning now feeds resolved `skillsRoot`, `platformPacksRoot`, runtime distribution dirs, and packaged runtime-mcp bin into the existing typed install model while preserving `~/.skill-bill/installed-skills` staging and Windows symlink outcomes.
+- Packaging task wiring pins DMG/MSI/Deb/RPM targets and makes `prepareAppResources` plus package tasks depend on runtime bundle staging so native packages cannot race an empty app resource directory.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-05-17] install-migration-validation
+Areas: runtime-kotlin/runtime-cli install tests, runtime-kotlin/runtime-core install/architecture tests, runtime-domain install model
+- Added final validation coverage for install migration contracts: CLI plan/apply payload mapping, manual/detected agents, telemetry anonymous/full/off, MCP intent, Windows symlink messages, and staging-cache boundaries.
+- Future CLI install tests should keep driving `CliRuntime` JSON payloads instead of adding filesystem behavior to CLI adapters. reusable
+- Dynamic platform coverage now includes a newly discovered `python` pack in plan-builder and install.sh delegation tests so selected-platform behavior is not tied to the built-in pack set.
+- Staging assertions now pin rendered `SKILL.md` and support pointers under `~/.skill-bill/installed-skills`, preserving the generated-output boundary.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-05-17] install-sh-runtime-delegation
+Areas: install.sh, runtime-kotlin/runtime-cli install commands, runtime-kotlin/runtime-core install apply/native-agent cleanup
+- `install.sh` now owns prompting/runtime distribution only and delegates typed install apply to the durable runtime CLI, including manual/detected agents, platform modes, telemetry, MCP, runtime dirs, and replacement cleanup. reusable
+- Runtime apply gained `replaceExistingSkillBillLinks` cleanup for current and legacy Skill Bill links so base-only or selected reinstall removes stale platform and renamed skill entries before relinking staged skills. reusable
+- Native-agent replacement cleanup now unlinks manifest-declared deselected platform agents from both current staged output and the legacy generated cache before linking selected provider artifacts.
+- Regression coverage moved shell argv execution and replacement cleanup into focused tests; future install.sh changes should assert the single `install apply` argv rather than reintroducing shell-owned install loops.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-17] runtime-cli-install-plan-apply
+Areas: runtime-kotlin/runtime-cli install commands, runtime-kotlin/runtime-core install plan/apply contract
+- Added stable `skill-bill install plan` and `skill-bill install apply` entrypoints that build `InstallPlanRequest`, call `InstallOperations.planInstall` / `applyInstall`, and keep CLI handlers as thin parse/render adapters. reusable
+- CLI inputs now cover detected/manual `copilot`, `claude`, `codex`, `opencode`, `junie`, platform pack none/selected/all, telemetry anonymous/full/off, MCP registration choices, and Windows symlink preflight state.
+- Plan/apply JSON/text payloads are rendered from structured runtime outcomes, including base-skill inclusion, dynamic platform discovery, MCP/telemetry intent, warnings/failures, and Windows symlink guidance.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-16] validation-contract-coverage
+Areas: runtime-kotlin/runtime-core install plan/apply tests, runtime-kotlin/runtime-cli install tests, runtime-domain install model
+- Added final regression coverage for shared install plan/apply contracts: plan inputs/outputs, dynamic platform discovery, base-skill inclusion, staging-cache/source immutability, telemetry levels, MCP intent/outcomes, and Windows symlink guidance.
+- New focused `InstallPlanContractCoverageTest` keeps plan assertions at the typed contract boundary without applying side effects; future install changes should extend this instead of parsing CLI text. reusable
+- Apply coverage now asserts telemetry/MCP no-side-effect behavior on preflight failure and selected all-agent behavior distinguishes Copilot skill links from Claude/Codex/OpenCode/Junie native-agent providers.
+- Validation loop fixed Spotless formatting after review/audit and confirmed the Kotlin Gradle gate passes; remaining known limitation is Minor follow-up to strengthen all-agent MCP config-file assertions.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-05-16] telemetry-mcp-adapter-wiring
+Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-core install apply, runtime-kotlin/runtime-core launcher MCP registration, runtime-kotlin/runtime-application telemetry
+- Shared `InstallOperations.applyInstall` now executes typed telemetry intent through existing anonymous/full/off semantics and returns `InstallTelemetryApplyOutcome` instead of requiring shell-output parsing. reusable
+- Apply executes or skips typed MCP registration intent per supported `InstallAgent`, returns per-agent `McpRegistrationApplyOutcome`, and keeps MCP/telemetry setup failures as structured non-fatal warnings like `install.sh`. reusable
+- Apply side effects use the plan-owned home with an empty environment so ambient telemetry env vars cannot redirect the shared install contract; legacy launcher `glm` support remains outside `InstallAgent.supportedIds`.
+- Focused tests cover telemetry full/off/success/skip/failure, MCP success/skip/failure, and warning aggregation; CLI command migration and desktop setup UI remain deferred.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-05-16] apply-staging-agent-links
+Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-core install, runtime-kotlin/runtime-core nativeagent, runtime-kotlin/runtime-cli install
+- Added typed `InstallOperations.applyInstall` and structured apply outcomes for staging, skill links, native-agent links, Windows symlink states, telemetry/MCP intent carry-through.
+- Apply validates planned staging hash/dir before linking and fails stale plans instead of installing changed source; native-agent apply renders only selected planned skill roots. reusable
+- Native-agent apply reuses render/link operations with request/override objects, materializes apply-time provider artifacts under `~/.skill-bill/installed-skills`, and preserves legacy generated-cache links only for replacement. reusable
+- Symlink replacement uses temp-link then non-overwriting move, preserves user-owned files/symlinks, and reports structured failures with Developer Mode/elevated shell guidance.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-05-16] shared-install-plan-contract-builder
+Areas: runtime-core install plan/build, runtime-domain install model, runtime-core contract/tests
+- SKILL-45 subtask 1 added a pure typed install-plan API (`InstallPlanRequest` -> `InstallPlan`) plus `InstallOperations.planInstall`; it models agent/platform/telemetry/MCP/runtime/target/staging/Windows-preflight intent without applying symlinks, rendering staging output, or registering MCP. reusable
+- Supported install agents are locked to `copilot`, `claude`, `codex`, `opencode`, `junie`; the plan builder asserts runtime primitive drift so legacy GLM cannot re-enter through install planning. reusable
+- Platform packs are discovered through governed `discoverPlatformPacks`, not raw manifest loading; bad contract versions, missing declared content, duplicate skill names/manifest slots, escaped declared content paths, and pointer targets escaping through symlinked parents must loud-fail during planning. reusable
+- Base skills must be represented and must fail if the skills root is missing, empty, or contains `bill-*` directories without `content.md`; future apply/staging work must preserve content-hash parity with the plan, especially for custom `skillsRoot` support pointers.
+- Test coverage lives in `InstallPlanBuilderTest` for selected/all/unknown packs, multi-area packs, manual and supplied/detected targets, no home/source mutation, staging root under `~/.skill-bill/installed-skills`, Windows decision/message, pointer target escapes, and base-skill loud-fails.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-05-11] state-repo-controls-tree-polish
 Areas: runtime-desktop core data/domain/testing, feature skillbill UI/state
 - Split repo browser state into typed path text, current session/tree, selected item, expanded groups, busy operation, and status-bar model so UI reads one coherent source of truth. reusable
