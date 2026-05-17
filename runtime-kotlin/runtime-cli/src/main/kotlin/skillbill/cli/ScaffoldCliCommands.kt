@@ -67,6 +67,8 @@ class ScaffoldTopLevelCommands(
 
 @Inject
 class InstallTopLevelCommands(
+  planCommand: InstallPlanCommand,
+  applyCommand: InstallApplyCommand,
   agentPathCommand: InstallAgentPathCommand,
   detectAgentsCommand: InstallDetectAgentsCommand,
   linkSkillCommand: InstallLinkSkillCommand,
@@ -92,6 +94,8 @@ class InstallTopLevelCommands(
       "Install-side primitives (agent paths, symlinks, native subagents, MCP registration).",
     ) {}
       .subcommands(
+        planCommand,
+        applyCommand,
         agentPathCommand,
         detectAgentsCommand,
         linkSkillCommand,
