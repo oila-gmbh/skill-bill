@@ -287,31 +287,7 @@ class InstallerShellDelegationTest {
       seedUninstallerRuntime(repoRoot)
     }
 
-    val os = currentDesktopOs()
-    val appTarget = when (os) {
-      "macos" -> desktopRoot.resolve("SkillBill.app")
-      else -> desktopRoot.resolve("SkillBill")
-    }
-    val executable = when (os) {
-      "macos" -> appTarget.resolve("Contents/MacOS/SkillBill")
-      "windows" -> appTarget.resolve("bin/SkillBill.bat")
-      else -> appTarget.resolve("bin/SkillBill")
-    }
-    Files.createDirectories(executable.parent)
-    Files.writeString(executable, "")
-    executable.toFile().setExecutable(true)
-    val launcherPath = when (os) {
-      "windows" -> {
-        val launcher = binDir.resolve("skillbill-desktop.cmd")
-        Files.writeString(launcher, "@echo off\ncall \"${executable}\" %*\n")
-        launcher
-      }
-      else -> {
-        val launcher = binDir.resolve("skillbill-desktop")
-        Files.createSymbolicLink(launcher, executable)
-        launcher
-      }
-    }
+    val desktopInstall = seedDesktopInstall(desktopRoot, binDir)
 
     val process = ProcessBuilder(
       "bash",
@@ -332,11 +308,41 @@ class InstallerShellDelegationTest {
     val exitCode = process.waitFor()
 
     return UninstallerShellRun(
-      appTarget = appTarget,
-      launcherPath = launcherPath,
+      appTarget = desktopInstall.appTarget,
+      launcherPath = desktopInstall.launcherPath,
       exitCode = exitCode,
       output = output,
     )
+  }
+
+  private fun seedDesktopInstall(desktopRoot: Path, binDir: Path): DesktopInstallFixture {
+    val os = currentDesktopOs()
+    val appTarget = when (os) {
+      "macos" -> desktopRoot.resolve("SkillBill.app")
+      else -> desktopRoot.resolve("SkillBill")
+    }
+    val executable = when (os) {
+      "macos" -> appTarget.resolve("Contents/MacOS/SkillBill")
+      "windows" -> appTarget.resolve("bin/SkillBill.bat")
+      else -> appTarget.resolve("bin/SkillBill")
+    }
+    Files.createDirectories(executable.parent)
+    Files.writeString(executable, "")
+    executable.toFile().setExecutable(true)
+    return DesktopInstallFixture(appTarget, seedDesktopLauncher(os, binDir, executable))
+  }
+
+  private fun seedDesktopLauncher(os: String, binDir: Path, executable: Path): Path = when (os) {
+    "windows" -> {
+      val launcher = binDir.resolve("skillbill-desktop.cmd")
+      Files.writeString(launcher, "@echo off\ncall \"${executable}\" %*\n")
+      launcher
+    }
+    else -> {
+      val launcher = binDir.resolve("skillbill-desktop")
+      Files.createSymbolicLink(launcher, executable)
+      launcher
+    }
   }
 
   private fun seedUninstallerRuntime(repoRoot: Path) {
@@ -410,5 +416,10 @@ class InstallerShellDelegationTest {
     val launcherPath: Path,
     val exitCode: Int,
     val output: String,
+  )
+
+  private data class DesktopInstallFixture(
+    val appTarget: Path,
+    val launcherPath: Path,
   )
 }
