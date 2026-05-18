@@ -177,6 +177,31 @@ prompt_for_desktop_app_install() {
   done
 }
 
+# Every install starts from a clean slate: removes agent symlinks, native
+# subagent symlinks, MCP registrations, runtime launchers, and wipes
+# ~/.skill-bill/ (including the installed-skills staging cache, runtime
+# binaries, and any persistent state DBs). This guarantees that generator
+# changes — which the staging-cache content hash does not see — actually
+# land on the next install.
+#
+# Tests and dev iteration can opt out with SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1.
+run_pre_install_uninstall() {
+  if [[ "${SKILL_BILL_SKIP_PREINSTALL_UNINSTALL:-}" == "1" ]]; then
+    warn "Skipping pre-install uninstall because SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1."
+    return 0
+  fi
+  local uninstall_script="$PLUGIN_DIR/uninstall.sh"
+  if [[ ! -x "$uninstall_script" ]]; then
+    err "Cannot run pre-install cleanup: $uninstall_script is missing or not executable."
+    exit 1
+  fi
+  echo ""
+  printf "${CYAN}━━━ Pre-install cleanup ━━━${NC}\n"
+  echo ""
+  info "Running uninstall.sh first so every install starts from a clean slate."
+  bash "$uninstall_script"
+}
+
 locate_packaged_runtime_bin() {
   local path="$1"
   local label="$2"
@@ -924,6 +949,7 @@ selected_platform_label() {
 }
 
 parse_args "$@"
+run_pre_install_uninstall
 build_kotlin_runtime_distributions
 build_platform_packages
 
