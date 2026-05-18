@@ -16,21 +16,27 @@ import androidx.compose.ui.graphics.Color
 val SkillBillYellow = Color(0xFFF4C430)
 internal val SkillBillYellowDeep = Color(0xFFC99717)
 internal val SkillBillInk = Color(0xFF0B0B0D)
-internal val SkillBillBlack = Color(0xFF050506)
-internal val SkillBillFrame = Color(0xFF0D0D10)
-internal val SkillBillPanel = Color(0xFF121216)
-internal val SkillBillPanelRaised = Color(0xFF15151A)
-internal val SkillBillLine = Color(0xFF2A2A31)
+
+// SKILL-46 follow-up F-609: the colors below were `internal`; widening to module-public so the
+// feature module's dialogs can converge on a single design-system source-of-truth rather than
+// declaring parallel hex constants per dialog file. Remaining legacy duplicates in
+// SkillBillFrameColor.kt (`Workspace*`) and ScaffoldWizardDialog.kt (`ScaffoldDialog*`) are a known
+// follow-up; ConfirmDeletionDialog.kt has been migrated.
+val SkillBillBlack = Color(0xFF050506)
+val SkillBillFrameColor = Color(0xFF0D0D10)
+val SkillBillPanel = Color(0xFF121216)
+val SkillBillPanelRaised = Color(0xFF15151A)
+val SkillBillLine = Color(0xFF2A2A31)
 internal val SkillBillLineRaised = Color(0xFF34343B)
-internal val SkillBillText = Color(0xFFF6F3E7)
+val SkillBillText = Color(0xFFF6F3E7)
 internal val SkillBillTextWarm = Color(0xFFF7EFD3)
 internal val SkillBillTextSoft = Color(0xFFDDD8C7)
-internal val SkillBillMuted = Color(0xFFB7B1A0)
-internal val SkillBillSteel = Color(0xFFCFD4D8)
-internal val SkillBillSteelDark = Color(0xFF6F7882)
-internal val SkillBillGreen = Color(0xFF60D394)
-internal val SkillBillRed = Color(0xFFFF5F57)
-internal val SkillBillAmber = Color(0xFFFFBD2E)
+val SkillBillMuted = Color(0xFFB7B1A0)
+val SkillBillSteel = Color(0xFFCFD4D8)
+val SkillBillSteelDark = Color(0xFF6F7882)
+val SkillBillGreen = Color(0xFF60D394)
+val SkillBillRed = Color(0xFFFF5F57)
+val SkillBillAmber = Color(0xFFFFBD2E)
 internal val SkillBillMacGreen = Color(0xFF28C840)
 internal val SkillBillHeroGold = Color(0xFFE1AF1D)
 internal val SkillBillNodeText = Color(0xFFF5E8AE)
@@ -62,7 +68,7 @@ internal val SkillBillLightColorScheme = lightColorScheme(
   onError = SkillBillInk,
   background = SkillBillBlack,
   onBackground = SkillBillText,
-  surface = SkillBillFrame,
+  surface = SkillBillFrameColor,
   onSurface = SkillBillText,
   surfaceVariant = SkillBillPanel,
   onSurfaceVariant = SkillBillMuted,
@@ -87,7 +93,7 @@ internal val SkillBillDarkColorScheme = darkColorScheme(
   onError = SkillBillInk,
   background = SkillBillBlack,
   onBackground = SkillBillText,
-  surface = SkillBillFrame,
+  surface = SkillBillFrameColor,
   onSurface = SkillBillText,
   surfaceVariant = SkillBillPanel,
   onSurfaceVariant = SkillBillMuted,
@@ -99,7 +105,7 @@ val SkillBillLightGradientColors = GradientColors(
   primary = SkillBillYellow.copy(alpha = 0.16f),
   secondary = SkillBillHeroGold,
   tertiary = SkillBillPanel,
-  neutral = SkillBillFrame,
+  neutral = SkillBillFrameColor,
 )
 
 @Composable
