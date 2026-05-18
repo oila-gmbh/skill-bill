@@ -38,6 +38,27 @@ import kotlin.test.assertTrue
 
 class SkillBillViewModelFirstRunTest {
   @Test
+  fun `first launch skips setup when install already exists`() {
+    val preferences = FakeDesktopPreferenceStore(
+      initialFirstRunPreferences = DesktopFirstRunPreferences(completed = false),
+    )
+    val viewModel = newViewModel(
+      firstRunGateway = FakeDesktopFirstRunGateway(
+        discoveryResult = FirstRunDiscoveryResult.Success(discovery()),
+        planResult = FirstRunPlanResult.Planned(plan()),
+        applyResult = FirstRunApplyResult.Applied(
+          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+        ),
+        existingInstall = true,
+      ),
+      preferenceStore = preferences,
+    )
+
+    assertNull(viewModel.state().firstRunSetup)
+    assertFalse(preferences.firstRunPreferences.value.completed)
+  }
+
+  @Test
   fun `first launch discovers setup choices and applies selected request`() = runBlocking {
     val gateway = FakeDesktopFirstRunGateway(
       discoveryResult = FirstRunDiscoveryResult.Success(discovery()),

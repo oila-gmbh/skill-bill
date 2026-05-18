@@ -11,6 +11,7 @@ class FakeDesktopFirstRunGateway(
   var discoveryResult: FirstRunDiscoveryResult,
   var planResult: FirstRunPlanResult,
   var applyResult: FirstRunApplyResult,
+  var existingInstall: Boolean = false,
 ) : DesktopFirstRunGateway {
   val planRequests: MutableList<FirstRunSetupRequest> = mutableListOf()
   val appliedPlans: MutableList<FirstRunInstallPlan> = mutableListOf()
@@ -23,6 +24,8 @@ class FakeDesktopFirstRunGateway(
 
   var applyCallCount: Int = 0
     private set
+
+  override fun hasExistingInstall(): Boolean = existingInstall
 
   override suspend fun discoverSetup(): FirstRunDiscoveryResult {
     discoveryCallCount += 1

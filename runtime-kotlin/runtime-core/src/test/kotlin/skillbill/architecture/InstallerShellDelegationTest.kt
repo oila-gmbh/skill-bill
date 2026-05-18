@@ -35,6 +35,7 @@ class InstallerShellDelegationTest {
     assertContains(installScript, ":runtime-desktop:prepareDesktopAppDistributable")
     assertContains(installScript, "install_desktop_app")
     assertContains(installScript, "desktop_host_os")
+    assertContains(installScript, "printf '%s' \"/Applications\"")
     assertFalse(installScript.contains("prompt_for_mcp_registration"))
     assertFalse(installScript.contains("Enter MCP choice"))
     assertFalse(installScript.contains("install register-mcp"))

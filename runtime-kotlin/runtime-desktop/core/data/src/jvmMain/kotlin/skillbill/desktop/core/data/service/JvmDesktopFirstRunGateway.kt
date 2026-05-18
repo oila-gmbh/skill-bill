@@ -39,6 +39,8 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 
 @Inject
@@ -52,6 +54,24 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
   internal var detectedAgentTargets: (
     Path,
   ) -> List<skillbill.install.model.AgentTarget> = InstallOperations::detectAgentTargets
+
+  override fun hasExistingInstall(): Boolean = runCatching {
+    val stagingRoot = homeProvider()
+      .toAbsolutePath()
+      .normalize()
+      .resolve(".skill-bill/installed-skills")
+    if (!Files.isDirectory(stagingRoot, LinkOption.NOFOLLOW_LINKS)) {
+      return@runCatching false
+    }
+    Files.list(stagingRoot).use { entries ->
+      entries.anyMatch { entry: Path ->
+        !entry.fileName.toString().startsWith(".") &&
+          Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) &&
+          Files.isRegularFile(entry.resolve("SKILL.md"), LinkOption.NOFOLLOW_LINKS) &&
+          Files.isRegularFile(entry.resolve(".content-hash"), LinkOption.NOFOLLOW_LINKS)
+      }
+    }
+  }.getOrDefault(false)
 
   override suspend fun discoverSetup(): FirstRunDiscoveryResult = try {
     val home = homeProvider().toAbsolutePath().normalize()

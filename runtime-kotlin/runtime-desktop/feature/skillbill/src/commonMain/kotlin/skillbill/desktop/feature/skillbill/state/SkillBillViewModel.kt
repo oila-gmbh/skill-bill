@@ -165,7 +165,7 @@ class SkillBillViewModel(
     skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary.empty
   private var activeValidateAgentConfigsToken: Long = 0L
   private var firstRunSetup: FirstRunSetupState? =
-    if (desktopPreferenceStore.firstRunPreferences.value.completed) {
+    if (desktopPreferenceStore.firstRunPreferences.value.completed || firstRunGateway.hasExistingInstall()) {
       null
     } else {
       desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()

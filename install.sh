@@ -17,6 +17,8 @@ RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
 DESKTOP_APP_DEFAULT_NAME="SkillBill"
 DESKTOP_APP_INSTALL="prompt"
 DESKTOP_APP_INSTALL_DIR="${SKILL_BILL_DESKTOP_APP_DIR:-}"
+DESKTOP_APP_INSTALLED_PATH=""
+DESKTOP_APP_LAUNCHER_PATH=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -124,7 +126,7 @@ default_desktop_app_install_dir() {
   local os="$1"
   case "$os" in
     macos)
-      printf '%s' "$HOME/Applications"
+      printf '%s' "/Applications"
       ;;
     linux)
       printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/skillbill/desktop"
@@ -382,6 +384,7 @@ install_desktop_launcher() {
 @echo off
 call "$windows_executable" %*
 CMD
+      DESKTOP_APP_LAUNCHER_PATH="$launcher_path"
       ok "  linked desktop launcher → $launcher_path"
       return 0
       ;;
@@ -396,7 +399,8 @@ CMD
     return 0
   fi
   ln -sfn "$executable" "$launcher_path"
-  ok "  linked desktop launcher → $executable"
+  DESKTOP_APP_LAUNCHER_PATH="$launcher_path"
+  ok "  linked desktop launcher → $launcher_path"
 }
 
 install_linux_desktop_entry() {
@@ -455,6 +459,7 @@ install_desktop_app() {
       target_path="$install_root/$DESKTOP_APP_DEFAULT_NAME"
       ;;
   esac
+  DESKTOP_APP_INSTALLED_PATH="$target_path"
 
   info "Installing desktop app to: $target_path"
   rm -rf "$target_path"
@@ -988,7 +993,10 @@ info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_B
 info "Telemetry:       $TELEMETRY_LEVEL"
 info "MCP:             $MCP_REGISTRATION"
 if [[ "$DESKTOP_APP_INSTALL" == "yes" ]]; then
-  info "Desktop app:     installed for $(desktop_host_os)"
+  info "Desktop app:     ${DESKTOP_APP_INSTALLED_PATH:-installed for $(desktop_host_os)}"
+  if [[ -n "$DESKTOP_APP_LAUNCHER_PATH" ]]; then
+    info "Desktop launcher: $DESKTOP_APP_LAUNCHER_PATH"
+  fi
 else
   info "Desktop app:     skipped"
 fi

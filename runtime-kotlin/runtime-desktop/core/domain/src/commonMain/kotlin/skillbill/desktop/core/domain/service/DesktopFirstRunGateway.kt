@@ -7,6 +7,8 @@ import skillbill.desktop.core.domain.model.FirstRunPlanResult
 import skillbill.desktop.core.domain.model.FirstRunSetupRequest
 
 interface DesktopFirstRunGateway {
+  fun hasExistingInstall(): Boolean
+
   suspend fun discoverSetup(): FirstRunDiscoveryResult
 
   suspend fun planSetup(request: FirstRunSetupRequest): FirstRunPlanResult

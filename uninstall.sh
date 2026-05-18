@@ -108,7 +108,7 @@ default_desktop_app_install_dir() {
   local os="$1"
   case "$os" in
     macos)
-      printf '%s' "$HOME/Applications"
+      printf '%s' "/Applications"
       ;;
     linux)
       printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/skillbill/desktop"

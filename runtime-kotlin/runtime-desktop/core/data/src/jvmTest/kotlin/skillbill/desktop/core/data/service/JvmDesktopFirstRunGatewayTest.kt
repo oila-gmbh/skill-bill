@@ -37,10 +37,38 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class JvmDesktopFirstRunGatewayTest {
+  @Test
+  fun `existing install is detected from staged skill cache`() {
+    val home = Files.createTempDirectory("skillbill-first-run-installed")
+    val stagedSkill = home.resolve(".skill-bill/installed-skills/bill-code-review-0123456789abcdef")
+    Files.createDirectories(stagedSkill)
+    Files.writeString(stagedSkill.resolve("SKILL.md"), "# bill-code-review\n")
+    Files.writeString(stagedSkill.resolve(".content-hash"), "0123456789abcdef")
+    val gateway = JvmDesktopFirstRunGateway().apply {
+      homeProvider = { home }
+    }
+
+    assertTrue(gateway.hasExistingInstall())
+  }
+
+  @Test
+  fun `existing install ignores incomplete staging residue`() {
+    val home = Files.createTempDirectory("skillbill-first-run-empty")
+    val stagedSkill = home.resolve(".skill-bill/installed-skills/.staging-tmp-1")
+    Files.createDirectories(stagedSkill)
+    Files.writeString(stagedSkill.resolve(".content-hash"), "0123456789abcdef")
+    val gateway = JvmDesktopFirstRunGateway().apply {
+      homeProvider = { home }
+    }
+
+    assertFalse(gateway.hasExistingInstall())
+  }
+
   @Test
   fun `plan maps desktop request into shared install plan request with MCP registration`() = runBlocking {
     val root = Files.createTempDirectory("skillbill-first-run-root")
