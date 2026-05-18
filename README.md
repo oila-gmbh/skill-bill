@@ -87,7 +87,7 @@ The installer:
 
 `./install.sh` is the terminal installer. It prompts for manual or detected
 agents, optional platform packs, telemetry level (`anonymous`, `full`, or
-`off`), and MCP registration, then delegates the actual install to
+`off`), and optional desktop app installation, then delegates the actual install to
 `skill-bill install apply`. The reusable runtime path owns staging, symlinks,
 native-agent output, telemetry configuration, MCP registration, and Windows
 symlink preflight outcomes.
@@ -122,6 +122,7 @@ Native package tasks are host/toolchain constrained:
 
 ```bash
 cd runtime-kotlin
+./gradlew :runtime-desktop:prepareDesktopAppDistributable
 ./gradlew :runtime-desktop:createDistributable
 ./gradlew :runtime-desktop:packageDistributionForCurrentOS
 ./gradlew :runtime-desktop:packageDmg   # macOS host
@@ -133,14 +134,32 @@ cd runtime-kotlin
 The package build stages a loose `skill-bill-runtime` app-resource bundle with
 `runtime-cli`, `runtime-mcp`, authored `skills/`, dynamic `platform-packs/`, and
 `orchestration/`. On Arch/CachyOS, prefer the RPM artifact when the local Linux
-toolchain can produce it; otherwise use `createDistributable` or
+toolchain can produce it; otherwise use `prepareDesktopAppDistributable` or
 `packageDistributionForCurrentOS` as the installable fallback. Packaged binary
 outputs are release artifacts and are not committed.
 
+The terminal installer can also install the desktop app for the current user:
+
+```bash
+./install.sh --with-desktop-app
+```
+
+This builds `:runtime-desktop:prepareDesktopAppDistributable` for the current host and
+copies the app into a per-user location: `~/Applications` on macOS,
+`${XDG_DATA_HOME:-~/.local/share}/skillbill/desktop` on Linux, and
+`%LOCALAPPDATA%/SkillBill/Desktop` on Windows shells. It also adds a
+`skillbill-desktop` launcher beside the normal `skill-bill` and
+`skill-bill-mcp` launchers. Use `--no-desktop-app` to keep the install CLI-only,
+or `--desktop-app-dir <path>` to choose a different desktop app install root.
+`./uninstall.sh` removes the same per-user desktop app, desktop launcher, and
+Linux desktop entry; pass the same `--desktop-app-dir <path>` when uninstalling a
+custom app root.
+
 On first launch, the desktop wizard asks for the same install choices as the
-terminal installer: supported agents, optional platform packs, telemetry level,
-and MCP registration. Base skills are always included, platform packs are
-discovered from manifests, installs stage rendered outputs under
+terminal installer: supported agents, optional platform packs, and telemetry
+level. MCP registration is always applied for supported agents. Base skills are
+always included, platform packs are discovered from manifests, installs stage
+rendered outputs under
 `~/.skill-bill/installed-skills/`, and generated `SKILL.md`, support pointers,
 and provider-native artifacts remain install/render output rather than source.
 

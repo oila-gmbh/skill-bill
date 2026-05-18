@@ -14,6 +14,8 @@ RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
 RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
 RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
+DESKTOP_APP_DEFAULT_NAME="SkillBill"
+DESKTOP_APP_INSTALL_DIR="${SKILL_BILL_DESKTOP_APP_DIR:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,6 +27,104 @@ info()  { printf "${CYAN}▸${NC} %s\n" "$1"; }
 ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 err()   { printf "${RED}✗${NC} %s\n" "$1"; }
+
+trim_string() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+usage() {
+  cat <<USAGE
+Usage: ./uninstall.sh [--desktop-app-dir PATH]
+
+Options:
+  --desktop-app-dir PATH   Remove the desktop app from a custom install root.
+USAGE
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      --desktop-app-dir)
+        if [[ $# -lt 2 || -z "$(trim_string "$2")" ]]; then
+          err "--desktop-app-dir requires a path."
+          exit 1
+        fi
+        DESKTOP_APP_INSTALL_DIR="$2"
+        shift 2
+        ;;
+      --desktop-app-dir=*)
+        DESKTOP_APP_INSTALL_DIR="${1#--desktop-app-dir=}"
+        if [[ -z "$(trim_string "$DESKTOP_APP_INSTALL_DIR")" ]]; then
+          err "--desktop-app-dir requires a path."
+          exit 1
+        fi
+        shift
+        ;;
+      *)
+        err "Unknown argument: $1"
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+host_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "$path"
+  else
+    printf '%s' "$path"
+  fi
+}
+
+desktop_host_os() {
+  local uname_s
+  uname_s="$(uname -s 2>/dev/null || printf 'unknown')"
+  case "$uname_s" in
+    Darwin*)
+      printf 'macos'
+      ;;
+    Linux*)
+      printf 'linux'
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      printf 'windows'
+      ;;
+    *)
+      printf 'unknown'
+      ;;
+  esac
+}
+
+default_desktop_app_install_dir() {
+  local os="$1"
+  case "$os" in
+    macos)
+      printf '%s' "$HOME/Applications"
+      ;;
+    linux)
+      printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/skillbill/desktop"
+      ;;
+    windows)
+      if [[ -n "${LOCALAPPDATA:-}" ]]; then
+        host_path "$LOCALAPPDATA/SkillBill/Desktop"
+      else
+        printf '%s' "$HOME/AppData/Local/SkillBill/Desktop"
+      fi
+      ;;
+    *)
+      printf '%s' "$HOME/.skill-bill/desktop"
+      ;;
+  esac
+}
 
 locate_packaged_runtime_bin() {
   if [[ ! -x "$RUNTIME_CLI_BIN" && ! -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
@@ -92,6 +192,114 @@ remove_runtime_launchers() {
   info "Removing runtime launchers from: $RUNTIME_LAUNCHER_BIN_DIR"
   remove_runtime_launcher "skill-bill" "$RUNTIME_CLI_BIN"
   remove_runtime_launcher "skill-bill-mcp" "$RUNTIME_MCP_BIN"
+}
+
+desktop_app_install_path() {
+  local os="$1"
+  local install_root
+
+  install_root="${DESKTOP_APP_INSTALL_DIR:-$(default_desktop_app_install_dir "$os")}"
+  install_root="$(host_path "$install_root")"
+  case "$os" in
+    macos)
+      printf '%s' "$install_root/$DESKTOP_APP_DEFAULT_NAME.app"
+      ;;
+    *)
+      printf '%s' "$install_root/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+  esac
+}
+
+desktop_app_executable_path() {
+  local os="$1"
+  local app_target="$2"
+  case "$os" in
+    macos)
+      printf '%s' "$app_target/Contents/MacOS/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+    windows)
+      printf '%s' "$app_target/bin/$DESKTOP_APP_DEFAULT_NAME.bat"
+      ;;
+    *)
+      printf '%s' "$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+  esac
+}
+
+remove_desktop_launcher() {
+  local os="$1"
+  local app_target="$2"
+  local expected_target
+  local link_path
+  local actual_target
+
+  expected_target="$(desktop_app_executable_path "$os" "$app_target")"
+  case "$os" in
+    windows)
+      link_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop.cmd"
+      if [[ -f "$link_path" ]]; then
+        rm -f "$link_path"
+        REMOVED_TARGETS+=("$link_path")
+        ok "  removed skillbill-desktop.cmd"
+      fi
+      ;;
+    *)
+      link_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
+      if [[ ! -L "$link_path" ]]; then
+        if [[ -e "$link_path" ]]; then
+          warn "  skipped $link_path (not a symlink)"
+          SKIPPED_TARGETS+=("$link_path")
+        fi
+        return 0
+      fi
+      actual_target="$(readlink "$link_path")"
+      if [[ "$actual_target" != "$expected_target" ]]; then
+        warn "  skipped $link_path (points outside this desktop install)"
+        SKIPPED_TARGETS+=("$link_path")
+        return 0
+      fi
+      rm -f "$link_path"
+      REMOVED_TARGETS+=("$link_path")
+      ok "  removed skillbill-desktop"
+      ;;
+  esac
+}
+
+remove_linux_desktop_entry() {
+  local desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/skillbill.desktop"
+  local icon_file="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/skillbill.png"
+
+  if [[ -f "$desktop_file" ]] && grep -q '^Name=SkillBill$' "$desktop_file"; then
+    rm -f "$desktop_file"
+    REMOVED_TARGETS+=("$desktop_file")
+    ok "  removed Linux desktop entry"
+  fi
+  if [[ -f "$icon_file" ]]; then
+    rm -f "$icon_file"
+    REMOVED_TARGETS+=("$icon_file")
+    ok "  removed Linux desktop icon"
+  fi
+}
+
+remove_desktop_app() {
+  local os
+  local app_target
+
+  os="$(desktop_host_os)"
+  app_target="$(desktop_app_install_path "$os")"
+
+  info "Removing desktop app install for $os: $app_target"
+  remove_desktop_launcher "$os" "$app_target"
+  if [[ "$os" == "linux" ]]; then
+    remove_linux_desktop_entry
+  fi
+  if [[ -d "$app_target" ]]; then
+    rm -rf "$app_target"
+    REMOVED_TARGETS+=("$app_target")
+    ok "  removed desktop app"
+  else
+    info "  no desktop app install found"
+  fi
 }
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
@@ -270,13 +478,18 @@ remove_from_agent_dir() {
   done <<< "$output"
 }
 
-build_kotlin_runtime_distribution
-build_skill_names
-build_legacy_skill_names
+parse_args "$@"
 
 echo ""
 printf "${CYAN}━━━ Skill Bill Uninstaller ━━━${NC}\n"
 echo ""
+
+remove_desktop_app
+
+build_kotlin_runtime_distribution
+build_skill_names
+build_legacy_skill_names
+
 info "Removing Skill Bill installs from supported agent paths."
 
 remove_from_agent_dir "copilot" "$HOME/.copilot/skills"

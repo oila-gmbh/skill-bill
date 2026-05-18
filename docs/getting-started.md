@@ -56,7 +56,10 @@ Installer prompts cover:
 - platform packs: all packs, selected packs, or base skills only; selected
   packs are discovered from `platform-packs/` manifests
 - telemetry: `anonymous`, `full`, or `off`
-- MCP registration: register supported agent config entries or skip
+
+MCP registration is always applied for supported agent config entries so guided
+workflows, learnings, telemetry, and workflow resume are available after
+install.
 
 Base skills are always included. Optional platform packs add their declared
 review and quality-check skills after manifest validation. All installed
@@ -108,6 +111,33 @@ It is a Compose Desktop client over the same runtime contracts used by the CLI;
 it does not implement separate governance, manifest parsing, scaffold rules, or
 install staging.
 
+The canonical install path is still `./install.sh`. The script installs the
+runtime, agent links, telemetry, MCP registration, and, when selected, a
+per-user desktop app for the current host:
+
+```bash
+./install.sh --with-desktop-app
+```
+
+Use `--no-desktop-app` for a CLI-only install, or `--desktop-app-dir <path>` to
+override the app install root. The desktop app install uses the loose
+`prepareDesktopAppDistributable` output so the same script can work from macOS,
+Linux, and Windows shells. Native DMG/MSI/DEB/RPM outputs are release artifacts,
+not the only supported install path.
+
+Uninstall is symmetric for the per-user app install:
+
+```bash
+./uninstall.sh
+```
+
+If you installed the app with a custom root, pass the same path back to the
+uninstaller:
+
+```bash
+./uninstall.sh --desktop-app-dir <path>
+```
+
 Run from source:
 
 ```bash
@@ -119,7 +149,7 @@ Build a loose desktop distribution:
 
 ```bash
 cd runtime-kotlin
-./gradlew :runtime-desktop:createDistributable
+./gradlew :runtime-desktop:prepareDesktopAppDistributable
 ```
 
 Build a native package for the current host:
@@ -138,7 +168,7 @@ toolchain support them:
 | Windows     | `:runtime-desktop:packageMsi`         | MSI desktop installer                       |
 | Linux       | `:runtime-desktop:packageDeb`         | Debian/Ubuntu-style package                 |
 | Linux       | `:runtime-desktop:packageRpm`         | RPM package, the Arch/CachyOS-friendly path |
-| Any desktop | `:runtime-desktop:createDistributable` | Loose app directory fallback                |
+| Any desktop | `:runtime-desktop:prepareDesktopAppDistributable` | Loose app directory fallback     |
 
 Compose Desktop native packaging is host-limited: a Linux workstation should not
 be expected to produce the macOS DMG or Windows MSI locally. For Arch/CachyOS,
@@ -157,7 +187,8 @@ On first launch, the setup wizard asks for:
 - agents: detected or manually selected supported agents
 - platform packs: dynamically discovered packs, with base skills always included
 - telemetry: `anonymous`, `full`, or `off`, matching CLI behavior
-- MCP registration: an install intent for supported agent config files
+
+The wizard always includes MCP registration for supported agent config files.
 
 The wizard writes through shared install plan/apply behavior and preserves the
 governed source boundary. Authored `content.md`, manifests, add-ons, and

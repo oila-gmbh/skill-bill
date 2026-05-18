@@ -70,7 +70,6 @@ class SkillBillViewModelFirstRunTest {
     viewModel.selectFirstRunPlatform("kotlin", selected = true)
     viewModel.advanceFirstRunStep()
     viewModel.selectFirstRunTelemetry(FirstRunTelemetryLevel.FULL)
-    viewModel.setFirstRunMcpRegistration(register = false)
     val ready = viewModel.advanceFirstRunStep()
     assertEquals(FirstRunSetupStep.APPLY, ready.firstRunSetup?.step)
 
@@ -80,7 +79,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("claude", "codex"), gateway.planRequests.single().selectedAgentIds)
     assertEquals(setOf("kotlin"), gateway.planRequests.single().selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, gateway.planRequests.single().telemetryLevel)
-    assertFalse(gateway.planRequests.single().registerMcp)
+    assertTrue(gateway.planRequests.single().registerMcp)
     assertEquals(1, gateway.applyCallCount)
     assertEquals(FirstRunInstallStatus.WARNING, applied.firstRunSetup?.outcome?.status)
     assertTrue(preferences.firstRunPreferences.value.completed)
@@ -156,7 +155,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("claude"), reopened.selectedAgentIds)
     assertEquals(setOf("kotlin"), reopened.selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, reopened.telemetryLevel)
-    assertFalse(reopened.registerMcp)
+    assertTrue(reopened.registerMcp)
 
     val discoveryRequest = assertNotNull(viewModel.beginFirstRunDiscovery())
     val discovered = viewModel.finishFirstRunDiscovery(viewModel.runFirstRunDiscovery(discoveryRequest))
@@ -164,7 +163,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("claude"), discovered.firstRunSetup?.selectedAgentIds)
     assertEquals(setOf("kotlin"), discovered.firstRunSetup?.selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, discovered.firstRunSetup?.telemetryLevel)
-    assertFalse(discovered.firstRunSetup?.registerMcp ?: true)
+    assertTrue(discovered.firstRunSetup?.registerMcp ?: false)
   }
 
   @Test

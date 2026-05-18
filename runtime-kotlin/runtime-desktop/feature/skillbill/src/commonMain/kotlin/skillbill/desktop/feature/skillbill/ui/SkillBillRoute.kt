@@ -906,9 +906,6 @@ fun SkillBillRoute(
       onTelemetryChanged = { level ->
         state = viewModel.selectFirstRunTelemetry(level)
       },
-      onMcpRegistrationChanged = { register ->
-        state = viewModel.setFirstRunMcpRegistration(register)
-      },
       onBack = {
         state = viewModel.retreatFirstRunStep()
       },

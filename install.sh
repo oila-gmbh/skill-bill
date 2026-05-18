@@ -14,6 +14,9 @@ RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
 RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
 RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
+DESKTOP_APP_DEFAULT_NAME="SkillBill"
+DESKTOP_APP_INSTALL="prompt"
+DESKTOP_APP_INSTALL_DIR="${SKILL_BILL_DESKTOP_APP_DIR:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -40,7 +43,12 @@ MCP_REGISTRATION="register"
 
 usage() {
   cat <<USAGE
-Usage: ./install.sh
+Usage: ./install.sh [--with-desktop-app|--no-desktop-app] [--desktop-app-dir PATH]
+
+Options:
+  --with-desktop-app       Build and install the optional desktop app.
+  --no-desktop-app         Skip desktop app installation.
+  --desktop-app-dir PATH   Override the per-user desktop app install directory.
 USAGE
 }
 
@@ -51,10 +59,119 @@ parse_args() {
         usage
         exit 0
         ;;
+      --with-desktop-app|--install-desktop-app)
+        DESKTOP_APP_INSTALL="yes"
+        shift
+        ;;
+      --no-desktop-app|--skip-desktop-app)
+        DESKTOP_APP_INSTALL="no"
+        shift
+        ;;
+      --desktop-app-dir)
+        if [[ $# -lt 2 || -z "$(trim_string "$2")" ]]; then
+          err "--desktop-app-dir requires a path."
+          exit 1
+        fi
+        DESKTOP_APP_INSTALL_DIR="$2"
+        shift 2
+        ;;
+      --desktop-app-dir=*)
+        DESKTOP_APP_INSTALL_DIR="${1#--desktop-app-dir=}"
+        if [[ -z "$(trim_string "$DESKTOP_APP_INSTALL_DIR")" ]]; then
+          err "--desktop-app-dir requires a path."
+          exit 1
+        fi
+        shift
+        ;;
       *)
         err "Unknown argument: $1"
         usage
         exit 1
+        ;;
+    esac
+  done
+}
+
+host_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "$path"
+  else
+    printf '%s' "$path"
+  fi
+}
+
+desktop_host_os() {
+  local uname_s
+  uname_s="$(uname -s 2>/dev/null || printf 'unknown')"
+  case "$uname_s" in
+    Darwin*)
+      printf 'macos'
+      ;;
+    Linux*)
+      printf 'linux'
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      printf 'windows'
+      ;;
+    *)
+      printf 'unknown'
+      ;;
+  esac
+}
+
+default_desktop_app_install_dir() {
+  local os="$1"
+  case "$os" in
+    macos)
+      printf '%s' "$HOME/Applications"
+      ;;
+    linux)
+      printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/skillbill/desktop"
+      ;;
+    windows)
+      if [[ -n "${LOCALAPPDATA:-}" ]]; then
+        host_path "$LOCALAPPDATA/SkillBill/Desktop"
+      else
+        printf '%s' "$HOME/AppData/Local/SkillBill/Desktop"
+      fi
+      ;;
+    *)
+      printf '%s' "$HOME/.skill-bill/desktop"
+      ;;
+  esac
+}
+
+prompt_for_desktop_app_install() {
+  local input
+  local normalized
+
+  if [[ "$DESKTOP_APP_INSTALL" != "prompt" ]]; then
+    return 0
+  fi
+
+  while true; do
+    echo ""
+    info "Install the optional Skill Bill desktop app for this user?"
+    printf "  1. install (default)\n"
+    printf "  2. skip\n"
+    printf "${CYAN}▸${NC} Enter desktop app choice [1]: "
+    if ! read -r input; then
+      input=""
+    fi
+
+    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
+      ""|1|install|yes|y)
+        DESKTOP_APP_INSTALL="yes"
+        return 0
+        ;;
+      2|skip|no|n)
+        DESKTOP_APP_INSTALL="no"
+        return 0
+        ;;
+      *)
+        warn "Enter 1, 2, install, skip, or press Enter for install."
         ;;
     esac
   done
@@ -173,6 +290,157 @@ install_runtime_launchers() {
     warn "  launcher directory is not on PATH: $RUNTIME_LAUNCHER_BIN_DIR"
     warn "  set SKILL_BILL_BIN_DIR to a PATH directory before running ./install.sh, or add this directory to PATH"
   fi
+}
+
+build_desktop_app_distribution() {
+  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
+
+  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
+    return 0
+  fi
+
+  if [[ ! -x "$gradlew" ]]; then
+    err "Missing Gradle wrapper: $gradlew"
+    return 1
+  fi
+
+  info "Building desktop app distributable for the current host..."
+  (
+    cd "$RUNTIME_KOTLIN_DIR"
+    ./gradlew -q :runtime-desktop:prepareDesktopAppDistributable
+  )
+  ok "Desktop app distributable ready"
+}
+
+desktop_app_source_path() {
+  local app_root="$RUNTIME_KOTLIN_DIR/runtime-desktop/build/compose/binaries/main/app"
+  local os="$1"
+
+  if [[ "$os" == "macos" && -d "$app_root/$DESKTOP_APP_DEFAULT_NAME.app" ]]; then
+    printf '%s' "$app_root/$DESKTOP_APP_DEFAULT_NAME.app"
+    return 0
+  fi
+
+  printf '%s' "$app_root/$DESKTOP_APP_DEFAULT_NAME"
+}
+
+make_desktop_binaries_executable() {
+  local app_path="$1"
+  find "$app_path" -type f \( \
+    -path '*/Contents/MacOS/*' -o \
+    -path '*/bin/*' \
+  \) -exec chmod u+x {} + 2>/dev/null || true
+}
+
+install_desktop_launcher() {
+  local os="$1"
+  local app_target="$2"
+  local launcher_path
+  local executable
+  local windows_executable
+
+  mkdir -p "$RUNTIME_LAUNCHER_BIN_DIR"
+  case "$os" in
+    macos)
+      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
+      executable="$app_target/Contents/MacOS/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+    windows)
+      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop.cmd"
+      executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME.bat"
+      if command -v cygpath >/dev/null 2>&1; then
+        windows_executable="$(cygpath -w "$executable")"
+      else
+        windows_executable="$executable"
+      fi
+      cat > "$launcher_path" <<CMD
+@echo off
+call "$windows_executable" %*
+CMD
+      ok "  linked desktop launcher → $launcher_path"
+      return 0
+      ;;
+    *)
+      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
+      executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+  esac
+
+  if [[ ! -x "$executable" ]]; then
+    warn "  skipped desktop launcher because executable is missing: $executable"
+    return 0
+  fi
+  ln -sfn "$executable" "$launcher_path"
+  ok "  linked desktop launcher → $executable"
+}
+
+install_linux_desktop_entry() {
+  local app_target="$1"
+  local desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/skillbill.desktop"
+  local icon_file="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/skillbill.png"
+  local executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
+  local icon_src="$RUNTIME_KOTLIN_DIR/runtime-desktop/icons/icon.png"
+
+  if [[ ! -x "$executable" ]]; then
+    warn "  skipped Linux desktop entry because executable is missing: $executable"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$desktop_file")" "$(dirname "$icon_file")"
+  cp "$icon_src" "$icon_file"
+  cat > "$desktop_file" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=SkillBill
+GenericName=SkillBill Desktop Runtime
+Comment=Compose Desktop runtime for SkillBill
+Exec=$executable
+Icon=skillbill
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=SkillBill
+DESKTOP
+  ok "  installed Linux desktop entry → $desktop_file"
+}
+
+install_desktop_app() {
+  local os
+  local source_path
+  local install_root
+  local target_path
+
+  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
+    return 0
+  fi
+
+  os="$(desktop_host_os)"
+  source_path="$(desktop_app_source_path "$os")"
+  if [[ ! -d "$source_path" ]]; then
+    err "Missing desktop app distributable: $source_path"
+    return 1
+  fi
+
+  install_root="${DESKTOP_APP_INSTALL_DIR:-$(default_desktop_app_install_dir "$os")}"
+  install_root="$(host_path "$install_root")"
+  case "$os" in
+    macos)
+      target_path="$install_root/$DESKTOP_APP_DEFAULT_NAME.app"
+      ;;
+    *)
+      target_path="$install_root/$DESKTOP_APP_DEFAULT_NAME"
+      ;;
+  esac
+
+  info "Installing desktop app to: $target_path"
+  rm -rf "$target_path"
+  mkdir -p "$install_root"
+  cp -R "$source_path" "$target_path"
+  make_desktop_binaries_executable "$target_path"
+  install_desktop_launcher "$os" "$target_path"
+  if [[ "$os" == "linux" ]]; then
+    install_linux_desktop_entry "$target_path"
+  fi
+  ok "Desktop app installed"
 }
 
 get_agent_path() {
@@ -584,37 +852,6 @@ prompt_for_telemetry_preference() {
   done
 }
 
-prompt_for_mcp_registration() {
-  local input
-  local normalized
-
-  while true; do
-    echo ""
-    info "Register the Skill Bill MCP server for selected agents?"
-    printf "  1. register (default)\n"
-    printf "  2. skip\n"
-    printf "${CYAN}▸${NC} Enter MCP choice [1]: "
-    if ! read -r input; then
-      input=""
-    fi
-
-    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
-    case "$normalized" in
-      ""|1|register|yes|y)
-        MCP_REGISTRATION="register"
-        return 0
-        ;;
-      2|skip|no|n)
-        MCP_REGISTRATION="skip"
-        return 0
-        ;;
-      *)
-        warn "Enter 1, 2, register, skip, or press Enter for register."
-        ;;
-    esac
-  done
-}
-
 build_runtime_install_args() {
   local i
 
@@ -698,8 +935,9 @@ info "Install behavior: collect choices, then delegate planning and apply to the
 prompt_for_agent_selection
 prompt_for_platform_selection
 prompt_for_telemetry_preference
-prompt_for_mcp_registration
+prompt_for_desktop_app_install
 install_runtime_launchers
+build_desktop_app_distribution
 build_runtime_install_args
 
 echo ""
@@ -709,9 +947,11 @@ info "Agents:         $(selected_agent_label)"
 info "Platforms:      $SELECTED_PLATFORM_LABEL"
 info "Telemetry:      $TELEMETRY_LEVEL"
 info "MCP:            $MCP_REGISTRATION"
+info "Desktop app:    $DESKTOP_APP_INSTALL"
 echo ""
 
 apply_runtime_install
+install_desktop_app
 
 printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
 echo ""
@@ -721,6 +961,11 @@ info "Platforms:       $SELECTED_PLATFORM_LABEL"
 info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
 info "Telemetry:       $TELEMETRY_LEVEL"
 info "MCP:             $MCP_REGISTRATION"
+if [[ "$DESKTOP_APP_INSTALL" == "yes" ]]; then
+  info "Desktop app:     installed for $(desktop_host_os)"
+else
+  info "Desktop app:     skipped"
+fi
 
 if [[ "$AGENT_SELECTION_MODE" == "manual" && ${#AGENT_NAMES[@]} -gt 0 ]]; then
   for i in "${!AGENT_NAMES[@]}"; do
@@ -735,5 +980,5 @@ info "Edit skills in: $PLUGIN_DIR/skills/"
 if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
   info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
 fi
-info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or MCP choices."
+info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or desktop app choices."
 echo ""

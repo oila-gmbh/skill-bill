@@ -71,7 +71,7 @@ class LocalDesktopPreferenceStore : DesktopPreferenceStore {
     selectedAgentIds = properties.getProperty(KEY_FIRST_RUN_AGENTS).toSetProperty(),
     selectedPlatformSlugs = properties.getProperty(KEY_FIRST_RUN_PLATFORMS).toSetProperty(),
     telemetryLevelId = properties.getProperty(KEY_FIRST_RUN_TELEMETRY, "anonymous"),
-    registerMcp = properties.getProperty(KEY_FIRST_RUN_MCP)?.toBooleanStrictOrNull() ?: true,
+    registerMcp = true,
   )
 
   private fun persistFirstRunPreferences(preferences: DesktopFirstRunPreferences) {
@@ -79,8 +79,8 @@ class LocalDesktopPreferenceStore : DesktopPreferenceStore {
     properties.setProperty(KEY_FIRST_RUN_AGENTS, preferences.selectedAgentIds.toPropertyValue())
     properties.setProperty(KEY_FIRST_RUN_PLATFORMS, preferences.selectedPlatformSlugs.toPropertyValue())
     properties.setProperty(KEY_FIRST_RUN_TELEMETRY, preferences.telemetryLevelId)
-    properties.setProperty(KEY_FIRST_RUN_MCP, preferences.registerMcp.toString())
-    firstRunState.value = preferences
+    properties.remove(KEY_FIRST_RUN_MCP)
+    firstRunState.value = preferences.copy(registerMcp = true)
     saveProperties()
   }
 

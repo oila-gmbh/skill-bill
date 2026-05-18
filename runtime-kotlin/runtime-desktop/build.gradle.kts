@@ -1,9 +1,65 @@
+import org.gradle.api.DefaultTask
 import org.gradle.api.file.CopySpec
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.Sync
+import org.gradle.api.tasks.TaskAction
+import java.nio.file.Files
+import java.nio.file.Path
 
 plugins {
   id("skillbill.kmp-application")
+}
+
+abstract class FixRuntimeScriptPermissionsTask : DefaultTask() {
+  @get:InputDirectory
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val appImageRoot: DirectoryProperty
+
+  @TaskAction
+  fun fixPermissions() {
+    if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+      return
+    }
+
+    val root = appImageRoot.get().asFile.toPath()
+    val launchScripts = runtimeLaunchScriptsUnder(root)
+    if (launchScripts.isEmpty()) {
+      throw GradleException(
+        "No bundled runtime launch scripts were found under ${root.toAbsolutePath()}.",
+      )
+    }
+    launchScripts.forEach { script ->
+      if (!script.toFile().setExecutable(true, false)) {
+        throw GradleException(
+          "Failed to mark bundled runtime launch script executable: ${script.toAbsolutePath()}",
+        )
+      }
+    }
+  }
+
+  private fun runtimeLaunchScriptsUnder(root: Path): List<Path> =
+    if (!Files.exists(root)) {
+      emptyList()
+    } else {
+      Files.walk(root).use { paths ->
+        paths
+          .filter(::isRuntimeLaunchScript)
+          .toList()
+      }
+    }
+
+  private fun isRuntimeLaunchScript(path: Path): Boolean {
+    val binDir = path.parent ?: return false
+    val runtimeDir = binDir.parent ?: return false
+    return Files.isRegularFile(path) &&
+      binDir.fileName.toString() == "bin" &&
+      runtimeDir.fileName.toString() in setOf("runtime-cli", "runtime-mcp") &&
+      !path.fileName.toString().endsWith(".bat")
+  }
 }
 
 val repoRoot = rootProject.projectDir.parentFile
@@ -38,25 +94,40 @@ val prepareDesktopRuntimeBundle by tasks.registering(Sync::class) {
   duplicatesStrategy = DuplicatesStrategy.FAIL
   dependsOn(":runtime-cli:installDist", ":runtime-mcp:installDist")
 
-  into(desktopAppResourcesDir.map { dir -> dir.dir(runtimeResourceDirName).asFile })
+  into(desktopAppResourcesDir)
 
   from(runtimeCliInstallDir) {
-    into("runtime-cli")
+    into("common/$runtimeResourceDirName/runtime-cli")
   }
   from(runtimeMcpInstallDir) {
-    into("runtime-mcp")
+    into("common/$runtimeResourceDirName/runtime-mcp")
   }
   from(repoRoot.resolve("skills")) {
-    into("skills")
+    into("common/$runtimeResourceDirName/skills")
     excludeGeneratedSkillBillArtifacts()
   }
   from(repoRoot.resolve("platform-packs")) {
-    into("platform-packs")
+    into("common/$runtimeResourceDirName/platform-packs")
     excludeGeneratedSkillBillArtifacts()
   }
   from(repoRoot.resolve("orchestration")) {
-    into("orchestration")
+    into("common/$runtimeResourceDirName/orchestration")
   }
+}
+
+val fixDesktopRuntimeScriptPermissions by tasks.registering(
+  FixRuntimeScriptPermissionsTask::class,
+) {
+  group = "distribution"
+  description = "Mark bundled Skill Bill runtime scripts executable in desktop app images."
+  appImageRoot.set(layout.buildDirectory.dir("compose/binaries/main/app"))
+  dependsOn("createDistributable")
+}
+
+tasks.register("prepareDesktopAppDistributable") {
+  group = "distribution"
+  description = "Create a desktop app image with bundled runtime scripts ready to execute."
+  dependsOn(fixDesktopRuntimeScriptPermissions)
 }
 
 kotlin {
@@ -125,4 +196,14 @@ tasks.matching { task ->
     task.name.startsWith("packageRpm")
 }.configureEach {
   dependsOn(prepareDesktopRuntimeBundle)
+}
+
+tasks.matching { task ->
+  task.name == "packageDistributionForCurrentOS" ||
+    task.name.startsWith("packageDmg") ||
+    task.name.startsWith("packageMsi") ||
+    task.name.startsWith("packageDeb") ||
+    task.name.startsWith("packageRpm")
+}.configureEach {
+  dependsOn(fixDesktopRuntimeScriptPermissions)
 }

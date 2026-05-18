@@ -31,6 +31,12 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "--telemetry \"\$TELEMETRY_LEVEL\"")
     assertContains(installScript, "--mcp \"\$MCP_REGISTRATION\"")
     assertContains(installScript, "--runtime-mcp-bin \"\$RUNTIME_MCP_BIN\"")
+    assertContains(installScript, "build_desktop_app_distribution")
+    assertContains(installScript, ":runtime-desktop:prepareDesktopAppDistributable")
+    assertContains(installScript, "install_desktop_app")
+    assertContains(installScript, "desktop_host_os")
+    assertFalse(installScript.contains("prompt_for_mcp_registration"))
+    assertFalse(installScript.contains("Enter MCP choice"))
     assertFalse(installScript.contains("install register-mcp"))
     assertFalse(installScript.contains("install link-skill"))
     assertFalse(installScript.contains("install link-codex-agents"))
@@ -41,12 +47,30 @@ class InstallerShellDelegationTest {
   }
 
   @Test
+  fun `uninstaller removes desktop app install and launcher`() {
+    val run = runUninstallerShellWithDesktopInstall()
+
+    assertEquals(0, run.exitCode, run.output)
+    assertFalse(Files.exists(run.appTarget), "desktop app should be removed")
+    assertFalse(Files.exists(run.launcherPath), "desktop launcher should be removed")
+  }
+
+  @Test
+  fun `uninstaller removes desktop app before runtime dependent cleanup`() {
+    val run = runUninstallerShellWithDesktopInstall(seedRuntime = false)
+
+    assertFalse(run.exitCode == 0, "runtime-dependent cleanup should still fail without a runtime")
+    assertFalse(Files.exists(run.appTarget), "desktop app should be removed")
+    assertFalse(Files.exists(run.launcherPath), "desktop launcher should be removed")
+  }
+
+  @Test
   fun `installer shell builds base-only all-agent runtime apply argv`() {
     val run = runInstallerShell(input = "1\nall\nbase only\noff\nskip\n")
 
     assertEquals(
       expectedApplyArgs(
-        ExpectedApply(run, agentMode = "manual", platformMode = "none", telemetry = "off", mcp = "skip"),
+        ExpectedApply(run, agentMode = "manual", platformMode = "none", telemetry = "off", mcp = "register"),
       ) + listOf(
         "--agent",
         "copilot",
@@ -75,7 +99,7 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `installer shell builds selected platform runtime apply argv`() {
-    val run = runInstallerShell(input = "1\ncodex\nkotlin\nfull\nregister\n")
+    val run = runInstallerShell(input = "1\ncodex\nkotlin\nfull\nskip\n")
 
     assertEquals(
       expectedApplyArgs(
@@ -94,7 +118,7 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `installer shell selected platform argv comes from discovered platform manifests`() {
-    val run = runInstallerShell(input = "1\ncodex\npython\nfull\nregister\n")
+    val run = runInstallerShell(input = "1\ncodex\npython\nfull\nskip\n")
 
     assertEquals(
       expectedApplyArgs(
@@ -113,7 +137,7 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `installer shell builds detected all-platform runtime apply argv`() {
-    val run = runInstallerShell(input = "detected\nall\nanonymous\nregister\n")
+    val run = runInstallerShell(input = "detected\nall\nanonymous\nskip\n")
 
     assertEquals(
       expectedApplyArgs(
@@ -248,6 +272,118 @@ class InstallerShellDelegationTest {
     Files.writeString(packRoot.resolve("platform.yaml"), "platform: \"$slug\"\n")
   }
 
+  private fun runUninstallerShellWithDesktopInstall(seedRuntime: Boolean = true): UninstallerShellRun {
+    val repoRoot = Files.createTempDirectory("skillbill-uninstaller-shell-repo")
+    val home = Files.createTempDirectory("skillbill-uninstaller-shell-home")
+    val binDir = Files.createTempDirectory("skillbill-uninstaller-shell-bin")
+    val desktopRoot = Files.createTempDirectory("skillbill-uninstaller-shell-desktop")
+    val logPath = Files.createTempFile("skillbill-uninstaller-shell-runtime", ".log")
+    Files.writeString(repoRoot.resolve("uninstall.sh"), Files.readString(runtimeRoot.parent.resolve("uninstall.sh")))
+    repoRoot.resolve("uninstall.sh").toFile().setExecutable(true)
+    Files.createDirectories(repoRoot.resolve("skills/bill-test"))
+    Files.writeString(repoRoot.resolve("skills/bill-test/content.md"), "# Test\n")
+    seedInstallerPlatformPack(repoRoot, "kotlin")
+    if (seedRuntime) {
+      seedUninstallerRuntime(repoRoot)
+    }
+
+    val desktopInstall = seedDesktopInstall(desktopRoot, binDir)
+
+    val process = ProcessBuilder(
+      "bash",
+      repoRoot.resolve("uninstall.sh").toString(),
+      "--desktop-app-dir",
+      desktopRoot.toString(),
+    )
+      .directory(repoRoot.toFile())
+      .redirectErrorStream(true)
+      .apply {
+        environment()["HOME"] = home.toString()
+        environment()["SKILL_BILL_BIN_DIR"] = binDir.toString()
+        environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
+        environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
+      }
+      .start()
+    val output = process.inputStream.bufferedReader().readText()
+    val exitCode = process.waitFor()
+
+    return UninstallerShellRun(
+      appTarget = desktopInstall.appTarget,
+      launcherPath = desktopInstall.launcherPath,
+      exitCode = exitCode,
+      output = output,
+    )
+  }
+
+  private fun seedDesktopInstall(desktopRoot: Path, binDir: Path): DesktopInstallFixture {
+    val os = currentDesktopOs()
+    val appTarget = when (os) {
+      "macos" -> desktopRoot.resolve("SkillBill.app")
+      else -> desktopRoot.resolve("SkillBill")
+    }
+    val executable = when (os) {
+      "macos" -> appTarget.resolve("Contents/MacOS/SkillBill")
+      "windows" -> appTarget.resolve("bin/SkillBill.bat")
+      else -> appTarget.resolve("bin/SkillBill")
+    }
+    Files.createDirectories(executable.parent)
+    Files.writeString(executable, "")
+    executable.toFile().setExecutable(true)
+    return DesktopInstallFixture(appTarget, seedDesktopLauncher(os, binDir, executable))
+  }
+
+  private fun seedDesktopLauncher(os: String, binDir: Path, executable: Path): Path = when (os) {
+    "windows" -> {
+      val launcher = binDir.resolve("skillbill-desktop.cmd")
+      Files.writeString(launcher, "@echo off\ncall \"${executable}\" %*\n")
+      launcher
+    }
+    else -> {
+      val launcher = binDir.resolve("skillbill-desktop")
+      Files.createSymbolicLink(launcher, executable)
+      launcher
+    }
+  }
+
+  private fun seedUninstallerRuntime(repoRoot: Path) {
+    val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
+    Files.createDirectories(cliBin.parent)
+    Files.writeString(
+      cliBin,
+      """
+      |#!/usr/bin/env bash
+      |set -euo pipefail
+      |{
+      |  echo CALL
+      |  for arg in "${'$'}@"; do
+      |    printf 'ARG\t%s\n' "${'$'}arg"
+      |  done
+      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
+      |if [[ "${'$'}{1:-}" == "--home" ]]; then
+      |  shift 2
+      |fi
+      |case "${'$'}{1:-} ${'$'}{2:-}" in
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |    exit 0
+      |    ;;
+      |esac
+      |exit 2
+      |
+      """.trimMargin(),
+    )
+    cliBin.toFile().setExecutable(true)
+  }
+
+  private fun currentDesktopOs(): String {
+    val osName = System.getProperty("os.name").lowercase()
+    return when {
+      osName.contains("mac") -> "macos"
+      osName.contains("win") -> "windows"
+      osName.contains("linux") -> "linux"
+      else -> "unknown"
+    }
+  }
+
   private fun parseRuntimeCalls(logPath: Path): List<List<String>> {
     val calls = mutableListOf<MutableList<String>>()
     Files.readAllLines(logPath).forEach { line ->
@@ -273,5 +409,17 @@ class InstallerShellDelegationTest {
     val home: Path,
     val binDir: Path,
     val applyArgs: List<String>,
+  )
+
+  private data class UninstallerShellRun(
+    val appTarget: Path,
+    val launcherPath: Path,
+    val exitCode: Int,
+    val output: String,
+  )
+
+  private data class DesktopInstallFixture(
+    val appTarget: Path,
+    val launcherPath: Path,
   )
 }

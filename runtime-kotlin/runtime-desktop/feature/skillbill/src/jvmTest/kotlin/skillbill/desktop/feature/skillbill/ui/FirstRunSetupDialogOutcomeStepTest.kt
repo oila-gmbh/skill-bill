@@ -137,7 +137,6 @@ class FirstRunSetupDialogOutcomeStepTest {
       onAgentSelectionChanged = { _, _ -> },
       onPlatformSelectionChanged = { _, _ -> },
       onTelemetryChanged = {},
-      onMcpRegistrationChanged = {},
       onBack = {},
       onNext = {},
       onApply = {},

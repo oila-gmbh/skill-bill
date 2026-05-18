@@ -37,13 +37,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class JvmDesktopFirstRunGatewayTest {
   @Test
-  fun `plan maps desktop request into shared install plan request`() = runBlocking {
+  fun `plan maps desktop request into shared install plan request with MCP registration`() = runBlocking {
     val root = Files.createTempDirectory("skillbill-first-run-root")
     var capturedRequest: InstallPlanRequest? = null
     val gateway = JvmDesktopFirstRunGateway().apply {
@@ -71,7 +70,11 @@ class JvmDesktopFirstRunGatewayTest {
     assertEquals(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX), request.agentSelection.manualAgents)
     assertEquals(setOf("kotlin"), request.platformPackSelection.selectedSlugs)
     assertEquals("full", request.telemetryLevel.id)
-    assertFalse(request.mcpRegistrationChoice.register)
+    assertTrue(request.mcpRegistrationChoice.register)
+    assertEquals(
+      root.resolve("runtime-mcp/bin/runtime-mcp").toAbsolutePath().normalize(),
+      request.mcpRegistrationChoice.runtimeMcpBin,
+    )
     assertEquals(root.resolve("skills").toAbsolutePath().normalize(), request.targetPaths.skillsRoot)
     assertEquals(root.resolve("platform-packs").toAbsolutePath().normalize(), request.targetPaths.platformPacksRoot)
     assertEquals(

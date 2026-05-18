@@ -752,15 +752,6 @@ class SkillBillViewModel(
     return currentState
   }
 
-  fun setFirstRunMcpRegistration(register: Boolean): SkillBillState {
-    val setup = firstRunSetup ?: return currentState
-    if (!setup.busy) {
-      firstRunSetup = setup.copy(registerMcp = register, plan = null, outcome = null, errorMessage = null)
-      currentState = createState()
-    }
-    return currentState
-  }
-
   fun advanceFirstRunStep(): SkillBillState {
     val setup = firstRunSetup ?: return currentState
     if (!setup.canContinue || setup.step == FirstRunSetupStep.RESULT) {
@@ -3066,7 +3057,7 @@ private fun DesktopFirstRunPreferences.toFirstRunSetupState(): FirstRunSetupStat
   selectedAgentIds = selectedAgentIds,
   selectedPlatformSlugs = selectedPlatformSlugs,
   telemetryLevel = FirstRunTelemetryLevel.fromId(telemetryLevelId),
-  registerMcp = registerMcp,
+  registerMcp = true,
 )
 
 private fun FirstRunSetupState.applyDiscovery(
@@ -3091,7 +3082,7 @@ private fun FirstRunSetupState.applyDiscovery(
     selectedAgentIds = selectedAgents,
     selectedPlatformSlugs = selectedPlatforms,
     telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
-    registerMcp = preferences.registerMcp,
+    registerMcp = true,
   )
 }
 
@@ -3100,7 +3091,7 @@ private fun FirstRunSetupState.toPreferences(): DesktopFirstRunPreferences = Des
   selectedAgentIds = selectedAgentIds,
   selectedPlatformSlugs = selectedPlatformSlugs,
   telemetryLevelId = telemetryLevel.id,
-  registerMcp = registerMcp,
+  registerMcp = true,
 )
 
 private fun FirstRunSetupStep.next(): FirstRunSetupStep = when (this) {

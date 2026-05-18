@@ -44,7 +44,6 @@ data class FirstRunSetupCallbacks(
   val onAgentSelectionChanged: (String, Boolean) -> Unit,
   val onPlatformSelectionChanged: (String, Boolean) -> Unit,
   val onTelemetryChanged: (FirstRunTelemetryLevel) -> Unit,
-  val onMcpRegistrationChanged: (Boolean) -> Unit,
   val onBack: () -> Unit,
   val onNext: () -> Unit,
   val onApply: () -> Unit,
@@ -209,12 +208,10 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
   }
   Spacer(modifier = Modifier.height(4.dp))
   SectionTitle("MCP")
-  ToggleRow(
-    label = "Register MCP server",
-    selected = state.registerMcp,
-    enabled = !state.busy,
-    detail = "Update selected agent configs during install",
-    onClick = { callbacks.onMcpRegistrationChanged(!state.registerMcp) },
+  Text(
+    text = "Skill Bill MCP server will be registered for selected agents.",
+    color = SetupMuted,
+    fontSize = 12.sp,
   )
 }
 
@@ -229,7 +226,7 @@ private fun ApplyStep(state: FirstRunSetupState) {
     },
   )
   SummaryLine(label = "Telemetry", value = state.telemetryLevel.id)
-  SummaryLine(label = "MCP", value = if (state.registerMcp) "register" else "skip")
+  SummaryLine(label = "MCP", value = "register")
 }
 
 @Composable

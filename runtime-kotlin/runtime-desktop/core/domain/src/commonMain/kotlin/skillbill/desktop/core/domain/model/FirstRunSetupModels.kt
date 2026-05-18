@@ -162,6 +162,6 @@ data class FirstRunSetupState(
     selectedAgentIds = selectedAgentIds,
     selectedPlatformSlugs = selectedPlatformSlugs,
     telemetryLevel = telemetryLevel,
-    registerMcp = registerMcp,
+    registerMcp = true,
   )
 }

@@ -18,7 +18,7 @@ _desktop_src="${_repo_root}/runtime-kotlin/runtime-desktop/packaging/arch/skillb
 prepare() {
   if [[ ! -d "${_dist_root}" ]]; then
     echo "error: distributable not found at ${_dist_root}" >&2
-    echo "       run './gradlew :runtime-desktop:createDistributable' first" >&2
+    echo "       run './gradlew :runtime-desktop:prepareDesktopAppDistributable' first" >&2
     return 1
   fi
 }

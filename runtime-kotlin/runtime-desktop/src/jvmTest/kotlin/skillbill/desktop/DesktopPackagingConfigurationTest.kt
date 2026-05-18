@@ -33,8 +33,11 @@ class DesktopPackagingConfigurationTest {
     assertContains(buildFile, "appResourcesRootDir.set(desktopAppResourcesDir)")
     assertContains(buildFile, "runtimeResourceDirName = \"skill-bill-runtime\"")
     assertContains(buildFile, "dependsOn(\":runtime-cli:installDist\", \":runtime-mcp:installDist\")")
-    assertContains(buildFile, "into(\"runtime-cli\")")
-    assertContains(buildFile, "into(\"runtime-mcp\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName/runtime-cli\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName/runtime-mcp\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName/skills\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName/platform-packs\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName/orchestration\")")
     assertContains(buildFile, "repoRoot.resolve(\"skills\")")
     assertContains(buildFile, "repoRoot.resolve(\"platform-packs\")")
     assertContains(buildFile, "repoRoot.resolve(\"orchestration\")")
@@ -50,6 +53,17 @@ class DesktopPackagingConfigurationTest {
     assertContains(buildFile, "task.name == \"prepareAppResources\"")
     assertContains(buildFile, "task.name.startsWith(\"packageRpm\")")
     assertContains(buildFile, "dependsOn(prepareDesktopRuntimeBundle)")
+  }
+
+  @Test
+  fun `desktop app images keep bundled runtime launch scripts executable`() {
+    val buildFile = desktopBuildFile()
+
+    assertContains(buildFile, "runtimeLaunchScriptsUnder")
+    assertContains(buildFile, "fixDesktopRuntimeScriptPermissions")
+    assertContains(buildFile, "script.toFile().setExecutable(true, false)")
+    assertContains(buildFile, "tasks.register(\"prepareDesktopAppDistributable\")")
+    assertContains(buildFile, "dependsOn(fixDesktopRuntimeScriptPermissions)")
   }
 
   private fun desktopBuildFile(): String = Files.readString(runtimeRoot.resolve("runtime-desktop/build.gradle.kts"))
