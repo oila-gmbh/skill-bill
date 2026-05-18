@@ -47,7 +47,18 @@ class FakeSkillTreeService(
   private val items: List<SkillBillTreeItem>,
   var generatedArtifactIdsByPath: Map<String, String> = emptyMap(),
 ) : SkillTreeService {
-  override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> = items
+  /**
+   * F-004-TESTING: counter incremented every time [treeFor] is called. Tests assert this to prove
+   * that a Success removal triggered exactly one tree re-scan via `beginRefreshAfterScaffold` /
+   * `loadRepo` and a Failed removal did not.
+   */
+  var refreshCount: Int = 0
+    private set
+
+  override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> {
+    refreshCount += 1
+    return items
+  }
 
   @Suppress("UNUSED_PARAMETER")
   override fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? =

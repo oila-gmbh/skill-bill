@@ -685,6 +685,7 @@ class SkillBillViewModelScaffoldTest {
     scaffoldGateway = scaffoldGateway,
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
+    skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
   )
 
   private fun defaultTree(): List<SkillBillTreeItem> = listOf(

@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Provides
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.service.JvmDesktopFirstRunGateway
 import skillbill.desktop.core.data.service.JvmRuntimeScaffoldGateway
+import skillbill.desktop.core.data.service.JvmRuntimeSkillRemoveGateway
 import skillbill.desktop.core.data.service.RuntimeGitGateway
 import skillbill.desktop.core.data.service.RuntimePrPublishingGateway
 import skillbill.desktop.core.data.service.RuntimeRepoBrowserService
@@ -14,6 +15,7 @@ import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
+import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import software.amazon.lastmile.kotlin.inject.anvil.ContributesTo
@@ -43,6 +45,9 @@ interface JvmDataBindings {
 
   @Provides
   fun JvmRuntimeScaffoldGateway.bindRuntimeScaffoldGateway(): RuntimeScaffoldGateway = this
+
+  @Provides
+  fun JvmRuntimeSkillRemoveGateway.bindRuntimeSkillRemoveGateway(): RuntimeSkillRemoveGateway = this
 
   @Provides
   fun JvmDesktopFirstRunGateway.bindDesktopFirstRunGateway(): DesktopFirstRunGateway = this
