@@ -344,6 +344,7 @@ class SkillBillViewModelTest {
       scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
+      skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     )
 
     val state = viewModel.selectRepoPath("/not-skill-bill")
@@ -380,6 +381,7 @@ class SkillBillViewModelTest {
       scaffoldGateway = skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
+      skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     )
     viewModel.selectRepoPath("/repo")
     skillTreeService.items =
@@ -1834,6 +1836,8 @@ class SkillBillViewModelTest {
       skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway(),
     firstRunGateway: skillbill.desktop.core.domain.service.DesktopFirstRunGateway = defaultFirstRunGateway(),
     desktopPreferenceStore: skillbill.desktop.core.datastore.DesktopPreferenceStore = completedFirstRunStore(),
+    skillRemoveGateway: skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway =
+      skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1846,6 +1850,7 @@ class SkillBillViewModelTest {
     scaffoldGateway = scaffoldGateway,
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
+    skillRemoveGateway = skillRemoveGateway,
   )
 }
 

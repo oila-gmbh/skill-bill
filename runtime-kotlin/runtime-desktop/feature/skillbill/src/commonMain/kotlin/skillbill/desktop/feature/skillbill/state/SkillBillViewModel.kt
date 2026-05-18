@@ -10,6 +10,10 @@ import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
+import skillbill.desktop.core.domain.model.ConfirmDeletionState
+import skillbill.desktop.core.domain.model.DesktopSkillRemovalRequest
+import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
+import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
@@ -61,6 +65,7 @@ import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
+import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
@@ -79,6 +84,7 @@ class SkillBillViewModel(
   private val scaffoldGateway: RuntimeScaffoldGateway,
   private val firstRunGateway: DesktopFirstRunGateway,
   private val desktopPreferenceStore: DesktopPreferenceStore,
+  private val skillRemoveGateway: RuntimeSkillRemoveGateway,
 ) {
   private var repoPathText: String = recentRepoRepository.recentRepoPath().orEmpty()
   private var currentSession: RepoSession? = null
@@ -144,6 +150,20 @@ class SkillBillViewModel(
   private var commandPaletteSelectedResultIndex: Int = 0
   private var scaffoldWizard: ScaffoldWizardState? = null
   private var activeScaffoldToken: Long = 0L
+
+  // SKILL-46: dialog state for the tree-context-menu Delete affordance and accompanying
+  // validate-agent-configs output slice. Tokens follow the same monotonic-increment pattern as
+  // activeScaffoldToken so stale preview/execute responses cannot leak through (F-401).
+  private var confirmDeletion: ConfirmDeletionState? = null
+
+  // F-CROSS-REPO-LOCK: persistent post-mortem slot, separate from confirmDeletion so it survives
+  // a stale-token finish, dialog dismiss, AND a repo switch. Only acknowledgeRemovalFailure()
+  // clears it.
+  private var partialMutationPostMortem: skillbill.desktop.core.domain.model.PartialMutationPostMortem? = null
+  private var activeRemovalToken: Long = 0L
+  private var validateAgentConfigsSummary: skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary =
+    skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary.empty
+  private var activeValidateAgentConfigsToken: Long = 0L
   private var firstRunSetup: FirstRunSetupState? =
     if (desktopPreferenceStore.firstRunPreferences.value.completed) {
       null
@@ -533,6 +553,12 @@ class SkillBillViewModel(
     canonicalPushConfirmationTarget = null
     scaffoldWizard = null
     activeScaffoldToken += 1
+    // SKILL-46: any open delete dialog and any captured validate-agent-configs output are scoped
+    // to the previous repo; clear both so a repo-switch never bleeds stale state.
+    confirmDeletion = null
+    activeRemovalToken += 1
+    validateAgentConfigsSummary = skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary.empty
+    activeValidateAgentConfigsToken += 1
     loadEditorForSelection()
   }
 
@@ -618,6 +644,9 @@ class SkillBillViewModel(
       commandPalette = paletteState,
       scaffoldWizard = wizardState,
       firstRunSetup = firstRunSetup,
+      confirmDeletion = confirmDeletion,
+      validateAgentConfigs = validateAgentConfigsSummary,
+      partialMutationPostMortem = partialMutationPostMortem,
     )
   }
 
@@ -2291,6 +2320,253 @@ class SkillBillViewModel(
   fun acknowledgeScaffoldFailure(): SkillBillState {
     val current = scaffoldWizard ?: return currentState
     scaffoldWizard = current.copy(executionResult = null)
+    currentState = createState()
+    return currentState
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SKILL-46: tree-context-menu Delete dialog intents + begin/run/finish triplets.
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * Intent — opens the confirmation dialog with no preview yet. The route immediately fires the
+   * preview triplet after this intent.
+   */
+  fun showConfirmDeletion(target: DesktopSkillRemovalTarget): SkillBillState {
+    // Refuse to stack dialogs or open during another scoped operation. The right-click handler
+    // already gates on `kind ∈ {SKILL, PLATFORM_PACK, ADD_ON}` so we don't re-validate here.
+    if (confirmDeletion != null || busyOperation != null) {
+      return currentState
+    }
+    activeRemovalToken += 1
+    confirmDeletion = ConfirmDeletionState(target = target)
+    currentState = createState()
+    return currentState
+  }
+
+  fun dismissConfirmDeletion(): SkillBillState {
+    activeRemovalToken += 1
+    // F-401: release the DELETE busy slot if we still own it. Releasing here is critical so the
+    // user can cancel mid-preview/execute without wedging the UI.
+    if (busyOperation == SkillBillBusyOperation.DELETE) {
+      busyOperation = null
+      activeOperationToken += 1
+    }
+    confirmDeletion = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun setRemovalAcknowledged(acknowledged: Boolean): SkillBillState {
+    val current = confirmDeletion ?: return currentState
+    confirmDeletion = current.copy(acknowledged = acknowledged)
+    currentState = createState()
+    return currentState
+  }
+
+  fun acknowledgeRemovalFailure(): SkillBillState {
+    // F-CROSS-REPO-LOCK: acknowledge clears the persistent post-mortem slot too. This is the ONLY
+    // path that clears the slot — neither dismissConfirmDeletion nor repo switch touches it.
+    partialMutationPostMortem = null
+    val current = confirmDeletion
+    if (current != null) {
+      // F-102/F-408-plat mirror: clear the partial-mutation lock and the stale execution result
+      // so the user can re-Preview/re-Delete (or cancel).
+      confirmDeletion = current.copy(
+        executionResult = null,
+        partialMutationLocked = false,
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  data class SkillRemovalRunRequest(
+    val token: Long,
+    val payload: DesktopSkillRemovalRequest,
+  )
+
+  /**
+   * Begin the preview triplet. Captures the current target + repo path into an immutable
+   * [SkillRemovalRunRequest] on Main BEFORE the route hops to Dispatchers.Default — exactly the
+   * same pattern as `beginScaffoldDryRun`.
+   */
+  fun beginPreviewRemoval(): SkillRemovalRunRequest? {
+    val current = confirmDeletion ?: return null
+    if (current.previewBusy || current.executeBusy || current.partialMutationLocked) {
+      return null
+    }
+    if (!canStartScaffoldAction()) {
+      return null
+    }
+    val repoRoot = currentSession?.repoPath?.takeIf { it.isNotBlank() } ?: return null
+    activeRemovalToken += 1
+    confirmDeletion = current.copy(previewBusy = true, preview = null, executionResult = null)
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.DELETE
+    currentState = createState()
+    return SkillRemovalRunRequest(
+      token = activeRemovalToken,
+      payload = DesktopSkillRemovalRequest(target = current.target, repoRootAbsolutePath = repoRoot),
+    )
+  }
+
+  suspend fun runPreviewRemoval(request: SkillRemovalRunRequest): DesktopSkillRemovalResult =
+    skillRemoveGateway.preview(request.payload)
+
+  fun finishPreviewRemoval(request: SkillRemovalRunRequest, result: DesktopSkillRemovalResult): SkillBillState {
+    if (request.token != activeRemovalToken) {
+      // Stale: the user dismissed (or another removal started). F-401: release DELETE slot if ours.
+      if (busyOperation == SkillBillBusyOperation.DELETE) {
+        busyOperation = null
+      }
+      currentState = createState()
+      return currentState
+    }
+    val current = confirmDeletion ?: return currentState
+    busyOperation = null
+    confirmDeletion = when (result) {
+      is DesktopSkillRemovalResult.Preview -> current.copy(
+        previewBusy = false,
+        preview = result.preview,
+        executionResult = null,
+      )
+      is DesktopSkillRemovalResult.Failed -> current.copy(
+        previewBusy = false,
+        preview = null,
+        executionResult = result,
+        // Preview never mutates, so a Failed-from-preview must NOT set partialMutationLocked.
+        partialMutationLocked = false,
+      )
+      // Preview-triplet must not yield Success; treat as a contract violation.
+      is DesktopSkillRemovalResult.Success -> current.copy(
+        previewBusy = false,
+        preview = null,
+        executionResult = DesktopSkillRemovalResult.Failed(
+          exceptionName = "IllegalPreviewResponse",
+          exceptionMessage = "Gateway returned Success for preview mode.",
+          rollbackComplete = true,
+        ),
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginExecuteRemoval(): SkillRemovalRunRequest? {
+    val current = confirmDeletion ?: return null
+    if (!current.deleteEnabled) {
+      return null
+    }
+    if (!canStartScaffoldAction()) {
+      return null
+    }
+    val repoRoot = currentSession?.repoPath?.takeIf { it.isNotBlank() } ?: return null
+    activeRemovalToken += 1
+    confirmDeletion = current.copy(executeBusy = true, executionResult = null)
+    activeOperationToken += 1
+    busyOperation = SkillBillBusyOperation.DELETE
+    currentState = createState()
+    return SkillRemovalRunRequest(
+      token = activeRemovalToken,
+      payload = DesktopSkillRemovalRequest(target = current.target, repoRootAbsolutePath = repoRoot),
+    )
+  }
+
+  suspend fun runExecuteRemoval(request: SkillRemovalRunRequest): DesktopSkillRemovalResult =
+    skillRemoveGateway.execute(request.payload)
+
+  fun finishExecuteRemoval(request: SkillRemovalRunRequest, result: DesktopSkillRemovalResult): SkillBillState {
+    // F-CROSS-REPO-LOCK: regardless of token freshness OR dialog state, a Failed with
+    // rollbackComplete=false MUST populate the persistent post-mortem slot. This way a user who
+    // dismissed mid-flight, or switched repos, still gets the partial-mutation warning surfaced.
+    capturePartialMutationPostMortem(request, result)
+    if (request.token != activeRemovalToken) {
+      if (busyOperation == SkillBillBusyOperation.DELETE) {
+        busyOperation = null
+      }
+      currentState = createState()
+      return currentState
+    }
+    val current = confirmDeletion ?: return currentState
+    busyOperation = null
+    confirmDeletion = when (result) {
+      is DesktopSkillRemovalResult.Success -> current.copy(
+        executeBusy = false,
+        executionResult = result,
+      )
+      is DesktopSkillRemovalResult.Failed -> current.copy(
+        executeBusy = false,
+        executionResult = result,
+        // F-102/F-408-plat: rollbackComplete=false locks both Preview and Delete buttons until
+        // the user acknowledges the failure.
+        partialMutationLocked = !result.rollbackComplete,
+      )
+      is DesktopSkillRemovalResult.Preview -> current.copy(
+        executeBusy = false,
+        executionResult = DesktopSkillRemovalResult.Failed(
+          exceptionName = "IllegalExecuteResponse",
+          exceptionMessage = "Gateway returned Preview for execute mode.",
+          rollbackComplete = true,
+        ),
+      )
+    }
+    currentState = createState()
+    return currentState
+  }
+
+  /**
+   * F-CROSS-REPO-LOCK: populates the persistent post-mortem slot when a Failed result reports
+   * `rollbackComplete = false`. The slot is intentionally NOT cleared on repo switch — only
+   * [acknowledgeRemovalFailure] clears it.
+   */
+  private fun capturePartialMutationPostMortem(request: SkillRemovalRunRequest, result: DesktopSkillRemovalResult) {
+    if (result !is DesktopSkillRemovalResult.Failed || result.rollbackComplete) return
+    val target = request.payload.target
+    val label = when (target) {
+      is skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.HorizontalSkill -> target.skillName
+      is skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.PlatformPack ->
+        "platform pack '${target.platform}'"
+      is skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn -> target.relativePath
+    }
+    partialMutationPostMortem = skillbill.desktop.core.domain.model.PartialMutationPostMortem(
+      targetLabel = label,
+      exceptionName = result.exceptionName,
+      exceptionMessage = result.exceptionMessage,
+    )
+  }
+
+  /**
+   * Hooked from the route after [finishExecuteRemoval] returns a Success state. Pushes the
+   * dock to the Console tab so the post-delete `scripts/validate_agent_configs` output is
+   * visible immediately (AC8).
+   */
+  fun showValidateAgentConfigsConsole(): SkillBillState {
+    activeDockTab = DockTab.Console
+    activeValidateAgentConfigsToken += 1
+    validateAgentConfigsSummary = skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary(
+      lines = emptyList(),
+      exitCode = null,
+      running = true,
+    )
+    currentState = createState()
+    return currentState
+  }
+
+  /**
+   * Append output lines from the post-delete `scripts/validate_agent_configs` invocation. The
+   * route calls this incrementally as the subprocess writes; we keep the token-versioned slice
+   * so concurrent invocations after a repo-switch don't bleed into each other.
+   */
+  fun appendValidateAgentConfigsLines(lines: List<String>): SkillBillState {
+    val merged = validateAgentConfigsSummary.lines + lines
+    validateAgentConfigsSummary = validateAgentConfigsSummary.copy(lines = merged)
+    currentState = createState()
+    return currentState
+  }
+
+  fun finishValidateAgentConfigs(exitCode: Int): SkillBillState {
+    validateAgentConfigsSummary = validateAgentConfigsSummary.copy(running = false, exitCode = exitCode)
     currentState = createState()
     return currentState
   }

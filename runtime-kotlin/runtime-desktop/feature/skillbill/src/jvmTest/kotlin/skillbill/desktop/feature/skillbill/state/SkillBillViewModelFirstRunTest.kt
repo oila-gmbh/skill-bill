@@ -223,6 +223,7 @@ class SkillBillViewModelFirstRunTest {
     scaffoldGateway = FakeScaffoldGateway(),
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = preferenceStore,
+    skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
   )
 }
 

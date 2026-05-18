@@ -1,4 +1,4 @@
-@file:Suppress("LongParameterList", "MagicNumber", "MaxLineLength", "ReturnCount")
+@file:Suppress("LongParameterList", "MagicNumber", "MaxLineLength", "ReturnCount", "TooManyFunctions")
 
 package skillbill.scaffold
 
@@ -180,3 +180,103 @@ private fun detectListIndent(listBody: String): String =
   }.orEmpty()
 
 private fun yamlScalar(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+/**
+ * Inverse of [appendCodeReviewArea]. Removes the area entry from `declared_code_review_areas`,
+ * `declared_files.areas`, and the matching `area_metadata.<area>` block. Idempotent — if the
+ * area is not present anywhere, the file is left untouched (no write).
+ *
+ * Mirrors the regex anchors of the append helpers so the round-trip is structural, not textual.
+ */
+internal fun removeCodeReviewArea(manifestPath: Path, area: String) {
+  val original = manifestPath.toFile().readText()
+  var updated = original
+  updated = removeAreaFromList(updated, area)
+  updated = removeAreaFromDeclaredFiles(updated, area)
+  updated = removeAreaMetadata(updated, area)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+/**
+ * Inverse of [setDeclaredQualityCheckFile]. Strips the `declared_quality_check_file:` line entirely.
+ * Idempotent: when the key is absent the file is not rewritten.
+ *
+ * Also collapses the leading blank line that [setDeclaredQualityCheckFile] inserts when the key
+ * was first written, so the manifest stays clean after removal.
+ */
+internal fun removeDeclaredQualityCheckFile(manifestPath: Path) {
+  val original = manifestPath.toFile().readText()
+  val match = QUALITY_CHECK_KEY_PATTERN.find(original) ?: return
+  // Capture the preceding blank line (if any) so we restore the file to its pre-set shape.
+  val lineStart = match.range.first
+  val precedingBlankStart = if (lineStart >= 2 && original[lineStart - 1] == '\n' && original[lineStart - 2] == '\n') {
+    lineStart - 1
+  } else {
+    lineStart
+  }
+  val lineEnd = match.range.last + 1
+  // Drop the trailing newline if there is one (`replaceRange` is exclusive on `endIndex`).
+  val cutEnd = if (lineEnd < original.length && original[lineEnd] == '\n') lineEnd + 1 else lineEnd
+  val updated = original.substring(0, precedingBlankStart) + original.substring(cutEnd.coerceAtMost(original.length))
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+private fun removeAreaFromList(text: String, area: String): String {
+  val match = AREAS_LIST_PATTERN.find(text) ?: return text
+  val body = match.groupValues[1]
+  val areaLinePattern = Regex(
+    "^[ \\t]+-\\s*(?:\"|')?${Regex.escape(area)}(?:\"|')?\\s*\\n",
+    RegexOption.MULTILINE,
+  )
+  val newBody = areaLinePattern.replace(body, "")
+  if (newBody == body) {
+    return text
+  }
+  if (newBody.isBlank()) {
+    // Collapsing the last entry → restore inline empty form so the manifest stays valid YAML.
+    return text.replaceRange(match.range, "declared_code_review_areas: []\n")
+  }
+  return text.replaceRange(match.range, "declared_code_review_areas:\n$newBody")
+}
+
+private fun removeAreaFromDeclaredFiles(text: String, area: String): String {
+  val match = AREAS_FILES_PATTERN.find(text) ?: return text
+  val prefix = match.groupValues[1]
+  val header = match.groupValues[2]
+  val body = match.groupValues[3]
+  val areaEntryPattern = Regex("^    ${Regex.escape(area)}:[^\\n]*\\n", RegexOption.MULTILINE)
+  val newBody = areaEntryPattern.replace(body, "")
+  if (newBody == body) {
+    return text
+  }
+  if (newBody.isBlank()) {
+    return text.replaceRange(match.range, prefix + "  areas: {}\n")
+  }
+  return text.replaceRange(match.range, prefix + header + newBody)
+}
+
+private fun removeAreaMetadata(text: String, area: String): String {
+  val match = AREA_METADATA_BLOCK_PATTERN.find(text) ?: return text
+  val header = match.groupValues[1]
+  val body = match.groupValues[2]
+  // An area metadata entry looks like:
+  //   <area>:
+  //     focus: ...
+  // Strip both lines (the heading line and any nested children indented deeper than the header).
+  val entryPattern = Regex(
+    "^  ${Regex.escape(area)}:\\s*\\n(?:    [^\\n]*\\n)*",
+    RegexOption.MULTILINE,
+  )
+  val newBody = entryPattern.replace(body, "")
+  if (newBody == body) {
+    return text
+  }
+  if (newBody.isBlank()) {
+    return text.replaceRange(match.range, "area_metadata: {}\n")
+  }
+  return text.replaceRange(match.range, header + newBody)
+}

@@ -20,6 +20,7 @@ import skillbill.desktop.core.common.browser.BrowserLaunchFailure
 import skillbill.desktop.core.common.browser.BrowserLaunchOutcome
 import skillbill.desktop.core.common.browser.BrowserLauncher
 import skillbill.desktop.core.domain.model.CommandPaletteResult
+import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.GitOperationResult
@@ -524,6 +525,96 @@ fun SkillBillRoute(
     }
   }
 
+  // -------------------------------------------------------------------------------------------
+  // SKILL-46: tree-context-menu Delete dialog wiring.
+  // -------------------------------------------------------------------------------------------
+
+  fun runPreviewRemoval() {
+    val request = viewModel.beginPreviewRemoval() ?: return
+    state = viewModel.state()
+    coroutineScope.launch {
+      var finished = false
+      try {
+        val result = withContext(Dispatchers.Default) { viewModel.runPreviewRemoval(request) }
+        state = viewModel.finishPreviewRemoval(request, result)
+        finished = true
+      } finally {
+        // F-401-PLAT mirror: on cancellation/exception, finish with a Failed-cancelled result so
+        // the DELETE busy slot ALWAYS releases. Otherwise the dialog stays stuck on
+        // "Computing removal cascade..." forever.
+        if (!finished) {
+          withContext(NonCancellable) {
+            state = viewModel.finishPreviewRemoval(
+              request,
+              skillbill.desktop.core.domain.model.DesktopSkillRemovalResult.Failed(
+                exceptionName = "CancellationException",
+                exceptionMessage = "Preview was cancelled.",
+                rollbackComplete = true,
+              ),
+            )
+          }
+        }
+      }
+    }
+  }
+
+  fun runExecuteRemoval() {
+    val request = viewModel.beginExecuteRemoval() ?: return
+    state = viewModel.state()
+    coroutineScope.launch {
+      var finished = false
+      try {
+        val result = withContext(Dispatchers.Default) { viewModel.runExecuteRemoval(request) }
+        state = viewModel.finishExecuteRemoval(request, result)
+        finished = true
+        // F-407-plat mirror: gate the success fan-out on post-finish state, NOT a local result var.
+        val accepted = state.confirmDeletion?.executionResult as?
+          skillbill.desktop.core.domain.model.DesktopSkillRemovalResult.Success
+        if (accepted != null) {
+          // 1) Refresh the tree so the deleted node disappears (AC8a).
+          val refreshRequest = viewModel.beginRefreshAfterScaffold()
+          state = viewModel.state()
+          val refreshResult = withContext(Dispatchers.Default) { viewModel.loadRepo(refreshRequest) }
+          state = viewModel.finishRefreshAfterScaffold(refreshResult)
+          // 2) Dismiss the dialog.
+          state = viewModel.dismissConfirmDeletion()
+          // 3) Trigger validate_agent_configs into the dock console (AC8b).
+          //    F-711: surface the Console dock tab BEFORE running the script so the user sees the
+          //    output stream in real time. F-003-RELIABILITY-CANCEL: dispatch on IO so the
+          //    runInterruptible wait in the JVM `actual` honors coroutine cancellation.
+          state = viewModel.showValidateAgentConfigsConsole()
+          val repoRoot = state.selectedRepoPath
+          if (!repoRoot.isNullOrBlank()) {
+            val lines = withContext(Dispatchers.IO) { runValidateAgentConfigs(repoRoot) }
+            state = viewModel.appendValidateAgentConfigsLines(lines.outputLines)
+            state = viewModel.finishValidateAgentConfigs(lines.exitCode)
+          } else {
+            state = viewModel.finishValidateAgentConfigs(0)
+          }
+          // 4) Standard refresh fan-out.
+          runGitRefresh(quiet = true)
+          loadHistory(quiet = true)
+        }
+      } finally {
+        // F-401-PLAT: on cancellation/exception, finish with a Failed-cancelled result so the
+        // DELETE busy slot ALWAYS releases. The dialog will reflect "cancelled" rather than
+        // leaving "Deleting…" forever.
+        if (!finished) {
+          withContext(NonCancellable) {
+            state = viewModel.finishExecuteRemoval(
+              request,
+              skillbill.desktop.core.domain.model.DesktopSkillRemovalResult.Failed(
+                exceptionName = "CancellationException",
+                exceptionMessage = "Deletion was cancelled.",
+                rollbackComplete = true,
+              ),
+            )
+          }
+        }
+      }
+    }
+  }
+
   fun runPaletteResult(result: CommandPaletteResult) {
     val executed = executeCommandPaletteResult(
       result = result,
@@ -782,6 +873,29 @@ fun SkillBillRoute(
         state = viewModel.dismissScaffoldWizard()
       },
     ),
+    onShowDeleteContextMenu = onShowDeleteContextMenu@{ node ->
+      // SKILL-46: resolve a tree node to a DesktopSkillRemovalTarget. Built-ins (.bill-shared,
+      // kotlin, kmp) never show Delete in the dialog — the route enforces this by short-circuiting
+      // before opening the dialog. Platform-pack synthetic group nodes (id `platform:<slug>`)
+      // resolve target=platform-packs/<slug>/ directly from node id since no SelectionDetail exists.
+      val target = resolveDeletionTarget(node) ?: return@onShowDeleteContextMenu
+      if (target.isBuiltIn()) return@onShowDeleteContextMenu
+      state = viewModel.showConfirmDeletion(target)
+      // Kick off the preview triplet immediately so the user sees the dossier ASAP.
+      runPreviewRemoval()
+    },
+    confirmDeletionCallbacks = ConfirmDeletionCallbacks(
+      onAcknowledgedChanged = { acknowledged ->
+        state = viewModel.setRemovalAcknowledged(acknowledged)
+      },
+      onConfirmDelete = ::runExecuteRemoval,
+      onDismiss = {
+        state = viewModel.dismissConfirmDeletion()
+      },
+      onAcknowledgeFailure = {
+        state = viewModel.acknowledgeRemovalFailure()
+      },
+    ),
     firstRunSetupCallbacks = FirstRunSetupCallbacks(
       onAgentSelectionChanged = { agentId, selected ->
         state = viewModel.selectFirstRunAgent(agentId, selected)
@@ -859,4 +973,55 @@ internal fun openCompareUrlSafely(url: String, browserLauncher: BrowserLauncher)
   browserLauncher.openCompareUrl(url)
 } catch (exception: Exception) {
   BrowserLaunchOutcome.Failed(BrowserLaunchFailure.LaunchFailed(exception.message))
+}
+
+/**
+ * SKILL-46: maps a SkillBillTreeItem to the corresponding DesktopSkillRemovalTarget.
+ *
+ * - SKILL → HorizontalSkill OR a platform-override (when the metadata carries a platform); both
+ *   route through HorizontalSkill because the cascading logic in the domain service walks the
+ *   filesystem either way.
+ * - PLATFORM_PACK → synthetic group node whose id encodes the platform slug.
+ * - ADD_ON → addon path stored as the tree row's `authoredPath`.
+ * Built-ins (`.bill-shared`, `kotlin`, `kmp`) are filtered out at the caller via [isBuiltIn].
+ */
+internal fun resolveDeletionTarget(
+  node: skillbill.desktop.core.domain.model.SkillBillTreeItem,
+): skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget? {
+  val kind = node.kind
+  return when (kind) {
+    skillbill.desktop.core.domain.model.TreeItemKind.SKILL -> {
+      val skillName = node.metadata?.skillName ?: return null
+      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.HorizontalSkill(skillName = skillName)
+    }
+    skillbill.desktop.core.domain.model.TreeItemKind.PLATFORM_PACK -> {
+      // The platform pack tree id is `repo:<token>|platform:<slug>`. Extract the slug.
+      val rawId = node.id.substringAfterLast('|', missingDelimiterValue = "")
+      val slug = if (rawId.startsWith("platform:")) rawId.removePrefix("platform:") else node.label
+      if (slug.isBlank()) {
+        null
+      } else {
+        skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.PlatformPack(platform = slug)
+      }
+    }
+    skillbill.desktop.core.domain.model.TreeItemKind.ADD_ON -> {
+      val path = node.authoredPath ?: return null
+      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn(relativePath = path)
+    }
+    else -> null
+  }
+}
+
+/**
+ * F-606: shared with the right-click filter via [DesktopSkillRemovalTarget.isBuiltInName]; the
+ * domain layer mirrors the same set under
+ * `skillbill.domain.skillremove.model.SkillRemovalTarget.BUILT_IN_NAMES` so all three enforcement
+ * surfaces (modifier, route, domain refusal policy) always agree.
+ */
+internal fun DesktopSkillRemovalTarget.isBuiltIn(): Boolean = when (this) {
+  is DesktopSkillRemovalTarget.HorizontalSkill ->
+    DesktopSkillRemovalTarget.isBuiltInName(skillName)
+  is DesktopSkillRemovalTarget.PlatformPack ->
+    DesktopSkillRemovalTarget.isBuiltInName(platform)
+  is DesktopSkillRemovalTarget.AddOn -> false
 }

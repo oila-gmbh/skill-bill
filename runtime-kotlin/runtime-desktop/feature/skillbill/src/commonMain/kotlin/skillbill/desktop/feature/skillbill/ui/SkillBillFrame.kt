@@ -74,6 +74,8 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -218,6 +220,10 @@ fun SkillBillFrame(
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
+  // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
+  // the frame stays free of repo/skill semantics.
+  onShowDeleteContextMenu: (SkillBillTreeItem) -> Unit = {},
+  confirmDeletionCallbacks: ConfirmDeletionCallbacks = ConfirmDeletionCallbacks.noop(),
   // F-X-512: a transient key for "Copied" feedback. When non-null, any copy-affordance whose
   // value matches the key flashes its copied state until the route clears the key.
   recentlyCopiedKey: String? = null,
@@ -378,6 +384,7 @@ fun SkillBillFrame(
           onMoveSelection = onMoveTreeSelection,
           onActivateValidationTab = { onActiveDockTabChanged(DockTab.Validation) },
           onValidate = onValidate,
+          onShowContextMenu = onShowDeleteContextMenu,
         )
         NavigationPaneResizeHandle(
           onResize = { delta ->
@@ -388,6 +395,7 @@ fun SkillBillFrame(
           editor = state.editor,
           validation = state.validation,
           render = state.render,
+          validateAgentConfigs = state.validateAgentConfigs,
           activeDockTab = state.activeDockTab,
           onActiveDockTabChanged = onActiveDockTabChanged,
           changes = state.changes,
@@ -517,6 +525,12 @@ fun SkillBillFrame(
     }
     state.firstRunSetup?.let { setup ->
       FirstRunSetupDialog(state = setup, callbacks = firstRunSetupCallbacks)
+    }
+    state.confirmDeletion?.let { confirmation ->
+      ConfirmDeletionDialog(
+        state = confirmation,
+        callbacks = confirmDeletionCallbacks,
+      )
     }
   }
 }
@@ -950,6 +964,8 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.SAVE -> "Saving..."
     SkillBillBusyOperation.SCAFFOLD -> "Scaffolding..."
     SkillBillBusyOperation.FIRST_RUN_SETUP -> "Setting up..."
+    SkillBillBusyOperation.DELETE -> "Deleting..."
+    SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "Validating agent configs..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),
@@ -1273,6 +1289,7 @@ private fun NavigationPane(
   onMoveSelection: (Int) -> Unit,
   onActivateValidationTab: () -> Unit,
   onValidate: () -> Unit,
+  onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val busy = busyOperation != null || publishingBusy
   Column(
@@ -1343,6 +1360,7 @@ private fun NavigationPane(
           onNodeSelected = onNodeSelected,
           onNodeOpened = onNodeOpened,
           onNodeExpandedToggled = onNodeExpandedToggled,
+          onShowContextMenu = onShowContextMenu,
         )
       }
       HorizontalDivider(modifier = Modifier.padding(top = 10.dp, bottom = 8.dp), color = WorkspaceLine)
@@ -1565,6 +1583,7 @@ private fun NavGroup(
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
+  onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val selected = selectedNodeId == group.id
   val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
@@ -1574,6 +1593,10 @@ private fun NavGroup(
       selected -> WorkspaceText
       else -> WorkspaceSteel
     }
+  // SKILL-46 / AC1: per-row state for the right-click context menu (DropdownMenu with single
+  // `Delete…` item). The menu is rendered at the end of the Row so it anchors to this row's
+  // bounds; clicking the item triggers the actual confirmation dialog via `onShowContextMenu`.
+  var menuExpanded by remember(group.id) { mutableStateOf(false) }
   Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)) {
     Row(
       modifier =
@@ -1591,6 +1614,10 @@ private fun NavGroup(
           this.role = Role.Button
         }
         .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
+        // SKILL-46: synthetic PLATFORM_PACK group nodes (id `platform:<slug>`) also support
+        // right-click → Delete. Generic GROUP nodes ignore the secondary press because the route
+        // filters on `kind ∈ {SKILL, PLATFORM_PACK, ADD_ON}`.
+        .skillRemoveContextMenuModifier(group, enabled) { menuExpanded = true }
         .padding(end = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1613,6 +1640,18 @@ private fun NavGroup(
         modifier = Modifier.weight(1f),
       )
       Text(text = group.children.size.toString(), color = iconTint, fontSize = 11.sp)
+      DropdownMenu(
+        expanded = menuExpanded,
+        onDismissRequest = { menuExpanded = false },
+      ) {
+        DropdownMenuItem(
+          text = { Text("Delete…") },
+          onClick = {
+            menuExpanded = false
+            onShowContextMenu(group)
+          },
+        )
+      }
     }
     if (expanded) {
       group.children.forEach { node ->
@@ -1628,6 +1667,7 @@ private fun NavGroup(
           onNodeSelected = onNodeSelected,
           onNodeOpened = onNodeOpened,
           onNodeExpandedToggled = onNodeExpandedToggled,
+          onShowContextMenu = onShowContextMenu,
         )
       }
     }
@@ -1648,9 +1688,13 @@ private fun NavTreeNode(
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
+  onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val expandable = node.children.isNotEmpty()
   val expanded = node.id in expandedNodeIds
+  // SKILL-46 / AC1: per-row state for the right-click context menu; flipped to true by the
+  // `skillRemoveContextMenuModifier` and rendered via DropdownMenu inside the Row content.
+  var menuExpanded by remember(node.id) { mutableStateOf(false) }
   val rowBackground = when {
     selected -> WorkspaceYellow.copy(alpha = 0.15f)
     open -> WorkspaceYellow.copy(alpha = 0.06f)
@@ -1693,7 +1737,11 @@ private fun NavTreeNode(
             onNodeSelected(node.id)
           }
         },
-      ),
+      )
+      // SKILL-46 / AC1: right-click opens a one-item context menu rendered below; the menu's
+      // `Delete…` item triggers the confirmation dialog via `onShowContextMenu`. The menu state is
+      // hoisted per-row via `menuExpanded` below.
+      .skillRemoveContextMenuModifier(node, enabled) { menuExpanded = true },
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Box(
@@ -1732,6 +1780,18 @@ private fun NavTreeNode(
     }
     StatusDot(level = validationLevelFor(node.status))
     Spacer(modifier = Modifier.width(8.dp))
+    DropdownMenu(
+      expanded = menuExpanded,
+      onDismissRequest = { menuExpanded = false },
+    ) {
+      DropdownMenuItem(
+        text = { Text("Delete…") },
+        onClick = {
+          menuExpanded = false
+          onShowContextMenu(node)
+        },
+      )
+    }
   }
   if (expandable && expanded) {
     node.children.forEach { child ->
@@ -1747,6 +1807,7 @@ private fun NavTreeNode(
         onNodeSelected = onNodeSelected,
         onNodeOpened = onNodeOpened,
         onNodeExpandedToggled = onNodeExpandedToggled,
+        onShowContextMenu = onShowContextMenu,
       )
     }
   }
@@ -1874,6 +1935,7 @@ private fun CenterWorkspace(
   editor: EditorPlaceholder,
   validation: ValidationSummary,
   render: RenderSummary,
+  validateAgentConfigs: skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary,
   activeDockTab: DockTab,
   onActiveDockTabChanged: (DockTab) -> Unit,
   changes: ChangesSnapshot,
@@ -1974,6 +2036,7 @@ private fun CenterWorkspace(
         editor = editor,
         validation = validation,
         render = render,
+        validateAgentConfigs = validateAgentConfigs,
         activeTab = activeDockTab,
         onActiveTabSelected = onActiveDockTabChanged,
         changes = changes,
@@ -2842,6 +2905,7 @@ private fun BottomDock(
   editor: EditorPlaceholder,
   validation: ValidationSummary,
   render: RenderSummary,
+  validateAgentConfigs: skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary,
   activeTab: DockTab,
   onActiveTabSelected: (DockTab) -> Unit,
   changes: ChangesSnapshot,
@@ -3016,7 +3080,11 @@ private fun BottomDock(
           onClearHistoryPathFilter = onClearHistoryPathFilter,
           recentlyCopiedKey = recentlyCopiedKey,
         )
-        DockTab.Console -> InstallConsole(editor = editor, render = render)
+        DockTab.Console -> InstallConsole(
+          editor = editor,
+          render = render,
+          validateAgentConfigs = validateAgentConfigs,
+        )
       }
     }
   }
@@ -4678,7 +4746,11 @@ private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, re
 }
 
 @Composable
-private fun InstallConsole(editor: EditorPlaceholder, render: RenderSummary) {
+private fun InstallConsole(
+  editor: EditorPlaceholder,
+  render: RenderSummary,
+  validateAgentConfigs: skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary,
+) {
   // F-601: long unbreakable tokens (paths, exception class names) in line content can clip silently
   // at narrow dock widths. One shared horizontalScroll state on the inner column keeps all lines
   // aligned and lets the user scroll right to reach any clipped failure text. softWrap stays at its
@@ -4688,6 +4760,24 @@ private fun InstallConsole(editor: EditorPlaceholder, render: RenderSummary) {
   var expandedRenderAllSectionIds by remember(render) { mutableStateOf(emptySet<String>()) }
   Column(modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
     Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+      // SKILL-46 AC8: when a validate_agent_configs run has output, render those lines verbatim
+      // ahead of the render preview so the post-delete signal is visible immediately. F-601:
+      // horizontalScroll only — no maxLines / overflow=Ellipsis — so the user can scroll right
+      // through any failure text without it being clipped.
+      if (validateAgentConfigs.lines.isNotEmpty() || validateAgentConfigs.running) {
+        ConsoleLineRow(
+          number = 0,
+          text = if (validateAgentConfigs.running) {
+            "> scripts/validate_agent_configs (running...)"
+          } else {
+            "> scripts/validate_agent_configs (exit ${validateAgentConfigs.exitCode ?: "?"})"
+          },
+          tone = if ((validateAgentConfigs.exitCode ?: 0) != 0) Tone.Error else Tone.Neutral,
+        )
+        validateAgentConfigs.lines.forEachIndexed { index, line ->
+          ConsoleLineRow(number = index + 1, text = line, tone = Tone.Neutral)
+        }
+      }
       if (renderAllSections.isEmpty()) {
         val lines = buildInstallConsoleLines(editor = editor, render = render)
         lines.forEachIndexed { index, line ->
@@ -5448,3 +5538,61 @@ private val ConsoleLines = listOf(
   ConsoleLine("  rendering install preview...", Tone.Neutral),
   ConsoleLine("build failed in 14.2s - 1 error, 2 warnings", Tone.Error),
 )
+
+/**
+ * SKILL-46: helper modifier that fires [onRequestMenu] when the user right-clicks (secondary-button
+ * press) on a tree row whose kind is in the supported set (SKILL, PLATFORM_PACK, ADD_ON). The
+ * caller renders an intermediate context menu (a Material3 `DropdownMenu` with a single `Delete…`
+ * item) that — on click — invokes the actual deletion-confirmation flow. The two-step gesture
+ * (right-click → Delete… → confirmation dialog) matches AC1's spec wording. Generic
+ * GROUP/NATIVE_AGENT/GENERATED_ARTIFACT/PLACEHOLDER kinds, non-editable nodes, and built-in
+ * names (`.bill-shared` / `kotlin` / `kmp`) are filtered out here so the route never sees them.
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+private fun Modifier.skillRemoveContextMenuModifier(
+  node: SkillBillTreeItem,
+  enabled: Boolean,
+  onRequestMenu: () -> Unit,
+): Modifier {
+  val supported = node.kind == TreeItemKind.SKILL ||
+    node.kind == TreeItemKind.PLATFORM_PACK ||
+    node.kind == TreeItemKind.ADD_ON
+  if (!supported || !enabled) return this
+  // F-606: only offer the right-click menu for editable nodes whose resolved target is NOT a
+  // built-in (`.bill-shared` / `kotlin` / `kmp`). The label/metadata fall-back mirrors the route
+  // resolver's identifier extraction so the modifier and the route agree about which nodes can
+  // even be considered for deletion. `SkillRemovalTarget.isBuiltInName` is shared with the route
+  // (and with the domain refusal policy) so all three layers always agree.
+  if (!node.editable) return this
+  val identifier = when (node.kind) {
+    TreeItemKind.SKILL -> node.metadata?.skillName ?: node.label
+    TreeItemKind.PLATFORM_PACK -> {
+      val rawId = node.id.substringAfterLast('|', missingDelimiterValue = "")
+      if (rawId.startsWith("platform:")) rawId.removePrefix("platform:") else node.label
+    }
+    else -> null
+  }
+  if (identifier != null && skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.isBuiltInName(identifier)) {
+    return this
+  }
+  return this.pointerInput(node.id) {
+    awaitPointerEventScope {
+      while (true) {
+        val event = awaitPointerEvent(PointerEventPass.Main)
+        if (event.type == PointerEventType.Press) {
+          val change = event.changes.firstOrNull()
+          if (change != null && event.button == PointerButton.Secondary) {
+            change.consume()
+            onRequestMenu()
+            // F-604: also consume the matching Release so a sibling click handler does not
+            // process the secondary-button release as a selection event.
+            val release = awaitPointerEvent(PointerEventPass.Main)
+            if (release.type == PointerEventType.Release) {
+              release.changes.forEach { it.consume() }
+            }
+          }
+        }
+      }
+    }
+  }
+}

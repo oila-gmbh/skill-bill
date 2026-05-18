@@ -1403,6 +1403,7 @@ class SkillBillViewModelGitTest {
     scaffoldGateway = scaffoldGateway,
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
+    skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
   )
 
   private fun commitEntry(

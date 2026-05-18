@@ -69,6 +69,16 @@ data class SkillBillState(
   val commandPalette: CommandPaletteState = CommandPaletteState(),
   val scaffoldWizard: ScaffoldWizardState? = null,
   val firstRunSetup: FirstRunSetupState? = null,
+  /** SKILL-46: non-null while the tree-context-menu Delete dialog is on screen. */
+  val confirmDeletion: ConfirmDeletionState? = null,
+  /** SKILL-46 AC8: post-delete output of scripts/validate_agent_configs piped into the dock console. */
+  val validateAgentConfigs: ValidateAgentConfigsSummary = ValidateAgentConfigsSummary.empty,
+  /**
+   * F-CROSS-REPO-LOCK: separate slot from [confirmDeletion] so a partial-mutation post-mortem
+   * (rollback failed) survives a stale-token finish, a dialog dismiss, AND a repo switch. Only an
+   * explicit user acknowledgement clears the slot. The route renders this as a top-level banner.
+   */
+  val partialMutationPostMortem: PartialMutationPostMortem? = null,
 )
 
 enum class DockTab {
@@ -180,6 +190,20 @@ enum class SkillBillBusyOperation {
   SAVE,
   SCAFFOLD,
   FIRST_RUN_SETUP,
+
+  /**
+   * SKILL-46: Holds the busy slot while the tree-context-menu "Delete..." preview/execute
+   * triplet is in flight. F-401: must be released in both `dismissConfirmDeletion` AND the
+   * stale-token branches of `finishRemoval*` so an interrupted delete never wedges the UI.
+   */
+  DELETE,
+
+  /**
+   * SKILL-46 AC8: holds the slot while `scripts/validate_agent_configs` runs after a successful
+   * deletion. Distinct from VALIDATE (which is the in-process repo validator) so the dock can
+   * surface a different running label.
+   */
+  VALIDATE_AGENT_CONFIGS,
 }
 
 data class CommandPaletteState(
