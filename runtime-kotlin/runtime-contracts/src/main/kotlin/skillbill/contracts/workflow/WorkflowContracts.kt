@@ -1,5 +1,29 @@
 package skillbill.contracts.workflow
 
+/**
+ * SKILL-48 Subtask 2a: `WorkflowContracts` is intentionally pure-Kotlin
+ * and free of networknt / Jackson dependencies. Schema validation runs
+ * at every CALLER seam that produces or replays the snapshot envelope:
+ *
+ *  - `WorkflowEngine.openRecord` / `updateRecord` validate before
+ *    returning a fresh snapshot to the application layer.
+ *  - `WorkflowEngine.fullPayload` / `summaryPayload` validate the
+ *    snapshot envelope before deriving the public payload.
+ *
+ * Scope of validation: ONLY the snapshot envelope (the schema-shaped
+ * map produced by `WorkflowEngine.validatedSnapshotMap`) is schema-
+ * validated. The `resumePayload` / `continuePayload` derivative shapes
+ * extend beyond that envelope with non-snapshot fields (`resume_mode`,
+ * `resume_step_id`, `can_resume`, `continue_status`, `continuation_brief`,
+ * `step_artifacts`, the implement-only extra fields, etc.) and are
+ * intentionally NOT schema-validated. If pinning those derivative
+ * shapes ever becomes necessary, define separate continue/resume
+ * envelope schemas under `orchestration/contracts/` — do not retrofit
+ * the snapshot schema with derivative fields.
+ *
+ * Keeping the validator out of this module preserves the contract
+ * layer as a thin, dependency-free type surface.
+ */
 object WorkflowContracts {
   fun fullWorkflowPayload(fields: Map<String, Any?>): Map<String, Any?> = orderedPayload(
     fields,

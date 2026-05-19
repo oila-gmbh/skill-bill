@@ -1,0 +1,331 @@
+# Workflow-state snapshot schema (canonical source of truth).
+#
+# This file describes the shape of every `WorkflowStateSnapshot` the Skill
+# Bill runtime persists and replays for the two shipped workflow families:
+# `bill-feature-implement` and `bill-feature-verify`. It is authored in YAML
+# for human readability and consumed as a JSON Schema (Draft 2020-12) by
+# the Kotlin runtime (`WorkflowStateSchemaValidator` in `runtime-domain`).
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines TYPES, ENUMS, REQUIRED-VS-OPTIONAL fields, and
+#   VALUE-LEVEL constraints (`workflow_status` enums, step shape, etc.) —
+#   anything expressible in pure JSON Schema. The per-skill divergence
+#   between FeatureImplement and FeatureVerify (different `stepId` sets,
+#   different `workflow_status` enums) is encoded via `oneOf` keyed on
+#   `workflow_name` instead of a flat union enum — see
+#   `x-coherence-checks/per-skill-status-divergence` below.
+# - Cross-field "coherence" rules that JSON Schema cannot express cleanly
+#   stay in Kotlin (`WorkflowEngine`, `WorkflowRecordMapping`). Every such
+#   rule is named below under `x-coherence-checks` so the schema document
+#   alone fully describes the contract.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by `WORKFLOW_STATE_CONTRACT_VERSION` in
+#   `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaPaths.kt`.
+# - The parity test `WorkflowStateSchemaContractVersionTest` fails the
+#   build if they diverge. To bump the contract, edit BOTH constants in
+#   the same change.
+# - The value `"0.1"` mirrors the `contractVersion` field that the two
+#   shipped `WorkflowDefinition`s emit today (`FeatureImplement` and
+#   `FeatureVerify`). Bumping the runtime contract requires editing all
+#   three sites (the two definitions and this schema) under one parity
+#   guard.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/workflow-state-schema.yaml"
+title: "Workflow state snapshot"
+description: >
+  Schema for the durable workflow-state snapshot the Skill Bill runtime
+  emits for the two shipped workflow families. Discovery is workflow-name
+  driven; the schema describes SHAPE only and never hard-codes any
+  implementation detail (concrete artifact key names, attempt counters,
+  etc.). New workflow families can ship as long as their snapshot matches
+  this schema and the coherence checks below.
+type: object
+additionalProperties: false
+$defs:
+  # Shared enum: every per-step `status` value the runtime is allowed to
+  # emit. The Kotlin set lives in `WorkflowDefinition.stepStatuses` for
+  # both shipped definitions; this enum is the snapshot-shape mirror of
+  # that set and is referenced once from `$defs.step.properties.status`.
+  stepStatus:
+    type: string
+    enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - blocked
+      - skipped
+  # Shared shape for every entry in the `steps[]` array. Pinned via
+  # `additionalProperties: false` so unknown fields loud-fail at the
+  # parse seam.
+  step:
+    type: object
+    additionalProperties: false
+    required:
+      - step_id
+      - status
+      - attempt_count
+    properties:
+      step_id:
+        type: string
+        minLength: 1
+      status:
+        $ref: "#/$defs/stepStatus"
+      attempt_count:
+        type: integer
+        minimum: 0
+  # Per-skill divergence is encoded with `oneOf` keyed on
+  # `workflow_name`. Each branch fixes the allowed `stepId` set under
+  # `current_step_id` + `steps[].step_id`, and the allowed
+  # `workflow_status` enum. The two branches are mutually exclusive
+  # because `workflow_name` is a const in each branch — `oneOf` is the
+  # right combinator (XOR), not `anyOf`.
+  featureImplementBranch:
+    type: object
+    properties:
+      workflow_name:
+        const: "bill-feature-implement"
+      workflow_status:
+        type: string
+        enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - abandoned
+          - blocked
+      current_step_id:
+        type: string
+        # Includes empty string to cover the rare case where a freshly
+        # opened record has not yet observed an initial step transition;
+        # the engine populates a real value the moment any step runs.
+        enum:
+          - ""
+          - assess
+          - create_branch
+          - preplan
+          - plan
+          - implement
+          - review
+          - audit
+          - validate
+          - write_history
+          - commit_push
+          - pr_description
+          - finish
+      steps:
+        type: array
+        items:
+          allOf:
+            - $ref: "#/$defs/step"
+            - properties:
+                step_id:
+                  type: string
+                  enum:
+                    - assess
+                    - create_branch
+                    - preplan
+                    - plan
+                    - implement
+                    - review
+                    - audit
+                    - validate
+                    - write_history
+                    - commit_push
+                    - pr_description
+                    - finish
+    required:
+      - workflow_name
+      - workflow_status
+      - current_step_id
+      - steps
+  featureVerifyBranch:
+    type: object
+    properties:
+      workflow_name:
+        const: "bill-feature-verify"
+      workflow_status:
+        type: string
+        enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - abandoned
+      current_step_id:
+        type: string
+        # See note above on the empty-string allowance.
+        enum:
+          - ""
+          - collect_inputs
+          - extract_criteria
+          - gather_diff
+          - feature_flag_audit
+          - code_review
+          - completeness_audit
+          - verdict
+          - finish
+      steps:
+        type: array
+        items:
+          allOf:
+            - $ref: "#/$defs/step"
+            - properties:
+                step_id:
+                  type: string
+                  enum:
+                    - collect_inputs
+                    - extract_criteria
+                    - gather_diff
+                    - feature_flag_audit
+                    - code_review
+                    - completeness_audit
+                    - verdict
+                    - finish
+    required:
+      - workflow_name
+      - workflow_status
+      - current_step_id
+      - steps
+required:
+  - workflow_id
+  - session_id
+  - workflow_name
+  - contract_version
+  - workflow_status
+  - current_step_id
+  - steps
+  - artifacts
+  - started_at
+  - updated_at
+  - finished_at
+properties:
+  workflow_id:
+    type: string
+    minLength: 1
+    description: >
+      Deterministic identifier for this workflow instance (e.g. `wfl-…`
+      for feature-implement, `wfv-…` for feature-verify). Generated by
+      `WorkflowService.generateWorkflowId`.
+  session_id:
+    type: string
+    description: >
+      Caller-controlled session identifier (may be empty when the caller
+      did not supply one). The runtime never invents one; an empty string
+      is a valid persisted value.
+  workflow_name:
+    type: string
+    minLength: 1
+    enum:
+      - bill-feature-implement
+      - bill-feature-verify
+    description: >
+      Workflow family identifier. Determines which per-skill enum branch
+      (see `oneOf` below) governs `workflow_status` / `current_step_id` /
+      `steps[].step_id`.
+  contract_version:
+    type: string
+    minLength: 1
+    const: "0.1"
+    description: >
+      Pinned to `WORKFLOW_STATE_CONTRACT_VERSION` (currently "0.1"). The
+      parity test `WorkflowStateSchemaContractVersionTest` keeps the two
+      in lockstep. Mirrors the `contractVersion` field on every shipped
+      `WorkflowDefinition`.
+  workflow_status:
+    type: string
+    minLength: 1
+    description: >
+      Per-skill enum constrained by the `oneOf` block below. Declaring
+      the field as a plain `string` here keeps the top-level schema
+      stable while the per-skill branches narrow the allowed values.
+  current_step_id:
+    type: string
+    description: >
+      Per-skill enum constrained by the `oneOf` block below. Allowed to
+      be an empty string only when the durable record has not yet
+      observed an initial step; the engine always emits a populated
+      value after `openRecord` runs.
+  steps:
+    type: array
+    description: >
+      Ordered list of step states for this workflow. The per-skill
+      branches pin the allowed `step_id` enum; the shared `$defs/step`
+      shape pins the `status` enum and `attempt_count` non-negativity.
+    items:
+      $ref: "#/$defs/step"
+  artifacts:
+    type: object
+    description: >
+      Arbitrary per-workflow artifact map. Keys are artifact names; values
+      may be any JSON-shaped payload (object, array, string, number).
+      `additionalProperties: true` (default) keeps the contract open
+      because artifact schemas live on individual workflow steps, not on
+      the snapshot envelope.
+  started_at:
+    type: string
+    description: >
+      Optional ISO-8601 start timestamp. The runtime emits an empty
+      string when no value has been persisted; treat empty as "not set".
+  updated_at:
+    type: string
+    description: >
+      Optional ISO-8601 update timestamp. The runtime emits an empty
+      string when no value has been persisted; treat empty as "not set".
+  finished_at:
+    type: string
+    description: >
+      Optional ISO-8601 finish timestamp. The runtime emits an empty
+      string until the workflow reaches a terminal state.
+# Per-skill divergence: enforce that the correct `workflow_status` /
+# `current_step_id` / `steps[].step_id` enum is used for the declared
+# `workflow_name`. `oneOf` (not `anyOf`) because the two branches are
+# mutually exclusive — a snapshot with `workflow_name=bill-feature-verify`
+# must NOT validate against the `bill-feature-implement` enum and vice
+# versa.
+oneOf:
+  - $ref: "#/$defs/featureImplementBranch"
+  - $ref: "#/$defs/featureVerifyBranch"
+
+# ---------------------------------------------------------------------------
+# Coherence checks (enforced in Kotlin)
+# ---------------------------------------------------------------------------
+# These rules either cannot be expressed cleanly in JSON Schema or are
+# enforced by the engine before the snapshot reaches the parse seam.
+# They are documented here so this file alone describes the full
+# contract.
+x-coherence-checks:
+  per-skill-status-divergence:
+    description: >
+      The two shipped workflow families ship divergent enums:
+      `bill-feature-implement` has 12 step ids and 6 workflow statuses
+      (including `blocked`), while `bill-feature-verify` has 8 step ids
+      and 5 workflow statuses (no `blocked`). The schema encodes this
+      with `oneOf` keyed on `workflow_name` so a `verify` snapshot
+      carrying `workflow_status="blocked"` is rejected even though
+      `blocked` is a valid value for the `implement` family. Pinned by
+      `WorkflowStateSchemaViolationsTest`.
+  contract-version-parity:
+    description: >
+      `WORKFLOW_STATE_CONTRACT_VERSION` in Kotlin must equal
+      `properties.contract_version.const` in this file. Pinned by
+      `WorkflowStateSchemaContractVersionTest`; the parity test fails
+      the build if they diverge.
+  steps-step-id-membership:
+    description: >
+      Every `steps[].step_id` value must be a member of the workflow's
+      declared `stepIds` list (`FeatureImplementWorkflowDefinition` /
+      `FeatureVerifyWorkflowDefinition`). The per-skill `oneOf` branch
+      encodes this, but the engine also enforces it at
+      `WorkflowEngine.validateUpdate` so step updates loud-fail before
+      they reach the validator.
+  current-step-id-membership:
+    description: >
+      `current_step_id` must either be empty (only on a freshly opened
+      record before the first step transition is persisted) or be a
+      member of the workflow's declared `stepIds`. Enforced by both the
+      per-skill `oneOf` branch and `WorkflowEngine.validateOpen` /
+      `validateUpdate`.

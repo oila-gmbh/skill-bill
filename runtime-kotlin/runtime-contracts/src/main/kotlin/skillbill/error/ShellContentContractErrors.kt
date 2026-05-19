@@ -15,6 +15,21 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+/**
+ * SKILL-48 Subtask 2a: surfaced when a `WorkflowStateSnapshot` fails the
+ * canonical `orchestration/contracts/workflow-state-schema.yaml` Draft
+ * 2020-12 schema. The message carries the dotted field path of the first
+ * offending value so callers and tests can pinpoint the regression
+ * without parsing raw networknt validator output. Mirrors
+ * [InvalidManifestSchemaError]; the dedicated subclass keeps workflow
+ * parse-seam failures distinguishable from platform-pack manifest
+ * failures in logs and tests.
+ */
+class InvalidWorkflowStateSchemaError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
 class ContractVersionMismatchError(
   message: String,
   cause: Throwable? = null,

@@ -12,6 +12,45 @@ import skillbill.workflow.model.WorkflowUpdateInput
 object WorkflowEngine {
   private val resumableStepStatuses = setOf("running", "blocked", "pending")
 
+  // SKILL-48 Subtask 2a: lazy-init schema validator. The compiled JsonSchema
+  // is cached inside the validator instance, so a single shared field
+  // amortises schema parse + compile cost across every engine call. The
+  // validator is loud-fail by design: callers that produce a malformed
+  // snapshot map see `InvalidWorkflowStateSchemaError` at the seam where
+  // the violation was introduced.
+  private val schemaValidator: WorkflowStateSchemaValidator = CanonicalWorkflowStateSchemaValidator()
+
+  /**
+   * SKILL-48 Subtask 2a: builds the canonical snapshot-shape map for the
+   * given [record], validates it against the workflow-state schema, and
+   * returns the validated map for callers to derive their payloads from.
+   * Centralising the field set here means `openRecord` / `updateRecord`
+   * / `fullPayload` / `summaryPayload` cannot drift on the snapshot
+   * envelope — they all reuse the same map builder.
+   *
+   * The map is the schema-shaped snapshot envelope, NOT the resume /
+   * continue derivatives. The derivatives are validated transitively
+   * because they are constructed from this map (no additional snapshot
+   * fields are injected downstream).
+   */
+  private fun validatedSnapshotMap(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> {
+    val snapshot = linkedMapOf<String, Any?>(
+      "workflow_id" to record.workflowId,
+      "session_id" to record.sessionId.orEmpty(),
+      "workflow_name" to record.workflowName.ifBlank { definition.workflowName },
+      "contract_version" to record.contractVersion.ifBlank { definition.contractVersion },
+      "workflow_status" to record.workflowStatus.ifBlank { "pending" },
+      "current_step_id" to record.currentStepId.orEmpty(),
+      "steps" to decodeSteps(record.stepsJson),
+      "artifacts" to decodeObject(record.artifactsJson),
+      "started_at" to record.startedAt.orEmpty(),
+      "updated_at" to record.updatedAt.orEmpty(),
+      "finished_at" to record.finishedAt.orEmpty(),
+    )
+    schemaValidator.validate(snapshot, snapshot["workflow_name"] as String)
+    return snapshot
+  }
+
   fun validateOpen(definition: WorkflowDefinition, currentStepId: String): String? =
     validateEnum(currentStepId, definition.stepIds, "current_step_id")
 
@@ -50,19 +89,27 @@ object WorkflowEngine {
     workflowId: String,
     sessionId: String,
     currentStepId: String,
-  ): WorkflowStateSnapshot = WorkflowStateSnapshot(
-    workflowId = workflowId,
-    sessionId = sessionId.trim(),
-    workflowName = definition.workflowName,
-    contractVersion = definition.contractVersion,
-    workflowStatus = "running",
-    currentStepId = currentStepId,
-    stepsJson = jsonString(defaultSteps(definition, currentStepId)),
-    artifactsJson = jsonString(emptyMap<String, Any?>()),
-    startedAt = null,
-    updatedAt = null,
-    finishedAt = null,
-  )
+  ): WorkflowStateSnapshot {
+    val snapshot = WorkflowStateSnapshot(
+      workflowId = workflowId,
+      sessionId = sessionId.trim(),
+      workflowName = definition.workflowName,
+      contractVersion = definition.contractVersion,
+      workflowStatus = "running",
+      currentStepId = currentStepId,
+      stepsJson = jsonString(defaultSteps(definition, currentStepId)),
+      artifactsJson = jsonString(emptyMap<String, Any?>()),
+      startedAt = null,
+      updatedAt = null,
+      finishedAt = null,
+    )
+    // SKILL-48 Subtask 2a: validate the freshly-opened snapshot against the
+    // canonical schema. A malformed snapshot escaping `openRecord` would
+    // poison every downstream payload, so the in-process construction site
+    // is the right place to loud-fail.
+    validatedSnapshotMap(definition, snapshot)
+    return snapshot
+  }
 
   fun updateRecord(
     definition: WorkflowDefinition,
@@ -73,7 +120,7 @@ object WorkflowEngine {
     val mergedArtifacts = LinkedHashMap(existingArtifacts)
     input.artifactsPatch?.let { patch -> mergedArtifacts.putAll(patch) }
     val terminal = input.workflowStatus in definition.terminalStatuses
-    return existing.copy(
+    val updated = existing.copy(
       sessionId = input.sessionId.trim().ifBlank { existing.sessionId.orEmpty() },
       workflowStatus = input.workflowStatus,
       currentStepId = input.currentStepId.trim().ifBlank { existing.currentStepId.orEmpty() },
@@ -81,39 +128,27 @@ object WorkflowEngine {
       artifactsJson = jsonString(mergedArtifacts),
       finishedAt = if (terminal) existing.finishedAt ?: "" else null,
     )
+    // SKILL-48 Subtask 2a: validate the updated snapshot. `validateUpdate`
+    // already loud-fails on enum/required violations, but the schema
+    // catches structural drift the validator does not (e.g. per-skill
+    // status divergence after the definition itself moves).
+    validatedSnapshotMap(definition, updated)
+    return updated
   }
 
   fun fullPayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> =
-    WorkflowContracts.fullWorkflowPayload(
-      mapOf(
-        "workflow_id" to record.workflowId,
-        "session_id" to record.sessionId.orEmpty(),
-        "workflow_name" to record.workflowName.ifBlank { definition.workflowName },
-        "contract_version" to record.contractVersion.ifBlank { definition.contractVersion },
-        "workflow_status" to record.workflowStatus.ifBlank { "pending" },
-        "current_step_id" to record.currentStepId.orEmpty(),
-        "steps" to decodeSteps(record.stepsJson),
-        "artifacts" to decodeObject(record.artifactsJson),
-        "started_at" to record.startedAt.orEmpty(),
-        "updated_at" to record.updatedAt.orEmpty(),
-        "finished_at" to record.finishedAt.orEmpty(),
-      ),
-    )
+    // SKILL-48 Subtask 2a: every payload returned to the caller is derived
+    // from a validated snapshot map. Validation happens once per call so
+    // even snapshots reconstituted from the durable store loud-fail at
+    // the read seam if the on-disk shape ever drifted.
+    WorkflowContracts.fullWorkflowPayload(validatedSnapshotMap(definition, record))
 
   fun summaryPayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> =
-    WorkflowContracts.summaryWorkflowPayload(
-      mapOf(
-        "workflow_id" to record.workflowId,
-        "session_id" to record.sessionId.orEmpty(),
-        "workflow_name" to record.workflowName.ifBlank { definition.workflowName },
-        "contract_version" to record.contractVersion.ifBlank { definition.contractVersion },
-        "workflow_status" to record.workflowStatus.ifBlank { "pending" },
-        "current_step_id" to record.currentStepId.orEmpty(),
-        "started_at" to record.startedAt.orEmpty(),
-        "updated_at" to record.updatedAt.orEmpty(),
-        "finished_at" to record.finishedAt.orEmpty(),
-      ),
-    )
+    // SKILL-48 Subtask 2a: validate the full snapshot envelope, then
+    // derive the summary payload (which strips `steps`/`artifacts`). The
+    // schema covers the full envelope, so deriving the summary AFTER the
+    // validator runs keeps the parse seam authoritative.
+    WorkflowContracts.summaryWorkflowPayload(validatedSnapshotMap(definition, record))
 
   fun resumePayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> {
     val payload = fullPayload(definition, record)

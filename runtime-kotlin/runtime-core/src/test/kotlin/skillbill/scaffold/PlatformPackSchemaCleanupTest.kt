@@ -2,6 +2,10 @@ package skillbill.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.WORKFLOW_STATE_CONTRACT_VERSION
+import skillbill.workflow.WorkflowStateSchemaPaths
+import skillbill.workflow.assertWorkflowStateSchemaIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -63,6 +67,55 @@ class PlatformPackSchemaCleanupTest {
     val node = YAMLMapper().readTree(Files.readString(schemaPath))
     // Must not throw.
     assertSchemaIdentity(node)
+  }
+
+  // -----------------------------------------------------------------------
+  // SKILL-48 Subtask 2a — workflow-state schema classpath-shadow guard
+  // -----------------------------------------------------------------------
+
+  @Test
+  fun `workflow-state schema classpath shadow with mismatched id loud-fails`() {
+    val mismatchedIdYaml = """
+      ${'$'}schema: "https://json-schema.org/draft/2020-12/schema"
+      ${'$'}id: "https://malicious.example/shadow-workflow-state.yaml"
+      type: object
+      properties:
+        contract_version:
+          const: "$WORKFLOW_STATE_CONTRACT_VERSION"
+    """.trimIndent()
+    val node = YAMLMapper().readTree(mismatchedIdYaml)
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { assertWorkflowStateSchemaIdentity(node) }
+    val message = error.message.orEmpty()
+    assertContains(message, "https://malicious.example/shadow-workflow-state.yaml")
+    assertContains(message, WorkflowStateSchemaPaths.EXPECTED_SCHEMA_ID)
+  }
+
+  @Test
+  fun `workflow-state schema classpath shadow with mismatched contract_version const loud-fails`() {
+    val mismatchedConstYaml = """
+      ${'$'}schema: "https://json-schema.org/draft/2020-12/schema"
+      ${'$'}id: "${WorkflowStateSchemaPaths.EXPECTED_SCHEMA_ID}"
+      type: object
+      properties:
+        contract_version:
+          const: "9.99"
+    """.trimIndent()
+    val node = YAMLMapper().readTree(mismatchedConstYaml)
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { assertWorkflowStateSchemaIdentity(node) }
+    val message = error.message.orEmpty()
+    assertContains(message, "9.99")
+    assertContains(message, WORKFLOW_STATE_CONTRACT_VERSION)
+  }
+
+  @Test
+  fun `workflow-state canonical schema on disk passes identity assertion`() {
+    val schemaPath: Path = skillbill.testing.repoRootFromTest()
+      .resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
+    val node = YAMLMapper().readTree(Files.readString(schemaPath))
+    // Must not throw.
+    assertWorkflowStateSchemaIdentity(node)
   }
 
   // -----------------------------------------------------------------------

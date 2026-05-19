@@ -1,6 +1,6 @@
 # SKILL-48 Subtask 2 — Other runtime contracts under `orchestration/contracts/`
 
-Status: Proposed
+Status: In Progress
 
 Parent spec: [spec.md](./spec.md)
 

@@ -1,6 +1,6 @@
 # SKILL-48 Subtask 1 — SKILL-47 cleanup
 
-Status: Proposed
+Status: Complete
 
 Parent spec: [spec.md](./spec.md)
 
