@@ -29,8 +29,10 @@ import java.nio.file.Path
  *
  * Flags:
  * - `--dry-run` returns only the preview dossier; nothing on disk is mutated.
- * - `--allow-shipped` is required to remove the built-in `kotlin` / `kmp` surfaces. `.bill-shared`
- *   is never deletable regardless of flags.
+ * - `--allow-shipped` is required to remove the built-in `kotlin` / `kmp` *horizontal* pre-shell
+ *   surfaces and any `bill-*` product skill (maintainer path). Platform packs — including the
+ *   shipped `kotlin` / `kmp` packs — are user-removable without the flag (SKILL-49); only
+ *   `.bill-shared` is unconditionally protected on every axis.
  *
  * Exit codes:
  * - `0` — success (or dry-run preview returned).

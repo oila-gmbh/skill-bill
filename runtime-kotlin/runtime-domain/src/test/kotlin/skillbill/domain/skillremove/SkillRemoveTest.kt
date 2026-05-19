@@ -36,7 +36,10 @@ class SkillRemoveTest {
       ),
     )
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo"),
+      // SKILL-49: `bill-*` horizontal skills are the product surface; the maintainer path that
+      // genuinely needs to cascade-remove a deprecated one passes `allowShipped = true` (same
+      // shape as `kotlin` / `kmp`). The UI never offers this affordance.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo", allowShipped = true),
       repoRootAbsolutePath = "/repo",
     )
     val preview = SkillRemove(fs).previewRemoval(request).preview
@@ -44,6 +47,21 @@ class SkillRemoveTest {
     assertEquals(3, preview.filesystemPaths.size)
     assertEquals("skills/bill-foo", preview.skillDirRoot)
     assertEquals(2, preview.agentSymlinkUnlinks.size)
+  }
+
+  @Test
+  fun `previewRemoval refuses bill-prefixed horizontal product skill without allowShipped`() {
+    // SKILL-49: every `bill-*` horizontal skill is a shipped product surface and joins the
+    // existing `kotlin` / `kmp` shipped-protection set. The desktop UI hides the Delete
+    // affordance via `isBuiltInName`; this test pins the matching domain refusal so even a
+    // CLI request without `--allow-shipped` is rejected.
+    val fs = FakeSkillRemoveFileSystem()
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = false),
+      repoRootAbsolutePath = "/repo",
+    )
+    val refusal = assertFailsWith<SkillRemovalRefusedException> { SkillRemove(fs).previewRemoval(request) }
+    assertEquals(SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED, refusal.refusalReason)
   }
 
   @Test
@@ -113,6 +131,35 @@ class SkillRemoveTest {
   }
 
   @Test
+  fun `previewRemoval accepts shipped kotlin platform pack without allowShipped`() {
+    // SKILL-49: platform packs are the user-extension surface; shipped first-party packs
+    // (`kotlin`, `kmp`) are user-removable from the desktop UI and CLI without `--allow-shipped`.
+    // Only `.bill-shared` remains unconditionally protected on the platform axis.
+    val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("platform-packs/kotlin", "skills/kotlin"))
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.PlatformPack(platform = "kotlin", allowShipped = false),
+      repoRootAbsolutePath = "/repo",
+    )
+    val preview = SkillRemove(fs).previewRemoval(request).preview
+    assertNotNull(preview)
+    assertEquals(listOf("platform-packs/kotlin", "skills/kotlin"), preview.filesystemPaths)
+  }
+
+  @Test
+  fun `previewRemoval refuses dot-bill-shared platform pack`() {
+    // SKILL-49: `.bill-shared` stays unconditionally protected on the platform-pack axis even
+    // though shipped kotlin/kmp packs are now user-removable. It is the only platform name
+    // protected here.
+    val fs = FakeSkillRemoveFileSystem()
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.PlatformPack(platform = ".bill-shared", allowShipped = true),
+      repoRootAbsolutePath = "/repo",
+    )
+    val refusal = assertFailsWith<SkillRemovalRefusedException> { SkillRemove(fs).previewRemoval(request) }
+    assertEquals(SkillRemovalRefusalReason.BILL_SHARED_PROTECTED, refusal.refusalReason)
+  }
+
+  @Test
   fun `previewRemoval accepts kotlin when allowShipped is true`() {
     val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("skills/kotlin"))
     val request = SkillRemovalRequest(
@@ -131,7 +178,8 @@ class SkillRemoveTest {
       applyThrows = RuntimeException("disk on fire"),
     )
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo"),
+      // SKILL-49: maintainer path for cascade-remove of a deprecated `bill-*` skill.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo", allowShipped = true),
       repoRootAbsolutePath = "/repo",
     )
     val result = SkillRemove(fs).executeRemoval(request) as SkillRemovalResult.Failed
@@ -146,7 +194,8 @@ class SkillRemoveTest {
       applyThrows = SkillBillRollbackException("rollback failed"),
     )
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo"),
+      // SKILL-49: maintainer path for cascade-remove of a deprecated `bill-*` skill.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo", allowShipped = true),
       repoRootAbsolutePath = "/repo",
     )
     val result = SkillRemove(fs).executeRemoval(request) as SkillRemovalResult.Failed
@@ -163,7 +212,8 @@ class SkillRemoveTest {
       ),
     )
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo"),
+      // SKILL-49: maintainer path for cascade-remove of a deprecated `bill-*` skill.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-foo", allowShipped = true),
       repoRootAbsolutePath = "/repo",
     )
     val result = SkillRemove(fs).executeRemoval(request) as SkillRemovalResult.Failed

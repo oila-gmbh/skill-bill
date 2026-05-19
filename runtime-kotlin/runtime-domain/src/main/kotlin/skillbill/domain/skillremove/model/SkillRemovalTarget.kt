@@ -49,7 +49,39 @@ sealed class SkillRemovalTarget {
      */
     val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared", "kotlin", "kmp")
 
-    /** Returns `true` when [name] resolves to a built-in surface. */
-    fun isBuiltInName(name: String): Boolean = name in BUILT_IN_NAMES
+    /**
+     * SKILL-49: every horizontal skill that begins with the `bill-` prefix is a shipped product
+     * surface (`bill-code-review`, `bill-feature-implement`, `bill-quality-check`, ...). The UI
+     * never opens the Delete affordance on these because `isBuiltInName` returns true; the
+     * domain `enforceRefusalPolicy` mirrors the same predicate so even a CLI request without
+     * `--allow-shipped` is refused. Maintainer paths that genuinely need to remove a deprecated
+     * `bill-*` skill must pass `allowShipped = true` (same shape as `kotlin` / `kmp`).
+     */
+    const val HORIZONTAL_PRODUCT_PREFIX: String = "bill-"
+
+    /**
+     * SKILL-49: protection for the HORIZONTAL-skill axis (`SkillRemovalTarget.HorizontalSkill`).
+     * Returns `true` for names in [BUILT_IN_NAMES] (so `kotlin` / `kmp` pre-shells stay safe —
+     * removing them as horizontals would orphan the platform pack) and for any `bill-*` product
+     * skill. Users who really want to remove the `kotlin` / `kmp` directories should use the
+     * `PlatformPack` removal axis, which cascades the pre-shell tree cleanly.
+     */
+    fun isProtectedHorizontalName(name: String): Boolean =
+      name in BUILT_IN_NAMES || name.startsWith(HORIZONTAL_PRODUCT_PREFIX)
+
+    /**
+     * SKILL-49: protection for the PLATFORM-PACK axis (`SkillRemovalTarget.PlatformPack`). Only
+     * `.bill-shared` is unconditionally protected here — shipped first-party packs (`kotlin`,
+     * `kmp`) are user-removable because platform packs are the user-extension surface (forks may
+     * remove packs they do not use).
+     */
+    fun isProtectedPlatformName(name: String): Boolean = name == ".bill-shared"
+
+    /**
+     * Generic axis-agnostic predicate. Retained for callers that color the UI tree without
+     * knowing whether the node will resolve to a `HorizontalSkill` or `PlatformPack` target.
+     * For gate logic prefer the axis-specific predicates above.
+     */
+    fun isBuiltInName(name: String): Boolean = name in BUILT_IN_NAMES || name.startsWith(HORIZONTAL_PRODUCT_PREFIX)
   }
 }

@@ -1016,9 +1016,12 @@ internal fun resolveDeletionTarget(
  * surfaces (modifier, route, domain refusal policy) always agree.
  */
 internal fun DesktopSkillRemovalTarget.isBuiltIn(): Boolean = when (this) {
+  // SKILL-49: horizontal skills protect `.bill-shared`, `kotlin` / `kmp` pre-shells, and every
+  // `bill-*` product skill. Platform packs only protect `.bill-shared` — `kotlin` / `kmp` are
+  // user-removable because the platform-pack tree is the user-extension surface.
   is DesktopSkillRemovalTarget.HorizontalSkill ->
-    DesktopSkillRemovalTarget.isBuiltInName(skillName)
+    DesktopSkillRemovalTarget.isProtectedHorizontalName(skillName)
   is DesktopSkillRemovalTarget.PlatformPack ->
-    DesktopSkillRemovalTarget.isBuiltInName(platform)
+    DesktopSkillRemovalTarget.isProtectedPlatformName(platform)
   is DesktopSkillRemovalTarget.AddOn -> false
 }

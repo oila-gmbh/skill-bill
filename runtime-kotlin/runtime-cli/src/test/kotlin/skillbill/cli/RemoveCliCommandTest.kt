@@ -30,7 +30,18 @@ class RemoveCliCommandTest {
 
     val context = CliRuntimeContext(userHome = tempDir)
     val result = CliRuntime.run(
-      listOf("remove", "skill:bill-foo", "--repo-root", tempDir.toString(), "--dry-run", "--format", "json"),
+      // SKILL-49: `bill-*` skills are the product surface; the maintainer CLI still allows
+      // removal via `--allow-shipped` (same shape as `kotlin` / `kmp`).
+      listOf(
+        "remove",
+        "skill:bill-foo",
+        "--repo-root",
+        tempDir.toString(),
+        "--allow-shipped",
+        "--dry-run",
+        "--format",
+        "json",
+      ),
       context,
     )
     assertEquals(0, result.exitCode, result.stdout)
@@ -68,6 +79,30 @@ class RemoveCliCommandTest {
   }
 
   @Test
+  fun `remove refuses bill-prefixed horizontal product skill without --allow-shipped`() {
+    // SKILL-49: `bill-*` horizontal skills are product surfaces. The desktop UI hides the
+    // Delete affordance via `isBuiltInName`; this test pins the matching CLI refusal so the
+    // domain `enforceRefusalPolicy` predicate is the load-bearing rule on every surface.
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-bill")
+    val context = CliRuntimeContext(userHome = tempDir)
+    val result = CliRuntime.run(
+      listOf(
+        "remove",
+        "skill:bill-code-review",
+        "--repo-root",
+        tempDir.toString(),
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+    assertEquals(1, result.exitCode)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("error", payload["status"].toString().trim('"'))
+  }
+
+  @Test
   fun `remove refuses kotlin without --allow-shipped`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin")
     val context = CliRuntimeContext(userHome = tempDir)
@@ -76,6 +111,32 @@ class RemoveCliCommandTest {
       context,
     )
     assertEquals(1, result.exitCode)
+  }
+
+  @Test
+  fun `remove platform kotlin succeeds without --allow-shipped`() {
+    // SKILL-49: platform packs are the user-extension surface; shipped first-party packs
+    // (`kotlin`, `kmp`) are user-removable from the CLI without `--allow-shipped`. The `skill:`
+    // axis remains gated (the test below pins that for kotlin).
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-kotlin")
+    Files.createDirectories(tempDir.resolve("platform-packs/kotlin"))
+    Files.createDirectories(tempDir.resolve("skills/kotlin"))
+    val context = CliRuntimeContext(userHome = tempDir)
+    val result = CliRuntime.run(
+      listOf(
+        "remove",
+        "platform:kotlin",
+        "--repo-root",
+        tempDir.toString(),
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("preview", payload["status"].toString().trim('"'))
   }
 
   @Test

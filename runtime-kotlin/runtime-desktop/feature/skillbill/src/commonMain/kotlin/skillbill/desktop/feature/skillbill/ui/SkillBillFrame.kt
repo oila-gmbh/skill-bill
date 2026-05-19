@@ -5640,12 +5640,17 @@ private fun Modifier.skillRemoveContextMenuModifier(
     node.kind == TreeItemKind.PLATFORM_PACK ||
     node.kind == TreeItemKind.ADD_ON
   if (!supported || !enabled) return this
-  // F-606: only offer the right-click menu for editable nodes whose resolved target is NOT a
-  // built-in (`.bill-shared` / `kotlin` / `kmp`). The label/metadata fall-back mirrors the route
-  // resolver's identifier extraction so the modifier and the route agree about which nodes can
-  // even be considered for deletion. `SkillRemovalTarget.isBuiltInName` is shared with the route
-  // (and with the domain refusal policy) so all three layers always agree.
-  if (!node.editable) return this
+  // F-606: only offer the right-click menu for nodes whose resolved target is NOT a built-in.
+  // The label/metadata fall-back mirrors the route resolver's identifier extraction so the
+  // modifier and the route agree about which nodes can even be considered for deletion. The
+  // axis-specific predicates (`isProtectedHorizontalName` / `isProtectedPlatformName`) are
+  // shared with the route (and with the domain refusal policy) so all three layers always
+  // agree.
+  // SKILL-49: `node.editable` is an editor-content concern (whether the document is read-only),
+  // not a delete-affordance concern — synthetic PLATFORM_PACK group nodes are intentionally
+  // `editable = false` because they are folders with no document to edit, but they MUST still
+  // be right-click-deletable. The protection above (axis-specific predicate + route's
+  // `target.isBuiltIn()`) is the load-bearing gate.
   val identifier = when (node.kind) {
     TreeItemKind.SKILL -> node.metadata?.skillName ?: node.label
     TreeItemKind.PLATFORM_PACK -> {
@@ -5654,7 +5659,16 @@ private fun Modifier.skillRemoveContextMenuModifier(
     }
     else -> null
   }
-  if (identifier != null && skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.isBuiltInName(identifier)) {
+  // SKILL-49: axis-specific protection — SKILL nodes hide Delete for shipped pre-shells and
+  // `bill-*` product skills; PLATFORM_PACK nodes only hide Delete for `.bill-shared`.
+  val isProtected = identifier != null && when (node.kind) {
+    TreeItemKind.SKILL ->
+      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.isProtectedHorizontalName(identifier)
+    TreeItemKind.PLATFORM_PACK ->
+      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.isProtectedPlatformName(identifier)
+    else -> false
+  }
+  if (isProtected) {
     return this
   }
   return this.pointerInput(node.id) {

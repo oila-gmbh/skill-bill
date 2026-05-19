@@ -42,7 +42,9 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -64,7 +66,7 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check"),
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -78,7 +80,9 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
     val cascaded = fs.discoverCascadedSkillNames(request)
@@ -105,7 +109,9 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -126,7 +132,9 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -158,7 +166,9 @@ class SkillRemoveJvmFileSystemTest {
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val service = skillbill.domain.skillremove.SkillRemove(fs)
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -186,7 +196,9 @@ class SkillRemoveJvmFileSystemTest {
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val service = skillbill.domain.skillremove.SkillRemove(fs)
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review"),
+      // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
+      // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-review", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
@@ -212,7 +224,7 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check"),
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
