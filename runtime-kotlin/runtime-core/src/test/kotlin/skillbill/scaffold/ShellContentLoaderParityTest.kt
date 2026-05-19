@@ -24,7 +24,7 @@ class ShellContentLoaderParityTest {
     assertEquals(SHELL_CONTRACT_VERSION, pack.contractVersion)
     assertEquals(listOf("architecture"), pack.declaredCodeReviewAreas)
     assertEquals(listOf(".fixture"), pack.routingSignals.strong)
-    assertEquals("code-review", pack.declaredFiles.baseline.parent.name)
+    assertEquals("code-review", pack.declaredFiles.baseline?.parent?.name)
   }
 
   @Test

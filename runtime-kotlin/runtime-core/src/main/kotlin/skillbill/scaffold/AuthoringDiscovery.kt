@@ -76,20 +76,21 @@ private fun restoreFiles(originalBytes: Map<Path, ByteArray>) {
 }
 
 private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, pack: PlatformManifest) {
-  val baseline = pack.declaredFiles.baseline
-  val baselineContent = declaredContentFile(baseline)
   val displayName = pack.displayName ?: displayNameFromSlug(pack.slug)
-  discovered[baselineContent.parent.name] =
-    AuthoringTarget(
-      baselineContent.parent.name,
-      pack.slug,
-      pack.slug,
-      displayName,
-      "code-review",
-      "",
-      baselineContent.resolveSibling("SKILL.md"),
-      baselineContent,
-    )
+  pack.declaredFiles.baseline?.let { baseline ->
+    val baselineContent = declaredContentFile(baseline)
+    discovered[baselineContent.parent.name] =
+      AuthoringTarget(
+        baselineContent.parent.name,
+        pack.slug,
+        pack.slug,
+        displayName,
+        "code-review",
+        "",
+        baselineContent.resolveSibling("SKILL.md"),
+        baselineContent,
+      )
+  }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->
     val contentFile = declaredContentFile(declaredFile)
     discovered[contentFile.parent.name] =

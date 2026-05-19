@@ -200,6 +200,64 @@ internal fun removeCodeReviewArea(manifestPath: Path, area: String) {
 }
 
 /**
+ * Strips the `  baseline:` line under `declared_files:`. Used when a horizontal-skill removal
+ * deletes the baseline content directory and the manifest must stop pointing at it. Idempotent:
+ * if no baseline line is present, the file is left untouched.
+ */
+internal fun removeDeclaredFilesBaseline(manifestPath: Path) {
+  val original = manifestPath.toFile().readText()
+  val pattern = Regex(
+    "^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*?))(  baseline:[^\\n]*\\n)",
+    RegexOption.MULTILINE,
+  )
+  val match = pattern.find(original) ?: return
+  val before = match.groupValues[1]
+  val updated = original.replaceRange(match.range, before)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+/**
+ * Removes a single top-level mapping entry from the `pointers:` block, identified by the dotted
+ * key (e.g. `code-review/bill-kmp-code-review-ui`). The key line and every subsequent line at
+ * indent >= 4 (the YAML-block children of that key) are dropped together. If the removal leaves
+ * the `pointers:` block with no children, the block header is collapsed to `pointers: {}` so the
+ * manifest remains valid YAML. Idempotent: missing keys are a no-op.
+ */
+internal fun removePointersBlockKey(manifestPath: Path, key: String) {
+  val original = manifestPath.toFile().readText()
+  val lines = original.split('\n')
+  val keyHeaderPrefix = "  $key:"
+  val keyIdx = lines.indexOfFirst { line ->
+    line == keyHeaderPrefix || line.startsWith("$keyHeaderPrefix ") || line.startsWith("$keyHeaderPrefix\t")
+  }
+  if (keyIdx < 0) return
+  val endIdx = lines.asSequence()
+    .drop(keyIdx + 1)
+    .indexOfFirst { line -> line.isNotBlank() && line.takeWhile { ch -> ch == ' ' }.length < 4 }
+    .let { offset -> if (offset < 0) lines.size else keyIdx + 1 + offset }
+  val stripped = (lines.subList(0, keyIdx) + lines.subList(endIdx, lines.size)).joinToString("\n")
+  val updated = collapseEmptyPointersBlock(stripped)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+private fun collapseEmptyPointersBlock(text: String): String {
+  val lines = text.split('\n')
+  val pointersIdx = lines.indexOfFirst { it == "pointers:" }
+  if (pointersIdx < 0) return text
+  val hasChildren = lines.drop(pointersIdx + 1).any { line ->
+    line.isNotBlank() && line.startsWith("  ")
+  }
+  if (hasChildren) return text
+  val updated = lines.toMutableList()
+  updated[pointersIdx] = "pointers: {}"
+  return updated.joinToString("\n")
+}
+
+/**
  * Inverse of [setDeclaredQualityCheckFile]. Strips the `declared_quality_check_file:` line entirely.
  * Idempotent: when the key is absent the file is not rewritten.
  *

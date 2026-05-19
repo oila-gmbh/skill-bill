@@ -8,7 +8,7 @@ data class RoutingSignals(
 )
 
 data class DeclaredFiles(
-  val baseline: Path,
+  val baseline: Path?,
   val areas: Map<String, Path>,
 )
 
@@ -31,7 +31,12 @@ data class PlatformManifest(
   val declaredQualityCheckFile: Path? = null,
   val pointers: List<PointerSpec> = emptyList(),
 ) {
-  val routedSkillName: String = "bill-$slug-code-review"
+  /**
+   * Stable identifier of the pack's code-review baseline shell, or `null` when the pack has
+   * no code-review feature declared. Callers that need to compose code-review-only artifacts
+   * must null-check before using.
+   */
+  val routedSkillName: String? = declaredFiles.baseline?.let { "bill-$slug-code-review" }
 }
 
 data class GovernedAddonFile(

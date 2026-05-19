@@ -56,6 +56,13 @@ fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
 }
 
 internal fun validatePlatformPack(pack: PlatformManifest, contractVersion: String) {
+  // F-009: defense-in-depth. The canonical schema validator (run from
+  // `buildPack` via `loadPlatformManifest`) already raises
+  // `ContractVersionMismatchError` for any version drift, so callers that
+  // skip the contract gate (e.g. `loadPlatformManifest`) still loud-fail.
+  // Keep this duplicate check so any future caller that constructs a
+  // `PlatformManifest` directly (bypassing the schema validator) is still
+  // gated here.
   if (pack.contractVersion != contractVersion) {
     throw ContractVersionMismatchError(
       buildString {
@@ -73,7 +80,9 @@ internal fun validatePlatformPack(pack: PlatformManifest, contractVersion: Strin
     )
   }
 
-  validateGovernedSkill(pack, "baseline", pack.declaredFiles.baseline, "code-review", "")
+  pack.declaredFiles.baseline?.let { baseline ->
+    validateGovernedSkill(pack, "baseline", baseline, "code-review", "")
+  }
   pack.declaredCodeReviewAreas.forEach { area ->
     validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review", area)
   }
@@ -99,9 +108,19 @@ private fun readManifest(manifestPath: Path, slug: String): Any? = try {
 }
 
 private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any?): PlatformManifest {
+  // SKILL-47: shape validation now flows through the canonical schema at
+  // `orchestration/contracts/platform-pack-schema.yaml`. The Kotlin parser
+  // below remains responsible for producing the typed `PlatformManifest`
+  // and for the named coherence checks documented in the schema's
+  // `x-coherence-checks` block (slug-parity, areas-require-baseline,
+  // areas-equal-declared, area-metadata-keys-subset-declared,
+  // pointers-unique-name-per-dir).
   val manifest = requireManifestMap(slug, manifestPath, raw)
+  validateAgainstCanonicalSchema(slug, packRoot, raw)
+
   val declaredPlatform = requireStringField(manifest, slug, "platform")
   if (declaredPlatform != slug) {
+    // Coherence: slug-parity.
     throw InvalidManifestSchemaError(
       "Platform pack '$slug': manifest 'platform' field is '$declaredPlatform', " +
         "expected '$slug' to match the directory name.",
@@ -137,6 +156,16 @@ private fun requireManifestMap(slug: String, manifestPath: Path, raw: Any?): Map
   ?: throw InvalidManifestSchemaError(
     "Platform pack '$slug': manifest '$manifestPath' must be a YAML mapping at the top level.",
   )
+
+// SKILL-47: shared validator instance. The validator caches its compiled
+// schema; loading it once amortizes the cost across every pack load.
+private val canonicalSchemaValidator: PlatformPackSchemaValidator by lazy {
+  CanonicalPlatformPackSchemaValidator()
+}
+
+private fun validateAgainstCanonicalSchema(slug: String, @Suppress("UNUSED_PARAMETER") packRoot: Path, raw: Any?) {
+  canonicalSchemaValidator.validate(raw, slug)
+}
 
 private fun parseRoutingSignals(manifest: Map<*, *>, slug: String): RoutingSignals {
   val routing = requireMappingField(manifest, slug, "routing_signals")
@@ -174,17 +203,20 @@ private fun parseDeclaredFiles(
   packRoot: Path,
   declaredAreas: List<String>,
 ): DeclaredFiles {
-  val rawFiles = requireMappingField(manifest, slug, "declared_files")
+  // `declared_files` is optional: a platform pack may ship with no code-review feature at all
+  // (e.g. quality-check-only or addons-only). When the block is missing we treat baseline and
+  // areas as empty; the consumers null-check the baseline before composing code-review artifacts.
+  val rawFiles = (manifest["declared_files"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
   val baselineRaw = rawFiles["baseline"] as? String
-    ?: throw InvalidManifestSchemaError(
-      "Platform pack '$slug': manifest is missing required field 'declared_files.baseline'.",
-    )
-  if (baselineRaw.isBlank()) {
-    throw InvalidManifestSchemaError(
-      "Platform pack '$slug': 'declared_files.baseline' must be a non-empty path string.",
-    )
+  val baselinePath = baselineRaw?.let {
+    if (it.isBlank()) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'declared_files.baseline' must be a non-empty path string when present.",
+      )
+    }
+    requireDeclaredContentPath(slug, "declared_files.baseline", it)
+    packRoot.resolve(it).normalize()
   }
-  requireDeclaredContentPath(slug, "declared_files.baseline", baselineRaw)
 
   val rawAreaFiles = rawFiles["areas"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
   val areaFiles = rawAreaFiles.entries.associate { (key, value) ->
@@ -214,14 +246,22 @@ private fun parseDeclaredFiles(
     )
   }
 
+  // Coherence: if the pack declares code-review areas but no baseline, the manifest is inconsistent.
+  // The baseline is what the area specialists override, so areas without a baseline are meaningless.
+  if (baselinePath == null && areaFiles.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'declared_files.areas' is set but 'declared_files.baseline' is missing.",
+    )
+  }
   return DeclaredFiles(
-    baseline = packRoot.resolve(baselineRaw).normalize(),
+    baseline = baselinePath,
     areas = areaFiles,
   )
 }
 
 private fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas: List<String>): Map<String, String> {
-  val rawMetadata = requireMappingField(manifest, slug, "area_metadata")
+  // Optional: a pack with no code-review areas does not need an area_metadata block.
+  val rawMetadata = (manifest["area_metadata"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
   val areaMetadata = mutableMapOf<String, String>()
   val extraAreaMetadata = mutableSetOf<String>()
   for ((key, value) in rawMetadata) {

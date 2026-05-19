@@ -145,6 +145,15 @@ enum class TreeItemKind {
   NATIVE_AGENT,
   GENERATED_ARTIFACT,
   PLACEHOLDER,
+
+  /**
+   * SKILL-47: read-only viewer entry point for runtime contracts (the
+   * canonical platform-pack JSON Schema today; future contract files plug
+   * into the same group). The tree-context-menu delete predicate excludes
+   * this kind so the canonical file in the repo cannot be removed through
+   * the UI.
+   */
+  CONTRACT,
 }
 
 data class SkillBillTreeItemMetadata(

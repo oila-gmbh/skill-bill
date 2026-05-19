@@ -3124,6 +3124,7 @@ private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
+  TreeItemKind.CONTRACT,
   -> false
 }
 

@@ -42,8 +42,9 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 - Packs live under `platform-packs/` and are user-owned.
 - Skill Bill is platform-extensible: any team may author and ship a new conforming pack.
 - This repo may contain any maintained pack that follows the governed contract; routing and install flows must stay manifest-driven rather than relying on a hardcoded shortlist.
-- Each pack ships a manifest. The schema lives in the shell-content-contract playbook under `orchestration/`.
-- The current shell contract version is 1.1. Keep it locked across the shell and every pack; version drift must loud-fail.
+- Each pack ships a manifest. **The canonical source of truth for `platform-packs/<slug>/platform.yaml` shape is `orchestration/contracts/platform-pack-schema.yaml`** — a JSON Schema (Draft 2020-12) authored as YAML. New fields, type changes, value constraints, and field-level enums land in that file first; the runtime parser (`ShellContentLoader.buildPack`) loads the schema at runtime and rejects malformed manifests via `InvalidManifestSchemaError`.
+- Cross-field coherence rules that JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks` in the schema file. The five named rules are `slug-parity`, `areas-require-baseline`, `areas-equal-declared`, `area-metadata-keys-subset-declared`, and `pointers-unique-name-per-dir`.
+- The current shell contract version is 1.1. `SHELL_CONTRACT_VERSION` (Kotlin) and the schema's `contract_version.const` are pinned in lockstep by `PlatformPackSchemaContractVersionTest`. Bumping the contract means bumping BOTH; the build breaks if they drift.
 - Follow `orchestration/shell-content-contract/PLAYBOOK.md` for governed skill shape.
 - Missing manifest, wrong version, missing content file, or missing section must raise the named loud-fail exceptions. Do not add silent fallback.
 - Discovery is manifest-driven. The shells, routing playbook, and validator read `routing_signals` from pack manifests instead of hard-coding platform names.

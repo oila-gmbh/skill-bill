@@ -146,7 +146,7 @@ private fun canonicalize(path: Path): Path {
   return runCatching { normalized.toRealPath() }.getOrDefault(normalized)
 }
 
-private fun declaredContentPaths(pack: PlatformManifest): List<Path> = listOf(pack.declaredFiles.baseline) +
+private fun declaredContentPaths(pack: PlatformManifest): List<Path> = listOfNotNull(pack.declaredFiles.baseline) +
   pack.declaredFiles.areas.values.sortedBy { it.toString() } +
   listOfNotNull(pack.declaredQualityCheckFile)
 

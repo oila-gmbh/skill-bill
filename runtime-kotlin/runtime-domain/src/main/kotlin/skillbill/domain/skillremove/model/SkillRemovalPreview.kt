@@ -42,6 +42,20 @@ enum class ManifestEditKind {
   REMOVE_DECLARED_QUALITY_CHECK_FILE,
   REMOVE_DECLARED_FILES_AREA_ENTRY,
   REMOVE_AREA_METADATA_ENTRY,
+
+  /**
+   * Drop the `declared_files.baseline:` line entirely. Emitted when removing a horizontal skill
+   * whose `bill-<platform>-<slug>` baseline directory is itself being deleted, so the manifest
+   * does not keep dangling pointers at non-existent content files.
+   */
+  REMOVE_DECLARED_FILES_BASELINE,
+
+  /**
+   * Drop a single top-level key from the `pointers:` block. The `detail` field carries the
+   * exact key path (e.g. `code-review/bill-kmp-code-review-ui`) so the executor knows which
+   * mapping entry to strip.
+   */
+  REMOVE_POINTERS_BLOCK_KEY,
 }
 
 /** A single agent-symlink unlink the executor will apply. */

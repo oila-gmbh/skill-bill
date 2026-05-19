@@ -9,6 +9,8 @@ kotlinInjectAnvil = "0.1.7"
 kotlinx-coroutines = "1.10.2"
 ksp = "2.3.7"
 kotlinx-serialization = "1.7.3"
+jackson = "2.18.2"
+jsonSchemaValidator = "1.5.6"
 junit = "5.11.3"
 room3 = "3.0.0-alpha01"
 snakeyaml = "2.3"
@@ -39,6 +41,9 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 room3-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room3" }
 room3-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room3" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 sqlite = { module = "androidx.sqlite:sqlite", version.ref = "sqlite" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
