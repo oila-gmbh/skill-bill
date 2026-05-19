@@ -8,6 +8,14 @@ data class RoutingSignals(
 )
 
 data class DeclaredFiles(
+  /**
+   * SKILL-47/SKILL-48 contract: `null` means the pack ships no code-review baseline — that is
+   * a meaningful, intentional absence at the manifest layer (e.g. quality-check-only packs).
+   * Consumers MUST NOT re-narrow this with `!!` or default to a synthesized path; the schema
+   * (`orchestration/contracts/platform-pack-schema.yaml`, `declared_files.baseline`) is the
+   * single source of truth for the optional/required boundary, and `areas-require-baseline`
+   * ensures areas without a baseline already loud-fail upstream.
+   */
   val baseline: Path?,
   val areas: Map<String, Path>,
 )
@@ -30,11 +38,21 @@ data class PlatformManifest(
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,
   val pointers: List<PointerSpec> = emptyList(),
+  /**
+   * SKILL-48 Subtask 3: carries every non-anchored top-level field from `platform.yaml`
+   * verbatim. Intentionally untyped (`Map<String, Any?>`) so repo authors can add
+   * fork-specific keys to the canonical schema without runtime support being added first;
+   * generating Kotlin types for these fields is out of scope.
+   */
+  val customFields: Map<String, Any?> = emptyMap(),
 ) {
   /**
-   * Stable identifier of the pack's code-review baseline shell, or `null` when the pack has
-   * no code-review feature declared. Callers that need to compose code-review-only artifacts
-   * must null-check before using.
+   * SKILL-47/SKILL-48 contract: stable identifier of the pack's code-review baseline shell.
+   * `null` means the pack has no code-review feature declared — derived from
+   * [DeclaredFiles.baseline] being absent in the manifest. Consumers MUST NOT re-narrow with
+   * `!!` or default to a synthesized name to hide that absence; the manifest schema is the
+   * single source of truth for whether code-review applies, and downstream features that
+   * require it (e.g. agent rendering) must null-check this property.
    */
   val routedSkillName: String? = declaredFiles.baseline?.let { "bill-$slug-code-review" }
 }

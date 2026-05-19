@@ -24,7 +24,6 @@ Prefer precise deletion over broad cleanup. Do not run `uninstall.sh` unless the
 
 This skill covers these removal scopes:
 
-- horizontal skill under `skills/<name>/`
 - pre-shell platform override under `skills/<platform>/<name>/`
 - shelled quality-check override under `platform-packs/<platform>/quality-check/<name>/`
 - code-review area under `platform-packs/<platform>/code-review/<name>/`
@@ -38,7 +37,9 @@ Default behavior:
 - remove only the requested target
 - preserve unrelated built-in packs and skills
 
-Escalate before proceeding if the request would remove built-in first-party shipped surfaces such as `kotlin` or `kmp`, because that also requires docs, catalog, and test updates beyond ordinary scaffold cleanup.
+Horizontal `bill-*` skills under `skills/bill-*/` are the runtime's own product surfaces (e.g. `bill-code-review`, `bill-feature-implement`, `bill-quality-check`) and are intentionally out of scope here. Refuse the request and explain that the product's horizontal skills are non-removable; the user's extension surface is the platform-pack content above. The desktop UI and the domain layer enforce the same line: the maintainer CLI's `--allow-shipped` flag is the only override, and only for genuine deprecation work in this repo.
+
+Shipped first-party platform packs (`kotlin`, `kmp`) ARE user-removable through the platform-pack scope above — forks that don't need them can drop the full pack plus its paired `skills/<slug>/` pre-shell. Only `.bill-shared` stays unconditionally protected on the platform-pack axis. Escalate before removing a shipped pack only when the cascade would also affect repo docs, catalog rows, or tests beyond ordinary scaffold cleanup.
 
 ## Inputs
 
@@ -52,7 +53,7 @@ Interpretation rule: a bare platform slug like `java` means "remove everything f
 
 Infer the rest from repo structure:
 
-- `skills/<name>/` with no platform segment means horizontal skill
+- `skills/bill-<name>/` with no platform segment is a horizontal product skill — refuse the request and quote the "Specialist Scope" rule that bill-* horizontals are non-removable
 - `skills/<platform>/bill-<platform>-feature-*` means pre-shell platform override
 - `platform-packs/<platform>/code-review/<skill>/` means code-review baseline or area
 - `platform-packs/<platform>/quality-check/<skill>/` means shelled quality-check override
@@ -90,7 +91,6 @@ When the request is ambiguous, stop before deletion and ask one focused clarifyi
 3. Remove agent symlinks for every deleted skill directory: supported install roots are managed through `skillbill.install` in `runtime-core` and exposed by the `runtime-cli` install commands. Remove only symlinks matching the deleted skill directory names.
 4. Remove repo content with `apply_patch` for tracked files and directories.
 5. Update owning metadata:
-   - horizontal skill: remove its README catalog row and section count
    - code-review area: remove the area from `declared_code_review_areas` and `declared_files.areas` in the owning `platform.yaml`
    - quality-check override: remove `declared_quality_check_file` from the owning `platform.yaml`
    - platform pack: remove the `platform-packs/<platform>/` tree and the paired `skills/<platform>/` tree; only update docs if that platform is documented as shipped
@@ -101,7 +101,7 @@ Guardrails:
 
 - never remove `.bill-shared` or every installed skill unless the user explicitly asked for a full uninstall
 - never silently leave stale manifest entries behind
-- never leave README catalog counts wrong for horizontal skills
+- never accept a removal request that targets a horizontal `bill-*` product skill; refuse and point at the "Specialist Scope" rule
 - do not delete governed add-ons by removing the whole pack unless that was the actual request
 
 ## Execution Mode Reporting

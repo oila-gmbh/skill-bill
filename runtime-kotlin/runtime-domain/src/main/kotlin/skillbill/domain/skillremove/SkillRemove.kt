@@ -109,8 +109,6 @@ class SkillRemove(
     val billSharedSkillRoot = repoRoot.resolve("skills/$BILL_SHARED_NAME").normalize()
     val kotlinSkillRoot = repoRoot.resolve("skills/kotlin").normalize()
     val kmpSkillRoot = repoRoot.resolve("skills/kmp").normalize()
-    val kotlinPackRoot = repoRoot.resolve("platform-packs/kotlin").normalize()
-    val kmpPackRoot = repoRoot.resolve("platform-packs/kmp").normalize()
     when (target) {
       is SkillRemovalTarget.HorizontalSkill -> {
         val candidate = repoRoot.resolve("skills/${target.skillName}").normalize()
@@ -120,7 +118,13 @@ class SkillRemove(
             "Removal of '$BILL_SHARED_NAME' is not allowed — it is a built-in shared surface.",
           )
         }
-        val protectedShipped = candidate.startsWith(kotlinSkillRoot) || candidate.startsWith(kmpSkillRoot)
+        // SKILL-49: horizontal `bill-*` skills are the product surface (bill-code-review,
+        // bill-feature-implement, etc.) and join the shipped-protection set alongside the
+        // `kotlin` / `kmp` pre-shells. Predicate sourced from SkillRemovalTarget so the desktop
+        // mirror (`isBuiltInName`) and the domain refusal agree on the line.
+        val protectedShipped = candidate.startsWith(kotlinSkillRoot) ||
+          candidate.startsWith(kmpSkillRoot) ||
+          target.skillName.startsWith(SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX)
         if (!target.allowShipped && protectedShipped) {
           throw SkillRemovalRefusedException(
             SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
@@ -129,7 +133,6 @@ class SkillRemove(
         }
       }
       is SkillRemovalTarget.PlatformPack -> {
-        val candidate = repoRoot.resolve("platform-packs/${target.platform}").normalize()
         // F-S03: `.bill-shared` is never deletable, whether requested as a skill OR a platform pack.
         if (target.platform == BILL_SHARED_NAME) {
           throw SkillRemovalRefusedException(
@@ -137,13 +140,11 @@ class SkillRemove(
             "Removal of platform pack '$BILL_SHARED_NAME' is not allowed — it is a built-in shared surface.",
           )
         }
-        val protectedShipped = candidate.startsWith(kotlinPackRoot) || candidate.startsWith(kmpPackRoot)
-        if (!target.allowShipped && protectedShipped) {
-          throw SkillRemovalRefusedException(
-            SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
-            "Refusing to remove shipped platform pack '${target.platform}' without allowShipped=true.",
-          )
-        }
+        // SKILL-49: shipped first-party platform packs (`kotlin`, `kmp`) are user-removable.
+        // Platform packs are the user-extension surface; forks may drop packs they do not use.
+        // `--allow-shipped` is no longer required on this axis; the horizontal-skill axis still
+        // gates `kotlin` / `kmp` pre-shells separately so the pack and its pre-shell can't go out
+        // of sync from the wrong tree node.
       }
       is SkillRemovalTarget.AddOn -> Unit
     }

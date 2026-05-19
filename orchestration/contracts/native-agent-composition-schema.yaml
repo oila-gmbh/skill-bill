@@ -1,0 +1,186 @@
+# Native-agent composition schema (canonical source of truth).
+#
+# This file describes the shape of every native-agent source the Skill
+# Bill runtime parses on disk:
+#
+#  - A multi-agent BUNDLE living at `<scope>/native-agents/agents.yaml`
+#    whose top level carries an `agents:` list, OR
+#  - A SINGLE-AGENT markdown file at `<scope>/native-agents/<name>.md`
+#    whose YAML frontmatter is itself the agent entry.
+#
+# The schema is authored in YAML for human readability and consumed as a
+# JSON Schema (Draft 2020-12) by the Kotlin runtime
+# (`NativeAgentCompositionSchemaValidator` in `runtime-core`).
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines TYPES, REQUIRED-VS-OPTIONAL fields, the agent-name
+#   regex, the `compose` enum, and the body-vs-compose presence rule —
+#   anything expressible in pure JSON Schema (including via `oneOf`).
+# - Cross-field "coherence" rules that JSON Schema cannot express
+#   cleanly stay in Kotlin (`parseNativeAgentBundle` /
+#   `parseNativeAgentSourceFile` and surrounding seam code). Every such
+#   rule is named below under `x-coherence-checks` so the schema
+#   document alone fully describes the contract.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by
+#   `NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION` in
+#   `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/nativeagent/NativeAgentCompositionSchemaPaths.kt`.
+# - The parity test `NativeAgentCompositionSchemaContractVersionTest`
+#   fails the build if they diverge. To bump the contract, edit BOTH
+#   constants in the same change.
+# - The top-level `contract_version` key is OPTIONAL on every native-agent
+#   source so existing on-disk fixtures (which carry no
+#   `contract_version` line) keep validating clean. When the key IS
+#   present, the `const` pins it to the runtime version.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/native-agent-composition-schema.yaml"
+title: "Native-agent composition source"
+description: >
+  Schema for every native-agent source the Skill Bill runtime parses on
+  disk. Two envelope shapes are accepted: a multi-agent bundle keyed by
+  `agents:` (used by `<scope>/native-agents/agents.yaml`) and a
+  single-agent frontmatter document (used by
+  `<scope>/native-agents/<name>.md`). Both envelopes share the same
+  `agentEntry` shape via `$defs`. The schema describes SHAPE only and
+  never hard-codes caller-specific identifiers (concrete agent names,
+  host directories, etc.). New native-agent fields ship as long as both
+  envelopes match this schema and the coherence checks below.
+$defs:
+  # Shared enum: every native-agent composition mode the runtime is
+  # allowed to declare. Mirrors `NativeAgentCompositionKind.wireValue`
+  # in `runtime-core/src/main/kotlin/skillbill/nativeagent/NativeAgentSource.kt`.
+  # Strings are quoted to dodge SnakeYAML's YAML 1.1 boolean coercion
+  # (e.g. an unquoted `on`/`off`/`yes`/`no` would parse as a boolean).
+  composeKind:
+    type: string
+    enum:
+      - "governed-content"
+  # The pinned `contract_version` literal. Optional on every native-agent
+  # source — when present, the runtime pins it to this exact value.
+  contractVersion:
+    type: string
+    minLength: 1
+    const: "0.1"
+    description: >
+      Optional pin: when an envelope sets `contract_version`, the value
+      MUST equal the runtime's
+      `NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION`. The parity test
+      keeps the two in lockstep.
+  # Shared shape for every native-agent entry: used both as a member of
+  # `agents[]` in the bundle envelope and as the inlined entry in the
+  # single-md frontmatter envelope. The body-vs-compose coherence rule
+  # is encoded via `anyOf` so an entry without a `compose` directive
+  # MUST carry a non-empty `body`.
+  agentEntry:
+    type: object
+    additionalProperties: false
+    required:
+      - name
+      - description
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: >
+          Lowercase kebab-case identifier. Matches the runtime's regex
+          and the filename convention `<name>.md` for single-md sources.
+      description:
+        type: string
+        minLength: 1
+        description: >
+          One-line description used by the desktop browser and by
+          downstream rendering. Empty descriptions are rejected.
+      compose:
+        $ref: "#/$defs/composeKind"
+      body:
+        type: string
+        description: >
+          Free-form markdown body. Required when `compose` is absent
+          (see the body-vs-compose anyOf below).
+    anyOf:
+      - required:
+          - body
+      - required:
+          - compose
+oneOf:
+  # Branch A — bundle envelope: `agents:` list at the top level.
+  - type: object
+    additionalProperties: false
+    required:
+      - agents
+    properties:
+      contract_version:
+        $ref: "#/$defs/contractVersion"
+      agents:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/agentEntry"
+  # Branch B — single-md envelope: a single agent entry inlined at the
+  # top level (with the optional `contract_version` key). Repeating the
+  # entry's `properties` rather than `$ref`-ing `agentEntry` lets us add
+  # the optional `contract_version` key while still pinning
+  # `additionalProperties: false`.
+  - type: object
+    additionalProperties: false
+    required:
+      - name
+      - description
+    properties:
+      contract_version:
+        $ref: "#/$defs/contractVersion"
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+      description:
+        type: string
+        minLength: 1
+      compose:
+        $ref: "#/$defs/composeKind"
+      body:
+        type: string
+    anyOf:
+      - required:
+          - body
+      - required:
+          - compose
+
+# ---------------------------------------------------------------------------
+# Coherence checks (enforced in Kotlin)
+# ---------------------------------------------------------------------------
+# These rules either cannot be expressed cleanly in JSON Schema or are
+# enforced by the parse seams before the source reaches the validator.
+# They are documented here so this file alone describes the full
+# contract.
+x-coherence-checks:
+  contract-version-parity:
+    description: >
+      `NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION` in Kotlin must equal
+      `$defs.contractVersion.const` in this file. Pinned by
+      `NativeAgentCompositionSchemaContractVersionTest`; the parity
+      test fails the build if they diverge.
+  body-or-compose-presence:
+    description: >
+      Every agent entry MUST carry either a non-empty `body` OR a
+      `compose` directive (or both). The schema encodes this via
+      `anyOf` on the entry, and the parse seams in
+      `NativeAgentBundle.kt` / `NativeAgentSource.kt` also enforce the
+      same rule with a `require` so the source-level message stays
+      caller-friendly.
+  filename-matches-name:
+    description: >
+      For the single-md envelope, the on-disk file name MUST be
+      `<name>.md` (matches the entry's `name`). Enforced by
+      `parseNativeAgentSource` in `NativeAgentSource.kt`; not expressible
+      in JSON Schema because the filename is not part of the document.
+  contract-version-optional-at-top:
+    description: >
+      Existing on-disk fixtures (e.g. `platform-packs/.../native-agents/agents.yaml`
+      and single-md frontmatter documents) carry no top-level
+      `contract_version` key. The schema deliberately keeps the key
+      OPTIONAL on every envelope; the `const` pins the value ONLY when
+      the key is present. This unblocks the runtime contract roll-out
+      without rewriting every fixture in lockstep.

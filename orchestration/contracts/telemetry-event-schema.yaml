@@ -1,0 +1,1146 @@
+# Telemetry event wire schema (canonical source of truth).
+#
+# This file describes the shape of every telemetry envelope the Skill
+# Bill runtime emits at its MCP tool seams (the `*_started/*_finished`,
+# `*_workflow_*`, and other invocation tools exposed by
+# `McpToolRegistry.toolNames`). It is authored in YAML for human
+# readability and consumed as a JSON Schema (Draft 2020-12) by the
+# Kotlin runtime (`TelemetryEventSchemaValidator` in `runtime-mcp`).
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines, for every event, its `event_name` (a const),
+#   the pinned `contract_version`, and the typed payload fields the
+#   event carries on the wire. The payload shape mirrors
+#   `McpToolRegistry.inputSchemas[<event>]` structurally —
+#   `TelemetryEventInputSchemaParityTest` walks every name in
+#   `McpToolRegistry.toolNames` and fails the build if the two ever
+#   diverge.
+# - Cross-field "coherence" rules that JSON Schema cannot express
+#   cleanly stay in Kotlin (`McpToolDispatcher` and surrounding parse
+#   seams). Every such rule is named below under
+#   `x-coherence-checks` so the schema document alone fully describes
+#   the contract.
+#
+# Discriminator strategy:
+#
+# - Top-level `oneOf` keyed by `event_name`. Each branch lives under
+#   `$defs/<eventCamelCaseName>Event` and pins `event_name` as a const,
+#   so a single envelope payload always selects exactly one branch.
+# - `discriminator.propertyName: event_name` gives validators a fast
+#   path to the matching branch and gives readers a clear hint about
+#   how the union is keyed. `oneOf` (not `anyOf`) because the branches
+#   are mutually exclusive — `event_name` is a const in each branch.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by `TELEMETRY_EVENT_CONTRACT_VERSION`
+#   in `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/TelemetryEventSchemaPaths.kt`.
+# - The parity test `TelemetryEventSchemaContractVersionTest` fails the
+#   build if they diverge. To bump the contract, edit BOTH constants in
+#   the same change.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/telemetry-event-schema.yaml"
+title: "Telemetry event wire payload"
+description: >
+  Schema for every telemetry event the Skill Bill runtime emits at its
+  MCP tool seams. Describes SHAPE only and never hard-codes
+  caller-specific identifiers (concrete session ids, repo paths, etc.).
+  New telemetry events ship as long as the wire envelope matches this
+  schema and the coherence checks below.
+type: object
+# Top-level shape is the discriminated union — every payload field lives
+# on the per-event branch under `$defs/<event>Event` (see `oneOf`
+# below). The branch sets `additionalProperties` (`false` for strict
+# events, `true` for open events), so declaring `additionalProperties`
+# here would double-reject every payload field after the branch already
+# validated it. We pin the envelope keys (`event_name`,
+# `contract_version`) on the branch itself instead — every branch
+# re-states both as consts so each branch is self-contained when read
+# in isolation.
+required:
+  - event_name
+  - contract_version
+properties:
+  event_name:
+    type: string
+    minLength: 1
+    description: >
+      Discriminator for the per-event branch under `oneOf`. Pinned per
+      branch as a const; every value MUST appear in
+      `McpToolRegistry.toolNames`.
+  contract_version:
+    type: string
+    const: "1.0.0"
+    description: >
+      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.0.0").
+      The parity test `TelemetryEventSchemaContractVersionTest` keeps
+      the two in lockstep.
+
+discriminator:
+  propertyName: event_name
+
+# Per-event branch table. Each branch under `$defs/<event>Event`:
+# - pins `event_name` as a const (matching the `McpToolRegistry.toolNames` value).
+# - re-states `contract_version` as a const so the branch is
+#   self-contained when a tool reads a single branch in isolation.
+# - declares the payload fields that mirror
+#   `McpToolRegistry.inputSchemas[<event>]`. Events without an explicit
+#   `inputSchemas` entry fall through to `McpToolSpec.openObjectSchema()`
+#   in Kotlin (`{type: object, additionalProperties: true}`); the
+#   corresponding branch here is an open-object envelope with
+#   `additionalProperties: true` and no extra `properties`. The parity
+#   test asserts that open-object shape so future code that adds a
+#   strict `inputSchemas` entry without authoring the YAML branch fails
+#   loudly.
+oneOf:
+  - $ref: "#/$defs/doctorEvent"
+  - $ref: "#/$defs/featureImplementFinishedEvent"
+  - $ref: "#/$defs/featureImplementStatsEvent"
+  - $ref: "#/$defs/featureImplementStartedEvent"
+  - $ref: "#/$defs/featureImplementWorkflowGetEvent"
+  - $ref: "#/$defs/featureImplementWorkflowLatestEvent"
+  - $ref: "#/$defs/featureImplementWorkflowListEvent"
+  - $ref: "#/$defs/featureImplementWorkflowContinueEvent"
+  - $ref: "#/$defs/featureImplementWorkflowOpenEvent"
+  - $ref: "#/$defs/featureImplementWorkflowResumeEvent"
+  - $ref: "#/$defs/featureImplementWorkflowUpdateEvent"
+  - $ref: "#/$defs/featureVerifyFinishedEvent"
+  - $ref: "#/$defs/featureVerifyStatsEvent"
+  - $ref: "#/$defs/featureVerifyStartedEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowGetEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowLatestEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowListEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowContinueEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowOpenEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowResumeEvent"
+  - $ref: "#/$defs/featureVerifyWorkflowUpdateEvent"
+  - $ref: "#/$defs/importReviewEvent"
+  - $ref: "#/$defs/newSkillScaffoldEvent"
+  - $ref: "#/$defs/prDescriptionGeneratedEvent"
+  - $ref: "#/$defs/qualityCheckFinishedEvent"
+  - $ref: "#/$defs/qualityCheckStartedEvent"
+  - $ref: "#/$defs/readianAuthStatusEvent"
+  - $ref: "#/$defs/readianGetArticleEvent"
+  - $ref: "#/$defs/readianGetArticlesForTopicQueryEvent"
+  - $ref: "#/$defs/readianGetSpotlightEvent"
+  - $ref: "#/$defs/readianMarkStoryStatusEvent"
+  - $ref: "#/$defs/readianSaveCandidateEvent"
+  - $ref: "#/$defs/resolveLearningsEvent"
+  - $ref: "#/$defs/reviewStatsEvent"
+  - $ref: "#/$defs/telemetryProxyCapabilitiesEvent"
+  - $ref: "#/$defs/telemetryRemoteStatsEvent"
+  - $ref: "#/$defs/triageFindingsEvent"
+
+$defs:
+  # ---------------------------------------------------------------------
+  # Shared enum/shape table. Mirrors
+  # `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/McpInputSchemas.kt`.
+  # ---------------------------------------------------------------------
+  historySignalEnum:
+    type: string
+    enum:
+      - "none"
+      - irrelevant
+      - low
+      - medium
+      - high
+  qualityCheckScopeEnum:
+    type: string
+    enum:
+      - files
+      - working_tree
+      - branch_diff
+      - repo
+  specInputTypeEnum:
+    type: string
+    enum:
+      - raw_text
+      - pdf
+      - markdown_file
+      - image
+      - directory
+  workflowImplementStatusEnum:
+    type: string
+    enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - abandoned
+      - blocked
+  workflowVerifyStatusEnum:
+    type: string
+    enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - abandoned
+  workflowImplementStepIdEnum:
+    type: string
+    enum:
+      - assess
+      - create_branch
+      - preplan
+      - plan
+      - implement
+      - review
+      - audit
+      - validate
+      - write_history
+      - commit_push
+      - pr_description
+      - finish
+  workflowVerifyStepIdEnum:
+    type: string
+    enum:
+      - collect_inputs
+      - extract_criteria
+      - gather_diff
+      - feature_flag_audit
+      - code_review
+      - completeness_audit
+      - verdict
+      - finish
+  workflowStepStatusEnum:
+    type: string
+    enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - blocked
+      - skipped
+  freeObjectShape:
+    type: object
+  emptyObjectShape:
+    type: object
+    additionalProperties: false
+    properties: {}
+    required: []
+  stepUpdateImplementShape:
+    type: object
+    additionalProperties: false
+    required:
+      - step_id
+      - status
+      - attempt_count
+    properties:
+      step_id:
+        $ref: "#/$defs/workflowImplementStepIdEnum"
+      status:
+        $ref: "#/$defs/workflowStepStatusEnum"
+      attempt_count:
+        type: integer
+  stepUpdateVerifyShape:
+    type: object
+    additionalProperties: false
+    required:
+      - step_id
+      - status
+      - attempt_count
+    properties:
+      step_id:
+        $ref: "#/$defs/workflowVerifyStepIdEnum"
+      status:
+        $ref: "#/$defs/workflowStepStatusEnum"
+      attempt_count:
+        type: integer
+
+  # ---------------------------------------------------------------------
+  # Per-event branches.
+  #
+  # Convention: each branch fixes `event_name` as a const and
+  # `contract_version` as a const. Branches whose payload mirrors a
+  # strict `inputSchemas` entry declare `additionalProperties: false`;
+  # branches that mirror the runtime's `openObjectSchema()` fallback
+  # declare `additionalProperties: true` with no extra `properties`.
+  # `TelemetryEventInputSchemaParityTest` enforces both halves.
+  # ---------------------------------------------------------------------
+
+  # --- Open-object branches (no `inputSchemas` entry on the Kotlin side) ---
+
+  doctorEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: doctor
+      contract_version:
+        const: "1.0.0"
+
+  featureImplementStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_implement_stats
+      contract_version:
+        const: "1.0.0"
+
+  featureVerifyStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_verify_stats
+      contract_version:
+        const: "1.0.0"
+
+  readianAuthStatusEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: readian_auth_status
+      contract_version:
+        const: "1.0.0"
+
+  reviewStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: review_stats
+      contract_version:
+        const: "1.0.0"
+
+  telemetryProxyCapabilitiesEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: telemetry_proxy_capabilities
+      contract_version:
+        const: "1.0.0"
+
+  telemetryRemoteStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: telemetry_remote_stats
+      contract_version:
+        const: "1.0.0"
+
+  # --- Strict branches (mirror `inputSchemas` entries verbatim) ---
+
+  featureImplementStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - feature_size
+      - acceptance_criteria_count
+      - open_questions_count
+      - spec_input_types
+      - spec_word_count
+      - rollout_needed
+      - feature_name
+      - issue_key
+      - spec_summary
+    properties:
+      event_name:
+        const: feature_implement_started
+      contract_version:
+        const: "1.0.0"
+      feature_size:
+        type: string
+        enum:
+          - SMALL
+          - MEDIUM
+          - LARGE
+      acceptance_criteria_count:
+        type: integer
+      open_questions_count:
+        type: integer
+      spec_input_types:
+        type: array
+        items:
+          $ref: "#/$defs/specInputTypeEnum"
+      spec_word_count:
+        type: integer
+      rollout_needed:
+        type: boolean
+      feature_name:
+        type: string
+      issue_key:
+        type: string
+      issue_key_type:
+        type: string
+        enum:
+          - jira
+          - linear
+          - github
+          - other
+          - "none"
+      spec_summary:
+        type: string
+
+  featureImplementFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - session_id
+      - completion_status
+      - plan_correction_count
+      - plan_task_count
+      - plan_phase_count
+      - feature_flag_used
+      - files_created
+      - files_modified
+      - tasks_completed
+      - review_iterations
+      - audit_result
+      - audit_iterations
+      - validation_result
+      - boundary_history_written
+      - pr_created
+      - plan_deviation_notes
+    properties:
+      event_name:
+        const: feature_implement_finished
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      completion_status:
+        type: string
+        enum:
+          - completed
+          - abandoned_at_planning
+          - abandoned_at_implementation
+          - abandoned_at_review
+          - error
+      plan_correction_count:
+        type: integer
+      plan_task_count:
+        type: integer
+      plan_phase_count:
+        type: integer
+      feature_flag_used:
+        type: boolean
+      files_created:
+        type: integer
+      files_modified:
+        type: integer
+      tasks_completed:
+        type: integer
+      review_iterations:
+        type: integer
+      audit_result:
+        type: string
+        enum:
+          - all_pass
+          - had_gaps
+          - skipped
+      audit_iterations:
+        type: integer
+      validation_result:
+        type: string
+        enum:
+          - pass
+          - fail
+          - skipped
+      boundary_history_written:
+        type: boolean
+      pr_created:
+        type: boolean
+      feature_flag_pattern:
+        type: string
+        enum:
+          - simple_conditional
+          - di_switch
+          - legacy
+          - "none"
+      boundary_history_value:
+        type: string
+        enum:
+          - "none"
+          - irrelevant
+          - low
+          - medium
+          - high
+      plan_deviation_notes:
+        type: string
+      child_steps:
+        type: array
+        items:
+          $ref: "#/$defs/freeObjectShape"
+
+  featureImplementWorkflowContinueEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_implement_workflow_continue
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureImplementWorkflowGetEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_implement_workflow_get
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureImplementWorkflowLatestEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_implement_workflow_latest
+      contract_version:
+        const: "1.0.0"
+
+  featureImplementWorkflowListEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_implement_workflow_list
+      contract_version:
+        const: "1.0.0"
+      limit:
+        type: integer
+
+  featureImplementWorkflowOpenEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_implement_workflow_open
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      current_step_id:
+        type: string
+
+  featureImplementWorkflowResumeEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_implement_workflow_resume
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureImplementWorkflowUpdateEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - workflow_status
+      - current_step_id
+    properties:
+      event_name:
+        const: feature_implement_workflow_update
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+      workflow_status:
+        $ref: "#/$defs/workflowImplementStatusEnum"
+      current_step_id:
+        $ref: "#/$defs/workflowImplementStepIdEnum"
+      step_updates:
+        type: array
+        items:
+          $ref: "#/$defs/stepUpdateImplementShape"
+      artifacts_patch:
+        $ref: "#/$defs/freeObjectShape"
+      session_id:
+        type: string
+
+  featureVerifyStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - acceptance_criteria_count
+      - rollout_relevant
+      - spec_summary
+    properties:
+      event_name:
+        const: feature_verify_started
+      contract_version:
+        const: "1.0.0"
+      acceptance_criteria_count:
+        type: integer
+      rollout_relevant:
+        type: boolean
+      spec_summary:
+        type: string
+      orchestrated:
+        type: boolean
+
+  featureVerifyFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - feature_flag_audit_performed
+      - review_iterations
+      - audit_result
+      - completion_status
+      - session_id
+      - gaps_found
+      - orchestrated
+      - acceptance_criteria_count
+      - rollout_relevant
+      - spec_summary
+      - duration_seconds
+    properties:
+      event_name:
+        const: feature_verify_finished
+      contract_version:
+        const: "1.0.0"
+      feature_flag_audit_performed:
+        type: boolean
+      review_iterations:
+        type: integer
+      audit_result:
+        type: string
+        enum:
+          - all_pass
+          - had_gaps
+          - skipped
+      completion_status:
+        type: string
+        enum:
+          - completed
+          - abandoned_at_review
+          - abandoned_at_audit
+          - error
+      history_relevance:
+        $ref: "#/$defs/historySignalEnum"
+      history_helpfulness:
+        $ref: "#/$defs/historySignalEnum"
+      session_id:
+        type: string
+      gaps_found:
+        type: array
+        items:
+          type: string
+      orchestrated:
+        type: boolean
+      acceptance_criteria_count:
+        type: integer
+      rollout_relevant:
+        type: boolean
+      spec_summary:
+        type: string
+      duration_seconds:
+        type: integer
+
+  featureVerifyWorkflowContinueEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_verify_workflow_continue
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureVerifyWorkflowGetEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_verify_workflow_get
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureVerifyWorkflowLatestEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_verify_workflow_latest
+      contract_version:
+        const: "1.0.0"
+
+  featureVerifyWorkflowListEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_verify_workflow_list
+      contract_version:
+        const: "1.0.0"
+      limit:
+        type: integer
+
+  featureVerifyWorkflowOpenEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_verify_workflow_open
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      current_step_id:
+        type: string
+
+  featureVerifyWorkflowResumeEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_verify_workflow_resume
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureVerifyWorkflowUpdateEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - workflow_status
+      - current_step_id
+    properties:
+      event_name:
+        const: feature_verify_workflow_update
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+      workflow_status:
+        $ref: "#/$defs/workflowVerifyStatusEnum"
+      current_step_id:
+        $ref: "#/$defs/workflowVerifyStepIdEnum"
+      step_updates:
+        type: array
+        items:
+          $ref: "#/$defs/stepUpdateVerifyShape"
+      artifacts_patch:
+        $ref: "#/$defs/freeObjectShape"
+      session_id:
+        type: string
+
+  importReviewEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - review_text
+    properties:
+      event_name:
+        const: import_review
+      contract_version:
+        const: "1.0.0"
+      review_text:
+        type: string
+      orchestrated:
+        type: boolean
+
+  newSkillScaffoldEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - payload
+    properties:
+      event_name:
+        const: new_skill_scaffold
+      contract_version:
+        const: "1.0.0"
+      payload:
+        $ref: "#/$defs/freeObjectShape"
+      dry_run:
+        type: boolean
+      orchestrated:
+        type: boolean
+
+  prDescriptionGeneratedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - commit_count
+      - files_changed_count
+      - was_edited_by_user
+      - pr_created
+      - pr_title
+      - orchestrated
+    properties:
+      event_name:
+        const: pr_description_generated
+      contract_version:
+        const: "1.0.0"
+      commit_count:
+        type: integer
+      files_changed_count:
+        type: integer
+      was_edited_by_user:
+        type: boolean
+      pr_created:
+        type: boolean
+      pr_title:
+        type: string
+      orchestrated:
+        type: boolean
+
+  qualityCheckFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - final_failure_count
+      - iterations
+      - result
+      - session_id
+      - failing_check_names
+      - unsupported_reason
+      - orchestrated
+      - routed_skill
+      - detected_stack
+      - scope_type
+      - initial_failure_count
+      - duration_seconds
+    properties:
+      event_name:
+        const: quality_check_finished
+      contract_version:
+        const: "1.0.0"
+      final_failure_count:
+        type: integer
+      iterations:
+        type: integer
+      result:
+        type: string
+        enum:
+          - pass
+          - fail
+          - skipped
+          - unsupported_stack
+      session_id:
+        type: string
+      failing_check_names:
+        type: array
+        items:
+          type: string
+      unsupported_reason:
+        type: string
+      orchestrated:
+        type: boolean
+      routed_skill:
+        type: string
+      detected_stack:
+        type: string
+      scope_type:
+        $ref: "#/$defs/qualityCheckScopeEnum"
+      initial_failure_count:
+        type: integer
+      duration_seconds:
+        type: integer
+
+  qualityCheckStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - routed_skill
+      - detected_stack
+      - scope_type
+      - initial_failure_count
+      - orchestrated
+    properties:
+      event_name:
+        const: quality_check_started
+      contract_version:
+        const: "1.0.0"
+      routed_skill:
+        type: string
+      detected_stack:
+        type: string
+      scope_type:
+        $ref: "#/$defs/qualityCheckScopeEnum"
+      initial_failure_count:
+        type: integer
+      orchestrated:
+        type: boolean
+
+  resolveLearningsEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: resolve_learnings
+      contract_version:
+        const: "1.0.0"
+      repo:
+        type: string
+      skill:
+        type: string
+      review_session_id:
+        type: string
+
+  triageFindingsEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - review_run_id
+      - decisions
+    properties:
+      event_name:
+        const: triage_findings
+      contract_version:
+        const: "1.0.0"
+      review_run_id:
+        type: string
+      decisions:
+        type: array
+        items:
+          type: string
+      orchestrated:
+        type: boolean
+
+  # --- Readian passthrough branches (additionalProperties: true to
+  # mirror the `passthroughObjectSchema` helper). ---
+
+  readianGetArticleEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+      - article_id
+    properties:
+      event_name:
+        const: readian_get_article
+      contract_version:
+        const: "1.0.0"
+      article_id:
+        type: string
+
+  readianGetArticlesForTopicQueryEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+      - topic_query
+    properties:
+      event_name:
+        const: readian_get_articles_for_topic_query
+      contract_version:
+        const: "1.0.0"
+      topic_query:
+        type: string
+      date:
+        type: string
+      start_date:
+        type: string
+      end_date:
+        type: string
+      subscribed_only:
+        type: boolean
+      limit:
+        type: integer
+
+  readianGetSpotlightEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: readian_get_spotlight
+      contract_version:
+        const: "1.0.0"
+      date:
+        type: string
+      limit:
+        type: integer
+
+  readianSaveCandidateEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+      - candidate_id
+    properties:
+      event_name:
+        const: readian_save_candidate
+      contract_version:
+        const: "1.0.0"
+      candidate_id:
+        type: string
+      notes:
+        type: string
+
+  readianMarkStoryStatusEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+      - story_id
+      - status
+    properties:
+      event_name:
+        const: readian_mark_story_status
+      contract_version:
+        const: "1.0.0"
+      story_id:
+        type: string
+      status:
+        type: string
+
+# ---------------------------------------------------------------------------
+# Coherence checks (enforced in Kotlin)
+# ---------------------------------------------------------------------------
+# These rules either cannot be expressed cleanly in JSON Schema or are
+# enforced by the runtime before the payload reaches the parse seam.
+# They are documented here so this file alone describes the full
+# contract.
+x-coherence-checks:
+  discriminator-strategy:
+    description: >
+      Top-level `oneOf` keyed by `event_name`; each branch lives under
+      `$defs/<eventCamelCaseName>Event` and pins `event_name` and
+      `contract_version` as consts. `discriminator.propertyName=event_name`
+      gives validators a fast path to the correct branch and gives
+      readers a clear hint about how the union is keyed. `oneOf` (not
+      `anyOf`) because the branches are mutually exclusive.
+  contract-version-parity:
+    description: >
+      `TELEMETRY_EVENT_CONTRACT_VERSION` in Kotlin must equal
+      `properties.contract_version.const` AND every branch's
+      `contract_version.const`. Pinned by
+      `TelemetryEventSchemaContractVersionTest`; the parity test fails
+      the build if they diverge.
+  toolnames-membership:
+    description: >
+      Every `$defs.<branch>.properties.event_name.const` MUST appear in
+      `McpToolRegistry.toolNames` AND vice versa. Pinned by
+      `TelemetryEventInputSchemaParityTest`, which walks the toolNames
+      list and verifies both directions, so adding a new event name in
+      Kotlin without authoring the YAML branch (or vice versa) fails
+      the build.
+  inputschemas-structural-parity:
+    description: >
+      For every event with an entry in `McpToolRegistry.inputSchemas`,
+      the corresponding `$defs.<event>` branch MUST be structurally
+      equivalent — same required keys, same property shapes, same
+      `additionalProperties` flag. Events without an `inputSchemas`
+      entry fall through to `McpToolSpec.openObjectSchema()` in Kotlin,
+      and the YAML branch declares `additionalProperties: true` with
+      no extra properties. Both directions enforced by
+      `TelemetryEventInputSchemaParityTest`.
+  argument-shape-failures-surface:
+    description: >
+      Argument-shape failures from BOTH parse seams — the strict-args
+      gate in `McpStdioServer.callToolResult` (unknown / additional
+      property at the JSON-RPC `arguments` map) AND the schema
+      validator in `McpToolDispatcher.call` (missing required, enum
+      mismatch, type mismatch, oneOf/discriminator mismatch) — surface
+      uniformly as MCP `isError=true` responses. Transport-level
+      JSON-RPC errors (codes such as `-32700`, `-32601`) are reserved
+      for protocol violations only (unparseable line, unknown method).
+      Clients therefore handle a single transport shape for every
+      "request is structurally invalid for the named tool" fault.
+      Pinned by `McpStdioArgumentShapeUnifiedContractTest`.

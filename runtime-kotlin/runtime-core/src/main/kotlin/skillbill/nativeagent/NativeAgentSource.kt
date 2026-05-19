@@ -1,5 +1,7 @@
 package skillbill.nativeagent
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -50,7 +52,8 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   require(end >= 0) {
     "$label: native agent source frontmatter must close with ---"
   }
-  val frontmatter = parseSimpleFrontmatter(normalized.substring(FRONTMATTER_OPEN_LENGTH, end), label)
+  val frontmatterBlock = normalized.substring(FRONTMATTER_OPEN_LENGTH, end)
+  val frontmatter = parseSimpleFrontmatter(frontmatterBlock, label)
   val name = frontmatter["name"].orEmpty()
   val description = frontmatter["description"].orEmpty()
   val composition = parseCompositionDirective(frontmatter["compose"], label)
@@ -64,6 +67,25 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   require(body.isNotBlank() || composition != null) {
     "$label: native agent body is required"
   }
+  // SKILL-48 Subtask 2c: validate the frontmatter against the
+  // canonical schema as a defense-in-depth backstop AFTER the manual
+  // require checks. We build a JsonNode directly from the parsed
+  // frontmatter values (instead of re-serializing to YAML and feeding
+  // it through a generic YAML parser) so descriptions that contain
+  // ambiguous YAML punctuation — colons, brackets, leading reserved
+  // characters — validate correctly. The schema enforces the
+  // body-or-compose anyOf rule on the single-md envelope just like
+  // the bundle envelope, while the manual checks preserve their
+  // caller-friendly source-level messages.
+  val instance: ObjectNode = JsonNodeFactory.instance.objectNode()
+  frontmatter["name"]?.let { instance.put("name", it) }
+  frontmatter["description"]?.let { instance.put("description", it) }
+  frontmatter["compose"]?.let { instance.put("compose", it) }
+  frontmatter["contract_version"]?.let { instance.put("contract_version", it) }
+  if (body.isNotBlank()) {
+    instance.put("body", body)
+  }
+  NativeAgentCompositionSchemaValidator.validateParsedNode(instance, label)
   return NativeAgentSource(name = name, description = description, body = body, composition = composition)
 }
 
@@ -91,7 +113,11 @@ private fun parseSimpleFrontmatter(raw: String, label: String): Map<String, Stri
     }
     val key = line.substring(0, separator).trim()
     val value = decodeYamlScalar(line.substring(separator + 1).trimStart(), label)
-    require(key in setOf("name", "description", "compose")) {
+    // SKILL-48 Subtask 2c: allow an optional top-level `contract_version`
+    // key (the canonical schema keeps it optional; on-disk fixtures may
+    // omit it). Future writes that include the pin must not be rejected
+    // by the parser.
+    require(key in setOf("name", "description", "compose", "contract_version")) {
       "$label: unsupported native agent frontmatter key '$key'"
     }
     parsed[key] = value

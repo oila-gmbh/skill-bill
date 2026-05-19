@@ -43,12 +43,18 @@ class FeatureVerifyWorkflowRuntimeTest {
 
   @Test
   fun `verify continuation preserves artifact order and directives`() {
+    // SKILL-48 Subtask 2a: `bill-feature-verify` does NOT carry a `blocked`
+    // workflow_status (only `bill-feature-implement` does), so this scenario
+    // uses workflow_status="running" with a step that has reached the
+    // `blocked` step-status. continueDecision reopens the blocked step the
+    // same way regardless of whether the surrounding workflow is `running`
+    // or terminal.
     val record =
       WorkflowEngine.updateRecord(
         definition,
         WorkflowEngine.openRecord(definition, "wfv-001", "fvr-001", "code_review"),
         WorkflowUpdateInput(
-          workflowStatus = "blocked",
+          workflowStatus = "running",
           currentStepId = "verdict",
           stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
           artifactsPatch =

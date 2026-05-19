@@ -32,7 +32,15 @@ description: >
   specific platform slug (e.g. `kotlin`, `kmp`). New packs can ship as long
   as their manifest matches this schema and the coherence checks below.
 type: object
-additionalProperties: false
+# SKILL-48 Subtask 3 (per-repo customization): the top-level mapping intentionally allows
+# unknown keys so repo authors can extend `platform.yaml` with fork-specific fields without
+# patching this canonical schema. Every key that the Skill Bill runtime reads is marked
+# `x-runtime-anchored: true` below; the bijection test
+# `PlatformPackSchemaAnchoredBijectionTest` asserts schema↔Kotlin parity. Non-anchored
+# top-level fields flow verbatim into `PlatformManifest.customFields: Map<String, Any?>`.
+# Nested objects (`routing_signals`, `declared_files`, `area_metadata.<area>`,
+# `$defs.codeReviewArea`, etc.) remain strict (`additionalProperties: false`).
+additionalProperties: true
 # Single source of truth for approved code-review area slugs. Every reference
 # below points at `$defs.codeReviewArea` so the enum is declared exactly once
 # in this file; the Kotlin parity test
@@ -61,6 +69,7 @@ properties:
   platform:
     type: string
     minLength: 1
+    x-runtime-anchored: true
     description: >
       Slug of the platform pack. Must equal the parent directory name
       (`platform-packs/<slug>/`). Coherence: see `slug-parity` below.
@@ -68,6 +77,7 @@ properties:
     type: string
     minLength: 1
     const: "1.1"
+    x-runtime-anchored: true
     description: >
       Pinned to `SHELL_CONTRACT_VERSION` (currently 1.1). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
@@ -77,13 +87,16 @@ properties:
   display_name:
     type: string
     minLength: 1
+    x-runtime-anchored: true
     description: Optional human-readable label used by the UI catalog.
   notes:
     type: string
+    x-runtime-anchored: true
     description: Optional free-form authoring notes.
   routing_signals:
     type: object
     additionalProperties: false
+    x-runtime-anchored: true
     required:
       - strong
     properties:
@@ -106,6 +119,8 @@ properties:
           strong signal.
   declared_code_review_areas:
     type: array
+    uniqueItems: true
+    x-runtime-anchored: true
     items:
       $ref: "#/$defs/codeReviewArea"
     description: >
@@ -117,6 +132,7 @@ properties:
   declared_files:
     type: object
     additionalProperties: false
+    x-runtime-anchored: true
     description: >
       Authored governed-content paths. Optional in full: a pack with no
       code-review feature may omit the block entirely.
@@ -144,6 +160,7 @@ properties:
           coherence check) and values must end in `content.md`.
   area_metadata:
     type: object
+    x-runtime-anchored: true
     additionalProperties:
       type: object
       additionalProperties: false
@@ -165,11 +182,13 @@ properties:
     type: string
     minLength: 1
     pattern: "(^|/)content\\.md$"
+    x-runtime-anchored: true
     description: >
       Optional pack-relative path to the quality-check specialist's
       `content.md`. Must end in `content.md` when present.
   pointers:
     type: object
+    x-runtime-anchored: true
     additionalProperties:
       type: array
       items:

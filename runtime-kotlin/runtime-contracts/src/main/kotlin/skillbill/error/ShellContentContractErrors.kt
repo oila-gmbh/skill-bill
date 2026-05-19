@@ -15,6 +15,85 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+/**
+ * SKILL-48 Subtask 2a: surfaced when a `WorkflowStateSnapshot` fails the
+ * canonical `orchestration/contracts/workflow-state-schema.yaml` Draft
+ * 2020-12 schema. The message carries the dotted field path of the first
+ * offending value so callers and tests can pinpoint the regression
+ * without parsing raw networknt validator output. Mirrors
+ * [InvalidManifestSchemaError]; the dedicated subclass keeps workflow
+ * parse-seam failures distinguishable from platform-pack manifest
+ * failures in logs and tests.
+ */
+class InvalidWorkflowStateSchemaError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+/**
+ * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
+ * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft
+ * 2020-12 schema. The composed message carries the dotted field path of
+ * the first offending value so callers and tests can pinpoint the
+ * regression without parsing raw networknt validator output. Mirrors
+ * [InvalidWorkflowStateSchemaError]; the dedicated subclass keeps
+ * install-plan parse-seam failures distinguishable from workflow-state
+ * and platform-pack failures in logs and tests.
+ */
+class InvalidInstallPlanSchemaError(
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install plan fails schema validation at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-48 Subtask 2c: surfaced when a native-agent composition source
+ * fails the canonical
+ * `orchestration/contracts/native-agent-composition-schema.yaml` Draft
+ * 2020-12 schema. The composed message carries the source label (the
+ * on-disk path or another caller-supplied identifier) and the
+ * collected violation messages so callers and tests can pinpoint the
+ * regression without parsing raw networknt validator output. Mirrors
+ * [InvalidInstallPlanSchemaError]; the dedicated subclass keeps
+ * native-agent parse-seam failures distinguishable from install-plan,
+ * workflow-state, and platform-pack failures in logs and tests.
+ */
+class InvalidNativeAgentCompositionSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Native agent composition source '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
+ * SKILL-48 Subtask 2d: surfaced when a telemetry event envelope fails
+ * the canonical `orchestration/contracts/telemetry-event-schema.yaml`
+ * Draft 2020-12 schema. The composed message carries the dotted
+ * `fieldPath` of the first offending value AND the offending
+ * `eventName` (nullable: unknown-event-name violations may report a
+ * null name) so callers and tests can grep telemetry parse-seam
+ * regressions by event name without parsing raw networknt validator
+ * output. Mirrors [InvalidInstallPlanSchemaError]; the dedicated
+ * subclass keeps telemetry parse-seam failures distinguishable from
+ * install-plan, workflow-state, native-agent composition, and
+ * platform-pack failures in logs and tests.
+ */
+class InvalidTelemetryEventSchemaError(
+  val fieldPath: String,
+  val eventName: String?,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Telemetry event '${eventName ?: "<unknown>"}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class ContractVersionMismatchError(
   message: String,
   cause: Throwable? = null,

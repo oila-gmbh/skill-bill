@@ -2,6 +2,7 @@ package skillbill.cli
 
 import skillbill.contracts.JsonSupport
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -30,7 +31,18 @@ class RemoveCliCommandTest {
 
     val context = CliRuntimeContext(userHome = tempDir)
     val result = CliRuntime.run(
-      listOf("remove", "skill:bill-foo", "--repo-root", tempDir.toString(), "--dry-run", "--format", "json"),
+      // SKILL-49: `bill-*` skills are the product surface; the maintainer CLI still allows
+      // removal via `--allow-shipped` (same shape as `kotlin` / `kmp`).
+      listOf(
+        "remove",
+        "skill:bill-foo",
+        "--repo-root",
+        tempDir.toString(),
+        "--allow-shipped",
+        "--dry-run",
+        "--format",
+        "json",
+      ),
       context,
     )
     assertEquals(0, result.exitCode, result.stdout)
@@ -68,6 +80,30 @@ class RemoveCliCommandTest {
   }
 
   @Test
+  fun `remove refuses bill-prefixed horizontal product skill without --allow-shipped`() {
+    // SKILL-49: `bill-*` horizontal skills are product surfaces. The desktop UI hides the
+    // Delete affordance via `isBuiltInName`; this test pins the matching CLI refusal so the
+    // domain `enforceRefusalPolicy` predicate is the load-bearing rule on every surface.
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-bill")
+    val context = CliRuntimeContext(userHome = tempDir)
+    val result = CliRuntime.run(
+      listOf(
+        "remove",
+        "skill:bill-code-review",
+        "--repo-root",
+        tempDir.toString(),
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+    assertEquals(1, result.exitCode)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("error", payload["status"].toString().trim('"'))
+  }
+
+  @Test
   fun `remove refuses kotlin without --allow-shipped`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin")
     val context = CliRuntimeContext(userHome = tempDir)
@@ -76,6 +112,62 @@ class RemoveCliCommandTest {
       context,
     )
     assertEquals(1, result.exitCode)
+  }
+
+  @Test
+  fun `remove platform kotlin succeeds without --allow-shipped`() {
+    // SKILL-49: platform packs are the user-extension surface; shipped first-party packs
+    // (`kotlin`, `kmp`) are user-removable from the CLI without `--allow-shipped`. The `skill:`
+    // axis remains gated (the test below pins that for kotlin).
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-kotlin")
+    Files.createDirectories(tempDir.resolve("platform-packs/kotlin"))
+    Files.createDirectories(tempDir.resolve("skills/kotlin"))
+    val context = CliRuntimeContext(userHome = tempDir)
+    val result = CliRuntime.run(
+      listOf(
+        "remove",
+        "platform:kotlin",
+        "--repo-root",
+        tempDir.toString(),
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("preview", payload["status"].toString().trim('"'))
+  }
+
+  @Test
+  fun `remove platform deletes the platform pack folder`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-delete")
+    val platformPackRoot = tempDir.resolve("platform-packs/example")
+    val pairedPreShellRoot = tempDir.resolve("skills/example")
+    Files.createDirectories(platformPackRoot.resolve("code-review/bill-example-code-review"))
+    Files.createDirectories(pairedPreShellRoot)
+    Files.writeString(platformPackRoot.resolve("code-review/bill-example-code-review/content.md"), "# example\n")
+    Files.writeString(pairedPreShellRoot.resolve("content.md"), "# example\n")
+    val context = CliRuntimeContext(userHome = tempDir)
+
+    val result = CliRuntime.run(
+      listOf(
+        "remove",
+        "platform:example",
+        "--repo-root",
+        tempDir.toString(),
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("ok", payload["status"].toString().trim('"'))
+    assertTrue(!Files.exists(platformPackRoot, LinkOption.NOFOLLOW_LINKS), "platform pack folder should be deleted")
+    assertTrue(!Files.exists(pairedPreShellRoot, LinkOption.NOFOLLOW_LINKS), "paired pre-shell folder should be deleted")
   }
 
   @Test

@@ -219,8 +219,14 @@ class McpRuntimeTest {
         "feature_implement_started",
         mapOf(
           "feature_size" to "SMALL",
+          "acceptance_criteria_count" to 1,
+          "open_questions_count" to 0,
+          "spec_input_types" to listOf("raw_text"),
+          "spec_word_count" to 100,
+          "rollout_needed" to false,
           "feature_name" to "read-path-config-variant-resolution",
           "issue_key" to "SKILL-32",
+          "spec_summary" to "summary",
         ),
         context,
       )

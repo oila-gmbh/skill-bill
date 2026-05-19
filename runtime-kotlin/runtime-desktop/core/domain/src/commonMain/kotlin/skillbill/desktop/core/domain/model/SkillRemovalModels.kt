@@ -19,7 +19,32 @@ sealed class DesktopSkillRemovalTarget {
      */
     val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared", "kotlin", "kmp")
 
-    fun isBuiltInName(name: String): Boolean = name in BUILT_IN_NAMES
+    /**
+     * SKILL-49: horizontal product skills (`bill-code-review`, `bill-feature-implement`, ...) are
+     * the runtime's own surfaces and never deletable from the desktop tree. Mirrors
+     * `skillbill.domain.skillremove.model.SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX`.
+     */
+    const val HORIZONTAL_PRODUCT_PREFIX: String = "bill-"
+
+    /**
+     * SKILL-49: protection for the HORIZONTAL-skill axis. Mirrors
+     * `skillbill.domain.skillremove.model.SkillRemovalTarget.isProtectedHorizontalName`.
+     */
+    fun isProtectedHorizontalName(name: String): Boolean =
+      name in BUILT_IN_NAMES || name.startsWith(HORIZONTAL_PRODUCT_PREFIX)
+
+    /**
+     * SKILL-49: protection for the PLATFORM-PACK axis. Only `.bill-shared` is protected — shipped
+     * first-party packs (`kotlin`, `kmp`) are user-removable. Mirrors
+     * `skillbill.domain.skillremove.model.SkillRemovalTarget.isProtectedPlatformName`.
+     */
+    fun isProtectedPlatformName(name: String): Boolean = name == ".bill-shared"
+
+    /**
+     * Generic axis-agnostic predicate. For Delete-affordance gating prefer the axis-specific
+     * predicates above.
+     */
+    fun isBuiltInName(name: String): Boolean = name in BUILT_IN_NAMES || name.startsWith(HORIZONTAL_PRODUCT_PREFIX)
   }
 }
 

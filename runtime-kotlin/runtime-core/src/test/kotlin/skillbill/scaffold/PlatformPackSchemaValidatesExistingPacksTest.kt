@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -46,17 +47,4 @@ private fun loadCanonicalSchema(repoRoot: Path): JsonSchema {
   val jsonText = ObjectMapper().writeValueAsString(yaml)
   val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
   return factory.getSchema(jsonText)
-}
-
-private fun repoRootFromTest(): Path {
-  var current = Path.of("").toAbsolutePath().normalize()
-  while (current.parent != null) {
-    val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
-    val hasContracts = Files.isDirectory(current.resolve("orchestration/contracts"))
-    if (hasSettings && hasContracts) {
-      return current
-    }
-    current = current.parent
-  }
-  error("Could not locate skill-bill repo root from ${Path.of("").toAbsolutePath().normalize()}")
 }

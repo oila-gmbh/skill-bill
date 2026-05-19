@@ -6,13 +6,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 fun parseNativeAgentBundle(path: Path): List<NativeAgentSource> {
+  val yamlText = Files.readString(path)
   val raw = try {
-    Yaml().load<Any?>(Files.readString(path))
+    Yaml().load<Any?>(yamlText)
   } catch (error: YAMLException) {
     invalidBundle("$path: native agent bundle is not valid YAML: ${error.message}", error)
   }
   val root = raw as? Map<*, *> ?: invalidBundle("$path: native agent bundle must be a YAML mapping at the top level")
-  requireSupportedKeys(root.keys, setOf("agents")) { key ->
+  // SKILL-48 Subtask 2c: allow an optional top-level `contract_version`
+  // key (the schema keeps it optional; on-disk fixtures may omit it).
+  requireSupportedKeys(root.keys, setOf("agents", "contract_version")) { key ->
     "$path: unsupported native agent bundle key '$key'"
   }
   val agents = root["agents"] as? List<*>
@@ -20,9 +23,18 @@ fun parseNativeAgentBundle(path: Path): List<NativeAgentSource> {
   require(agents.isNotEmpty()) {
     "$path: native agent bundle field 'agents' must not be empty"
   }
-  return agents.mapIndexed { index, entry ->
+  val parsed = agents.mapIndexed { index, entry ->
     parseNativeAgentBundleEntry(path, index, entry)
   }
+  // SKILL-48 Subtask 2c: validate the raw YAML against the canonical
+  // schema as a defense-in-depth backstop AFTER the existing manual
+  // `require` checks. The source-level checks preserve their
+  // caller-friendly error messages (and their existing test contracts)
+  // while the schema layer catches any envelope drift the manual
+  // checks miss. The validator loud-fails via
+  // `InvalidNativeAgentCompositionSchemaError`.
+  NativeAgentCompositionSchemaValidator.validate(yamlText, path.toString())
+  return parsed
 }
 
 private fun parseNativeAgentBundleEntry(path: Path, index: Int, entry: Any?): NativeAgentSource {

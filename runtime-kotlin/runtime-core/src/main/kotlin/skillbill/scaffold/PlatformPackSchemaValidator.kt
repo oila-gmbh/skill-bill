@@ -29,8 +29,14 @@ internal interface PlatformPackSchemaValidator {
    * Validates the parsed YAML manifest against the canonical schema. On
    * any violation, throws [InvalidManifestSchemaError] whose message names
    * the offending field path so the failure surface stays loud and useful.
+   *
+   * SKILL-48 C2: callers MUST hand in an already-shape-checked top-level
+   * mapping. The `Map<String, Any?>` signature (vs the prior `Any?`) makes
+   * "is it a mapping?" a compile-time concern of the caller (`ShellContentLoader`
+   * already enforces this via `requireManifestMap`), so this method no longer
+   * carries dead defensive coercion.
    */
-  fun validate(parsedYaml: Any?, slug: String)
+  fun validate(parsedYaml: Map<String, Any?>, slug: String)
 }
 
 /**
@@ -38,18 +44,20 @@ internal interface PlatformPackSchemaValidator {
  * classpath first (populated at build time from
  * `orchestration/contracts/platform-pack-schema.yaml`); when running from
  * a tree that does not yet bundle the schema as a resource (early bootstrap),
- * it falls back to walking up from [repoRootHint] to find the canonical
- * file on disk. The compiled [JsonSchema] is cached across calls.
+ * it falls back to walking up from the JVM working directory to find the
+ * canonical file on disk. The compiled [JsonSchema] is cached across calls.
+ *
+ * SKILL-48 C3: the prior `repoRootHint` parameter was never set by any caller
+ * and only added a never-used branch to [readSchemaText]. It has been removed;
+ * the disk fallback uses `Path.of("")` as its single walk anchor.
  */
-internal class CanonicalPlatformPackSchemaValidator(
-  private val repoRootHint: Path? = null,
-) : PlatformPackSchemaValidator {
+internal class CanonicalPlatformPackSchemaValidator : PlatformPackSchemaValidator {
   // Lazy singleton: the schema file is parsed and compiled exactly once
   // per validator instance.
-  private val schema: JsonSchema by lazy { loadSchema(repoRootHint) }
+  private val schema: JsonSchema by lazy { loadSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
 
-  override fun validate(parsedYaml: Any?, slug: String) {
+  override fun validate(parsedYaml: Map<String, Any?>, slug: String) {
     val instance: JsonNode = mapper.valueToTree(parsedYaml)
     val errors: Set<ValidationMessage> = schema.validate(instance)
     // F-009 (SKILL-47): `contract_version` value mismatches must surface as
@@ -220,6 +228,15 @@ object PlatformPackSchemaPaths {
   /** Classpath resource path where runtime-core bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
     "skillbill/contracts/platform-pack-schema.yaml"
+
+  /**
+   * SKILL-48 C7: expected value of the canonical schema's `$id`. The validator asserts
+   * that the schema document loaded from the classpath / disk matches this value, so a
+   * stale or shadowed copy fails loudly with [skillbill.error.InvalidManifestSchemaError]
+   * instead of silently validating against the wrong contract.
+   */
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/platform-pack-schema.yaml"
 }
 
 internal const val PLATFORM_PACK_SCHEMA_CLASSPATH_RESOURCE: String =
@@ -230,35 +247,100 @@ internal const val PLATFORM_PACK_SCHEMA_REPO_RELATIVE_PATH: String =
 
 /**
  * Loads the canonical schema YAML text from the classpath first; failing
- * that, walks up from [repoRootHint] (or the JVM working directory) to
- * find the on-disk file. Re-emits as JSON before handing to networknt so
- * the validator gets a predictable JSON tree regardless of how the
- * schema is authored.
+ * that, walks up from the JVM working directory to find the on-disk file.
+ * Re-emits as JSON before handing to networknt so the validator gets a
+ * predictable JSON tree regardless of how the schema is authored.
+ *
+ * SKILL-48 C7: after compiling the schema, asserts the loaded document's
+ * `$id` and `properties.contract_version.const` match the runtime's expected
+ * values. This protects against a stale schema being shadowed onto the
+ * classpath by a sibling jar; we'd rather loud-fail than silently validate
+ * against an unexpected contract.
  */
-private fun loadSchema(repoRootHint: Path?): JsonSchema {
-  val yamlText = readSchemaText(repoRootHint)
+private fun loadSchema(): JsonSchema {
+  val yamlText = readSchemaText()
   val yamlNode = YAMLMapper().readTree(yamlText)
+  assertSchemaIdentity(yamlNode)
   val jsonText = ObjectMapper().writeValueAsString(yamlNode)
   val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
   return factory.getSchema(jsonText)
 }
 
-private fun readSchemaText(repoRootHint: Path?): String {
+/**
+ * SKILL-48 Subtask 3: returns the set of top-level property names whose
+ * `x-runtime-anchored: true` marker designates them as fields the runtime
+ * consumes by name (read by `ShellContentLoader.buildPack` into typed
+ * `PlatformManifest` fields).
+ *
+ * Used by two callers:
+ *
+ *  - `ShellContentLoader.buildPack` to compute `PlatformManifest.customFields`
+ *    by filtering out anchored keys from the parsed YAML.
+ *  - `PlatformPackSchemaAnchoredBijectionTest` to assert schema↔Kotlin parity
+ *    in both directions.
+ *
+ * Loud-fails (via [InvalidManifestSchemaError]) if the canonical schema cannot
+ * be loaded, mirroring [loadSchema]'s behavior. The first access triggers the
+ * computation (and any loud-fail); subsequent accesses return the cached set
+ * because the bundled schema is immutable at runtime.
+ */
+internal fun anchoredTopLevelFieldNames(): Set<String> = ANCHORED_TOP_LEVEL_FIELD_NAMES
+
+private val ANCHORED_TOP_LEVEL_FIELD_NAMES: Set<String> by lazy {
+  val yamlText = readSchemaText()
+  val yamlNode: JsonNode = YAMLMapper().readTree(yamlText)
+  val properties = yamlNode.path("properties")
+  if (properties.isMissingNode || !properties.isObject) {
+    throw InvalidManifestSchemaError(
+      "Canonical platform-pack schema is missing a top-level 'properties' object; cannot derive " +
+        "the anchored top-level field set.",
+    )
+  }
+  val anchored = linkedSetOf<String>()
+  properties.fields().forEach { (name, definition) ->
+    if (definition.path("x-runtime-anchored").asBoolean(false)) {
+      anchored += name
+    }
+  }
+  anchored
+}
+
+// SKILL-48 C7: package-internal so tests can drive the assertion with synthesized YAML nodes
+// without round-tripping through the classpath-loaded schema (which is bundled by Gradle and
+// always matches at test time).
+internal fun assertSchemaIdentity(yamlNode: JsonNode) {
+  val loadedId = yamlNode.path("\$id").asText("")
+  if (loadedId != PlatformPackSchemaPaths.EXPECTED_SCHEMA_ID) {
+    throw InvalidManifestSchemaError(
+      "Canonical platform-pack schema identity mismatch: loaded '\$id' is '$loadedId' but expected " +
+        "'${PlatformPackSchemaPaths.EXPECTED_SCHEMA_ID}'. A stale or shadowed copy of the schema is on " +
+        "the classpath.",
+    )
+  }
+  val loadedConst = yamlNode.path("properties").path("contract_version").path("const").asText("")
+  if (loadedConst != SHELL_CONTRACT_VERSION) {
+    throw InvalidManifestSchemaError(
+      "Canonical platform-pack schema contract_version.const mismatch: loaded '$loadedConst' but the " +
+        "shell expects '$SHELL_CONTRACT_VERSION'. The schema on the classpath is out of date relative to " +
+        "the running runtime-core.",
+    )
+  }
+}
+
+private fun readSchemaText(): String {
   CanonicalPlatformPackSchemaValidator::class.java.classLoader
     .getResourceAsStream(PLATFORM_PACK_SCHEMA_CLASSPATH_RESOURCE)
     ?.use { return it.readBytes().toString(Charsets.UTF_8) }
 
-  val candidates: List<Path> = listOfNotNull(repoRootHint, Path.of("").toAbsolutePath())
-  candidates.forEach { hint ->
-    val resolved = walkForSchemaFile(hint)
-    if (resolved != null) {
-      return Files.readString(resolved)
-    }
+  val walkAnchor: Path = Path.of("").toAbsolutePath()
+  val resolved = walkForSchemaFile(walkAnchor)
+  if (resolved != null) {
+    return Files.readString(resolved)
   }
   throw InvalidManifestSchemaError(
     "Canonical platform-pack schema is missing. Expected to find it on the JVM classpath at " +
       "'$PLATFORM_PACK_SCHEMA_CLASSPATH_RESOURCE' or on disk under " +
-      "'$PLATFORM_PACK_SCHEMA_REPO_RELATIVE_PATH' from one of: ${candidates.joinToString(", ")}.",
+      "'$PLATFORM_PACK_SCHEMA_REPO_RELATIVE_PATH' walked up from: $walkAnchor.",
   )
 }
 

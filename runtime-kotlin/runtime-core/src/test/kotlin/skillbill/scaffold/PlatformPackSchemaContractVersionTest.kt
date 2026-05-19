@@ -2,8 +2,8 @@ package skillbill.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -65,17 +65,4 @@ class PlatformPackSchemaContractVersionTest {
         "Kotlin-only: ${APPROVED_CODE_REVIEW_AREAS - schemaAreas}.",
     )
   }
-}
-
-private fun repoRootFromTest(): Path {
-  var current = Path.of("").toAbsolutePath().normalize()
-  while (current.parent != null) {
-    val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
-    val hasContracts = Files.isDirectory(current.resolve("orchestration/contracts"))
-    if (hasSettings && hasContracts) {
-      return current
-    }
-    current = current.parent
-  }
-  error("Could not locate skill-bill repo root from ${Path.of("").toAbsolutePath().normalize()}")
 }

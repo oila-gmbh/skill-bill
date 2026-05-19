@@ -71,8 +71,70 @@ object McpToolDispatcher {
     toolName: String,
     arguments: Map<String, Any?>,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = nativeHandlers[toolName]?.invoke(arguments, context)
-    ?: error("Unknown MCP tool '$toolName'.")
+  ): Map<String, Any?> {
+    val handler = nativeHandlers[toolName] ?: error("Unknown MCP tool '$toolName'.")
+    // SKILL-48 Subtask 2d: validate every telemetry envelope at the
+    // single parse seam BEFORE the handler builds its typed model.
+    // The dispatcher is the one place where the tool name (and
+    // therefore the discriminator) is known a-priori, so synthesizing
+    // the envelope here keeps the validator close to the wire and the
+    // typed models on the inside unchanged. Loud-fail via
+    // InvalidTelemetryEventSchemaError carrying field path + event
+    // name (see TelemetryEventSchemaValidator).
+    //
+    // F-002 audit (review-run rvw-20260519-162500-a2d4): every in-tree
+    // native emitter supplies all `required` schema fields. There is
+    // exactly ONE production caller of `McpToolDispatcher.call` —
+    // `McpStdioServer.callToolResult` (runtime-kotlin/runtime-mcp/.../McpStdioServer.kt)
+    // — which threads the JSON-RPC `tools/call` `arguments` map straight
+    // through. Concrete telemetry payloads come from the orchestrators
+    // (`/feature_implement_*`, `/feature_verify_*`, quality-check skills,
+    // etc.) which already supply every required key per their telemetry
+    // contracts. The handlers in `McpLifecycleToolHandlers.kt` and
+    // `McpToolDispatcher.kt` only *default* on `arguments.int(name, 0)`,
+    // `arguments.string(name) -> ""`, and `arguments.boolean(name) -> false`
+    // — those defaults serve typed-model construction once the schema
+    // already accepted the payload, NOT to mask missing required keys
+    // from real emitters. Defaults are exercised only in unit tests
+    // (`McpRuntimeTest.kt:224`), which now build schema-complete
+    // payloads explicitly. Loud-fail at the dispatcher is therefore
+    // safe; any in-flight production emitter that omits a required key
+    // is already breaking its own telemetry contract.
+    TelemetryEventSchemaValidator.validate(
+      envelope = telemetryEnvelope(toolName, arguments),
+      eventName = toolName,
+    )
+    return handler.invoke(arguments, context)
+  }
+
+  /**
+   * SKILL-48 Subtask 2d: builds the telemetry envelope that
+   * `TelemetryEventSchemaValidator` validates against
+   * `orchestration/contracts/telemetry-event-schema.yaml`. The
+   * envelope keys are: `event_name` (discriminator),
+   * `contract_version` (pinned), plus every key from the inbound
+   * `arguments` map. Callers in production already carry these as
+   * dispatch metadata; codifying the synthesis here keeps it out of
+   * every handler.
+   */
+  internal fun telemetryEnvelope(toolName: String, arguments: Map<String, Any?>): Map<String, Any?> {
+    val envelope = linkedMapOf<String, Any?>(
+      "event_name" to toolName,
+      "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+    )
+    arguments.forEach { (key, value) ->
+      // The wire envelope keeps caller-supplied `event_name` /
+      // `contract_version` out of the way of the discriminator —
+      // arguments use those names only as payload fields when a future
+      // tool genuinely needs them, which today's `inputSchemas` never
+      // do. Skipping them here means a stray caller-supplied
+      // `event_name` cannot shadow the dispatcher's discriminator.
+      if (key != "event_name" && key != "contract_version") {
+        envelope[key] = value
+      }
+    }
+    return envelope
+  }
 }
 
 internal fun importReview(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =

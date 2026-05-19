@@ -6,11 +6,13 @@ import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
+import skillbill.install.model.InstallPlanSchemaValidator
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallStagingIntent
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.McpRegistrationIntent
 import skillbill.install.model.PlannedPlatformPack
+import skillbill.install.model.buildInstallPlanWireMap
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Files
@@ -36,7 +38,7 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
       .flatMap(::platformSkills)
   requireUniqueSkillNames(skills)
   val staging = buildStagingIntent(request, skills, platformManifests)
-  return InstallPlan(
+  val plan = InstallPlan(
     request = request,
     agents = agents,
     discoveredPlatformPacks = discoveredPlatformPacks,
@@ -53,6 +55,14 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
     installationTargetPaths = installationTargetPaths,
     windowsSymlinkPreflight = request.windowsSymlinkPreflight,
   )
+  // SKILL-48 Subtask 2b: validate the install-plan wire shape at the
+  // builder seam. The CLI emission boundary validates again — both
+  // sites cover the parse seam so any regression in shape (e.g. an
+  // unknown agent id slipping through a future builder change)
+  // loud-fails with `InvalidInstallPlanSchemaError` before the plan is
+  // handed to the apply pipeline.
+  InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
+  return plan
 }
 
 private fun requireSupportedAgentContract() {

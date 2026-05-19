@@ -3,10 +3,10 @@ package skillbill.mcp
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import skillbill.contracts.JsonSupport
+import skillbill.error.ShellContentContractException
 
 private const val JSON_RPC_PARSE_ERROR = -32700
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601
-private const val JSON_RPC_INVALID_PARAMS = -32602
 
 object McpStdioServer {
   fun run(context: McpRuntimeContext = McpRuntimeContext()) {
@@ -45,19 +45,69 @@ object McpStdioServer {
   )
 
   private fun callToolResponse(id: JsonElement, params: Map<String, Any?>, context: McpRuntimeContext): String =
-    validateStrictArguments(params)?.let { error ->
-      errorResponse(id, JSON_RPC_INVALID_PARAMS, error)
-    } ?: successResponse(id, callToolResult(params, context))
+    successResponse(id, callToolResult(params, context))
 
+  @Suppress("TooGenericExceptionCaught")
   private fun callToolResult(params: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
     val toolName = params["name"]?.toString().orEmpty()
     val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
+    // F-003 (review-run rvw-20260519-162500-a2d4): argument-shape
+    // failures (unknown property at the strict-args gate AND missing
+    // required / type-mismatch / oneOf at the schema validator inside
+    // `McpToolDispatcher`) BOTH surface as MCP `isError=true`. Before
+    // the unification, the strict-args path returned JSON-RPC
+    // `-32602 INVALID_PARAMS` while the schema validator returned
+    // `isError=true`, forcing every client to handle two transport
+    // shapes for the same fault class. Transport-level JSON-RPC errors
+    // are now reserved for protocol violations only — see also the
+    // matching note in `orchestration/contracts/telemetry-event-schema.yaml`
+    // under `x-coherence-checks.argument-shape-failures-surface`.
+    val strictError = validateStrictArguments(params)
+    if (strictError != null) {
+      return mcpToolResult(
+        mapOf("status" to "error", "tool" to toolName, "error" to strictError),
+        isError = true,
+      )
+    }
     return try {
       val payload = McpToolDispatcher.call(toolName, arguments, context)
       mcpToolResult(payload, isError = false)
+    } catch (error: ShellContentContractException) {
+      // F-001 (review-run rvw-20260519-162500-a2d4): catch the typed
+      // contract-error parent so every sibling that extends it
+      // (`InvalidTelemetryEventSchemaError`,
+      // `InvalidInstallPlanSchemaError`,
+      // `InvalidWorkflowStateSchemaError`,
+      // `InvalidNativeAgentCompositionSchemaError`, etc.) maps to an
+      // MCP `isError=true` response. The errors carry their own
+      // `fieldPath` / `eventName` in the composed `message`, so the
+      // caller still sees a greppable surface without us swallowing
+      // the typed signal. The dedicated
+      // `InvalidTelemetryEventSchemaError` arm is now subsumed by this
+      // parent arm.
+      mcpToolErrorResult(toolName, error)
     } catch (error: IllegalArgumentException) {
       mcpToolErrorResult(toolName, error)
     } catch (error: IllegalStateException) {
+      mcpToolErrorResult(toolName, error)
+    } catch (error: Exception) {
+      // F-101 (review-run rvw-20260519-162500-a2d4): final defensive
+      // arm catches `Exception` — NOT `Throwable` — so that
+      // `java.lang.Error` subclasses (`OutOfMemoryError`,
+      // `NoClassDefFoundError`, `LinkageError`, `AssertionError`,
+      // `VirtualMachineError`, …) and any future coroutine
+      // `CancellationException` (should this handler ever become
+      // suspending) keep propagating and crash the process so
+      // monitoring / supervisors restart us. The stated intent —
+      // catching raw `JsonParseException` / `IOException` / networknt
+      // compile failures that escape the loud-fail wrap in
+      // `TelemetryEventSchemaValidator.loadSchema` for a
+      // corrupted/tampered classpath resource on first lazy
+      // schema-load — is fully covered by `Exception`. The line is
+      // recorded as `isError=true` and the server keeps consuming
+      // subsequent lines. F-004 already wraps those into
+      // `InvalidTelemetryEventSchemaError`; this arm is belt-and-braces
+      // for any future sibling validator that forgets to wrap.
       mcpToolErrorResult(toolName, error)
     }
   }
@@ -82,7 +132,7 @@ object McpStdioServer {
     JsonSupport.anyToStringAnyMap(this["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
 }
 
-private fun mcpToolErrorResult(toolName: String, error: RuntimeException): Map<String, Any?> = mcpToolResult(
+private fun mcpToolErrorResult(toolName: String, error: Exception): Map<String, Any?> = mcpToolResult(
   mapOf("status" to "error", "tool" to toolName, "error" to error.message.orEmpty()),
   isError = true,
 )

@@ -6,6 +6,7 @@ import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -339,7 +340,7 @@ private inline fun <reified T : Throwable> assertNamedFailure(fixtureName: Strin
 }
 
 private fun fixture(name: String): Path =
-  repoRoot().resolve("tests").resolve("fixtures").resolve("shell_content_contract").resolve(name)
+  repoRootFromTest().resolve("tests").resolve("fixtures").resolve("shell_content_contract").resolve(name)
 
 private fun copyFixture(name: String): Path {
   val source = fixture(name)
@@ -359,17 +360,4 @@ private fun copyFixture(name: String): Path {
     }
   }
   return target
-}
-
-private fun repoRoot(): Path {
-  var current = Path.of("").toAbsolutePath().normalize()
-  while (current.parent != null) {
-    val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
-    val hasSkills = Files.isDirectory(current.resolve("skills"))
-    if (hasSettings && hasSkills) {
-      return current
-    }
-    current = current.parent
-  }
-  error("Could not locate skill-bill repository root from ${Path.of("").toAbsolutePath().normalize()}")
 }

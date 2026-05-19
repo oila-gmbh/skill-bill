@@ -48,3 +48,34 @@ schema document alone describes the full contract.
   UI module.
 - Wrapping the validator behind `PlatformPackSchemaValidator` keeps the
   library choice local — swapping it later means rewriting one Kotlin file.
+
+## 2026-05-19 — Install-plan validates at BOTH builder and CLI seams (diverges from 2a)
+
+**Context.** SKILL-48 subtask 2a (workflow-state) wired schema validation at a
+single seam — the canonical `Canonical*` parse path — and relied on that one
+choke-point to keep the wire honest. Subtask 2b (install-plan) explicitly
+specifies dual-seam validation in AC4: both `buildInstallPlan` (in
+`runtime-core`'s `InstallPlanBuilder`) and `installPlanPayload` (in
+`runtime-cli`'s `InstallCliPayloads.kt`) must validate the install-plan-shaped
+map against the canonical schema and loud-fail via
+`InvalidInstallPlanSchemaError`.
+
+**Decision.** Keep `InstallPlanSchemaValidator.validate(...)` calls at both
+seams. The CLI seam is not a redundant safety net — it covers post-build
+re-assembly that the builder cannot see (the CLI may stitch additional fields
+in before emission), and AC4 of subtask 2b
+(`.feature-specs/SKILL-48-runtime-contracts-expansion/spec_subtask_2b_install-plan.md`)
+explicitly requires both seams to loud-fail. Diverging from the 2a single-seam
+pattern is intentional for install-plan.
+
+**Consequences.**
+
+- The CLI-side `installPlanPayload` carries a code comment naming AC4 so
+  future readers do not mistake the dual validation for accidental duplication.
+- Tests under `runtime-domain` exercise the validator in isolation; the
+  CLI-side coverage flows through existing CLI integration tests.
+- Deferred decision: the install-plan validator currently ships as a Kotlin
+  `object` singleton (`InstallPlanSchemaValidator`) rather than the 2a
+  `interface + Canonical*` shape. This is acceptable while the validator has a
+  single in-process consumer; revisit (lift to an interface + canonical impl)
+  when a second consumer needs to substitute a fake.

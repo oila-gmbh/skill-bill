@@ -327,6 +327,62 @@ class PlatformPackSchemaViolationsTest {
     assertContains(message, "duplicate")
   }
 
+  @Test
+  fun `SKILL-48 nested anchored block typo fails loudly`() {
+    // Defense-in-depth: a typo *inside* a strict nested anchored block (e.g. mis-spelling
+    // `baseline` as `baselin` under `declared_files`) MUST loud-fail with the field path
+    // because the nested object keeps `additionalProperties: false`. This is distinct from
+    // the top-level anchored typo case below — the schema's nested `additionalProperties:
+    // false` is what fires here.
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas:
+        - architecture
+      declared_files:
+        baselin: code-review/content.md
+        areas:
+          architecture: code-review/architecture/content.md
+      area_metadata:
+        architecture:
+          focus: "architecture"
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    // The schema validator names the offending nested field path.
+    assertContains(message, "declared_files")
+    assertContains(message, "baselin")
+  }
+
+  @Test
+  fun `SKILL-48 Subtask 3 typo on anchored top-level field fails loudly with field path`() {
+    // SKILL-48 A5(b): the top-level `additionalProperties` is now `true` so unknown top-level
+    // keys flow through `customFields`. JSON Schema `required` catches typos on REQUIRED
+    // anchored fields, but OPTIONAL anchored top-level fields (here: `declared_files`) would
+    // otherwise silently fall through to customFields. The Kotlin-side Levenshtein-1 guard
+    // in `ShellContentLoader.buildPack` MUST loud-fail with the offending key AND name the
+    // suggested anchored field.
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_filez:
+        baseline: code-review/content.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "declared_filez")
+    assertContains(message, "declared_files")
+  }
+
   // -----------------------------------------------------------------------
   // Harness helpers
   // -----------------------------------------------------------------------

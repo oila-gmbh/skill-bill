@@ -7,3 +7,6 @@
 ## bill-pr-description
 - Always include ticket links when the branch name contains one.
 - Keep QA steps concise unless the user asks for a full matrix.
+
+## bill-feature-implement
+- do not commit changes until user reviews them and asks, pause an ask the user to review
