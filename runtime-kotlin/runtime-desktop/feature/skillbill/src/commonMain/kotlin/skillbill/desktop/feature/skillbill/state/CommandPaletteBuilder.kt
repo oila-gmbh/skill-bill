@@ -457,6 +457,7 @@ private fun treeMarker(kind: TreeItemKind): String = when (kind) {
   TreeItemKind.NATIVE_AGENT -> "ag"
   TreeItemKind.GENERATED_ARTIFACT -> "gen"
   TreeItemKind.PLACEHOLDER -> "pl"
+  TreeItemKind.CONTRACT -> "ct"
 }
 
 private fun SkillBillBusyOperation.label(): String = when (this) {
@@ -492,6 +493,7 @@ private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
+  TreeItemKind.CONTRACT,
   -> false
 }
 

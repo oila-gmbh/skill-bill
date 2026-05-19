@@ -32,6 +32,7 @@ import skillbill.nativeagent.renderComposedNativeAgentSource
 import skillbill.nativeagent.renderNativeAgentSource
 import skillbill.scaffold.AuthoringOperations
 import skillbill.scaffold.AuthoringRenderResult
+import skillbill.scaffold.PlatformPackSchemaPaths
 import skillbill.scaffold.RepoValidationIssue
 import skillbill.scaffold.RepoValidationIssueSeverity
 import skillbill.scaffold.RepoValidationReport
@@ -257,6 +258,11 @@ class RuntimeRepoBrowserService :
     "horizontal skill", "platform pack skill" -> renderSkill(root, detail)
     "native agent" -> renderNativeAgent(root, detail)
     "add-on" -> renderAddon(root, detail)
+    // F-001 (SKILL-47): single-target Render fired on a read-only Contracts row is a no-op rather
+    // than a runtime crash. Contract files are runtime sources of truth and have nothing to render;
+    // the row is intentionally non-renderable. Returning an empty outcome keeps the failure mode
+    // clean (matches beginRenderAll's filter via isRenderableTreeItemKind).
+    "contract" -> RenderOutcome(blocks = emptyList(), generatedArtifacts = emptyList())
     else -> error("Render is not supported for selection kind '${detail.kind ?: "unknown"}'.")
   }
 
@@ -393,6 +399,7 @@ class RuntimeRepoBrowserService :
     val addons = loadAddons(root, repoToken, selections)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
+    val contracts = loadContracts(root, repoToken, selections)
 
     val groups = listOfNotNull(
       group(selectionId(repoToken, "horizontal-skills"), "Horizontal Skills", authoredSkills.horizontal),
@@ -400,8 +407,53 @@ class RuntimeRepoBrowserService :
       group(selectionId(repoToken, "addons"), "Add-ons", addons),
       group(selectionId(repoToken, "native-agents"), "Native Agents", nativeAgents),
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
+      group(selectionId(repoToken, "contracts"), "Contracts", contracts),
     )
     return TreeBuildResult(items = groups, selections = selections)
+  }
+
+  /**
+   * SKILL-47: surfaces runtime contract files (today: the canonical
+   * `platform-pack-schema.yaml`) as a read-only tree group. The viewer
+   * reads from the same on-disk file the runtime parser uses; there is no
+   * second copy of the schema embedded in the desktop module.
+   */
+  private fun loadContracts(
+    root: Path,
+    repoToken: String,
+    selections: MutableMap<String, SelectionDetail>,
+  ): List<SkillBillTreeItem> {
+    val schemaFile = root.resolve(PlatformPackSchemaPaths.REPO_RELATIVE_PATH)
+    if (!Files.isRegularFile(schemaFile, LinkOption.NOFOLLOW_LINKS)) {
+      return emptyList()
+    }
+    val relative = schemaFile.relativeTo(root).portablePath()
+    val id = selectionId(repoToken, "contract:platform-pack-schema")
+    selections[id] = SelectionDetail(
+      repoToken = repoToken,
+      title = "Platform pack schema",
+      detail = "Canonical platform-pack manifest contract (read-only).",
+      kind = "contract",
+      authoredPath = relative,
+      status = "read-only",
+      editable = false,
+      readOnlyLabel = READ_ONLY_LABEL,
+      readOnlyReason =
+      "Runtime contract — edit ${PlatformPackSchemaPaths.REPO_RELATIVE_PATH} in code to change.",
+      contentFile = schemaFile,
+    )
+    return listOf(
+      SkillBillTreeItem(
+        id = id,
+        label = "Platform pack schema",
+        kind = TreeItemKind.CONTRACT,
+        authoredPath = relative,
+        status = "read-only",
+        editable = false,
+        readOnlyLabel = READ_ONLY_LABEL,
+        metadata = SkillBillTreeItemMetadata(kind = "contract"),
+      ),
+    )
   }
 
   private fun loadAuthoredSkills(

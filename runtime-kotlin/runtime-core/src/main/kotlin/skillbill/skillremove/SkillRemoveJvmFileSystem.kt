@@ -30,7 +30,9 @@ import skillbill.nativeagent.NativeAgentProvider
 import skillbill.scaffold.ReadmeCatalogEdits
 import skillbill.scaffold.ReadmeEditOutcome
 import skillbill.scaffold.removeCodeReviewArea
+import skillbill.scaffold.removeDeclaredFilesBaseline
 import skillbill.scaffold.removeDeclaredQualityCheckFile
+import skillbill.scaffold.removePointersBlockKey
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -63,11 +65,16 @@ class SkillRemoveJvmFileSystem(
     val repoRoot = repoRoot(request)
     val packsRoot = repoRoot.resolve("platform-packs")
     if (!Files.isDirectory(packsRoot, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+    // Horizontal skills are stored at `skills/<full-name>` (e.g. `bill-code-review`), while their
+    // platform-pack overrides follow the shape `bill-<platform>-<slug>` where the slug omits the
+    // shared `bill-` prefix. Strip the prefix once so the search prefix is correct regardless of
+    // whether the target was passed in with or without it.
+    val slug = target.skillName.removePrefix("bill-")
     val out = linkedSetOf<String>()
     Files.list(packsRoot).use { stream ->
       stream.filter { Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.forEach { packDir ->
         val platform = packDir.fileName.toString()
-        val basePrefix = "bill-$platform-${target.skillName}"
+        val basePrefix = "bill-$platform-$slug"
         listOf("code-review", "quality-check").forEach { family ->
           val familyDir = packDir.resolve(family)
           if (Files.isDirectory(familyDir, LinkOption.NOFOLLOW_LINKS)) {
@@ -112,7 +119,7 @@ class SkillRemoveJvmFileSystem(
 
   override fun planManifestEdits(request: SkillRemovalRequest, cascadedSkillNames: List<String>): List<ManifestEdit> =
     when (val target = request.target) {
-      is SkillRemovalTarget.HorizontalSkill -> horizontalManifestEdits(repoRoot(request), cascadedSkillNames)
+      is SkillRemovalTarget.HorizontalSkill -> horizontalManifestEdits(repoRoot(request), target.skillName)
       is SkillRemovalTarget.PlatformPack -> emptyList() // the manifest itself is deleted with the tree
       is SkillRemovalTarget.AddOn -> emptyList()
     }
@@ -179,6 +186,12 @@ class SkillRemoveJvmFileSystem(
           }
           ManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE -> {
             removeDeclaredQualityCheckFile(manifest)
+          }
+          ManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> {
+            removeDeclaredFilesBaseline(manifest)
+          }
+          ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> {
+            removePointersBlockKey(manifest, edit.detail)
           }
         }
         editedManifests += edit.manifestPath
@@ -287,7 +300,10 @@ class SkillRemoveJvmFileSystem(
     return out.toList()
   }
 
-  private fun horizontalManifestEdits(repoRoot: Path, cascadedSkillNames: List<String>): List<ManifestEdit> {
+  private fun horizontalManifestEdits(repoRoot: Path, skillName: String): List<ManifestEdit> {
+    // Strip the shared `bill-` prefix once: platform-pack overrides are stored as
+    // `bill-<platform>-<slug>` where `<slug>` omits the prefix that the horizontal skill carries.
+    val slug = skillName.removePrefix("bill-")
     val edits = mutableListOf<ManifestEdit>()
     val packsRoot = repoRoot.resolve("platform-packs")
     if (!Files.isDirectory(packsRoot, LinkOption.NOFOLLOW_LINKS)) return emptyList()
@@ -297,31 +313,54 @@ class SkillRemoveJvmFileSystem(
         if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)) return@forEach
         val manifestRel = repoRoot.relativize(manifest).toString().replace('\\', '/')
         val platform = packDir.fileName.toString()
-        cascadedSkillNames.forEach { skillName ->
-          // code-review area: derive area name from `bill-<platform>-<skillName>-<area>` shape.
-          val areaPrefix = "bill-$platform-$skillName-"
-          val codeReviewDir = packDir.resolve("code-review")
-          if (Files.isDirectory(codeReviewDir, LinkOption.NOFOLLOW_LINKS)) {
-            Files.list(codeReviewDir).use { areaStream ->
-              areaStream.filter { Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.forEach { areaDir ->
-                val name = areaDir.fileName.toString()
-                if (name.startsWith(areaPrefix)) {
-                  val area = name.removePrefix(areaPrefix)
-                  // Use detail = area so applyCascade can route to removeCodeReviewArea.
-                  edits += ManifestEdit(manifestRel, ManifestEditKind.REMOVE_CODE_REVIEW_AREA, area)
-                }
+        val baselineName = "bill-$platform-$slug"
+        val baselineDir = packDir.resolve("code-review").resolve(baselineName)
+        val baselineExists = Files.isDirectory(baselineDir, LinkOption.NOFOLLOW_LINKS)
+        if (baselineExists) {
+          // The pack's baseline content.md will be deleted; the manifest must stop pointing at it.
+          edits += ManifestEdit(
+            manifestRel,
+            ManifestEditKind.REMOVE_DECLARED_FILES_BASELINE,
+            "remove declared_files.baseline",
+          )
+          // Pointers block holds a per-skill children list keyed on the override's relative path.
+          edits += ManifestEdit(
+            manifestRel,
+            ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY,
+            "code-review/$baselineName",
+          )
+        }
+        val areaPrefix = "$baselineName-"
+        val codeReviewDir = packDir.resolve("code-review")
+        if (Files.isDirectory(codeReviewDir, LinkOption.NOFOLLOW_LINKS)) {
+          Files.list(codeReviewDir).use { areaStream ->
+            areaStream.filter { Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.forEach { areaDir ->
+              val name = areaDir.fileName.toString()
+              if (name.startsWith(areaPrefix)) {
+                val area = name.removePrefix(areaPrefix)
+                edits += ManifestEdit(manifestRel, ManifestEditKind.REMOVE_CODE_REVIEW_AREA, area)
+                edits += ManifestEdit(
+                  manifestRel,
+                  ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY,
+                  "code-review/$name",
+                )
               }
             }
           }
-          // quality-check override: presence implies declared_quality_check_file
-          val qcDir = packDir.resolve("quality-check").resolve("bill-$platform-$skillName")
-          if (Files.exists(qcDir, LinkOption.NOFOLLOW_LINKS)) {
-            edits += ManifestEdit(
-              manifestRel,
-              ManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE,
-              "remove declared_quality_check_file",
-            )
-          }
+        }
+        val qcName = "bill-$platform-$slug"
+        val qcDir = packDir.resolve("quality-check").resolve(qcName)
+        if (Files.exists(qcDir, LinkOption.NOFOLLOW_LINKS)) {
+          edits += ManifestEdit(
+            manifestRel,
+            ManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE,
+            "remove declared_quality_check_file",
+          )
+          edits += ManifestEdit(
+            manifestRel,
+            ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY,
+            "quality-check/$qcName",
+          )
         }
       }
     }

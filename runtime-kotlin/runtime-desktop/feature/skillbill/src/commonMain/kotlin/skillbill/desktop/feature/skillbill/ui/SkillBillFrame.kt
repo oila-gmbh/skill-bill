@@ -85,6 +85,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -2392,10 +2393,16 @@ private fun CodeEditor(
         )
       }
     } else {
-      val lines =
-        (editor.content ?: editor.detail)
-          .ifBlank { "No source selected" }
-          .lines()
+      val rawText = (editor.content ?: editor.detail).ifBlank { "No source selected" }
+      val lines = rawText.lines()
+      // SKILL-47 AC6 — apply YAML-aware highlighting only for kind=contract
+      // documents (the platform-pack schema viewer). Other read-only docs
+      // (markdown, generated output, etc.) keep the existing SyntaxText path.
+      val highlightedLines: List<AnnotatedString>? = if (editor.kind == "contract") {
+        remember(rawText) { highlightYaml(rawText, contractYamlColors).splitIntoLines() }
+      } else {
+        null
+      }
       ReadOnlyBanner(editor)
       Column(
         modifier =
@@ -2404,8 +2411,14 @@ private fun CodeEditor(
           .fillMaxWidth()
           .verticalScroll(rememberScrollState()),
       ) {
-        lines.forEachIndexed { index, line ->
-          CodeLine(number = index + 1, line = line, flagged = false)
+        if (highlightedLines != null) {
+          highlightedLines.forEachIndexed { index, annotated ->
+            CodeLineAnnotated(number = index + 1, content = annotated)
+          }
+        } else {
+          lines.forEachIndexed { index, line ->
+            CodeLine(number = index + 1, line = line, flagged = false)
+          }
         }
       }
     }
@@ -2621,6 +2634,73 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean) {
           Text(text = "contract: missing field", color = WorkspaceRed, fontSize = 10.5.sp)
         }
       }
+    }
+  }
+}
+
+// SKILL-47 AC6 — color palette used by the YAML-aware schema viewer. The
+// runtime-desktop module does not yet expose a semantic-token palette, so we
+// reuse the existing WorkspaceXxx values that already drive the editor pane.
+// All colors are private vals declared at the top of this file, which means
+// follow-up theme work (light/dark variants, MaterialTheme.colorScheme
+// adoption) can swap them in one place.
+private val contractYamlColors: YamlSyntaxColors = YamlSyntaxColors(
+  comment = WorkspaceSteel,
+  key = WorkspaceYellow,
+  string = WorkspaceGreen,
+  marker = WorkspaceAmber,
+  scalar = WorkspaceText.copy(alpha = 0.9f),
+)
+
+/**
+ * Splits a highlighted [AnnotatedString] into one [AnnotatedString] per source
+ * line. Preserves the per-line styling that [highlightYaml] already attached
+ * to absolute offsets in the source text.
+ */
+internal fun AnnotatedString.splitIntoLines(): List<AnnotatedString> {
+  val text = this.text
+  if (text.isEmpty()) return listOf(this)
+  val result = mutableListOf<AnnotatedString>()
+  var start = 0
+  while (start <= text.length) {
+    val newline = text.indexOf('\n', start)
+    val end = if (newline == -1) text.length else newline
+    result += this.subSequence(start, end)
+    if (newline == -1) break
+    start = newline + 1
+  }
+  return result
+}
+
+@Composable
+private fun CodeLineAnnotated(number: Int, content: AnnotatedString) {
+  Row(modifier = Modifier.fillMaxWidth()) {
+    Text(
+      text = number.toString(),
+      color = WorkspaceSteel,
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+      modifier =
+      Modifier
+        .width(50.dp)
+        .border(BorderStroke(0.dp, Color.Transparent))
+        .padding(top = 4.dp, end = 10.dp),
+      maxLines = 1,
+    )
+    Row(
+      modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 3.dp, end = 16.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        text = if (content.text.isEmpty()) AnnotatedString(" ") else content,
+        // Fallback color for any character without an explicit span (default
+        // unstyled scalar text).
+        color = WorkspaceText.copy(alpha = 0.9f),
+        fontSize = 12.5.sp,
+        fontFamily = FontFamily.Monospace,
+        lineHeight = 20.sp,
+        maxLines = 1,
+      )
     }
   }
 }
@@ -5070,6 +5150,7 @@ private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
   TreeItemKind.PLATFORM_PACK,
   TreeItemKind.GENERATED_ARTIFACT,
   TreeItemKind.PLACEHOLDER,
+  TreeItemKind.CONTRACT,
   -> false
 }
 
@@ -5363,6 +5444,7 @@ private fun markerFor(kind: TreeItemKind): String = when (kind) {
   TreeItemKind.NATIVE_AGENT -> "ag"
   TreeItemKind.GENERATED_ARTIFACT -> "gn"
   TreeItemKind.PLACEHOLDER -> "ph"
+  TreeItemKind.CONTRACT -> "ct"
 }
 
 private fun validationLevelFor(status: String?): ValidationLevel? = when (status) {

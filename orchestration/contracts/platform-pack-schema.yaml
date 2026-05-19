@@ -1,0 +1,239 @@
+# Platform-pack manifest schema (canonical source of truth).
+#
+# This file describes the shape of every `platform-packs/<slug>/platform.yaml`
+# file the Skill Bill runtime is allowed to load. It is authored in YAML for
+# human readability and consumed as a JSON Schema (Draft 2020-12) by the
+# Kotlin runtime (`PlatformPackSchemaValidator` in `runtime-core`).
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines TYPES, ENUMS, REQUIRED-VS-OPTIONAL fields, and
+#   VALUE-LEVEL constraints (regex patterns, non-empty arrays, content.md
+#   path suffixes, etc.) — anything expressible in pure JSON Schema.
+# - Cross-field "coherence" rules that JSON Schema cannot express cleanly
+#   stay in Kotlin (`ShellContentLoader.buildPack` /
+#   `validatePlatformPack`). Every such rule is named below under
+#   `x-coherence-checks` so the schema document alone fully describes the
+#   contract.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by `SHELL_CONTRACT_VERSION` in
+#   `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/scaffold/ScaffoldSupport.kt`.
+# - The parity test `PlatformPackSchemaContractVersionTest` fails the build
+#   if they diverge. To bump the contract, edit BOTH constants in the same
+#   change.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/platform-pack-schema.yaml"
+title: "Platform pack manifest"
+description: >
+  Schema for `platform-packs/<slug>/platform.yaml`. Discovery is
+  manifest-driven; the schema describes SHAPE only and never hard-codes any
+  specific platform slug (e.g. `kotlin`, `kmp`). New packs can ship as long
+  as their manifest matches this schema and the coherence checks below.
+type: object
+additionalProperties: false
+# Single source of truth for approved code-review area slugs. Every reference
+# below points at `$defs.codeReviewArea` so the enum is declared exactly once
+# in this file; the Kotlin parity test
+# `PlatformPackSchemaCodeReviewAreasParityTest` pins this set to
+# `APPROVED_CODE_REVIEW_AREAS` in `runtime-core` so the two cannot drift.
+$defs:
+  codeReviewArea:
+    type: string
+    enum:
+      - architecture
+      - performance
+      - platform-correctness
+      - security
+      - testing
+      - api-contracts
+      - persistence
+      - reliability
+      - ui
+      - ux-accessibility
+required:
+  - platform
+  - contract_version
+  - routing_signals
+  - declared_code_review_areas
+properties:
+  platform:
+    type: string
+    minLength: 1
+    description: >
+      Slug of the platform pack. Must equal the parent directory name
+      (`platform-packs/<slug>/`). Coherence: see `slug-parity` below.
+  contract_version:
+    type: string
+    minLength: 1
+    const: "1.1"
+    description: >
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.1). The parity test
+      `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
+      Value mismatches at runtime are surfaced as the dedicated
+      `ContractVersionMismatchError` (not generic schema error) so callers
+      can distinguish a version drift from a malformed manifest.
+  display_name:
+    type: string
+    minLength: 1
+    description: Optional human-readable label used by the UI catalog.
+  notes:
+    type: string
+    description: Optional free-form authoring notes.
+  routing_signals:
+    type: object
+    additionalProperties: false
+    required:
+      - strong
+    properties:
+      strong:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Tokens that, when found in a repo, route work to this pack. Must
+          contain at least one entry.
+      tie_breakers:
+        type: array
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Optional prose tie-breakers consulted when multiple packs report a
+          strong signal.
+  declared_code_review_areas:
+    type: array
+    items:
+      $ref: "#/$defs/codeReviewArea"
+    description: >
+      Approved code-review areas the pack declares specialists for. The
+      enum mirrors `APPROVED_CODE_REVIEW_AREAS` in
+      `runtime-kotlin/.../scaffold/ScaffoldSupport.kt` and is declared once
+      under `$defs/codeReviewArea` above. May be empty when the pack ships
+      no code-review specializations.
+  declared_files:
+    type: object
+    additionalProperties: false
+    description: >
+      Authored governed-content paths. Optional in full: a pack with no
+      code-review feature may omit the block entirely.
+    properties:
+      baseline:
+        type: string
+        minLength: 1
+        pattern: "(^|/)content\\.md$"
+        description: >
+          Pack-relative path to the baseline review's `content.md`. Optional;
+          when present must end with `content.md` (either as a bare filename
+          or via a `/content.md` suffix). When omitted but `areas` is set, the
+          `areas-require-baseline` coherence check loud-fails.
+      areas:
+        type: object
+        propertyNames:
+          $ref: "#/$defs/codeReviewArea"
+        additionalProperties:
+          type: string
+          minLength: 1
+          pattern: "(^|/)content\\.md$"
+        description: >
+          Per-area `content.md` paths. Keys must be members of
+          `declared_code_review_areas` (see `areas-equal-declared`
+          coherence check) and values must end in `content.md`.
+  area_metadata:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - focus
+      properties:
+        focus:
+          type: string
+          minLength: 1
+          description: Short prose describing the area's specialist focus.
+    propertyNames:
+      $ref: "#/$defs/codeReviewArea"
+    description: >
+      Optional per-area metadata. Keys must be declared in
+      `declared_code_review_areas` (see
+      `area-metadata-keys-subset-declared` coherence check). Missing keys
+      fall back to a default focus string the runtime fills in.
+  declared_quality_check_file:
+    type: string
+    minLength: 1
+    pattern: "(^|/)content\\.md$"
+    description: >
+      Optional pack-relative path to the quality-check specialist's
+      `content.md`. Must end in `content.md` when present.
+  pointers:
+    type: object
+    additionalProperties:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - name
+          - target
+        properties:
+          name:
+            type: string
+            minLength: 1
+            # Bare-filename rule: name must end in `.md`, must not contain
+            # path separators or parent-dir segments.
+            pattern: "^[^/\\\\]+\\.md$"
+            allOf:
+              - not:
+                  pattern: "\\.\\."
+          target:
+            type: string
+            minLength: 1
+            description: >
+              Repo-relative path to the file the generated pointer should
+              resolve to. The runtime additionally rejects absolute paths
+              and `..` segments at parse time.
+    description: >
+      Optional mapping of `code-review/<skill-name>` (or
+      `quality-check/<skill-name>`) skill-relative directory to a list of
+      pointer entries. Keys must be relative paths (no leading `/`, no
+      `..`); the runtime enforces this in `requireSafePointerSubpath`.
+
+# ---------------------------------------------------------------------------
+# Coherence checks (enforced in Kotlin)
+# ---------------------------------------------------------------------------
+# These rules cannot be expressed cleanly in JSON Schema because they cross
+# multiple top-level fields. They are enforced by `ShellContentLoader` and
+# documented here so this file alone describes the full contract.
+x-coherence-checks:
+  slug-parity:
+    description: >
+      `platform` must equal the parent directory name
+      (`platform-packs/<slug>/`). Enforced in
+      `ShellContentLoader.buildPack`.
+  areas-require-baseline:
+    description: >
+      When `declared_files.areas` has at least one entry,
+      `declared_files.baseline` MUST be present. A pack with code-review
+      areas but no baseline is meaningless because the baseline is what
+      the area specialists override. Enforced in
+      `ShellContentLoader.parseDeclaredFiles`.
+  areas-equal-declared:
+    description: >
+      When `declared_files.areas` is present, its key set must be a
+      bijection with `declared_code_review_areas` (no extra keys, no
+      missing keys). Enforced in
+      `ShellContentLoader.parseDeclaredFiles` and
+      `validatePlatformPack`.
+  area-metadata-keys-subset-declared:
+    description: >
+      Every key in `area_metadata` must appear in
+      `declared_code_review_areas`. Enforced in
+      `ShellContentLoader.parseAreaMetadata`.
+  pointers-unique-name-per-dir:
+    description: >
+      Within a single skill-relative directory in `pointers`, every pointer
+      `name` must be unique. Enforced in
+      `ShellContentLoader.parsePointers`.
