@@ -1,7 +1,7 @@
 package skillbill.desktop.feature.skillbill.ui
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import skillbill.desktop.core.designsystem.SkillBillDarkThemeTokens
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,13 +18,7 @@ import kotlin.test.assertTrue
  */
 class YamlSyntaxHighlighterTest {
 
-  private val palette = YamlSyntaxColors(
-    comment = Color(0xFF111111),
-    key = Color(0xFF222222),
-    string = Color(0xFF333333),
-    marker = Color(0xFF444444),
-    scalar = Color(0xFF555555),
-  )
+  private val palette = SkillBillDarkThemeTokens.syntax.yaml
 
   @Test
   fun `highlights comment, key, quoted string, and document marker spans`() {

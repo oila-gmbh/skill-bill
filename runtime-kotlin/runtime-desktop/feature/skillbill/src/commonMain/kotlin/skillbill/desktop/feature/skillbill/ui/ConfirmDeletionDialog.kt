@@ -31,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -41,14 +40,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import skillbill.desktop.core.designsystem.SkillBillGreen
-import skillbill.desktop.core.designsystem.SkillBillLine
-import skillbill.desktop.core.designsystem.SkillBillMuted
-import skillbill.desktop.core.designsystem.SkillBillPanelRaised
-import skillbill.desktop.core.designsystem.SkillBillRed
-import skillbill.desktop.core.designsystem.SkillBillSteelDark
-import skillbill.desktop.core.designsystem.SkillBillText
-import skillbill.desktop.core.designsystem.SkillBillYellow
+import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTransparent
 import skillbill.desktop.core.domain.model.ConfirmDeletionState
 import skillbill.desktop.core.domain.model.DesktopAgentSymlinkProvider
 import skillbill.desktop.core.domain.model.DesktopManifestEditKind
@@ -77,22 +70,6 @@ data class ConfirmDeletionCallbacks(
     )
   }
 }
-
-// SKILL-46 follow-up F-609: bind the local dialog palette to the canonical designsystem colors
-// so a future hex change in `SkillBillColor.kt` propagates here automatically. The two
-// non-designsystem values below (`DialogBackdrop` = transparent scrim, `DialogRaised` = slightly
-// lighter panel surface used only by this dialog) remain local because they don't have a
-// designsystem peer yet.
-private val DialogBackdrop = Color.Black.copy(alpha = 0.5f)
-private val DialogPanel = SkillBillPanelRaised
-private val DialogLine = SkillBillLine
-private val DialogText = SkillBillText
-private val DialogMuted = SkillBillMuted
-private val DialogSteel = SkillBillSteelDark
-private val DialogYellow = SkillBillYellow
-private val DialogRed = SkillBillRed
-private val DialogGreen = SkillBillGreen
-private val DialogRaised = Color(0xFF1B1B22)
 
 /**
  * SKILL-46 follow-up F-601/F-715: every user-facing string in [ConfirmDeletionDialog] lives in one
@@ -139,10 +116,11 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
   // ripples don't flash on a dialog backdrop or on the panel itself.
   val backdropInteraction = remember { MutableInteractionSource() }
   val panelInteraction = remember { MutableInteractionSource() }
+  val semanticTones = SkillBillTheme.semanticTones
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(DialogBackdrop)
+      .background(semanticTones.scrim)
       .semantics { contentDescription = ConfirmDeletionStrings.DIALOG_CONTENT_DESCRIPTION }
       // Click outside the panel = dismiss. Mirrors ScaffoldWizardDialog backdrop behavior.
       .clickable(
@@ -158,8 +136,8 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
         .widthIn(min = 560.dp, max = 760.dp)
         .heightIn(max = 640.dp)
         .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, DialogLine, RoundedCornerShape(8.dp))
-        .background(DialogPanel)
+        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .background(semanticTones.dialog.container)
         // Swallow clicks inside the panel so the backdrop click doesn't fire.
         .clickable(
           interactionSource = panelInteraction,
@@ -169,7 +147,7 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
         ),
     ) {
       DialogHeader(target = state.target, onDismiss = callbacks.onDismiss)
-      HorizontalDivider(color = DialogLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       Column(
         modifier = Modifier
           .fillMaxWidth()
@@ -187,11 +165,11 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
             CircularProgressIndicator(
               modifier = Modifier.size(14.dp),
               strokeWidth = 2.dp,
-              color = DialogYellow,
+              color = SkillBillTheme.colors.primary,
             )
             Text(
               text = ConfirmDeletionStrings.PREVIEW_BUSY,
-              color = DialogMuted,
+              color = SkillBillTheme.colors.onSurfaceVariant,
               fontSize = 12.sp,
               fontFamily = FontFamily.Monospace,
             )
@@ -199,13 +177,13 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
           state.preview != null -> RemovalDossier(state)
           state.executionResult is DesktopSkillRemovalResult.Failed -> Text(
             text = ConfirmDeletionStrings.PREVIEW_FAILED,
-            color = DialogRed,
+            color = semanticTones.errorBanner.content,
             fontSize = 12.sp,
           )
         }
         state.executionResult?.let { result -> ResultBanner(result, callbacks.onAcknowledgeFailure) }
       }
-      HorizontalDivider(color = DialogLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       DialogFooter(state = state, callbacks = callbacks)
     }
   }
@@ -213,6 +191,8 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
 
 @Composable
 private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(
     modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -220,14 +200,14 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
   ) {
     Text(
       text = ConfirmDeletionStrings.headerTitle(displayLabelFor(target)),
-      color = DialogText,
+      color = dialogTone.content,
       fontSize = 14.sp,
       fontWeight = FontWeight.Medium,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = ConfirmDeletionStrings.CLOSE_GLYPH,
-      color = DialogSteel,
+      color = colors.onSurfaceVariant,
       fontSize = 14.sp,
       modifier = Modifier
         .clickable(role = Role.Button, onClick = onDismiss)
@@ -279,7 +259,7 @@ private fun RemovalDossier(state: ConfirmDeletionState) {
 private fun SectionHeader(text: String) {
   Text(
     text = text,
-    color = DialogYellow,
+    color = SkillBillTheme.colors.primary,
     fontSize = 11.sp,
     fontWeight = FontWeight.Medium,
     modifier = Modifier.padding(top = 4.dp),
@@ -292,7 +272,7 @@ private fun DossierLine(text: String) {
   // and preserves the bullet+indent alignment for the list.
   Text(
     text = "• $text",
-    color = DialogMuted,
+    color = SkillBillTheme.colors.onSurfaceVariant,
     fontSize = 11.sp,
     fontFamily = FontFamily.Monospace,
     softWrap = false,
@@ -305,49 +285,69 @@ private fun DossierLine(text: String) {
 @Composable
 private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure: () -> Unit) {
   when (result) {
-    is DesktopSkillRemovalResult.Failed -> Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .clip(RoundedCornerShape(4.dp))
-        // F-710: red border draws the eye to the highest-severity state.
-        .border(1.dp, DialogRed, RoundedCornerShape(4.dp))
-        .background(DialogRaised)
-        .padding(10.dp),
-      verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      Text(
-        text = if (result.rollbackComplete) {
-          ConfirmDeletionStrings.FAILED_TITLE
-        } else {
-          ConfirmDeletionStrings.FAILED_PARTIAL_TITLE
-        },
-        color = DialogRed,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
-      )
-      Text(text = "${result.exceptionName}: ${result.exceptionMessage}", color = DialogMuted, fontSize = 11.sp)
-      if (!result.rollbackComplete) {
-        // F-710: recovery instructions so the user knows what to do next.
+    is DesktopSkillRemovalResult.Failed -> {
+      val tone = SkillBillTheme.semanticTones.errorBanner
+      val colors = SkillBillTheme.colors
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(4.dp))
+          // F-710: red border draws the eye to the highest-severity state.
+          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .background(tone.container)
+          .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
         Text(
-          text = ConfirmDeletionStrings.FAILED_RECOVERY,
-          color = DialogMuted,
+          text = if (result.rollbackComplete) {
+            ConfirmDeletionStrings.FAILED_TITLE
+          } else {
+            ConfirmDeletionStrings.FAILED_PARTIAL_TITLE
+          },
+          color = tone.content,
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Medium,
+        )
+        Text(
+          text = "${result.exceptionName}: ${result.exceptionMessage}",
+          color = colors.onSurfaceVariant,
           fontSize = 11.sp,
         )
+        if (!result.rollbackComplete) {
+          // F-710: recovery instructions so the user knows what to do next.
+          Text(
+            text = ConfirmDeletionStrings.FAILED_RECOVERY,
+            color = colors.onSurfaceVariant,
+            fontSize = 11.sp,
+          )
+        }
+        Text(
+          text = ConfirmDeletionStrings.ACKNOWLEDGE_PARTIAL_MUTATION,
+          color = SkillBillTheme.colors.primary,
+          fontSize = 11.sp,
+          modifier = Modifier
+            .clickable(role = Role.Button, onClick = onAcknowledgeFailure)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
       }
-      Text(
-        text = ConfirmDeletionStrings.ACKNOWLEDGE_PARTIAL_MUTATION,
-        color = DialogYellow,
-        fontSize = 11.sp,
-        modifier = Modifier
-          .clickable(role = Role.Button, onClick = onAcknowledgeFailure)
-          .padding(horizontal = 6.dp, vertical = 4.dp),
-      )
     }
-    is DesktopSkillRemovalResult.Success -> Text(
-      text = ConfirmDeletionStrings.successBanner(result.removedPaths.size),
-      color = DialogGreen,
-      fontSize = 12.sp,
-    )
+    is DesktopSkillRemovalResult.Success -> {
+      val tone = SkillBillTheme.semanticTones.successBanner
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(4.dp))
+          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .background(tone.container)
+          .padding(10.dp),
+      ) {
+        Text(
+          text = ConfirmDeletionStrings.successBanner(result.removedPaths.size),
+          color = tone.content,
+          fontSize = 12.sp,
+        )
+      }
+    }
     is DesktopSkillRemovalResult.Preview -> Unit
   }
 }
@@ -358,6 +358,8 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
   // "I understand → Delete" in one beat. Cancel sits on the left as the safe escape.
   val checkboxEnabled = state.preview != null && !state.executeBusy && !state.partialMutationLocked
   val deleteEnabled = state.deleteEnabled
+  val colors = SkillBillTheme.colors
+  val errorTone = SkillBillTheme.semanticTones.errorBanner
   Column(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -368,7 +370,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
     ) {
       Text(
         text = ConfirmDeletionStrings.CANCEL,
-        color = DialogMuted,
+        color = colors.onSurfaceVariant,
         fontSize = 12.sp,
         modifier = Modifier
           .clickable(role = Role.Button, onClick = callbacks.onDismiss)
@@ -382,7 +384,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
       )
       Text(
         text = if (state.executeBusy) ConfirmDeletionStrings.DELETING else ConfirmDeletionStrings.DELETE,
-        color = if (deleteEnabled) DialogRed else DialogSteel,
+        color = if (deleteEnabled) errorTone.content else colors.onSurfaceVariant,
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
@@ -398,7 +400,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
     if (state.preview != null && !state.acknowledged && !state.executeBusy && !state.partialMutationLocked) {
       Text(
         text = ConfirmDeletionStrings.ACKNOWLEDGE_HINT,
-        color = DialogSteel,
+        color = colors.onSurfaceVariant,
         fontSize = 11.sp,
         modifier = Modifier.padding(horizontal = 10.dp),
       )
@@ -408,6 +410,8 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
 
 @Composable
 private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   // F-704: switch from manual Row.clickable to Modifier.toggleable so screen readers announce
   // Role.Checkbox and the checked/unchecked state via stateDescription.
   Row(
@@ -429,12 +433,12 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
       modifier = Modifier
         // F-704: 18 dp visible checkbox (was 14) — meets a comfortable touch/keyboard target.
         .size(18.dp)
-        .border(1.dp, if (enabled) DialogYellow else DialogSteel, RoundedCornerShape(2.dp))
-        .background(if (checked) DialogYellow else Color.Transparent),
+        .border(1.dp, if (enabled) colors.primary else colors.onSurfaceVariant, RoundedCornerShape(2.dp))
+        .background(if (checked) colors.primary else SkillBillTransparent),
     )
     Text(
       text = ConfirmDeletionStrings.ACKNOWLEDGE_CHECKBOX_LABEL,
-      color = if (enabled) DialogText else DialogSteel,
+      color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
       fontSize = 12.sp,
     )
   }

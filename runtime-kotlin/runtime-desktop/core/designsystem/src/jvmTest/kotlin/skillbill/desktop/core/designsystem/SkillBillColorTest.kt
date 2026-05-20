@@ -8,6 +8,7 @@ class SkillBillColorTest {
   @Test
   fun `design system uses README hero palette`() {
     assertEquals(Color(0xFF0B0B0D), SkillBillInk)
+    assertEquals(SkillBillInk, SkillBillOnYellow)
     assertEquals(Color(0xFF121216), SkillBillPanel)
     assertEquals(Color(0xFF2A2A31), SkillBillLine)
     assertEquals(Color(0xFFF4C430), SkillBillYellow)

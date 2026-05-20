@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,10 +26,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
@@ -57,28 +62,17 @@ data class ScaffoldWizardCallbacks(
   val onDismiss: () -> Unit,
 )
 
-private val ScaffoldDialogBackdrop = Color.Black.copy(alpha = 0.5f)
-private val ScaffoldDialogPanel = Color(0xFF15151A)
-private val ScaffoldDialogLine = Color(0xFF2A2A31)
-private val ScaffoldDialogText = Color(0xFFF6F3E7)
-private val ScaffoldDialogMuted = Color(0xFFB7B1A0)
-private val ScaffoldDialogSteel = Color(0xFF6F7882)
-private val ScaffoldDialogYellow = Color(0xFFF4C430)
-private val ScaffoldDialogRed = Color(0xFFFF5F57)
-private val ScaffoldDialogGreen = Color(0xFF60D394)
-private val ScaffoldDialogAmber = Color(0xFFFFBD2E)
-private val ScaffoldDialogRaised = Color(0xFF1B1B22)
-
 @Composable
 fun ScaffoldWizardDialog(
   state: ScaffoldWizardState,
   canStartScaffoldAction: Boolean,
   callbacks: ScaffoldWizardCallbacks,
 ) {
+  val semanticTones = SkillBillTheme.semanticTones
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(ScaffoldDialogBackdrop)
+      .background(semanticTones.scrim)
       .semantics { contentDescription = "Scaffold wizard" }
       .clickable(role = Role.Button, onClick = callbacks.onDismiss),
   ) {
@@ -88,13 +82,13 @@ fun ScaffoldWizardDialog(
         .widthIn(min = 560.dp, max = 760.dp)
         .heightIn(max = 640.dp)
         .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, ScaffoldDialogLine, RoundedCornerShape(8.dp))
-        .background(ScaffoldDialogPanel)
+        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user interacts inside the panel.
         .clickable(enabled = false, onClick = {}),
     ) {
       WizardHeader(kind = state.kind, onDismiss = callbacks.onDismiss)
-      HorizontalDivider(color = ScaffoldDialogLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       Column(
         modifier = Modifier
           .fillMaxWidth()
@@ -125,7 +119,7 @@ fun ScaffoldWizardDialog(
           ResultBanner(result)
         }
       }
-      HorizontalDivider(color = ScaffoldDialogLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       WizardFooter(
         state = state,
         canStartScaffoldAction = canStartScaffoldAction,
@@ -140,6 +134,8 @@ fun ScaffoldWizardDialog(
 
 @Composable
 private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(
     modifier = Modifier
       .fillMaxWidth()
@@ -150,14 +146,14 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
   ) {
     Text(
       text = "New ${kind.displayLabel}",
-      color = ScaffoldDialogText,
+      color = dialogTone.content,
       fontSize = 14.sp,
       fontWeight = FontWeight.Medium,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = "x",
-      color = ScaffoldDialogSteel,
+      color = colors.onSurfaceVariant,
       fontSize = 14.sp,
       modifier = Modifier
         .semantics { contentDescription = "Dismiss scaffold wizard" }
@@ -169,16 +165,18 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
 
 @Composable
 private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit, enabled: Boolean) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     SectionLabel("Wizard kind")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       ScaffoldKind.values().forEach { kind ->
         val isSelected = kind == selected
-        val backgroundColor = if (isSelected) ScaffoldDialogYellow else ScaffoldDialogRaised
+        val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
         val foregroundColor = when {
-          !enabled -> ScaffoldDialogSteel
-          isSelected -> Color(0xFF0B0B0D)
-          else -> ScaffoldDialogText
+          !enabled -> colors.onSurfaceVariant
+          isSelected -> colors.onPrimary
+          else -> dialogTone.content
         }
         Text(
           text = kind.displayLabel,
@@ -186,7 +184,7 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
           fontSize = 11.sp,
           modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, ScaffoldDialogLine, RoundedCornerShape(6.dp))
+            .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
             .background(backgroundColor)
             .semantics { contentDescription = "Select wizard kind ${kind.displayLabel}" }
             .clickable(enabled = enabled, role = Role.Button) { onSelect(kind) }
@@ -199,25 +197,28 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
 
 @Composable
 private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChanged: (Boolean) -> Unit) {
+  val tone = SkillBillTheme.semanticTones.warningBanner
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Column(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, ScaffoldDialogAmber, RoundedCornerShape(6.dp))
-      .background(ScaffoldDialogAmber.copy(alpha = 0.08f))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Text(
       text = "Repository has uncommitted non-generated changes",
-      color = ScaffoldDialogAmber,
+      color = tone.content,
       fontSize = 12.sp,
       fontWeight = FontWeight.Medium,
     )
     Text(
       text = "The scaffolder rolls back transactionally on failure, but dirty content may make a " +
         "partial commit ambiguous. Acknowledge to proceed.",
-      color = ScaffoldDialogMuted,
+      color = colors.onSurfaceVariant,
       fontSize = 10.5.sp,
     )
     Row(
@@ -227,8 +228,8 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
         .semantics { contentDescription = "Acknowledge dirty repository warning" }
         .clickable(enabled = enabled, role = Role.Checkbox) { onOverrideChanged(!override) },
     ) {
-      Text(text = if (override) "[x]" else "[ ]", color = ScaffoldDialogAmber, fontSize = 12.sp)
-      Text(text = "I understand, scaffold anyway", color = ScaffoldDialogText, fontSize = 11.sp)
+      Text(text = if (override) "[x]" else "[ ]", color = tone.content, fontSize = 12.sp)
+      Text(text = "I understand, scaffold anyway", color = dialogTone.content, fontSize = 11.sp)
     }
   }
 }
@@ -382,7 +383,7 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
 private fun SectionLabel(text: String) {
   Text(
     text = text,
-    color = ScaffoldDialogSteel,
+    color = SkillBillTheme.colors.onSurfaceVariant,
     fontSize = 10.5.sp,
     fontFamily = FontFamily.Monospace,
   )
@@ -390,6 +391,16 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValueChanged: (String) -> Unit) {
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  val interactionSource = remember { MutableInteractionSource() }
+  val focused by interactionSource.collectIsFocusedAsState()
+  val borderColor = when {
+    !enabled -> textFieldTokens.disabledBorder
+    focused -> textFieldTokens.focusedBorder
+    else -> textFieldTokens.border
+  }
+  val textColor = if (enabled) textFieldTokens.text else textFieldTokens.disabledText
+  val containerColor = if (enabled) textFieldTokens.container else textFieldTokens.disabledContainer
   Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
     SectionLabel(label)
     Box(
@@ -397,8 +408,8 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
         .fillMaxWidth()
         .height(30.dp)
         .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, ScaffoldDialogLine, RoundedCornerShape(6.dp))
-        .background(ScaffoldDialogRaised)
+        .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+        .background(containerColor)
         .padding(horizontal = 8.dp, vertical = 6.dp)
         .semantics { contentDescription = "$label input" },
     ) {
@@ -408,10 +419,12 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
         enabled = enabled,
         singleLine = true,
         textStyle = TextStyle(
-          color = ScaffoldDialogText,
+          color = textColor,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
         ),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
+        interactionSource = interactionSource,
         modifier = Modifier.fillMaxWidth(),
       )
     }
@@ -426,23 +439,25 @@ private fun PresetPicker(
   enabled: Boolean,
   onSelected: (String) -> Unit,
 ) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
     SectionLabel(label)
     if (options.isEmpty()) {
       Text(
         text = "(no options available)",
-        color = ScaffoldDialogSteel,
+        color = colors.onSurfaceVariant,
         fontSize = 11.sp,
       )
     } else {
       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { (value, display) ->
           val isSelected = value == selected
-          val backgroundColor = if (isSelected) ScaffoldDialogYellow else ScaffoldDialogRaised
+          val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
           val foregroundColor = when {
-            !enabled -> ScaffoldDialogSteel
-            isSelected -> Color(0xFF0B0B0D)
-            else -> ScaffoldDialogText
+            !enabled -> colors.onSurfaceVariant
+            isSelected -> colors.onPrimary
+            else -> dialogTone.content
           }
           Text(
             text = display,
@@ -450,7 +465,7 @@ private fun PresetPicker(
             fontSize = 11.sp,
             modifier = Modifier
               .clip(RoundedCornerShape(6.dp))
-              .border(1.dp, ScaffoldDialogLine, RoundedCornerShape(6.dp))
+              .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
               .background(backgroundColor)
               .semantics { contentDescription = "$label option $display" }
               .clickable(enabled = enabled, role = Role.Button) { onSelected(value) }
@@ -464,18 +479,19 @@ private fun PresetPicker(
 
 @Composable
 private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) {
+  val tone = SkillBillTheme.semanticTones.successBanner
   Column(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, ScaffoldDialogGreen, RoundedCornerShape(6.dp))
-      .background(ScaffoldDialogGreen.copy(alpha = 0.06f))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Text(
       text = "Dry-run plan",
-      color = ScaffoldDialogGreen,
+      color = tone.content,
       fontSize = 12.sp,
       fontWeight = FontWeight.Medium,
     )
@@ -490,17 +506,19 @@ private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) 
 @Composable
 private fun PreviewSection(label: String, lines: List<String>) {
   if (lines.isEmpty()) return
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Text(
       text = label,
-      color = ScaffoldDialogSteel,
+      color = colors.onSurfaceVariant,
       fontSize = 10.5.sp,
       fontFamily = FontFamily.Monospace,
     )
     lines.forEach { line ->
       Text(
         text = line,
-        color = ScaffoldDialogText,
+        color = dialogTone.content,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         maxLines = 2,
@@ -521,24 +539,25 @@ private fun ResultBanner(result: ScaffoldRunResult) {
 
 @Composable
 private fun SuccessBanner(result: ScaffoldRunResult.Success) {
+  val tone = SkillBillTheme.semanticTones.successBanner
   Column(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, ScaffoldDialogGreen, RoundedCornerShape(6.dp))
-      .background(ScaffoldDialogGreen.copy(alpha = 0.08f))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(
       text = "Scaffold succeeded: ${result.result.skillName}",
-      color = ScaffoldDialogGreen,
+      color = tone.content,
       fontSize = 12.sp,
       fontWeight = FontWeight.Medium,
     )
     Text(
       text = result.result.skillPath,
-      color = ScaffoldDialogText,
+      color = SkillBillTheme.semanticTones.dialog.content,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
     )
@@ -547,7 +566,11 @@ private fun SuccessBanner(result: ScaffoldRunResult.Success) {
 
 @Composable
 private fun FailureConsole(result: ScaffoldRunResult.Failed) {
-  val borderColor = if (result.rollbackComplete) ScaffoldDialogRed else ScaffoldDialogAmber
+  val tone = if (result.rollbackComplete) {
+    SkillBillTheme.semanticTones.errorBanner
+  } else {
+    SkillBillTheme.semanticTones.warningBanner
+  }
   // F-103: partial mutation MUST be conveyed without depending on color alone. We add a visible
   // text badge, a leading warning glyph, and an explicit semantics contentDescription so the
   // banner is readable to color-blind users and assistive tech.
@@ -560,8 +583,8 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, borderColor, RoundedCornerShape(6.dp))
-      .background(borderColor.copy(alpha = 0.08f))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp)
       .semantics { contentDescription = bannerSemantics },
     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -571,7 +594,7 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
       // on color. Placed above the title so it is the first text scanned.
       Text(
         text = "⚠ [REPO PARTIALLY MUTATED]",
-        color = ScaffoldDialogAmber,
+        color = tone.content,
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = FontFamily.Monospace,
@@ -579,14 +602,14 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
     }
     Text(
       text = if (result.rollbackComplete) "Scaffold failed" else "Scaffold failed - partial mutation",
-      color = borderColor,
+      color = tone.content,
       fontSize = 12.sp,
       fontWeight = FontWeight.Medium,
     )
     if (!result.rollbackComplete) {
       Text(
         text = "Runtime rollback did not complete. Inspect the repo and revert manually before retrying.",
-        color = ScaffoldDialogAmber,
+        color = tone.content,
         fontSize = 11.sp,
       )
     }
@@ -595,13 +618,13 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
       modifier = Modifier
         .fillMaxWidth()
         .clip(RoundedCornerShape(4.dp))
-        .background(Color(0xFF0B0B0D))
+        .background(SkillBillTheme.colors.background)
         .horizontalScroll(rememberScrollState())
         .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
       Text(
         text = "${result.exceptionName}: ${result.exceptionMessage}".trim(),
-        color = ScaffoldDialogText,
+        color = SkillBillTheme.colors.onBackground,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
       )
@@ -674,15 +697,17 @@ private fun WizardFooter(
 
 @Composable
 private fun FooterButton(label: String, enabled: Boolean, primary: Boolean, onClick: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   val background = when {
-    !enabled -> ScaffoldDialogRaised
-    primary -> ScaffoldDialogYellow
-    else -> ScaffoldDialogRaised
+    !enabled -> colors.surfaceVariant
+    primary -> colors.primary
+    else -> colors.surfaceVariant
   }
   val foreground = when {
-    !enabled -> ScaffoldDialogSteel
-    primary -> Color(0xFF0B0B0D)
-    else -> ScaffoldDialogText
+    !enabled -> colors.onSurfaceVariant
+    primary -> colors.onPrimary
+    else -> dialogTone.content
   }
   Text(
     text = label,
@@ -691,7 +716,7 @@ private fun FooterButton(label: String, enabled: Boolean, primary: Boolean, onCl
     fontWeight = if (primary) FontWeight.Medium else FontWeight.Normal,
     modifier = Modifier
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, ScaffoldDialogLine, RoundedCornerShape(6.dp))
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
       .background(background)
       .semantics { contentDescription = label }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)

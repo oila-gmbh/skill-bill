@@ -61,9 +61,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
@@ -93,7 +93,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import skillbill.desktop.core.designsystem.SkillBillColor
+import skillbill.desktop.core.designsystem.SkillBillDiffTokens
 import skillbill.desktop.core.designsystem.SkillBillMetrics
+import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.YamlSyntaxColors
+import skillbill.desktop.core.designsystem.contentColorFor
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
@@ -127,24 +132,65 @@ import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
+import skillbill.desktop.core.designsystem.SkillBillStatusTone as Tone
 
-private val WorkspaceBackground = Color(0xFF050506)
-private val WorkspacePanel = Color(0xFF121216)
-private val WorkspaceRaised = Color(0xFF15151A)
-private val WorkspaceSidebar = Color(0xFF0D0D10)
-private val WorkspaceLine = Color(0xFF2A2A31)
-private val WorkspaceMuted = Color(0xFFB7B1A0)
-private val WorkspaceSteel = Color(0xFF6F7882)
-private val WorkspaceText = Color(0xFFF6F3E7)
-private val WorkspaceYellow = Color(0xFFF4C430)
-private val WorkspaceGreen = Color(0xFF60D394)
-private val WorkspaceRed = Color(0xFFFF5F57)
-private val WorkspaceAmber = Color(0xFFFFBD2E)
 private val NavigationPaneMinWidth = 220.dp
 private val NavigationPaneMaxWidth = 540.dp
 private val NavigationPaneResizeHandleWidth = 7.dp
 private val BottomDockMinHeight = 132.dp
 private val BottomDockResizeHandleHeight = 7.dp
+
+internal data class CodePaneColors(
+  val background: SkillBillColor,
+  val editorText: SkillBillColor,
+  val editorDisabledText: SkillBillColor,
+  val editorCursor: SkillBillColor,
+  val lineNumber: SkillBillColor,
+  val flaggedBackground: SkillBillColor,
+  val yaml: YamlSyntaxColors,
+  val yamlFallback: SkillBillColor,
+  val diff: SkillBillDiffTokens,
+)
+
+@Composable
+internal fun codePaneColors(): CodePaneColors = CodePaneColors(
+  background = SkillBillTheme.colors.background,
+  editorText = SkillBillTheme.textFieldTokens.text,
+  editorDisabledText = SkillBillTheme.textFieldTokens.disabledText,
+  editorCursor = SkillBillTheme.textFieldTokens.cursor,
+  lineNumber = SkillBillTheme.colors.onSurfaceVariant,
+  flaggedBackground = SkillBillTheme.semanticTones.errorBanner.container,
+  yaml = SkillBillTheme.syntaxTokens.yaml,
+  yamlFallback = SkillBillTheme.syntaxTokens.yaml.scalar,
+  diff = SkillBillTheme.diffTokens,
+)
+
+internal enum class DiffLineRole {
+  Metadata,
+  Hunk,
+  Addition,
+  Deletion,
+  Context,
+}
+
+@Composable
+internal fun workspacePrimaryControlForeground(): SkillBillColor = SkillBillTheme.frameTokens.onPrimary
+
+internal fun diffRoleForLine(line: String): DiffLineRole = when {
+  line.startsWith("+++") || line.startsWith("---") -> DiffLineRole.Metadata
+  line.startsWith("@@") -> DiffLineRole.Hunk
+  line.startsWith("+") -> DiffLineRole.Addition
+  line.startsWith("-") -> DiffLineRole.Deletion
+  else -> DiffLineRole.Context
+}
+
+private fun diffColorForRole(role: DiffLineRole, tokens: SkillBillDiffTokens) = when (role) {
+  DiffLineRole.Metadata -> tokens.metadata
+  DiffLineRole.Hunk -> tokens.hunk
+  DiffLineRole.Addition -> tokens.addition
+  DiffLineRole.Deletion -> tokens.deletion
+  DiffLineRole.Context -> tokens.context
+}
 
 private fun Dp.coerceNavigationPaneWidth(): Dp = when {
   this < NavigationPaneMinWidth -> NavigationPaneMinWidth
@@ -308,7 +354,7 @@ fun SkillBillFrame(
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(WorkspaceBackground)
+      .background(SkillBillTheme.frameTokens.background)
       .onPreviewKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown) {
           false
@@ -494,7 +540,7 @@ fun SkillBillFrame(
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         if (inspectorVisible) {
-          VerticalDivider(color = WorkspaceLine, modifier = Modifier.fillMaxHeight())
+          VerticalDivider(color = SkillBillTheme.frameTokens.line, modifier = Modifier.fillMaxHeight())
           InspectorPane(
             editor = state.editor,
             repoStatus = state.repoStatus,
@@ -567,8 +613,8 @@ private fun WorkspaceToolbar(
     Modifier
       .fillMaxWidth()
       .height(40.dp)
-      .background(WorkspaceBackground)
-      .border(BorderStroke(0.dp, Color.Transparent))
+      .background(SkillBillTheme.frameTokens.background)
+      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
       .padding(horizontal = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -658,14 +704,14 @@ private fun ToolbarButton(
   contentDescription: String = label,
   acceleratorLabel: String? = null,
 ) {
-  val background = if (primary) WorkspaceYellow else WorkspaceRaised
+  val background = if (primary) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.raised
   val foreground =
     when {
-      !enabled -> WorkspaceSteel
-      primary -> Color(0xFF0B0B0D)
-      else -> WorkspaceText
+      !enabled -> SkillBillTheme.frameTokens.subtle
+      primary -> workspacePrimaryControlForeground()
+      else -> SkillBillTheme.frameTokens.text
     }
-  val border = if (primary) WorkspaceYellow else WorkspaceLine
+  val border = if (primary) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.line
   AcceleratorTooltip(label = label, acceleratorLabel = acceleratorLabel) {
     Row(
       modifier =
@@ -708,17 +754,17 @@ private fun ToolbarSidePanelButton(
 ) {
   val foreground =
     when {
-      !enabled -> WorkspaceSteel
-      selected -> WorkspaceYellow
-      else -> WorkspaceText
+      !enabled -> SkillBillTheme.frameTokens.subtle
+      selected -> SkillBillTheme.frameTokens.primary
+      else -> SkillBillTheme.frameTokens.text
     }
-  val border = if (selected) WorkspaceYellow else WorkspaceLine
+  val border = if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.line
   Box(
     modifier = Modifier
       .size(width = 30.dp, height = 28.dp)
       .clip(RoundedCornerShape(6.dp))
       .border(1.dp, border, RoundedCornerShape(6.dp))
-      .background(WorkspaceRaised)
+      .background(SkillBillTheme.frameTokens.raised)
       .semantics(mergeDescendants = true) {
         this.contentDescription = contentDescription
         this.stateDescription = if (selected) "visible" else "hidden"
@@ -732,7 +778,7 @@ private fun ToolbarSidePanelButton(
 }
 
 @Composable
-private fun SidePanelIcon(tint: Color, panelVisible: Boolean) {
+private fun SidePanelIcon(tint: SkillBillColor, panelVisible: Boolean) {
   Canvas(modifier = Modifier.size(width = 15.dp, height = 14.dp)) {
     val strokeWidth = 1.4.dp.toPx()
     val cornerInset = strokeWidth / 2f
@@ -771,17 +817,17 @@ private fun DockVisibilityButton(
 ) {
   val foreground =
     when {
-      !enabled -> WorkspaceSteel
-      selected -> WorkspaceYellow
-      else -> WorkspaceText
+      !enabled -> SkillBillTheme.frameTokens.subtle
+      selected -> SkillBillTheme.frameTokens.primary
+      else -> SkillBillTheme.frameTokens.text
     }
-  val border = if (selected) WorkspaceYellow else WorkspaceLine
+  val border = if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.line
   Box(
     modifier = Modifier
       .size(width = 30.dp, height = 24.dp)
       .clip(RoundedCornerShape(6.dp))
       .border(1.dp, border, RoundedCornerShape(6.dp))
-      .background(WorkspaceRaised)
+      .background(SkillBillTheme.frameTokens.raised)
       .semantics(mergeDescendants = true) {
         this.contentDescription = contentDescription
         this.stateDescription = if (selected) "visible" else "hidden"
@@ -795,7 +841,7 @@ private fun DockVisibilityButton(
 }
 
 @Composable
-private fun BottomPanelIcon(tint: Color, panelVisible: Boolean) {
+private fun BottomPanelIcon(tint: SkillBillColor, panelVisible: Boolean) {
   Canvas(modifier = Modifier.size(width = 15.dp, height = 14.dp)) {
     val strokeWidth = 1.4.dp.toPx()
     val cornerInset = strokeWidth / 2f
@@ -836,13 +882,13 @@ private fun AcceleratorTooltip(label: String, acceleratorLabel: String?, content
     tooltip = {
       Box(
         modifier = Modifier
-          .background(WorkspaceRaised, RoundedCornerShape(4.dp))
-          .border(1.dp, WorkspaceLine, RoundedCornerShape(4.dp))
+          .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(4.dp))
+          .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(4.dp))
           .padding(horizontal = 8.dp, vertical = 6.dp),
       ) {
         Text(
           text = "$label - $acceleratorLabel",
-          color = WorkspaceText,
+          color = SkillBillTheme.frameTokens.text,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
         )
@@ -860,9 +906,9 @@ private fun AcceleratorTooltip(label: String, acceleratorLabel: String?, content
  */
 @Composable
 private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = false) {
-  val background = if (primary) WorkspaceYellow else WorkspaceRaised
-  val foreground = if (primary) Color(0xFF0B0B0D) else WorkspaceText
-  val border = if (primary) WorkspaceYellow else WorkspaceLine
+  val background = if (primary) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.raised
+  val foreground = if (primary) workspacePrimaryControlForeground() else SkillBillTheme.frameTokens.text
+  val border = if (primary) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.line
   Row(
     modifier =
     Modifier
@@ -927,20 +973,20 @@ private fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaff
       expanded = menuOpen,
       onDismissRequest = { menuOpen = false },
       modifier = Modifier
-        .background(WorkspacePanel)
-        .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp)),
+        .background(SkillBillTheme.frameTokens.panel)
+        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp)),
     ) {
       ScaffoldKind.values().forEach { kind ->
         DropdownMenuItem(
           text = {
             Text(
               text = kind.displayLabel,
-              color = WorkspaceText,
+              color = SkillBillTheme.frameTokens.text,
               fontSize = 12.sp,
               maxLines = 1,
             )
           },
-          colors = MenuDefaults.itemColors(textColor = WorkspaceText),
+          colors = MenuDefaults.itemColors(textColor = SkillBillTheme.frameTokens.text),
           modifier = Modifier
             .widthIn(min = 220.dp)
             .semantics { contentDescription = "Open ${kind.displayLabel} wizard" },
@@ -973,8 +1019,8 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    MiniIcon(text = "..", tint = WorkspaceYellow)
-    Text(text = label, color = WorkspaceMuted, fontSize = 11.sp, maxLines = 1)
+    MiniIcon(text = "..", tint = SkillBillTheme.frameTokens.primary)
+    Text(text = label, color = SkillBillTheme.frameTokens.muted, fontSize = 11.sp, maxLines = 1)
   }
 }
 
@@ -986,7 +1032,7 @@ private fun ToolbarDivider() {
       .padding(horizontal = 5.dp)
       .width(1.dp)
       .height(20.dp)
-      .background(WorkspaceLine),
+      .background(SkillBillTheme.frameTokens.line),
   )
 }
 
@@ -997,17 +1043,17 @@ private fun CommandSearchButton(onClick: () -> Unit) {
     Modifier
       .width(288.dp)
       .height(28.dp)
-      .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp))
-      .background(WorkspaceRaised, RoundedCornerShape(6.dp))
+      .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp))
+      .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(6.dp))
       .clickable(role = Role.Button, onClick = onClick)
       .padding(horizontal = 9.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = "sr", tint = WorkspaceMuted)
+    MiniIcon(text = "sr", tint = SkillBillTheme.frameTokens.muted)
     Text(
       text = "Find skill, intent, contract id...",
-      color = WorkspaceSteel,
+      color = SkillBillTheme.frameTokens.subtle,
       fontSize = 12.sp,
       modifier = Modifier.weight(1f),
       maxLines = 1,
@@ -1015,7 +1061,7 @@ private fun CommandSearchButton(onClick: () -> Unit) {
     )
     Text(
       text = SkillBillAcceleratorLabels.COMMAND_PALETTE,
-      color = WorkspaceSteel,
+      color = SkillBillTheme.frameTokens.subtle,
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
     )
@@ -1065,7 +1111,7 @@ private fun CommandPaletteOverlay(
     Box(
       modifier = Modifier
         .fillMaxSize()
-        .background(Color.Black.copy(alpha = 0.42f))
+        .background(SkillBillTheme.semanticTones.scrim)
         .clickable(role = Role.Button, onClick = onDismiss),
     )
     Column(
@@ -1074,8 +1120,8 @@ private fun CommandPaletteOverlay(
         .widthIn(min = 520.dp, max = 720.dp)
         .heightIn(max = 480.dp)
         .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, WorkspaceLine, RoundedCornerShape(8.dp))
-        .background(WorkspacePanel)
+        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(8.dp))
+        .background(SkillBillTheme.frameTokens.panel)
         .onPreviewKeyEvent { event ->
           if (event.type != KeyEventType.KeyDown) {
             false
@@ -1107,7 +1153,7 @@ private fun CommandPaletteOverlay(
         onQueryChanged = onQueryChanged,
         focusRequester = focusRequester,
       )
-      HorizontalDivider(color = WorkspaceLine)
+      HorizontalDivider(color = SkillBillTheme.frameTokens.line)
       CommandPaletteResults(
         palette = palette,
         onExecuteResult = onExecuteResult,
@@ -1119,17 +1165,18 @@ private fun CommandPaletteOverlay(
 
 @Composable
 private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit, focusRequester: FocusRequester) {
+  val textFieldTokens = SkillBillTheme.textFieldTokens
   Row(
     modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    MiniIcon(text = "cmd", tint = WorkspaceYellow)
+    MiniIcon(text = "cmd", tint = SkillBillTheme.frameTokens.primary)
     Box(modifier = Modifier.weight(1f)) {
       if (query.isBlank()) {
         Text(
           text = "Search commands and source items",
-          color = WorkspaceSteel,
+          color = textFieldTokens.placeholder,
           fontSize = 14.sp,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
@@ -1140,11 +1187,11 @@ private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit,
         onValueChange = onQueryChanged,
         singleLine = true,
         textStyle = androidx.compose.ui.text.TextStyle(
-          color = WorkspaceText,
+          color = textFieldTokens.text,
           fontSize = 14.sp,
           fontFamily = FontFamily.Monospace,
         ),
-        cursorBrush = SolidColor(WorkspaceYellow),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
       )
     }
@@ -1161,7 +1208,7 @@ private fun CommandPaletteResults(
     if (palette.results.isEmpty()) {
       Text(
         text = "No matching commands",
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 12.sp,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
       )
@@ -1181,16 +1228,16 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
   val enabled = result.enabled
   val background =
     when {
-      selected -> WorkspaceYellow.copy(alpha = 0.14f)
-      else -> Color.Transparent
+      selected -> SkillBillTheme.frameTokens.primary.copy(alpha = 0.14f)
+      else -> SkillBillTheme.frameTokens.transparent
     }
   val titleColor =
     when {
-      !enabled -> WorkspaceSteel
-      selected -> WorkspaceText
-      else -> WorkspaceText.copy(alpha = 0.92f)
+      !enabled -> SkillBillTheme.frameTokens.subtle
+      selected -> SkillBillTheme.frameTokens.text
+      else -> SkillBillTheme.frameTokens.text.copy(alpha = 0.92f)
     }
-  val subtitleColor = if (enabled) WorkspaceMuted else WorkspaceSteel
+  val subtitleColor = if (enabled) SkillBillTheme.frameTokens.muted else SkillBillTheme.frameTokens.subtle
   Row(
     modifier = Modifier
       .fillMaxWidth()
@@ -1210,7 +1257,12 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
     verticalAlignment = Alignment.Top,
     horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    MiniIcon(text = result.marker, tint = if (selected && enabled) WorkspaceYellow else WorkspaceSteel)
+    val markerTint = if (selected && enabled) {
+      SkillBillTheme.frameTokens.primary
+    } else {
+      SkillBillTheme.frameTokens.subtle
+    }
+    MiniIcon(text = result.marker, tint = markerTint)
     Column(modifier = Modifier.weight(1f)) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -1229,7 +1281,7 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
       }
       Text(
         text = result.disabledReason ?: result.subtitle,
-        color = if (result.disabledReason == null) subtitleColor else WorkspaceAmber,
+        color = if (result.disabledReason == null) subtitleColor else SkillBillTheme.frameTokens.status.warning,
         fontSize = 11.sp,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
@@ -1242,7 +1294,7 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
 private fun CommandPaletteAcceleratorLabel(label: String) {
   Text(
     text = label,
-    color = WorkspaceMuted,
+    color = SkillBillTheme.frameTokens.muted,
     fontSize = 10.sp,
     fontFamily = FontFamily.Monospace,
     maxLines = 1,
@@ -1257,7 +1309,7 @@ private fun CommandPaletteKindLabel(kind: CommandPaletteResultKind) {
   }
   Text(
     text = label,
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 10.sp,
     fontFamily = FontFamily.Monospace,
     maxLines = 1,
@@ -1298,7 +1350,7 @@ private fun NavigationPane(
     Modifier
       .width(paneWidth)
       .fillMaxHeight()
-      .background(WorkspaceSidebar),
+      .background(SkillBillTheme.frameTokens.sidebar),
   ) {
     RepositorySelector(
       repoPath = repoPath,
@@ -1364,7 +1416,10 @@ private fun NavigationPane(
           onShowContextMenu = onShowContextMenu,
         )
       }
-      HorizontalDivider(modifier = Modifier.padding(top = 10.dp, bottom = 8.dp), color = WorkspaceLine)
+      HorizontalDivider(
+        modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
+        color = SkillBillTheme.frameTokens.line,
+      )
       RepositoryAction(
         label = "Validation",
         marker = "vl",
@@ -1395,15 +1450,15 @@ private fun NavigationPane(
       Modifier
         .fillMaxWidth()
         .height(35.dp)
-        .border(BorderStroke(0.dp, Color.Transparent))
-        .background(WorkspaceSidebar)
+        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
+        .background(SkillBillTheme.frameTokens.sidebar)
         .padding(horizontal = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      MiniIcon(text = "lk", tint = WorkspaceSteel)
-      Text(text = "contract policy:", color = WorkspaceSteel, fontSize = 11.sp)
-      Text(text = policyLabel, color = WorkspaceText, fontSize = 11.sp)
+      MiniIcon(text = "lk", tint = SkillBillTheme.frameTokens.subtle)
+      Text(text = "contract policy:", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
+      Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, fontSize = 11.sp)
     }
   }
 }
@@ -1417,6 +1472,8 @@ private fun RepositorySelector(
   onRepoSelected: (String) -> Unit,
   onChooseRepoDirectory: () -> Unit,
 ) {
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  var repoPathFocused by remember { mutableStateOf(false) }
   val acceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = busy,
     publishingBusy = false,
@@ -1431,7 +1488,7 @@ private fun RepositorySelector(
     modifier =
     Modifier
       .fillMaxWidth()
-      .border(BorderStroke(0.dp, Color.Transparent))
+      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
       .padding(horizontal = 12.dp, vertical = 10.dp),
   ) {
     LabelText("Repository")
@@ -1440,26 +1497,38 @@ private fun RepositorySelector(
       Modifier
         .fillMaxWidth()
         .height(32.dp)
-        .border(1.dp, WorkspaceLine, RoundedCornerShape(6.dp))
-        .background(WorkspaceRaised, RoundedCornerShape(6.dp))
+        .border(
+          1.dp,
+          when {
+            busy -> textFieldTokens.disabledBorder
+            repoPathFocused -> textFieldTokens.focusedBorder
+            else -> textFieldTokens.border
+          },
+          RoundedCornerShape(6.dp),
+        )
+        .background(
+          if (busy) textFieldTokens.disabledContainer else textFieldTokens.container,
+          RoundedCornerShape(6.dp),
+        )
         .padding(horizontal = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      MiniIcon(text = "db", tint = WorkspaceYellow)
+      MiniIcon(text = "db", tint = SkillBillTheme.frameTokens.primary)
       BasicTextField(
         value = repoPath,
         onValueChange = onRepoPathChanged,
         enabled = !busy,
         textStyle = androidx.compose.ui.text.TextStyle(
-          color = WorkspaceText,
+          color = if (busy) textFieldTokens.disabledText else textFieldTokens.text,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
         ),
         singleLine = true,
-        cursorBrush = SolidColor(WorkspaceYellow),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier
           .weight(1f)
+          .onFocusChanged { repoPathFocused = it.isFocused }
           .onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) {
               false
@@ -1476,7 +1545,7 @@ private fun RepositorySelector(
       AcceleratorTooltip(label = "Open repository at path", acceleratorLabel = SkillBillAcceleratorLabels.REPO_OPEN) {
         Text(
           text = if (busy) "Busy" else "Open",
-          color = if (busy) WorkspaceSteel else WorkspaceYellow,
+          color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
           fontSize = 11.sp,
           fontWeight = FontWeight.Medium,
           modifier = Modifier
@@ -1487,7 +1556,7 @@ private fun RepositorySelector(
       }
       Text(
         text = "...",
-        color = if (busy) WorkspaceSteel else WorkspaceYellow,
+        color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
@@ -1498,7 +1567,11 @@ private fun RepositorySelector(
     }
     Text(
       text = repoStatus.message,
-      color = if (repoStatus.state == RepoLoadState.INVALID) WorkspaceRed else WorkspaceSteel,
+      color = if (repoStatus.state == RepoLoadState.INVALID) {
+        SkillBillTheme.frameTokens.status.error
+      } else {
+        SkillBillTheme.frameTokens.subtle
+      },
       fontSize = 10.sp,
       modifier = Modifier.padding(top = 6.dp),
       maxLines = 2,
@@ -1511,7 +1584,11 @@ private fun RepositorySelector(
 private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
   Text(
     text = repoStatus.message,
-    color = if (repoStatus.state == RepoLoadState.INVALID) WorkspaceRed else WorkspaceSteel,
+    color = if (repoStatus.state == RepoLoadState.INVALID) {
+      SkillBillTheme.frameTokens.status.error
+    } else {
+      SkillBillTheme.frameTokens.subtle
+    },
     fontSize = 12.sp,
     modifier = Modifier.padding(12.dp),
   )
@@ -1523,7 +1600,7 @@ private fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
     modifier = Modifier
       .fillMaxHeight()
       .width(NavigationPaneResizeHandleWidth)
-      .background(WorkspaceBackground)
+      .background(SkillBillTheme.frameTokens.background)
       .pointerInput(Unit) {
         detectHorizontalDragGestures { change, dragAmount ->
           change.consume()
@@ -1536,7 +1613,7 @@ private fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
       modifier = Modifier
         .width(2.dp)
         .fillMaxHeight()
-        .background(WorkspaceLine),
+        .background(SkillBillTheme.frameTokens.line),
     )
   }
 }
@@ -1587,12 +1664,16 @@ private fun NavGroup(
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val selected = selectedNodeId == group.id
-  val rowBackground = if (selected) WorkspaceYellow.copy(alpha = 0.15f) else Color.Transparent
-  val iconTint = if (selected) WorkspaceYellow else WorkspaceSteel
+  val rowBackground = if (selected) {
+    SkillBillTheme.frameTokens.primary.copy(alpha = 0.15f)
+  } else {
+    SkillBillTheme.frameTokens.transparent
+  }
+  val iconTint = if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle
   val textColor =
     when {
-      selected -> WorkspaceText
-      else -> WorkspaceSteel
+      selected -> SkillBillTheme.frameTokens.text
+      else -> SkillBillTheme.frameTokens.subtle
     }
   // SKILL-46 / AC1: per-row state for the right-click context menu (DropdownMenu with single
   // `Delete…` item). The menu is rendered at the end of the Row so it anchors to this row's
@@ -1628,7 +1709,7 @@ private fun NavGroup(
         Modifier
           .width(3.dp)
           .fillMaxHeight()
-          .background(if (selected) WorkspaceYellow else Color.Transparent),
+          .background(if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent),
       )
       Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
       MiniIcon(text = markerFor(group.kind), tint = iconTint)
@@ -1697,11 +1778,11 @@ private fun NavTreeNode(
   // `skillRemoveContextMenuModifier` and rendered via DropdownMenu inside the Row content.
   var menuExpanded by remember(node.id) { mutableStateOf(false) }
   val rowBackground = when {
-    selected -> WorkspaceYellow.copy(alpha = 0.15f)
-    open -> WorkspaceYellow.copy(alpha = 0.06f)
-    else -> Color.Transparent
+    selected -> SkillBillTheme.frameTokens.primary.copy(alpha = 0.15f)
+    open -> SkillBillTheme.frameTokens.primary.copy(alpha = 0.06f)
+    else -> SkillBillTheme.frameTokens.transparent
   }
-  val iconTint = if (selected || open) WorkspaceYellow else WorkspaceSteel
+  val iconTint = if (selected || open) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle
   val textAlpha =
     when {
       !enabled -> 0.42f
@@ -1750,7 +1831,7 @@ private fun NavTreeNode(
       Modifier
         .width(3.dp)
         .fillMaxHeight()
-        .background(if (selected) WorkspaceYellow else Color.Transparent),
+        .background(if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent),
     )
     Spacer(modifier = Modifier.width((22 + depth * 16).dp))
     if (expandable) {
@@ -1761,7 +1842,7 @@ private fun NavTreeNode(
     MiniIcon(text = markerFor(node.kind), tint = iconTint)
     Text(
       text = node.label,
-      color = WorkspaceText.copy(alpha = textAlpha),
+      color = SkillBillTheme.frameTokens.text.copy(alpha = textAlpha),
       fontSize = 12.5.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.padding(start = 8.dp).weight(1f),
@@ -1773,7 +1854,7 @@ private fun NavTreeNode(
     if (readOnlyLabel != null) {
       Text(
         text = readOnlyLabel,
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.padding(end = 8.dp),
@@ -1825,7 +1906,7 @@ private fun OpenEditorTabIndicator(open: Boolean) {
         modifier = Modifier
           .size(5.dp)
           .clip(CircleShape)
-          .background(WorkspaceYellow),
+          .background(SkillBillTheme.frameTokens.primary),
       )
     }
   }
@@ -1839,7 +1920,11 @@ private fun RepositoryAction(
   badge: String? = null,
   enabled: Boolean = true,
 ) {
-  val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
+  val contentColor = if (enabled) {
+    SkillBillTheme.frameTokens.text.copy(alpha = 0.86f)
+  } else {
+    SkillBillTheme.frameTokens.subtle
+  }
   Row(
     modifier =
     Modifier
@@ -1858,7 +1943,7 @@ private fun RepositoryAction(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = marker, tint = WorkspaceSteel)
+    MiniIcon(text = marker, tint = SkillBillTheme.frameTokens.subtle)
     Text(
       text = label,
       color = contentColor,
@@ -1879,7 +1964,11 @@ private fun RepositoryAction(
  */
 @Composable
 private fun RepositoryStatusItem(label: String, statusText: String, marker: String, enabled: Boolean = true) {
-  val contentColor = if (enabled) WorkspaceText.copy(alpha = 0.86f) else WorkspaceSteel
+  val contentColor = if (enabled) {
+    SkillBillTheme.frameTokens.text.copy(alpha = 0.86f)
+  } else {
+    SkillBillTheme.frameTokens.subtle
+  }
   Row(
     modifier =
     Modifier
@@ -1896,7 +1985,7 @@ private fun RepositoryStatusItem(label: String, statusText: String, marker: Stri
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = marker, tint = WorkspaceSteel)
+    MiniIcon(text = marker, tint = SkillBillTheme.frameTokens.subtle)
     Text(
       text = label,
       color = contentColor,
@@ -1905,7 +1994,7 @@ private fun RepositoryStatusItem(label: String, statusText: String, marker: Stri
     )
     Text(
       text = statusText,
-      color = WorkspaceAmber,
+      color = SkillBillTheme.frameTokens.status.warning,
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -2013,7 +2102,7 @@ private fun CenterWorkspace(
   onEditorTabClosed: (String) -> Unit,
   modifier: Modifier,
 ) {
-  Column(modifier = modifier.background(WorkspaceBackground)) {
+  Column(modifier = modifier.background(SkillBillTheme.frameTokens.background)) {
     EditorTabs(
       editor = editor,
       tabs = openEditorTabs,
@@ -2144,7 +2233,7 @@ private fun EditorTabs(
     Modifier
       .fillMaxWidth()
       .height(36.dp)
-      .background(WorkspacePanel)
+      .background(SkillBillTheme.frameTokens.panel)
       .pointerInput(scrollState) {
         awaitPointerEventScope {
           while (true) {
@@ -2217,6 +2306,8 @@ private fun HorizontalScrollIndicator(
   modifier: Modifier = Modifier,
 ) {
   val coroutineScope = rememberCoroutineScope()
+  val scrollTrackColor = SkillBillTheme.frameTokens.line
+  val scrollThumbColor = SkillBillTheme.frameTokens.primary.copy(alpha = 0.72f)
   Box(
     modifier = modifier
       .height(10.dp)
@@ -2239,12 +2330,12 @@ private fun HorizontalScrollIndicator(
       val thumbWidth = (viewportWidth / contentWidth * viewportWidth).coerceAtLeast(48.dp.toPx())
       val thumbLeft = scrollValue / maxScroll * (viewportWidth - thumbWidth)
       drawRect(
-        color = WorkspaceLine,
+        color = scrollTrackColor,
         topLeft = Offset.Zero,
         size = Size(viewportWidth, size.height),
       )
       drawRect(
-        color = WorkspaceYellow.copy(alpha = 0.72f),
+        color = scrollThumbColor,
         topLeft = Offset(thumbLeft, 0f),
         size = Size(thumbWidth, size.height),
       )
@@ -2260,8 +2351,8 @@ private fun EditorTab(
   onSelected: () -> Unit,
   onClosed: () -> Unit,
 ) {
-  val background = if (active) WorkspaceBackground else WorkspacePanel
-  val textColor = if (active) WorkspaceText else WorkspaceMuted
+  val background = if (active) SkillBillTheme.frameTokens.background else SkillBillTheme.frameTokens.panel
+  val textColor = if (active) SkillBillTheme.frameTokens.text else SkillBillTheme.frameTokens.muted
   val tabWidth = when {
     tab.title.length > 28 -> 230.dp
     tab.title.length > 18 -> 190.dp
@@ -2278,13 +2369,20 @@ private fun EditorTab(
         selected = active
       },
   ) {
-    Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(if (active) WorkspaceYellow else Color.Transparent))
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(2.dp)
+        .background(
+          if (active) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent,
+        ),
+    )
     Row(
       modifier =
       Modifier
         .weight(1f)
         .fillMaxWidth()
-        .border(BorderStroke(0.dp, Color.Transparent))
+        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
         .padding(horizontal = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -2300,12 +2398,12 @@ private fun EditorTab(
         overflow = TextOverflow.Ellipsis,
       )
       if (tab.dirty) {
-        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(WorkspaceYellow))
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SkillBillTheme.frameTokens.primary))
       }
       if (tab.readOnly) {
         Text(
           text = tab.readOnlyLabel ?: "RO",
-          color = WorkspaceSteel,
+          color = SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
         )
@@ -2313,7 +2411,7 @@ private fun EditorTab(
       if (closeEnabled) {
         Text(
           text = "x",
-          color = if (active) WorkspaceMuted else WorkspaceSteel,
+          color = if (active) SkillBillTheme.frameTokens.muted else SkillBillTheme.frameTokens.subtle,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -2341,11 +2439,12 @@ private fun CodeEditor(
   modifier: Modifier = Modifier,
 ) {
   var dismissedSaveErrorDialogKey by remember { mutableStateOf<String?>(null) }
+  val codePaneColors = codePaneColors()
   Column(
     modifier =
     modifier
       .fillMaxWidth()
-      .background(WorkspaceBackground),
+      .background(SkillBillTheme.frameTokens.background),
   ) {
     EditorCommandBar(editor = editor, onSave = onSave, onRevert = onRevert)
     if (dirtyEditorPrompt != null) {
@@ -2368,24 +2467,26 @@ private fun CodeEditor(
       }
     }
     if (editor.editable) {
+      val editorInputActive = editorInputEnabled && !editor.saveInProgress
       Box(
         modifier =
         Modifier
           .weight(1f)
           .fillMaxWidth()
+          .background(codePaneColors.background)
           .verticalScroll(rememberScrollState()),
       ) {
         BasicTextField(
           value = editor.draftContent ?: editor.content.orEmpty(),
           onValueChange = onDraftChanged,
-          enabled = editorInputEnabled && !editor.saveInProgress,
+          enabled = editorInputActive,
           textStyle = androidx.compose.ui.text.TextStyle(
-            color = WorkspaceText.copy(alpha = 0.92f),
+            color = if (editorInputActive) codePaneColors.editorText else codePaneColors.editorDisabledText,
             fontSize = 12.5.sp,
             fontFamily = FontFamily.Monospace,
             lineHeight = 20.sp,
           ),
-          cursorBrush = SolidColor(WorkspaceYellow),
+          cursorBrush = SolidColor(codePaneColors.editorCursor),
           modifier =
           Modifier
             .fillMaxWidth()
@@ -2395,11 +2496,12 @@ private fun CodeEditor(
     } else {
       val rawText = (editor.content ?: editor.detail).ifBlank { "No source selected" }
       val lines = rawText.lines()
+      val yamlSyntaxColors = SkillBillTheme.syntaxTokens.yaml
       // SKILL-47 AC6 — apply YAML-aware highlighting only for kind=contract
       // documents (the platform-pack schema viewer). Other read-only docs
       // (markdown, generated output, etc.) keep the existing SyntaxText path.
       val highlightedLines: List<AnnotatedString>? = if (editor.kind == "contract") {
-        remember(rawText) { highlightYaml(rawText, contractYamlColors).splitIntoLines() }
+        remember(rawText, yamlSyntaxColors) { highlightYaml(rawText, yamlSyntaxColors).splitIntoLines() }
       } else {
         null
       }
@@ -2409,15 +2511,16 @@ private fun CodeEditor(
         Modifier
           .weight(1f)
           .fillMaxWidth()
+          .background(codePaneColors.background)
           .verticalScroll(rememberScrollState()),
       ) {
         if (highlightedLines != null) {
           highlightedLines.forEachIndexed { index, annotated ->
-            CodeLineAnnotated(number = index + 1, content = annotated)
+            CodeLineAnnotated(number = index + 1, content = annotated, colors = codePaneColors)
           }
         } else {
           lines.forEachIndexed { index, line ->
-            CodeLine(number = index + 1, line = line, flagged = false)
+            CodeLine(number = index + 1, line = line, flagged = false, colors = codePaneColors)
           }
         }
       }
@@ -2427,22 +2530,23 @@ private fun CodeEditor(
 
 @Composable
 private fun SaveErrorDialog(message: String, onDismiss: () -> Unit) {
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   AlertDialog(
     onDismissRequest = onDismiss,
     title = {
-      Text(text = "Save blocked", color = WorkspaceText)
+      Text(text = "Save blocked", color = dialogTone.content)
     },
     text = {
-      Text(text = message, color = WorkspaceMuted)
+      Text(text = message, color = dialogTone.content)
     },
     confirmButton = {
       TextButton(onClick = onDismiss) {
         Text(text = "OK")
       }
     },
-    containerColor = WorkspaceRaised,
-    titleContentColor = WorkspaceText,
-    textContentColor = WorkspaceMuted,
+    containerColor = dialogTone.container,
+    titleContentColor = dialogTone.content,
+    textContentColor = dialogTone.content,
   )
 }
 
@@ -2453,7 +2557,7 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
     Modifier
       .fillMaxWidth()
       .height(38.dp)
-      .background(WorkspaceRaised)
+      .background(SkillBillTheme.frameTokens.raised)
       .padding(horizontal = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2466,7 +2570,7 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
       } else {
         "Read-only"
       },
-      color = if (editor.dirty) WorkspaceYellow else WorkspaceMuted,
+      color = if (editor.dirty) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.muted,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.weight(1f),
@@ -2499,12 +2603,12 @@ private fun EditorActionButton(
   acceleratorLabel: String? = null,
   onClick: () -> Unit,
 ) {
-  val background = if (primary && enabled) WorkspaceYellow else WorkspacePanel
+  val background = if (primary && enabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.panel
   val foreground =
     when {
-      !enabled -> WorkspaceSteel
-      primary -> Color(0xFF0B0B0D)
-      else -> WorkspaceText
+      !enabled -> SkillBillTheme.frameTokens.subtle
+      primary -> workspacePrimaryControlForeground()
+      else -> SkillBillTheme.frameTokens.text
     }
   AcceleratorTooltip(label = label, acceleratorLabel = acceleratorLabel) {
     Row(
@@ -2512,7 +2616,11 @@ private fun EditorActionButton(
       Modifier
         .height(26.dp)
         .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, if (enabled) WorkspaceLine else WorkspacePanel, RoundedCornerShape(6.dp))
+        .border(
+          1.dp,
+          if (enabled) SkillBillTheme.frameTokens.line else SkillBillTheme.frameTokens.panel,
+          RoundedCornerShape(6.dp),
+        )
         .background(background, RoundedCornerShape(6.dp))
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
         .padding(horizontal = 9.dp),
@@ -2528,18 +2636,21 @@ private fun EditorActionButton(
 @Composable
 private fun ReadOnlyBanner(editor: EditorPlaceholder) {
   Row(
-    modifier = Modifier.fillMaxWidth().background(WorkspaceRaised).padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier
+      .fillMaxWidth()
+      .background(SkillBillTheme.frameTokens.raised)
+      .padding(horizontal = 14.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = "ro", tint = WorkspaceYellow)
+    MiniIcon(text = "ro", tint = SkillBillTheme.frameTokens.primary)
     Text(
       text = if (editor.kind == "generated artifact") {
         editor.readOnlyReason ?: "Generated artifact is ${editor.readOnlyLabel ?: "read-only"}"
       } else {
         editor.readOnlyReason ?: "Read-only browser"
       },
-      color = WorkspaceMuted,
+      color = SkillBillTheme.frameTokens.muted,
       fontSize = 11.sp,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
@@ -2549,21 +2660,22 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
 
 @Composable
 private fun SaveErrorBanner(message: String) {
+  val errorTone = SkillBillTheme.semanticTones.errorBanner
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
       .heightIn(max = 140.dp)
-      .background(WorkspaceRed.copy(alpha = 0.16f))
+      .background(errorTone.container)
       .verticalScroll(rememberScrollState())
       .padding(horizontal = 14.dp, vertical = 8.dp),
     verticalAlignment = Alignment.Top,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = "x", tint = WorkspaceRed)
+    MiniIcon(text = "x", tint = errorTone.content)
     Text(
       text = message,
-      color = WorkspaceText,
+      color = errorTone.content,
       fontSize = 11.sp,
       modifier = Modifier.weight(1f),
     )
@@ -2572,6 +2684,7 @@ private fun SaveErrorBanner(message: String) {
 
 @Composable
 private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> Unit, onCancel: () -> Unit) {
+  val warningTone = SkillBillTheme.semanticTones.warningBanner
   val message = when (prompt.reason) {
     DirtyEditorPromptReason.SELECTION_CHANGE -> "Discard unsaved edits before changing selection?"
     DirtyEditorPromptReason.REFRESH -> "Discard unsaved edits before refreshing?"
@@ -2579,16 +2692,14 @@ private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> 
     DirtyEditorPromptReason.CHOOSE_DIRECTORY -> "Discard unsaved edits before choosing another repository?"
   }
   Row(
-    modifier = Modifier.fillMaxWidth().background(
-      WorkspaceAmber.copy(alpha = 0.16f),
-    ).padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier.fillMaxWidth().background(warningTone.container).padding(horizontal = 14.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = "!", tint = WorkspaceAmber)
+    MiniIcon(text = "!", tint = warningTone.content)
     Text(
       text = message,
-      color = WorkspaceText,
+      color = warningTone.content,
       fontSize = 11.sp,
       modifier = Modifier.weight(1f),
       maxLines = 1,
@@ -2600,22 +2711,22 @@ private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> 
 }
 
 @Composable
-private fun CodeLine(number: Int, line: String, flagged: Boolean) {
+private fun CodeLine(number: Int, line: String, flagged: Boolean, colors: CodePaneColors) {
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
-      .background(if (flagged) WorkspaceRed.copy(alpha = 0.10f) else Color.Transparent),
+      .background(if (flagged) colors.flaggedBackground else SkillBillTheme.frameTokens.transparent),
   ) {
     Text(
       text = number.toString(),
-      color = WorkspaceSteel,
+      color = colors.lineNumber,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier =
       Modifier
         .width(50.dp)
-        .border(BorderStroke(0.dp, Color.Transparent))
+        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
         .padding(top = 4.dp, end = 10.dp),
       maxLines = 1,
     )
@@ -2623,34 +2734,20 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean) {
       modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 3.dp, end = 16.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      SyntaxText(line = line)
+      SyntaxText(line = line, colors = colors)
       if (flagged) {
         Row(
           modifier = Modifier.padding(start = 12.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-          MiniIcon(text = "x", tint = WorkspaceRed)
-          Text(text = "contract: missing field", color = WorkspaceRed, fontSize = 10.5.sp)
+          MiniIcon(text = "x", tint = SkillBillTheme.frameTokens.status.error)
+          Text(text = "contract: missing field", color = SkillBillTheme.frameTokens.status.error, fontSize = 10.5.sp)
         }
       }
     }
   }
 }
-
-// SKILL-47 AC6 — color palette used by the YAML-aware schema viewer. The
-// runtime-desktop module does not yet expose a semantic-token palette, so we
-// reuse the existing WorkspaceXxx values that already drive the editor pane.
-// All colors are private vals declared at the top of this file, which means
-// follow-up theme work (light/dark variants, MaterialTheme.colorScheme
-// adoption) can swap them in one place.
-private val contractYamlColors: YamlSyntaxColors = YamlSyntaxColors(
-  comment = WorkspaceSteel,
-  key = WorkspaceYellow,
-  string = WorkspaceGreen,
-  marker = WorkspaceAmber,
-  scalar = WorkspaceText.copy(alpha = 0.9f),
-)
 
 /**
  * Splits a highlighted [AnnotatedString] into one [AnnotatedString] per source
@@ -2673,17 +2770,17 @@ internal fun AnnotatedString.splitIntoLines(): List<AnnotatedString> {
 }
 
 @Composable
-private fun CodeLineAnnotated(number: Int, content: AnnotatedString) {
+private fun CodeLineAnnotated(number: Int, content: AnnotatedString, colors: CodePaneColors) {
   Row(modifier = Modifier.fillMaxWidth()) {
     Text(
       text = number.toString(),
-      color = WorkspaceSteel,
+      color = colors.lineNumber,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier =
       Modifier
         .width(50.dp)
-        .border(BorderStroke(0.dp, Color.Transparent))
+        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
         .padding(top = 4.dp, end = 10.dp),
       maxLines = 1,
     )
@@ -2695,7 +2792,7 @@ private fun CodeLineAnnotated(number: Int, content: AnnotatedString) {
         text = if (content.text.isEmpty()) AnnotatedString(" ") else content,
         // Fallback color for any character without an explicit span (default
         // unstyled scalar text).
-        color = WorkspaceText.copy(alpha = 0.9f),
+        color = colors.yamlFallback,
         fontSize = 12.5.sp,
         fontFamily = FontFamily.Monospace,
         lineHeight = 20.sp,
@@ -2706,12 +2803,12 @@ private fun CodeLineAnnotated(number: Int, content: AnnotatedString) {
 }
 
 @Composable
-private fun SyntaxText(line: String) {
+private fun SyntaxText(line: String, colors: CodePaneColors) {
   val keyMatch = Regex("^(\\s*)([A-Za-z0-9_-]+):(.*)$").matchEntire(line)
   if (line.trimStart().startsWith("#")) {
     Text(
       text = line,
-      color = WorkspaceSteel,
+      color = colors.yaml.comment,
       fontSize = 12.5.sp,
       fontFamily = FontFamily.Monospace,
       lineHeight = 20.sp,
@@ -2719,12 +2816,12 @@ private fun SyntaxText(line: String) {
     )
   } else if (keyMatch != null) {
     Row {
-      Text(keyMatch.groupValues[1], color = WorkspaceText, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(keyMatch.groupValues[2], color = WorkspaceYellow, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(":", color = WorkspaceSteel, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+      Text(keyMatch.groupValues[1], color = colors.yaml.scalar, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+      Text(keyMatch.groupValues[2], color = colors.yaml.key, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+      Text(":", color = colors.yaml.marker, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
       Text(
         keyMatch.groupValues[3],
-        color = WorkspaceText.copy(alpha = 0.9f),
+        color = colors.yaml.scalar,
         fontSize = 12.5.sp,
         fontFamily = FontFamily.Monospace,
       )
@@ -2732,7 +2829,7 @@ private fun SyntaxText(line: String) {
   } else {
     Text(
       text = line,
-      color = WorkspaceText.copy(alpha = 0.9f),
+      color = colors.yaml.scalar,
       fontSize = 12.5.sp,
       fontFamily = FontFamily.Monospace,
       lineHeight = 20.sp,
@@ -2754,8 +2851,8 @@ private fun InspectorPane(
     Modifier
       .width(SkillBillMetrics.inspectorPaneWidth)
       .fillMaxHeight()
-      .background(WorkspaceBackground)
-      .border(BorderStroke(0.dp, Color.Transparent)),
+      .background(SkillBillTheme.frameTokens.background)
+      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent)),
   ) {
     InspectorHeader(editor = editor)
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -2820,12 +2917,12 @@ private fun InspectorPane(
 
 @Composable
 private fun InspectorHeader(editor: EditorPlaceholder) {
-  Column(modifier = Modifier.fillMaxWidth().background(WorkspacePanel).padding(12.dp)) {
+  Column(modifier = Modifier.fillMaxWidth().background(SkillBillTheme.frameTokens.panel).padding(12.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      MiniIcon(text = "sk", tint = WorkspaceYellow)
+      MiniIcon(text = "sk", tint = SkillBillTheme.frameTokens.primary)
       Text(
         text = editor.skillName ?: editor.title,
-        color = WorkspaceText,
+        color = SkillBillTheme.frameTokens.text,
         fontSize = 13.sp,
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.SemiBold,
@@ -2837,7 +2934,7 @@ private fun InspectorHeader(editor: EditorPlaceholder) {
     }
     Text(
       text = editor.kind ?: editor.detail,
-      color = WorkspaceMuted,
+      color = SkillBillTheme.frameTokens.muted,
       fontSize = 11.sp,
       modifier = Modifier.padding(top = 4.dp),
     )
@@ -2853,14 +2950,18 @@ private fun InspectorSection(
 ) {
   Column(modifier = Modifier.fillMaxWidth()) {
     Row(
-      modifier = Modifier.fillMaxWidth().height(32.dp).background(WorkspacePanel).padding(horizontal = 12.dp),
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(32.dp)
+        .background(SkillBillTheme.frameTokens.panel)
+        .padding(horizontal = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      MiniIcon(text = marker, tint = WorkspaceYellow)
+      MiniIcon(text = marker, tint = SkillBillTheme.frameTokens.primary)
       Text(
         text = title,
-        color = WorkspaceText,
+        color = SkillBillTheme.frameTokens.text,
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = 0.sp,
@@ -2871,7 +2972,7 @@ private fun InspectorSection(
       }
     }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), content = content)
-    HorizontalDivider(color = WorkspaceLine)
+    HorizontalDivider(color = SkillBillTheme.frameTokens.line)
   }
 }
 
@@ -2884,7 +2985,7 @@ private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
     LabelText(key, modifier = Modifier.weight(1f))
     Text(
       text = value,
-      color = tone.color(),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -2903,9 +3004,9 @@ private fun GeneratedArtifactRow(
   val hovered by interactionSource.collectIsHoveredAsState()
   val rowBackground =
     if (enabled && hovered) {
-      WorkspaceRaised.copy(alpha = 0.65f)
+      SkillBillTheme.frameTokens.raised.copy(alpha = 0.65f)
     } else {
-      Color.Transparent
+      SkillBillTheme.frameTokens.transparent
     }
   val labelAlpha = if (enabled) 1f else 0.55f
   Row(
@@ -2934,7 +3035,7 @@ private fun GeneratedArtifactRow(
   ) {
     Text(
       text = artifact.path,
-      color = WorkspaceSteel.copy(alpha = labelAlpha),
+      color = SkillBillTheme.frameTokens.subtle.copy(alpha = labelAlpha),
       fontSize = 10.sp,
       fontWeight = FontWeight.Medium,
       letterSpacing = 0.sp,
@@ -2944,7 +3045,7 @@ private fun GeneratedArtifactRow(
     )
     Text(
       text = "read-only",
-      color = Tone.Warning.color().copy(alpha = labelAlpha),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning).copy(alpha = labelAlpha),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -2964,19 +3065,24 @@ private fun DependencyRow(name: String, range: String, resolved: String) {
   ) {
     Text(
       text = name,
-      color = WorkspaceText,
+      color = SkillBillTheme.frameTokens.text,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = range,
-      color = WorkspaceSteel,
+      color = SkillBillTheme.frameTokens.subtle,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(54.dp),
     )
-    Text(text = resolved, color = WorkspaceGreen, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    Text(
+      text = resolved,
+      color = SkillBillTheme.frameTokens.status.success,
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+    )
   }
 }
 
@@ -3054,11 +3160,11 @@ private fun BottomDock(
     Modifier
       .fillMaxWidth()
       .height(dockHeight)
-      .background(WorkspacePanel),
+      .background(SkillBillTheme.frameTokens.panel),
   ) {
     BottomDockResizeHandle(onResize = onResize)
     Row(
-      modifier = Modifier.fillMaxWidth().height(33.dp).background(WorkspacePanel),
+      modifier = Modifier.fillMaxWidth().height(33.dp).background(SkillBillTheme.frameTokens.panel),
       verticalAlignment = Alignment.Bottom,
     ) {
       DockTab.entries.forEach { tab ->
@@ -3080,8 +3186,8 @@ private fun BottomDock(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-          MiniIcon(text = "run", tint = WorkspaceMuted)
-          Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
+          MiniIcon(text = "run", tint = SkillBillTheme.frameTokens.muted)
+          Text(text = editor.status ?: "no selection", color = SkillBillTheme.frameTokens.muted, fontSize = 11.sp)
         }
         DockVisibilityButton(
           contentDescription = "Hide bottom panel",
@@ -3091,8 +3197,8 @@ private fun BottomDock(
         )
       }
     }
-    HorizontalDivider(color = WorkspaceLine)
-    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(WorkspaceBackground)) {
+    HorizontalDivider(color = SkillBillTheme.frameTokens.line)
+    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SkillBillTheme.frameTokens.background)) {
       when (activeTab) {
         DockTab.Validation -> ValidationTable(
           validation = validation,
@@ -3176,7 +3282,7 @@ private fun BottomDockResizeHandle(onResize: (Dp) -> Unit) {
     modifier = Modifier
       .fillMaxWidth()
       .height(BottomDockResizeHandleHeight)
-      .background(WorkspacePanel)
+      .background(SkillBillTheme.frameTokens.panel)
       .pointerInput(Unit) {
         detectVerticalDragGestures { change, dragAmount ->
           change.consume()
@@ -3189,7 +3295,7 @@ private fun BottomDockResizeHandle(onResize: (Dp) -> Unit) {
       modifier = Modifier
         .width(44.dp)
         .height(2.dp)
-        .background(WorkspaceLine, RoundedCornerShape(1.dp)),
+        .background(SkillBillTheme.frameTokens.line, RoundedCornerShape(1.dp)),
     )
   }
 }
@@ -3208,11 +3314,11 @@ private fun CollapsedBottomDock(
     modifier = Modifier
       .fillMaxWidth()
       .height(36.dp)
-      .background(WorkspacePanel),
+      .background(SkillBillTheme.frameTokens.panel),
   ) {
-    HorizontalDivider(color = WorkspaceLine)
+    HorizontalDivider(color = SkillBillTheme.frameTokens.line)
     Row(
-      modifier = Modifier.fillMaxWidth().height(35.dp).background(WorkspacePanel),
+      modifier = Modifier.fillMaxWidth().height(35.dp).background(SkillBillTheme.frameTokens.panel),
       verticalAlignment = Alignment.Bottom,
     ) {
       DockTab.entries.forEach { tab ->
@@ -3234,8 +3340,8 @@ private fun CollapsedBottomDock(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-          MiniIcon(text = "run", tint = WorkspaceMuted)
-          Text(text = editor.status ?: "no selection", color = WorkspaceMuted, fontSize = 11.sp)
+          MiniIcon(text = "run", tint = SkillBillTheme.frameTokens.muted)
+          Text(text = editor.status ?: "no selection", color = SkillBillTheme.frameTokens.muted, fontSize = 11.sp)
         }
         DockVisibilityButton(
           contentDescription = "Show bottom panel",
@@ -3265,16 +3371,16 @@ internal fun dockBadgeCountText(count: Int): String? = when {
 private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, enabled: Boolean, onSelected: () -> Unit) {
   val meta = dockTabMetadata(tab)
   val labelColor = when {
-    active -> WorkspaceText
-    enabled -> WorkspaceMuted
-    else -> WorkspaceSteel
+    active -> SkillBillTheme.frameTokens.text
+    enabled -> SkillBillTheme.frameTokens.muted
+    else -> SkillBillTheme.frameTokens.subtle
   }
   Column(
     modifier =
     Modifier
       .height(33.dp)
       .width(meta.width)
-      .background(if (active) WorkspaceBackground else WorkspacePanel)
+      .background(if (active) SkillBillTheme.frameTokens.background else SkillBillTheme.frameTokens.panel)
       .clickable(enabled = enabled, role = Role.Button, onClick = onSelected)
       .semantics {
         if (!enabled) {
@@ -3282,7 +3388,14 @@ private fun DockTabButton(tab: DockTab, badge: String?, active: Boolean, enabled
         }
       },
   ) {
-    Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(if (active) WorkspaceYellow else Color.Transparent))
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(2.dp)
+        .background(
+          if (active) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent,
+        ),
+    )
     Row(
       modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -3455,7 +3568,7 @@ private fun ChangesPanel(
       if (!hasRepoOpen) {
         Text(
           text = "Open a Git repository to see local changes.",
-          color = WorkspaceSteel,
+          color = SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           modifier = Modifier.padding(8.dp),
         )
@@ -3502,7 +3615,7 @@ private fun ChangesPanel(
           } else {
             "No local content.md changes."
           },
-          color = WorkspaceSteel,
+          color = SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           modifier = Modifier.padding(8.dp),
         )
@@ -3523,7 +3636,7 @@ private fun ChangesPanel(
         )
       }
     }
-    VerticalDivider(color = WorkspaceLine)
+    VerticalDivider(color = SkillBillTheme.frameTokens.line)
     // F-U03: the diff column must not collapse below a readable width when the dock is narrow.
     ChangesDiffPane(
       selectedChangedFile = selectedChangedFile,
@@ -3536,20 +3649,22 @@ private fun ChangesPanel(
 
 @Composable
 private fun HiddenNonContentChangesBanner(hiddenChangeCount: Int) {
+  val warningTone = SkillBillTheme.semanticTones.warningBanner
   Row(
     modifier = Modifier
       .fillMaxWidth()
       .padding(horizontal = 6.dp, vertical = 4.dp)
-      .background(WorkspaceAmber.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+      .background(warningTone.container, RoundedCornerShape(4.dp))
+      .border(1.dp, warningTone.border, RoundedCornerShape(4.dp))
       .padding(horizontal = 10.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    MiniIcon(text = "!", tint = WorkspaceAmber)
+    MiniIcon(text = "!", tint = warningTone.content)
     Text(
       text = "$hiddenChangeCount non-content.md change(s) hidden. " +
         "Resolve or stash them outside Skill Bill before publishing.",
-      color = WorkspaceText,
+      color = warningTone.content,
       fontSize = 11.sp,
       fontWeight = FontWeight.SemiBold,
       modifier = Modifier.weight(1f),
@@ -3593,6 +3708,8 @@ private fun PublishControls(
 ) {
   val commitInputEnabled = !publishingBusy
   val publishEnabled = canPublish && !publishingBusy && !commitValidationFailed
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  var publishCommitFocused by remember { mutableStateOf(false) }
   val acceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = !globalActionsEnabled && !publishingBusy,
     publishingBusy = publishingBusy,
@@ -3621,16 +3738,28 @@ private fun PublishControls(
         },
         enabled = commitInputEnabled,
         textStyle = androidx.compose.ui.text.TextStyle(
-          color = WorkspaceText,
+          color = if (commitInputEnabled) textFieldTokens.text else textFieldTokens.disabledText,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
         ),
-        cursorBrush = SolidColor(WorkspaceYellow),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier
           .weight(1f)
           .heightIn(min = 30.dp, max = 72.dp)
-          .background(if (commitInputEnabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
-          .border(1.dp, if (commitInputEnabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+          .background(
+            if (commitInputEnabled) textFieldTokens.container else textFieldTokens.disabledContainer,
+            RoundedCornerShape(4.dp),
+          )
+          .border(
+            1.dp,
+            when {
+              !commitInputEnabled -> textFieldTokens.disabledBorder
+              publishCommitFocused -> textFieldTokens.focusedBorder
+              else -> textFieldTokens.border
+            },
+            RoundedCornerShape(4.dp),
+          )
+          .onFocusChanged { publishCommitFocused = it.isFocused }
           .onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) {
               false
@@ -3653,7 +3782,7 @@ private fun PublishControls(
           if (commitMessage.isBlank()) {
             Text(
               text = "Commit message",
-              color = WorkspaceSteel,
+              color = if (commitInputEnabled) textFieldTokens.placeholder else textFieldTokens.disabledPlaceholder,
               fontSize = 12.sp,
               fontFamily = FontFamily.Monospace,
               maxLines = 1,
@@ -3665,7 +3794,7 @@ private fun PublishControls(
       AcceleratorTooltip(label = "Publish selected changes", acceleratorLabel = SkillBillAcceleratorLabels.COMMIT) {
         Text(
           text = if (publishBusy) "publishing" else "Publish",
-          color = if (publishEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (publishEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           fontWeight = FontWeight.SemiBold,
@@ -3693,7 +3822,7 @@ private fun PublishControls(
       )
       Text(
         text = if (publishDraft) "Draft PR" else "Ready PR",
-        color = if (commitInputEnabled) WorkspaceYellow else WorkspaceSteel,
+        color = if (commitInputEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier
@@ -3724,11 +3853,11 @@ private fun PublishControls(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Text(text = "Selected ${selectedPublishPaths.size}", color = WorkspaceSteel, fontSize = 10.sp)
-      Text(text = "technical target", color = WorkspaceSteel, fontSize = 10.sp)
+      Text(text = "Selected ${selectedPublishPaths.size}", color = SkillBillTheme.frameTokens.subtle, fontSize = 10.sp)
+      Text(text = "technical target", color = SkillBillTheme.frameTokens.subtle, fontSize = 10.sp)
       Text(
         text = pushTarget?.displayName ?: "No target",
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.weight(1f),
@@ -3739,7 +3868,7 @@ private fun PublishControls(
     if (aheadBehind != null) {
       Text(
         text = "technical status: ahead ${aheadBehind.ahead}, behind ${aheadBehind.behind}",
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
       )
@@ -3753,7 +3882,7 @@ private fun PublishControls(
       ) {
         Text(
           text = pushTarget.canonicalWarning ?: "This may push to a canonical remote.",
-          color = Tone.Warning.color(),
+          color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning),
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold,
           modifier = Modifier.weight(1f),
@@ -3762,7 +3891,7 @@ private fun PublishControls(
         )
         Text(
           text = "confirm technical push target",
-          color = if (confirmEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (confirmEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -3773,7 +3902,11 @@ private fun PublishControls(
       }
     }
     if (commitValidationRunning) {
-      Text(text = "Running preflight checks before commit...", color = WorkspaceSteel, fontSize = 11.sp)
+      Text(
+        text = "Running preflight checks before commit...",
+        color = SkillBillTheme.frameTokens.subtle,
+        fontSize = 11.sp,
+      )
     }
     if (commitValidationFailed) {
       Row(
@@ -3783,14 +3916,14 @@ private fun PublishControls(
       ) {
         Text(
           text = "Preflight failed. Review the Validation tab before overriding.",
-          color = Tone.Warning.color(),
+          color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning),
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold,
           modifier = Modifier.weight(1f),
         )
         Text(
           text = "publish anyway",
-          color = if (!publishingBusy) WorkspaceYellow else WorkspaceSteel,
+          color = if (!publishingBusy) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -3819,7 +3952,7 @@ private fun PublishControls(
     if (error != null) {
       Text(
         text = error,
-        color = WorkspaceRed,
+        color = SkillBillTheme.frameTokens.status.error,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.fillMaxWidth(),
@@ -3828,7 +3961,7 @@ private fun PublishControls(
     if (error == null && publishLink == null && publishDisabledReason != null) {
       Text(
         text = publishDisabledReason,
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.fillMaxWidth(),
@@ -3847,6 +3980,8 @@ private fun PublishTextField(
   onValueChange: (String) -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  var focused by remember { mutableStateOf(false) }
   BasicTextField(
     value = value,
     onValueChange = { next ->
@@ -3857,15 +3992,27 @@ private fun PublishTextField(
     enabled = enabled,
     singleLine = singleLine,
     textStyle = androidx.compose.ui.text.TextStyle(
-      color = WorkspaceText,
+      color = if (enabled) textFieldTokens.text else textFieldTokens.disabledText,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
     ),
-    cursorBrush = SolidColor(WorkspaceYellow),
+    cursorBrush = SolidColor(textFieldTokens.cursor),
     modifier = modifier
       .heightIn(min = 30.dp)
-      .background(if (enabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
-      .border(1.dp, if (enabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+      .background(
+        if (enabled) textFieldTokens.container else textFieldTokens.disabledContainer,
+        RoundedCornerShape(4.dp),
+      )
+      .border(
+        1.dp,
+        when {
+          !enabled -> textFieldTokens.disabledBorder
+          focused -> textFieldTokens.focusedBorder
+          else -> textFieldTokens.border
+        },
+        RoundedCornerShape(4.dp),
+      )
+      .onFocusChanged { focused = it.isFocused }
       .semantics {
         contentDescription = description
         if (!enabled) {
@@ -3877,7 +4024,7 @@ private fun PublishTextField(
       if (value.isBlank()) {
         Text(
           text = placeholder,
-          color = WorkspaceSteel,
+          color = if (enabled) textFieldTokens.placeholder else textFieldTokens.disabledPlaceholder,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
           maxLines = 1,
@@ -3896,9 +4043,9 @@ private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean,
   val focused by interactionSource.collectIsFocusedAsState()
   val rowBackground =
     if (hovered || focused) {
-      WorkspaceRaised.copy(alpha = 0.65f)
+      SkillBillTheme.frameTokens.raised.copy(alpha = 0.65f)
     } else {
-      Color.Transparent
+      SkillBillTheme.frameTokens.transparent
     }
   Row(
     modifier =
@@ -3929,7 +4076,7 @@ private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean,
     SelectionContainer(modifier = Modifier.weight(1f)) {
       Text(
         text = url,
-        color = WorkspaceYellow,
+        color = SkillBillTheme.frameTokens.primary,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         maxLines = 1,
@@ -3938,7 +4085,11 @@ private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean,
     }
     Text(
       text = compareUrlActionLabel(showCopied = showCopied, showOpened = showOpened),
-      color = if (showCopied || showOpened) Tone.Success.color() else WorkspaceYellow,
+      color = if (showCopied || showOpened) {
+        SkillBillTheme.frameTokens.status.contentColorFor(Tone.Success)
+      } else {
+        SkillBillTheme.frameTokens.primary
+      },
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -3949,6 +4100,7 @@ private fun CompareUrlRow(url: String, showCopied: Boolean, showOpened: Boolean,
 
 @Composable
 private fun PublishLinkRow(link: PublishLink, showOpened: Boolean, onOpenCompareUrl: (String) -> Unit) {
+  val successTone = SkillBillTheme.semanticTones.successBanner
   val label = when (link.kind) {
     PublishLinkKind.EXISTING_PR -> "Existing PR"
     PublishLinkKind.DRAFT_PR -> "Draft PR"
@@ -3959,18 +4111,19 @@ private fun PublishLinkRow(link: PublishLink, showOpened: Boolean, onOpenCompare
       .fillMaxWidth()
       .height(30.dp)
       .clip(RoundedCornerShape(3.dp))
-      .background(WorkspaceRaised.copy(alpha = 0.45f))
+      .background(successTone.container)
+      .border(1.dp, successTone.border, RoundedCornerShape(3.dp))
       .iconButtonSemantics(description = "$label: ${link.url}")
       .clickable(role = Role.Button) { onOpenCompareUrl(link.url) }
       .padding(horizontal = 6.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    Text(text = label, color = Tone.Success.color(), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    Text(text = label, color = successTone.content, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     SelectionContainer(modifier = Modifier.weight(1f)) {
       Text(
         text = link.url,
-        color = WorkspaceYellow,
+        color = SkillBillTheme.frameTokens.primary,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         maxLines = 1,
@@ -3979,7 +4132,7 @@ private fun PublishLinkRow(link: PublishLink, showOpened: Boolean, onOpenCompare
     }
     Text(
       text = if (showOpened) "Opened in browser" else "open",
-      color = if (showOpened) Tone.Success.color() else WorkspaceYellow,
+      color = if (showOpened) successTone.content else SkillBillTheme.frameTokens.primary,
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -4014,6 +4167,8 @@ private fun CommitControls(
   val commitInputDescription =
     if (commitInputEnabled) "Commit message" else "Commit message disabled while publishing is running"
   val commitEnabled = canCommit && !publishingBusy
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  var commitFocused by remember { mutableStateOf(false) }
   val acceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = !globalActionsEnabled && !publishingBusy,
     publishingBusy = publishingBusy,
@@ -4042,16 +4197,28 @@ private fun CommitControls(
         },
         enabled = commitInputEnabled,
         textStyle = androidx.compose.ui.text.TextStyle(
-          color = WorkspaceText,
+          color = if (commitInputEnabled) textFieldTokens.text else textFieldTokens.disabledText,
           fontSize = 12.sp,
           fontFamily = FontFamily.Monospace,
         ),
-        cursorBrush = SolidColor(WorkspaceYellow),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier
           .weight(1f)
           .heightIn(min = 30.dp, max = 72.dp)
-          .background(if (commitInputEnabled) WorkspaceRaised else WorkspacePanel, RoundedCornerShape(4.dp))
-          .border(1.dp, if (commitInputEnabled) WorkspaceLine else WorkspaceSteel, RoundedCornerShape(4.dp))
+          .background(
+            if (commitInputEnabled) textFieldTokens.container else textFieldTokens.disabledContainer,
+            RoundedCornerShape(4.dp),
+          )
+          .border(
+            1.dp,
+            when {
+              !commitInputEnabled -> textFieldTokens.disabledBorder
+              commitFocused -> textFieldTokens.focusedBorder
+              else -> textFieldTokens.border
+            },
+            RoundedCornerShape(4.dp),
+          )
+          .onFocusChanged { commitFocused = it.isFocused }
           .onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) {
               false
@@ -4074,7 +4241,7 @@ private fun CommitControls(
           if (commitMessage.isBlank()) {
             Text(
               text = "Commit message",
-              color = WorkspaceSteel,
+              color = if (commitInputEnabled) textFieldTokens.placeholder else textFieldTokens.disabledPlaceholder,
               fontSize = 12.sp,
               fontFamily = FontFamily.Monospace,
               maxLines = 1,
@@ -4086,7 +4253,7 @@ private fun CommitControls(
       AcceleratorTooltip(label = "Commit staged changes", acceleratorLabel = SkillBillAcceleratorLabels.COMMIT) {
         Text(
           text = if (commitBusy) "committing" else "commit",
-          color = if (commitEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (commitEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -4098,7 +4265,7 @@ private fun CommitControls(
       }
     }
     if (commitValidationRunning) {
-      Text(text = "Running validation before commit...", color = WorkspaceSteel, fontSize = 11.sp)
+      Text(text = "Running validation before commit...", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
     }
     if (commitValidationFailed) {
       val overrideEnabled = !publishingBusy
@@ -4109,14 +4276,14 @@ private fun CommitControls(
       ) {
         Text(
           text = "Validation failed.",
-          color = Tone.Warning.color(),
+          color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning),
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold,
           modifier = Modifier.weight(1f),
         )
         Text(
           text = "commit anyway",
-          color = if (overrideEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (overrideEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -4129,7 +4296,7 @@ private fun CommitControls(
     if (commitErrorMessage != null) {
       Text(
         text = commitErrorMessage,
-        color = WorkspaceRed,
+        color = SkillBillTheme.frameTokens.status.error,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier.fillMaxWidth(),
@@ -4153,7 +4320,7 @@ private fun ChangesHeader(
   ) {
     Text(
       text = if (changesBusy) "Refreshing..." else "Changes",
-      color = WorkspaceMuted,
+      color = SkillBillTheme.frameTokens.muted,
       fontSize = 11.sp,
       modifier = Modifier.weight(1f),
     )
@@ -4162,7 +4329,7 @@ private fun ChangesHeader(
     // padding gives the touch target room without changing the visible glyph size.
     Text(
       text = "refresh",
-      color = if (refreshEnabled) WorkspaceYellow else WorkspaceSteel,
+      color = if (refreshEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier
@@ -4172,15 +4339,21 @@ private fun ChangesHeader(
     )
   }
   if (errorMessage != null && hasStaleData) {
+    val warningTone = SkillBillTheme.semanticTones.warningBanner
     // F-X-505: when an error is present AND prior data is non-empty, surface a single
     // visually-distinct banner so users see the rows below are stale. Keep the existing error
     // text path for the no-data case (rendered below).
     Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 6.dp, vertical = 2.dp)
+        .background(warningTone.container, RoundedCornerShape(4.dp))
+        .border(1.dp, warningTone.border, RoundedCornerShape(4.dp))
+        .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
       Text(
         text = "Last refresh failed - showing previous snapshot.",
-        color = Tone.Warning.color(),
+        color = warningTone.content,
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
       )
@@ -4194,7 +4367,7 @@ private fun ChangesHeader(
     ) {
       Text(
         text = errorMessage,
-        color = WorkspaceRed,
+        color = SkillBillTheme.frameTokens.status.error,
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         softWrap = false,
@@ -4223,7 +4396,7 @@ private fun ChangedFileGroupSection(
   }
   Text(
     text = "$title (${groupFiles.size})",
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 10.sp,
     fontWeight = FontWeight.SemiBold,
     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp, start = 6.dp),
@@ -4261,7 +4434,7 @@ private fun GovernedChangeGroupSection(
   }
   Text(
     text = "${group.concept.label} (${group.files.size})",
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 10.sp,
     fontWeight = FontWeight.SemiBold,
     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp, start = 6.dp),
@@ -4305,7 +4478,11 @@ private fun GovernedChangedFileRow(
     ChangedFileGroup.UNTRACKED -> Tone.Error
     ChangedFileGroup.GENERATED -> Tone.Warning
   }
-  val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent
+  val background = if (selected) {
+    SkillBillTheme.frameTokens.primary.copy(alpha = 0.12f)
+  } else {
+    SkillBillTheme.frameTokens.transparent
+  }
   Row(
     modifier =
     Modifier
@@ -4340,31 +4517,37 @@ private fun GovernedChangedFileRow(
           .border(
             1.dp,
             when {
-              governedFile.selectionLocked -> WorkspaceSteel
-              selectedForPublish -> WorkspaceYellow
-              else -> WorkspaceMuted
+              governedFile.selectionLocked -> SkillBillTheme.frameTokens.subtle
+              selectedForPublish -> SkillBillTheme.frameTokens.primary
+              else -> SkillBillTheme.frameTokens.muted
             },
             RoundedCornerShape(2.dp),
           )
           .background(
-            if (selectedForPublish) WorkspaceYellow.copy(alpha = 0.22f) else Color.Transparent,
+            if (selectedForPublish) {
+              SkillBillTheme.frameTokens.primary.copy(alpha = 0.22f)
+            } else {
+              SkillBillTheme.frameTokens.transparent
+            },
             RoundedCornerShape(2.dp),
           ),
       )
       if (selectedForPublish) {
+        val selectedIndicatorColor = if (governedFile.selectionLocked) {
+          SkillBillTheme.frameTokens.subtle
+        } else {
+          SkillBillTheme.frameTokens.primary
+        }
         Box(
           modifier = Modifier
             .size(6.dp)
-            .background(
-              if (governedFile.selectionLocked) WorkspaceSteel else WorkspaceYellow,
-              RoundedCornerShape(1.dp),
-            ),
+            .background(selectedIndicatorColor, RoundedCornerShape(1.dp)),
         )
       }
     }
     Text(
       text = file.statusCode,
-      color = tone.color(),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       fontWeight = FontWeight.Bold,
@@ -4372,7 +4555,9 @@ private fun GovernedChangedFileRow(
     )
     Text(
       text = file.displayPath(),
-      color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
+      color = SkillBillTheme.frameTokens.text.copy(
+        alpha = if (file.isGenerated) 0.7f else 0.92f,
+      ),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.weight(1f),
@@ -4382,7 +4567,7 @@ private fun GovernedChangedFileRow(
     if (file.isGenerated) {
       Text(
         text = "generated/read-only",
-        color = Tone.Warning.color(),
+        color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning),
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         maxLines = 1,
@@ -4393,7 +4578,11 @@ private fun GovernedChangedFileRow(
     val showCopied = recentlyCopiedKey == file.path
     Text(
       text = if (showCopied) "copied" else "copy",
-      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      color = if (showCopied) {
+        SkillBillTheme.frameTokens.status.contentColorFor(Tone.Success)
+      } else {
+        SkillBillTheme.frameTokens.primary
+      },
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -4406,7 +4595,7 @@ private fun GovernedChangedFileRow(
       when (file.group) {
         ChangedFileGroup.STAGED -> Text(
           text = "unstage",
-          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           maxLines = 1,
@@ -4417,7 +4606,7 @@ private fun GovernedChangedFileRow(
         )
         ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
           text = "stage",
-          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           maxLines = 1,
@@ -4449,7 +4638,11 @@ private fun ChangedFileRow(
     ChangedFileGroup.UNTRACKED -> Tone.Error
     ChangedFileGroup.GENERATED -> Tone.Warning
   }
-  val background = if (selected) WorkspaceYellow.copy(alpha = 0.12f) else Color.Transparent
+  val background = if (selected) {
+    SkillBillTheme.frameTokens.primary.copy(alpha = 0.12f)
+  } else {
+    SkillBillTheme.frameTokens.transparent
+  }
   Row(
     modifier =
     Modifier
@@ -4470,7 +4663,7 @@ private fun ChangedFileRow(
     val statusText: @Composable () -> Unit = {
       Text(
         text = if (file.isGenerated) "RO" else file.statusCode,
-        color = tone.color(),
+        color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Bold,
@@ -4484,7 +4677,7 @@ private fun ChangedFileRow(
     }
     Text(
       text = file.displayPath(),
-      color = WorkspaceText.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
+      color = SkillBillTheme.frameTokens.text.copy(alpha = if (file.isGenerated) 0.7f else 0.92f),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.weight(1f),
@@ -4498,7 +4691,11 @@ private fun ChangedFileRow(
     val showCopied = recentlyCopiedKey == file.path
     Text(
       text = if (showCopied) "copied" else "copy",
-      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      color = if (showCopied) {
+        SkillBillTheme.frameTokens.status.contentColorFor(Tone.Success)
+      } else {
+        SkillBillTheme.frameTokens.primary
+      },
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier
@@ -4512,7 +4709,7 @@ private fun ChangedFileRow(
       when (file.group) {
         ChangedFileGroup.STAGED -> Text(
           text = "unstage",
-          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -4522,7 +4719,7 @@ private fun ChangedFileRow(
         )
         ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
           text = "stage",
-          color = if (stageActionsEnabled) WorkspaceYellow else WorkspaceSteel,
+          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -4547,13 +4744,13 @@ private fun ReadOnlyArtifactTooltip(content: @Composable () -> Unit) {
     tooltip = {
       Box(
         modifier = Modifier
-          .background(WorkspaceRaised, RoundedCornerShape(4.dp))
-          .border(1.dp, WorkspaceLine, RoundedCornerShape(4.dp))
+          .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(4.dp))
+          .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(4.dp))
           .padding(horizontal = 8.dp, vertical = 6.dp),
       ) {
         Text(
           text = "Generated artifact - read-only. Re-run Render to refresh.",
-          color = WorkspaceText,
+          color = SkillBillTheme.frameTokens.text,
           fontSize = 11.sp,
         )
       }
@@ -4570,9 +4767,10 @@ private fun ChangesDiffPane(
   modifier: Modifier = Modifier,
 ) {
   val horizontalScrollState = rememberScrollState()
+  val codePaneColors = codePaneColors()
   // F-U04: padding lives on the scroll content so the horizontal indicator can sit flush against
   // the panel bottom instead of floating above the left-pane indicator.
-  Box(modifier = modifier.background(WorkspaceBackground)) {
+  Box(modifier = modifier.background(codePaneColors.background)) {
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -4583,7 +4781,7 @@ private fun ChangesDiffPane(
       if (selectedChangedFile == null) {
         Text(
           text = "Select a changed file to view its diff.",
-          color = WorkspaceSteel,
+          color = codePaneColors.lineNumber,
           fontSize = 11.sp,
         )
         return@Column
@@ -4591,7 +4789,7 @@ private fun ChangesDiffPane(
       Column(modifier = Modifier.horizontalScroll(horizontalScrollState)) {
         Text(
           text = selectedChangedFile.displayPath(),
-          color = WorkspaceMuted,
+          color = codePaneColors.diff.metadata,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier.padding(bottom = 6.dp),
@@ -4599,11 +4797,11 @@ private fun ChangesDiffPane(
           softWrap = false,
         )
         if (selectedDiffBusy) {
-          Text(text = "Loading diff...", color = WorkspaceSteel, fontSize = 11.sp)
+          Text(text = "Loading diff...", color = codePaneColors.lineNumber, fontSize = 11.sp)
           return@Column
         }
         if (selectedDiff.isBlank()) {
-          Text(text = "(no diff available)", color = WorkspaceSteel, fontSize = 11.sp)
+          Text(text = "(no diff available)", color = codePaneColors.lineNumber, fontSize = 11.sp)
           return@Column
         }
         // F-601 mirror: shared horizontalScroll lets long diff lines stay reachable without clipping.
@@ -4612,7 +4810,7 @@ private fun ChangesDiffPane(
         selectedDiff.lines().forEach { line ->
           Text(
             text = line,
-            color = diffLineColor(line),
+            color = diffColorForRole(diffRoleForLine(line), codePaneColors.diff),
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
             softWrap = false,
@@ -4632,14 +4830,6 @@ private fun ChangesDiffPane(
   }
 }
 
-private fun diffLineColor(line: String): Color = when {
-  line.startsWith("+++") || line.startsWith("---") -> WorkspaceMuted
-  line.startsWith("@@") -> WorkspaceAmber
-  line.startsWith("+") -> WorkspaceGreen
-  line.startsWith("-") -> WorkspaceRed
-  else -> WorkspaceText.copy(alpha = 0.85f)
-}
-
 @Composable
 private fun HistoryPanel(
   history: List<CommitEntry>,
@@ -4656,7 +4846,7 @@ private fun HistoryPanel(
       // AC5: history empty-state when no Git repo is open.
       Text(
         text = "Open a Git repository to see recent commits.",
-        color = WorkspaceSteel,
+        color = SkillBillTheme.frameTokens.subtle,
         fontSize = 11.sp,
         modifier = Modifier.padding(8.dp),
       )
@@ -4670,12 +4860,12 @@ private fun HistoryPanel(
       ) {
         Text(
           text = "Filtered by",
-          color = WorkspaceSteel,
+          color = SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
         )
         Text(
           text = historyPathFilter,
-          color = WorkspaceYellow,
+          color = SkillBillTheme.frameTokens.primary,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier.weight(1f),
@@ -4685,7 +4875,7 @@ private fun HistoryPanel(
         // F-U05 / F-X-501: a11y treatment for the clear-filter chip.
         Text(
           text = "clear",
-          color = WorkspaceYellow,
+          color = SkillBillTheme.frameTokens.primary,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
@@ -4699,12 +4889,18 @@ private fun HistoryPanel(
     // visually-distinct banner so users see the rows below are stale. Keep the existing error
     // text path for the no-data case.
     if (historyErrorMessage != null && history.isNotEmpty()) {
+      val warningTone = SkillBillTheme.semanticTones.warningBanner
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 2.dp, vertical = 2.dp)
+          .background(warningTone.container, RoundedCornerShape(4.dp))
+          .border(1.dp, warningTone.border, RoundedCornerShape(4.dp))
+          .padding(horizontal = 8.dp, vertical = 6.dp),
       ) {
         Text(
           text = "Showing previous results - refresh failed.",
-          color = Tone.Warning.color(),
+          color = warningTone.content,
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold,
         )
@@ -4718,7 +4914,7 @@ private fun HistoryPanel(
       Column(modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
         Text(
           text = historyErrorMessage,
-          color = WorkspaceRed,
+          color = SkillBillTheme.frameTokens.status.error,
           fontSize = 11.sp,
           fontFamily = FontFamily.Monospace,
           softWrap = false,
@@ -4727,7 +4923,7 @@ private fun HistoryPanel(
       }
     }
     if (historyBusy) {
-      Text(text = "Loading recent commits...", color = WorkspaceSteel, fontSize = 11.sp)
+      Text(text = "Loading recent commits...", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
       return@Column
     }
     if (history.isEmpty() && historyErrorMessage == null) {
@@ -4738,12 +4934,12 @@ private fun HistoryPanel(
         Column(modifier = Modifier.padding(8.dp)) {
           Text(
             text = "No commits for `$historyPathFilter`. Clear filter to see all commits.",
-            color = WorkspaceSteel,
+            color = SkillBillTheme.frameTokens.subtle,
             fontSize = 11.sp,
           )
           Text(
             text = "Clear filter",
-            color = WorkspaceYellow,
+            color = SkillBillTheme.frameTokens.primary,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             modifier = Modifier
@@ -4754,7 +4950,7 @@ private fun HistoryPanel(
           )
         }
       } else {
-        Text(text = "No commits to show.", color = WorkspaceSteel, fontSize = 11.sp)
+        Text(text = "No commits to show.", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
       }
       return@Column
     }
@@ -4777,7 +4973,7 @@ private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, re
   ) {
     Text(
       text = entry.shortHash,
-      color = WorkspaceYellow,
+      color = SkillBillTheme.frameTokens.primary,
       fontSize = 11.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(72.dp),
@@ -4786,7 +4982,7 @@ private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, re
     Column(modifier = Modifier.weight(1f)) {
       Text(
         text = entry.subject,
-        color = WorkspaceText.copy(alpha = 0.9f),
+        color = SkillBillTheme.frameTokens.text.copy(alpha = 0.9f),
         fontSize = 12.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -4797,13 +4993,13 @@ private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, re
       ) {
         Text(
           text = entry.author,
-          color = WorkspaceMuted,
+          color = SkillBillTheme.frameTokens.muted,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
         )
         Text(
           text = entry.isoDate,
-          color = WorkspaceSteel,
+          color = SkillBillTheme.frameTokens.subtle,
           fontSize = 10.sp,
           fontFamily = FontFamily.Monospace,
         )
@@ -4814,7 +5010,11 @@ private fun CommitRow(entry: CommitEntry, onCopyCommitHash: (String) -> Unit, re
     val showCopied = recentlyCopiedKey == entry.fullHash
     Text(
       text = if (showCopied) "copied" else "copy hash",
-      color = if (showCopied) Tone.Success.color() else WorkspaceYellow,
+      color = if (showCopied) {
+        SkillBillTheme.frameTokens.status.contentColorFor(Tone.Success)
+      } else {
+        SkillBillTheme.frameTokens.primary
+      },
       fontSize = 10.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier
@@ -4903,7 +5103,12 @@ private fun InstallConsole(
 private fun ConsoleLineRow(number: Int, text: String, tone: Tone) {
   Row(modifier = Modifier.padding(vertical = 2.dp)) {
     ConsoleLineNumber(number)
-    Text(text = text, color = tone.color(), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    Text(
+      text = text,
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
+      fontSize = 12.sp,
+      fontFamily = FontFamily.Monospace,
+    )
   }
 }
 
@@ -4927,14 +5132,14 @@ private fun RenderAllConsoleSectionHeader(
     ConsoleLineNumber(number)
     Text(
       text = if (expanded) "v" else ">",
-      color = WorkspaceYellow,
+      color = SkillBillTheme.frameTokens.primary,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(14.dp),
     )
     Text(
       text = section.title,
-      color = WorkspaceText,
+      color = SkillBillTheme.frameTokens.text,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -4943,7 +5148,7 @@ private fun RenderAllConsoleSectionHeader(
     )
     Text(
       text = "  ${section.summary()}",
-      color = section.tone().color(),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(section.tone()),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       maxLines = 1,
@@ -4957,7 +5162,7 @@ private fun RenderAllConsoleSectionHeader(
 private fun ConsoleLineNumber(number: Int) {
   Text(
     text = number.toString().padStart(2, '0'),
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 12.sp,
     fontFamily = FontFamily.Monospace,
     modifier = Modifier.width(34.dp),
@@ -5174,7 +5379,7 @@ private fun formatRenderExceptionSuffix(render: RenderSummary): String {
 @Composable
 private fun TableHeader(a: String, b: String, c: String, d: String) {
   Row(
-    modifier = Modifier.fillMaxWidth().height(28.dp).background(WorkspaceBackground),
+    modifier = Modifier.fillMaxWidth().height(28.dp).background(SkillBillTheme.frameTokens.background),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     HeaderCell(a, 54.dp)
@@ -5188,7 +5393,7 @@ private fun TableHeader(a: String, b: String, c: String, d: String) {
 private fun HeaderCell(text: String, width: Dp?, modifier: Modifier = Modifier) {
   Text(
     text = text,
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 10.5.sp,
     fontFamily = FontFamily.Monospace,
     modifier = (width?.let { Modifier.width(it) } ?: modifier).padding(start = 12.dp),
@@ -5210,7 +5415,7 @@ private fun TableRow(
     Modifier
       .fillMaxWidth()
       .height(30.dp)
-      .border(BorderStroke(0.dp, Color.Transparent))
+      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
       .then(
         if (onClick == null) {
           Modifier
@@ -5222,21 +5427,21 @@ private fun TableRow(
   ) {
     Text(
       first,
-      color = tone.color(),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(54.dp).padding(start = 12.dp),
     )
     Text(
       second,
-      color = tone.color(),
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(78.dp),
     )
     Text(
       third,
-      color = WorkspaceText.copy(alpha = 0.9f),
+      color = SkillBillTheme.frameTokens.text.copy(alpha = 0.9f),
       fontSize = 12.sp,
       modifier = Modifier.weight(1f),
       maxLines = 1,
@@ -5244,7 +5449,7 @@ private fun TableRow(
     )
     Text(
       fourth,
-      color = WorkspaceMuted,
+      color = SkillBillTheme.frameTokens.muted,
       fontSize = 12.sp,
       fontFamily = FontFamily.Monospace,
       modifier = Modifier.width(260.dp),
@@ -5261,7 +5466,7 @@ private fun WorkspaceStatusBar(state: SkillBillState) {
     Modifier
       .fillMaxWidth()
       .height(28.dp)
-      .background(WorkspacePanel)
+      .background(SkillBillTheme.frameTokens.panel)
       .padding(horizontal = 12.dp)
       .horizontalScroll(rememberScrollState()),
     verticalAlignment = Alignment.CenterVertically,
@@ -5336,8 +5541,13 @@ private fun describeValidationStatus(validation: ValidationSummary): ValidationS
 @Composable
 private fun StatusItem(marker: String, text: String, tone: Tone) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    MiniIcon(text = marker, tint = if (tone == Tone.Neutral) WorkspaceYellow else tone.color())
-    Text(text = text, color = tone.color(), fontSize = 11.sp, maxLines = 1)
+    val markerTint = if (tone == Tone.Neutral) {
+      SkillBillTheme.frameTokens.primary
+    } else {
+      SkillBillTheme.frameTokens.status.contentColorFor(tone)
+    }
+    MiniIcon(text = marker, tint = markerTint)
+    Text(text = text, color = SkillBillTheme.frameTokens.status.contentColorFor(tone), fontSize = 11.sp, maxLines = 1)
   }
 }
 
@@ -5345,7 +5555,7 @@ private fun StatusItem(marker: String, text: String, tone: Tone) {
 private fun LabelText(text: String, modifier: Modifier = Modifier) {
   Text(
     text = text,
-    color = WorkspaceSteel,
+    color = SkillBillTheme.frameTokens.subtle,
     fontSize = 10.sp,
     fontWeight = FontWeight.Medium,
     letterSpacing = 0.sp,
@@ -5357,15 +5567,16 @@ private fun LabelText(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun Badge(text: String, tone: Tone) {
+  val toneColor = SkillBillTheme.frameTokens.status.contentColorFor(tone)
   Text(
     text = text,
-    color = tone.color(),
+    color = toneColor,
     fontSize = 10.sp,
     fontFamily = FontFamily.Monospace,
     modifier =
     Modifier
-      .border(1.dp, tone.color().copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-      .background(tone.color().copy(alpha = 0.16f), RoundedCornerShape(4.dp))
+      .border(1.dp, toneColor.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+      .background(toneColor.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
       .padding(horizontal = 6.dp, vertical = 1.dp),
     maxLines = 1,
   )
@@ -5374,16 +5585,16 @@ private fun Badge(text: String, tone: Tone) {
 @Composable
 private fun StatusDot(level: ValidationLevel?) {
   val color = when (level) {
-    ValidationLevel.Ok -> WorkspaceGreen
-    ValidationLevel.Warn -> WorkspaceAmber
-    ValidationLevel.Error -> WorkspaceRed
-    null -> WorkspaceSteel
+    ValidationLevel.Ok -> SkillBillTheme.frameTokens.status.success
+    ValidationLevel.Warn -> SkillBillTheme.frameTokens.status.warning
+    ValidationLevel.Error -> SkillBillTheme.frameTokens.status.error
+    null -> SkillBillTheme.frameTokens.subtle
   }
   Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
 }
 
 @Composable
-private fun MiniIcon(text: String, tint: Color) {
+private fun MiniIcon(text: String, tint: SkillBillColor) {
   Box(
     modifier =
     Modifier
@@ -5414,21 +5625,6 @@ private fun Modifier.iconButtonSemantics(description: String): Modifier = this
     this.contentDescription = description
     this.role = Role.Button
   }
-
-private enum class Tone {
-  Neutral,
-  Success,
-  Warning,
-  Error,
-}
-
-@Composable
-private fun Tone.color(): Color = when (this) {
-  Tone.Neutral -> WorkspaceMuted
-  Tone.Success -> WorkspaceGreen
-  Tone.Warning -> WorkspaceAmber
-  Tone.Error -> WorkspaceRed
-}
 
 private enum class ValidationLevel(val marker: String, val tone: Tone) {
   Ok("ok", Tone.Success),

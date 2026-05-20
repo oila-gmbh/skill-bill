@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -33,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillSurfaceTone
+import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
 import skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
@@ -52,24 +53,13 @@ data class FirstRunSetupCallbacks(
   val onDismiss: () -> Unit,
 )
 
-private val SetupBackdrop = Color.Black.copy(alpha = 0.72f)
-private val SetupPanel = Color(0xFF15151A)
-private val SetupRaised = Color(0xFF1B1B22)
-private val SetupLine = Color(0xFF2A2A31)
-private val SetupText = Color(0xFFF6F3E7)
-private val SetupMuted = Color(0xFFB7B1A0)
-private val SetupSteel = Color(0xFF6F7882)
-private val SetupYellow = Color(0xFFF4C430)
-private val SetupGreen = Color(0xFF60D394)
-private val SetupAmber = Color(0xFFFFBD2E)
-private val SetupRed = Color(0xFFFF5F57)
-
 @Composable
 fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
+  val semanticTones = SkillBillTheme.semanticTones
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(SetupBackdrop)
+      .background(semanticTones.scrim)
       .semantics { contentDescription = "First-run setup wizard" }
       .clickable(enabled = !state.busy, role = Role.Button, onClick = callbacks.onDismiss),
   ) {
@@ -79,13 +69,13 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
         .widthIn(min = 620.dp, max = 820.dp)
         .heightIn(max = 700.dp)
         .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, SetupLine, RoundedCornerShape(8.dp))
-        .background(SetupPanel)
+        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user interacts inside the panel.
         .clickable(enabled = false, onClick = {}),
     ) {
       SetupHeader(state = state, onDismiss = callbacks.onDismiss)
-      HorizontalDivider(color = SetupLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       Column(
         modifier = Modifier
           .fillMaxWidth()
@@ -95,7 +85,7 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         state.errorMessage?.let { message ->
-          SetupBanner(title = "Setup issue", message = message, color = SetupAmber)
+          SetupBanner(title = "Setup issue", message = message, tone = semanticTones.warningBanner)
         }
         when (state.step) {
           FirstRunSetupStep.AGENTS -> AgentSelectionStep(state, callbacks)
@@ -105,7 +95,7 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
           FirstRunSetupStep.RESULT -> OutcomeStep(state)
         }
       }
-      HorizontalDivider(color = SetupLine)
+      HorizontalDivider(color = semanticTones.dialog.border)
       SetupFooter(state, callbacks)
     }
   }
@@ -113,6 +103,8 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
 
 @Composable
 private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
+  val dialogTone = SkillBillTheme.semanticTones.dialog
+  val colors = SkillBillTheme.colors
   Row(
     modifier = Modifier
       .fillMaxWidth()
@@ -121,7 +113,7 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
     verticalAlignment = Alignment.Top,
   ) {
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(text = "Skill Bill setup", color = SetupText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+      Text(text = "Skill Bill setup", color = dialogTone.content, fontSize = 16.sp, fontWeight = FontWeight.Medium)
       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FirstRunSetupStep.entries.forEach { step ->
           StepPill(step = step, selected = step == state.step)
@@ -130,7 +122,7 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
     }
     Text(
       text = "x",
-      color = if (state.busy) SetupSteel.copy(alpha = 0.55f) else SetupSteel,
+      color = if (state.busy) colors.onSurfaceVariant.copy(alpha = 0.55f) else colors.onSurfaceVariant,
       fontSize = 14.sp,
       modifier = Modifier
         .semantics { contentDescription = "Dismiss setup wizard" }
@@ -142,16 +134,18 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
 
 @Composable
 private fun StepPill(step: FirstRunSetupStep, selected: Boolean) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Text(
     text = step.label(),
-    color = if (selected) Color(0xFF0B0B0D) else SetupText,
+    color = if (selected) colors.onPrimary else dialogTone.content,
     fontSize = 10.sp,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = Modifier
       .clip(RoundedCornerShape(6.dp))
-      .background(if (selected) SetupYellow else SetupRaised)
-      .border(1.dp, SetupLine, RoundedCornerShape(6.dp))
+      .background(if (selected) colors.primary else colors.surfaceVariant)
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
       .padding(horizontal = 8.dp, vertical = 5.dp),
   )
 }
@@ -176,10 +170,11 @@ private fun AgentSelectionStep(state: FirstRunSetupState, callbacks: FirstRunSet
 
 @Composable
 private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
+  val colors = SkillBillTheme.colors
   SectionTitle("Platform packs")
-  Text(text = "Base skills install automatically.", color = SetupMuted, fontSize = 11.sp)
+  Text(text = "Base skills install automatically.", color = colors.onSurfaceVariant, fontSize = 11.sp)
   if (state.platformPacks.isEmpty()) {
-    Text(text = "No platform packs discovered.", color = SetupSteel, fontSize = 12.sp)
+    Text(text = "No platform packs discovered.", color = colors.onSurfaceVariant, fontSize = 12.sp)
   } else {
     state.platformPacks.forEach { pack ->
       ToggleRow(
@@ -195,6 +190,7 @@ private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetup
 
 @Composable
 private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
+  val colors = SkillBillTheme.colors
   SectionTitle("Telemetry")
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     FirstRunTelemetryLevel.entries.forEach { level ->
@@ -210,7 +206,7 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
   SectionTitle("MCP")
   Text(
     text = "Skill Bill MCP server will be registered for selected agents.",
-    color = SetupMuted,
+    color = colors.onSurfaceVariant,
     fontSize = 12.sp,
   )
 }
@@ -233,15 +229,15 @@ private fun ApplyStep(state: FirstRunSetupState) {
 private fun OutcomeStep(state: FirstRunSetupState) {
   val outcome = state.outcome
   if (outcome == null) {
-    Text(text = "Setup has not run yet.", color = SetupSteel, fontSize = 12.sp)
+    Text(text = "Setup has not run yet.", color = SkillBillTheme.colors.onSurfaceVariant, fontSize = 12.sp)
     return
   }
-  val color = when (outcome.status) {
-    FirstRunInstallStatus.SUCCESS -> SetupGreen
-    FirstRunInstallStatus.WARNING -> SetupAmber
-    FirstRunInstallStatus.FAILURE -> SetupRed
+  val tone = when (outcome.status) {
+    FirstRunInstallStatus.SUCCESS -> SkillBillTheme.semanticTones.successBanner
+    FirstRunInstallStatus.WARNING -> SkillBillTheme.semanticTones.warningBanner
+    FirstRunInstallStatus.FAILURE -> SkillBillTheme.semanticTones.errorBanner
   }
-  SetupBanner(title = outcome.title, message = outcome.status.name.lowercase(), color = color)
+  SetupBanner(title = outcome.title, message = outcome.status.name.lowercase(), tone = tone)
   outcome.details.forEach { detail -> DetailRow(detail) }
 }
 
@@ -282,35 +278,49 @@ private fun SetupFooter(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
 
 @Composable
 private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail: String, onClick: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, SetupLine, RoundedCornerShape(6.dp))
-      .background(SetupRaised)
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .background(colors.surfaceVariant)
       .clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 9.dp),
     horizontalArrangement = Arrangement.spacedBy(10.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Text(text = if (selected) "[x]" else "[ ]", color = if (selected) SetupYellow else SetupSteel, fontSize = 12.sp)
+    Text(
+      text = if (selected) "[x]" else "[ ]",
+      color = if (selected) colors.primary else colors.onSurfaceVariant,
+      fontSize = 12.sp,
+    )
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-      Text(text = label, color = SetupText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-      Text(text = detail, color = SetupMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+      Text(text = label, color = dialogTone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+      Text(
+        text = detail,
+        color = colors.onSurfaceVariant,
+        fontSize = 10.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
     }
   }
 }
 
 @Composable
 private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Text(
     text = label,
-    color = if (selected) Color(0xFF0B0B0D) else SetupText,
+    color = if (selected) colors.onPrimary else dialogTone.content,
     fontSize = 12.sp,
     modifier = Modifier
       .clip(RoundedCornerShape(6.dp))
-      .background(if (selected) SetupYellow else SetupRaised)
-      .border(1.dp, SetupLine, RoundedCornerShape(6.dp))
+      .background(if (selected) colors.primary else colors.surfaceVariant)
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
       .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 7.dp),
   )
@@ -318,72 +328,89 @@ private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onCli
 
 @Composable
 private fun SetupButton(label: String, enabled: Boolean, primary: Boolean = false, onClick: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Text(
     text = label,
     color = when {
-      !enabled -> SetupSteel
-      primary -> Color(0xFF0B0B0D)
-      else -> SetupText
+      !enabled -> colors.onSurfaceVariant
+      primary -> colors.onPrimary
+      else -> dialogTone.content
     },
     fontSize = 12.sp,
     modifier = Modifier
       .clip(RoundedCornerShape(6.dp))
-      .background(if (primary && enabled) SetupYellow else SetupRaised)
-      .border(1.dp, SetupLine, RoundedCornerShape(6.dp))
+      .background(if (primary && enabled) colors.primary else colors.surfaceVariant)
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 8.dp),
   )
 }
 
 @Composable
-private fun SetupBanner(title: String, message: String, color: Color) {
+private fun SetupBanner(title: String, message: String, tone: SkillBillSurfaceTone) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, color, RoundedCornerShape(6.dp))
-      .background(color.copy(alpha = 0.08f))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    Text(text = title, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    Text(text = message, color = SetupText, fontSize = 11.sp)
+    Text(text = title, color = tone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    Text(text = message, color = tone.content, fontSize = 11.sp)
   }
 }
 
 @Composable
 private fun DetailRow(detail: FirstRunInstallDetail) {
+  val colors = SkillBillTheme.colors
+  val semanticTones = SkillBillTheme.semanticTones
   val color = when (detail.severity) {
-    FirstRunInstallDetailSeverity.INFO -> SetupText
-    FirstRunInstallDetailSeverity.WARNING -> SetupAmber
-    FirstRunInstallDetailSeverity.ERROR -> SetupRed
+    FirstRunInstallDetailSeverity.INFO -> semanticTones.dialog.content
+    FirstRunInstallDetailSeverity.WARNING -> semanticTones.warningBanner.content
+    FirstRunInstallDetailSeverity.ERROR -> semanticTones.errorBanner.content
   }
   Column(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, SetupLine, RoundedCornerShape(6.dp))
-      .background(SetupRaised)
+      .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(6.dp))
+      .background(colors.surfaceVariant)
       .padding(horizontal = 12.dp, vertical = 9.dp),
     verticalArrangement = Arrangement.spacedBy(3.dp),
   ) {
     Text(text = detail.label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    Text(text = detail.message, color = SetupText, fontSize = 11.sp)
-    detail.path?.let { path -> Text(text = path, color = SetupMuted, fontSize = 10.sp, maxLines = 1) }
-    detail.guidance?.let { guidance -> Text(text = guidance, color = SetupAmber, fontSize = 10.sp) }
+    Text(text = detail.message, color = semanticTones.dialog.content, fontSize = 11.sp)
+    detail.path?.let { path -> Text(text = path, color = colors.onSurfaceVariant, fontSize = 10.sp, maxLines = 1) }
+    detail.guidance?.let { guidance ->
+      Text(
+        text = guidance,
+        color = semanticTones.warningBanner.content,
+        fontSize = 10.sp,
+      )
+    }
   }
 }
 
 @Composable
 private fun SectionTitle(text: String) {
-  Text(text = text, color = SetupText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+  Text(
+    text = text,
+    color = SkillBillTheme.semanticTones.dialog.content,
+    fontSize = 12.sp,
+    fontWeight = FontWeight.Medium,
+  )
 }
 
 @Composable
 private fun SummaryLine(label: String, value: String) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Text(text = label, color = SetupMuted, fontSize = 11.sp)
-    Text(text = value, color = SetupText, fontSize = 11.sp)
+    Text(text = label, color = colors.onSurfaceVariant, fontSize = 11.sp)
+    Text(text = value, color = dialogTone.content, fontSize = 11.sp)
   }
 }
 

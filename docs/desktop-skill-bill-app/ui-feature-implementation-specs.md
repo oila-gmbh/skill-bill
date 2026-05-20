@@ -40,6 +40,7 @@ and status surface.
 10. [Inspector Generated-Artifact Reveal](ui-feature-subtasks/10-inspector-artifact-reveal.md)
 11. [Open Compare URL in System Browser](ui-feature-subtasks/11-compare-url-browser.md)
 12. [Keyboard Accelerators](ui-feature-subtasks/12-keyboard-accelerators.md)
+13. [Material 3 Theme Adoption](ui-feature-subtasks/13-material3-theme-adoption.md)
 
 ## UI Feature Map
 
@@ -67,6 +68,7 @@ and status surface.
 | Bottom History dock tab | Placeholder | 05 |
 | Bottom Install console dock tab | Placeholder | 04 |
 | Bottom status bar | Partial | 01, 02, 03, 05 |
+| App theme, local palettes, and reusable UI tokens | Partial | 13 |
 
 ## Suggested Implementation Order
 
@@ -91,6 +93,9 @@ and status surface.
 12. Subtask 12, because the accelerators wrap callbacks that subtasks 02-06
     already expose and should land after 09 to avoid binding shortcuts to
     dead buttons.
+13. Subtask 13, because the Material 3 theme migration is broad visual
+    infrastructure. Land it after the major UI behavior is real so the work can
+    stay token-for-token instead of guessing at unfinished surfaces.
 
 Each subtask file is intended to be small enough to hand directly to
 `bill-feature-implement`.

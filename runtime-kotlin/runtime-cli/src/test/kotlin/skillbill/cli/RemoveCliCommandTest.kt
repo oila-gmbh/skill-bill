@@ -167,7 +167,10 @@ class RemoveCliCommandTest {
     val payload = decodeJsonObject(result.stdout)
     assertEquals("ok", payload["status"].toString().trim('"'))
     assertTrue(!Files.exists(platformPackRoot, LinkOption.NOFOLLOW_LINKS), "platform pack folder should be deleted")
-    assertTrue(!Files.exists(pairedPreShellRoot, LinkOption.NOFOLLOW_LINKS), "paired pre-shell folder should be deleted")
+    assertTrue(
+      !Files.exists(pairedPreShellRoot, LinkOption.NOFOLLOW_LINKS),
+      "paired pre-shell folder should be deleted",
+    )
   }
 
   @Test

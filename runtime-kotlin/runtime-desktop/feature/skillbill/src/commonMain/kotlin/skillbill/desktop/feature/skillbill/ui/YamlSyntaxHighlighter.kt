@@ -2,25 +2,9 @@
 
 package skillbill.desktop.feature.skillbill.ui
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-
-/**
- * SKILL-47 AC6 — color palette for the YAML-aware schema viewer.
- *
- * Passed in by the call site so the highlighter stays a pure function and can
- * be unit-tested without a Compose runtime. Production callers reuse the
- * existing workspace palette (see [contractYamlColors] in SkillBillFrame.kt)
- * so light/dark theming follows the rest of the editor pane.
- */
-internal data class YamlSyntaxColors(
-  val comment: Color,
-  val key: Color,
-  val string: Color,
-  val marker: Color,
-  val scalar: Color,
-)
+import skillbill.desktop.core.designsystem.YamlSyntaxColors
 
 /**
  * Tokenizes a full YAML document and returns an [AnnotatedString] with span

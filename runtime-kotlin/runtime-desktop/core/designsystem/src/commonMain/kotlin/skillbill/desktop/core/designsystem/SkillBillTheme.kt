@@ -10,17 +10,23 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun SkillBillMaterialTheme(
-  skillBillColors: SkillBillColors = defaultSkillBillColors(),
+  darkTheme: Boolean = isSystemInDarkTheme(),
+  skillBillColors: SkillBillColors = if (darkTheme) defaultSkillBillColors() else defaultSkillBillLightColors(),
+  skillBillTokens: SkillBillThemeTokens = if (darkTheme) SkillBillDarkThemeTokens else SkillBillLightThemeTokens,
   content: @Composable () -> Unit,
 ) {
-  val darkTheme = isSystemInDarkTheme()
   val colorScheme = if (darkTheme) SkillBillDarkColorScheme else SkillBillLightColorScheme
 
-  CompositionLocalProvider(LocalSkillBillColors provides skillBillColors) {
+  CompositionLocalProvider(
+    LocalSkillBillColors provides skillBillColors,
+    LocalSkillBillThemeTokens provides skillBillTokens,
+    LocalSkillBillGradientColors provides if (darkTheme) GradientColors() else SkillBillLightGradientColors,
+  ) {
     MaterialTheme(
       colorScheme = colorScheme,
       typography = SkillBillTypography,
@@ -37,7 +43,11 @@ fun SkillBillAppTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun SkillBillMediaTheme(content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalSkillBillColors provides defaultSkillBillMediaColors()) {
+  CompositionLocalProvider(
+    LocalSkillBillColors provides defaultSkillBillMediaColors(),
+    LocalSkillBillThemeTokens provides SkillBillDarkThemeTokens,
+    LocalSkillBillGradientColors provides GradientColors(),
+  ) {
     MaterialTheme(
       colorScheme = SkillBillDarkColorScheme,
       typography = SkillBillTypography,
@@ -54,6 +64,24 @@ object SkillBillTheme {
   val extendedColors: SkillBillColors
     @Composable get() = LocalSkillBillColors.current
 
+  val tokens: SkillBillThemeTokens
+    @Composable get() = LocalSkillBillThemeTokens.current
+
+  val textFieldTokens: SkillBillTextFieldTokens
+    @Composable get() = tokens.textField
+
+  val semanticTones: SkillBillSemanticToneTokens
+    @Composable get() = tokens.semanticTones
+
+  val syntaxTokens: SkillBillSyntaxTokens
+    @Composable get() = tokens.syntax
+
+  val diffTokens: SkillBillDiffTokens
+    @Composable get() = tokens.diff
+
+  val frameTokens: SkillBillFrameTokens
+    @Composable get() = tokens.frame
+
   val typography: Typography
     @Composable get() = MaterialTheme.typography
 
@@ -67,7 +95,7 @@ object SkillBillTheme {
     )
 
   val gradientColors: GradientColors
-    @Composable get() = if (isSystemInDarkTheme()) GradientColors() else SkillBillLightGradientColors
+    @Composable get() = LocalSkillBillGradientColors.current
 
   val outlinedTextFieldColors: TextFieldColors
     @Composable get() = skillBillOutlinedTextFieldColors()
@@ -80,3 +108,6 @@ enum class SkillBillSystemBarsTheme {
   Light,
   Dark,
 }
+
+internal val LocalSkillBillThemeTokens = staticCompositionLocalOf { SkillBillDarkThemeTokens }
+internal val LocalSkillBillGradientColors = staticCompositionLocalOf { GradientColors() }
