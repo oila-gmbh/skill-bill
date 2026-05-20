@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-20] SKILL-49 material3-theme-adoption-dialogs-small-surfaces
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem
+- Dialog/setup surfaces now consume `SkillBillTheme.semanticTones` and `SkillBillTheme.colors` directly instead of per-file local color helper palettes.
+- `ScaffoldWizardDialog` BasicTextField wrapper maps text, disabled text/container/border, focused border, regular border, and cursor through `SkillBillTheme.textFieldTokens`. reusable
+- Confirm deletion success/error, first-run setup status, and scaffold warning/success/error banners use semantic tone containers/content/borders while preserving existing state/callback behavior.
+- Follow-up note: a Minor review item remains for replacing `onSurfaceVariant.copy(alpha = 0.55f)` on the disabled first-run close glyph if a general disabled-content token is added later.
+- Known limitation: full repo `./gradlew check` remains blocked by untouched `runtime-cli` RemoveCliCommandTest spotless/detekt issues; scoped desktop/KMP validation passes.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-05-20] SKILL-49 material3-theme-adoption-helpers-guardrails
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem
 - Feature UI no longer authors raw Compose colors; workspace constants now reference core/designsystem tokens, with `SkillBillTransparent`, `SkillBillColor`, and `SkillBillOnYellow` covering transparent/type/primary-yellow foreground seams. reusable

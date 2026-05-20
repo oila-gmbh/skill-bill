@@ -2,6 +2,8 @@
 
 Parent spec: [spec.md](spec.md)
 
+Status: Complete
+
 ## Scope
 
 Migrate smaller visible desktop surfaces onto `SkillBillTheme`, `MaterialTheme`, or branded components from `core/designsystem`, using the token APIs and guardrails from subtasks 1 and 2.
