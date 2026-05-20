@@ -51,9 +51,46 @@ data class SkillBillDiffTokens(
   val context: Color,
 )
 
+enum class SkillBillStatusTone {
+  Neutral,
+  Success,
+  Warning,
+  Error,
+}
+
+data class SkillBillStatusToneTokens(
+  val neutral: Color,
+  val success: Color,
+  val warning: Color,
+  val error: Color,
+)
+
+fun SkillBillStatusToneTokens.contentColorFor(tone: SkillBillStatusTone): Color = when (tone) {
+  SkillBillStatusTone.Neutral -> neutral
+  SkillBillStatusTone.Success -> success
+  SkillBillStatusTone.Warning -> warning
+  SkillBillStatusTone.Error -> error
+}
+
+data class SkillBillFrameTokens(
+  val background: Color,
+  val panel: Color,
+  val raised: Color,
+  val sidebar: Color,
+  val line: Color,
+  val text: Color,
+  val muted: Color,
+  val subtle: Color,
+  val primary: Color,
+  val onPrimary: Color,
+  val transparent: Color,
+  val status: SkillBillStatusToneTokens,
+)
+
 data class SkillBillThemeTokens(
   val textField: SkillBillTextFieldTokens,
   val semanticTones: SkillBillSemanticToneTokens,
   val syntax: SkillBillSyntaxTokens,
   val diff: SkillBillDiffTokens,
+  val frame: SkillBillFrameTokens,
 )

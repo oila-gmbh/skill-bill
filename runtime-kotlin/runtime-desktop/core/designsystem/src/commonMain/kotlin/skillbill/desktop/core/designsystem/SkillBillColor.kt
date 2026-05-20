@@ -21,11 +21,9 @@ internal val SkillBillYellowDeep = Color(0xFFC99717)
 internal val SkillBillInk = Color(0xFF0B0B0D)
 val SkillBillOnYellow = SkillBillInk
 
-// SKILL-46 follow-up F-609: the colors below were `internal`; widening to module-public so the
-// feature module's dialogs can converge on a single design-system source-of-truth rather than
-// declaring parallel hex constants per dialog file. Remaining legacy duplicates in
-// SkillBillFrameColor.kt (`Workspace*`) and ScaffoldWizardDialog.kt (`ScaffoldDialog*`) are a known
-// follow-up; ConfirmDeletionDialog.kt has been migrated.
+// SKILL-46 follow-up F-609: the colors below were `internal`; widening to module-public so desktop
+// surfaces can converge on a single design-system source of truth instead of declaring parallel
+// hex constants in feature files.
 val SkillBillBlack = Color(0xFF050506)
 val SkillBillFrameColor = Color(0xFF0D0D10)
 val SkillBillPanel = Color(0xFF121216)
@@ -177,6 +175,25 @@ val SkillBillDarkThemeTokens = SkillBillThemeTokens(
     deletion = SkillBillRed,
     context = SkillBillText.copy(alpha = 0.85f),
   ),
+  frame = SkillBillFrameTokens(
+    background = SkillBillBlack,
+    panel = SkillBillPanel,
+    raised = SkillBillPanelRaised,
+    sidebar = SkillBillFrameColor,
+    line = SkillBillLine,
+    text = SkillBillText,
+    muted = SkillBillMuted,
+    subtle = SkillBillSteel,
+    primary = SkillBillYellow,
+    onPrimary = SkillBillOnYellow,
+    transparent = SkillBillTransparent,
+    status = SkillBillStatusToneTokens(
+      neutral = SkillBillMuted,
+      success = SkillBillGreen,
+      warning = SkillBillAmber,
+      error = SkillBillRed,
+    ),
+  ),
 )
 
 val SkillBillLightThemeTokens = SkillBillThemeTokens(
@@ -230,6 +247,25 @@ val SkillBillLightThemeTokens = SkillBillThemeTokens(
     addition = SkillBillLightGreen,
     deletion = SkillBillLightRed,
     context = SkillBillLightText.copy(alpha = 0.86f),
+  ),
+  frame = SkillBillFrameTokens(
+    background = SkillBillLightBackground,
+    panel = SkillBillLightSurface,
+    raised = SkillBillLightSurfaceVariant,
+    sidebar = SkillBillLightSurfaceVariant,
+    line = SkillBillLightLine,
+    text = SkillBillLightText,
+    muted = SkillBillLightMuted,
+    subtle = SkillBillLightSteel,
+    primary = SkillBillLightAmber,
+    onPrimary = Color.White,
+    transparent = SkillBillTransparent,
+    status = SkillBillStatusToneTokens(
+      neutral = SkillBillLightMuted,
+      success = SkillBillLightGreen,
+      warning = SkillBillLightAmber,
+      error = SkillBillLightRed,
+    ),
   ),
 )
 

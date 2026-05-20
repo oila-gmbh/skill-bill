@@ -29,7 +29,7 @@ class SkillBillThemeTokensTest {
   }
 
   @Test
-  fun `theme tokens expose required text field semantic syntax and diff colors`() {
+  fun `theme tokens expose required text field semantic syntax diff and frame colors`() {
     val tokens = SkillBillDarkThemeTokens
 
     assertEquals(SkillBillText, tokens.textField.text)
@@ -48,6 +48,20 @@ class SkillBillThemeTokensTest {
     assertEquals(SkillBillYellow, tokens.syntax.yaml.key)
     assertEquals(SkillBillGreen, tokens.syntax.yaml.string)
     assertEquals(SkillBillAmber, tokens.syntax.yaml.marker)
+
+    assertEquals(SkillBillBlack, tokens.frame.background)
+    assertEquals(SkillBillPanel, tokens.frame.panel)
+    assertEquals(SkillBillPanelRaised, tokens.frame.raised)
+    assertEquals(SkillBillFrameColor, tokens.frame.sidebar)
+    assertEquals(SkillBillLine, tokens.frame.line)
+    assertEquals(SkillBillText, tokens.frame.text)
+    assertEquals(SkillBillMuted, tokens.frame.muted)
+    assertEquals(SkillBillSteel, tokens.frame.subtle)
+    assertEquals(SkillBillYellow, tokens.frame.primary)
+    assertEquals(SkillBillOnYellow, tokens.frame.onPrimary)
+    assertEquals(SkillBillGreen, tokens.frame.status.contentColorFor(SkillBillStatusTone.Success))
+    assertEquals(SkillBillAmber, tokens.frame.status.contentColorFor(SkillBillStatusTone.Warning))
+    assertEquals(SkillBillRed, tokens.frame.status.contentColorFor(SkillBillStatusTone.Error))
   }
 
   @Test
@@ -93,6 +107,10 @@ class SkillBillThemeTokensTest {
     assertNotEquals(SkillBillLightThemeTokens.semanticTones.scrim, SkillBillDarkThemeTokens.semanticTones.scrim)
     assertNotEquals(SkillBillLightThemeTokens.syntax.yaml.key, SkillBillDarkThemeTokens.syntax.yaml.key)
     assertNotEquals(SkillBillLightThemeTokens.diff.context, SkillBillDarkThemeTokens.diff.context)
+    assertNotEquals(SkillBillLightThemeTokens.frame.background, SkillBillDarkThemeTokens.frame.background)
+    assertNotEquals(SkillBillLightThemeTokens.frame.panel, SkillBillDarkThemeTokens.frame.panel)
+    assertNotEquals(SkillBillLightThemeTokens.frame.primary, SkillBillDarkThemeTokens.frame.primary)
+    assertNotEquals(SkillBillLightThemeTokens.frame.onPrimary, SkillBillDarkThemeTokens.frame.onPrimary)
   }
 
   @Test
@@ -125,6 +143,13 @@ class SkillBillThemeTokensTest {
     assertReadable(tokens.diff.addition, background)
     assertReadable(tokens.diff.deletion, background)
     assertReadable(tokens.diff.context, background)
+
+    assertReadableFrameTokens(tokens)
+  }
+
+  @Test
+  fun `dark theme tokens keep frame foregrounds readable on their containers`() {
+    assertReadableFrameTokens(SkillBillDarkThemeTokens)
   }
 
   private fun assertReadable(foreground: Color, background: Color) {
@@ -135,6 +160,24 @@ class SkillBillThemeTokensTest {
   private fun assertReadableNonText(foreground: Color, background: Color) {
     val ratio = contrastRatio(foreground, background)
     assertTrue(ratio >= MINIMUM_NON_TEXT_CONTRAST, "Expected contrast >= $MINIMUM_NON_TEXT_CONTRAST, got $ratio")
+  }
+
+  private fun assertReadableFrameTokens(tokens: SkillBillThemeTokens) {
+    val frame = tokens.frame
+
+    assertReadable(frame.text, frame.background)
+    assertReadable(frame.text, frame.panel)
+    assertReadable(frame.text, frame.raised)
+    assertReadable(frame.text, frame.sidebar)
+    assertReadable(frame.muted, frame.background)
+    assertReadable(frame.subtle, frame.background)
+    assertReadable(frame.subtle, frame.panel)
+    assertReadable(frame.subtle, frame.raised)
+    assertReadable(frame.primary, frame.background)
+    assertReadable(frame.onPrimary, frame.primary)
+    assertReadable(frame.status.success, frame.background)
+    assertReadable(frame.status.warning, frame.background)
+    assertReadable(frame.status.error, frame.background)
   }
 
   private fun contrastRatio(foreground: Color, background: Color): Double {

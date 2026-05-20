@@ -79,6 +79,9 @@ object SkillBillTheme {
   val diffTokens: SkillBillDiffTokens
     @Composable get() = tokens.diff
 
+  val frameTokens: SkillBillFrameTokens
+    @Composable get() = tokens.frame
+
   val typography: Typography
     @Composable get() = MaterialTheme.typography
 

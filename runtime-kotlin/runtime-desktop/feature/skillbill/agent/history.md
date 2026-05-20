@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-20] SKILL-49 material3-theme-adoption-frame-validation
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem, runtime-desktop app boundary
+- `SkillBillFrame` now consumes `SkillBillTheme.frameTokens`, `textFieldTokens`, `semanticTones`, `syntaxTokens`, and `diffTokens` instead of local `Workspace*`/`Tone` palettes or raw frame color imports.
+- Reusable: `SkillBillFrameTokens` and `SkillBillStatusToneTokens` centralize frame backgrounds, foregrounds, status tones, primary controls, and transparent seams for future desktop frame surfaces.
+- Reusable tests: `SkillBillFrameTokenWiringTest` blocks raw frame color imports in the frame; `SkillBillThemeTokensTest` checks frame token light/dark distinction and readable contrast on background/panel/raised containers.
+- Review catch: dark `frame.subtle` must meet text contrast on raised/panel surfaces, not only on the root background.
+- Known limitation: full repo `./gradlew check` remains blocked by untouched `runtime-cli` RemoveCliCommandTest spotless/detekt issues; scoped desktop/Kotlin validation passes.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-05-20] SKILL-49 material3-theme-adoption-dialogs-small-surfaces
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem
 - Dialog/setup surfaces now consume `SkillBillTheme.semanticTones` and `SkillBillTheme.colors` directly instead of per-file local color helper palettes.

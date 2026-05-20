@@ -6,8 +6,6 @@ import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillDarkThemeTokens
 import skillbill.desktop.core.designsystem.SkillBillLightThemeTokens
 import skillbill.desktop.core.designsystem.SkillBillMaterialTheme
-import skillbill.desktop.core.designsystem.SkillBillOnYellow
-import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -65,21 +63,24 @@ class SkillBillFrameTokenWiringTest {
   }
 
   @Test
-  fun `workspace yellow controls do not inherit light material onPrimary`() = runComposeUiTest {
-    var materialOnPrimary: SkillBillColor? = null
-    var workspaceForeground: SkillBillColor? = null
+  fun `primary controls read frame onPrimary token`() = runComposeUiTest {
+    var lightForeground: SkillBillColor? = null
+    var darkForeground: SkillBillColor? = null
 
     setContent {
       SkillBillMaterialTheme(darkTheme = false) {
-        materialOnPrimary = SkillBillTheme.colors.onPrimary
-        workspaceForeground = workspacePrimaryControlForeground()
+        lightForeground = workspacePrimaryControlForeground()
+      }
+      SkillBillMaterialTheme(darkTheme = true) {
+        darkForeground = workspacePrimaryControlForeground()
       }
     }
 
     waitForIdle()
 
-    assertEquals(SkillBillOnYellow, workspaceForeground)
-    assertNotEquals(materialOnPrimary, workspaceForeground)
+    assertEquals(SkillBillLightThemeTokens.frame.onPrimary, lightForeground)
+    assertEquals(SkillBillDarkThemeTokens.frame.onPrimary, darkForeground)
+    assertNotEquals(lightForeground, darkForeground)
   }
 
   @Test
@@ -91,5 +92,27 @@ class SkillBillFrameTokenWiringTest {
 
     assertFalse(source.contains("colorForLine"))
     assertFalse(source.contains("startsWith(\"@@\")"))
+  }
+
+  @Test
+  fun `frame UI does not import raw design-system frame colors`() {
+    val sourcePath = repoRootFromTest()
+      .resolve("runtime-kotlin/runtime-desktop/feature/skillbill/src/commonMain/kotlin")
+      .resolve("skillbill/desktop/feature/skillbill/ui/SkillBillFrame.kt")
+    val source = Files.readString(sourcePath)
+    val rawFrameColorImport = Regex(
+      pattern = """
+        import\s+skillbill\.desktop\.core\.designsystem\.
+        (SkillBillAmber|SkillBillBlack|SkillBillFrameColor|SkillBillGreen|SkillBillLine|
+        SkillBillMuted|SkillBillOnYellow|SkillBillPanel|SkillBillPanelRaised|SkillBillRed|
+        SkillBillSteel|SkillBillSteelDark|SkillBillText|SkillBillTransparent|SkillBillYellow)\b
+      """.trimIndent(),
+      options = setOf(RegexOption.COMMENTS),
+    )
+
+    assertFalse(
+      rawFrameColorImport.containsMatchIn(source),
+      "SkillBillFrame.kt must use SkillBillTheme.frameTokens instead of raw design-system color imports.",
+    )
   }
 }
