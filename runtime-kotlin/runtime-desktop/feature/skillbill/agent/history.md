@@ -1,5 +1,14 @@
 # SkillBill desktop feature — history
 
+## [2026-05-21] hide-runtime-contracts-from-desktop-tree
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data
+- Runtime contract YAMLs under `orchestration/contracts/` are internal implementation details and are no longer surfaced as desktop tree rows; `TreeItemKind.CONTRACT`, contract rendering, and the single-target contract render no-op were removed.
+- `RuntimeRepoBrowserContractsGroupTest` now flattens the full tree and asserts no descendant label, authored path, or metadata kind exposes contract rows, including newly added contract YAML files. reusable
+- The contract-only YAML annotated renderer was deleted with its orphaned tests; read-only editor rendering returns to the shared `CodeLine`/`SyntaxText` path for real user-facing rows.
+- The command search hint no longer advertises `contract id`; keep search placeholder text aligned with actual palette/tree destinations.
+Feature flag: N/A
+Acceptance criteria: 4/4 review findings fixed
+
 ## [2026-05-20] SKILL-49 material3-theme-adoption-frame-validation
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem, runtime-desktop app boundary
 - `SkillBillFrame` now consumes `SkillBillTheme.frameTokens`, `textFieldTokens`, `semanticTones`, `syntaxTokens`, and `diffTokens` instead of local `Workspace*`/`Tone` palettes or raw frame color imports.
@@ -29,17 +38,6 @@ Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/designsystem
 - Known limitation: full repo `./gradlew check` remains blocked by untouched `runtime-cli` failures; scoped desktop/KMP validation passes.
 Feature flag: N/A
 Acceptance criteria: 4/4 implemented
-
-## [2026-05-19] SKILL-47 platform-pack-schema-source-of-truth (desktop schema viewer)
-Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data
-- New `TreeItemKind.CONTRACT` exposes runtime contracts (today: `orchestration/contracts/platform-pack-schema.yaml`) as a top-level "Contracts" group under the Skill Bill tree. CONTRACT leaves are read-only (`editable=false`, `readOnlyLabel="RO"`, `readOnlyReason` explains the contract is edited as a repo file), inherit the SKILL-44 subtask-03 read-only `SelectionDetail.contentFile` flow (no second loader), and are excluded from the SKILL-46 right-click-delete predicate via the existing `else -> null` in `resolveDeletionTarget`. Every exhaustive `when (TreeItemKind)` (CommandPaletteBuilder, SkillBillViewModel.isRenderableTreeItemKind, SkillBillFrame markerFor / row icon, ConfirmDeletionDialog kind label) was updated; CONTRACT renders as marker `ct` and is non-renderable. reusable
-- `RuntimeRepoBrowserService.loadContracts` builds the Contracts group with one leaf whose `contentFile = root.resolve(PlatformPackSchemaPaths.REPO_RELATIVE_PATH)` — the runtime-core constant is the single source of truth for the path. `renderDetail` has an explicit `"contract"` branch returning an empty `RenderOutcome` so single-target Render on the schema row is a clean no-op (matches `beginRenderAll`'s `isRenderableTreeItemKind` filter for the multi-target path).
-- YAML-aware syntax highlighting lives in `YamlSyntaxHighlighter.highlightYaml(text, colors): AnnotatedString` — pure helper, regex-driven, no parser dep. Token rules: line-leading `#` → comment; `---` / `...` → document marker; `<key>:` → key color (accepts `$ref`/`$defs`); single- and double-quoted scalars → string color; unquoted scalars after `:` → scalar color; inline ` #` tail comments → comment color. `CodeEditor`'s read-only branch switches to `CodeLineAnnotated` only when `editor.kind == "contract"` (other kinds keep the existing renderer untouched); AnnotatedString cached via `remember(rawText)` so highlighting runs once per selection. reusable
-- The highlighter palette reuses the existing `WorkspaceSteel/Yellow/Green/Amber/Text` color tokens at the top of `SkillBillFrame.kt` — there is no semantic theme palette in runtime-desktop yet, so a follow-up can swap the tokens in one place without touching the tokenizer.
-- Tests: `RuntimeRepoBrowserContractsGroupTest` (in `core/data/jvmTest`) exercises the REAL `RuntimeRepoBrowserService.buildTree` against a temp repo containing the canonical schema and asserts the Contracts group + CONTRACT leaf shape (kind, editable=false, readOnlyLabel, contentFile resolves to the canonical path). `PlatformPackSchemaViewerStateTest` covers VM behavior: byte-for-byte `editor.content` round-trip via the gateway, dirty-state isolation across selections (SKILL-44 subtask-04 pattern). `YamlSyntaxHighlighterTest` covers token rules and asserts plain text yields zero spans.
-- Reusable: contract-leaf SelectionDetail pattern (any future contract file under `orchestration/contracts/` can be surfaced by adding a single entry in `loadContracts`); `kind == "contract"` gate as the simplest opt-in for YAML highlighting; `highlightYaml` helper is decoupled from the editor and can be reused for any other YAML rendering surface.
-Feature flag: N/A
-Acceptance criteria: 8/8 implemented (this boundary contributes to AC6, AC7, AC8 desktop UI test)
 
 ## [2026-05-18] SKILL-46 tree-context-menu-delete
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/core/testing, runtime-domain, runtime-core, runtime-cli

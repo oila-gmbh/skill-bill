@@ -45,13 +45,8 @@ import java.nio.file.InvalidPathException
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.logging.Level
-import java.util.logging.Logger
 import kotlin.io.path.isDirectory
 import kotlin.io.path.relativeTo
-
-private val log: Logger =
-  Logger.getLogger("skillbill.desktop.core.data.service.RuntimeRepoBrowserService")
 
 @Inject
 @SingleIn(UserScope::class)
@@ -262,11 +257,6 @@ class RuntimeRepoBrowserService :
     "horizontal skill", "platform pack skill" -> renderSkill(root, detail)
     "native agent" -> renderNativeAgent(root, detail)
     "add-on" -> renderAddon(root, detail)
-    // F-001 (SKILL-47): single-target Render fired on a read-only Contracts row is a no-op rather
-    // than a runtime crash. Contract files are runtime sources of truth and have nothing to render;
-    // the row is intentionally non-renderable. Returning an empty outcome keeps the failure mode
-    // clean (matches beginRenderAll's filter via isRenderableTreeItemKind).
-    "contract" -> RenderOutcome(blocks = emptyList(), generatedArtifacts = emptyList())
     else -> error("Render is not supported for selection kind '${detail.kind ?: "unknown"}'.")
   }
 
@@ -403,7 +393,6 @@ class RuntimeRepoBrowserService :
     val addons = loadAddons(root, repoToken, selections)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
-    val contracts = loadContracts(root, repoToken, selections)
 
     val groups = listOfNotNull(
       group(selectionId(repoToken, "horizontal-skills"), "Horizontal Skills", authoredSkills.horizontal),
@@ -411,101 +400,8 @@ class RuntimeRepoBrowserService :
       group(selectionId(repoToken, "addons"), "Add-ons", addons),
       group(selectionId(repoToken, "native-agents"), "Native Agents", nativeAgents),
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
-      group(selectionId(repoToken, "contracts"), "Contracts", contracts),
     )
     return TreeBuildResult(items = groups, selections = selections)
-  }
-
-  /**
-   * SKILL-48 Subtask 2a (AC6): surfaces every runtime contract YAML under
-   * `orchestration/contracts/` as a read-only tree leaf. The auto-listing
-   * means that adding a new contract YAML (workflow-state schema today;
-   * install-plan / native-agent-composition / telemetry-event schemas
-   * later) automatically appears as a new leaf without any desktop code
-   * change.
-   *
-   * The viewer reads from the same on-disk file the runtime parser uses;
-   * there is no second copy of any schema embedded in the desktop module.
-   */
-  private fun loadContracts(
-    root: Path,
-    repoToken: String,
-    selections: MutableMap<String, SelectionDetail>,
-  ): List<SkillBillTreeItem> {
-    val contractsDir = root.resolve("orchestration/contracts")
-    if (!contractsDir.isDirectory()) {
-      return emptyList()
-    }
-    // F-402: an IOException from `Files.list` (permissions denied, transient
-    // FS issue, symlink loop, etc.) used to cascade through `buildTree` and
-    // downgrade the whole repo to INVALID. The Contracts group is a leaf-
-    // only read-only listing — if we cannot enumerate it, the right
-    // degradation is to skip the group entirely (the `group()` helper drops
-    // empty children) and keep the rest of the repo tree usable. The
-    // underlying IOException is logged at WARN so the failure mode is
-    // visible in dashboards without breaking the desktop session.
-    val yamlFiles = runCatching {
-      Files.list(contractsDir).use { stream ->
-        stream
-          .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-          .filter { path -> path.fileName.toString().endsWith(".yaml") }
-          .sorted(compareBy { it.fileName.toString() })
-          .toList()
-      }
-    }.getOrElse { error ->
-      log.log(
-        Level.WARNING,
-        "Could not list orchestration/contracts/ at '$contractsDir' — Contracts group will be omitted from the tree.",
-        error,
-      )
-      emptyList<Path>()
-    }
-    return yamlFiles.map { schemaFile ->
-      val relative = schemaFile.relativeTo(root).portablePath()
-      val filename = schemaFile.fileName.toString()
-      val label = contractLabelFromFilename(filename)
-      val id = selectionId(repoToken, "contract:$filename")
-      selections[id] = SelectionDetail(
-        repoToken = repoToken,
-        title = label,
-        detail = "Canonical $label contract (read-only).",
-        kind = "contract",
-        authoredPath = relative,
-        status = "read-only",
-        editable = false,
-        readOnlyLabel = READ_ONLY_LABEL,
-        readOnlyReason =
-        "Runtime contract — edit $relative in code to change.",
-        contentFile = schemaFile,
-      )
-      SkillBillTreeItem(
-        id = id,
-        label = label,
-        kind = TreeItemKind.CONTRACT,
-        authoredPath = relative,
-        status = "read-only",
-        editable = false,
-        readOnlyLabel = READ_ONLY_LABEL,
-        metadata = SkillBillTreeItemMetadata(kind = "contract"),
-      )
-    }
-  }
-
-  /**
-   * Derives a human label from a contract YAML filename. Drops the
-   * `.yaml` suffix, replaces dashes with spaces, and capitalises the
-   * first character. Examples:
-   *
-   *  - `platform-pack-schema.yaml` -> `Platform pack schema`
-   *  - `workflow-state-schema.yaml` -> `Workflow state schema`
-   */
-  private fun contractLabelFromFilename(filename: String): String {
-    val base = filename.removeSuffix(".yaml").replace('-', ' ')
-    return if (base.isEmpty()) {
-      filename
-    } else {
-      base.replaceFirstChar { ch -> ch.titlecase() }
-    }
   }
 
   private fun loadAuthoredSkills(

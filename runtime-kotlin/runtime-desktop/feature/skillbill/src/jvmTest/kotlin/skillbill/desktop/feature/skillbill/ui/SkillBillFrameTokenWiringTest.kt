@@ -41,7 +41,6 @@ class SkillBillFrameTokenWiringTest {
     val paneColors = colors ?: error("Code pane colors were not captured.")
     assertEquals(SkillBillLightThemeTokens.diff, paneColors.diff)
     assertEquals(SkillBillLightThemeTokens.syntax.yaml, paneColors.yaml)
-    assertEquals(SkillBillLightThemeTokens.syntax.yaml.scalar, paneColors.yamlFallback)
   }
 
   @Test
@@ -59,7 +58,6 @@ class SkillBillFrameTokenWiringTest {
     val paneColors = colors ?: error("Code pane colors were not captured.")
     assertEquals(SkillBillDarkThemeTokens.diff, paneColors.diff)
     assertEquals(SkillBillDarkThemeTokens.syntax.yaml, paneColors.yaml)
-    assertEquals(SkillBillDarkThemeTokens.syntax.yaml.scalar, paneColors.yamlFallback)
   }
 
   @Test
