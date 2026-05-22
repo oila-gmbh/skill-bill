@@ -65,6 +65,9 @@ Base skills are always included. Optional platform packs add their declared
 review and quality-check skills after manifest validation. All installed
 content-managed skills are rendered into `~/.skill-bill/installed-skills/` and
 agent entries link to that staging cache, not directly to source directories.
+When a platform pack declares `code_review_composition.baseline_layers`, the
+rendered baseline review skill includes review-composition instructions so the
+referenced baseline layer runs before pack-local specialists.
 
 On Windows, Skill Bill uses explicit symlink preflight outcomes. If symlink
 support is not available, install output tells the operator to enable Developer
@@ -247,7 +250,7 @@ Strict and loud-fail guarantees:
 
 - MCP tools publish strict schemas for priority workflow, telemetry, review, learning, scaffold, and workflow-state tools. Unknown top-level arguments are rejected before handler dispatch when the schema is strict.
 - Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, generated wrapper sections, and generated support pointers.
-- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid payloads, source-shape violations, or render drift fail the command.
+- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid payloads, source-shape violations, or render drift fail the command. `skill-bill new --payload <file> --dry-run` previews planned files and manifest edits, including platform-pack baseline composition blocks, and `skill-bill show <skill>` exposes manifest-declared review composition for inspection. Legacy platform-pack payloads without `baseline_layers` continue to produce manifests with no composition section.
 - `install link-skill` creates real symlinks to staged rendered skill directories and is covered by Kotlin CLI tests.
 
 Model-mediated guarantees:

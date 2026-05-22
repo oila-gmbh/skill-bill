@@ -1,6 +1,6 @@
 # SKILL-50 Subtask 3 — Scaffold payload and CLI authoring
 
-Status: Proposed
+Status: Complete
 
 Parent spec: [spec.md](./spec.md)
 

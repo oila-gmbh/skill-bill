@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -27,6 +28,14 @@ internal fun statusPayload(
       "sections" to sectionPayloads(contentText),
       "recommended_commands" to recommendedCommands(repoRoot, target, completionStatus, issues),
     )
+  target.codeReviewComposition?.baselineLayers?.takeIf { it.isNotEmpty() }?.let { baselineLayers ->
+    payload["review_composition"] =
+      mapOf(
+        "source" to "platform.yaml",
+        "summary" to baselineLayerSummary(baselineLayers),
+        "baseline_layers" to baselineLayers.map(::baselineLayerPayload),
+      )
+  }
   when (contentMode) {
     "preview" -> payload["content_preview"] = previewText(contentText, CONTENT_PREVIEW_LIMIT)
     "full" -> payload["content"] = contentText
@@ -36,6 +45,24 @@ internal fun statusPayload(
   }
   return payload
 }
+
+private fun baselineLayerSummary(baselineLayers: List<CodeReviewBaselineLayer>): String {
+  val requiredCount = baselineLayers.count { it.required }
+  val optionalCount = baselineLayers.size - requiredCount
+  val layerText = buildList {
+    if (requiredCount > 0) add("$requiredCount required")
+    if (optionalCount > 0) add("$optionalCount optional")
+  }.joinToString(" and ")
+  return "Run $layerText baseline layer(s) before pack-local specialists."
+}
+
+private fun baselineLayerPayload(layer: CodeReviewBaselineLayer): Map<String, Any?> = mapOf(
+  "platform" to layer.platform,
+  "skill" to layer.skill,
+  "scope" to layer.scope.wireValue,
+  "required" to layer.required,
+  "mode" to layer.mode.wireValue,
+)
 
 internal fun recommendedCommands(
   repoRoot: Path,

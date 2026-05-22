@@ -101,6 +101,7 @@ data class ScaffoldResult(
   val skillPath: Path,
   val createdFiles: List<Path> = emptyList(),
   val manifestEdits: List<Path> = emptyList(),
+  val manifestPreviews: Map<Path, String> = emptyMap(),
   val symlinks: List<Path> = emptyList(),
   val installTargets: List<Path> = emptyList(),
   val notes: List<String> = emptyList(),

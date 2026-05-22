@@ -3,6 +3,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Path
 
 private val AREAS_EMPTY_INLINE_PATTERN =
@@ -61,6 +62,7 @@ internal fun renderPlatformPackManifest(
   declaredAreaFiles: Map<String, String> = emptyMap(),
   declaredQualityCheckFile: String? = null,
   areaMetadata: Map<String, String> = emptyMap(),
+  baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   notes: String? = null,
 ): String {
   val lines = mutableListOf<String>()
@@ -68,6 +70,22 @@ internal fun renderPlatformPackManifest(
   lines += "contract_version: ${yamlScalar(SHELL_CONTRACT_VERSION)}"
   lines += "display_name: ${yamlScalar(displayName)}"
   lines += ""
+  appendRoutingSignals(lines, strongSignals, tieBreakers)
+  lines += ""
+  appendDeclaredCodeReviewAreas(lines, declaredCodeReviewAreas)
+  lines += ""
+  appendDeclaredFiles(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles)
+  appendAreaMetadata(lines, declaredCodeReviewAreas, areaMetadata)
+  appendQualityCheckDeclaration(lines, declaredQualityCheckFile)
+  appendBaselineLayers(lines, baselineLayers)
+  if (notes != null) {
+    lines += ""
+    lines += "notes: ${yamlScalar(notes)}"
+  }
+  return lines.joinToString("\n") + "\n"
+}
+
+private fun appendRoutingSignals(lines: MutableList<String>, strongSignals: List<String>, tieBreakers: List<String>) {
   lines += "routing_signals:"
   lines += "  strong:"
   strongSignals.forEach { lines += "    - ${yamlScalar(it)}" }
@@ -77,14 +95,23 @@ internal fun renderPlatformPackManifest(
     lines += "  tie_breakers:"
     tieBreakers.forEach { lines += "    - ${yamlScalar(it)}" }
   }
-  lines += ""
+}
+
+private fun appendDeclaredCodeReviewAreas(lines: MutableList<String>, declaredCodeReviewAreas: List<String>) {
   if (declaredCodeReviewAreas.isEmpty()) {
     lines += "declared_code_review_areas: []"
   } else {
     lines += "declared_code_review_areas:"
     declaredCodeReviewAreas.forEach { lines += "  - ${yamlScalar(it)}" }
   }
-  lines += ""
+}
+
+private fun appendDeclaredFiles(
+  lines: MutableList<String>,
+  baselineContentPath: String,
+  declaredCodeReviewAreas: List<String>,
+  declaredAreaFiles: Map<String, String>,
+) {
   lines += "declared_files:"
   lines += "  baseline: ${yamlScalar(baselineContentPath)}"
   if (declaredAreaFiles.isEmpty()) {
@@ -95,6 +122,13 @@ internal fun renderPlatformPackManifest(
       declaredAreaFiles[area]?.let { lines += "    $area: ${yamlScalar(it)}" }
     }
   }
+}
+
+private fun appendAreaMetadata(
+  lines: MutableList<String>,
+  declaredCodeReviewAreas: List<String>,
+  areaMetadata: Map<String, String>,
+) {
   if (areaMetadata.isEmpty()) {
     lines += "area_metadata: {}"
   } else {
@@ -106,15 +140,27 @@ internal fun renderPlatformPackManifest(
       }
     }
   }
+}
+
+private fun appendQualityCheckDeclaration(lines: MutableList<String>, declaredQualityCheckFile: String?) {
   if (declaredQualityCheckFile != null) {
     lines += ""
     lines += "declared_quality_check_file: ${yamlScalar(declaredQualityCheckFile)}"
   }
-  if (notes != null) {
-    lines += ""
-    lines += "notes: ${yamlScalar(notes)}"
+}
+
+private fun appendBaselineLayers(lines: MutableList<String>, baselineLayers: List<CodeReviewBaselineLayer>) {
+  if (baselineLayers.isEmpty()) return
+  lines += ""
+  lines += "code_review_composition:"
+  lines += "  baseline_layers:"
+  baselineLayers.forEach { layer ->
+    lines += "    - platform: ${yamlScalar(layer.platform)}"
+    lines += "      skill: ${yamlScalar(layer.skill)}"
+    lines += "      scope: ${yamlScalar(layer.scope.wireValue)}"
+    lines += "      required: ${layer.required}"
+    lines += "      mode: ${yamlScalar(layer.mode.wireValue)}"
   }
-  return lines.joinToString("\n") + "\n"
 }
 
 private fun appendAreaToList(text: String, area: String): String {

@@ -177,14 +177,23 @@ private fun validateCompositionModeSupport(pack: PlatformManifest) {
 }
 
 private fun validateCompositionModeSupport(sourceSlug: String, index: Int, layer: CodeReviewBaselineLayer) {
-  val supportsKmpBaseline = layer.platform == "kotlin" && layer.skill == "bill-kotlin-code-review"
-  if (layer.mode == CodeReviewCompositionMode.KmpBaseline && !supportsKmpBaseline) {
+  val unsupportedReason = unsupportedCompositionModeReason(layer)
+  if (unsupportedReason != null) {
     throw InvalidManifestSchemaError(
       "Platform pack '$sourceSlug': code_review_composition.baseline_layers[$index] uses mode " +
         "'${layer.mode.wireValue}' with unsupported referenced skill '${layer.platform}/${layer.skill}'. " +
-        "Mode '${layer.mode.wireValue}' is supported only for 'kotlin/bill-kotlin-code-review'.",
+        unsupportedReason,
     )
   }
+}
+
+internal fun unsupportedCompositionModeReason(layer: CodeReviewBaselineLayer): String? = when (layer.mode) {
+  CodeReviewCompositionMode.KmpBaseline ->
+    if (layer.platform == "kotlin" && layer.skill == "bill-kotlin-code-review") {
+      null
+    } else {
+      "Mode '${layer.mode.wireValue}' is supported only for 'kotlin/bill-kotlin-code-review'."
+    }
 }
 
 private fun validateNoCompositionCycles(packs: List<PlatformManifest>) {
@@ -218,7 +227,7 @@ private fun validateNoCompositionCycles(packs: List<PlatformManifest>) {
   graph.keys.sorted().forEach(::visit)
 }
 
-private fun PlatformManifest.declaredCodeReviewSkillNames(): Set<String> {
+internal fun PlatformManifest.declaredCodeReviewSkillNames(): Set<String> {
   val names = linkedSetOf<String>()
   routedSkillName?.let(names::add)
   declaredFiles.baseline?.parent?.fileName?.toString()

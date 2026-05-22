@@ -24,6 +24,9 @@ import skillbill.install.detectAgents
 import skillbill.install.installSkill
 import skillbill.install.model.InstallTransaction
 import skillbill.install.uninstallTargets
+import skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.scaffold.model.CodeReviewCompositionMode
+import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.ScaffoldResult
 import java.nio.file.Files
 import java.nio.file.Path
@@ -117,6 +120,7 @@ private data class ScaffoldPlan(
   val createdFiles: List<Path> = emptyList(),
   val contentBody: String? = null,
   val addonBody: String? = null,
+  val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val subagentDescriptions: Map<String, String> = emptyMap(),
   val subagentsSuppressed: Boolean = false,
@@ -152,6 +156,7 @@ private fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResu
   skillPath = plan.skillPath,
   createdFiles = previewCreatedFiles(plan),
   manifestEdits = previewManifestEdits(plan, repoRoot),
+  manifestPreviews = previewManifestPreviews(plan, repoRoot),
   symlinks = emptyList(),
   installTargets = emptyList(),
   notes = plan.notes + listOf("Dry run - no filesystem changes applied."),
@@ -229,11 +234,23 @@ private fun resolveRepoRoot(payload: Map<String, Any?>): Path {
 }
 
 private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: String): ScaffoldPlan = when (kind) {
-  SKILL_KIND_HORIZONTAL -> planHorizontal(payload, repoRoot)
-  SKILL_KIND_PLATFORM_OVERRIDE_PILOTED -> planPlatformOverridePiloted(payload, repoRoot)
+  SKILL_KIND_HORIZONTAL -> {
+    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    planHorizontal(payload, repoRoot)
+  }
+  SKILL_KIND_PLATFORM_OVERRIDE_PILOTED -> {
+    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    planPlatformOverridePiloted(payload, repoRoot)
+  }
   SKILL_KIND_PLATFORM_PACK -> planPlatformPack(payload, repoRoot)
-  SKILL_KIND_CODE_REVIEW_AREA -> planCodeReviewArea(payload, repoRoot)
-  SKILL_KIND_ADD_ON -> planAddOn(payload, repoRoot)
+  SKILL_KIND_CODE_REVIEW_AREA -> {
+    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    planCodeReviewArea(payload, repoRoot)
+  }
+  SKILL_KIND_ADD_ON -> {
+    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    planAddOn(payload, repoRoot)
+  }
   else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
 }
 
@@ -337,6 +354,7 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
   }
   val baselineName = canonicalName(payload, defaultName = "bill-$platform-code-review")
   val qualityCheckName = "bill-$platform-quality-check"
+  val baselineLayers = optionalBaselineLayers(payload, repoRoot, platform)
   val selection = resolvePlatformPackSelection(payload)
   val selectedAreas = selection.selectedAreas
   val specialistNames =
@@ -399,10 +417,19 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
       selectedAreas = selectedAreas,
     ),
     contentBody = payload["content_body"] as? String,
+    baselineLayers = baselineLayers,
     subagentSpecialists = platformPackSubagents,
     subagentDescriptions = platformPackSubagentDescriptions,
     subagentsSuppressed = subagents.suppressed,
   )
+}
+
+private fun rejectBaselineLayersForNonPlatformPack(payload: Map<String, Any?>, kind: String) {
+  if (payload.containsKey("baseline_layers")) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'baseline_layers' is only supported for kind 'platform-pack'; got '$kind'.",
+    )
+  }
 }
 
 private data class PlatformPackSelection(
@@ -413,6 +440,110 @@ private data class OptionalSubagents(
   val specialists: List<String>,
   val suppressed: Boolean,
 )
+
+private fun optionalBaselineLayers(
+  payload: Map<String, Any?>,
+  repoRoot: Path,
+  newPlatform: String,
+): List<CodeReviewBaselineLayer> {
+  val raw = payload["baseline_layers"] ?: return emptyList()
+  if (raw !is List<*>) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'baseline_layers' must be a list of baseline layer objects.",
+    )
+  }
+  if (raw.isEmpty()) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'baseline_layers' must contain at least one layer when provided.",
+    )
+  }
+  val layers = raw.mapIndexed { index, entry -> parseBaselineLayerPayload(index, entry) }
+  validateBaselineLayerPayloadReferences(layers, repoRoot, newPlatform)
+  return layers
+}
+
+private fun parseBaselineLayerPayload(index: Int, raw: Any?): CodeReviewBaselineLayer {
+  val layer = raw as? Map<*, *>
+    ?: throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'baseline_layers[$index]' must be an object.",
+    )
+  val fieldPrefix = "baseline_layers[$index]"
+  val scopeValue = requireStringInPayloadMap(layer, "$fieldPrefix.scope", "scope")
+  val modeValue = requireStringInPayloadMap(layer, "$fieldPrefix.mode", "mode")
+  val required = layer["required"] as? Boolean
+    ?: throw InvalidScaffoldPayloadError(
+      "Scaffold payload field '$fieldPrefix.required' must be an explicit boolean.",
+    )
+  return CodeReviewBaselineLayer(
+    platform = requireStringInPayloadMap(layer, "$fieldPrefix.platform", "platform"),
+    skill = requireStringInPayloadMap(layer, "$fieldPrefix.skill", "skill"),
+    scope = CodeReviewCompositionScope.fromWireValue(scopeValue)
+      ?: throw InvalidScaffoldPayloadError(
+        "Scaffold payload field '$fieldPrefix.scope' has unsupported value '$scopeValue'. " +
+          "Supported values: ${CodeReviewCompositionScope.entries.map { it.wireValue }}.",
+      ),
+    required = required,
+    mode = CodeReviewCompositionMode.fromWireValue(modeValue)
+      ?: throw InvalidScaffoldPayloadError(
+        "Scaffold payload field '$fieldPrefix.mode' has unsupported value '$modeValue'. " +
+          "Supported values: ${CodeReviewCompositionMode.entries.map { it.wireValue }}.",
+      ),
+  )
+}
+
+private fun requireStringInPayloadMap(map: Map<*, *>, fieldLabel: String, key: String): String {
+  val value = map[key] as? String
+    ?: throw InvalidScaffoldPayloadError("Scaffold payload field '$fieldLabel' must be a non-empty string.")
+  if (value.isBlank()) {
+    throw InvalidScaffoldPayloadError("Scaffold payload field '$fieldLabel' must be a non-empty string.")
+  }
+  return value
+}
+
+private fun validateBaselineLayerPayloadReferences(
+  layers: List<CodeReviewBaselineLayer>,
+  repoRoot: Path,
+  newPlatform: String,
+) {
+  val seenTargets = mutableSetOf<Pair<String, String>>()
+  layers.forEachIndexed { index, layer ->
+    val targetLabel = "${layer.platform}/${layer.skill}"
+    if (layer.platform == newPlatform) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'baseline_layers[$index]' self-references the new platform pack '$targetLabel'.",
+      )
+    }
+    if (!seenTargets.add(layer.platform to layer.skill)) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'baseline_layers' contains duplicate layer '$targetLabel'.",
+      )
+    }
+    val targetRoot = repoRoot.resolve("platform-packs").resolve(layer.platform)
+    if (!Files.isDirectory(targetRoot) || !Files.isRegularFile(targetRoot.resolve("platform.yaml"))) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'baseline_layers[$index]' references missing platform pack '${layer.platform}'.",
+      )
+    }
+    val targetPack = loadPlatformPack(targetRoot)
+    if (layer.skill !in targetPack.declaredCodeReviewSkillNames()) {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'baseline_layers[$index]' references missing code-review skill " +
+          "'${layer.skill}' in platform pack '${layer.platform}'.",
+      )
+    }
+    validateBaselineLayerModeSupport(index, layer)
+  }
+}
+
+private fun validateBaselineLayerModeSupport(index: Int, layer: CodeReviewBaselineLayer) {
+  val unsupportedReason = unsupportedCompositionModeReason(layer)
+  if (unsupportedReason != null) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'baseline_layers[$index].mode' uses mode '${layer.mode.wireValue}' with " +
+        "unsupported referenced skill '${layer.platform}/${layer.skill}'. $unsupportedReason",
+    )
+  }
+}
 
 private fun optionalSpecialistSubagents(payload: Map<String, Any?>, kind: String): OptionalSubagents {
   val rawSpecialists = payload["subagent_specialists"] ?: emptyList<String>()
@@ -784,9 +915,21 @@ private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kin
 }
 
 private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path> = when (plan.kind) {
+  SKILL_KIND_PLATFORM_PACK -> listOf(plan.manifestPath ?: platformPackManifestPath(repoRoot, plan.platform))
   SKILL_KIND_CODE_REVIEW_AREA, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED ->
     listOf(platformPackManifestPath(repoRoot, plan.platform))
   else -> emptyList()
+}
+
+private fun previewManifestPreviews(plan: ScaffoldPlan, repoRoot: Path): Map<Path, String> = when (plan.kind) {
+  SKILL_KIND_PLATFORM_PACK -> {
+    val manifestPath = plan.manifestPath ?: platformPackManifestPath(repoRoot, plan.platform)
+    val baselineSkillPath = plan.baselineSkillPath ?: error("Platform pack plan missing baseline skill path.")
+    val qualityCheckSkillPath =
+      plan.qualityCheckSkillPath ?: error("Platform pack plan missing quality-check skill path.")
+    mapOf(manifestPath to renderPlatformPackManifestContent(plan, repoRoot, baselineSkillPath, qualityCheckSkillPath))
+  }
+  else -> emptyMap()
 }
 
 private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
@@ -945,6 +1088,7 @@ private fun renderPlatformPackManifestContent(
       .toString()
       .replace('\\', '/'),
     areaMetadata = plan.specialistAreaMetadata,
+    baselineLayers = plan.baselineLayers,
   )
 }
 

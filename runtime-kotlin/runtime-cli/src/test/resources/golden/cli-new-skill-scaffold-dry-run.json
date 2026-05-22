@@ -1,4 +1,10 @@
 {
+  "created_files": [
+    "<SKILL_PATH>/content.md"
+  ],
+  "dry_run": true,
+  "manifest_edit_previews": {},
+  "manifest_edits": [],
   "notes": [
     "Dry run - no filesystem changes applied."
   ],
