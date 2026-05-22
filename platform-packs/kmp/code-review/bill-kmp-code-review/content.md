@@ -35,25 +35,6 @@ Classify the review as one of:
 - If backend/server files are also touched, keep the `kmp` route and rely on the manifest-declared baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
 - When uncertain, prefer the safer route that preserves Android/KMP review depth.
 
-## Governed Add-On Resolution
-
-After the stack is already classified as `kmp`, resolve governed add-ons before selecting KMP-specific specialists.
-
-- If no add-on cues match, continue with the base KMP review without a governed add-on.
-- Select `android-compose` when the scoped diff contains Compose UI signals such as `@Composable`, Compose UI state, `Modifier` chains, previews, `remember*`, or Compose side effects.
-- Select `android-navigation` when the scoped diff changes route models, `NavHost`/`NavDisplay`, deep links, multi-back-stack behavior, scene destinations, or Android navigation ownership.
-- Select `android-interop` when the scoped diff mixes Compose with legacy Views, Fragments, `ComposeView`, `AndroidView`, `AndroidViewBinding`, or other Android host-boundary glue.
-- Select `android-design-system` when the scoped diff changes Android theme layers, `MaterialTheme`, design tokens, styled components, or XML-theme-to-Compose translation.
-- Select `android-r8` when the scoped diff changes Android keep rules, shrinker config, `proguardFiles`, `isMinifyEnabled`, `isShrinkResources`, or release-only R8 settings.
-- Scan [android-compose-review.md](android-compose-review.md) first. If the add-on is split into topic files, open only the linked topic files whose cues match the scoped diff when `android-compose` is selected, such as [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md) and [android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md).
-- Scan [android-navigation-review.md](android-navigation-review.md) when `android-navigation` is selected.
-- Scan [android-interop-review.md](android-interop-review.md) when `android-interop` is selected.
-- Scan [android-design-system-review.md](android-design-system-review.md) when `android-design-system` is selected.
-- Scan [android-r8-review.md](android-r8-review.md) when `android-r8` is selected.
-- Add-ons enrich the routed KMP review; they do not create standalone reviewer names or bypass the `kmp` route.
-
----
-
 ## Layered Review Plan
 
 ### Step 1: Scale review depth

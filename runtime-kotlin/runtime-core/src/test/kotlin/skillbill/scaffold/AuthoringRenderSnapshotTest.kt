@@ -66,6 +66,14 @@ class AuthoringRenderSnapshotTest {
         "and stack signals" in first,
       "generated review composition must forward required review context",
     )
+    assertTrue(
+      first.indexOf("## Governed Add-Ons") < first.indexOf("## Execution"),
+      "generated governed add-on usage must render before authored execution guidance",
+    )
+    assertTrue(
+      "`android-compose`: entrypoint `android-compose-review.md`" in first,
+      "generated governed add-on section must list manifest-declared entrypoints",
+    )
     assertEquals(first, second, "render output must be deterministic across repeated in-memory renders")
     SnapshotAssertions.assertMatchesSnapshot(
       "snapshots/scaffold/bill-kmp-code-review.render.txt",
@@ -83,6 +91,10 @@ class AuthoringRenderSnapshotTest {
     assertEquals(
       expectedHeadersFromManifest(repoRoot, packSlug = "kmp", skillRelativeDir = "code-review/bill-kmp-code-review-ui"),
       rendered.blocks.map { block -> block.header },
+    )
+    assertTrue(
+      "## Governed Add-Ons" in first,
+      "KMP UI specialist must receive generated add-on usage from platform.yaml",
     )
     assertEquals(first, second, "render output must be deterministic across repeated in-memory renders")
     SnapshotAssertions.assertMatchesSnapshot(

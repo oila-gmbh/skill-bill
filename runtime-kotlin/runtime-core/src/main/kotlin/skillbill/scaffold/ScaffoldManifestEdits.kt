@@ -22,6 +22,7 @@ private val QUALITY_CHECK_KEY_PATTERN =
   Regex("^declared_quality_check_file:\\s*(.+)$", RegexOption.MULTILINE)
 private val DECLARED_FILES_BLOCK_PATTERN =
   Regex("^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*))", RegexOption.MULTILINE)
+private val TOP_LEVEL_KEY_PATTERN = Regex("^[^\\s#][^:\\n]*:", RegexOption.MULTILINE)
 
 internal fun appendCodeReviewArea(manifestPath: Path, area: String, relativeContentPath: String, areaFocus: String) {
   val original = manifestPath.toFile().readText()
@@ -49,6 +50,33 @@ internal fun setDeclaredQualityCheckFile(manifestPath: Path, relativeContentPath
     }
   if (updated != original) {
     manifestPath.toFile().writeText(updated)
+  }
+}
+
+internal fun appendGovernedAddonManifestRegistration(
+  manifestPath: Path,
+  platform: String,
+  skillRelativeDirs: List<String>,
+  addonSlug: String,
+) {
+  val original = manifestPath.toFile().readText()
+  val updated = renderGovernedAddonManifestRegistration(original, platform, skillRelativeDirs, addonSlug)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+internal fun renderGovernedAddonManifestRegistration(
+  text: String,
+  platform: String,
+  skillRelativeDirs: List<String>,
+  addonSlug: String,
+): String {
+  val pointerName = "$addonSlug.md"
+  val target = "platform-packs/$platform/addons/$pointerName"
+  return skillRelativeDirs.fold(text) { current, skillRelativeDir ->
+    val withPointer = appendManifestPointer(current, skillRelativeDir, pointerName, target)
+    appendAddonUsage(withPointer, skillRelativeDir, addonSlug, pointerName)
   }
 }
 
@@ -161,6 +189,87 @@ private fun appendBaselineLayers(lines: MutableList<String>, baselineLayers: Lis
     lines += "      required: ${layer.required}"
     lines += "      mode: ${yamlScalar(layer.mode.wireValue)}"
   }
+}
+
+private fun appendManifestPointer(text: String, skillRelativeDir: String, pointerName: String, target: String): String =
+  appendPointerLikeEntry(
+    text = text,
+    blockName = "pointers",
+    skillRelativeDir = skillRelativeDir,
+    entryName = pointerName,
+    renderBlock = {
+      "  $skillRelativeDir:\n" +
+        "    - name: ${yamlScalar(pointerName)}\n" +
+        "      target: ${yamlScalar(target)}\n"
+    },
+    renderEntry = {
+      "    - name: ${yamlScalar(pointerName)}\n" +
+        "      target: ${yamlScalar(target)}\n"
+    },
+    existingEntryPattern = Regex(
+      "^    - name:\\s*['\"]?${Regex.escape(pointerName)}['\"]?\\s*$",
+      RegexOption.MULTILINE,
+    ),
+  )
+
+private fun appendAddonUsage(text: String, skillRelativeDir: String, addonSlug: String, pointerName: String): String =
+  appendPointerLikeEntry(
+    text = text,
+    blockName = "addon_usage",
+    skillRelativeDir = skillRelativeDir,
+    entryName = addonSlug,
+    renderBlock = {
+      "  $skillRelativeDir:\n" +
+        "    - slug: ${yamlScalar(addonSlug)}\n" +
+        "      entrypoint: ${yamlScalar(pointerName)}\n"
+    },
+    renderEntry = {
+      "    - slug: ${yamlScalar(addonSlug)}\n" +
+        "      entrypoint: ${yamlScalar(pointerName)}\n"
+    },
+    existingEntryPattern = Regex("^    - slug:\\s*['\"]?${Regex.escape(addonSlug)}['\"]?\\s*$", RegexOption.MULTILINE),
+  )
+
+private fun appendPointerLikeEntry(
+  text: String,
+  blockName: String,
+  skillRelativeDir: String,
+  @Suppress("UNUSED_PARAMETER") entryName: String,
+  renderBlock: () -> String,
+  renderEntry: () -> String,
+  existingEntryPattern: Regex,
+): String {
+  val blockRange = topLevelBlockRange(text, blockName)
+    ?: return text.trimEnd() + "\n\n$blockName:\n${renderBlock()}"
+  val skillRange = nestedSkillDirRange(text, blockRange, skillRelativeDir)
+  if (skillRange == null) {
+    return text.replaceRange(blockRange.last + 1, blockRange.last + 1, renderBlock())
+  }
+  val existingBlock = text.substring(skillRange)
+  if (existingEntryPattern.containsMatchIn(existingBlock)) {
+    return text
+  }
+  return text.replaceRange(skillRange.last + 1, skillRange.last + 1, renderEntry())
+}
+
+private fun topLevelBlockRange(text: String, blockName: String): IntRange? {
+  val header = Regex("^${Regex.escape(blockName)}:\\s*$", RegexOption.MULTILINE).find(text) ?: return null
+  val next = TOP_LEVEL_KEY_PATTERN.find(text, startIndex = header.range.last + 1)
+  val endExclusive = next?.range?.first ?: text.length
+  return header.range.first until endExclusive
+}
+
+private fun nestedSkillDirRange(text: String, blockRange: IntRange, skillRelativeDir: String): IntRange? {
+  val block = text.substring(blockRange)
+  val localHeader = Regex(
+    "^  ${Regex.escape(skillRelativeDir)}:\\s*$",
+    RegexOption.MULTILINE,
+  ).find(block) ?: return null
+  val start = blockRange.first + localHeader.range.first
+  val next = Regex("^  [^\\s].*:\\s*$", RegexOption.MULTILINE)
+    .find(text, startIndex = start + localHeader.value.length)
+  val endExclusive = next?.range?.first?.takeIf { it <= blockRange.last + 1 } ?: (blockRange.last + 1)
+  return start until endExclusive
 }
 
 private fun appendAreaToList(text: String, area: String): String {

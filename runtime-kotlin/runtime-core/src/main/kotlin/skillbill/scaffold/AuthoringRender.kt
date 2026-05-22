@@ -4,6 +4,7 @@ import skillbill.nativeagent.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.NATIVE_AGENT_SOURCE_DIR
 import skillbill.nativeagent.parseNativeAgentSourceFile
 import skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.scaffold.model.GovernedAddonSelection
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -42,6 +43,12 @@ internal fun renderWrapper(target: AuthoringTarget): String {
       appendLine()
       appendLine()
     }
+    val governedAddons = renderGovernedAddonsSection(target)
+    if (governedAddons.isNotBlank()) {
+      append(governedAddons.trimEnd())
+      appendLine()
+      appendLine()
+    }
     appendLine("## Execution")
     if (executionBody.isNotBlank()) {
       appendLine()
@@ -58,6 +65,47 @@ internal fun renderWrapper(target: AuthoringTarget): String {
     append(renderCeremonySection(skillClass).trimEnd())
     appendLine()
   }
+}
+
+private fun renderGovernedAddonsSection(target: AuthoringTarget): String {
+  val addons = target.addonUsage
+  if (addons.isEmpty()) {
+    return ""
+  }
+  return buildString {
+    appendLine("## Governed Add-Ons")
+    appendLine()
+    appendLine(
+      "This platform pack declares add-on usage for this skill in `platform.yaml`. Runtime agents MUST resolve " +
+        "these add-ons only after stack routing has selected `${target.platform}`.",
+    )
+    appendLine()
+    appendLine(
+      "Start from `Selected add-ons: none`. Scan each declared entrypoint's `## Activation signals` and " +
+        "`## Section index` headings first, select only add-ons whose cues match the scoped work, then open " +
+        "only the selected entrypoint and companion pointers needed for that scope.",
+    )
+    appendLine(
+      "Report the final selection as `Selected add-ons: <slug, ...>` and pass the selected add-ons into any " +
+        "specialist passes. Add-ons enrich this routed skill; they do not create standalone skill names or " +
+        "bypass stack routing.",
+    )
+    appendLine()
+    appendLine("### Declared Add-Ons")
+    appendLine()
+    addons.forEach { addon ->
+      appendLine("- ${renderAddonSelection(addon)}")
+    }
+  }
+}
+
+private fun renderAddonSelection(addon: GovernedAddonSelection): String {
+  val companionText = if (addon.companionPointers.isEmpty()) {
+    "companions `none`"
+  } else {
+    "companions ${addon.companionPointers.joinToString(", ") { pointer -> "`$pointer`" }}"
+  }
+  return "`${addon.slug}`: entrypoint `${addon.entrypoint}`; $companionText."
 }
 
 private fun renderReviewCompositionSection(target: AuthoringTarget): String {

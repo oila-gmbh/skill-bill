@@ -14,6 +14,8 @@ import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonFile
+import skillbill.scaffold.model.GovernedAddonSelection
+import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
@@ -268,7 +270,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   // and for the named coherence checks documented in the schema's
   // `x-coherence-checks` block (slug-parity, areas-require-baseline,
   // areas-equal-declared, area-metadata-keys-subset-declared,
-  // pointers-unique-name-per-dir).
+  // pointers-unique-name-per-dir, addon-usage-*).
   val manifest = requireManifestMap(slug, manifestPath, raw)
   val typedManifest = validateAgainstCanonicalSchema(slug, manifest)
 
@@ -291,6 +293,12 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
   val codeReviewComposition = parseCodeReviewComposition(manifest, slug)
   val pointers = parsePointers(manifest, slug)
+  val addonUsage = parseAddonUsage(
+    manifest = manifest,
+    slug = slug,
+    pointers = pointers,
+    declaredSkillDirs = declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile),
+  )
 
   // SKILL-48 Subtask 3: anchored top-level keys (those the runtime consumes by name) are
   // already captured in the typed fields above. Every remaining top-level YAML key flows
@@ -323,6 +331,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     declaredQualityCheckFile = declaredQualityCheckFile,
     codeReviewComposition = codeReviewComposition,
     pointers = pointers,
+    addonUsage = addonUsage,
     customFields = customFields,
   )
 }
@@ -642,6 +651,115 @@ private fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec> 
     }
   }
   return collected
+}
+
+private fun parseAddonUsage(
+  manifest: Map<*, *>,
+  slug: String,
+  pointers: List<PointerSpec>,
+  declaredSkillDirs: Set<String>,
+): List<GovernedAddonUsage> {
+  val raw = manifest["addon_usage"] ?: return emptyList()
+  val usageMap = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'addon_usage' must be a mapping of skill-relative-dir to add-on entries.",
+    )
+  val pointersByDir = pointers.groupBy { spec -> spec.skillRelativeDir }
+  return usageMap.map { (dirKey, entriesRaw) ->
+    val skillRelativeDir = dirKey as? String
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'addon_usage' keys must be strings (skill-relative directory paths).",
+      )
+    if (skillRelativeDir.isBlank()) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'addon_usage' skill-relative directory must be a non-empty string.",
+      )
+    }
+    requireSafePointerSubpath(slug, skillRelativeDir, "addon_usage skill-relative directory")
+    if (skillRelativeDir !in declaredSkillDirs) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'addon_usage' key '$skillRelativeDir' must match a declared skill directory. " +
+          "Declared skill directories: ${declaredSkillDirs.sorted()}.",
+      )
+    }
+    val entriesList = entriesRaw as? List<*>
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'addon_usage[$skillRelativeDir]' must be a list of add-on entries.",
+      )
+    if (entriesList.isEmpty()) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'addon_usage[$skillRelativeDir]' must declare at least one add-on entry.",
+      )
+    }
+    val context = AddonUsageParseContext(
+      slug = slug,
+      skillRelativeDir = skillRelativeDir,
+      seenSlugs = mutableSetOf(),
+      pointersForDir = pointersByDir[skillRelativeDir].orEmpty(),
+    )
+    val addons = entriesList.mapIndexed { index, entry ->
+      parseAddonUsageEntry(context, index, entry)
+    }
+    GovernedAddonUsage(skillRelativeDir = skillRelativeDir, addons = addons)
+  }
+}
+
+private data class AddonUsageParseContext(
+  val slug: String,
+  val skillRelativeDir: String,
+  val seenSlugs: MutableSet<String>,
+  val pointersForDir: List<PointerSpec>,
+)
+
+private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): GovernedAddonSelection {
+  val entry = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': 'addon_usage[${context.skillRelativeDir}][$index]' must be a mapping.",
+    )
+  val fieldPrefix = "addon_usage[${context.skillRelativeDir}][$index]"
+  val addonSlug = requireStringInMap(context.slug, entry, "$fieldPrefix.slug", "slug")
+  if (!context.seenSlugs.add(addonSlug)) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': duplicate add-on usage slug '$addonSlug' under " +
+        "'${context.skillRelativeDir}'.",
+    )
+  }
+  val entrypoint = requireStringInMap(context.slug, entry, "$fieldPrefix.entrypoint", "entrypoint")
+  val companionPointers = parseStringList(
+    context.slug,
+    entry["companion_pointers"],
+    "$fieldPrefix.companion_pointers",
+    required = false,
+  )
+  requirePackOwnedAddonPointer(context, addonSlug, "entrypoint", entrypoint)
+  companionPointers.forEach { pointerName ->
+    requirePackOwnedAddonPointer(context, addonSlug, "companion_pointers", pointerName)
+  }
+  return GovernedAddonSelection(
+    slug = addonSlug,
+    entrypoint = entrypoint,
+    companionPointers = companionPointers,
+  )
+}
+
+private fun requirePackOwnedAddonPointer(
+  context: AddonUsageParseContext,
+  addonSlug: String,
+  field: String,
+  pointerName: String,
+) {
+  val pointer = context.pointersForDir.firstOrNull { spec -> spec.name == pointerName }
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': addon_usage[${context.skillRelativeDir}] entry '$addonSlug' references " +
+        "$field '$pointerName', but pointers[${context.skillRelativeDir}] does not declare that pointer.",
+    )
+  val expectedPrefix = "platform-packs/${context.slug}/addons/"
+  if (!pointer.target.startsWith(expectedPrefix) || !pointer.target.endsWith(".md")) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': addon_usage[${context.skillRelativeDir}] entry '$addonSlug' " +
+        "references pointer '$pointerName', but its target '${pointer.target}' is not under '$expectedPrefix'.",
+    )
+  }
 }
 
 private fun parsePointerEntry(slug: String, skillRelativeDir: String, entry: Map<*, *>): PointerSpec {

@@ -418,6 +418,11 @@ class NewAddonCommand(
   )
   private val body by option("--body", help = "Complete markdown body to write to the add-on file.")
   private val bodyFile by option("--body-file", help = "Path to a markdown file to copy into the add-on (or '-').")
+  private val consumerSkillDirs by option(
+    "--consumer-skill-dir",
+    help = "Skill-relative directory to register as an add-on consumer. May be repeated. " +
+      "Defaults to the pack baseline code-review skill.",
+  ).multiple()
   private val interactive by option("--interactive", help = "Prompt for platform, add-on slug, and markdown content.")
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
@@ -437,7 +442,11 @@ class NewAddonCommand(
       } else if (body != null && bodyFile != null) {
         errorResult("--body and --body-file are mutually exclusive.", format)
       } else {
-        runNativeScaffoldPayload(newAddonPayload(platform, name, body, bodyFile, state), dryRun, format)
+        runNativeScaffoldPayload(
+          newAddonPayload(platform, name, body, bodyFile, consumerSkillDirs, state),
+          dryRun,
+          format,
+        )
       }
   }
 }
@@ -648,14 +657,18 @@ private fun newAddonPayload(
   name: String?,
   body: String?,
   bodyFile: String?,
+  consumerSkillDirs: List<String>,
   state: CliRunState,
-): Map<String, String> = mapOf(
-  "scaffold_payload_version" to "1.0",
-  "kind" to "add-on",
-  "platform" to platform.orEmpty(),
-  "name" to name.orEmpty(),
-  "body" to (body ?: bodyFile?.let { path -> readCliTextFile(path, state) }).orEmpty(),
-)
+): Map<String, Any> = buildMap {
+  put("scaffold_payload_version", "1.0")
+  put("kind", "add-on")
+  put("platform", platform.orEmpty())
+  put("name", name.orEmpty())
+  put("body", (body ?: bodyFile?.let { path -> readCliTextFile(path, state) }).orEmpty())
+  if (consumerSkillDirs.isNotEmpty()) {
+    put("consumer_skill_dirs", consumerSkillDirs)
+  }
+}
 
 private fun readCliTextFile(path: String, state: CliRunState): String =
   if (path == "-") state.stdinText.orEmpty() else Path.of(path).toFile().readText()

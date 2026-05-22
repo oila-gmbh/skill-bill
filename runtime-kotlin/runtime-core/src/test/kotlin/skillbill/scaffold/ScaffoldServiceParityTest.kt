@@ -324,6 +324,74 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
+  fun `add-on scaffold registers generated pointer and addon usage in platform manifest`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val result = scaffold(
+      payload(
+        repo,
+        "add-on",
+        "platform" to "kotlin",
+        "name" to "review-helper",
+        "body" to "# Review Helper\n\nUse after routed Kotlin review.",
+      ),
+    )
+    val manifestPath = repo.resolve("platform-packs/kotlin/platform.yaml")
+    val manifest = Files.readString(manifestPath)
+
+    assertEquals(listOf(repo.resolve("platform-packs/kotlin/addons/review-helper.md")), result.createdFiles)
+    assertEquals(listOf(manifestPath), result.manifestEdits)
+    assertContains(manifest, "pointers:")
+    assertContains(manifest, "  code-review/bill-kotlin-code-review:")
+    assertContains(manifest, "    - name: \"review-helper.md\"")
+    assertContains(manifest, "      target: \"platform-packs/kotlin/addons/review-helper.md\"")
+    assertContains(manifest, "addon_usage:")
+    assertContains(manifest, "    - slug: \"review-helper\"")
+    assertContains(manifest, "      entrypoint: \"review-helper.md\"")
+
+    loadPlatformPack(repo.resolve("platform-packs/kotlin"))
+    val rendered = renderAuthoringTarget(repo, "bill-kotlin-code-review").stdout
+    assertContains(rendered, "## Governed Add-Ons")
+    assertContains(rendered, "`review-helper`: entrypoint `review-helper.md`")
+  }
+
+  @Test
+  fun `add-on scaffold accepts explicit consumer skill dirs`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val specialist = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-testing")
+    Files.createDirectories(specialist)
+    Files.writeString(
+      specialist.resolve("content.md"),
+      renderContentBody(
+        TemplateContext("bill-kotlin-code-review-testing", "code-review", "kotlin", "testing", "Kotlin"),
+        "Use when reviewing Kotlin test coverage quality.",
+      ),
+    )
+    val manifestPath = repo.resolve("platform-packs/kotlin/platform.yaml")
+    appendCodeReviewArea(
+      manifestPath,
+      "testing",
+      "code-review/bill-kotlin-code-review-testing/content.md",
+      defaultAreaFocus("testing"),
+    )
+
+    scaffold(
+      payload(
+        repo,
+        "add-on",
+        "platform" to "kotlin",
+        "name" to "testing-helper",
+        "consumer_skill_dirs" to listOf("code-review/bill-kotlin-code-review-testing"),
+      ),
+    )
+    val manifest = Files.readString(manifestPath)
+
+    assertContains(manifest, "  code-review/bill-kotlin-code-review-testing:")
+    assertContains(manifest, "    - name: \"testing-helper.md\"")
+    assertContains(manifest, "    - slug: \"testing-helper\"")
+    assertFalse("  code-review/bill-kotlin-code-review:\n    - slug: \"testing-helper\"" in manifest)
+  }
+
+  @Test
   fun `authoring render preserves platform display name and base shell ceremony references`() = withIsolatedUserHome {
     val repo = seedRepo()
     val packSkill = repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md")
