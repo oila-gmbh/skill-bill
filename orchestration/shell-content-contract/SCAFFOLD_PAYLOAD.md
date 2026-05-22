@@ -106,6 +106,13 @@ Every payload MUST include:
 - `body` — optional string for `add-on`. When provided, the scaffolder
   writes this markdown body verbatim to the target add-on file instead of
   rendering the default placeholder template.
+- `consumer_skill_dirs` — optional list for `add-on`. Each entry is a
+  declared platform-pack-relative skill directory such as
+  `code-review/bill-kmp-code-review-ui`. The scaffolder rejects directories
+  that are not declared by the pack manifest, then registers the new add-on in
+  `platform.yaml` by adding generated pointer entries and `addon_usage`
+  entries for these consumers. When omitted, the scaffolder defaults to the
+  owning pack's baseline code-review skill, if one exists.
 - `repo_root` — absolute path override used by tests. Defaults to the
   current working directory.
 - `subagent_specialists` — list of specialist subagent names to scaffold

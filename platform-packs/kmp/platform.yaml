@@ -41,6 +41,40 @@ code_review_composition:
       required: true
       mode: kmp-baseline
 
+addon_usage:
+  code-review/bill-kmp-code-review:
+    - slug: android-compose
+      entrypoint: android-compose-review.md
+      companion_pointers:
+        - android-compose-edge-to-edge.md
+        - android-compose-adaptive-layouts.md
+        - android-navigation-review.md
+        - android-design-system-review.md
+        - android-interop-review.md
+    - slug: android-navigation
+      entrypoint: android-navigation-review.md
+    - slug: android-interop
+      entrypoint: android-interop-review.md
+    - slug: android-design-system
+      entrypoint: android-design-system-review.md
+    - slug: android-r8
+      entrypoint: android-r8-review.md
+  code-review/bill-kmp-code-review-ui:
+    - slug: android-compose
+      entrypoint: android-compose-review.md
+      companion_pointers:
+        - android-compose-edge-to-edge.md
+        - android-compose-adaptive-layouts.md
+        - android-navigation-review.md
+        - android-design-system-review.md
+        - android-interop-review.md
+    - slug: android-navigation
+      entrypoint: android-navigation-review.md
+    - slug: android-interop
+      entrypoint: android-interop-review.md
+    - slug: android-design-system
+      entrypoint: android-design-system-review.md
+
 # Pointer files (single-line markdown files containing only a relative path) are generated
 # from this block during render/install output. Targets are repo-rooted; the renderer computes
 # the correct ../-prefixed relative path. Never commit pointer files — add or modify entries here

@@ -8,14 +8,6 @@ description: Use when reviewing or building KMP UI surfaces. Today this skill is
 
 The canonical KMP UI review command stays `bill-kmp-code-review-ui`. Governed add-ons apply only after the parent review has already routed to `kmp`.
 
-When the parent KMP review selects the `android-compose` add-on, scan [android-compose-review.md](android-compose-review.md) first. If the add-on is split into topic files, open only the linked topic files whose cues match the diff, such as [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md) and [android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md).
-
-When the parent KMP review selects `android-navigation`, scan [android-navigation-review.md](android-navigation-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
-
-When the parent KMP review selects `android-interop`, scan [android-interop-review.md](android-interop-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
-
-When the parent KMP review selects `android-design-system`, scan [android-design-system-review.md](android-design-system-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
-
 When no governed add-on applies, use the base Compose review rubric by itself.
 
 For review enforcement, read [compose-guidelines.md](compose-guidelines.md) as the Compose review rubric covering:

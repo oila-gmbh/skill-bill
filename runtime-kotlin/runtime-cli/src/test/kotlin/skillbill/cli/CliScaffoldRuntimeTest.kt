@@ -94,6 +94,8 @@ class CliScaffoldRuntimeTest {
           "kmp",
           "--name",
           "android-new-addon",
+          "--consumer-skill-dir",
+          "code-review/bill-kmp-code-review-ui",
           "--body",
           "Pack-owned guidance.",
           "--dry-run",
@@ -309,6 +311,7 @@ private fun assertAddonScaffoldPayload(payload: JsonObject) {
     Path.of(payload.stringValue("skill_path"))
       .endsWith(Path.of("platform-packs", "kmp", "addons")),
   )
+  assertContains(payload["manifest_edits"].toString(), "platform-packs/kmp/platform.yaml")
 }
 
 private fun assertNativeBodyConflictErrors(prefix: List<String>, context: CliRuntimeContext) {

@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.error.SkillBillRuntimeException
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.scaffold.model.CodeReviewComposition
+import skillbill.scaffold.model.GovernedAddonSelection
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -22,6 +23,7 @@ data class AuthoringTarget(
   val skillFile: Path,
   val contentFile: Path,
   val codeReviewComposition: CodeReviewComposition? = null,
+  val addonUsage: List<GovernedAddonSelection> = emptyList(),
 )
 
 object AuthoringOperations {
