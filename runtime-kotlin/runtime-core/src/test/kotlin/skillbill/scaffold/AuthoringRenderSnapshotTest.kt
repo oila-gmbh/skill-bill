@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class AuthoringRenderSnapshotTest {
   @Test
@@ -41,6 +42,33 @@ class AuthoringRenderSnapshotTest {
     assertEquals(first, second, "render output must be deterministic across repeated in-memory renders")
     SnapshotAssertions.assertMatchesSnapshot(
       "snapshots/scaffold/bill-kotlin-code-review.render.txt",
+      first,
+    )
+  }
+
+  @Test
+  fun `kmp code-review render includes generated review composition before authored guidance`() {
+    val repoRoot = currentRepoRootForSnapshotTest()
+    val rendered = renderAuthoringTarget(repoRoot, "bill-kmp-code-review")
+    val first = rendered.stdout
+    val second = renderAuthoringTarget(repoRoot, "bill-kmp-code-review").stdout
+
+    assertEquals(
+      expectedHeadersFromManifest(repoRoot, packSlug = "kmp", skillRelativeDir = "code-review/bill-kmp-code-review"),
+      rendered.blocks.map { block -> block.header },
+    )
+    assertTrue(
+      first.indexOf("## Review Composition") < first.indexOf("## Execution"),
+      "generated review composition must render before authored execution guidance",
+    )
+    assertTrue(
+      "Scope propagation is mandatory: pass the same review IDs, applied learnings, AGENTS guidance, changed files, " +
+        "and stack signals" in first,
+      "generated review composition must forward required review context",
+    )
+    assertEquals(first, second, "render output must be deterministic across repeated in-memory renders")
+    SnapshotAssertions.assertMatchesSnapshot(
+      "snapshots/scaffold/bill-kmp-code-review.render.txt",
       first,
     )
   }

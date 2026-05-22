@@ -37,7 +37,8 @@ Classify the review as one of:
 
 #### Decision Rules
 
-- If this skill is invoked from `bill-kmp-code-review`, accept Android/KMP scope and classify it as `kmp-baseline`. In that mode, review only shared Kotlin concerns and let `bill-kmp-code-review` add mobile-specific specialists.
+- If this skill is invoked as a manifest-declared composition baseline with mode `kmp-baseline`, accept Android/KMP scope and classify it as `kmp-baseline`. In that mode, review only shared Kotlin concerns and let the platform-specific review add mobile-specific specialists.
+- Do not infer `kmp-baseline` from caller name alone; require the manifest-declared baseline mode from the generated Review Composition instructions.
 - If strong Android/KMP markers are present and this skill is invoked standalone, clearly say that `bill-kmp-code-review` is required for full Android/KMP coverage. Continue only if the caller explicitly wants the baseline Kotlin layer.
 - Backend/server markers stay on the `kotlin` route. Select backend-focused Kotlin specialists for API contracts, persistence, and reliability when backend/server signals are present.
 - Otherwise use the `kotlin` route.

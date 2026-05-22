@@ -2,6 +2,8 @@ package skillbill.cli
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import skillbill.contracts.JsonSupport
 import java.nio.file.Files
@@ -122,6 +124,95 @@ class CliScaffoldRuntimeTest {
     assertNativeBodyConflictErrors(
       listOf("new-addon", "--platform", "kmp", "--name", "android-conflict-addon"),
       CliRuntimeContext(userHome = tempDir),
+    )
+  }
+
+  @Test
+  fun `new platform pack dry run shows composition manifest preview`() {
+    val repoRoot = compositionFixtureRepo()
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-composition")
+    val platform = "cli-composition-${System.nanoTime()}"
+    val result =
+      CliRuntime.run(
+        listOf("new", "--payload", "-", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText =
+          """
+          {
+            "scaffold_payload_version": "1.0",
+            "kind": "platform-pack",
+            "platform": "$platform",
+            "repo_root": "$repoRoot",
+            "skeleton_mode": "starter",
+            "routing_signals": {
+              "strong": ["$platform.marker"]
+            },
+            "baseline_layers": [
+              {
+                "platform": "kotlin",
+                "skill": "bill-kotlin-code-review",
+                "scope": "same-review-scope",
+                "required": true,
+                "mode": "kmp-baseline"
+              }
+            ]
+          }
+          """.trimIndent(),
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val manifestPath = repoRoot.resolve("platform-packs/$platform/platform.yaml").toString()
+    val preview =
+      payload["manifest_edit_previews"]
+        ?.jsonObject
+        ?.get(manifestPath)
+        ?.jsonPrimitive
+        ?.contentOrNull
+        .orEmpty()
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertEquals("true", payload["dry_run"]?.jsonPrimitive?.contentOrNull)
+    assertEquals(manifestPath, payload["manifest_edits"]?.jsonArray?.single()?.jsonPrimitive?.contentOrNull)
+    assertContains(preview, "code_review_composition:")
+    assertContains(preview, "baseline_layers:")
+    assertContains(preview, "platform: \"kotlin\"")
+    assertTrue(Files.notExists(repoRoot.resolve("platform-packs/$platform")))
+  }
+
+  @Test
+  fun `show surfaces manifest declared review composition`() {
+    val repoRoot = compositionFixtureRepo(kmpLayerRequired = false)
+    val tempDir = Files.createTempDirectory("skillbill-cli-show-composition")
+    val result =
+      CliRuntime.run(
+        listOf(
+          "show",
+          "bill-kmp-code-review",
+          "--repo-root",
+          repoRoot.toString(),
+          "--content",
+          "none",
+          "--format",
+          "json",
+        ),
+        CliRuntimeContext(userHome = tempDir),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val composition = payload["review_composition"]?.jsonObject
+    val layer = composition?.get("baseline_layers")?.jsonArray?.single()?.jsonObject
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("platform.yaml", composition?.get("source")?.jsonPrimitive?.contentOrNull)
+    assertEquals("kotlin", layer?.get("platform")?.jsonPrimitive?.contentOrNull)
+    assertEquals("bill-kotlin-code-review", layer?.get("skill")?.jsonPrimitive?.contentOrNull)
+    assertEquals("same-review-scope", layer?.get("scope")?.jsonPrimitive?.contentOrNull)
+    assertEquals("false", layer?.get("required")?.jsonPrimitive?.contentOrNull)
+    assertEquals("kmp-baseline", layer?.get("mode")?.jsonPrimitive?.contentOrNull)
+    assertEquals(
+      "Run 1 optional baseline layer(s) before pack-local specialists.",
+      composition?.get("summary")?.jsonPrimitive?.contentOrNull,
     )
   }
 
@@ -290,4 +381,69 @@ private fun goldenJson(fileName: String, vararg replacements: Pair<String, Strin
 
 private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
   assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern}, got $value")
+}
+
+private fun compositionFixtureRepo(kmpLayerRequired: Boolean = true): Path {
+  val repoRoot = Files.createTempDirectory("skillbill-cli-composition-repo")
+  seedCompositionPack(repoRoot, "kotlin")
+  seedCompositionPack(
+    repoRoot = repoRoot,
+    slug = "kmp",
+    composition =
+    """
+    |code_review_composition:
+    |  baseline_layers:
+    |    - platform: "kotlin"
+    |      skill: "bill-kotlin-code-review"
+    |      scope: "same-review-scope"
+    |      required: $kmpLayerRequired
+    |      mode: "kmp-baseline"
+    """.trimMargin(),
+  )
+  return repoRoot
+}
+
+private fun seedCompositionPack(repoRoot: Path, slug: String, composition: String = "") {
+  val skillName = "bill-$slug-code-review"
+  val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
+  val skillRoot = packRoot.resolve("code-review").resolve(skillName)
+  Files.createDirectories(skillRoot)
+  Files.writeString(
+    packRoot.resolve("platform.yaml"),
+    """
+    |platform: "$slug"
+    |contract_version: "1.1"
+    |display_name: "$slug"
+    |
+    |routing_signals:
+    |  strong:
+    |    - "$slug.marker"
+    |  tie_breakers: []
+    |
+    |declared_code_review_areas: []
+    |
+    |declared_files:
+    |  baseline: "code-review/$skillName/content.md"
+    |  areas: {}
+    |area_metadata: {}
+    |$composition
+    """.trimMargin(),
+  )
+  Files.writeString(
+    skillRoot.resolve("content.md"),
+    """
+    |---
+    |name: $skillName
+    |description: Fixture $slug code review.
+    |---
+    |
+    |## Review Focus
+    |
+    |Review $slug changes with fixture guidance.
+    |
+    |## Review Guidance
+    |
+    |- Keep fixture behavior explicit.
+    """.trimMargin(),
+  )
 }

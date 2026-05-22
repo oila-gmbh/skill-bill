@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -92,6 +93,39 @@ class PlatformPackCustomFieldsRoundTripTest {
     // Belt-and-suspenders: no anchored key snuck in.
     val anchored = anchoredTopLevelFieldNames()
     assertFalse(pack.customFields.keys.any { it in anchored })
+  }
+
+  @Test
+  fun `composition is typed and excluded from customFields`() {
+    val slug = "kmp"
+    val manifest = """
+      platform: $slug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_files:
+        baseline: code-review/bill-kmp-code-review/content.md
+      code_review_composition:
+        baseline_layers:
+          - platform: kotlin
+            skill: bill-kotlin-code-review
+            scope: same-review-scope
+            required: true
+            mode: kmp-baseline
+      custom_thing: "hello"
+    """.trimIndent()
+
+    val packRoot = newTempPackRoot(slug, manifest)
+    val pack = loadPlatformManifest(packRoot)
+
+    val composition = assertNotNull(pack.codeReviewComposition)
+    assertEquals("kotlin", composition.baselineLayers.single().platform)
+    assertEquals("hello", pack.customFields["custom_thing"])
+    assertFalse(
+      "code_review_composition" in pack.customFields,
+      "Anchored composition field must stay typed and never flow through customFields.",
+    )
   }
 
   private fun newTempPackRoot(slug: String, manifest: String): Path {

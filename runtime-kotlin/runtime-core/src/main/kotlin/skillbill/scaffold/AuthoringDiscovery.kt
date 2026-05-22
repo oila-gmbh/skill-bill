@@ -89,6 +89,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         "",
         baselineContent.resolveSibling("SKILL.md"),
         baselineContent,
+        pack.codeReviewComposition,
       )
   }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->

@@ -1,5 +1,15 @@
 # SkillBill desktop feature — history
 
+## [2026-05-22] SKILL-50 desktop-wizard-baseline-layer-authoring
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-core/scaffold, runtime-domain/scaffold
+- Platform-pack scaffold wizard can author baseline review layers through catalog-backed controls, add/edit/remove state, default `same-review-scope`, default `required=true`, and form validation before Plan/Run.
+- Runtime-core owns the baseline review catalog projection: eligible baseline packs, declared review skills, supported modes/scopes, composition edges, and Kotlin baseline suggestions flow through `RuntimeScaffoldGateway`; desktop does not duplicate manifest semantics or write `platform.yaml`.
+- Dry-run plans now carry `manifest_edit_previews`; wizard UI keeps YAML collapsed behind a detail control while showing governed manifest-edit summaries first.
+- Reusable: validation errors live on `ScaffoldWizardState.validationErrors` instead of `ScaffoldRunResult.Failed`, preserving the runtime-failure/rollback contract for actual scaffold calls only.
+- Reusable tests cover real manifest composition-edge projection, gateway catalog mapping, payload parity, validation failures/cycles, Kotlin suggestion eligibility, and Compose callback wiring for baseline controls.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-05-21] hide-runtime-contracts-from-desktop-tree
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data
 - Runtime contract YAMLs under `orchestration/contracts/` are internal implementation details and are no longer surfaced as desktop tree rows; `TreeItemKind.CONTRACT`, contract rendering, and the single-target contract render no-op were removed.

@@ -1,12 +1,18 @@
 package skillbill.desktop.feature.skillbill.state
 
 import kotlinx.coroutines.runBlocking
+import skillbill.desktop.core.domain.model.BaselineReviewCompositionEdge
+import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
+import skillbill.desktop.core.domain.model.BaselineReviewPackOption
+import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
+import skillbill.desktop.core.domain.model.ManifestEditPreview
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
+import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
@@ -49,6 +55,9 @@ class SkillBillViewModelScaffoldTest {
         shelledFamilies = listOf("code-review"),
         platformPackPresets = emptyList(),
         pilotedPlatformPacks = emptyList(),
+        baselineReviewPacks = emptyList(),
+        baselineReviewCompositionEdges = emptyList(),
+        baselineReviewLayerSuggestions = emptyList(),
         scaffoldPayloadVersion = "1.0",
       )
     }
@@ -617,6 +626,257 @@ class SkillBillViewModelScaffoldTest {
     assertNull(edited.scaffoldWizard?.dryRunPreview)
   }
 
+  @Test
+  fun `baseline layer add edit and remove mutate platform-pack form before dry-run`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply { scriptedCatalog = baselineCatalog() }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+
+    val added = viewModel.addScaffoldBaselineLayer()
+    val addedLayer = assertNotNull(added.scaffoldWizard).formFields.baselineLayers.single()
+    assertEquals("kotlin", addedLayer.platform)
+    assertEquals("bill-kotlin-code-review", addedLayer.skill)
+    assertEquals("same-review-scope", addedLayer.scope)
+    assertTrue(addedLayer.required)
+    assertEquals("kmp-baseline", addedLayer.mode)
+
+    val edited = viewModel.editScaffoldBaselineLayer(0) { it.copy(required = false) }
+    assertFalse(assertNotNull(edited.scaffoldWizard).formFields.baselineLayers.single().required)
+
+    val removed = viewModel.removeScaffoldBaselineLayer(0)
+    assertTrue(assertNotNull(removed.scaffoldWizard).formFields.baselineLayers.isEmpty())
+  }
+
+  @Test
+  fun `platform-pack baseline layers map into payload and preserve dry-run execute parity`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptedCatalog = baselineCatalog()
+      scriptDryRun(
+        ScaffoldKind.PLATFORM_PACK,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(kind = "platform-pack", skillName = "bill-kmp-code-review", skillPath = "/x"),
+        ),
+      )
+      scriptExecute(
+        ScaffoldKind.PLATFORM_PACK,
+        ScaffoldRunResult.Success(
+          result = ScaffoldOutcome(kind = "platform-pack", skillName = "bill-kmp-code-review", skillPath = "/x"),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+    viewModel.updateScaffoldForm { it.copy(platform = "kmp", displayName = "KMP") }
+    viewModel.addScaffoldBaselineLayer()
+
+    val planRequest = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.finishScaffoldDryRun(planRequest, viewModel.runScaffoldDryRun(planRequest))
+    val executeRequest = assertNotNull(viewModel.beginScaffoldExecute())
+    viewModel.runScaffoldExecute(executeRequest)
+
+    val dryRunPayload = planRequest.payload.toContractMap()
+    val executePayload = executeRequest.payload.toContractMap()
+    assertEquals(dryRunPayload, executePayload)
+    val layers = dryRunPayload["baseline_layers"] as List<*>
+    val layer = layers.single() as Map<*, *>
+    assertEquals("kotlin", layer["platform"])
+    assertEquals("bill-kotlin-code-review", layer["skill"])
+    assertEquals("same-review-scope", layer["scope"])
+    assertEquals(true, layer["required"])
+    assertEquals("kmp-baseline", layer["mode"])
+  }
+
+  @Test
+  fun `baseline validation blocks invalid layers before dry-run`() = runBlocking {
+    val cases = listOf(
+      ScaffoldBaselineLayerForm(platform = "", skill = "bill-kotlin-code-review", mode = "kmp-baseline") to
+        "baseline pack is required",
+      ScaffoldBaselineLayerForm(platform = "missing", skill = "bill-kotlin-code-review", mode = "kmp-baseline") to
+        "is not available or has no declared code-review baseline",
+      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "", mode = "kmp-baseline") to
+        "baseline skill is required",
+      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "missing", mode = "kmp-baseline") to
+        "baseline skill 'missing' is not declared",
+      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "bill-kotlin-code-review", mode = "unsupported") to
+        "mode 'unsupported' is not supported",
+      ScaffoldBaselineLayerForm(
+        platform = "kotlin",
+        skill = "bill-kotlin-code-review",
+        scope = "unsupported",
+        mode = "kmp-baseline",
+      ) to "scope 'unsupported' is not supported",
+    )
+
+    cases.forEach { (layer, expectedMessage) ->
+      val gateway = FakeScaffoldGateway().apply { scriptedCatalog = baselineCatalog() }
+      val viewModel = newViewModel(scaffoldGateway = gateway)
+      viewModel.selectRepoPath("/repo")
+      openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+      viewModel.updateScaffoldForm { it.copy(platform = "kmp", baselineLayers = listOf(layer)) }
+
+      assertNull(viewModel.beginScaffoldDryRun(), expectedMessage)
+      val wizard = assertNotNull(viewModel.state().scaffoldWizard)
+      assertNull(wizard.executionResult)
+      assertTrue(wizard.validationErrors.any { it.contains(expectedMessage) }, wizard.validationErrors.toString())
+      assertEquals(0, gateway.dryRunCallCount)
+    }
+  }
+
+  @Test
+  fun `baseline validation blocks duplicate layers and local cycles`() = runBlocking {
+    val duplicateGateway = FakeScaffoldGateway().apply { scriptedCatalog = baselineCatalog() }
+    val duplicateViewModel = newViewModel(scaffoldGateway = duplicateGateway)
+    duplicateViewModel.selectRepoPath("/repo")
+    openWizard(duplicateViewModel, ScaffoldKind.PLATFORM_PACK)
+    val layer = ScaffoldBaselineLayerForm(platform = "kotlin", skill = "bill-kotlin-code-review", mode = "kmp-baseline")
+    duplicateViewModel.updateScaffoldForm { it.copy(platform = "kmp", baselineLayers = listOf(layer, layer)) }
+
+    assertNull(duplicateViewModel.beginScaffoldDryRun())
+    val duplicateWizard = assertNotNull(duplicateViewModel.state().scaffoldWizard)
+    assertNull(duplicateWizard.executionResult)
+    assertTrue(duplicateWizard.validationErrors.any { it.contains("duplicate baseline layer") })
+
+    val cycleGateway = FakeScaffoldGateway().apply {
+      scriptedCatalog = baselineCatalog(
+        edges = listOf(
+          BaselineReviewCompositionEdge(
+            sourcePlatform = "kotlin",
+            targetPlatform = "android",
+            targetSkill = "bill-android-code-review",
+          ),
+        ),
+      )
+    }
+    val cycleViewModel = newViewModel(scaffoldGateway = cycleGateway)
+    cycleViewModel.selectRepoPath("/repo")
+    openWizard(cycleViewModel, ScaffoldKind.PLATFORM_PACK)
+    cycleViewModel.updateScaffoldForm { it.copy(platform = "android", baselineLayers = listOf(layer)) }
+
+    assertNull(cycleViewModel.beginScaffoldDryRun())
+    val cycleWizard = assertNotNull(cycleViewModel.state().scaffoldWizard)
+    assertNull(cycleWizard.executionResult)
+    assertTrue(
+      cycleWizard.validationErrors.any {
+        it.contains("composition cycle")
+      },
+      cycleWizard.validationErrors.toString(),
+    )
+  }
+
+  @Test
+  fun `KMP-like platform suggests Kotlin baseline only when eligible Kotlin pack is cataloged`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply { scriptedCatalog = baselineCatalog() }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+
+    val suggested = viewModel.updateScaffoldForm { it.copy(platform = "android") }
+    val suggestedWizard = assertNotNull(suggested.scaffoldWizard)
+    val suggestion = assertNotNull(suggestedWizard.baselineLayerSuggestion)
+    assertEquals("Kotlin baseline", suggestedWizard.baselineLayerSuggestionLabel)
+    assertEquals("kotlin", suggestion.platform)
+    assertEquals("bill-kotlin-code-review", suggestion.skill)
+
+    val afterAdd = viewModel.addSuggestedScaffoldBaselineLayer()
+    val added = assertNotNull(afterAdd.scaffoldWizard).formFields.baselineLayers.single()
+    assertEquals("kotlin", added.platform)
+    assertEquals("bill-kotlin-code-review", added.skill)
+    assertEquals("same-review-scope", added.scope)
+    assertTrue(added.required)
+    assertEquals("kmp-baseline", added.mode)
+    assertTrue(added.rowId > 0)
+    assertNull(afterAdd.scaffoldWizard?.baselineLayerSuggestion)
+
+    val noKotlinGateway = FakeScaffoldGateway().apply { scriptedCatalog = ScaffoldCatalogSnapshot.empty }
+    val noKotlinViewModel = newViewModel(scaffoldGateway = noKotlinGateway)
+    noKotlinViewModel.selectRepoPath("/repo")
+    openWizard(noKotlinViewModel, ScaffoldKind.PLATFORM_PACK)
+    val noSuggestion = noKotlinViewModel.updateScaffoldForm { it.copy(platform = "android") }
+    assertNull(noSuggestion.scaffoldWizard?.baselineLayerSuggestion)
+  }
+
+  @Test
+  fun `baseline suggestion is absent when catalog does not publish an eligible recommendation`() = runBlocking {
+    val cases = listOf(
+      baselineCatalog(includeSuggestion = false),
+      baselineCatalog(
+        skills = listOf(
+          BaselineReviewSkillOption(
+            name = "bill-kotlin-code-review",
+            supportedModes = emptyList(),
+            supportedScopes = listOf("same-review-scope"),
+          ),
+        ),
+        includeSuggestion = false,
+      ),
+      baselineCatalog(
+        skills = listOf(
+          BaselineReviewSkillOption(
+            name = "bill-kotlin-code-review",
+            supportedModes = listOf("kmp-baseline"),
+            supportedScopes = emptyList(),
+          ),
+        ),
+        includeSuggestion = false,
+      ),
+      baselineCatalog(
+        skills = listOf(
+          BaselineReviewSkillOption(
+            name = "bill-not-kotlin-code-review",
+            supportedModes = listOf("kmp-baseline"),
+            supportedScopes = listOf("same-review-scope"),
+          ),
+        ),
+        includeSuggestion = false,
+      ),
+    )
+
+    cases.forEach { catalog ->
+      val gateway = FakeScaffoldGateway().apply { scriptedCatalog = catalog }
+      val viewModel = newViewModel(scaffoldGateway = gateway)
+      viewModel.selectRepoPath("/repo")
+      openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+
+      val state = viewModel.updateScaffoldForm { it.copy(platform = "android") }
+
+      assertNull(state.scaffoldWizard?.baselineLayerSuggestion)
+    }
+  }
+
+  @Test
+  fun `dry-run manifest preview display data is retained in wizard state`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.PLATFORM_PACK,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "platform-pack",
+            skillName = "bill-kmp-code-review",
+            skillPath = "/repo/platform-packs/kmp",
+            manifestPreviews = listOf(
+              ManifestEditPreview(
+                path = "/repo/platform-packs/kmp/platform.yaml",
+                content = "code_review_composition:\n  baseline_layers:\n",
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
+    viewModel.updateScaffoldForm { it.copy(platform = "kmp") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    val finalState = viewModel.finishScaffoldDryRun(request, viewModel.runScaffoldDryRun(request))
+
+    val preview = assertNotNull(finalState.scaffoldWizard?.dryRunPreview)
+    assertTrue(preview.manifestPreviews.single().content.contains("code_review_composition"))
+  }
+
   // ----- helpers -----
 
   /**
@@ -645,6 +905,43 @@ class SkillBillViewModelScaffoldTest {
     ScaffoldKind.CODE_REVIEW_AREA -> fields.copy(platform = "java", area = "security", description = "d")
     ScaffoldKind.ADD_ON -> fields.copy(name = "bill-addon", platform = "java", description = "d")
   }
+
+  private fun baselineCatalog(
+    edges: List<BaselineReviewCompositionEdge> = emptyList(),
+    skills: List<BaselineReviewSkillOption> = listOf(
+      BaselineReviewSkillOption(
+        name = "bill-kotlin-code-review",
+        supportedModes = listOf("kmp-baseline"),
+        supportedScopes = listOf("same-review-scope"),
+      ),
+    ),
+    includeSuggestion: Boolean = true,
+  ): ScaffoldCatalogSnapshot = ScaffoldCatalogSnapshot.empty.copy(
+    baselineReviewPacks = listOf(
+      BaselineReviewPackOption(
+        platform = "kotlin",
+        displayName = "Kotlin",
+        strongRoutingSignals = listOf(".kt"),
+        skills = skills,
+      ),
+    ),
+    baselineReviewCompositionEdges = edges,
+    baselineReviewLayerSuggestions = if (includeSuggestion) {
+      listOf(
+        BaselineReviewLayerSuggestion(
+          label = "Kotlin baseline",
+          triggerSignals = listOf("android", "kmp"),
+          platform = "kotlin",
+          skill = "bill-kotlin-code-review",
+          scope = "same-review-scope",
+          required = true,
+          mode = "kmp-baseline",
+        ),
+      )
+    } else {
+      emptyList()
+    },
+  )
 
   private fun newViewModel(
     repoSessionService: RepoSessionService = FakeRepoSessionService(),

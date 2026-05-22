@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.SkillBillRuntimeException
 import skillbill.nativeagent.NativeAgentOperations
+import skillbill.scaffold.model.CodeReviewComposition
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -20,6 +21,7 @@ data class AuthoringTarget(
   // skillFile remains for transient consumers until SKILL-40 subtask 4 deletes the wrapper.
   val skillFile: Path,
   val contentFile: Path,
+  val codeReviewComposition: CodeReviewComposition? = null,
 )
 
 object AuthoringOperations {
