@@ -28,6 +28,9 @@ data class ScaffoldWizardState(
   val optionCatalog: ScaffoldCatalogSnapshot = ScaffoldCatalogSnapshot.empty,
   val dryRunPreview: ScaffoldPlan? = null,
   val executionResult: ScaffoldRunResult? = null,
+  val validationErrors: List<String> = emptyList(),
+  val baselineLayerSuggestion: ScaffoldBaselineLayerForm? = null,
+  val baselineLayerSuggestionLabel: String? = null,
   val dirtyRepoWarning: Boolean = false,
   val overrideDirtyRepo: Boolean = false,
   val busy: Boolean = false,
@@ -59,8 +62,22 @@ data class ScaffoldWizardFormFields(
   val specialistAreas: List<String> = emptyList(),
   val strongRoutingSignals: List<String> = emptyList(),
   val tieBreakers: List<String> = emptyList(),
+  val baselineLayers: List<ScaffoldBaselineLayerForm> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val suppressSubagents: Boolean = false,
   val contentBody: String = "",
   val addonBody: String = "",
 )
+
+data class ScaffoldBaselineLayerForm(
+  val rowId: Long = 0L,
+  val platform: String = "",
+  val skill: String = "",
+  val scope: String = DEFAULT_SCOPE,
+  val required: Boolean = true,
+  val mode: String = "",
+) {
+  companion object {
+    const val DEFAULT_SCOPE: String = "same-review-scope"
+  }
+}

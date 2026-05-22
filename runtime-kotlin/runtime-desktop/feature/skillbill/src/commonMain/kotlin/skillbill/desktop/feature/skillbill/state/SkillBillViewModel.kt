@@ -41,6 +41,8 @@ import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
+import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
+import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
@@ -150,6 +152,7 @@ class SkillBillViewModel(
   private var commandPaletteSelectedResultIndex: Int = 0
   private var scaffoldWizard: ScaffoldWizardState? = null
   private var activeScaffoldToken: Long = 0L
+  private var nextScaffoldBaselineLayerRowId: Long = 1L
 
   // SKILL-46: dialog state for the tree-context-menu Delete affordance and accompanying
   // validate-agent-configs output slice. Tokens follow the same monotonic-increment pattern as
@@ -637,8 +640,11 @@ class SkillBillViewModel(
       selectedResultIndex = commandPaletteSelectedResultIndex,
     )
     commandPaletteSelectedResultIndex = paletteState.selectedResultIndex
+    val suggestedBaselineLayer = scaffoldWizard?.let(::suggestedBaselineLayer)
     val wizardState = scaffoldWizard?.copy(
       dirtyRepoWarning = computeDirtyRepoWarning(capturedSnapshot),
+      baselineLayerSuggestion = suggestedBaselineLayer?.form,
+      baselineLayerSuggestionLabel = suggestedBaselineLayer?.label,
     )
     return state.copy(
       commandPalette = paletteState,
@@ -2160,6 +2166,7 @@ class SkillBillViewModel(
       optionCatalog = snapshot,
       dryRunPreview = null,
       executionResult = null,
+      validationErrors = emptyList(),
       dirtyRepoWarning = computeDirtyRepoWarning(changesSnapshot),
       overrideDirtyRepo = false,
       busy = false,
@@ -2250,6 +2257,7 @@ class SkillBillViewModel(
       formFields = ScaffoldWizardFormFields(),
       dryRunPreview = null,
       executionResult = null,
+      validationErrors = emptyList(),
       overrideDirtyRepo = false,
       busy = false,
     )
@@ -2273,6 +2281,7 @@ class SkillBillViewModel(
     scaffoldWizard = current.copy(
       formFields = updatedFields,
       dryRunPreview = null,
+      validationErrors = emptyList(),
       // Editing the form after a Failed result keeps the banner so the user can read it; clear it
       // only when the success banner is displayed (we never accept further edits in that mode).
       executionResult = current.executionResult.takeIf { it is ScaffoldRunResult.Failed },
@@ -2280,6 +2289,119 @@ class SkillBillViewModel(
     currentState = createState()
     return currentState
   }
+
+  fun addScaffoldBaselineLayer(layer: ScaffoldBaselineLayerForm? = null): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (current.busy || current.kind != ScaffoldKind.PLATFORM_PACK) {
+      return currentState
+    }
+    val nextLayer = ensureBaselineLayerRowId(layer ?: defaultBaselineLayer(current.optionCatalog))
+    return updateScaffoldForm { fields ->
+      fields.copy(baselineLayers = fields.baselineLayers + nextLayer)
+    }
+  }
+
+  fun editScaffoldBaselineLayer(
+    index: Int,
+    transform: (ScaffoldBaselineLayerForm) -> ScaffoldBaselineLayerForm,
+  ): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (
+      current.busy ||
+      current.kind != ScaffoldKind.PLATFORM_PACK ||
+      index !in current.formFields.baselineLayers.indices
+    ) {
+      return currentState
+    }
+    return updateScaffoldForm { fields ->
+      fields.copy(
+        baselineLayers = fields.baselineLayers.mapIndexed { layerIndex, layer ->
+          if (layerIndex == index) transform(layer) else layer
+        },
+      )
+    }
+  }
+
+  fun removeScaffoldBaselineLayer(index: Int): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (
+      current.busy ||
+      current.kind != ScaffoldKind.PLATFORM_PACK ||
+      index !in current.formFields.baselineLayers.indices
+    ) {
+      return currentState
+    }
+    return updateScaffoldForm { fields ->
+      fields.copy(baselineLayers = fields.baselineLayers.filterIndexed { layerIndex, _ -> layerIndex != index })
+    }
+  }
+
+  fun addSuggestedScaffoldBaselineLayer(): SkillBillState {
+    val current = scaffoldWizard ?: return currentState
+    if (current.busy || current.kind != ScaffoldKind.PLATFORM_PACK) {
+      return currentState
+    }
+    val suggestion = suggestedBaselineLayer(current)?.form ?: return currentState
+    return addScaffoldBaselineLayer(suggestion)
+  }
+
+  private fun defaultBaselineLayer(catalog: ScaffoldCatalogSnapshot): ScaffoldBaselineLayerForm {
+    val pack = catalog.baselineReviewPacks.firstOrNull()
+    val skill = pack?.skills?.firstOrNull()
+    return ScaffoldBaselineLayerForm(
+      platform = pack?.platform.orEmpty(),
+      skill = skill?.name.orEmpty(),
+      mode = skill?.supportedModes?.firstOrNull().orEmpty(),
+      scope = skill?.supportedScopes?.firstOrNull() ?: ScaffoldBaselineLayerForm.DEFAULT_SCOPE,
+      required = true,
+    )
+  }
+
+  private data class SuggestedBaselineLayer(
+    val label: String,
+    val form: ScaffoldBaselineLayerForm,
+  )
+
+  private fun suggestedBaselineLayer(wizard: ScaffoldWizardState): SuggestedBaselineLayer? {
+    if (wizard.kind != ScaffoldKind.PLATFORM_PACK) return null
+    return wizard.optionCatalog.baselineReviewLayerSuggestions.firstOrNull { suggestion ->
+      suggestion.matches(wizard.formFields) &&
+        wizard.formFields.baselineLayers.none { layer ->
+          layer.platform == suggestion.platform && layer.skill == suggestion.skill
+        }
+    }?.let { suggestion ->
+      SuggestedBaselineLayer(
+        label = suggestion.label,
+        form = ScaffoldBaselineLayerForm(
+          platform = suggestion.platform,
+          skill = suggestion.skill,
+          scope = suggestion.scope,
+          required = suggestion.required,
+          mode = suggestion.mode,
+        ),
+      )
+    }
+  }
+
+  private fun skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion.matches(
+    fields: ScaffoldWizardFormFields,
+  ): Boolean {
+    val haystack = (
+      listOf(fields.platform, fields.displayName, fields.description) +
+        fields.strongRoutingSignals +
+        fields.tieBreakers
+      )
+      .joinToString(separator = " ")
+      .lowercase()
+    return triggerSignals.any { signal -> signal.lowercase() in haystack }
+  }
+
+  private fun ensureBaselineLayerRowId(layer: ScaffoldBaselineLayerForm): ScaffoldBaselineLayerForm =
+    if (layer.rowId != 0L) {
+      layer
+    } else {
+      layer.copy(rowId = nextScaffoldBaselineLayerRowId++)
+    }
 
   fun setScaffoldDirtyOverride(override: Boolean): SkillBillState {
     val current = scaffoldWizard ?: return currentState
@@ -2570,6 +2692,11 @@ class SkillBillViewModel(
     if (!isScaffoldPlanAllowed(current)) {
       return null
     }
+    val validationErrors = validateScaffoldWizard(current)
+    if (validationErrors.isNotEmpty()) {
+      failScaffoldFormValidation(current, validationErrors)
+      return null
+    }
     val payload = buildScaffoldPayload(current) ?: return null
     activeScaffoldToken += 1
     scaffoldWizard = current.copy(busy = true, dryRunPreview = null, executionResult = null)
@@ -2629,6 +2756,11 @@ class SkillBillViewModel(
   fun beginScaffoldExecute(): ScaffoldRunRequest? {
     val current = scaffoldWizard ?: return null
     if (!current.runEnabled || !canStartScaffoldAction()) {
+      return null
+    }
+    val validationErrors = validateScaffoldWizard(current)
+    if (validationErrors.isNotEmpty()) {
+      failScaffoldFormValidation(current, validationErrors)
       return null
     }
     val payload = buildScaffoldPayload(current) ?: return null
@@ -2739,6 +2871,97 @@ class SkillBillViewModel(
     !pushBusy &&
     !changesBusy
 
+  private fun failScaffoldFormValidation(current: ScaffoldWizardState, errors: List<String>) {
+    scaffoldWizard = current.copy(
+      dryRunPreview = null,
+      validationErrors = errors,
+      executionResult = null,
+    )
+    currentState = createState()
+  }
+
+  private fun validateScaffoldWizard(wizard: ScaffoldWizardState): List<String> = buildList {
+    val fields = wizard.formFields
+    when (wizard.kind) {
+      ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) add("Skill name is required.")
+      ScaffoldKind.PLATFORM_PACK -> {
+        if (fields.platform.isBlank()) add("Platform slug is required.")
+        addAll(validateBaselineLayers(wizard))
+      }
+      ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> {
+        if (fields.platform.isBlank()) add("Platform is required.")
+        if (fields.family.isBlank()) add("Family is required.")
+      }
+      ScaffoldKind.CODE_REVIEW_AREA -> {
+        if (fields.platform.isBlank()) add("Platform is required.")
+        if (fields.area.isBlank()) add("Code-review area is required.")
+      }
+      ScaffoldKind.ADD_ON -> {
+        if (fields.name.isBlank()) add("Add-on name is required.")
+        if (fields.platform.isBlank()) add("Owning platform pack is required.")
+      }
+    }
+  }
+
+  private fun validateBaselineLayers(wizard: ScaffoldWizardState): List<String> = buildList {
+    val newPlatform = wizard.formFields.platform.trim()
+    val catalog = wizard.optionCatalog
+    val packsBySlug = catalog.baselineReviewPacks.associateBy { it.platform }
+    val seen = mutableSetOf<Pair<String, String>>()
+
+    wizard.formFields.baselineLayers.forEachIndexed { index, layer ->
+      val label = "Baseline layer ${index + 1}"
+      val platform = layer.platform.trim()
+      val skillName = layer.skill.trim()
+      if (platform.isBlank()) {
+        add("$label: baseline pack is required.")
+        return@forEachIndexed
+      }
+      val pack = packsBySlug[platform]
+      if (pack == null) {
+        add("$label: baseline pack '$platform' is not available or has no declared code-review baseline.")
+        return@forEachIndexed
+      }
+      if (skillName.isBlank()) {
+        add("$label: baseline skill is required.")
+        return@forEachIndexed
+      }
+      val skill = pack.skills.firstOrNull { it.name == skillName }
+      if (skill == null) {
+        add("$label: baseline skill '$skillName' is not declared by pack '$platform'.")
+        return@forEachIndexed
+      }
+      if (layer.mode !in skill.supportedModes) {
+        add("$label: mode '${layer.mode}' is not supported by '$platform/$skillName'.")
+      }
+      if (layer.scope !in skill.supportedScopes) {
+        add("$label: scope '${layer.scope}' is not supported by '$platform/$skillName'.")
+      }
+      if (!seen.add(platform to skillName)) {
+        add("$label: duplicate baseline layer '$platform/$skillName'.")
+      }
+      if (newPlatform.isNotBlank() && platform == newPlatform) {
+        add("$label: baseline layer self-references the new platform pack '$newPlatform'.")
+      } else if (newPlatform.isNotBlank() && compositionPathExists(catalog, from = platform, to = newPlatform)) {
+        add("$label: adding '$newPlatform -> $platform' would create a code-review composition cycle.")
+      }
+    }
+  }
+
+  private fun compositionPathExists(catalog: ScaffoldCatalogSnapshot, from: String, to: String): Boolean {
+    val graph = catalog.baselineReviewCompositionEdges.groupBy(
+      keySelector = { edge -> edge.sourcePlatform },
+      valueTransform = { edge -> edge.targetPlatform },
+    )
+    val visited = mutableSetOf<String>()
+    fun visit(platform: String): Boolean {
+      if (!visited.add(platform)) return false
+      if (platform == to) return true
+      return graph[platform].orEmpty().any(::visit)
+    }
+    return visit(from)
+  }
+
   private fun buildScaffoldPayload(wizard: ScaffoldWizardState): ScaffoldPayload? {
     val fields = wizard.formFields
     val repoRoot = currentSession?.repoPath?.takeIf { it.isNotBlank() } ?: return null
@@ -2771,6 +2994,15 @@ class SkillBillViewModel(
           specialistAreas = fields.specialistAreas.filter(String::isNotBlank),
           strongRoutingSignals = fields.strongRoutingSignals.filter(String::isNotBlank),
           tieBreakers = fields.tieBreakers.filter(String::isNotBlank),
+          baselineLayers = fields.baselineLayers.map { layer ->
+            ScaffoldBaselineLayerPayload(
+              platform = layer.platform.trim(),
+              skill = layer.skill.trim(),
+              scope = layer.scope.trim(),
+              required = layer.required,
+              mode = layer.mode.trim(),
+            )
+          },
           subagentSpecialists = fields.subagentSpecialists.filter(String::isNotBlank),
           suppressSubagents = fields.suppressSubagents,
           contentBody = fields.contentBody.takeIf { it.isNotBlank() },

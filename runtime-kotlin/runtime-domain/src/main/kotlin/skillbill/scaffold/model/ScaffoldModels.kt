@@ -88,6 +88,41 @@ data class PlatformManifest(
   val routedSkillName: String? = declaredFiles.baseline?.let { "bill-$slug-code-review" }
 }
 
+data class BaselineReviewCatalog(
+  val packs: List<BaselineReviewPackEntry>,
+  val compositionEdges: List<BaselineReviewCompositionEdge>,
+  val layerSuggestions: List<BaselineReviewLayerSuggestion> = emptyList(),
+)
+
+data class BaselineReviewPackEntry(
+  val platform: String,
+  val displayName: String,
+  val strongRoutingSignals: List<String>,
+  val skills: List<BaselineReviewSkillEntry>,
+)
+
+data class BaselineReviewSkillEntry(
+  val name: String,
+  val supportedModes: List<String>,
+  val supportedScopes: List<String>,
+)
+
+data class BaselineReviewCompositionEdge(
+  val sourcePlatform: String,
+  val targetPlatform: String,
+  val targetSkill: String,
+)
+
+data class BaselineReviewLayerSuggestion(
+  val label: String,
+  val triggerSignals: List<String>,
+  val platform: String,
+  val skill: String,
+  val scope: String,
+  val required: Boolean,
+  val mode: String,
+)
+
 data class GovernedAddonFile(
   val packSlug: String,
   val addonPath: Path,

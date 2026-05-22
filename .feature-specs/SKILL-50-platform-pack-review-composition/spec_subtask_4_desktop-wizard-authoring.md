@@ -1,6 +1,6 @@
 # SKILL-50 Subtask 4 — Desktop wizard baseline-layer authoring
 
-Status: Proposed
+Status: Complete
 
 Parent spec: [spec.md](./spec.md)
 
