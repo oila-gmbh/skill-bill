@@ -63,6 +63,14 @@ Platform packs use their own source layout:
 Platform pack pointer files declared by `platform.yaml` are generated output,
 not source files.
 
+Pack-owned add-ons are consumed through `platform.yaml` `addon_usage`, not
+hand-authored skill prose. The manifest maps a skill-relative directory to the
+add-on entry pointer and optional companion pointers the installed skill may
+open after stack routing. The renderer turns that contract into a generated
+`## Governed Add-Ons` wrapper section, and the loader rejects add-on usage that
+does not reference generated pointers targeting the same pack's `addons/`
+directory.
+
 ## `content.md`
 
 `content.md` is the only authored skill body for governed skills. It owns:
@@ -145,6 +153,11 @@ If a skill needs a new support file:
 2. Register the support pointer target or manifest pointer.
 3. Add validator and install-staging coverage.
 4. Do not add the pointer file under `skills/<skill>/`.
+
+If a platform-pack skill needs governed add-ons, declare their generated
+pointer filenames in the pack's `addon_usage` block. Keep add-on selection
+cues and topic indexes in the pack-owned add-on files, not duplicated in
+`content.md`.
 
 ## Install Staging
 

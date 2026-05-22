@@ -44,6 +44,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "declared_quality_check_file",
     "code_review_composition",
     "pointers",
+    "addon_usage",
   )
 
   @Test

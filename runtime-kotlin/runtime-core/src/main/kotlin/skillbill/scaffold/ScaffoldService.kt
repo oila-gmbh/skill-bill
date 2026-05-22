@@ -120,6 +120,7 @@ private data class ScaffoldPlan(
   val createdFiles: List<Path> = emptyList(),
   val contentBody: String? = null,
   val addonBody: String? = null,
+  val addonConsumerSkillDirs: List<String> = emptyList(),
   val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val subagentDescriptions: Map<String, String> = emptyMap(),
@@ -699,6 +700,7 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan 
         "Create a conforming platform.yaml before adding a governed add-on into it.",
     )
   }
+  val pack = loadPlatformPack(packRoot)
   val skillFile = packRoot.resolve("addons").resolve("$name.md")
   return ScaffoldPlan(
     kind = SKILL_KIND_ADD_ON,
@@ -713,7 +715,67 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan 
     notes = emptyList(),
     description = requireStringOrDefault(payload, "description", ""),
     addonBody = payload["body"] as? String,
+    addonConsumerSkillDirs = resolveAddonConsumerSkillDirs(payload, packRoot, pack),
   )
+}
+
+private fun resolveAddonConsumerSkillDirs(
+  payload: Map<String, Any?>,
+  packRoot: Path,
+  pack: skillbill.scaffold.model.PlatformManifest,
+): List<String> {
+  val raw = payload["consumer_skill_dirs"]
+  val requested = if (raw == null) {
+    listOfNotNull(pack.declaredFiles.baseline?.let { contentFile -> packRoot.relativize(contentFile.parent) })
+      .map { path -> path.toString().replace('\\', '/') }
+  } else {
+    requireStringList(raw, "consumer_skill_dirs")
+  }
+  val seen = mutableSetOf<String>()
+  return requested.map { dir ->
+    validateAddonConsumerSkillDir(pack, dir)
+  }.filter { dir -> seen.add(dir) }
+}
+
+private fun validateAddonConsumerSkillDir(
+  pack: skillbill.scaffold.model.PlatformManifest,
+  skillRelativeDir: String,
+): String {
+  val relative = try {
+    Path.of(skillRelativeDir)
+  } catch (error: java.nio.file.InvalidPathException) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'consumer_skill_dirs' contains invalid path '$skillRelativeDir': ${error.message}",
+      error,
+    )
+  }
+  if (relative.isAbsolute || skillRelativeDir.startsWith("/") || skillRelativeDir.startsWith("\\")) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'consumer_skill_dirs' entries must be relative skill directories.",
+    )
+  }
+  relative.iterator().forEachRemaining { segment ->
+    if (segment.toString() == "..") {
+      throw InvalidScaffoldPayloadError(
+        "Scaffold payload field 'consumer_skill_dirs' entries must not contain '..' segments.",
+      )
+    }
+  }
+  val normalized = relative.normalize()
+  val normalizedDir = normalized.toString().replace('\\', '/')
+  if (!Files.isDirectory(pack.packRoot.resolve(normalized))) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'consumer_skill_dirs' references missing skill directory '$skillRelativeDir'.",
+    )
+  }
+  if (normalizedDir !in pack.declaredSkillRelativeDirs()) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'consumer_skill_dirs' references '$skillRelativeDir', but that directory is not " +
+        "declared as a skill in platform pack '${pack.slug}'. Declared skill directories: " +
+        "${pack.declaredSkillRelativeDirs().sorted()}.",
+    )
+  }
+  return normalizedDir
 }
 
 private data class PlatformPackDefaults(
@@ -901,6 +963,21 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
         emptyList()
       }
     }
+    SKILL_KIND_ADD_ON -> {
+      if (plan.addonConsumerSkillDirs.isEmpty()) {
+        emptyList()
+      } else {
+        val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
+        snapshotManifest(txn, manifestPath)
+        appendGovernedAddonManifestRegistration(
+          manifestPath = manifestPath,
+          platform = plan.platform,
+          skillRelativeDirs = plan.addonConsumerSkillDirs,
+          addonSlug = plan.skillName,
+        )
+        listOf(manifestPath)
+      }
+    }
     else -> emptyList()
   }
 }
@@ -916,6 +993,11 @@ private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kin
 
 private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path> = when (plan.kind) {
   SKILL_KIND_PLATFORM_PACK -> listOf(plan.manifestPath ?: platformPackManifestPath(repoRoot, plan.platform))
+  SKILL_KIND_ADD_ON -> if (plan.addonConsumerSkillDirs.isEmpty()) {
+    emptyList()
+  } else {
+    listOf(platformPackManifestPath(repoRoot, plan.platform))
+  }
   SKILL_KIND_CODE_REVIEW_AREA, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED ->
     listOf(platformPackManifestPath(repoRoot, plan.platform))
   else -> emptyList()
@@ -929,13 +1011,25 @@ private fun previewManifestPreviews(plan: ScaffoldPlan, repoRoot: Path): Map<Pat
       plan.qualityCheckSkillPath ?: error("Platform pack plan missing quality-check skill path.")
     mapOf(manifestPath to renderPlatformPackManifestContent(plan, repoRoot, baselineSkillPath, qualityCheckSkillPath))
   }
+  SKILL_KIND_ADD_ON -> {
+    if (plan.addonConsumerSkillDirs.isEmpty()) {
+      emptyMap()
+    } else {
+      val manifestPath = platformPackManifestPath(repoRoot, plan.platform)
+      mapOf(
+        manifestPath to renderGovernedAddonManifestRegistration(
+          text = Files.readString(manifestPath),
+          platform = plan.platform,
+          skillRelativeDirs = plan.addonConsumerSkillDirs,
+          addonSlug = plan.skillName,
+        ),
+      )
+    }
+  }
   else -> emptyMap()
 }
 
 private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
-  if (plan.kind == SKILL_KIND_ADD_ON) {
-    return
-  }
   if (plan.kind == SKILL_KIND_HORIZONTAL) {
     val issues = validateTarget(plannedAuthoringTarget(plan), repoRoot)
     if (issues.isNotEmpty()) {

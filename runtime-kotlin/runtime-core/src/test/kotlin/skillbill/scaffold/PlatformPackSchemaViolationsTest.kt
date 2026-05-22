@@ -328,6 +328,121 @@ class PlatformPackSchemaViolationsTest {
   }
 
   @Test
+  fun `coherence rule addon_usage keys must match declared skill directories`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_files:
+        baseline: code-review/bill-scenarioslug-code-review/content.md
+        areas: {}
+      pointers:
+        code-review/not-a-skill:
+          - name: android-compose-review.md
+            target: platform-packs/scenarioslug/addons/android-compose-review.md
+      addon_usage:
+        code-review/not-a-skill:
+          - slug: android-compose
+            entrypoint: android-compose-review.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "addon_usage")
+    assertContains(message, "code-review/not-a-skill")
+    assertContains(message, "declared skill directory")
+  }
+
+  @Test
+  fun `coherence rule addon_usage must reference declared pointer under same skill dir`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_files:
+        baseline: code-review/something/content.md
+        areas: {}
+      addon_usage:
+        code-review/something:
+          - slug: android-compose
+            entrypoint: android-compose-review.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "addon_usage")
+    assertContains(message, "android-compose-review.md")
+    assertContains(message, "pointers[code-review/something]")
+  }
+
+  @Test
+  fun `coherence rule addon_usage must reference pack-owned addon pointer targets`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_files:
+        baseline: code-review/something/content.md
+        areas: {}
+      pointers:
+        code-review/something:
+          - name: shell-ceremony.md
+            target: orchestration/shell-content-contract/shell-ceremony.md
+      addon_usage:
+        code-review/something:
+          - slug: shell-help
+            entrypoint: shell-ceremony.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "addon_usage")
+    assertContains(message, "shell-ceremony.md")
+    assertContains(message, "platform-packs/scenarioslug/addons/")
+  }
+
+  @Test
+  fun `coherence rule addon_usage rejects duplicate slug per skill dir`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      declared_files:
+        baseline: code-review/something/content.md
+        areas: {}
+      pointers:
+        code-review/something:
+          - name: android-compose-review.md
+            target: platform-packs/scenarioslug/addons/android-compose-review.md
+          - name: android-compose-edge-to-edge.md
+            target: platform-packs/scenarioslug/addons/android-compose-edge-to-edge.md
+      addon_usage:
+        code-review/something:
+          - slug: android-compose
+            entrypoint: android-compose-review.md
+          - slug: android-compose
+            entrypoint: android-compose-edge-to-edge.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "android-compose")
+    assertContains(message, "duplicate")
+  }
+
+  @Test
   fun `SKILL-48 nested anchored block typo fails loudly`() {
     // Defense-in-depth: a typo *inside* a strict nested anchored block (e.g. mis-spelling
     // `baseline` as `baselin` under `declared_files`) MUST loud-fail with the field path

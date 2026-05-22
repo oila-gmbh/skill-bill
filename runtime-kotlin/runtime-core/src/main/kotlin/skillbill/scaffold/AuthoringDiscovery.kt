@@ -90,6 +90,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         baselineContent.resolveSibling("SKILL.md"),
         baselineContent,
         pack.codeReviewComposition,
+        pack.addonUsageFor(baselineContent),
       )
   }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->
@@ -104,6 +105,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         area,
         contentFile.resolveSibling("SKILL.md"),
         contentFile,
+        addonUsage = pack.addonUsageFor(contentFile),
       )
   }
   pack.declaredQualityCheckFile?.let { declaredFile ->
@@ -118,6 +120,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         "",
         contentFile.resolveSibling("SKILL.md"),
         contentFile,
+        addonUsage = pack.addonUsageFor(contentFile),
       )
   }
 }

@@ -12,19 +12,25 @@ Platform pack: `kmp` (KMP)
 Area: `ui`
 Description: Use when reviewing KMP changes for UI correctness and framework usage.
 
+## Governed Add-Ons
+
+This platform pack declares add-on usage for this skill in `platform.yaml`. Runtime agents MUST resolve these add-ons only after stack routing has selected `kmp`.
+
+Start from `Selected add-ons: none`. Scan each declared entrypoint's `## Activation signals` and `## Section index` headings first, select only add-ons whose cues match the scoped work, then open only the selected entrypoint and companion pointers needed for that scope.
+Report the final selection as `Selected add-ons: <slug, ...>` and pass the selected add-ons into any specialist passes. Add-ons enrich this routed skill; they do not create standalone skill names or bypass stack routing.
+
+### Declared Add-Ons
+
+- `android-compose`: entrypoint `android-compose-review.md`; companions `android-compose-edge-to-edge.md`, `android-compose-adaptive-layouts.md`, `android-navigation-review.md`, `android-design-system-review.md`, `android-interop-review.md`.
+- `android-navigation`: entrypoint `android-navigation-review.md`; companions `none`.
+- `android-interop`: entrypoint `android-interop-review.md`; companions `none`.
+- `android-design-system`: entrypoint `android-design-system-review.md`; companions `none`.
+
 ## Execution
 
 ### Compose Review Rubric
 
 The canonical KMP UI review command stays `bill-kmp-code-review-ui`. Governed add-ons apply only after the parent review has already routed to `kmp`.
-
-When the parent KMP review selects the `android-compose` add-on, scan [android-compose-review.md](android-compose-review.md) first. If the add-on is split into topic files, open only the linked topic files whose cues match the diff, such as [android-compose-edge-to-edge.md](android-compose-edge-to-edge.md) and [android-compose-adaptive-layouts.md](android-compose-adaptive-layouts.md).
-
-When the parent KMP review selects `android-navigation`, scan [android-navigation-review.md](android-navigation-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
-
-When the parent KMP review selects `android-interop`, scan [android-interop-review.md](android-interop-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
-
-When the parent KMP review selects `android-design-system`, scan [android-design-system-review.md](android-design-system-review.md) first and apply any Android-specific UI risks from it alongside the base Compose review rubric.
 
 When no governed add-on applies, use the base Compose review rubric by itself.
 

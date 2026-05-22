@@ -56,6 +56,17 @@ data class CodeReviewComposition(
   val baselineLayers: List<CodeReviewBaselineLayer>,
 )
 
+data class GovernedAddonUsage(
+  val skillRelativeDir: String,
+  val addons: List<GovernedAddonSelection>,
+)
+
+data class GovernedAddonSelection(
+  val slug: String,
+  val entrypoint: String,
+  val companionPointers: List<String> = emptyList(),
+)
+
 data class PlatformManifest(
   val slug: String,
   val packRoot: Path,
@@ -69,6 +80,7 @@ data class PlatformManifest(
   val declaredQualityCheckFile: Path? = null,
   val codeReviewComposition: CodeReviewComposition? = null,
   val pointers: List<PointerSpec> = emptyList(),
+  val addonUsage: List<GovernedAddonUsage> = emptyList(),
   /**
    * SKILL-48 Subtask 3: carries every non-anchored top-level field from `platform.yaml`
    * verbatim. Intentionally untyped (`Map<String, Any?>`) so repo authors can add

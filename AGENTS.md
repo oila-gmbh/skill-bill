@@ -43,7 +43,7 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 - Skill Bill is platform-extensible: any team may author and ship a new conforming pack.
 - This repo may contain any maintained pack that follows the governed contract; routing and install flows must stay manifest-driven rather than relying on a hardcoded shortlist.
 - Each pack ships a manifest. **The canonical source of truth for `platform-packs/<slug>/platform.yaml` shape is `orchestration/contracts/platform-pack-schema.yaml`** — a JSON Schema (Draft 2020-12) authored as YAML. New fields, type changes, value constraints, and field-level enums land in that file first; the runtime parser (`ShellContentLoader.buildPack`) loads the schema at runtime and rejects malformed manifests via `InvalidManifestSchemaError`.
-- Cross-field coherence rules that JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks` in the schema file. The five named rules are `slug-parity`, `areas-require-baseline`, `areas-equal-declared`, `area-metadata-keys-subset-declared`, and `pointers-unique-name-per-dir`.
+- Cross-field coherence rules that JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks` in the schema file, including declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage rules.
 - The current shell contract version is 1.1. `SHELL_CONTRACT_VERSION` (Kotlin) and the schema's `contract_version.const` are pinned in lockstep by `PlatformPackSchemaContractVersionTest`. Bumping the contract means bumping BOTH; the build breaks if they drift.
 - **Runtime contracts directory rule.** Every YAML under `orchestration/contracts/` is part of the runtime contract surface. Adding a new contract YAML requires the same five-part recipe used for the platform-pack schema:
   1. Author the file as a Draft 2020-12 JSON Schema in YAML (mirror the `$schema` / `$id` / `title` / `description` / `additionalProperties: false` / `contract_version` const / `x-coherence-checks` block used by `orchestration/contracts/platform-pack-schema.yaml`).
@@ -65,6 +65,7 @@ skill-bill is a governed system for authoring, routing, validating, installing, 
 - Add-ons are pack-owned files, not standalone skills.
 - Keep them flat in the owning pack's `addons/` directory, use lowercase kebab-case names, and resolve them only after dominant-stack routing.
 - Runtime skills consume add-ons through generated support pointer files in installed staging, report them as `Selected add-ons: ...`, and every add-on change needs validator plus routing-contract coverage.
+- Declare which skills may consume which add-ons through the owning pack's `platform.yaml` `addon_usage` block. Do not hand-author per-skill add-on selection tables in `content.md`; the renderer emits the governed add-on usage section from the manifest.
 
 ## Non-negotiable rules
 
