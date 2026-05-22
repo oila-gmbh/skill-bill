@@ -1,3 +1,4 @@
+contract_version: "0.1"
 agents:
   - name: bill-feature-implement-pre-planning
     description: "Pre-planning subagent for bill-feature-implement: produce a digest the planning subagent will consume."

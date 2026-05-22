@@ -218,6 +218,12 @@ is composed from the matching governed `content.md`, producing a self-contained
 provider artifact at install time. The generated artifact must not depend on
 repo-local `content.md` at runtime.
 
+Newly scaffolded and rendered provider-neutral sources include a top-level
+`contract_version: "0.1"` pin. The native-agent schema keeps that key optional
+for legacy parsing tolerance, but when it is present the value is pinned to
+`NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION` by schema validation and parity
+tests.
+
 Install renders provider-specific artifacts into the Skill Bill native-agents
 cache, then links them into runtime-specific directories:
 

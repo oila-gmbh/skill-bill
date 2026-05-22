@@ -9,12 +9,13 @@ Each native agent can be authored in either source form:
 - one markdown file at `<skill-or-pack>/native-agents/<name>.md`
 - one bundled list at `<skill-or-pack>/native-agents/agents.yaml`
 
-Markdown files use YAML frontmatter plus a markdown body. The frontmatter accepts `name` (lowercase kebab-case, must match the filename stem), `description` (non-blank), and optional `compose: governed-content`. Anything else is rejected.
+Markdown files use YAML frontmatter plus a markdown body. The frontmatter accepts optional `contract_version`, `name` (lowercase kebab-case, must match the filename stem), `description` (non-blank), and optional `compose: governed-content`. Anything else is rejected.
 
 Example:
 
 ```
 ---
+contract_version: "0.1"
 name: bill-example-worker
 description: Example worker.
 ---
@@ -24,11 +25,12 @@ description: Example worker.
 Do the work.
 ```
 
-Bundles use a top-level `agents:` list. Each entry accepts `name`, `description`, optional `compose: governed-content`, and optional `body`. `body` may be omitted only when `compose: governed-content` is present. Duplicate names fail validation across markdown files and bundle entries.
+Bundles use an optional top-level `contract_version` plus a required `agents:` list. Each entry accepts `name`, `description`, optional `compose: governed-content`, and optional `body`. `body` may be omitted only when `compose: governed-content` is present. Duplicate names fail validation across markdown files and bundle entries.
 
 Example:
 
 ```yaml
+contract_version: "0.1"
 agents:
   - name: bill-example-worker
     description: Example composed worker.
@@ -41,7 +43,7 @@ agents:
       Do the work.
 ```
 
-`parseNativeAgentSource` reads markdown files; `parseNativeAgentBundle` reads bundles; `discoverNativeAgentSources` expands both source forms into logical `NativeAgentSource` values. `renderNativeAgentSource` and `renderNativeAgentBundle` emit canonical neutral forms for round-trip stability and scaffolded bundle stubs.
+`parseNativeAgentSource` reads markdown files; `parseNativeAgentBundle` reads bundles; `discoverNativeAgentSources` expands both source forms into logical `NativeAgentSource` values. `renderNativeAgentSource` and `renderNativeAgentBundle` emit canonical neutral forms with `contract_version` for round-trip stability and scaffolded bundle stubs. The parser accepts older sources without the version key, but if the key is present schema validation pins it to `NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION`.
 
 When `compose: governed-content` is present, the source may omit a local body and compose from the corresponding governed `content.md`. Platform-pack sources resolve that target through the pack manifest's declared files; skill-local sources resolve only a sibling `content.md` whose frontmatter name matches. Bundle entries use `agents.yaml` as their source path for this resolution, so they follow the same manifest and sibling-content rules as markdown sources. Installed provider-native files are rendered one artifact per logical native agent from the composed body and inline declared local markdown sidecars, so they do not depend on repo-local `content.md` or sidecar files at runtime.
 
@@ -64,7 +66,7 @@ When the JVM cannot create a symlink, the install fails with a clear remediation
 
 ## Platform-pack pointer files (SKILL-39)
 
-Each `platform-packs/<platform>/<category>/<skill>/` directory ships a handful of single-line markdown files (`shell-ceremony.md`, `telemetry-contract.md`, addon pointers, …). Their entire content is one relative path like `../../../../orchestration/shell-content-contract/shell-ceremony.md`. The agent reads them by following markdown links from `SKILL.md`, which gives skills a stable filename surface even when the underlying target moves.
+Each `platform-packs/<platform>/<category>/<skill>/` directory may declare a handful of generated single-line markdown files (`shell-ceremony.md`, `telemetry-contract.md`, addon pointers, ...). Their entire content is one relative path like `../../../../orchestration/shell-content-contract/shell-ceremony.md`. The agent reads them by following markdown links from generated `SKILL.md`, which gives installed skills a stable filename surface even when the underlying target moves. These pointer files are render/install output and are not committed as authored source.
 
 Pointer paths are brittle — easy to miscount the `..` depth, easy to drift across siblings — so they are now generated from each pack's `platform.yaml`:
 

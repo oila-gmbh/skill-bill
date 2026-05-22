@@ -91,6 +91,7 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
 
 fun renderNativeAgentSource(agent: NativeAgentSource): String = buildString {
   append("---").append('\n')
+  append("contract_version: \"").append(NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION).append('"').append('\n')
   append("name: ${agent.name}").append('\n')
   append("description: ${agent.description}").append('\n')
   agent.composition?.let { directive ->

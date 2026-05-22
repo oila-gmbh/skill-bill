@@ -42,24 +42,24 @@ dependencies {
 // Gradle's Kotlin DSL cannot import runtime constants; if these strings drift
 // the runtime loader will loud-fail because the classpath resource will be
 // absent at the expected location.
-val canonicalPlatformPackSchema =
+val canonicalPlatformPackSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/platform-pack-schema.yaml")
-
-// SKILL-48 C6: fail at configure-time when the canonical schema is missing. Previously
-// a misconfigured checkout would only surface as a missing classpath resource at runtime;
-// pulling the existence check up to configure-time means `gradle help` already loud-fails
-// with a path-bearing message instead of producing a silently empty resource.
-require(canonicalPlatformPackSchema.exists()) {
-  val absolutePath = canonicalPlatformPackSchema.absolutePath
-  "SKILL-48: canonical platform-pack schema is missing at $absolutePath. " +
-    "Run from the repo root and ensure `orchestration/contracts/platform-pack-schema.yaml` exists."
-}
+    .absolutePath
 
 val copyPlatformPackSchema =
   tasks.register<Copy>("copyPlatformPackSchema") {
-    from(canonicalPlatformPackSchema)
+    val schemaPath = canonicalPlatformPackSchemaPath
+    from(schemaPath)
     into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-48: canonical platform-pack schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure " +
+          "`orchestration/contracts/platform-pack-schema.yaml` exists."
+      }
+    }
   }
 
 // SKILL-48 Subtask 2c: copy the canonical native-agent composition JSON

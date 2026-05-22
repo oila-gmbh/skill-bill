@@ -75,8 +75,13 @@ disabled_rules = ["CDX-AG-005"]
 disabled_validators = []
 
 [tool_versions]
+claude_code = "2.1.148"
+codex = "0.130.0"
 
 [spec_revisions]
+agent_skills_spec = "1.0"
+agents_md_spec = "1.0"
+mcp_protocol = "2025-11-25"
 
 [files]
 include_as_memory = []

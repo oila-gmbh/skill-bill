@@ -507,6 +507,38 @@ class McpRuntimeTest {
   }
 
   @Test
+  fun `telemetry remote stats tool maps short workflow aliases before proxy request`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-alias")
+    val configPath = writeMcpTelemetryConfig(tempDir, "off")
+    val env =
+      mapOf(
+        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
+        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
+        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
+      )
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val context =
+      McpRuntimeContext(
+        requester = mcpTelemetryRequester(capturedRequests),
+        environment = env,
+        userHome = tempDir,
+      )
+
+    val stats =
+      McpToolDispatcher.call(
+        "telemetry_remote_stats",
+        mapOf("workflow" to "verify", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
+        context,
+      )
+
+    assertEquals("bill-feature-verify", stats["workflow"])
+    assertEquals(
+      "{\"workflow\":\"bill-feature-verify\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
+      capturedRequests.last()["body"],
+    )
+  }
+
+  @Test
   fun `mcp workflow methods cover implement verbs and blocked continuation`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-workflow")
     val env = disabledTelemetryEnvironment(tempDir)

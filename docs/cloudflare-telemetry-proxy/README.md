@@ -13,16 +13,22 @@ This example lets Skill Bill clients send telemetry to a small Cloudflare Worker
 7. Optionally enforces a bearer token for `/stats`.
 8. Queries PostHog through its Query API and returns aggregate workflow metrics.
 
-The client payload stays the same privacy-scoped metadata produced by the `skill-bill` CLI and MCP server:
+The Worker forwards the privacy-scoped payload already produced by the
+`skill-bill` CLI and MCP server. With the default `anonymous` level, review
+telemetry is limited to:
 
 - completed review run snapshots with aggregate finding counts, accepted/rejected finding metadata (finding id, severity, confidence, and outcome type only), and nested learning metadata
 
-It excludes:
+At `anonymous`, it excludes:
 
 - repository identity, branch names, and file paths
 - raw review text, finding descriptions, and rejection notes
 - learning content (title, rule text, rationale)
 - local-only learning bookkeeping events
+
+At `full`, Skill Bill may include finding descriptions, file locations,
+rejection notes, and learning content before the Worker forwards the batch.
+Choose `full` only for deployments where that detail is acceptable.
 
 ## Deploy
 
