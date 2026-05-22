@@ -399,6 +399,7 @@ object McpToolRegistry {
           "status" to stringSchema(),
         ),
       ),
+      "telemetry_remote_stats" to remoteStatsSchema(),
     )
 
   val tools: List<McpToolSpec> =

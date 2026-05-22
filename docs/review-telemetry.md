@@ -7,7 +7,7 @@ Skill Bill can record a measurement loop for code-review usefulness. Telemetry u
 - each finding in `### 2. Risk Register` should use `- [F-001] Severity | Confidence | file:line | description`
 - feedback history and learnings stay local in SQLite regardless of telemetry state
 
-The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`, `feature_implement_stats`, `feature_verify_stats`, and `doctor` as native agent tools. The CLI provides the same functionality plus learnings CRUD and telemetry management.
+The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes review, learning, workflow-state, workflow-stats, telemetry, scaffold, quality-check, PR-description, health, and optional Readian bridge tools. The CLI provides the same runtime functionality plus learnings CRUD, install primitives, validation, and telemetry management.
 
 ```bash
 skill-bill --help
@@ -142,8 +142,8 @@ Skill Bill uses **parent-owned telemetry** across the whole skill suite. A singl
 
 Every telemeterable skill must be usable alone. When invoked directly by a user, each skill generates its own session id and emits its own events:
 
-- `bill-code-review` — `skillbill_review_finished` (once the review lifecycle resolves)
-- `bill-quality-check` — `skillbill_quality_check_started` + `_finished`
+- `bill-code-review` lifecycle — `skillbill_review_finished` once the final review output is imported and all findings resolve
+- `bill-quality-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
 - `bill-feature-implement` — `skillbill_feature_implement_started` + `_finished`
@@ -206,7 +206,7 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 ### Router skills never emit
 
-`bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry of their own — routing metadata is carried inside the concrete routed skill's telemetry call. They pass `orchestrated` through to the routed concrete skill unchanged.
+`bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry merely because routing happened. Routing metadata is carried inside the concrete routed skill's telemetry call, and the router passes `orchestrated` through to the routed concrete skill unchanged. The user-facing standalone lifecycle can still produce the events listed below once the routed workflow reaches its telemetry seam.
 
 ### Event catalog
 
@@ -214,9 +214,9 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 |-------|------------|--------------------------|
 | `skillbill_feature_implement_started` | `bill-feature-implement` (Step 1 confirm) | — (top-level only) |
 | `skillbill_feature_implement_finished` | `bill-feature-implement` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
-| `skillbill_review_finished` | `bill-code-review` (lifecycle resolved) | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
-| `skillbill_quality_check_started` | `bill-quality-check` (standalone) | skipped in orchestrated mode |
-| `skillbill_quality_check_finished` | `bill-quality-check` (standalone) | `quality_check_finished(orchestrated=true)` returns payload |
+| `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
+| `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
+| `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
 | `skillbill_feature_verify_started` | `bill-feature-verify` (standalone) | skipped in orchestrated mode |
 | `skillbill_feature_verify_finished` | `bill-feature-verify` (standalone) | `feature_verify_finished(orchestrated=true)` returns payload |
 | `skillbill_pr_description_generated` | `bill-pr-description` (standalone) | `pr_description_generated(orchestrated=true)` returns payload |
@@ -237,7 +237,7 @@ Both `anonymous` and `full`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
-| `routed_skill` | string | Concrete stack-specific skill delegated to (`bill-kotlin-quality-check`, `bill-kmp-code-review`, …) |
+| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-quality-check`; KMP currently falls back to Kotlin quality-check behavior) |
 | `detected_stack` | string | Dominant stack routed for |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |
@@ -533,6 +533,12 @@ Client request contract:
   "group_by": "day"
 }
 ```
+
+The MCP tool accepts either canonical workflow ids
+(`bill-feature-verify`, `bill-feature-implement`) or short aliases
+(`verify`, `implement`). The dispatcher maps aliases to canonical ids before
+calling the proxy. The CLI subcommands use the short forms
+`skill-bill telemetry stats verify` and `skill-bill telemetry stats implement`.
 
 The client sends that payload to:
 

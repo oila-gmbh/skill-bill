@@ -93,7 +93,7 @@ Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code comm
 
 Installed skills are symlinks to rendered staging directories under `~/.skill-bill/installed-skills/`. Re-run `./install.sh` after changing the checkout so installed agents pick up refreshed `SKILL.md` wrappers, support pointer files, and content hashes.
 
-On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
 
 ## Runtime Model
 
@@ -295,16 +295,20 @@ Review and telemetry:
 | `skill-bill verify-stats`     | Show local `bill-feature-verify` metrics            |
 | `skill-bill telemetry status` | Show telemetry configuration and pending sync state |
 | `skill-bill telemetry sync`   | Flush queued telemetry                              |
+| `skill-bill telemetry capabilities` | Show configured proxy capabilities            |
+| `skill-bill telemetry stats`  | Fetch aggregate remote workflow stats from the proxy |
 
 Workflow state:
 
 | Command                               | Purpose                                    |
 |---------------------------------------|--------------------------------------------|
 | `skill-bill workflow list`            | List persisted implement workflows         |
+| `skill-bill workflow latest`          | Show the latest implement workflow         |
 | `skill-bill workflow show`            | Show one implement workflow                |
 | `skill-bill workflow resume`          | Build a resume/recovery explanation        |
 | `skill-bill workflow continue`        | Reopen a resumable implement workflow      |
 | `skill-bill verify-workflow list`     | List persisted verify workflows            |
+| `skill-bill verify-workflow latest`   | Show the latest verify workflow            |
 | `skill-bill verify-workflow show`     | Show one verify workflow                   |
 | `skill-bill verify-workflow resume`   | Build a verify resume/recovery explanation |
 | `skill-bill verify-workflow continue` | Reopen a resumable verify workflow         |
@@ -319,12 +323,16 @@ Authoring and install:
 | `skill-bill validate`                   | Run repo or targeted governed-skill validation                                                    |
 | `skill-bill render`                     | Render generated wrappers to stdout or install output without writing generated files into source |
 | `skill-bill fill <skill>`               | Write authored `content.md` text and validate                                                     |
+| `skill-bill upgrade`                    | Validate governed render output and regenerate native-agent artifacts through runtime guardrails   |
 | `skill-bill new --payload <file>`       | Scaffold a governed skill or platform pack                                                        |
+| `skill-bill create-and-fill`            | Scaffold and immediately author one content-managed skill                                         |
 | `skill-bill new-addon`                  | Create a pack-owned add-on                                                                        |
+| `skill-bill remove`                     | Remove a horizontal skill, platform pack, or governed add-on with cleanup                         |
 | `skill-bill doctor`                     | Show local install and telemetry health                                                           |
 | `skill-bill install agent-path <agent>` | Print an agent install path                                                                       |
 | `skill-bill install detect-agents`      | List detected agents                                                                              |
 | `skill-bill install link-skill`         | Render one skill into staging and symlink it into a target path                                   |
+| `skill-bill validate-agent-configs`     | Run the agent-config/catalog/workflow-contract validator                                          |
 
 ## External Author Dry Run
 
@@ -369,11 +377,13 @@ Primary MCP groups:
 
 - review and learning tools: `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`
 - telemetry tools: `telemetry_proxy_capabilities`, `telemetry_remote_stats`
-- implement workflow tools: `feature_implement_started`, `feature_implement_workflow_open`, `feature_implement_workflow_update`, `feature_implement_workflow_get`, `feature_implement_workflow_continue`, `feature_implement_finished`
-- verify workflow tools: `feature_verify_started`, `feature_verify_workflow_open`, `feature_verify_workflow_update`, `feature_verify_workflow_get`, `feature_verify_workflow_continue`, `feature_verify_finished`
+- workflow stats tools: `feature_implement_stats`, `feature_verify_stats`
+- implement workflow tools: `feature_implement_started`, `feature_implement_workflow_open`, `feature_implement_workflow_update`, `feature_implement_workflow_list`, `feature_implement_workflow_latest`, `feature_implement_workflow_get`, `feature_implement_workflow_resume`, `feature_implement_workflow_continue`, `feature_implement_finished`
+- verify workflow tools: `feature_verify_started`, `feature_verify_workflow_open`, `feature_verify_workflow_update`, `feature_verify_workflow_list`, `feature_verify_workflow_latest`, `feature_verify_workflow_get`, `feature_verify_workflow_resume`, `feature_verify_workflow_continue`, `feature_verify_finished`
 - quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
 - scaffold tool: `new_skill_scaffold`
 - health tool: `doctor`
+- optional Readian bridge tools when configured: `readian_auth_status`, `readian_get_article`, `readian_get_articles_for_topic_query`, `readian_get_spotlight`, `readian_mark_story_status`, `readian_save_candidate`
 
 ## Validation Gate
 

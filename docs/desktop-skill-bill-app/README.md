@@ -325,11 +325,11 @@ cd runtime-kotlin
 ./gradlew :runtime-desktop:run
 ```
 
-Build a loose app directory:
+Build the loose app directory used by the installer:
 
 ```bash
 cd runtime-kotlin
-./gradlew :runtime-desktop:createDistributable
+./gradlew :runtime-desktop:prepareDesktopAppDistributable
 ```
 
 Build the native package for the current host:
@@ -347,16 +347,19 @@ Host-specific native package tasks:
 | Windows | `:runtime-desktop:packageMsi` | Requires a Windows host and native package tooling. |
 | Linux | `:runtime-desktop:packageDeb` | Debian/Ubuntu-style package. |
 | Linux | `:runtime-desktop:packageRpm` | RPM package; preferred Arch/CachyOS-friendly artifact when local tooling supports it. |
-| Any desktop | `:runtime-desktop:createDistributable` | Loose app directory fallback when native package production is unavailable. |
+| Any desktop | `:runtime-desktop:prepareDesktopAppDistributable` | Loose app directory fallback used by `install.sh --with-desktop-app`. |
 
 Compose Desktop native packaging is host-limited. A Linux workstation can verify
 Linux packages and the loose distribution, but should not be treated as proof
 that macOS DMG or Windows MSI production works. CI should run the current-OS
 package task on each OS runner, or explicitly record the missing host/toolchain
-as a package-production limitation. The SKILL-45 final pass verified the loose
-app image on CachyOS with `:runtime-desktop:createDistributable`; local native
-package production was blocked because this host's `jpackage` rejected both
-`rpm` and `deb` types and neither `rpmbuild` nor `dpkg-deb` was installed.
+as a package-production limitation. The lower-level Compose
+`:runtime-desktop:createDistributable` task is still useful for package wiring,
+but the Skill Bill installer stages the curated
+`:runtime-desktop:prepareDesktopAppDistributable` output. The SKILL-45 final
+pass verified the loose app image on CachyOS; local native package production
+was blocked because this host's `jpackage` rejected both `rpm` and `deb` types
+and neither `rpmbuild` nor `dpkg-deb` was installed.
 
 The package build stages `skill-bill-runtime` into app resources. That bundle
 contains:
@@ -540,9 +543,10 @@ Use this checklist as the lightweight implementation tracker. Keep detailed acce
 - [x] Document authored-source-only editing boundary.
 - [x] Add README or getting-started link to the Skill Bill app.
 - [x] Add launch smoke coverage.
-- [x] Verify primary-platform package path: `:runtime-desktop:createDistributable`
-  produced the loose app image on CachyOS; native `deb`/`rpm` package
-  production is blocked on this host by local `jpackage`/packaging-tool support.
+- [x] Verify primary-platform package path:
+  `:runtime-desktop:prepareDesktopAppDistributable` produced the loose app image
+  on CachyOS; native `deb`/`rpm` package production is blocked on this host by
+  local `jpackage`/packaging-tool support.
 - [x] Include desktop checks in the appropriate validation path.
 
 ### Cross-Cutting Done Criteria

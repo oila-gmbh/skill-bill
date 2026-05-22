@@ -335,15 +335,35 @@ $defs:
 
   telemetryRemoteStatsEvent:
     type: object
-    additionalProperties: true
+    additionalProperties: false
     required:
       - event_name
       - contract_version
+      - workflow
     properties:
       event_name:
         const: telemetry_remote_stats
       contract_version:
         const: "1.0.0"
+      workflow:
+        type: string
+        enum:
+          - verify
+          - implement
+          - bill-feature-verify
+          - bill-feature-implement
+      since:
+        type: string
+      date_from:
+        type: string
+      date_to:
+        type: string
+      group_by:
+        type: string
+        enum:
+          - ""
+          - day
+          - week
 
   # --- Strict branches (mirror `inputSchemas` entries verbatim) ---
 

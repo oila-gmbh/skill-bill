@@ -32,9 +32,8 @@
 #   fails the build if they diverge. To bump the contract, edit BOTH
 #   constants in the same change.
 # - The top-level `contract_version` key is OPTIONAL on every native-agent
-#   source so existing on-disk fixtures (which carry no
-#   `contract_version` line) keep validating clean. When the key IS
-#   present, the `const` pins it to the runtime version.
+#   source for legacy tolerance. New and rendered sources include the key.
+#   When the key IS present, the `const` pins it to the runtime version.
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/native-agent-composition-schema.yaml"
 title: "Native-agent composition source"
@@ -178,9 +177,8 @@ x-coherence-checks:
       in JSON Schema because the filename is not part of the document.
   contract-version-optional-at-top:
     description: >
-      Existing on-disk fixtures (e.g. `platform-packs/.../native-agents/agents.yaml`
-      and single-md frontmatter documents) carry no top-level
+      Some legacy native-agent sources may carry no top-level
       `contract_version` key. The schema deliberately keeps the key
       OPTIONAL on every envelope; the `const` pins the value ONLY when
-      the key is present. This unblocks the runtime contract roll-out
-      without rewriting every fixture in lockstep.
+      the key is present. New and rendered neutral sources include the
+      key so the repo steadily moves toward an explicit contract pin.

@@ -157,6 +157,15 @@ class McpStdioServerTest {
       listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
       tools.schemaFor("feature_implement_workflow_update").properties().enumFor("workflow_status"),
     )
+    tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
+    assertEquals(
+      listOf("verify", "implement", "bill-feature-verify", "bill-feature-implement"),
+      tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
+    )
+    assertEquals(
+      listOf("", "day", "week"),
+      tools.schemaFor("telemetry_remote_stats").properties().enumFor("group_by"),
+    )
     tools.schemaFor("new_skill_scaffold").assertRequired("payload")
     tools.schemaFor("import_review").assertRequired("review_text")
     tools.schemaFor("triage_findings").assertRequired("review_run_id", "decisions")

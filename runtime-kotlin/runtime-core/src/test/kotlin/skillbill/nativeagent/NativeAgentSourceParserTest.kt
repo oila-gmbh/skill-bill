@@ -136,6 +136,7 @@ class NativeAgentSourceParserTest {
     )
 
     val expected = "---\n" +
+      "contract_version: \"0.1\"\n" +
       "name: bill-composed\n" +
       "description: Composed worker.\n" +
       "compose: governed-content\n" +
