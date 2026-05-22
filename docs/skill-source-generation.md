@@ -234,7 +234,9 @@ Supported scaffold kinds:
 - `horizontal`: creates `skills/<name>/content.md`
 - `platform-pack`: creates `platform-packs/<slug>/platform.yaml`, baseline
   code-review content, quality-check content, and optional specialist content
-  stubs
+  stubs. Payloads may also declare `baseline_layers`; the scaffolder validates
+  those references before mutation and writes them as
+  `code_review_composition.baseline_layers` in the new manifest.
 - `platform-override-piloted`: creates a governed platform override or
   pre-shell source depending on family
 - `code-review-area`: creates one approved specialist content file and
@@ -243,6 +245,14 @@ Supported scaffold kinds:
 
 Scaffolding writes source files only. It does not stage generated `SKILL.md`
 wrappers or support pointer files into source.
+
+Use `skill-bill new --payload <file> --dry-run` to inspect planned files and
+manifest edits before mutation. For platform-pack composition payloads, dry-run
+output includes a preview of the generated `platform.yaml` block. After
+creation, `skill-bill show <baseline-skill>` surfaces any manifest-declared
+review composition so users and agents can understand which baseline review
+layers run. Legacy platform-pack payloads that omit `baseline_layers` remain
+valid and generate no `code_review_composition` section.
 
 When `subagent_specialists` are requested for orchestrator scaffolds, the
 scaffolder writes `native-agents/agents.yaml` stubs. Render and install output

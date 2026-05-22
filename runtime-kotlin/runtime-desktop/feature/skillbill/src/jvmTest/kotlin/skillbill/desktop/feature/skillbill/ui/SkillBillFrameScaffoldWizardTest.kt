@@ -1,5 +1,21 @@
 package skillbill.desktop.feature.skillbill.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.runComposeUiTest
+import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
+import skillbill.desktop.core.domain.model.BaselineReviewPackOption
+import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
+import skillbill.desktop.core.domain.model.ManifestEditPreview
+import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
@@ -115,6 +131,12 @@ class SkillBillFrameScaffoldWizardTest {
       skillPath = "/repo/platform-packs/java",
       createdFiles = listOf("/repo/platform-packs/java/platform.yaml"),
       manifestEdits = listOf("/repo/platform-packs/java/platform.yaml"),
+      manifestPreviews = listOf(
+        ManifestEditPreview(
+          path = "/repo/platform-packs/java/platform.yaml",
+          content = "code_review_composition:\n  baseline_layers:\n",
+        ),
+      ),
       symlinks = emptyList(),
       installTargets = listOf("/repo/platform-packs/java/code-review/bill-java-code-review"),
       notes = listOf("Dry run - no filesystem changes applied."),
@@ -123,6 +145,7 @@ class SkillBillFrameScaffoldWizardTest {
     val preview = assertNotNull(state.dryRunPreview)
     assertEquals(1, preview.createdFiles.size)
     assertEquals(1, preview.manifestEdits.size)
+    assertTrue(preview.manifestPreviews.single().content.contains("code_review_composition"))
     assertEquals(1, preview.installTargets.size)
     assertEquals(1, preview.notes.size)
   }
@@ -134,7 +157,150 @@ class SkillBillFrameScaffoldWizardTest {
     assertEquals("", fields.platform)
     assertEquals("full", fields.skeletonMode)
     assertTrue(fields.specialistAreas.isEmpty())
+    assertTrue(fields.baselineLayers.isEmpty())
     assertFalse(fields.suppressSubagents)
+  }
+
+  @Test
+  fun `baseline layer form defaults match scaffold payload contract defaults`() {
+    val layer = ScaffoldBaselineLayerForm()
+    assertEquals("same-review-scope", layer.scope)
+    assertTrue(layer.required)
+    assertEquals("", layer.platform)
+    assertEquals("", layer.skill)
+    assertEquals("", layer.mode)
+  }
+
+  @Test
+  fun `baseline catalog state carries constrained mode and scope options`() {
+    val state = ScaffoldWizardState(
+      kind = ScaffoldKind.PLATFORM_PACK,
+      optionCatalog = ScaffoldCatalogSnapshot.empty.copy(
+        baselineReviewPacks = listOf(
+          BaselineReviewPackOption(
+            platform = "kotlin",
+            displayName = "Kotlin",
+            strongRoutingSignals = listOf(".kt"),
+            skills = listOf(
+              BaselineReviewSkillOption(
+                name = "bill-kotlin-code-review",
+                supportedModes = listOf("kmp-baseline"),
+                supportedScopes = listOf("same-review-scope"),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    val skill = state.optionCatalog.baselineReviewPacks.single().skills.single()
+    assertEquals(listOf("kmp-baseline"), skill.supportedModes)
+    assertEquals(listOf("same-review-scope"), skill.supportedScopes)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `baseline layer controls wire add suggested remove required mode and scope callbacks`() = runComposeUiTest {
+    var addLayerCalls = 0
+    var addSuggestedCalls = 0
+    var editCalls = 0
+    var removeCalls = 0
+    val catalog = baselineCatalog()
+
+    setContent {
+      var dialogState by remember {
+        mutableStateOf(
+          ScaffoldWizardState(
+            kind = ScaffoldKind.PLATFORM_PACK,
+            optionCatalog = catalog,
+            baselineLayerSuggestion = ScaffoldBaselineLayerForm(
+              platform = "kotlin",
+              skill = "bill-kotlin-code-review",
+              mode = "kmp-baseline",
+            ),
+            baselineLayerSuggestionLabel = "Kotlin baseline",
+          ),
+        )
+      }
+      ScaffoldWizardDialog(
+        state = dialogState,
+        canStartScaffoldAction = true,
+        callbacks = ScaffoldWizardCallbacks(
+          onSelectKind = {},
+          onFormChanged = { transform ->
+            dialogState = dialogState.copy(
+              formFields = transform(dialogState.formFields),
+            )
+          },
+          onAddBaselineLayer = {
+            addLayerCalls += 1
+            dialogState = dialogState.copy(
+              formFields = dialogState.formFields.copy(
+                baselineLayers = dialogState.formFields.baselineLayers + ScaffoldBaselineLayerForm(
+                  rowId = 1L,
+                  platform = "kotlin",
+                  skill = "bill-kotlin-code-review",
+                  mode = "kmp-baseline",
+                ),
+              ),
+            )
+          },
+          onAddSuggestedBaselineLayer = { addSuggestedCalls += 1 },
+          onEditBaselineLayer = { index, transform ->
+            editCalls += 1
+            dialogState = dialogState.copy(
+              formFields = dialogState.formFields.copy(
+                baselineLayers = dialogState.formFields.baselineLayers.mapIndexed { layerIndex, layer ->
+                  if (layerIndex == index) transform(layer) else layer
+                },
+              ),
+            )
+          },
+          onRemoveBaselineLayer = { index ->
+            removeCalls += 1
+            dialogState = dialogState.copy(
+              formFields = dialogState.formFields.copy(
+                baselineLayers = dialogState.formFields.baselineLayers.filterIndexed { layerIndex, _ ->
+                  layerIndex != index
+                },
+              ),
+            )
+          },
+          onDirtyOverrideChanged = {},
+          onPlan = {},
+          onRun = {},
+          onAcknowledgeFailure = {},
+          onDismiss = {},
+        ),
+      )
+    }
+
+    onNodeWithText("Add layer").performClick()
+    onNodeWithText("Layer 1").assertIsDisplayed()
+    onNodeWithContentDescription("Mode option kmp-baseline").performClick()
+    onNodeWithContentDescription("Scope option same-review-scope").performClick()
+    onNodeWithContentDescription("Required baseline layer").performClick()
+    onNodeWithText("Remove").performClick()
+    onNodeWithText("Add Kotlin baseline").performClick()
+
+    assertEquals(1, addLayerCalls)
+    assertEquals(1, addSuggestedCalls)
+    assertEquals(3, editCalls)
+    assertEquals(1, removeCalls)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `baseline add layer control is disabled when no baseline packs are available`() = runComposeUiTest {
+    setContent {
+      ScaffoldWizardDialog(
+        state = ScaffoldWizardState(kind = ScaffoldKind.PLATFORM_PACK, optionCatalog = ScaffoldCatalogSnapshot.empty),
+        canStartScaffoldAction = true,
+        callbacks = noOpScaffoldCallbacks(),
+      )
+    }
+
+    onNodeWithText("No baseline review packs available").assertIsDisplayed()
+    onNodeWithText("Add layer").assertIsNotEnabled()
   }
 
   @Test
@@ -176,4 +342,46 @@ class SkillBillFrameScaffoldWizardTest {
     assertNull(viewModelState)
     assertNotNull(state)
   }
+
+  private fun baselineCatalog(): ScaffoldCatalogSnapshot = ScaffoldCatalogSnapshot.empty.copy(
+    baselineReviewPacks = listOf(
+      BaselineReviewPackOption(
+        platform = "kotlin",
+        displayName = "Kotlin",
+        strongRoutingSignals = listOf(".kt"),
+        skills = listOf(
+          BaselineReviewSkillOption(
+            name = "bill-kotlin-code-review",
+            supportedModes = listOf("kmp-baseline"),
+            supportedScopes = listOf("same-review-scope"),
+          ),
+        ),
+      ),
+    ),
+    baselineReviewLayerSuggestions = listOf(
+      BaselineReviewLayerSuggestion(
+        label = "Kotlin baseline",
+        triggerSignals = listOf("android", "kmp"),
+        platform = "kotlin",
+        skill = "bill-kotlin-code-review",
+        scope = "same-review-scope",
+        required = true,
+        mode = "kmp-baseline",
+      ),
+    ),
+  )
+
+  private fun noOpScaffoldCallbacks(): ScaffoldWizardCallbacks = ScaffoldWizardCallbacks(
+    onSelectKind = {},
+    onFormChanged = { _ -> },
+    onAddBaselineLayer = {},
+    onAddSuggestedBaselineLayer = {},
+    onEditBaselineLayer = { _, _ -> },
+    onRemoveBaselineLayer = {},
+    onDirtyOverrideChanged = {},
+    onPlan = {},
+    onRun = {},
+    onAcknowledgeFailure = {},
+    onDismiss = {},
+  )
 }

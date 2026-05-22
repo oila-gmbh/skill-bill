@@ -1,3 +1,23 @@
+## [2026-05-22] SKILL-50 render-runtime-composition-instructions
+Areas: runtime-kotlin/runtime-core/scaffold, runtime-kotlin/runtime-domain/scaffold/model, platform-packs/kmp, platform-packs/kotlin
+- Generated `SKILL.md` render output now carries manifest-declared code-review composition before authored execution guidance; `AuthoringTarget` receives `PlatformManifest.codeReviewComposition` only for pack baseline skills. reusable
+- KMP rendered snapshots pin the generated Review Composition section and required baseline metadata; a fixture pack without composition pins omission so empty/noisy sections do not regress.
+- KMP/Kotlin review content now treats `kmp-baseline` as manifest-declared mode, not a caller-name exception; the KMP authored body focuses on local specialist behavior after generated baseline instructions.
+- Render/install source hygiene remains enforced by render-output tests: no source-tree `SKILL.md` wrappers or generated pointer files are written during render.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-05-21] SKILL-50 schema-loader-contract
+Areas: orchestration/contracts, runtime-kotlin/runtime-core/scaffold, runtime-kotlin/runtime-domain/scaffold/model, platform-packs/kmp
+- `platform-pack-schema.yaml` now has anchored `code_review_composition.baseline_layers` for code-review composition; nested layer objects stay strict, `scope` is `"same-review-scope"`, and `required` is explicit. reusable: runtime-consumed top-level pack fields still start in schema with `x-runtime-anchored: true`.
+- `PlatformManifest` now carries typed `CodeReviewComposition` / `CodeReviewBaselineLayer` values; `code_review_composition` is filtered out of `customFields` like other anchored fields.
+- `ShellContentLoader` parses composition in `buildPack` and validates references after manifests are loaded; collection discovery validates all packs, and `loadPlatformPack` validates the reachable composition closure so single-pack callers cannot bypass missing-target, duplicate, self-reference, or cycle failures. reusable
+- `kmp-baseline` mode is intentionally narrow: accepted only for `kotlin/bill-kotlin-code-review`, not for same-named skills in other packs or Kotlin specialist skills.
+- KMP's manifest declares the Kotlin baseline layer; this only records the contract source of truth and does not generate runtime `SKILL.md` instructions yet.
+- Regression coverage lives in `PlatformPackCompositionTest`, plus anchored bijection/customFields tests; cleanup test now skips migrated source paths that no longer exist.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-05-19] SKILL-48 subtask-3 per-repo-schema-customization
 Areas: orchestration/contracts, runtime-kotlin/runtime-core/scaffold, runtime-kotlin/runtime-domain/scaffold/model, AGENTS.md
 - `orchestration/contracts/platform-pack-schema.yaml` now treats the TOP-LEVEL mapping as the per-repo extension surface: `additionalProperties: true` at root. Every TOP-LEVEL field the Kotlin runtime consumes by name carries `x-runtime-anchored: true` (10 total: `platform`, `contract_version`, `display_name`, `notes`, `routing_signals`, `declared_code_review_areas`, `declared_files`, `area_metadata`, `declared_quality_check_file`, `pointers`). Nested objects (`routing_signals`, `declared_files`, `area_metadata.<area>`, `$defs.codeReviewArea`, `pointers` entries) stay strict (`additionalProperties: false`) — per-repo extensions only relax the top-level mapping. reusable: the `x-runtime-anchored` marker is exclusive to platform-pack-schema; other runtime contracts (telemetry/workflow/install/native-agent) stay runtime-anchored end-to-end.

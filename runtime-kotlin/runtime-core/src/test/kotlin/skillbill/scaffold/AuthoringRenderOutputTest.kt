@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.testsupport.SnapshotAssertions
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
@@ -88,6 +89,11 @@ class AuthoringRenderOutputTest {
     )
     assertEquals(expectedZ, rendered.blocks[1].content)
     assertEquals(expectedA, rendered.blocks[2].content)
+    assertFalse("## Review Composition" in rendered.stdout)
+    SnapshotAssertions.assertMatchesSnapshot(
+      "snapshots/scaffold/bill-fixturepack-code-review-no-composition.render.txt",
+      rendered.stdout,
+    )
     assertFalse(Files.exists(fixture.zPointer), "render must not create pointer files")
     assertFalse(Files.exists(fixture.aPointer), "render must not create pointer files")
     assertFalse(Files.exists(fixture.skillDir.resolve("SKILL.md")), "render must not create source SKILL.md")

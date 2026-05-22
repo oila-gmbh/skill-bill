@@ -33,6 +33,14 @@ area_metadata:
   ux-accessibility:
     focus: "UX correctness and accessibility"
 
+code_review_composition:
+  baseline_layers:
+    - platform: kotlin
+      skill: bill-kotlin-code-review
+      scope: same-review-scope
+      required: true
+      mode: kmp-baseline
+
 # Pointer files (single-line markdown files containing only a relative path) are generated
 # from this block during render/install output. Targets are repo-rooted; the renderer computes
 # the correct ../-prefixed relative path. Never commit pointer files — add or modify entries here

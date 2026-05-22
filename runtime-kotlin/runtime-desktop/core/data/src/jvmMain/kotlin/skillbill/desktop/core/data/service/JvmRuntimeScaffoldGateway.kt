@@ -3,6 +3,11 @@ package skillbill.desktop.core.data.service
 import kotlinx.coroutines.CancellationException
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.domain.model.BaselineReviewCompositionEdge
+import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
+import skillbill.desktop.core.domain.model.BaselineReviewPackOption
+import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
+import skillbill.desktop.core.domain.model.ManifestEditPreview
 import skillbill.desktop.core.domain.model.PilotedPlatformPackEntry
 import skillbill.desktop.core.domain.model.PlatformPackPresetEntry
 import skillbill.desktop.core.domain.model.RepoSession
@@ -51,6 +56,7 @@ class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
 
   override suspend fun catalogSnapshot(session: RepoSession?): ScaffoldCatalogSnapshot {
     val piloted = pilotedPlatformPacks(session)
+    val baselineCatalog = baselineReviewCatalog(session)
     return ScaffoldCatalogSnapshot(
       approvedCodeReviewAreas = ScaffoldCatalog.approvedCodeReviewAreas.sorted(),
       preShellFamilies = ScaffoldCatalog.preShellFamilies.sorted(),
@@ -59,20 +65,21 @@ class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
         .map { (slug, display) -> PlatformPackPresetEntry(platform = slug, displayName = display) }
         .sortedBy { it.platform },
       pilotedPlatformPacks = piloted,
+      baselineReviewPacks = baselineCatalog.packs,
+      baselineReviewCompositionEdges = baselineCatalog.edges,
+      baselineReviewLayerSuggestions = baselineCatalog.suggestions,
       scaffoldPayloadVersion = ScaffoldCatalog.scaffoldPayloadVersion,
     )
   }
 
+  private data class DesktopBaselineCatalog(
+    val packs: List<BaselineReviewPackOption> = emptyList(),
+    val edges: List<BaselineReviewCompositionEdge> = emptyList(),
+    val suggestions: List<BaselineReviewLayerSuggestion> = emptyList(),
+  )
+
   private fun pilotedPlatformPacks(session: RepoSession?): List<PilotedPlatformPackEntry> {
-    val repoPath = session?.takeIf { it.isRecognizedSkillBillRepo }?.repoPath?.trim().orEmpty()
-    if (repoPath.isEmpty()) {
-      return emptyList()
-    }
-    val packsRoot = try {
-      Path.of(repoPath).toAbsolutePath().normalize().resolve("platform-packs")
-    } catch (_: InvalidPathException) {
-      return emptyList()
-    }
+    val packsRoot = platformPacksRoot(session) ?: return emptyList()
     return try {
       ScaffoldCatalog.discoverPilotedPlatformPacks(packsRoot)
         .map { pack ->
@@ -84,6 +91,61 @@ class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
         .sortedBy { it.platform }
     } catch (_: SkillBillRuntimeException) {
       emptyList()
+    }
+  }
+
+  private fun baselineReviewCatalog(session: RepoSession?): DesktopBaselineCatalog {
+    val packsRoot = platformPacksRoot(session) ?: return DesktopBaselineCatalog()
+    return try {
+      val catalog = ScaffoldCatalog.discoverBaselineReviewCatalog(packsRoot)
+      DesktopBaselineCatalog(
+        packs = catalog.packs.map { pack ->
+          BaselineReviewPackOption(
+            platform = pack.platform,
+            displayName = pack.displayName,
+            strongRoutingSignals = pack.strongRoutingSignals,
+            skills = pack.skills.map { skill ->
+              BaselineReviewSkillOption(
+                name = skill.name,
+                supportedModes = skill.supportedModes,
+                supportedScopes = skill.supportedScopes,
+              )
+            },
+          )
+        },
+        edges = catalog.compositionEdges.map { edge ->
+          BaselineReviewCompositionEdge(
+            sourcePlatform = edge.sourcePlatform,
+            targetPlatform = edge.targetPlatform,
+            targetSkill = edge.targetSkill,
+          )
+        },
+        suggestions = catalog.layerSuggestions.map { suggestion ->
+          BaselineReviewLayerSuggestion(
+            label = suggestion.label,
+            triggerSignals = suggestion.triggerSignals,
+            platform = suggestion.platform,
+            skill = suggestion.skill,
+            scope = suggestion.scope,
+            required = suggestion.required,
+            mode = suggestion.mode,
+          )
+        },
+      )
+    } catch (_: SkillBillRuntimeException) {
+      DesktopBaselineCatalog()
+    }
+  }
+
+  private fun platformPacksRoot(session: RepoSession?): Path? {
+    val repoPath = session?.takeIf { it.isRecognizedSkillBillRepo }?.repoPath?.trim().orEmpty()
+    if (repoPath.isEmpty()) {
+      return null
+    }
+    return try {
+      Path.of(repoPath).toAbsolutePath().normalize().resolve("platform-packs")
+    } catch (_: InvalidPathException) {
+      null
     }
   }
 
@@ -134,6 +196,9 @@ private fun ScaffoldResult.toPlan(): ScaffoldPlan = ScaffoldPlan(
   skillPath = skillPath.toPortableString(),
   createdFiles = createdFiles.map(Path::toPortableString),
   manifestEdits = manifestEdits.map(Path::toPortableString),
+  manifestPreviews = manifestPreviews.entries
+    .sortedBy { (path, _) -> path.toPortableString() }
+    .map { (path, preview) -> ManifestEditPreview(path = path.toPortableString(), content = preview) },
   symlinks = symlinks.map(Path::toPortableString),
   installTargets = installTargets.map(Path::toPortableString),
   notes = notes,

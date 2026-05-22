@@ -26,6 +26,36 @@ data class PointerSpec(
   val target: String,
 )
 
+enum class CodeReviewCompositionScope(val wireValue: String) {
+  SameReviewScope("same-review-scope"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): CodeReviewCompositionScope? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+enum class CodeReviewCompositionMode(val wireValue: String) {
+  KmpBaseline("kmp-baseline"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): CodeReviewCompositionMode? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+data class CodeReviewBaselineLayer(
+  val platform: String,
+  val skill: String,
+  val scope: CodeReviewCompositionScope,
+  val required: Boolean,
+  val mode: CodeReviewCompositionMode,
+)
+
+data class CodeReviewComposition(
+  val baselineLayers: List<CodeReviewBaselineLayer>,
+)
+
 data class PlatformManifest(
   val slug: String,
   val packRoot: Path,
@@ -37,6 +67,7 @@ data class PlatformManifest(
   val displayName: String? = null,
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,
+  val codeReviewComposition: CodeReviewComposition? = null,
   val pointers: List<PointerSpec> = emptyList(),
   /**
    * SKILL-48 Subtask 3: carries every non-anchored top-level field from `platform.yaml`
@@ -57,6 +88,41 @@ data class PlatformManifest(
   val routedSkillName: String? = declaredFiles.baseline?.let { "bill-$slug-code-review" }
 }
 
+data class BaselineReviewCatalog(
+  val packs: List<BaselineReviewPackEntry>,
+  val compositionEdges: List<BaselineReviewCompositionEdge>,
+  val layerSuggestions: List<BaselineReviewLayerSuggestion> = emptyList(),
+)
+
+data class BaselineReviewPackEntry(
+  val platform: String,
+  val displayName: String,
+  val strongRoutingSignals: List<String>,
+  val skills: List<BaselineReviewSkillEntry>,
+)
+
+data class BaselineReviewSkillEntry(
+  val name: String,
+  val supportedModes: List<String>,
+  val supportedScopes: List<String>,
+)
+
+data class BaselineReviewCompositionEdge(
+  val sourcePlatform: String,
+  val targetPlatform: String,
+  val targetSkill: String,
+)
+
+data class BaselineReviewLayerSuggestion(
+  val label: String,
+  val triggerSignals: List<String>,
+  val platform: String,
+  val skill: String,
+  val scope: String,
+  val required: Boolean,
+  val mode: String,
+)
+
 data class GovernedAddonFile(
   val packSlug: String,
   val addonPath: Path,
@@ -70,6 +136,7 @@ data class ScaffoldResult(
   val skillPath: Path,
   val createdFiles: List<Path> = emptyList(),
   val manifestEdits: List<Path> = emptyList(),
+  val manifestPreviews: Map<Path, String> = emptyMap(),
   val symlinks: List<Path> = emptyList(),
   val installTargets: List<Path> = emptyList(),
   val notes: List<String> = emptyList(),

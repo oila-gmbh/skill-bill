@@ -1,0 +1,23 @@
+===== SKILL.md: platform-packs/fixturepack/code-review/bill-fixturepack-code-review/SKILL.md =====
+---
+name: bill-fixturepack-code-review
+description: Fixture platform render skill.
+---
+
+## Descriptor
+
+Governed skill: `bill-fixturepack-code-review`
+Family: `code-review`
+Platform pack: `fixturepack` (Fixturepack)
+Description: Use when reviewing Fixturepack changes across code-review specialists.
+
+## Execution
+
+
+## Ceremony
+
+===== pointer: platform-packs/fixturepack/code-review/bill-fixturepack-code-review/z.md =====
+../../../../shared/z.md
+
+===== pointer: platform-packs/fixturepack/code-review/bill-fixturepack-code-review/a.md =====
+../../../../shared/a.md

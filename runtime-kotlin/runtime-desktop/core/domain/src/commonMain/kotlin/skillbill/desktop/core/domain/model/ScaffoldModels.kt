@@ -84,6 +84,7 @@ sealed class ScaffoldPayload {
     val specialistAreas: List<String> = emptyList(),
     val strongRoutingSignals: List<String> = emptyList(),
     val tieBreakers: List<String> = emptyList(),
+    val baselineLayers: List<ScaffoldBaselineLayerPayload> = emptyList(),
     val subagentSpecialists: List<String> = emptyList(),
     val suppressSubagents: Boolean = false,
     val contentBody: String? = null,
@@ -108,6 +109,17 @@ sealed class ScaffoldPayload {
         if (strongRoutingSignals.isNotEmpty()) routing["strong"] = strongRoutingSignals
         if (tieBreakers.isNotEmpty()) routing["tie_breakers"] = tieBreakers
         target["routing_signals"] = routing
+      }
+      if (baselineLayers.isNotEmpty()) {
+        target["baseline_layers"] = baselineLayers.map { layer ->
+          linkedMapOf<String, Any?>(
+            "platform" to layer.platform,
+            "skill" to layer.skill,
+            "scope" to layer.scope,
+            "required" to layer.required,
+            "mode" to layer.mode,
+          )
+        }
       }
       if (subagentSpecialists.isNotEmpty()) target["subagent_specialists"] = subagentSpecialists
       if (suppressSubagents) target["no_subagents"] = true
@@ -171,6 +183,14 @@ sealed class ScaffoldPayload {
   }
 }
 
+data class ScaffoldBaselineLayerPayload(
+  val platform: String,
+  val skill: String,
+  val scope: String,
+  val required: Boolean,
+  val mode: String,
+)
+
 /**
  * Snapshot of [ScaffoldCatalog] entries exposed to the wizard UI. Common-main does not have
  * access to runtime-core, so the JVM gateway projects the snapshot at composition time.
@@ -181,6 +201,9 @@ data class ScaffoldCatalogSnapshot(
   val shelledFamilies: List<String>,
   val platformPackPresets: List<PlatformPackPresetEntry>,
   val pilotedPlatformPacks: List<PilotedPlatformPackEntry>,
+  val baselineReviewPacks: List<BaselineReviewPackOption>,
+  val baselineReviewCompositionEdges: List<BaselineReviewCompositionEdge>,
+  val baselineReviewLayerSuggestions: List<BaselineReviewLayerSuggestion>,
   val scaffoldPayloadVersion: String,
 ) {
   companion object {
@@ -190,6 +213,9 @@ data class ScaffoldCatalogSnapshot(
       shelledFamilies = emptyList(),
       platformPackPresets = emptyList(),
       pilotedPlatformPacks = emptyList(),
+      baselineReviewPacks = emptyList(),
+      baselineReviewCompositionEdges = emptyList(),
+      baselineReviewLayerSuggestions = emptyList(),
       scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
     )
   }
@@ -205,6 +231,35 @@ data class PilotedPlatformPackEntry(
   val displayName: String,
 )
 
+data class BaselineReviewPackOption(
+  val platform: String,
+  val displayName: String,
+  val strongRoutingSignals: List<String>,
+  val skills: List<BaselineReviewSkillOption>,
+)
+
+data class BaselineReviewSkillOption(
+  val name: String,
+  val supportedModes: List<String>,
+  val supportedScopes: List<String>,
+)
+
+data class BaselineReviewCompositionEdge(
+  val sourcePlatform: String,
+  val targetPlatform: String,
+  val targetSkill: String,
+)
+
+data class BaselineReviewLayerSuggestion(
+  val label: String,
+  val triggerSignals: List<String>,
+  val platform: String,
+  val skill: String,
+  val scope: String,
+  val required: Boolean,
+  val mode: String,
+)
+
 /**
  * Mirror of the runtime's `ScaffoldResult` fields, lifted into a common-main-safe DTO so the
  * scaffold preview and success surfaces don't import `java.nio.file.Path` from JVM-only code.
@@ -215,9 +270,15 @@ data class ScaffoldPlan(
   val skillPath: String,
   val createdFiles: List<String> = emptyList(),
   val manifestEdits: List<String> = emptyList(),
+  val manifestPreviews: List<ManifestEditPreview> = emptyList(),
   val symlinks: List<String> = emptyList(),
   val installTargets: List<String> = emptyList(),
   val notes: List<String> = emptyList(),
+)
+
+data class ManifestEditPreview(
+  val path: String,
+  val content: String,
 )
 
 /** Mirror DTO for the `ScaffoldResult` produced by execute mode. Same shape as [ScaffoldPlan]. */

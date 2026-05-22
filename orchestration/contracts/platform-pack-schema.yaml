@@ -186,6 +186,57 @@ properties:
     description: >
       Optional pack-relative path to the quality-check specialist's
       `content.md`. Must end in `content.md` when present.
+  code_review_composition:
+    type: object
+    additionalProperties: false
+    x-runtime-anchored: true
+    description: >
+      Optional code-review composition contract. Baseline layers let one
+      pack explicitly layer another pack's code-review skill into the same
+      review run. Cross-pack reference coherence is enforced in Kotlin after
+      all manifests are loaded.
+    required:
+      - baseline_layers
+    properties:
+      baseline_layers:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - platform
+            - skill
+            - scope
+            - required
+            - mode
+          properties:
+            platform:
+              type: string
+              minLength: 1
+              description: Referenced platform pack slug.
+            skill:
+              type: string
+              minLength: 1
+              description: Referenced code-review skill name from the target pack.
+            scope:
+              type: string
+              enum:
+                - same-review-scope
+              description: Initial scope mode; the baseline runs on the same review scope.
+            required:
+              type: boolean
+              description: >
+                Whether this baseline layer is required for a valid composed review.
+                This field is explicit by contract and is not defaulted by the parser.
+            mode:
+              type: string
+              enum:
+                - kmp-baseline
+              description: >
+                Composition behavior mode. Kotlin coherence currently accepts
+                `kmp-baseline` only for `kotlin/bill-kotlin-code-review`.
   pointers:
     type: object
     x-runtime-anchored: true
@@ -256,3 +307,25 @@ x-coherence-checks:
       Within a single skill-relative directory in `pointers`, every pointer
       `name` must be unique. Enforced in
       `ShellContentLoader.parsePointers`.
+  composition-references-resolve:
+    description: >
+      Every `code_review_composition.baseline_layers[]` entry must reference
+      an existing platform pack and an existing code-review skill from that
+      pack. Enforced after all manifests are loaded.
+  composition-no-self-reference:
+    description: >
+      A pack must not declare a baseline layer that references its own
+      code-review skill. Enforced after all manifests are loaded.
+  composition-no-duplicate-layers:
+    description: >
+      A pack must not declare duplicate baseline layers for the same
+      referenced pack and skill. Enforced after all manifests are loaded.
+  composition-no-cycles:
+    description: >
+      Baseline-layer references must not form cycles across platform packs.
+      Enforced after all manifests are loaded.
+  composition-mode-supported:
+    description: >
+      `kmp-baseline` is currently supported only when the referenced platform
+      and skill are `kotlin/bill-kotlin-code-review`. Enforced after all
+      manifests are loaded.

@@ -1,13 +1,13 @@
 ---
 name: bill-kmp-code-review
-description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the appropriate Kotlin baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
+description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the manifest-declared baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
 ---
 
 # Android/KMP PR Review
 
 You are an experienced Android/KMP architect conducting a code review.
 
-Your job is to preserve Android/KMP review depth without duplicating the shared Kotlin review logic.
+Your job is to preserve Android/KMP review depth without duplicating shared Kotlin review logic. The generated Review Composition section is the source of truth for required baseline layers; apply this authored KMP guidance after those baseline instructions have been handled.
 ---
 
 ## Project Classification
@@ -32,7 +32,7 @@ Classify the review as one of:
 
 - If Android/KMP signals are strong, keep the Android/KMP route.
 - If Android/KMP signals are weak or absent, delegate to `bill-kotlin-code-review` and stop instead of pretending mobile-specific coverage exists.
-- If backend/server files are also touched, keep the `kmp` route and use `bill-kotlin-code-review` as the baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
+- If backend/server files are also touched, keep the `kmp` route and rely on the manifest-declared baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
 - When uncertain, prefer the safer route that preserves Android/KMP review depth.
 
 ## Governed Add-On Resolution
@@ -61,18 +61,17 @@ After the stack is already classified as `kmp`, resolve governed add-ons before 
 - For small, low-risk Android/KMP diffs, keep the review compact.
 - For larger, mixed, or higher-risk diffs, split the work into focused baseline and specialist passes.
 
-### Step 2: Choose and run the baseline Kotlin-family review
+### Step 2: Confirm the manifest-declared baseline layer
 
-Use the same scope to run exactly one baseline review layer:
-- Use `bill-kotlin-code-review`
+The generated Review Composition section defines the required baseline layer sequence. Treat that section as authoritative for which baseline skill to run, the mode to use, and the context that must be forwarded.
 
-That baseline review layer owns:
+That baseline layer owns:
 - shared Kotlin architecture, correctness, security, performance, and testing review
 - backend/server risk coverage within the Kotlin specialist set when backend signals are present
 - the baseline Kotlin findings that every Android/KMP review should inherit
 
-When invoking the baseline review:
-- tell it that Android/KMP scope is valid
+When invoking the baseline layer:
+- tell it that Android/KMP scope is valid for the manifest-declared baseline mode
 - tell it to keep KMP-only review concerns out of scope
 - pass the same diff source, changed files, and relevant override guidance
 

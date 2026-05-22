@@ -861,6 +861,18 @@ fun SkillBillRoute(
       onFormChanged = { transform ->
         state = viewModel.updateScaffoldForm(transform)
       },
+      onAddBaselineLayer = {
+        state = viewModel.addScaffoldBaselineLayer()
+      },
+      onAddSuggestedBaselineLayer = {
+        state = viewModel.addSuggestedScaffoldBaselineLayer()
+      },
+      onEditBaselineLayer = { index, transform ->
+        state = viewModel.editScaffoldBaselineLayer(index, transform)
+      },
+      onRemoveBaselineLayer = { index ->
+        state = viewModel.removeScaffoldBaselineLayer(index)
+      },
       onDirtyOverrideChanged = { override ->
         state = viewModel.setScaffoldDirtyOverride(override)
       },

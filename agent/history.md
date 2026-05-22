@@ -1,3 +1,13 @@
+## [2026-05-22] scaffold-payload-cli
+Areas: orchestration/shell-content-contract, runtime-kotlin/runtime-core scaffold, runtime-kotlin/runtime-cli, docs
+- SKILL-50 subtask 3 extended platform-pack scaffold payloads with optional `baseline_layers`, validating references before mutation and rendering them as `code_review_composition.baseline_layers`. reusable
+- Dry-run and execute now share the same planned manifest model; dry-run exposes `manifest_edit_previews`, while legacy payloads without `baseline_layers` still omit composition.
+- `skill-bill show` now surfaces manifest-declared review composition with required/optional layer counts, preserving `baseline_layers[].required` semantics. reusable
+- Pitfall fixed in review: composition mode support lives behind shared `unsupportedCompositionModeReason` so scaffold payload validation and manifest loading cannot drift.
+- Tests cover valid write, legacy no-composition payloads, structural invalid payloads, invalid-reference rollback, non-platform-pack rejection, dry-run preview, and show visibility.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-05-17] final-integration-docs-validation
 Areas: README.md, docs/getting-started.md, docs/desktop-skill-bill-app, docs/skill-source-generation.md, runtime-kotlin install/desktop validation
 - Closed SKILL-45 parent traceability in user-facing docs, including native package host/toolchain limits for DMG/MSI/Deb/RPM production and Arch/CachyOS RPM or loose-distribution fallback guidance.

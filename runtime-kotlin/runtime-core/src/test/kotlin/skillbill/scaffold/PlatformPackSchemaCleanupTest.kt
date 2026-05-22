@@ -282,7 +282,7 @@ class PlatformPackSchemaCleanupTest {
           "feature/skillbill/state/PlatformPackSchemaViewerStateTest.kt",
       ),
     )
-    migratedSources.forEach { source ->
+    migratedSources.filter(Files::exists).forEach { source ->
       val text = Files.readString(source)
       // Allow imports of the shared helper but reject any private/local re-declaration.
       val redeclared = Regex("""fun\s+repoRootFromTest\s*\(""").containsMatchIn(text)

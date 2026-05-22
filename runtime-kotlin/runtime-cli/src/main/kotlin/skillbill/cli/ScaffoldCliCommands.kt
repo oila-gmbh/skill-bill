@@ -524,11 +524,16 @@ private fun runNativeScaffoldPayload(payload: Map<String, *>, dryRun: Boolean, f
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), format)
     }
+  val created = result.run { createdFiles }.map { path -> path.toString() }
   val presentation =
     mapOf(
       "status" to "ok",
       "session_id" to sessionId,
       "skill_path" to result.skillPath.toString(),
+      "dry_run" to dryRun,
+      "created_files" to created,
+      "manifest_edits" to result.manifestEdits.map { path -> path.toString() },
+      "manifest_edit_previews" to result.manifestPreviews.mapKeys { (path, _) -> path.toString() },
       "notes" to result.notes,
     )
   return CliExecutionResult(

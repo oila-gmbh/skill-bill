@@ -23,11 +23,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,10 +46,35 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
+import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.ScaffoldWizardState
+
+/**
+ * Centralized wizard copy. This module does not currently expose stringResource, so local string
+ * objects are the existing desktop style for keeping user-facing labels in one place.
+ */
+private object ScaffoldWizardStrings {
+  const val BASELINE_SECTION = "Baseline review layers"
+  const val NO_BASELINE_LAYERS = "(none)"
+  const val NO_BASELINE_PACKS = "No baseline review packs available"
+  const val ADD_LAYER = "Add layer"
+  const val ADD_SUGGESTED_BASELINE_PREFIX = "Add"
+  const val REMOVE_LAYER = "Remove"
+  const val BASELINE_PACK = "Baseline pack"
+  const val BASELINE_SKILL = "Baseline skill"
+  const val MODE = "Mode"
+  const val SCOPE = "Scope"
+  const val REQUIRED = "Required"
+  const val REQUIRED_CONTENT_DESCRIPTION = "Required baseline layer"
+  const val VALIDATION_TITLE = "Fix form validation"
+  const val MANIFEST_EDIT_PREVIEWS = "Manifest edit previews"
+  const val SHOW_MANIFEST_YAML = "Show manifest YAML"
+  const val HIDE_MANIFEST_YAML = "Hide manifest YAML"
+}
 
 /**
  * Public callbacks the dialog needs to drive the view model. Hoisting the callbacks here keeps
@@ -55,6 +84,10 @@ import skillbill.desktop.core.domain.model.ScaffoldWizardState
 data class ScaffoldWizardCallbacks(
   val onSelectKind: (ScaffoldKind) -> Unit,
   val onFormChanged: ((ScaffoldWizardFormFields) -> ScaffoldWizardFormFields) -> Unit,
+  val onAddBaselineLayer: () -> Unit,
+  val onAddSuggestedBaselineLayer: () -> Unit,
+  val onEditBaselineLayer: (Int, (ScaffoldBaselineLayerForm) -> ScaffoldBaselineLayerForm) -> Unit,
+  val onRemoveBaselineLayer: (Int) -> Unit,
   val onDirtyOverrideChanged: (Boolean) -> Unit,
   val onPlan: () -> Unit,
   val onRun: () -> Unit,
@@ -106,6 +139,9 @@ fun ScaffoldWizardDialog(
           )
         }
         WizardForm(state = state, callbacks = callbacks)
+        if (state.validationErrors.isNotEmpty()) {
+          ValidationBanner(state.validationErrors)
+        }
         // F-102: a Failed result supersedes the (now-stale) plan; render the failure console only
         // so the user is not led to believe Run is ready to fire. Preview/Success continue to
         // show the plan alongside the banner when relevant.
@@ -291,6 +327,7 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
           callbacks.onFormChanged { it.copy(skeletonMode = value) }
         },
       )
+      BaselineLayerControls(state = state, callbacks = callbacks)
     }
     ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> {
       PresetPicker(
@@ -380,6 +417,185 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
 }
 
 @Composable
+private fun BaselineLayerControls(state: ScaffoldWizardState, callbacks: ScaffoldWizardCallbacks) {
+  val fields = state.formFields
+  val hasBaselinePacks = state.optionCatalog.baselineReviewPacks.isNotEmpty()
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    SectionLabel(ScaffoldWizardStrings.BASELINE_SECTION)
+    if (fields.baselineLayers.isEmpty()) {
+      Text(
+        text = ScaffoldWizardStrings.NO_BASELINE_LAYERS,
+        color = SkillBillTheme.colors.onSurfaceVariant,
+        fontSize = 11.sp,
+      )
+    }
+    fields.baselineLayers.forEachIndexed { index, layer ->
+      key(layer.rowId) {
+        BaselineLayerEditor(
+          index = index,
+          layer = layer,
+          state = state,
+          callbacks = callbacks,
+        )
+      }
+    }
+    if (!hasBaselinePacks) {
+      Text(
+        text = ScaffoldWizardStrings.NO_BASELINE_PACKS,
+        color = SkillBillTheme.colors.onSurfaceVariant,
+        fontSize = 11.sp,
+      )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      InlineButton(
+        label = ScaffoldWizardStrings.ADD_LAYER,
+        enabled = !state.busy && hasBaselinePacks,
+        onClick = callbacks.onAddBaselineLayer,
+      )
+      if (state.baselineLayerSuggestion != null) {
+        InlineButton(
+          label = "${ScaffoldWizardStrings.ADD_SUGGESTED_BASELINE_PREFIX} " +
+            state.baselineLayerSuggestionLabel.orEmpty(),
+          enabled = !state.busy,
+          onClick = callbacks.onAddSuggestedBaselineLayer,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun BaselineLayerEditor(
+  index: Int,
+  layer: ScaffoldBaselineLayerForm,
+  state: ScaffoldWizardState,
+  callbacks: ScaffoldWizardCallbacks,
+) {
+  val pack = state.optionCatalog.baselineReviewPacks.firstOrNull { it.platform == layer.platform }
+  val skill = pack?.skills?.firstOrNull { it.name == layer.skill }
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, SkillBillTheme.semanticTones.dialog.border, RoundedCornerShape(6.dp))
+      .padding(horizontal = 10.dp, vertical = 8.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text(
+        text = "Layer ${index + 1}",
+        color = SkillBillTheme.semanticTones.dialog.content,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.weight(1f),
+      )
+      InlineButton(
+        label = ScaffoldWizardStrings.REMOVE_LAYER,
+        enabled = !state.busy,
+        onClick = { callbacks.onRemoveBaselineLayer(index) },
+      )
+    }
+    PresetPicker(
+      label = ScaffoldWizardStrings.BASELINE_PACK,
+      options = state.optionCatalog.baselineReviewPacks.map { option -> option.platform to option.displayName },
+      selected = layer.platform,
+      enabled = !state.busy,
+      onSelected = { platform ->
+        val nextPack = state.optionCatalog.baselineReviewPacks.firstOrNull { it.platform == platform }
+        val nextSkill = nextPack?.skills?.firstOrNull()
+        callbacks.onEditBaselineLayer(index) {
+          it.copy(
+            platform = platform,
+            skill = nextSkill?.name.orEmpty(),
+            mode = nextSkill?.supportedModes?.firstOrNull().orEmpty(),
+            scope = nextSkill?.supportedScopes?.firstOrNull() ?: ScaffoldBaselineLayerForm.DEFAULT_SCOPE,
+          )
+        }
+      },
+    )
+    PresetPicker(
+      label = ScaffoldWizardStrings.BASELINE_SKILL,
+      options = pack?.skills.orEmpty().map { option -> option.name to option.name },
+      selected = layer.skill,
+      enabled = !state.busy && pack != null,
+      onSelected = { skillName ->
+        val nextSkill = pack?.skills?.firstOrNull { it.name == skillName }
+        callbacks.onEditBaselineLayer(index) {
+          it.copy(
+            skill = skillName,
+            mode = nextSkill?.supportedModes?.firstOrNull().orEmpty(),
+            scope = nextSkill?.supportedScopes?.firstOrNull() ?: ScaffoldBaselineLayerForm.DEFAULT_SCOPE,
+          )
+        }
+      },
+    )
+    ModeAndScopeRow(
+      index = index,
+      layer = layer,
+      skill = skill,
+      enabled = !state.busy && skill != null,
+      callbacks = callbacks,
+    )
+  }
+}
+
+@Composable
+private fun ModeAndScopeRow(
+  index: Int,
+  layer: ScaffoldBaselineLayerForm,
+  skill: BaselineReviewSkillOption?,
+  enabled: Boolean,
+  callbacks: ScaffoldWizardCallbacks,
+) {
+  Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+    Box(modifier = Modifier.weight(1f)) {
+      PresetPicker(
+        label = ScaffoldWizardStrings.MODE,
+        options = skill?.supportedModes.orEmpty().map { mode -> mode to mode },
+        selected = layer.mode,
+        enabled = enabled,
+        onSelected = { mode ->
+          callbacks.onEditBaselineLayer(index) { it.copy(mode = mode) }
+        },
+      )
+    }
+    Box(modifier = Modifier.weight(1f)) {
+      PresetPicker(
+        label = ScaffoldWizardStrings.SCOPE,
+        options = skill?.supportedScopes.orEmpty().map { scope -> scope to scope },
+        selected = layer.scope,
+        enabled = enabled,
+        onSelected = { scope ->
+          callbacks.onEditBaselineLayer(index) { it.copy(scope = scope) }
+        },
+      )
+    }
+    RequiredToggle(
+      required = layer.required,
+      enabled = enabled,
+      onToggle = {
+        callbacks.onEditBaselineLayer(index) { it.copy(required = !it.required) }
+      },
+    )
+  }
+}
+
+@Composable
+private fun RequiredToggle(required: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    SectionLabel(ScaffoldWizardStrings.REQUIRED)
+    Checkbox(
+      checked = required,
+      enabled = enabled,
+      onCheckedChange = { onToggle() },
+      modifier = Modifier.semantics {
+        contentDescription = ScaffoldWizardStrings.REQUIRED_CONTENT_DESCRIPTION
+      },
+    )
+  }
+}
+
+@Composable
 private fun SectionLabel(text: String) {
   Text(
     text = text,
@@ -450,7 +666,10 @@ private fun PresetPicker(
         fontSize = 11.sp,
       )
     } else {
-      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+      ) {
         options.forEach { (value, display) ->
           val isSelected = value == selected
           val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
@@ -497,9 +716,62 @@ private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) 
     )
     PreviewSection(label = "Planned files", lines = plan.createdFiles)
     PreviewSection(label = "Manifest edits", lines = plan.manifestEdits)
+    ManifestPreviewSection(plan.manifestPreviews)
     PreviewSection(label = "Symlinks", lines = plan.symlinks)
     PreviewSection(label = "Install targets", lines = plan.installTargets)
     PreviewSection(label = "Notes", lines = plan.notes)
+  }
+}
+
+@Composable
+private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.model.ManifestEditPreview>) {
+  if (previews.isEmpty()) return
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text(
+      text = ScaffoldWizardStrings.MANIFEST_EDIT_PREVIEWS,
+      color = colors.onSurfaceVariant,
+      fontSize = 10.5.sp,
+      fontFamily = FontFamily.Monospace,
+    )
+    previews.forEach { preview ->
+      var expanded by remember(preview.path) { mutableStateOf(false) }
+      Text(
+        text = preview.path,
+        color = dialogTone.content,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      InlineButton(
+        label = if (expanded) {
+          ScaffoldWizardStrings.HIDE_MANIFEST_YAML
+        } else {
+          ScaffoldWizardStrings.SHOW_MANIFEST_YAML
+        },
+        enabled = true,
+        onClick = { expanded = !expanded },
+      )
+      if (expanded) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(SkillBillTheme.colors.background)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+          Text(
+            text = preview.content,
+            color = SkillBillTheme.colors.onBackground,
+            fontSize = 10.5.sp,
+            fontFamily = FontFamily.Monospace,
+          )
+        }
+      }
+    }
   }
 }
 
@@ -523,6 +795,34 @@ private fun PreviewSection(label: String, lines: List<String>) {
         fontFamily = FontFamily.Monospace,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+@Composable
+private fun ValidationBanner(errors: List<String>) {
+  val tone = SkillBillTheme.semanticTones.warningBanner
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .background(tone.container)
+      .padding(horizontal = 12.dp, vertical = 10.dp),
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Text(
+      text = ScaffoldWizardStrings.VALIDATION_TITLE,
+      color = tone.content,
+      fontSize = 12.sp,
+      fontWeight = FontWeight.Medium,
+    )
+    errors.forEach { error ->
+      Text(
+        text = error,
+        color = tone.content,
+        fontSize = 11.sp,
       )
     }
   }
@@ -693,6 +993,24 @@ private fun WizardFooter(
       onClick = onRun,
     )
   }
+}
+
+@Composable
+private fun InlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
+  Text(
+    text = label,
+    color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
+    fontSize = 11.sp,
+    modifier = Modifier
+      .clip(RoundedCornerShape(6.dp))
+      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .background(colors.surfaceVariant)
+      .semantics { contentDescription = label }
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+      .padding(horizontal = 10.dp, vertical = 6.dp),
+  )
 }
 
 @Composable

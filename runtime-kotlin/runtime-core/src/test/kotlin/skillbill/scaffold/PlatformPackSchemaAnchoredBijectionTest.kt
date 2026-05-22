@@ -42,6 +42,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "declared_files",
     "area_metadata",
     "declared_quality_check_file",
+    "code_review_composition",
     "pointers",
   )
 

@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.nativeagent.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.NATIVE_AGENT_SOURCE_DIR
 import skillbill.nativeagent.parseNativeAgentSourceFile
+import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -35,6 +36,12 @@ internal fun renderWrapper(target: AuthoringTarget): String {
       appendLine()
       appendLine()
     }
+    val reviewComposition = renderReviewCompositionSection(target)
+    if (reviewComposition.isNotBlank()) {
+      append(reviewComposition.trimEnd())
+      appendLine()
+      appendLine()
+    }
     appendLine("## Execution")
     if (executionBody.isNotBlank()) {
       appendLine()
@@ -52,6 +59,42 @@ internal fun renderWrapper(target: AuthoringTarget): String {
     appendLine()
   }
 }
+
+private fun renderReviewCompositionSection(target: AuthoringTarget): String {
+  val baselineLayers = target.codeReviewComposition?.baselineLayers.orEmpty()
+  return if (baselineLayers.isEmpty()) {
+    ""
+  } else {
+    buildString {
+      appendLine("## Review Composition")
+      appendLine()
+      appendLine(
+        "This platform pack declares code-review composition in `platform.yaml`. Runtime agents MUST run each " +
+          "required baseline layer before selecting or running pack-local specialists.",
+      )
+      appendLine()
+      appendLine(
+        "Scope propagation is mandatory: pass the same review IDs, applied learnings, AGENTS guidance, " +
+          "changed files, and stack signals into every baseline layer and then into any pack-local " +
+          "specialist review.",
+      )
+      appendLine(
+        "Keep baseline-layer findings attributed to that layer before merging and deduplicating them with pack-local " +
+          "specialist findings.",
+      )
+      appendLine()
+      appendLine("### Required Baseline Layers")
+      appendLine()
+      baselineLayers.forEach { layer ->
+        appendLine("- ${renderBaselineLayerLabel(layer)}")
+      }
+    }
+  }
+}
+
+private fun renderBaselineLayerLabel(layer: CodeReviewBaselineLayer): String =
+  "`" + layer.platform + "/" + layer.skill + "` with scope `" + layer.scope.wireValue + "`, mode `" +
+    layer.mode.wireValue + "`, required `" + layer.required + "`."
 
 private fun renderGeneratedSubagentSpawnRuntimeNotes(target: AuthoringTarget): String {
   val nativeAgentDir = target.contentFile.parent.resolve(NATIVE_AGENT_SOURCE_DIR)
