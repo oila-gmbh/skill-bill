@@ -68,6 +68,7 @@ private fun parseNativeAgentBundleEntry(path: Path, index: Int, entry: Any?): Na
 }
 
 fun renderNativeAgentBundle(agents: List<NativeAgentSource>): String = buildString {
+  append("contract_version: \"").append(NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION).append('"').append('\n')
   append("agents:").append('\n')
   agents.forEach { agent ->
     append("  - name: ${agent.name}").append('\n')

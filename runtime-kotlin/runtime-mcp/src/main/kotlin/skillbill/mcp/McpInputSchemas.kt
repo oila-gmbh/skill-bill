@@ -8,6 +8,8 @@ internal val historySignalSchema: Map<String, Any?> =
   stringSchema(enum = listOf("none", "irrelevant", "low", "medium", "high"))
 internal val qualityCheckScopeSchema: Map<String, Any?> =
   stringSchema(enum = listOf("files", "working_tree", "branch_diff", "repo"))
+internal val remoteStatsWorkflowSchema: Map<String, Any?> =
+  stringSchema(enum = listOf("verify", "implement", "bill-feature-verify", "bill-feature-implement"))
 
 internal fun objectSchema(
   required: List<String> = emptyList(),
@@ -52,6 +54,17 @@ internal fun workflowUpdateSchema(workflowStatusEnum: List<String>, stepIdEnum: 
       "session_id" to stringSchema(),
     ),
   )
+
+internal fun remoteStatsSchema(): Map<String, Any?> = objectSchema(
+  required = listOf("workflow"),
+  properties = mapOf(
+    "workflow" to remoteStatsWorkflowSchema,
+    "since" to stringSchema(),
+    "date_from" to stringSchema(),
+    "date_to" to stringSchema(),
+    "group_by" to stringSchema(enum = listOf("", "day", "week")),
+  ),
+)
 
 internal fun stringSchema(enum: List<String> = emptyList()): Map<String, Any?> = if (enum.isEmpty()) {
   mapOf("type" to "string")

@@ -163,7 +163,7 @@ internal fun resolveLearnings(arguments: Map<String, Any?>, context: McpRuntimeC
 internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.telemetryRemoteStats(
     RemoteStatsRequest(
-      workflow = arguments.string("workflow"),
+      workflow = mapRemoteStatsWorkflow(arguments.string("workflow")),
       since = arguments.string("since"),
       dateFrom = arguments.string("date_from"),
       dateTo = arguments.string("date_to"),
@@ -171,6 +171,15 @@ internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRunt
     ),
     context,
   )
+
+private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
+  "verify" -> "bill-feature-verify"
+  "implement" -> "bill-feature-implement"
+  "bill-feature-verify", "bill-feature-implement" -> workflow
+  else -> throw IllegalArgumentException(
+    "workflow must be one of: verify, implement, bill-feature-verify, bill-feature-implement.",
+  )
+}
 
 internal fun newSkillScaffold(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.newSkillScaffold(

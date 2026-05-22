@@ -137,6 +137,11 @@ They remain source files: render and install flows may generate provider-native
 cache artifacts from them, but must not replace, delete, or commit generated
 output over the source files.
 
+Newly authored and rendered neutral sources include a top-level
+`contract_version` pin. The native-agent composition schema accepts older
+sources that omit the key, but a present value is validated against the runtime
+native-agent composition contract version.
+
 A markdown source frontmatter or bundled entry may declare:
 
 ```yaml
