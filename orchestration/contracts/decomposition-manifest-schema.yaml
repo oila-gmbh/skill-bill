@@ -1,0 +1,252 @@
+# Decomposition manifest schema (canonical source of truth).
+#
+# This file describes the parent manifest written beside a decomposed
+# feature's parent spec under `.feature-specs/<issue>-<feature>/`. It is
+# authored in YAML for human readability and consumed as a JSON Schema
+# (Draft 2020-12) by the Kotlin runtime
+# (`DecompositionManifestSchemaValidator` in `runtime-domain`).
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines TYPES, ENUMS, REQUIRED-VS-OPTIONAL fields, and
+#   VALUE-LEVEL constraints (execution model enum, ordered subtask
+#   shape, non-empty paths, etc.) — anything expressible in pure JSON
+#   Schema.
+# - Cross-field "coherence" rules that JSON Schema cannot express
+#   cleanly stay in Kotlin (`DecompositionManifestValidator`). Every
+#   such rule is named below under `x-coherence-checks` so the schema
+#   document alone fully describes the contract.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by `DECOMPOSITION_MANIFEST_CONTRACT_VERSION`
+#   in
+#   `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt`.
+# - The parity test `DecompositionManifestSchemaContractVersionTest`
+#   fails the build if they diverge. To bump the contract, edit BOTH
+#   constants in the same change.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/decomposition-manifest-schema.yaml"
+title: "Parent decomposition manifest"
+description: >
+  Schema for the parent manifest written when bill-feature-implement
+  decomposes an oversized feature into ordered subtask specs. The
+  manifest is optional for ordinary single-spec workflows, but required
+  at the decomposition write seam.
+type: object
+additionalProperties: false
+$defs:
+  executionModel:
+    type: string
+    enum:
+      - same_branch_commit_per_subtask
+      - stacked_branches
+    default: same_branch_commit_per_subtask
+  subtaskId:
+    type: integer
+    minimum: 1
+  subtaskStatus:
+    type: string
+    enum:
+      - pending
+      - in_progress
+      - blocked
+      - complete
+      - skipped
+  runtimeResult:
+    type:
+      - object
+      - "null"
+    additionalProperties: true
+  dependency:
+    type: object
+    additionalProperties: false
+    required:
+      - subtask_id
+      - optional
+      - skipped
+    properties:
+      subtask_id:
+        $ref: "#/$defs/subtaskId"
+      optional:
+        type: boolean
+      skipped:
+        type: boolean
+  subtask:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - name
+      - spec_path
+      - status
+      - branch
+      - commit_sha
+      - workflow_id
+      - review_result
+      - audit_result
+      - validation_result
+      - blocked_reason
+      - last_resumable_step
+      - dependencies
+    properties:
+      id:
+        $ref: "#/$defs/subtaskId"
+      name:
+        type: string
+        minLength: 1
+      spec_path:
+        type: string
+        minLength: 1
+      status:
+        $ref: "#/$defs/subtaskStatus"
+      branch:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      commit_sha:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      workflow_id:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      review_result:
+        $ref: "#/$defs/runtimeResult"
+      audit_result:
+        $ref: "#/$defs/runtimeResult"
+      validation_result:
+        $ref: "#/$defs/runtimeResult"
+      blocked_reason:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      last_resumable_step:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      dependencies:
+        type: array
+        items:
+          $ref: "#/$defs/dependency"
+  stackBranch:
+    type: object
+    additionalProperties: false
+    required:
+      - subtask_id
+      - branch
+      - base_branch
+    properties:
+      subtask_id:
+        $ref: "#/$defs/subtaskId"
+      branch:
+        type: string
+        minLength: 1
+      base_branch:
+        type: string
+        minLength: 1
+  currentSubtaskIntent:
+    type: object
+    additionalProperties: false
+    required:
+      - subtask_id
+      - action
+    properties:
+      subtask_id:
+        type: integer
+        minimum: 0
+      action:
+        type: string
+        enum:
+          - start
+          - resume
+          - blocked
+          - none
+required:
+  - contract_version
+  - issue_key
+  - feature_name
+  - parent_spec_path
+  - execution_model
+  - base_branch
+  - feature_branch
+  - stack_branches
+  - current_subtask_intent
+  - subtasks
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  issue_key:
+    type: string
+    minLength: 1
+  feature_name:
+    type: string
+    minLength: 1
+  parent_spec_path:
+    type: string
+    minLength: 1
+  status:
+    $ref: "#/$defs/subtaskStatus"
+  execution_model:
+    $ref: "#/$defs/executionModel"
+  base_branch:
+    type: string
+    minLength: 1
+  feature_branch:
+    type:
+      - string
+      - "null"
+    minLength: 1
+  stack_branches:
+    type: array
+    items:
+      $ref: "#/$defs/stackBranch"
+  current_subtask_intent:
+    $ref: "#/$defs/currentSubtaskIntent"
+  subtasks:
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/subtask"
+x-coherence-checks:
+  execution-model-default:
+    description: >
+      Writers that omit an explicit execution model must persist
+      same_branch_commit_per_subtask. Schema default documents the
+      contract; Kotlin applies the runtime default before validation.
+  same-branch-feature-branch:
+    description: >
+      same_branch_commit_per_subtask manifests require feature_branch
+      to be a non-empty string and stack_branches to be empty.
+  stacked-branches-opt-in:
+    description: >
+      stacked_branches is accepted only when execution_model is
+      explicitly stacked_branches. Stacked manifests require
+      feature_branch to be null and stack_branches to declare one
+      branch per subtask, in subtask order.
+  dependency-order:
+    description: >
+      Every dependency id must reference an existing subtask that
+      appears earlier in the ordered subtasks array.
+  subtask-spec-paths:
+    description: >
+      Every subtask spec_path must be present and unique. Any current
+      subtask intent action other than none must reference an existing
+      subtask.
+  ordered-subtasks:
+    description: >
+      Subtask ids must be unique and the array order is the execution
+      order. Writers preserve the planning order instead of sorting by
+      title or path.
+  execution-model-immutability:
+    description: >
+      Writers may change execution_model before any subtask starts. Once
+      a subtask records runtime state, changing execution_model must fail
+      loudly with a typed error and a manual-migration message.

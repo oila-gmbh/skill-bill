@@ -519,13 +519,14 @@ $defs:
     required:
       - event_name
       - contract_version
-      - workflow_id
     properties:
       event_name:
         const: feature_implement_workflow_continue
       contract_version:
         const: "1.0.0"
       workflow_id:
+        type: string
+      issue_key:
         type: string
 
   featureImplementWorkflowGetEvent:

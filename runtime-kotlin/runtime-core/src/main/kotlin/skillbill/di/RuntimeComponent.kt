@@ -9,6 +9,7 @@ import skillbill.application.SystemService
 import skillbill.application.TelemetryService
 import skillbill.application.WorkflowService
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.RuntimeContext
@@ -16,6 +17,8 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
 
 @Component
@@ -33,6 +36,10 @@ abstract class RuntimeComponent(
 
   @Provides
   fun telemetryClient(client: HttpTelemetryClient): TelemetryClient = client
+
+  @Provides
+  fun workflowGitOperations(context: RuntimeContext, git: GitWorkflowGitOperations): WorkflowGitOperations =
+    if (context.workflowGitOperations === NoopWorkflowGitOperations) git else context.workflowGitOperations
 
   abstract val learningService: LearningService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService

@@ -1,3 +1,40 @@
+## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
+Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement
+- Parent decomposition projection now updates the parent spec status in addition to subtask frontmatter, and Markdown `## Status` sections are projected when present. reusable
+- Final all-subtasks completion coverage asserts parent/subtask manifest state, commit advancement, and human-readable spec projection in one application-level flow.
+- `bill-feature-implement` provider-neutral planning agents now carry the same decomposition manifest/execution-model guidance as governed `content.md`; source install was refreshed with `./install.sh`.
+Feature flag: N/A
+Acceptance criteria: 16/16 implemented
+
+## [2026-05-23] SKILL-51 decomposition-workflow-state-continuation-branching
+Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs
+- Parent issue-key continuation now resolves decomposed feature parents from durable `artifacts.decomposition_runtime`, then resumes an in-progress subtask or starts the first dependency-complete pending subtask without requiring a subtask path. reusable
+- `DecompositionContinuationSelector` centralizes dependency/blocked/optional-skipped selection semantics; blocked dependencies stop continuation with the stored reason unless the dependency is explicitly optional+skipped. reusable
+- `WorkflowGitOperations` is the application port for branch checkout, commit creation, and stacked branch base validation; production DI uses `GitWorkflowGitOperations`, while CLI/MCP tests inject explicit fakes.
+- Same-branch mode records an individual subtask commit before advancing; branch/commit failures persist the subtask and parent as blocked with `blocked_reason` so resume decisions stay durable.
+- CLI and MCP continue paths accept either `workflow_id` or issue key for implement workflows, preserving existing single-workflow continuation behavior.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-05-23] SKILL-51 decomposition-workflow-state-runtime-state
+Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-core/application tests
+- `decomposition-manifest-schema.yaml` now carries parent/subtask runtime state: parent `status`, and per-subtask `branch`, `commit_sha`, `workflow_id`, `review_result`, `audit_result`, `validation_result`, `blocked_reason`, and `last_resumable_step`. The Kotlin model/codec/wire-map emit the same fields under the existing validator-backed manifest contract. reusable
+- `WorkflowService.update` persists `artifacts.decomposition_runtime` first, then writes `decomposition-manifest.yaml` / subtask frontmatter as a post-save human-readable projection; ordinary single-spec workflows still do not create decomposition runtime or manifests. reusable
+- Execution-model changes are allowed while every subtask is still pending. Once any subtask has recorded runtime state, `DecompositionManifestWriter` rejects an `execution_model` change with `InvalidDecompositionManifestSchemaError` and a manual-migration/reset message. reusable
+- Subtask status projection covers implementation/review/audit/validation/PR-description blocked/skipped/complete events, but explicit unmatched `assessment.spec_path` no-ops rather than falling back to current intent; continuation selection and branch/commit advancement remain deferred to SKILL-51 subtasks 3/4.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-23] SKILL-51 decomposition-workflow-state-foundation
+Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-contracts/error, skills/bill-feature-implement
+- New runtime contract `orchestration/contracts/decomposition-manifest-schema.yaml` defines the parent manifest for decomposed feature work; `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` and classpath copy wiring mirror the workflow/install-plan schema pattern. reusable
+- `DecompositionManifestCodec`, `DecompositionManifestCoherenceValidator`, and `DecompositionManifestWireMap` provide schema-backed YAML load/write mapping plus Kotlin cross-field checks for dependency order, same-branch defaults, stacked branch opt-in, and current subtask intent. reusable
+- `WorkflowService` now writes a validated `decomposition-manifest.yaml` only for implement workflow updates whose plan artifact has `mode=decompose`; ordinary single-spec `mode=implement` updates remain manifest-free.
+- Authored `bill-feature-implement/content.md` now makes decomposition manifest creation part of the terminal planning-mode contract; generated skill installs were refreshed with `./install.sh`.
+- Known limitation: branch checkout/commits, parent continuation, stack advancement, and subtask status transitions remain deferred to later SKILL-51 subtasks.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-22] SKILL-50 render-runtime-composition-instructions
 Areas: runtime-kotlin/runtime-core/scaffold, runtime-kotlin/runtime-domain/scaffold/model, platform-packs/kmp, platform-packs/kotlin
 - Generated `SKILL.md` render output now carries manifest-declared code-review composition before authored execution guidance; `AuthoringTarget` receives `PlatformManifest.codeReviewComposition` only for pack baseline skills. reusable

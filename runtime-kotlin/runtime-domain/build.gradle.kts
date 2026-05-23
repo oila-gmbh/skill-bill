@@ -87,6 +87,30 @@ val copyInstallPlanSchema =
     }
   }
 
+// SKILL-51 Subtask 1: copy the canonical decomposition-manifest JSON
+// Schema into runtime-domain resources. This mirrors the workflow-state
+// and install-plan Copy tasks above: path strings must stay aligned
+// with `DecompositionManifestSchemaPaths`, and the existence guard runs
+// at task execution time so configuration-cache reads stay clean.
+val canonicalDecompositionManifestSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/decomposition-manifest-schema.yaml")
+    .absolutePath
+
+val copyDecompositionManifestSchema =
+  tasks.register<Copy>("copyDecompositionManifestSchema") {
+    val schemaPath = canonicalDecompositionManifestSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-51: canonical decomposition manifest schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -94,11 +118,13 @@ sourceSets.named("main") {
 tasks.named("processResources") {
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
+  dependsOn(copyDecompositionManifestSchema)
 }
 
 tasks.named("processTestResources") {
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
+  dependsOn(copyDecompositionManifestSchema)
 }
 
 tasks.withType<Test>().configureEach {

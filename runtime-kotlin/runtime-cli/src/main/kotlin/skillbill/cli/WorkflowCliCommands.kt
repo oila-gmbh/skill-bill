@@ -328,7 +328,9 @@ open class WorkflowContinueCommand(
   private val state: CliRunState,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Activate a resumable workflow and emit a recovered continuation brief.") {
-  private val workflowId by argument(help = "Workflow id to continue.").optional()
+  private val workflowId by argument(
+    help = "Workflow id to continue, or an issue key for a decomposed feature parent.",
+  ).optional()
   private val latest by option("--latest", help = "Resolve the most recently updated workflow.").flag(default = false)
   private val format by formatOption()
 

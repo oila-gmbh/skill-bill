@@ -191,7 +191,12 @@ object McpToolRegistry {
           "child_steps" to arraySchema(freeObjectSchema),
         ),
       ),
-      "feature_implement_workflow_continue" to workflowIdSchema(),
+      "feature_implement_workflow_continue" to objectSchema(
+        properties = mapOf(
+          "workflow_id" to stringSchema(),
+          "issue_key" to stringSchema(),
+        ),
+      ),
       "feature_implement_workflow_get" to workflowIdSchema(),
       "feature_implement_workflow_latest" to emptyObjectSchema,
       "feature_implement_workflow_list" to workflowListSchema(),

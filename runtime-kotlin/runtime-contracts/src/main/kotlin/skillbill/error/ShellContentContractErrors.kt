@@ -31,6 +31,23 @@ class InvalidWorkflowStateSchemaError(
 ) : ShellContentContractException(message, cause)
 
 /**
+ * SKILL-51: surfaced when a parent decomposition manifest fails the
+ * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`
+ * Draft 2020-12 schema or its Kotlin-enforced coherence checks. The
+ * composed message carries the source label and the violation reason
+ * so decomposition write/read seams fail loudly without conflating this
+ * contract with durable workflow-state snapshots.
+ */
+class InvalidDecompositionManifestSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Decomposition manifest '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
  * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft
  * 2020-12 schema. The composed message carries the dotted field path of

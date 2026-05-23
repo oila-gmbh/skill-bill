@@ -20,6 +20,8 @@ import skillbill.di.create
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Path
 
@@ -27,12 +29,14 @@ data class McpRuntimeContext(
   val requester: HttpRequester = JdkHttpRequester,
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
+  val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
   fun toRuntimeContext(stdinText: String? = null): RuntimeContext = RuntimeContext(
     stdinText = stdinText,
     environment = environment,
     userHome = userHome,
     requester = requester,
+    workflowGitOperations = workflowGitOperations,
   )
 }
 

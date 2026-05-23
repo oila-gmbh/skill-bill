@@ -123,13 +123,13 @@ The subagent returns one of two planning return contracts:
 - `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
 - `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-implement run.
 
-Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent writes subtask specs under `.feature-specs/{ISSUE_KEY}-{feature-name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`. Each subtask spec must contain its own acceptance criteria, non-goals, dependency notes, validation strategy, and a clear instruction to run `bill-feature-implement` on that subtask spec in a later session.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent writes subtask specs under `.feature-specs/{ISSUE_KEY}-{feature-name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`. Each subtask spec must contain its own acceptance criteria, non-goals, dependency notes, validation strategy, and a clear instruction to run `bill-feature-implement` on that subtask spec in a later session. The orchestrator then creates or updates `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml` from the decomposition package and validates it against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
 
 If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
 
 The orchestrator presents the plan, then proceeds to implementation — the plan is not a second approval gate.
 
-If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
+If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, write or update `decomposition-manifest.yaml`, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
 
 Persist `plan` before advancing to `implement` or before closing on decomposition.
 
@@ -310,7 +310,10 @@ The orchestrator must maintain:
 External callers may inspect and reactivate persisted runs through:
 
 - `feature_implement_workflow_resume` — dry-run recovery summary
-- `feature_implement_workflow_continue` — re-open a resumable run and emit a recovered continuation brief
+- `feature_implement_workflow_continue` — re-open a resumable run and emit a recovered continuation brief.
+  For decomposed parent features, callers may pass the parent issue key
+  (for example `SKILL-51`) instead of naming a subtask workflow id; the
+  runtime resolves the parent manifest and selects the current subtask.
 
 ### Canonical step ids
 
@@ -446,6 +449,18 @@ Re-entry rules:
   backwards.
 - After the resumed step completes, continue the standard `bill-feature-implement`
   sequence from that point onward.
+- For decomposed parent features, `continue <issue-key>` resumes the
+  in-progress subtask at its last durable workflow step. If none is in
+  progress, it starts the first pending subtask whose dependencies are complete.
+- If the selected decomposition path is blocked, report the blocked reason and
+  stop. Do not skip to a later dependent subtask unless the manifest explicitly
+  marks that dependency as optional and skipped.
+- Decomposed execution defaults to `same_branch_commit_per_subtask`: all
+  subtasks run on the parent feature branch, and each completed subtask must
+  produce its own commit before the runtime advances to the next subtask.
+- `stacked_branches` is an explicit parent manifest opt-in. In stacked mode the
+  runtime uses the declared subtask branch and base relationship, and must stop
+  instead of advancing when the current branch/base does not match the manifest.
 
 ## Pre-planning subagent briefing
 
@@ -557,6 +572,17 @@ Decomposition rules:
 - Keep `spec.md` as the parent overview. Each subtask spec links back to `spec.md`, contains only the scope for that subtask, and includes acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
 - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-implement run.
 - Order subtasks by dependency and identify the first subtask to run.
+- The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order.
+- The manifest must declare `contract_version`, `parent_spec_path`, ordered `subtasks`, dependency ids, each subtask `spec_path`, `execution_model`, `base_branch`, either `feature_branch` or ordered `stack_branches`, and `current_subtask_intent` derived from the recommended first/current subtask.
+- Same-branch decompositions advance one subtask at a time on the parent feature
+  branch. Each completed subtask gets an individual commit before the next
+  pending dependency-complete subtask starts.
+- Stacked decompositions are opt-in only. Every subtask must declare its branch
+  and expected base in stack order so continuation can check out the right branch
+  and reject advancement onto the wrong base.
+- Blocked subtasks are sticky: continuation reports the blocked reason and stops
+  unless a later subtask's dependency marks the blocked dependency both optional
+  and skipped.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
 
@@ -807,7 +833,7 @@ RESULT:
 
 SMALL and MEDIUM implementation runs: feature flag if required, code review (inline in orchestrator), quality check (subagent), boundary history (inline), commit/push (inline), PR description (subagent).
 
-LARGE decomposition runs stop after Step 3, persist the decomposition package as `plan`, write subtask specs, and close with `completion_status: "abandoned_at_planning"` plus `plan_deviation_notes: "decomposed into N subtasks"`. This is an intentional planning-stage terminal state. The next implementation run starts from the first generated subtask spec.
+LARGE decomposition runs stop after Step 3, persist the decomposition package as `plan`, write subtask specs, create or update the parent `decomposition-manifest.yaml`, and close with `completion_status: "abandoned_at_planning"` plus `plan_deviation_notes: "decomposed into N subtasks"`. This is an intentional planning-stage terminal state. The next implementation run starts from the first generated subtask spec.
 
 ## Error Recovery
 
@@ -815,7 +841,7 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 
 - **Pre-planning subagent fails** — report the error and ask the user whether to retry, adjust scope, or abandon. If abandoned, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.
-- **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
+- **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
 - **Code-review fix loop exceeds 3 iterations** — stop, report remaining findings, hand to user. Call `feature_implement_finished` with `completion_status: "abandoned_at_review"`.
 - **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_implement_finished` accordingly.
