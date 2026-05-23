@@ -1,5 +1,12 @@
 # SkillBill desktop feature — history
 
+## [2026-05-23] SKILL-48 desktop repo-browser path normalization
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data
+- RuntimeRepoBrowserService now derives displayed/tree paths against the selected repo root first, then falls back to real-path containment, so discovery results returned via resolved paths still render as repo-relative IDs and authored paths. reusable
+- Repo open intentionally accepts a symlinked checkout directory, while source/editing rules remain unchanged: native-agent sources and generated artifacts stay read-only, and governed content/add-ons remain the editable surfaces.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-05-22] SKILL-50 desktop-wizard-baseline-layer-authoring
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-core/scaffold, runtime-domain/scaffold
 - Platform-pack scaffold wizard can author baseline review layers through catalog-backed controls, add/edit/remove state, default `same-review-scope`, default `required=true`, and form validation before Plan/Run.

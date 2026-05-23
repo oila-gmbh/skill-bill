@@ -45,7 +45,6 @@ import java.nio.file.InvalidPathException
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
-import kotlin.io.path.isDirectory
 import kotlin.io.path.relativeTo
 
 @Inject
@@ -345,7 +344,7 @@ class RuntimeRepoBrowserService :
   }
 
   private fun validateRoot(root: Path): RepoLoadStatus {
-    if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+    if (!Files.isDirectory(root)) {
       return RepoLoadStatus(
         state = RepoLoadState.INVALID,
         message = "Selected path is not a directory: $root",
@@ -498,7 +497,7 @@ class RuntimeRepoBrowserService :
     discoverGovernedAddonFiles(root)
       .forEach { addonFile ->
         val addon = addonFile.addonPath
-        val relative = addon.relativeTo(root).portablePath()
+        val relative = relativePath(root, addon)
         val id = selectionId(repoToken, "addon:$relative")
         selections[id] =
           SelectionDetail(
@@ -543,7 +542,7 @@ class RuntimeRepoBrowserService :
       skillsRoot = root.resolve("skills"),
     )
       .flatMap { sourceFile ->
-        val relative = sourceFile.relativeTo(root).portablePath()
+        val relative = relativePath(root, sourceFile)
         runCatching { parseNativeAgentSourceFile(sourceFile) }
           .fold(
             onSuccess = { agents ->
@@ -709,7 +708,7 @@ class RuntimeRepoBrowserService :
   ): List<SkillBillTreeItem> {
     return discoverGeneratedArtifactFiles(root).map { generated ->
       val artifact = generated.path
-      val relative = artifact.relativeTo(root).portablePath()
+      val relative = relativePath(root, artifact)
       val id = selectionId(repoToken, "generated:$relative")
       selections[id] =
         SelectionDetail(
@@ -744,7 +743,7 @@ class RuntimeRepoBrowserService :
       .filter { artifact -> artifact.path.toAbsolutePath().normalize().parent == normalizedSkillDir }
       .map { artifact ->
         GeneratedArtifactDetail(
-          path = artifact.path.relativeTo(root).portablePath(),
+          path = relativePath(root, artifact.path),
           reason = artifact.reason,
         )
       }
@@ -903,7 +902,7 @@ private fun invalidSession(repoPath: String, message: String): RepoSession = Rep
 )
 
 private fun looksLikeSkillBillRepo(root: Path): Boolean =
-  root.resolve("skills").isDirectory() || root.resolve("platform-packs").isDirectory()
+  Files.isDirectory(root.resolve("skills")) || Files.isDirectory(root.resolve("platform-packs"))
 
 private fun isAuthoredContentFile(contentFile: Path?): Boolean = contentFile?.fileName?.toString() == "content.md"
 
@@ -920,9 +919,31 @@ private fun group(id: String, label: String, children: List<SkillBillTreeItem>):
 
 private fun Map<*, *>.string(key: String): String? = this[key] as? String
 
-private fun relativePath(root: Path, path: String): String =
-  runCatching { Path.of(path).toAbsolutePath().normalize().relativeTo(root).portablePath() }
-    .getOrDefault(path.replace('\\', '/'))
+private fun relativePath(root: Path, path: String): String = relativePath(root, Path.of(path))
+
+private fun relativePath(root: Path, path: Path): String {
+  val absoluteRoot = root.toAbsolutePath().normalize()
+  val absolutePath = path.toAbsolutePath().normalize()
+  relativeToRootOrNull(absoluteRoot, absolutePath)?.let { relative ->
+    return relative.portablePath()
+  }
+
+  val realRelative = runCatching {
+    val realRoot = root.toRealPath()
+    val realPath =
+      if (Files.exists(absolutePath, LinkOption.NOFOLLOW_LINKS)) {
+        absolutePath.toRealPath()
+      } else {
+        absolutePath
+      }
+    relativeToRootOrNull(realRoot, realPath)?.portablePath()
+  }.getOrNull()
+
+  return realRelative ?: path.portablePath()
+}
+
+private fun relativeToRootOrNull(root: Path, path: Path): Path? =
+  if (path.startsWith(root)) path.relativeTo(root) else null
 
 private fun Path.portablePath(): String = toString().replace('\\', '/')
 

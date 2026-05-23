@@ -6,6 +6,7 @@ import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.error.SkillBillRuntimeException
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -69,6 +70,58 @@ class RuntimeRepoBrowserServiceTest {
     assertFalse(generated.editable)
     assertEquals("RO", generated.readOnlyLabel)
     assertEquals("read-only", generated.status)
+  }
+
+  @Test
+  fun `native agent source rows stay repo relative when selected repo path is a symlink`() {
+    val repo = seedRepo("runtime-tree-symlink-target")
+    val linkParent = Files.createTempDirectory("skillbill-desktop-runtime-tree-link")
+    val repoLink = linkParent.resolve("repo-link")
+    val symlinkCreated = try {
+      Files.createSymbolicLink(repoLink, repo)
+      true
+    } catch (_: UnsupportedOperationException) {
+      false
+    } catch (_: FileSystemException) {
+      false
+    } catch (_: SecurityException) {
+      false
+    }
+    if (!symlinkCreated) {
+      return
+    }
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repoLink.toString())
+    assertEquals(RepoLoadState.LOADED, session.loadStatus.state, session.loadStatus.message)
+    val flattened = service.treeFor(session).flatten()
+    val treeSummary = flattened.joinToString("\n") { item ->
+      "${item.kind} ${item.label} ${item.authoredPath.orEmpty()} ${item.id}"
+    }
+
+    val sourceAgent = assertNotNull(
+      flattened.singleOrNull {
+        it.id.hasLocalId("native-agent:skills/bill-alpha/native-agents/alpha-agent.md:alpha-agent")
+      },
+      treeSummary,
+    )
+    val platformAgent = assertNotNull(
+      flattened.singleOrNull {
+        it.id.hasLocalId(
+          "native-agent:" +
+            "platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/bill-kotlin-code-review-ui.md:" +
+            "bill-kotlin-code-review-ui",
+        )
+      },
+      treeSummary,
+    )
+    assertEquals("agent", sourceAgent.label)
+    assertEquals("skills/bill-alpha/native-agents/alpha-agent.md", sourceAgent.authoredPath)
+    assertEquals("ui", platformAgent.label)
+    assertEquals(
+      "platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/bill-kotlin-code-review-ui.md",
+      platformAgent.authoredPath,
+    )
   }
 
   @Test
