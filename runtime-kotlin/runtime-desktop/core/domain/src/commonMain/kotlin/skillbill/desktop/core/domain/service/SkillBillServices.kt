@@ -78,6 +78,10 @@ interface GitGateway {
   // snapshot's errorMessage rather than throwing.
   fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot
 
+  // Discards local changes for the given paths and returns the post-discard snapshot. Failures
+  // surface in the snapshot's errorMessage rather than throwing.
+  fun discard(session: RepoSession?, paths: List<String>): ChangesSnapshot
+
   // Returns the current publish target, ahead/behind counts, and compare URL when the remote
   // topology supports one. Failures surface in GitPublishingStatus.errorMessage.
   fun publishingStatus(session: RepoSession?): GitPublishingStatus

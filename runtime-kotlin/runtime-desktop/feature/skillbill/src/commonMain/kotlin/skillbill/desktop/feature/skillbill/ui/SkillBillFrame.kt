@@ -238,6 +238,7 @@ fun SkillBillFrame(
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
   onPublishPrTitleChanged: (String) -> Unit,
@@ -491,6 +492,7 @@ fun SkillBillFrame(
           onChangedFileSelected = onChangedFileSelected,
           onStageChangedFile = onStageChangedFile,
           onUnstageChangedFile = onUnstageChangedFile,
+          onDiscardChangedFile = onDiscardChangedFile,
           onRefreshGit = onRefreshGit,
           onCommitMessageChanged = onCommitMessageChanged,
           onPublishPrTitleChanged = onPublishPrTitleChanged,
@@ -2069,6 +2071,7 @@ private fun CenterWorkspace(
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
   onPublishPrTitleChanged: (String) -> Unit,
@@ -2163,6 +2166,7 @@ private fun CenterWorkspace(
         onChangedFileSelected = onChangedFileSelected,
         onStageChangedFile = onStageChangedFile,
         onUnstageChangedFile = onUnstageChangedFile,
+        onDiscardChangedFile = onDiscardChangedFile,
         onRefreshGit = onRefreshGit,
         onCommitMessageChanged = onCommitMessageChanged,
         onPublishPrTitleChanged = onPublishPrTitleChanged,
@@ -3060,6 +3064,7 @@ private fun BottomDock(
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
   onPublishPrTitleChanged: (String) -> Unit,
@@ -3167,6 +3172,7 @@ private fun BottomDock(
           onChangedFileSelected = onChangedFileSelected,
           onStageChangedFile = onStageChangedFile,
           onUnstageChangedFile = onUnstageChangedFile,
+          onDiscardChangedFile = onDiscardChangedFile,
           onRefreshGit = onRefreshGit,
           onCommitMessageChanged = onCommitMessageChanged,
           onPublishPrTitleChanged = onPublishPrTitleChanged,
@@ -3462,6 +3468,7 @@ private fun ChangesPanel(
   onChangedFileSelected: (String) -> Unit,
   onStageChangedFile: (String) -> Unit,
   onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onRefreshGit: () -> Unit,
   onCommitMessageChanged: (String) -> Unit,
   onPublishPrTitleChanged: (String) -> Unit,
@@ -3552,14 +3559,9 @@ private fun ChangesPanel(
       visibleChangeGroups.forEach { group ->
         GovernedChangeGroupSection(
           group = group,
-          selectedPublishPaths = selectedPublishPaths,
           selectedPath = selectedChangedFile?.path,
-          publishSelectionEnabled = !changesBusy && !publishingBusy,
-          stageActionsEnabled = !changesBusy && !publishingBusy,
-          onPublishPathSelectionChanged = onPublishPathSelectionChanged,
           onChangedFileSelected = onChangedFileSelected,
-          onStageChangedFile = onStageChangedFile,
-          onUnstageChangedFile = onUnstageChangedFile,
+          onDiscardChangedFile = onDiscardChangedFile,
           onCopyChangedFilePath = onCopyChangedFilePath,
           recentlyCopiedKey = recentlyCopiedKey,
         )
@@ -4347,14 +4349,9 @@ private fun ChangedFileGroupSection(
 @Composable
 private fun GovernedChangeGroupSection(
   group: GovernedChangeGroup,
-  selectedPublishPaths: Set<String>,
   selectedPath: String?,
-  publishSelectionEnabled: Boolean,
-  stageActionsEnabled: Boolean,
-  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
   onChangedFileSelected: (String) -> Unit,
-  onStageChangedFile: (String) -> Unit,
-  onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   recentlyCopiedKey: String?,
 ) {
@@ -4372,14 +4369,9 @@ private fun GovernedChangeGroupSection(
   group.files.forEach { governedFile ->
     GovernedChangedFileRow(
       governedFile = governedFile,
-      selectedForPublish = governedFile.path in selectedPublishPaths,
       selected = governedFile.path == selectedPath,
-      publishSelectionEnabled = publishSelectionEnabled,
-      stageActionsEnabled = stageActionsEnabled,
-      onPublishPathSelectionChanged = onPublishPathSelectionChanged,
       onChangedFileSelected = onChangedFileSelected,
-      onStageChangedFile = onStageChangedFile,
-      onUnstageChangedFile = onUnstageChangedFile,
+      onDiscardChangedFile = onDiscardChangedFile,
       onCopyChangedFilePath = onCopyChangedFilePath,
       recentlyCopiedKey = recentlyCopiedKey,
     )
@@ -4389,14 +4381,9 @@ private fun GovernedChangeGroupSection(
 @Composable
 private fun GovernedChangedFileRow(
   governedFile: GovernedChangedFile,
-  selectedForPublish: Boolean,
   selected: Boolean,
-  publishSelectionEnabled: Boolean,
-  stageActionsEnabled: Boolean,
-  onPublishPathSelectionChanged: (String, Boolean) -> Unit,
   onChangedFileSelected: (String) -> Unit,
-  onStageChangedFile: (String) -> Unit,
-  onUnstageChangedFile: (String) -> Unit,
+  onDiscardChangedFile: (String) -> Unit,
   onCopyChangedFilePath: (String) -> Unit,
   recentlyCopiedKey: String?,
 ) {
@@ -4425,55 +4412,6 @@ private fun GovernedChangedFileRow(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    val selectable = !governedFile.selectionLocked && publishSelectionEnabled
-    Box(
-      modifier = Modifier
-        .size(40.dp)
-        .semantics {
-          this.role = Role.Checkbox
-          contentDescription = "Include in publish: ${file.path}"
-          stateDescription = if (selectedForPublish) "Included" else "Excluded"
-          if (!selectable) disabled()
-        }
-        .clickable(enabled = selectable, role = Role.Checkbox) {
-          onPublishPathSelectionChanged(file.path, !selectedForPublish)
-        },
-      contentAlignment = Alignment.Center,
-    ) {
-      Box(
-        modifier = Modifier
-          .size(14.dp)
-          .border(
-            1.dp,
-            when {
-              governedFile.selectionLocked -> SkillBillTheme.frameTokens.subtle
-              selectedForPublish -> SkillBillTheme.frameTokens.primary
-              else -> SkillBillTheme.frameTokens.muted
-            },
-            RoundedCornerShape(2.dp),
-          )
-          .background(
-            if (selectedForPublish) {
-              SkillBillTheme.frameTokens.primary.copy(alpha = 0.22f)
-            } else {
-              SkillBillTheme.frameTokens.transparent
-            },
-            RoundedCornerShape(2.dp),
-          ),
-      )
-      if (selectedForPublish) {
-        val selectedIndicatorColor = if (governedFile.selectionLocked) {
-          SkillBillTheme.frameTokens.subtle
-        } else {
-          SkillBillTheme.frameTokens.primary
-        }
-        Box(
-          modifier = Modifier
-            .size(6.dp)
-            .background(selectedIndicatorColor, RoundedCornerShape(1.dp)),
-        )
-      }
-    }
     Text(
       text = file.statusCode,
       color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
@@ -4521,31 +4459,17 @@ private fun GovernedChangedFileRow(
         .padding(horizontal = 6.dp, vertical = 4.dp),
     )
     if (!file.isGenerated) {
-      when (file.group) {
-        ChangedFileGroup.STAGED -> Text(
-          text = "unstage",
-          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
-          maxLines = 1,
-          modifier = Modifier
-            .iconButtonSemantics(description = "Unstage file: ${file.path}")
-            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onUnstageChangedFile(file.path) }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        )
-        ChangedFileGroup.UNSTAGED, ChangedFileGroup.UNTRACKED -> Text(
-          text = "stage",
-          color = if (stageActionsEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
-          maxLines = 1,
-          modifier = Modifier
-            .iconButtonSemantics(description = "Stage file: ${file.path}")
-            .clickable(enabled = stageActionsEnabled, role = Role.Button) { onStageChangedFile(file.path) }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        )
-        ChangedFileGroup.GENERATED -> Unit
-      }
+      Text(
+        text = "revert",
+        color = SkillBillTheme.frameTokens.primary,
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        modifier = Modifier
+          .iconButtonSemantics(description = "Revert file: ${file.path}")
+          .clickable(role = Role.Button) { onDiscardChangedFile(file.path) }
+          .padding(horizontal = 6.dp, vertical = 4.dp),
+      )
     }
   }
 }

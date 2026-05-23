@@ -1066,19 +1066,9 @@ class SkillBillViewModel(
       currentState = createState()
       return currentState
     }
-    val file = changesSnapshot.files.firstOrNull { it.path == path } ?: return currentState
-    if (!file.isSkillContent) {
-      currentState = createState()
-      return currentState
-    }
-    selectedPublishPaths =
-      if (selected) {
-        selectedPublishPaths + path
-      } else {
-        selectedPublishPaths - path
-      }
+    selectedPublishPaths = changesSnapshot.skillContentFiles.map(ChangedFile::path).toSet()
     publishSelectionInitialized = true
-    publishSelectionDirty = true
+    publishSelectionDirty = false
     publishErrorMessage = null
     if (commitValidationFailed) {
       commitValidationFailed = false
@@ -1532,11 +1522,27 @@ class SkillBillViewModel(
     )
   }
 
+  fun beginDiscardChangedFile(path: String): StageRequest? {
+    val file = changesSnapshot.skillContentFiles.firstOrNull { changedFile -> changedFile.path == path } ?: return null
+    activeGitOperationToken += 1
+    val previousSnapshot = changesSnapshot
+    changesBusy = true
+    currentState = createState()
+    return StageRequest(
+      token = activeGitOperationToken,
+      session = currentSession,
+      paths = listOf(file.path),
+      previousSnapshot = previousSnapshot,
+      action = StageAction.DISCARD,
+    )
+  }
+
   fun runStage(request: StageRequest): GitRefreshResult {
     val snapshot = runCatching {
       when (request.action) {
         StageAction.STAGE -> gitGateway.stage(request.session, request.paths)
         StageAction.UNSTAGE -> gitGateway.unstage(request.session, request.paths)
+        StageAction.DISCARD -> gitGateway.discard(request.session, request.paths)
       }
       // F-A02: when the gateway itself throws (process failure), use the failed sentinel so the
       // VM overlays the error onto the existing snapshot rather than blanking the file list.
@@ -1666,9 +1672,7 @@ class SkillBillViewModel(
       currentState = createState()
       return null
     }
-    val selectedPaths = selectedPublishPaths
-      .filter { path -> changesSnapshot.files.any { file -> file.path == path && file.isSkillContent } }
-      .sorted()
+    val selectedPaths = selectedManagedPublishPaths()
     activePublishToken += 1
     publishBusy = true
     publishErrorMessage = null
@@ -2110,7 +2114,7 @@ class SkillBillViewModel(
     commitValidationFailed && failedValidationStagedAuthoredPaths == stagedAuthoredPaths(changesSnapshot)
 
   private fun hasCurrentFailedPublishValidationOverride(): Boolean =
-    commitValidationFailed && failedValidationStagedAuthoredPaths == selectedPublishPaths
+    commitValidationFailed && failedValidationStagedAuthoredPaths == selectedManagedPublishPaths().toSet()
 
   private fun invalidateFailedValidationOverrideIfStagedAuthoredChanged() {
     val failedPaths = failedValidationStagedAuthoredPaths ?: return
@@ -2125,17 +2129,25 @@ class SkillBillViewModel(
     .map { file -> file.path }
     .toSet()
 
+  private fun selectedManagedPublishPaths(): List<String> {
+    val visibleSelectedPaths = selectedPublishPaths
+      .filter { path -> changesSnapshot.files.any { file -> file.path == path && file.isSkillContent } }
+    if (visibleSelectedPaths.isEmpty()) {
+      return emptyList()
+    }
+    return visibleSelectedPaths
+      .plus(changesSnapshot.hiddenManagedSourceFiles.map { file -> file.path })
+      .distinct()
+      .sorted()
+  }
+
   private fun reconcilePublishSelection(snapshot: ChangesSnapshot) {
     val selectablePaths = snapshot.skillContentFiles
       .map(ChangedFile::path)
       .toSet()
-    selectedPublishPaths =
-      if (!publishSelectionInitialized || !publishSelectionDirty) {
-        selectablePaths
-      } else {
-        selectedPublishPaths.intersect(selectablePaths)
-      }
+    selectedPublishPaths = selectablePaths
     publishSelectionInitialized = true
+    publishSelectionDirty = false
   }
 
   private fun replacePublishingStatus(status: GitPublishingStatus, clearConfirmation: Boolean) {
@@ -3140,6 +3152,7 @@ data class SelectChangedFileResult(
 enum class StageAction {
   STAGE,
   UNSTAGE,
+  DISCARD,
 }
 
 data class StageRequest(
