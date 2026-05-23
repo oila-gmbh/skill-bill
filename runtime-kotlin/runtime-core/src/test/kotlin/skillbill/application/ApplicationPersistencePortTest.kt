@@ -40,7 +40,6 @@ import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.workflow.DecompositionManifestCodec
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -383,7 +382,7 @@ class ApplicationPersistencePortTest {
 
     markDecompositionSubtaskBlocked(service, workflowId, subtaskSpec)
 
-    val blockedManifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val blockedManifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val blockedSubtask = blockedManifest.subtasks.single()
     assertEquals("blocked", blockedSubtask.status)
     assertEquals("Validation failed.", blockedSubtask.blockedReason)
@@ -392,7 +391,7 @@ class ApplicationPersistencePortTest {
 
     markDecompositionSubtaskSkipped(service, workflowId, subtaskSpec)
 
-    val skippedManifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val skippedManifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("skipped", skippedManifest.subtasks.single().status)
     assertEquals("none", skippedManifest.currentSubtaskIntent.action)
     assertEquals("Skipped", statusLine(subtaskSpec))
@@ -430,7 +429,7 @@ class ApplicationPersistencePortTest {
 
     val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null)
 
-    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val manifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val subtask = manifest.subtasks.single()
     assertEquals("ok", continued["status"])
     assertEquals("reopened", continued["continue_status"])
@@ -454,7 +453,7 @@ class ApplicationPersistencePortTest {
 
     val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
 
-    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val manifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("ok", continued["status"])
     assertEquals(1, continued["decomposition_subtask_id"])
     assertEquals("in_progress", manifest.subtasks.first { it.id == 1 }.status)
@@ -477,7 +476,7 @@ class ApplicationPersistencePortTest {
 
     val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
 
-    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val manifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("ok", continued["status"])
     assertEquals(2, continued["decomposition_subtask_id"])
     assertEquals("abc123", manifest.subtasks.first { it.id == 1 }.commitSha)
@@ -502,7 +501,7 @@ class ApplicationPersistencePortTest {
 
     val done = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
 
-    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val manifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("ok", done["status"])
     assertEquals("done", done["continue_status"])
     assertEquals("complete", manifest.status)
@@ -533,7 +532,7 @@ class ApplicationPersistencePortTest {
 
     val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
 
-    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val manifest = loadDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val blocked = manifest.subtasks.first { it.id == 1 }
     assertEquals("error", continued["status"])
     assertEquals("blocked", continued["continue_status"])

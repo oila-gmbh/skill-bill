@@ -1,4 +1,4 @@
-package skillbill.workflow
+package skillbill.contracts.workflow
 
 /**
  * Pinned runtime-side mirror of the canonical decomposition manifest
@@ -11,7 +11,7 @@ const val DECOMPOSITION_MANIFEST_CONTRACT_VERSION: String = "0.1"
 /**
  * Single source of truth for where the canonical decomposition
  * manifest schema lives. The Gradle copy task in
- * `runtime-domain/build.gradle.kts` must mirror these values because
+ * `runtime-contracts/build.gradle.kts` must mirror these values because
  * Gradle's Kotlin DSL cannot import runtime constants directly.
  */
 object DecompositionManifestSchemaPaths {
@@ -19,7 +19,7 @@ object DecompositionManifestSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/decomposition-manifest-schema.yaml"
 
-  /** Classpath resource path where runtime-domain bundles the schema for runtime loads. */
+  /** Classpath resource path where runtime-contracts bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
     "skillbill/contracts/decomposition-manifest-schema.yaml"
 

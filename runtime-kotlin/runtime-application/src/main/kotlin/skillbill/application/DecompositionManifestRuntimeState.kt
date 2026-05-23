@@ -2,10 +2,8 @@ package skillbill.application
 
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.contracts.JsonSupport
-import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.projectDecompositionSpecStatus
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -18,7 +16,7 @@ internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
     .orEmpty()
 
 internal fun loadManifestOrNull(path: Path): DecompositionManifest? = try {
-  DecompositionManifestCodec.load(path)
+  loadDecompositionManifest(path)
 } catch (_: NoSuchFileException) {
   null
 }

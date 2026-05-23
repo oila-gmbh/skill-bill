@@ -5,7 +5,6 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.model.DecompositionContinuationSelection
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.toWireMap
 
 internal data class ContinuationResult(
   val payload: Map<String, Any?>,
@@ -101,8 +100,14 @@ internal fun blockedGitPayload(
   "db_path" to dbPath,
 )
 
-internal fun decompositionRuntimeArtifactsJson(manifest: DecompositionManifest): String =
-  jsonString(mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap()))
+internal fun decompositionRuntimeArtifactsJson(manifest: DecompositionManifest): String = jsonString(
+  mapOf(
+    DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+      manifest,
+      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+    ),
+  ),
+)
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   kotlinx.serialization.json.JsonElement.serializer(),

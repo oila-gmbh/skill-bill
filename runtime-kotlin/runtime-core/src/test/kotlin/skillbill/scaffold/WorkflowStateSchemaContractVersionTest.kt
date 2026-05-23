@@ -2,9 +2,10 @@ package skillbill.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
+import skillbill.contracts.workflow.WorkflowStateSchemaPaths
 import skillbill.testing.repoRootFromTest
-import skillbill.workflow.WORKFLOW_STATE_CONTRACT_VERSION
-import skillbill.workflow.WorkflowStateSchemaPaths
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -20,6 +21,21 @@ import kotlin.test.assertTrue
  * one without the other is a build break, by design.
  */
 class WorkflowStateSchemaContractVersionTest {
+  @Test
+  fun `workflow state schema bundled on runtime contracts classpath matches canonical schema`() {
+    val schemaFile = repoRootFromTest().resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
+    assertTrue(Files.isRegularFile(schemaFile), "Canonical schema file is missing at $schemaFile.")
+    val canonicalSchema = YAMLMapper().readTree(Files.readString(schemaFile))
+    val classpathSchema = loadClasspathSchemaNode()
+
+    assertEquals(
+      canonicalSchema,
+      classpathSchema,
+      "Classpath workflow-state schema at '${WorkflowStateSchemaPaths.CLASSPATH_RESOURCE}' must match " +
+        "the canonical schema at ${WorkflowStateSchemaPaths.REPO_RELATIVE_PATH}.",
+    )
+  }
+
   @Test
   fun `schema contract_version const matches WORKFLOW_STATE_CONTRACT_VERSION`() {
     val schemaFile = repoRootFromTest().resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
@@ -96,6 +112,18 @@ class WorkflowStateSchemaContractVersionTest {
     val schemaFile = repoRootFromTest().resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
     assertTrue(Files.isRegularFile(schemaFile), "Canonical schema file is missing at $schemaFile.")
     return YAMLMapper().readTree(Files.readString(schemaFile))
+  }
+
+  private fun loadClasspathSchemaNode(): JsonNode {
+    val resourceStream = CanonicalWorkflowStateSchemaValidator::class.java.classLoader
+      .getResourceAsStream(WorkflowStateSchemaPaths.CLASSPATH_RESOURCE)
+    assertNotNull(
+      resourceStream,
+      "Canonical workflow-state schema is missing from the classpath at " +
+        "'${WorkflowStateSchemaPaths.CLASSPATH_RESOURCE}'. Ensure `copyWorkflowStateSchema` ran before this test.",
+    )
+    val schemaText = resourceStream.bufferedReader().use { it.readText() }
+    return YAMLMapper().readTree(schemaText)
   }
 
   private fun JsonNode.enumStrings(): Set<String> = path("enum")

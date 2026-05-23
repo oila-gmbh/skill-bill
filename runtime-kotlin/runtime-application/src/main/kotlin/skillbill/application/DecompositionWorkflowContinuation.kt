@@ -8,7 +8,6 @@ import skillbill.workflow.model.DecompositionContinuationSelection
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
 
 internal class DecompositionWorkflowContinuation(
   private val gitOperations: WorkflowGitOperations,
@@ -148,7 +147,10 @@ internal class DecompositionWorkflowContinuation(
   ): Map<String, Any?> = mapOf(
     "assessment" to mapOf("spec_path" to selection.subtask.specPath),
     "branch" to mapOf("branch_name" to selection.branchPlan.branch),
-    DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
+    DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+      manifest,
+      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+    ),
   )
 
   private fun advanceCompletedSubtasks(

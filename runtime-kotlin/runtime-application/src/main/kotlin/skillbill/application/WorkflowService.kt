@@ -15,7 +15,6 @@ import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Path
 import java.time.OffsetDateTime
@@ -185,7 +184,10 @@ internal fun WorkflowFamily.withDecompositionRuntime(
     DecompositionRuntimeInput(
       input = input.copy(
         artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
-          put(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, manifest.toWireMap())
+          put(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            encodeDecompositionManifestMap(manifest, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+          )
         },
       ),
       updated = true,

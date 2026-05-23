@@ -1,12 +1,12 @@
 package skillbill.install
 
+import skillbill.contracts.install.InstallPlanSchemaValidator
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
-import skillbill.install.model.InstallPlanSchemaValidator
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallStagingIntent
 import skillbill.install.model.InstallStagingPathIntent

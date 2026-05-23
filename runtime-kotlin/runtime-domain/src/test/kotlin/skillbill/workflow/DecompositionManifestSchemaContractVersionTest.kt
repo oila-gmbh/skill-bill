@@ -2,6 +2,9 @@ package skillbill.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
+import skillbill.contracts.workflow.DecompositionManifestSchemaPaths
+import skillbill.contracts.workflow.DecompositionManifestSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -35,6 +38,27 @@ class DecompositionManifestSchemaContractVersionTest {
       DecompositionManifestSchemaPaths.EXPECTED_SCHEMA_ID,
       idNode.asText(),
       "Schema `\$id` must equal DecompositionManifestSchemaPaths.EXPECTED_SCHEMA_ID.",
+    )
+  }
+
+  @Test
+  fun `schema id fields are capped at Kotlin Int max`() {
+    val schema = classpathSchema()
+
+    assertEquals(
+      Int.MAX_VALUE,
+      schema.path("\$defs").path("subtaskId").path("maximum").asInt(),
+      "Schema \$defs.subtaskId.maximum must match Kotlin Int.MAX_VALUE.",
+    )
+    assertEquals(
+      Int.MAX_VALUE,
+      schema.path("\$defs")
+        .path("currentSubtaskIntent")
+        .path("properties")
+        .path("subtask_id")
+        .path("maximum")
+        .asInt(),
+      "Schema currentSubtaskIntent.subtask_id.maximum must match Kotlin Int.MAX_VALUE.",
     )
   }
 

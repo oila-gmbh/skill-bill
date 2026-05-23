@@ -1,4 +1,4 @@
-package skillbill.workflow
+package skillbill.contracts.workflow
 
 /**
  * SKILL-48 Subtask 2a: pinned runtime-side mirror of the canonical
@@ -22,7 +22,7 @@ const val WORKFLOW_STATE_CONTRACT_VERSION: String = "0.1"
  * exactly once in the codebase.
  *
  * The Gradle Kotlin DSL cannot import runtime constants directly. The
- * copy task in `runtime-domain/build.gradle.kts` MUST mirror these
+ * copy task in `runtime-contracts/build.gradle.kts` MUST mirror these
  * values; if the paths ever drift,
  * `WorkflowStateSchemaValidator.loadSchema` will fail loudly at
  * runtime (the classpath resource will not be found at
@@ -34,7 +34,7 @@ object WorkflowStateSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/workflow-state-schema.yaml"
 
-  /** Classpath resource path where runtime-domain bundles the schema for runtime loads. */
+  /** Classpath resource path where runtime-contracts bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
     "skillbill/contracts/workflow-state-schema.yaml"
 

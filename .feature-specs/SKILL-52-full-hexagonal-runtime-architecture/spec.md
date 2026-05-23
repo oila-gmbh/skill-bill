@@ -1,6 +1,6 @@
 # SKILL-52 - Full hexagonal runtime architecture
 
-Status: Draft
+Status: In Progress
 Issue key: SKILL-52
 
 ## Context

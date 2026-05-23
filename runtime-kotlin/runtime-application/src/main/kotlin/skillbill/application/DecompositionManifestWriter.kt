@@ -5,11 +5,9 @@ package skillbill.application
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.application.model.DecompositionManifestWriteResult
-import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.writeDecompositionManifestText
 import java.io.IOException
 import java.nio.file.Path
 
@@ -80,7 +78,7 @@ object DecompositionManifestWriter {
   fun writeProjectionFromWorkflowState(repoRoot: Path, artifactsJson: String): DecompositionManifestWriteResult? {
     val artifacts = decodeArtifacts(artifactsJson)
     val runtime = artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-      ?.let { DecompositionManifestCodec.decodeMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
+      ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
       ?: return null
     val manifestPath = resolvedParentSpecPath(repoRoot, Path.of(runtime.parentSpecPath))
       .parent
@@ -113,9 +111,9 @@ object DecompositionManifestWriter {
       .let { candidate ->
         runtimeUpdate?.let { candidate.withRuntimeUpdate(request.repoRoot, it) } ?: candidate
       }
-    val yaml = DecompositionManifestCodec.encodeYaml(manifest)
+    val yaml = encodeDecompositionManifestYaml(manifest)
     writeDecompositionManifestText(manifestPath, yaml)
-    val loaded = DecompositionManifestCodec.load(manifestPath)
+    val loaded = loadDecompositionManifest(manifestPath)
     projectCurrentSubtaskStatus(request.repoRoot, loaded)
     return DecompositionManifestWriteResult(manifestPath = manifestPath, manifest = loaded)
   }
@@ -169,8 +167,8 @@ object DecompositionManifestWriter {
   private fun DecompositionManifestWriteRequest.toManifest(): DecompositionManifest {
     val subtasks = parseSubtasks(planningResult, parentSpecPath.toString())
     val currentId = currentSubtaskId
-      ?: planningResult.intValueOrNull("current_subtask_id")
-      ?: planningResult.intValueOrNull("recommended_first_subtask_id")
+      ?: planningResult.optionalIntValue("current_subtask_id", parentSpecPath.toString())
+      ?: planningResult.optionalIntValue("recommended_first_subtask_id", parentSpecPath.toString())
       ?: subtasks.first().id
     val currentSubtask = subtasks.firstOrNull { it.id == currentId }
       ?: invalidManifest(
@@ -202,16 +200,16 @@ private fun DecompositionManifest.manifestPath(repoRoot: Path): Path =
 
 private fun runtimeManifestFromArtifacts(artifacts: Map<String, Any?>): DecompositionManifest? =
   artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-    ?.let { DecompositionManifestCodec.decodeMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
+    ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
 private fun writeProjection(
   repoRoot: Path,
   manifest: DecompositionManifest,
   manifestPath: Path = manifest.manifestPath(repoRoot),
 ): DecompositionManifestWriteResult? = try {
-  val yaml = DecompositionManifestCodec.encodeYaml(manifest)
+  val yaml = encodeDecompositionManifestYaml(manifest)
   writeDecompositionManifestText(manifestPath, yaml)
-  val loaded = DecompositionManifestCodec.load(manifestPath)
+  val loaded = loadDecompositionManifest(manifestPath)
   projectCurrentSubtaskStatus(repoRoot, loaded)
   DecompositionManifestWriteResult(manifestPath = manifestPath, manifest = loaded)
 } catch (_: IOException) {

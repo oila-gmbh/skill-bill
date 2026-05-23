@@ -2,12 +2,21 @@
 
 package skillbill.workflow
 
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowContracts
+import skillbill.contracts.workflow.WorkflowStateSchemaValidator
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.WorkflowContinueDecision
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
+import java.math.BigDecimal
+import java.math.BigInteger
 
 object WorkflowEngine {
   private val resumableStepStatuses = setOf("running", "blocked", "pending")
@@ -37,9 +46,9 @@ object WorkflowEngine {
     val snapshot = linkedMapOf<String, Any?>(
       "workflow_id" to record.workflowId,
       "session_id" to record.sessionId.orEmpty(),
-      "workflow_name" to record.workflowName.ifBlank { definition.workflowName },
-      "contract_version" to record.contractVersion.ifBlank { definition.contractVersion },
-      "workflow_status" to record.workflowStatus.ifBlank { "pending" },
+      "workflow_name" to record.workflowName,
+      "contract_version" to record.contractVersion,
+      "workflow_status" to record.workflowStatus,
       "current_step_id" to record.currentStepId.orEmpty(),
       "steps" to decodeSteps(record.stepsJson),
       "artifacts" to decodeObject(record.artifactsJson),
@@ -47,7 +56,7 @@ object WorkflowEngine {
       "updated_at" to record.updatedAt.orEmpty(),
       "finished_at" to record.finishedAt.orEmpty(),
     )
-    schemaValidator.validate(snapshot, snapshot["workflow_name"] as String)
+    schemaValidator.validate(snapshot, definition.workflowName)
     return snapshot
   }
 
@@ -75,8 +84,8 @@ object WorkflowEngine {
           return "step_updates[$index].status must be a non-empty string."
         }
         validateEnum(status, definition.stepStatuses, "step_updates.status")?.let { return it }
-        val attemptCount = update["attempt_count"] as? Number
-        if (attemptCount == null || attemptCount.toInt() < 0) {
+        val attemptCount = update["attempt_count"].asExactIntOrNull()
+        if (attemptCount == null || attemptCount < 0) {
           return "step_updates[$index].attempt_count must be an integer >= 0."
         }
       }
@@ -213,7 +222,7 @@ object WorkflowEngine {
     val canResume = resumePayload["can_resume"] as Boolean
     val stepArtifacts = continueArtifactKeys(definition, resumeStepId, artifacts)
     val currentStep = steps.firstOrNull { it["step_id"] == resumeStepId }.orEmpty()
-    val attemptCount = (currentStep["attempt_count"] as? Number)?.toInt() ?: 0
+    val attemptCount = currentStep["attempt_count"].asExactIntOrNull() ?: 0
     val alreadyRunning =
       workflowStatusBefore == "running" &&
         currentStepId == resumeStepId &&
@@ -305,7 +314,13 @@ object WorkflowEngine {
     val byStepId = existingSteps.associateByTo(LinkedHashMap()) { it["step_id"].toString() }
     stepUpdates.forEach { update ->
       val stepId = update["step_id"].toString()
-      byStepId[stepId] = step(stepId, update["status"].toString(), (update["attempt_count"] as Number).toInt())
+      val attemptCount = requireNotNull(update["attempt_count"].asExactIntOrNull()) {
+        "step_updates.attempt_count must be an integer >= 0."
+      }
+      require(attemptCount >= 0) {
+        "step_updates.attempt_count must be an integer >= 0."
+      }
+      byStepId[stepId] = step(stepId, update["status"].toString(), attemptCount)
     }
     return definition.stepIds.mapNotNull(byStepId::get)
   }
@@ -415,13 +430,35 @@ object WorkflowEngine {
   private fun step(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
     linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
 
-  private fun decodeSteps(rawValue: String): List<Map<String, Any?>> = JsonSupport.parseArrayOrEmpty(rawValue)
-    .mapNotNull(JsonSupport::anyToStringAnyMap)
+  private fun decodeSteps(rawValue: String): List<Map<String, Any?>> {
+    val parsed = parseDurableJson(rawValue, "stepsJson")
+    if (parsed !is JsonArray) {
+      throw InvalidWorkflowStateSchemaError("Workflow state stepsJson must decode to a JSON array.")
+    }
+    return parsed.mapIndexed { index, element ->
+      JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element))
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Workflow state stepsJson[$index] must decode to a JSON object.",
+        )
+    }
+  }
 
-  private fun decodeObject(rawValue: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawValue)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: emptyMap()
+  private fun decodeObject(rawValue: String): Map<String, Any?> {
+    val parsed = parseDurableJson(rawValue, "artifactsJson")
+    if (parsed !is JsonObject) {
+      throw InvalidWorkflowStateSchemaError("Workflow state artifactsJson must decode to a JSON object.")
+    }
+    return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+      ?: throw InvalidWorkflowStateSchemaError("Workflow state artifactsJson must decode to a JSON object.")
+  }
+
+  private fun parseDurableJson(rawValue: String, fieldName: String): JsonElement = try {
+    JsonSupport.json.parseToJsonElement(rawValue)
+  } catch (error: SerializationException) {
+    throw InvalidWorkflowStateSchemaError("Workflow state $fieldName contains malformed JSON.", error)
+  } catch (error: IllegalArgumentException) {
+    throw InvalidWorkflowStateSchemaError("Workflow state $fieldName contains malformed JSON.", error)
+  }
 
   private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
     kotlinx.serialization.json.JsonElement.serializer(),
@@ -441,4 +478,47 @@ object WorkflowEngine {
     (this as? List<*>).orEmpty().mapNotNull(JsonSupport::anyToStringAnyMap)
 
   private fun Any?.asStringAnyMap(): Map<String, Any?> = JsonSupport.anyToStringAnyMap(this).orEmpty()
+
+  private fun Any?.asExactIntOrNull(): Int? = when (this) {
+    is Byte -> toInt()
+    is Short -> toInt()
+    is Int -> this
+    is Long -> intValueExactOrNull()
+    is BigInteger -> intValueExactOrNull()
+    is BigDecimal -> intValueExactOrNull()
+    is Float -> intValueExactOrNull()
+    is Double -> intValueExactOrNull()
+    else -> null
+  }
+
+  private fun Long.intValueExactOrNull(): Int? =
+    takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
+
+  private fun BigInteger.intValueExactOrNull(): Int? = try {
+    intValueExact()
+  } catch (_: ArithmeticException) {
+    null
+  }
+
+  private fun BigDecimal.intValueExactOrNull(): Int? = try {
+    intValueExact()
+  } catch (_: ArithmeticException) {
+    null
+  }
+
+  private fun Float.intValueExactOrNull(): Int? {
+    if (!isFinite() || toDouble() < Int.MIN_VALUE.toDouble() || toDouble() > Int.MAX_VALUE.toDouble()) {
+      return null
+    }
+    val intValue = toInt()
+    return intValue.takeIf { it.toFloat() == this }
+  }
+
+  private fun Double.intValueExactOrNull(): Int? {
+    if (!isFinite() || this < Int.MIN_VALUE.toDouble() || this > Int.MAX_VALUE.toDouble()) {
+      return null
+    }
+    val intValue = toInt()
+    return intValue.takeIf { it.toDouble() == this }
+  }
 }

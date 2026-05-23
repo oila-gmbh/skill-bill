@@ -3,14 +3,12 @@ package skillbill.application
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
 import java.nio.file.Path
 
 internal fun continueExistingWorkflow(
@@ -41,7 +39,7 @@ internal fun continueExistingWorkflow(
 
 internal fun WorkflowStateSnapshot.decompositionRuntime(): DecompositionManifest? =
   decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-    ?.let { DecompositionManifestCodec.decodeMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
+    ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
 internal fun alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
@@ -76,7 +74,12 @@ internal fun persistParentDecompositionRuntime(
       workflowStatus = parentRecord.workflowStatus,
       currentStepId = parentRecord.currentStepId,
       stepUpdates = null,
-      artifactsPatch = mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap()),
+      artifactsPatch = mapOf(
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+          manifest,
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+        ),
+      ),
       sessionId = parentRecord.sessionId.orEmpty(),
     ),
   )

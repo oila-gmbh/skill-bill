@@ -4,7 +4,7 @@
 # feature's parent spec under `.feature-specs/<issue>-<feature>/`. It is
 # authored in YAML for human readability and consumed as a JSON Schema
 # (Draft 2020-12) by the Kotlin runtime
-# (`DecompositionManifestSchemaValidator` in `runtime-domain`).
+# (`DecompositionManifestSchemaValidator` in `runtime-contracts`).
 #
 # What lives here vs. in Kotlin:
 #
@@ -13,7 +13,7 @@
 #   shape, non-empty paths, etc.) — anything expressible in pure JSON
 #   Schema.
 # - Cross-field "coherence" rules that JSON Schema cannot express
-#   cleanly stay in Kotlin (`DecompositionManifestValidator`). Every
+#   cleanly stay in Kotlin (`DecompositionManifestCoherenceValidator`). Every
 #   such rule is named below under `x-coherence-checks` so the schema
 #   document alone fully describes the contract.
 #
@@ -21,7 +21,7 @@
 #
 # - `contract_version` is pinned by `DECOMPOSITION_MANIFEST_CONTRACT_VERSION`
 #   in
-#   `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt`.
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaPaths.kt`.
 # - The parity test `DecompositionManifestSchemaContractVersionTest`
 #   fails the build if they diverge. To bump the contract, edit BOTH
 #   constants in the same change.
@@ -45,6 +45,7 @@ $defs:
   subtaskId:
     type: integer
     minimum: 1
+    maximum: 2147483647
   subtaskStatus:
     type: string
     enum:
@@ -161,6 +162,7 @@ $defs:
       subtask_id:
         type: integer
         minimum: 0
+        maximum: 2147483647
       action:
         type: string
         enum:

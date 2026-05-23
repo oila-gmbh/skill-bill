@@ -1,19 +1,19 @@
 package skillbill.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
+import skillbill.contracts.install.InstallPlanSchemaPaths
+import skillbill.contracts.install.InstallPlanSchemaValidator
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
+import skillbill.contracts.workflow.WorkflowStateSchemaPaths
+import skillbill.contracts.workflow.assertWorkflowStateSchemaIdentity
 import skillbill.error.InvalidInstallPlanSchemaError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.install.model.INSTALL_PLAN_CONTRACT_VERSION
-import skillbill.install.model.InstallPlanSchemaPaths
-import skillbill.install.model.InstallPlanSchemaValidator
 import skillbill.nativeagent.NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION
 import skillbill.nativeagent.NativeAgentCompositionSchemaPaths
 import skillbill.nativeagent.NativeAgentCompositionSchemaValidator
-import skillbill.workflow.WORKFLOW_STATE_CONTRACT_VERSION
-import skillbill.workflow.WorkflowStateSchemaPaths
-import skillbill.workflow.assertWorkflowStateSchemaIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

@@ -1,6 +1,6 @@
 @file:Suppress("TooGenericExceptionCaught")
 
-package skillbill.install.model
+package skillbill.contracts.install
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -15,14 +15,14 @@ import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
 
-private val log: Logger = Logger.getLogger("skillbill.install.model.InstallPlanSchemaValidator")
+private val log: Logger = Logger.getLogger("skillbill.contracts.install.InstallPlanSchemaValidator")
 
 /**
  * SKILL-48 Subtask 2b: validates an install-plan-shaped `Map<String, Any?>`
  * against the canonical JSON-Schema document at
  * `orchestration/contracts/install-plan-schema.yaml`.
  *
- * Mirrors [skillbill.workflow.WorkflowStateSchemaValidator]. The schema
+ * Mirrors [skillbill.contracts.workflow.WorkflowStateSchemaValidator]. The schema
  * is loaded ONCE per process via the [schema] lazy and the compiled
  * [JsonSchema] is cached for every subsequent call. Coherence rules
  * (cross-field validation) stay in `InstallPlanBuilder` and surrounding
@@ -91,7 +91,7 @@ object InstallPlanSchemaValidator {
         fieldPath = "properties.contract_version.const",
         reason = "Canonical install-plan schema contract_version.const mismatch: loaded '$loadedConst' " +
           "but the runtime expects '$INSTALL_PLAN_CONTRACT_VERSION'. The schema on the classpath is out " +
-          "of date relative to the running runtime-domain.",
+          "of date relative to the running runtime-contracts.",
       )
     }
   }

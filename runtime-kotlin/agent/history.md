@@ -1,3 +1,13 @@
+## [2026-05-23] SKILL-52 domain-contract-foundation
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-core/architecture, orchestration/contracts
+- Runtime contract/schema validators and classpath schema resources for install-plan, workflow-state, and decomposition-manifest now live in `runtime-contracts`; domain code consumes typed validated seams rather than owning schema convenience APIs. reusable
+- `DecompositionManifestCodec` is pure model/wire-map conversion; application seams own YAML/file/artifact validation through `load/decode/encodeDecompositionManifest*`, including validated `decomposition_runtime` artifact emission. reusable
+- `WorkflowEngine` read seams loud-fail malformed durable JSON, wrong top-level shapes, blank persisted workflow contract fields, and non-exact/oversized integers with typed workflow schema errors.
+- Same-branch decomposition still creates subtask commits before advancing, but `GitWorkflowGitOperations.createCommit` leaves live `decomposition-manifest.yaml` projections uncommitted so parent bookkeeping can continue across the full decomposition run. reusable
+- Architecture coverage now bans domain workflow schema/YAML seams and raw application `decomposition_runtime` wire emission; the remaining application `Files` projection is documented as a temporary SKILL-52 blocker for later storage-port work.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
 Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement
 - Parent decomposition projection now updates the parent spec status in addition to subtask frontmatter, and Markdown `## Status` sections are projected when present. reusable

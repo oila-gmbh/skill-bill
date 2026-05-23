@@ -31,9 +31,14 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "branch", "--show-current")
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
-    val commit = runGit(repoRoot, "commit", "-m", message)
-    if (!commit.ok) return commit
-    return runGit(repoRoot, "rev-parse", "HEAD")
+    val unstagedRuntimeManifests = unstageDecompositionManifests(repoRoot)
+    val commit =
+      if (unstagedRuntimeManifests.ok) {
+        runGit(repoRoot, "commit", "-m", message)
+      } else {
+        unstagedRuntimeManifests
+      }
+    return if (commit.ok) runGit(repoRoot, "rev-parse", "HEAD") else commit
   }
 
   override fun validateBranchBase(
@@ -57,7 +62,9 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     }
   }
 
-  private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult {
+  private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult = runGit(repoRoot, args.toList())
+
+  private fun runGit(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
     val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
       .redirectErrorStream(true)
       .start()
@@ -77,6 +84,25 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
         status = "error",
         error = "git ${args.joinToString(" ")} failed with exit code ${process.exitValue()}: $output",
       )
+    }
+  }
+
+  private fun unstageDecompositionManifests(repoRoot: Path): WorkflowGitOperationResult {
+    val staged = runGit(repoRoot, "diff", "--cached", "--name-only", "--", ".feature-specs")
+    val manifestPaths =
+      if (staged.ok) {
+        staged.value
+          .lineSequence()
+          .map(String::trim)
+          .filter { it.endsWith("/decomposition-manifest.yaml") }
+          .toList()
+      } else {
+        emptyList()
+      }
+    return when {
+      !staged.ok -> staged
+      manifestPaths.isEmpty() -> WorkflowGitOperationResult(status = "ok")
+      else -> runGit(repoRoot, listOf("reset", "--") + manifestPaths)
     }
   }
 

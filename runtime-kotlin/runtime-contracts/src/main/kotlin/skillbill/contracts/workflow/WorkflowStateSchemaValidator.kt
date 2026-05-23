@@ -1,6 +1,6 @@
 @file:Suppress("TooGenericExceptionCaught")
 
-package skillbill.workflow
+package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -15,7 +15,7 @@ import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
 
-private val log: Logger = Logger.getLogger("skillbill.workflow.WorkflowStateSchemaValidator")
+private val log: Logger = Logger.getLogger("skillbill.contracts.workflow.WorkflowStateSchemaValidator")
 
 /**
  * SKILL-48 Subtask 2a: validates a snapshot-shaped `Map<String, Any?>`
@@ -232,7 +232,7 @@ fun assertWorkflowStateSchemaIdentity(yamlNode: JsonNode) {
     throw InvalidWorkflowStateSchemaError(
       "Canonical workflow-state schema contract_version.const mismatch: loaded '$loadedConst' but the " +
         "runtime expects '$WORKFLOW_STATE_CONTRACT_VERSION'. The schema on the classpath is out of date " +
-        "relative to the running runtime-domain.",
+        "relative to the running runtime-contracts.",
     )
   }
 }

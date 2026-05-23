@@ -11,6 +11,8 @@ import kotlin.test.assertTrue
 class RuntimeArchitectureTest {
   private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/ReadianMcpRuntime.kt"
   private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+  private val decompositionManifestFileWrites =
+    "runtime-application/src/main/kotlin/skillbill/application/DecompositionManifestFileWrites.kt"
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {
@@ -68,6 +70,8 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "schema_migrations")
     assertContains(architecture, "versioned database migrations")
     assertContains(architecture, "contract DTOs")
+    assertContains(architecture, "runtime/schema parse-seam validators")
+    assertContains(architecture, "Temporary SKILL-52 blocker")
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
     assertContains(architecture, "RuntimeContext")
@@ -147,9 +151,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `application services use persistence ports instead of sqlite infrastructure`() {
-    assertNoBannedImports(
-      files = sourceFiles().filter { it.packageName.startsWith("skillbill.application") },
-      bannedImports =
+    val applicationPersistenceBannedImports =
       listOf(
         "java.sql",
         "java.nio.file.Files",
@@ -161,7 +163,17 @@ class RuntimeArchitectureTest {
         "skillbill.telemetry.TelemetryConfigMutationRuntime",
         "skillbill.telemetry.TelemetryHttpRuntime",
         "skillbill.telemetry.TelemetryRemoteStatsRuntime",
-      ),
+      )
+    assertNoBannedImports(
+      files =
+      sourceFiles()
+        .filter { it.packageName.startsWith("skillbill.application") }
+        .filterNot { it.relativePath == decompositionManifestFileWrites },
+      bannedImports = applicationPersistenceBannedImports,
+    )
+    assertNoBannedImports(
+      files = listOf(sourceFile(runtimeRoot.resolve(decompositionManifestFileWrites))),
+      bannedImports = applicationPersistenceBannedImports - "java.nio.file.Files",
     )
   }
 
@@ -330,6 +342,86 @@ class RuntimeArchitectureTest {
         "skillbill.mcp",
       ),
     )
+  }
+
+  @Test
+  fun `touched domain contract foundation stays free of concrete adapters`() {
+    assertNoBannedImports(
+      files =
+      sourceFiles().filter { file ->
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/workflow/") ||
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/install/model/")
+      },
+      bannedImports =
+      listOf(
+        "com.github.ajalt.clikt",
+        "java.io",
+        "java.net.http",
+        "java.sql",
+        "java.nio.file.Files",
+        "kotlin.io.path",
+        "skillbill.cli",
+        "skillbill.db",
+        "skillbill.desktop",
+        "skillbill.infrastructure",
+        "skillbill.mcp",
+      ),
+    )
+  }
+
+  @Test
+  fun `runtime schema validators and schema resources are owned by runtime contracts`() {
+    val contractFiles =
+      listOf(
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaPaths.kt",
+      )
+    contractFiles.forEach { relative ->
+      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing contract-owned file: $relative")
+    }
+    val legacyDomainContractFiles =
+      listOf(
+        "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaValidator.kt",
+        "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt",
+        "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaValidator.kt",
+        "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaPaths.kt",
+        "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaValidator.kt",
+        "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaPaths.kt",
+      )
+    legacyDomainContractFiles.forEach { relative ->
+      assertTrue(
+        !Files.exists(runtimeRoot.resolve(relative)),
+        "Legacy domain contract shim must stay absent: $relative",
+      )
+    }
+
+    val runtimeContractsBuild = Files.readString(runtimeRoot.resolve("runtime-contracts/build.gradle.kts"))
+    assertContains(runtimeContractsBuild, "copyWorkflowStateSchema")
+    assertContains(runtimeContractsBuild, "copyInstallPlanSchema")
+    assertContains(runtimeContractsBuild, "copyDecompositionManifestSchema")
+
+    val runtimeDomainBuild = Files.readString(runtimeRoot.resolve("runtime-domain/build.gradle.kts"))
+    assertTrue(
+      "copyWorkflowStateSchema" !in runtimeDomainBuild &&
+        "copyInstallPlanSchema" !in runtimeDomainBuild &&
+        "copyDecompositionManifestSchema" !in runtimeDomainBuild,
+      "runtime-domain must not own runtime contract schema copy tasks.",
+    )
+  }
+
+  @Test
+  fun `decomposition manifest application filesystem access has explicit temporary blocker coverage`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+    val projectionIo = Files.readString(sourcePath("skillbill/application/DecompositionManifestFileWrites.kt"))
+
+    assertContains(architecture, "Temporary SKILL-52 blocker: decomposition manifest projection")
+    assertContains(architecture, "injected manifest storage port")
+    assertContains(projectionIo, "Temporary SKILL-52 blocker")
+    assertContains(projectionIo, "manifest storage port")
   }
 
   @Test

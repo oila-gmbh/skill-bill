@@ -1,8 +1,8 @@
 package skillbill.scaffold
 
-import skillbill.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowUpdateInput

@@ -22,7 +22,7 @@ di
 ## Gradle Modules
 
 - `runtime-contracts`: JSON helpers, contract DTOs, runtime surface contracts,
-  and runtime exception types.
+  runtime/schema parse-seam validators, and runtime exception types.
 - `runtime-domain`: pure learning, review, telemetry, and version models/rules;
   public domain data types live in area-owned `model` packages.
 - `runtime-ports`: shared `skillbill.model.RuntimeContext`, persistence and
@@ -86,9 +86,10 @@ di
 - `skillbill.telemetry`: telemetry settings normalization, sync orchestration,
   config mutation rules, and port-backed compatibility facades. Telemetry data
   types live in `skillbill.telemetry.model`.
-- `skillbill.contracts`: shared JSON and runtime contract DTOs plus pure
-  serialization helpers. Mapping from application/domain/port models into
-  contract DTOs belongs in application or adapter-owned packages.
+- `skillbill.contracts`: shared JSON and runtime contract DTOs, pure
+  serialization helpers, and schema validators that guard runtime parse seams.
+  Mapping from application/domain/port models into contract DTOs belongs in
+  application or adapter-owned packages.
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.workflow.*`: active durable workflow state/runtime surfaces for
   feature-implement and feature-verify. State behavior is owned by
@@ -133,6 +134,15 @@ These are the stable dependency rules the runtime should converge toward.
    HTTP request mechanics belong in `infrastructure/http`; config file IO
    belongs in `infrastructure/fs`; telemetry proxy DTOs belong in `contracts`
    and telemetry proxy payload mapping belongs with the HTTP adapter.
+10. Runtime contract/schema validation belongs in `runtime-contracts` and is
+    invoked at parse/emission seams such as workflow-state reads, install-plan
+    building/emission, and decomposition-manifest file/artifact projection.
+11. Temporary SKILL-52 blocker: decomposition manifest projection still performs
+    repo-local file reads/writes from `skillbill.application` because the
+    current workflow projection API is static and shared by CLI, MCP, and
+    tests. A later adapter/composition subtask should introduce an injected
+    manifest storage port and move those `Files` calls behind
+    `runtime-core`/infrastructure wiring.
 
 ## Architecture Guardrails
 
@@ -172,6 +182,11 @@ useful for the next refactors:
 - telemetry proxy batch and stats wire payloads are explicit contract helpers,
   separate from sync orchestration; model-to-contract mapping must stay out of
   `skillbill.contracts`
+- workflow-state, install-plan, and decomposition-manifest schema validators
+  and schema resource copy tasks live in `runtime-contracts`; domain workflow
+  code performs pure model and wire-map conversion
+- decomposition manifest application projection has a documented temporary
+  SKILL-52 filesystem blocker until an injected manifest storage port exists
 - SQLite schema changes are represented as append-only versioned database migrations
   and recorded in `schema_migrations`
 - CLI and MCP JSON output should be produced through explicit contract DTOs and

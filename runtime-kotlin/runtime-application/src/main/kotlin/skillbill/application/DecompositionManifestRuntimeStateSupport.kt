@@ -21,7 +21,6 @@ internal fun DecompositionSubtask.withRuntimeFields(
   return copy(
     status = nextStatus,
     branch = branchName(artifacts["branch"]).ifBlank { manifest.branchFor(id) ?: branch },
-    commitSha = commitShaFrom(artifacts) ?: commitSha,
     workflowId = update.workflowId.ifBlank { workflowId },
     reviewResult = artifacts["review_result"].asStringAnyMapOrNull() ?: reviewResult,
     auditResult = artifacts["audit_report"].asStringAnyMapOrNull() ?: auditResult,
@@ -98,7 +97,3 @@ private fun blockedReasonFrom(update: DecompositionManifestRuntimeUpdate, status
   } else {
     null
   }
-
-private fun commitShaFrom(artifacts: Map<String, Any?>): String? =
-  artifacts["commit_sha"]?.toString()?.takeIf(String::isNotBlank)
-    ?: (artifacts["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)

@@ -1,7 +1,8 @@
 @file:Suppress("TooGenericExceptionCaught")
 
-package skillbill.workflow
+package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -17,8 +18,16 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 private val decompositionManifestLog: Logger =
-  Logger.getLogger("skillbill.workflow.DecompositionManifestSchemaValidator")
+  Logger.getLogger("skillbill.contracts.workflow.DecompositionManifestSchemaValidator")
 
+/**
+ * Public parse-seam validator for decomposition manifest wire payloads.
+ *
+ * SKILL-52 moved this API from `runtime-domain` to `runtime-contracts` so
+ * schema validation remains owned by the runtime contract boundary. Callers
+ * should import this package directly; legacy domain shims are intentionally
+ * not provided because domain code must not own runtime schema loading.
+ */
 object DecompositionManifestSchemaValidator {
   private val schema: JsonSchema by lazy { loadDecompositionManifestSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
@@ -40,10 +49,40 @@ object DecompositionManifestSchemaValidator {
   }
 
   fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> {
-    val node = yamlMapper.readTree(yamlText)
-    val parsed = mapper.convertValue(node, mapType)
+    val node = readYamlObjectNode(yamlText, sourceLabel)
+    val parsed = yamlObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
     return parsed
+  }
+
+  private fun readYamlObjectNode(yamlText: String, sourceLabel: String): JsonNode {
+    val node =
+      try {
+        yamlMapper.readTree(yamlText)
+      } catch (error: JsonProcessingException) {
+        throw InvalidDecompositionManifestSchemaError(
+          sourceLabel = sourceLabel,
+          reason = "YAML is malformed: ${error.originalMessage.orEmpty()}",
+          cause = error,
+        )
+      }
+    if (node == null || !node.isObject) {
+      throw InvalidDecompositionManifestSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "<root> must be an object.",
+      )
+    }
+    return node
+  }
+
+  private fun yamlObjectNodeToMap(node: JsonNode, sourceLabel: String): Map<String, Any?> = try {
+    mapper.convertValue(node, mapType)
+  } catch (error: IllegalArgumentException) {
+    throw InvalidDecompositionManifestSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "YAML root object cannot be converted to a string-keyed map: ${error.message.orEmpty()}",
+      cause = error,
+    )
   }
 
   fun assertIdentity(yamlNode: JsonNode) {
@@ -62,7 +101,7 @@ object DecompositionManifestSchemaValidator {
         sourceLabel = DecompositionManifestSchemaPaths.CLASSPATH_RESOURCE,
         reason = "Canonical decomposition manifest schema contract_version.const mismatch: loaded '$loadedConst' " +
           "but the runtime expects '$DECOMPOSITION_MANIFEST_CONTRACT_VERSION'. The schema on the classpath is " +
-          "out of date relative to the running runtime-domain.",
+          "out of date relative to the running runtime-contracts.",
       )
     }
   }

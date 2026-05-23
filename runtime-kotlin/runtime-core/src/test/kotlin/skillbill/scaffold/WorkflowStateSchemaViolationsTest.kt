@@ -1,10 +1,10 @@
 package skillbill.scaffold
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.contracts.workflow.WorkflowStateSchemaValidator
+import skillbill.contracts.workflow.extractOffendingValueFromInstance
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.CanonicalWorkflowStateSchemaValidator
-import skillbill.workflow.WorkflowStateSchemaValidator
-import skillbill.workflow.extractOffendingValueFromInstance
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
