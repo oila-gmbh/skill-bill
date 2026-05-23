@@ -135,6 +135,7 @@ class FakeGitGateway(
   var throwOnCommits: Throwable? = null,
   var throwOnStage: Throwable? = null,
   var throwOnUnstage: Throwable? = null,
+  var throwOnDiscard: Throwable? = null,
   var throwOnCommit: Throwable? = null,
   var throwOnPush: Throwable? = null,
   var throwOnPublishingStatus: Throwable? = null,
@@ -164,6 +165,9 @@ class FakeGitGateway(
   var unstageCallCount: Int = 0
     private set
 
+  var discardCallCount: Int = 0
+    private set
+
   var publishingStatusCallCount: Int = 0
     private set
 
@@ -183,6 +187,9 @@ class FakeGitGateway(
     private set
 
   var lastUnstagedPaths: List<String> = emptyList()
+    private set
+
+  var lastDiscardedPaths: List<String> = emptyList()
     private set
 
   var lastRecentCommitsPathFilter: String? = null
@@ -272,6 +279,15 @@ class FakeGitGateway(
       }
     }
     scriptedSnapshot = scriptedSnapshot.copy(files = mutated)
+    return snapshotFor(session)
+  }
+
+  @Suppress("UNUSED_PARAMETER")
+  override fun discard(session: RepoSession?, paths: List<String>): ChangesSnapshot {
+    discardCallCount += 1
+    lastDiscardedPaths = paths
+    throwOnDiscard?.let { throw it }
+    scriptedSnapshot = scriptedSnapshot.copy(files = scriptedSnapshot.files.filterNot { file -> file.path in paths })
     return snapshotFor(session)
   }
 

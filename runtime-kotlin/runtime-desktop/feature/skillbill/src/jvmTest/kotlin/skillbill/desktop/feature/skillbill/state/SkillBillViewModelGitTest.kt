@@ -257,6 +257,30 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
+  fun `discard changed file updates snapshot through gateway`() {
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(path = "platform-packs/kmp/addons/a.md", group = ChangedFileGroup.UNSTAGED, statusCode = "D"),
+          ChangedFile(path = "platform-packs/kmp/platform.yaml", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+        ),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginDiscardChangedFile("platform-packs/kmp/addons/a.md")
+    assertNotNull(request)
+    val state = viewModel.finishGitRefresh(viewModel.runStage(request))
+
+    assertEquals(listOf("platform-packs/kmp/addons/a.md"), gitGateway.lastDiscardedPaths)
+    assertEquals(1, gitGateway.discardCallCount)
+    assertFalse(state.changes.files.any { file -> file.path == "platform-packs/kmp/addons/a.md" })
+    assertFalse(state.changesBusy)
+  }
+
+  @Test
   fun `gateway error message surfaces in changes snapshot without changing other slices (AC11)`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(files = emptyList(), errorMessage = null),
@@ -931,7 +955,7 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
-  fun `publish selection stays empty after user clears all files and snapshot refreshes`() {
+  fun `publish selection always tracks all visible managed changes on refresh`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
         files = listOf(ChangedFile(path = "skills/x/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M")),
@@ -950,8 +974,7 @@ class SkillBillViewModelGitTest {
 
     val refreshed = viewModel.refreshGit()
 
-    assertTrue(refreshed.selectedPublishPaths.isEmpty())
-    assertFalse(refreshed.canPublish)
+    assertEquals(setOf("skills/x/content.md"), refreshed.selectedPublishPaths)
   }
 
   @Test
@@ -1047,7 +1070,13 @@ class SkillBillViewModelGitTest {
     viewModel.refreshGit()
     val state = viewModel.updateCommitMessage("remove compose adaptive add-on")
 
-    assertEquals(cascadePaths, state.selectedPublishPaths)
+    assertEquals(setOf("platform-packs/kmp/addons/android-compose-adaptive-layouts.md"), state.selectedPublishPaths)
+    assertEquals(
+      listOf(GovernedChangeConcept.ADD_ONS),
+      state.changes.skillContentGovernedGroups.map { group -> group.concept },
+    )
+    assertEquals(1, state.changes.skillContentFiles.size)
+    assertEquals(2, state.changes.hiddenManagedSourceFiles.size)
     assertTrue(state.changes.nonSkillContentFiles.isEmpty())
     assertTrue(state.canPublish)
     assertNull(state.publishDisabledReason)

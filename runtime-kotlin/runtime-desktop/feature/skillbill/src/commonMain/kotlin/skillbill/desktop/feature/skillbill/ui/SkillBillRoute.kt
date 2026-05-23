@@ -762,6 +762,18 @@ fun SkillBillRoute(
         }
       }
     },
+    onDiscardChangedFile = { path ->
+      if (canStartRepoScopedAction()) {
+        val request = viewModel.beginDiscardChangedFile(path)
+        if (request != null) {
+          state = viewModel.state()
+          coroutineScope.launch {
+            val result = withContext(Dispatchers.Default) { viewModel.runStage(request) }
+            state = viewModel.finishGitRefresh(result)
+          }
+        }
+      }
+    },
     onRefreshGit = {
       if (canStartRepoScopedAction()) {
         runGitRefresh()

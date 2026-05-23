@@ -410,16 +410,20 @@ data class ChangedFile(
   val isSkillContent: Boolean
     get() {
       val normalized = path.trim().replace('\\', '/')
-      return !isGenerated && isSkillBillManagedSource(normalized)
+      return !isGenerated && isUserVisibleManagedSource(normalized)
     }
+
+  val isSkillBillManagedSource: Boolean
+    get() = !isGenerated && isSkillBillManagedSource(path.trim().replace('\\', '/'))
 }
 
-private fun isSkillBillManagedSource(path: String): Boolean =
-  isAuthoredContentSource(path) ||
-    isGovernedAddonSource(path) ||
-    isPlatformPackManifestSource(path) ||
-    isSkillClassManifestSource(path) ||
-    path == "README.md"
+private fun isSkillBillManagedSource(path: String): Boolean = isUserVisibleManagedSource(path) ||
+  isPlatformPackManifestSource(path) ||
+  isSkillClassManifestSource(path) ||
+  path == "README.md"
+
+private fun isUserVisibleManagedSource(path: String): Boolean =
+  isAuthoredContentSource(path) || isGovernedAddonSource(path)
 
 private fun isAuthoredContentSource(path: String): Boolean =
   path.endsWith("/content.md") && (path.startsWith("skills/") || path.startsWith("platform-packs/"))
@@ -484,7 +488,13 @@ data class ChangesSnapshot(
 ) {
   val skillContentFiles: List<ChangedFile> get() = files.filter(ChangedFile::isSkillContent)
 
-  val nonSkillContentFiles: List<ChangedFile> get() = files.filterNot(ChangedFile::isSkillContent)
+  val skillBillManagedSourceFiles: List<ChangedFile> get() = files.filter(ChangedFile::isSkillBillManagedSource)
+
+  val hiddenManagedSourceFiles: List<ChangedFile> get() = skillBillManagedSourceFiles.filterNot(
+    ChangedFile::isSkillContent,
+  )
+
+  val nonSkillContentFiles: List<ChangedFile> get() = files.filterNot(ChangedFile::isSkillBillManagedSource)
 
   val skillContentGovernedGroups: List<GovernedChangeGroup>
     get() = classifyGovernedChanges(skillContentFiles)

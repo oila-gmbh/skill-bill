@@ -134,6 +134,9 @@ class PlaceholderGitGateway : GitGateway {
   override fun unstage(session: RepoSession?, paths: List<String>): ChangesSnapshot = ChangesSnapshot.empty
 
   @Suppress("UNUSED_PARAMETER")
+  override fun discard(session: RepoSession?, paths: List<String>): ChangesSnapshot = ChangesSnapshot.empty
+
+  @Suppress("UNUSED_PARAMETER")
   override fun publishingStatus(session: RepoSession?): GitPublishingStatus = GitPublishingStatus.empty
 
   @Suppress("UNUSED_PARAMETER")

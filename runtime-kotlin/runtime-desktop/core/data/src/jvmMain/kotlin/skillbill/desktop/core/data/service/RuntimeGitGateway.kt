@@ -17,6 +17,7 @@ import skillbill.scaffold.discoverGeneratedArtifactFiles
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -112,6 +113,47 @@ class RuntimeGitGateway : GitGateway {
           snapshotFor(session)
         } else {
           // F-A02: see stage() above.
+          ChangesSnapshot.failed(describeGitFailure(result))
+        }
+      },
+      onFailure = { error -> ChangesSnapshot.failed(describe(error)) },
+    )
+  }
+
+  override fun discard(session: RepoSession?, paths: List<String>): ChangesSnapshot {
+    val root = sessionRoot(session) ?: return ChangesSnapshot.empty
+    val safePaths = paths.map(String::trim).filter(String::isNotEmpty).distinct()
+    if (safePaths.isEmpty()) {
+      return snapshotFor(session)
+    }
+    val deletedManagedPaths = safePaths.filter { path ->
+      isDeletedInIndexOrWorktree(
+        root,
+        path,
+      ) && isVisibleManagedPath(path)
+    }
+    val outcome = runCatching {
+      val trackedPaths = safePaths.filter { path -> isTrackedByHeadOrIndex(root, path) }
+      val untrackedPaths = safePaths - trackedPaths.toSet()
+      val restoreResult = if (trackedPaths.isEmpty()) {
+        GitResult(exitCode = 0, stdout = "")
+      } else {
+        runGit(root, listOf("restore", "--staged", "--worktree", "--") + trackedPaths)
+      }
+      if (restoreResult.exitCode != 0) {
+        restoreResult
+      } else if (untrackedPaths.isEmpty()) {
+        restoreResult
+      } else {
+        runGit(root, listOf("clean", "-f", "--") + untrackedPaths)
+      }
+    }
+    return outcome.fold(
+      onSuccess = { result ->
+        if (result.exitCode == 0) {
+          deletedManagedPaths.forEach { path -> restoreRelatedManagedEntries(root, path) }
+          snapshotFor(session)
+        } else {
           ChangesSnapshot.failed(describeGitFailure(result))
         }
       },
@@ -291,6 +333,743 @@ class RuntimeGitGateway : GitGateway {
     }
     return parseCommitLog(result.stdout)
   }
+
+  private fun isTrackedByHeadOrIndex(root: Path, path: String): Boolean {
+    val headResult = runGit(root, listOf("ls-tree", "-r", "--name-only", "HEAD", "--", path))
+    if (headResult.exitCode == 0 && headResult.stdout.lineSequence().any { it.trim() == path }) {
+      return true
+    }
+    val indexResult = runGit(root, listOf("ls-files", "--", path))
+    return indexResult.exitCode == 0 && indexResult.stdout.lineSequence().any { it.trim() == path }
+  }
+
+  private fun isDeletedInIndexOrWorktree(root: Path, path: String): Boolean {
+    val result = runGit(root, listOf("status", "--porcelain=v1", "--", path))
+    if (result.exitCode != 0) {
+      return false
+    }
+    return result.stdout.lineSequence()
+      .map { line -> line.take(2) }
+      .any { status -> status.contains('D') }
+  }
+
+  private fun isVisibleManagedPath(path: String): Boolean = isGovernedAddonPath(path) || isAuthoredContentPath(path)
+
+  private fun restoreRelatedManagedEntries(root: Path, path: String) {
+    when {
+      isGovernedAddonPath(path) -> restoreAddonManagedEntries(root, path)
+      isAuthoredContentPath(path) -> restoreContentManagedEntries(root, path)
+    }
+  }
+
+  private fun restoreAddonManagedEntries(root: Path, path: String) {
+    val parts = path.split('/')
+    if (parts.size != 4) return
+    val platform = parts[1]
+    val pointerName = parts[3]
+    val pointerSlug = pointerName.removeSuffix(".md")
+    val platformManifest = "platform-packs/$platform/platform.yaml"
+    rewriteFromHead(root, platformManifest) { head, current ->
+      var updated = restoreNamedListItemsFromHead(
+        head = head,
+        current = current,
+        blockName = "pointers",
+        itemIndent = 4,
+        itemMatches = { lines, start, end ->
+          lines.subList(start, end).any { line -> namedListEntryValue(line, "name") == pointerName }
+        },
+      )
+      updated = restoreAddonUsageEntrypointItemsFromHead(head, updated, pointerName)
+      restoreAddonUsageCompanionPointersFromHead(head, updated, pointerName)
+    }
+    val skillClassesDir = root.resolve("orchestration/skill-classes")
+    if (!Files.isDirectory(skillClassesDir)) {
+      return
+    }
+    Files.list(skillClassesDir).use { stream ->
+      stream
+        .filter { file -> Files.isRegularFile(file) && file.fileName.toString().endsWith(".yaml") }
+        .forEach { manifest ->
+          val relative = root.relativize(manifest).toString().replace('\\', '/')
+          rewriteFromHead(root, relative) { head, current ->
+            restoreSkillClassPointerFromHead(head, current, pointerSlug)
+          }
+        }
+    }
+  }
+
+  private fun restoreContentManagedEntries(root: Path, path: String) {
+    val parts = path.split('/')
+    if (parts.size >= 4 && parts[0] == "platform-packs" && path.endsWith("/content.md")) {
+      val platform = parts[1]
+      val skillRelativeDir = parts.drop(2).dropLast(1).joinToString("/")
+      val contentRelativePath = "$skillRelativeDir/content.md"
+      rewriteFromHead(root, "platform-packs/$platform/platform.yaml") { head, current ->
+        restorePlatformPackContentEntriesFromHead(head, current, skillRelativeDir, contentRelativePath)
+      }
+    }
+  }
+
+  private fun rewriteFromHead(root: Path, relativePath: String, transform: (String, String) -> String) {
+    val file = root.resolve(relativePath)
+    if (!Files.exists(file)) {
+      return
+    }
+    val head = gitBlobText(root, relativePath) ?: return
+    val current = Files.readString(file)
+    val updated = transform(head, current)
+    if (updated != current) {
+      Files.writeString(file, updated)
+    }
+  }
+
+  private fun gitBlobText(root: Path, relativePath: String): String? {
+    val result = runGit(root, listOf("show", "HEAD:$relativePath"))
+    return if (result.exitCode == 0) result.stdout else null
+  }
+
+  private fun restorePlatformPackContentEntriesFromHead(
+    head: String,
+    current: String,
+    skillRelativeDir: String,
+    contentRelativePath: String,
+  ): String {
+    var updated = restoreNestedMappingBlockFromHead(head, current, "pointers", skillRelativeDir)
+    updated = restoreNestedMappingBlockFromHead(head, updated, "addon_usage", skillRelativeDir)
+    updated = restoreLineFromHead(updated, head) { line ->
+      leadingSpaces(line) == 2 &&
+        line.trimStart().startsWith("baseline:") &&
+        keyValue(line, "baseline") == contentRelativePath
+    }
+    updated = restoreLineIntoNestedBlockFromHead(updated, head, "declared_files", "areas") { line ->
+      leadingSpaces(line) == 4 &&
+        line.trimStart().contains(":") &&
+        keyValue(line, line.trimStart().substringBefore(':')) == contentRelativePath
+    }
+    updated = restoreLineFromHead(updated, head) { line ->
+      leadingSpaces(line) == 0 &&
+        line.trimStart().startsWith("declared_quality_check_file:") &&
+        keyValue(line, "declared_quality_check_file") == contentRelativePath
+    }
+    val area = areaForContentPath(head, contentRelativePath)
+    if (area != null) {
+      updated = restoreLineFromHead(updated, head, itemIndent = 2) { line ->
+        leadingSpaces(line) == 2 && yamlListScalar(line) == area
+      }
+      updated = restoreNestedMappingBlockFromHead(head, updated, "area_metadata", area)
+    }
+    return updated
+  }
+
+  private fun areaForContentPath(text: String, contentRelativePath: String): String? =
+    text.lineSequence().firstNotNullOfOrNull { line ->
+      if (leadingSpaces(line) == 4 && line.trimStart().contains(":") && line.contains(contentRelativePath)) {
+        line.trimStart().substringBefore(':').trim()
+      } else {
+        null
+      }
+    }
+
+  private fun restoreSkillClassPointerFromHead(head: String, current: String, pointerSlug: String): String {
+    val headLines = head.split('\n')
+    val headLineIndex = headLines.indexOfFirst { line ->
+      leadingSpaces(line) == 2 && yamlListScalar(line) == pointerSlug
+    }
+    if (headLineIndex < 0) {
+      return current
+    }
+    if (current.lines().any { line -> leadingSpaces(line) == 2 && yamlListScalar(line) == pointerSlug }) {
+      return current
+    }
+    val headBlock = topLevelBlockLineRange(headLines, "pointers") ?: return current
+    return insertLineIntoTopLevelBlock(current, "pointers", headLines[headLineIndex]) { lines, block ->
+      orderedFlatListItemInsertIndex(
+        lines = lines,
+        block = block,
+        headLines = headLines,
+        headBlock = headBlock,
+        headItemStart = headLineIndex,
+        itemIndent = 2,
+      )
+    }
+  }
+
+  private fun restoreAddonUsageEntrypointItemsFromHead(head: String, current: String, pointerName: String): String =
+    restoreNamedListItemsFromHead(
+      head = head,
+      current = current,
+      blockName = "addon_usage",
+      itemIndent = 4,
+      itemMatches = { lines, start, end ->
+        lines.subList(start, end).any { line -> keyValue(line, "entrypoint") == pointerName }
+      },
+    )
+
+  private fun restoreAddonUsageCompanionPointersFromHead(head: String, current: String, pointerName: String): String {
+    var updated = current
+    val headLines = head.split('\n')
+    val block = topLevelBlockLineRange(headLines, "addon_usage") ?: return current
+    var idx = block.first + 1
+    while (idx <= block.last && idx < headLines.size) {
+      if (isAddonUsageItemStart(headLines[idx])) {
+        val end = listItemEnd(headLines, idx, block.last + 1)
+        val itemLines = headLines.subList(idx, end)
+        if (itemLines.any { line -> leadingSpaces(line) == 8 && yamlListScalar(line) == pointerName }) {
+          val parent = parentNestedMappingFor(headLines, block, idx)
+          val slug = namedListEntryValue(headLines[idx], "slug")
+          if (parent != null && slug != null) {
+            updated = restoreCompanionPointerLine(
+              current = updated,
+              parent = parent,
+              slug = slug,
+              pointerName = pointerName,
+              headCompanionPointers = itemLines
+                .filter { line -> leadingSpaces(line) == 8 }
+                .mapNotNull(::yamlListScalar),
+            )
+          }
+        }
+        idx = end
+      } else {
+        idx += 1
+      }
+    }
+    return updated
+  }
+
+  private fun restoreCompanionPointerLine(
+    current: String,
+    parent: String,
+    slug: String,
+    pointerName: String,
+    headCompanionPointers: List<String>,
+  ): String {
+    val lines = current.split('\n').toMutableList()
+    val block = topLevelBlockLineRange(lines, "addon_usage") ?: return current
+    val parentRange = nestedMappingLineRange(lines, block, parent) ?: return current
+    var idx = parentRange.first + 1
+    while (idx <= parentRange.last && idx < lines.size) {
+      if (isAddonUsageItemStart(lines[idx]) && namedListEntryValue(lines[idx], "slug") == slug) {
+        val end = listItemEnd(lines, idx, parentRange.last + 1)
+        if (lines.subList(idx, end).any { line -> leadingSpaces(line) == 8 && yamlListScalar(line) == pointerName }) {
+          return current
+        }
+        val companionHeader = (idx + 1 until end).firstOrNull { lineIdx ->
+          leadingSpaces(lines[lineIdx]) == 6 && lines[lineIdx].trim() == "companion_pointers:"
+        }
+        if (companionHeader != null) {
+          lines.add(
+            orderedCompanionPointerInsertIndex(
+              lines = lines,
+              itemEnd = end,
+              companionHeader = companionHeader,
+              pointerName = pointerName,
+              headCompanionPointers = headCompanionPointers,
+            ),
+            "        - $pointerName",
+          )
+        } else {
+          lines.add(idx + 1, "      companion_pointers:")
+          lines.add(idx + 2, "        - $pointerName")
+        }
+        return lines.joinToString("\n")
+      }
+      idx = listItemEnd(lines, idx, parentRange.last + 1)
+    }
+    return current
+  }
+
+  private fun orderedCompanionPointerInsertIndex(
+    lines: List<String>,
+    itemEnd: Int,
+    companionHeader: Int,
+    pointerName: String,
+    headCompanionPointers: List<String>,
+  ): Int {
+    val pointerIndex = headCompanionPointers.indexOf(pointerName)
+    if (pointerIndex >= 0) {
+      headCompanionPointers.drop(pointerIndex + 1).forEach { nextPointer ->
+        val currentNext = (companionHeader + 1 until itemEnd).firstOrNull { idx ->
+          leadingSpaces(lines[idx]) == 8 && yamlListScalar(lines[idx]) == nextPointer
+        }
+        if (currentNext != null) {
+          return currentNext
+        }
+      }
+      headCompanionPointers.take(pointerIndex).asReversed().forEach { previousPointer ->
+        val currentPrevious = (companionHeader + 1 until itemEnd).firstOrNull { idx ->
+          leadingSpaces(lines[idx]) == 8 && yamlListScalar(lines[idx]) == previousPointer
+        }
+        if (currentPrevious != null) {
+          return currentPrevious + 1
+        }
+      }
+    }
+    return (companionHeader + 1 until itemEnd).firstOrNull { idx ->
+      leadingSpaces(lines[idx]) != 8
+    } ?: itemEnd
+  }
+
+  private fun restoreNamedListItemsFromHead(
+    head: String,
+    current: String,
+    blockName: String,
+    itemIndent: Int,
+    itemMatches: (List<String>, Int, Int) -> Boolean,
+  ): String {
+    var updated = current
+    val headLines = head.split('\n')
+    val block = topLevelBlockLineRange(headLines, blockName) ?: return current
+    var idx = block.first + 1
+    while (idx <= block.last && idx < headLines.size) {
+      val line = headLines[idx]
+      if (leadingSpaces(line) == itemIndent && line.trimStart().startsWith("- ")) {
+        val end = listItemEnd(headLines, idx, block.last + 1)
+        if (itemMatches(headLines, idx, end)) {
+          val parent = parentNestedMappingFor(headLines, block, idx)
+          val itemText = headLines.subList(idx, end).joinToString("\n")
+          if (parent != null && !nestedMappingContainsItem(updated, blockName, parent, itemText)) {
+            updated = insertNestedListItem(
+              current = updated,
+              blockName = blockName,
+              parent = parent,
+              itemText = itemText,
+              headLines = headLines,
+              headBlock = block,
+              headItemStart = idx,
+              itemIndent = itemIndent,
+            )
+          }
+        }
+        idx = end
+      } else {
+        idx += 1
+      }
+    }
+    return updated
+  }
+
+  private fun insertNestedListItem(
+    current: String,
+    blockName: String,
+    parent: String,
+    itemText: String,
+    headLines: List<String>,
+    headBlock: IntRange,
+    headItemStart: Int,
+    itemIndent: Int,
+  ): String {
+    val lines = current.split('\n').toMutableList()
+    val block = topLevelBlockLineRange(lines, blockName)
+    if (block == null) {
+      lines.add("")
+      lines.add("$blockName:")
+      lines.add("  $parent:")
+      lines.addAll(itemText.split('\n'))
+      return lines.joinToString("\n")
+    }
+    val parentRange = nestedMappingLineRange(lines, block, parent)
+    if (parentRange == null) {
+      val insertionIndex = nestedMappingInsertIndex(lines, block, headLines, headBlock, parent)
+      lines.add(insertionIndex, "  $parent:")
+      lines.addAll(insertionIndex + 1, itemText.split('\n'))
+      return lines.joinToString("\n")
+    }
+    val insertionIndex = orderedNestedListItemInsertIndex(
+      lines = lines,
+      parentRange = parentRange,
+      headLines = headLines,
+      headBlock = headBlock,
+      headItemStart = headItemStart,
+      itemIndent = itemIndent,
+    )
+    lines.addAll(insertionIndex, itemText.split('\n'))
+    return lines.joinToString("\n")
+  }
+
+  private fun nestedMappingInsertIndex(
+    lines: List<String>,
+    block: IntRange,
+    headLines: List<String>,
+    headBlock: IntRange,
+    parent: String,
+  ): Int {
+    val headParentStart = (headBlock.first + 1..headBlock.last).firstOrNull { idx ->
+      headLines.getOrNull(
+        idx,
+      ) == "  $parent:"
+    }
+      ?: return block.last + 1
+    nestedMappingKeys(headLines, headParentStart + 1, headBlock.last).forEach { nextHeadParent ->
+      val currentNext = nestedMappingLineRange(lines, block, nextHeadParent)
+      if (currentNext != null) {
+        return currentNext.first
+      }
+    }
+    nestedMappingKeys(headLines, headBlock.first + 1, headParentStart - 1).asReversed().forEach { previousHeadParent ->
+      val currentPrevious = nestedMappingLineRange(lines, block, previousHeadParent)
+      if (currentPrevious != null) {
+        return currentPrevious.last + 1
+      }
+    }
+    return block.last + 1
+  }
+
+  private fun orderedNestedListItemInsertIndex(
+    lines: List<String>,
+    parentRange: IntRange,
+    headLines: List<String>,
+    headBlock: IntRange,
+    headItemStart: Int,
+    itemIndent: Int,
+  ): Int {
+    siblingItemKeysAfter(headLines, headBlock, headItemStart, itemIndent).forEach { key ->
+      val currentNext = findListItemByKey(lines, parentRange, itemIndent, key)
+      if (currentNext != null) {
+        return currentNext
+      }
+    }
+    siblingItemKeysBefore(headLines, headBlock, headItemStart, itemIndent).forEach { key ->
+      val currentPrevious = findListItemByKey(lines, parentRange, itemIndent, key)
+      if (currentPrevious != null) {
+        return listItemEnd(lines, currentPrevious, parentRange.last + 1)
+      }
+    }
+    return parentRange.last + 1
+  }
+
+  private fun orderedFlatListItemInsertIndex(
+    lines: List<String>,
+    block: IntRange,
+    headLines: List<String>,
+    headBlock: IntRange,
+    headItemStart: Int,
+    itemIndent: Int,
+  ): Int {
+    siblingItemKeysAfter(headLines, headBlock, headItemStart, itemIndent).forEach { key ->
+      val currentNext = findFlatListItemByKey(lines, block, itemIndent, key)
+      if (currentNext != null) {
+        return currentNext
+      }
+    }
+    siblingItemKeysBefore(headLines, headBlock, headItemStart, itemIndent).forEach { key ->
+      val currentPrevious = findFlatListItemByKey(lines, block, itemIndent, key)
+      if (currentPrevious != null) {
+        return currentPrevious + 1
+      }
+    }
+    return flatListAppendIndex(lines, block, itemIndent)
+  }
+
+  private fun orderedNestedMappingLineInsertIndex(
+    lines: List<String>,
+    nestedRange: IntRange,
+    headLines: List<String>,
+    headNestedRange: IntRange,
+    headLineIndex: Int,
+    itemIndent: Int,
+  ): Int {
+    siblingMappingKeysAfter(headLines, headNestedRange, headLineIndex, itemIndent).forEach { key ->
+      val currentNext = findMappingLineByKey(lines, nestedRange, itemIndent, key)
+      if (currentNext != null) {
+        return currentNext
+      }
+    }
+    siblingMappingKeysBefore(headLines, headNestedRange, headLineIndex, itemIndent).forEach { key ->
+      val currentPrevious = findMappingLineByKey(lines, nestedRange, itemIndent, key)
+      if (currentPrevious != null) {
+        return currentPrevious + 1
+      }
+    }
+    return nestedRange.last + 1
+  }
+
+  private fun siblingItemKeysAfter(
+    lines: List<String>,
+    block: IntRange,
+    itemStart: Int,
+    itemIndent: Int,
+  ): List<String> = siblingItemKeys(lines, itemStart + 1, block.last, itemIndent)
+
+  private fun siblingItemKeysBefore(
+    lines: List<String>,
+    block: IntRange,
+    itemStart: Int,
+    itemIndent: Int,
+  ): List<String> = siblingItemKeys(lines, block.first + 1, itemStart - 1, itemIndent).asReversed()
+
+  private fun siblingItemKeys(lines: List<String>, start: Int, endInclusive: Int, itemIndent: Int): List<String> {
+    if (start > endInclusive) return emptyList()
+    return (start..endInclusive)
+      .mapNotNull { idx -> listItemKey(lines.getOrNull(idx).orEmpty(), itemIndent) }
+  }
+
+  private fun siblingMappingKeysAfter(
+    lines: List<String>,
+    block: IntRange,
+    itemStart: Int,
+    itemIndent: Int,
+  ): List<String> = siblingMappingKeys(lines, itemStart + 1, block.last, itemIndent)
+
+  private fun siblingMappingKeysBefore(
+    lines: List<String>,
+    block: IntRange,
+    itemStart: Int,
+    itemIndent: Int,
+  ): List<String> = siblingMappingKeys(lines, block.first + 1, itemStart - 1, itemIndent).asReversed()
+
+  private fun siblingMappingKeys(lines: List<String>, start: Int, endInclusive: Int, itemIndent: Int): List<String> {
+    if (start > endInclusive) return emptyList()
+    return (start..endInclusive)
+      .mapNotNull { idx -> mappingLineKey(lines.getOrNull(idx).orEmpty(), itemIndent) }
+  }
+
+  private fun nestedMappingKeys(lines: List<String>, start: Int, endInclusive: Int): List<String> {
+    if (start > endInclusive) return emptyList()
+    return (start..endInclusive)
+      .mapNotNull { idx -> nestedMappingKey(lines.getOrNull(idx).orEmpty()) }
+  }
+
+  private fun findListItemByKey(lines: List<String>, parentRange: IntRange, itemIndent: Int, key: String): Int? =
+    (parentRange.first + 1..parentRange.last).firstOrNull { idx ->
+      listItemKey(lines.getOrNull(idx).orEmpty(), itemIndent) == key
+    }
+
+  private fun findFlatListItemByKey(lines: List<String>, block: IntRange, itemIndent: Int, key: String): Int? =
+    (block.first + 1..block.last).firstOrNull { idx ->
+      listItemKey(lines.getOrNull(idx).orEmpty(), itemIndent) == key
+    }
+
+  private fun findMappingLineByKey(lines: List<String>, block: IntRange, itemIndent: Int, key: String): Int? =
+    (block.first + 1..block.last).firstOrNull { idx ->
+      mappingLineKey(lines.getOrNull(idx).orEmpty(), itemIndent) == key
+    }
+
+  private fun flatListAppendIndex(lines: List<String>, block: IntRange, itemIndent: Int): Int =
+    (block.first + 1..block.last).firstOrNull { idx ->
+      val line = lines.getOrNull(idx).orEmpty()
+      line.isBlank() || (line.isNotBlank() && leadingSpaces(line) < itemIndent)
+    } ?: block.last + 1
+
+  private fun listItemKey(line: String, itemIndent: Int): String? =
+    if (leadingSpaces(line) == itemIndent && line.trimStart().startsWith("- ")) line.trim() else null
+
+  private fun mappingLineKey(line: String, itemIndent: Int): String? =
+    if (leadingSpaces(line) == itemIndent && line.trimStart().contains(":")) {
+      line.trimStart().substringBefore(':').trim()
+    } else {
+      null
+    }
+
+  private fun nestedMappingKey(line: String): String? = if (leadingSpaces(line) == 2 && line.trimEnd().endsWith(":")) {
+    line.trim().removeSuffix(":")
+  } else {
+    null
+  }
+
+  private fun nestedMappingContainsItem(current: String, blockName: String, parent: String, itemText: String): Boolean {
+    val lines = current.split('\n')
+    val block = topLevelBlockLineRange(lines, blockName) ?: return false
+    val parentRange = nestedMappingLineRange(lines, block, parent) ?: return false
+    val parentText = lines.subList(parentRange.first, parentRange.last + 1).joinToString("\n")
+    return itemText in parentText
+  }
+
+  private fun restoreNestedMappingBlockFromHead(
+    head: String,
+    current: String,
+    blockName: String,
+    nestedKey: String,
+  ): String {
+    val headLines = head.split('\n')
+    val headBlock = topLevelBlockLineRange(headLines, blockName) ?: return current
+    val headNested = nestedMappingLineRange(headLines, headBlock, nestedKey) ?: return current
+    val currentLines = current.split('\n').toMutableList()
+    val currentBlock = topLevelBlockLineRange(currentLines, blockName)
+    if (currentBlock != null && nestedMappingLineRange(currentLines, currentBlock, nestedKey) != null) {
+      return current
+    }
+    val blockLines = headLines.subList(headNested.first, headNested.last + 1)
+    if (currentBlock == null) {
+      currentLines.add("")
+      currentLines.add("$blockName:")
+      currentLines.addAll(blockLines)
+    } else {
+      val insertionIndex = nestedMappingInsertIndex(currentLines, currentBlock, headLines, headBlock, nestedKey)
+      currentLines.addAll(insertionIndex, blockLines)
+    }
+    return currentLines.joinToString("\n")
+  }
+
+  private fun restoreLineFromHead(
+    current: String,
+    head: String,
+    itemIndent: Int? = null,
+    matches: (String) -> Boolean,
+  ): String {
+    val headLines = head.split('\n')
+    val headLineIndex = headLines.indexOfFirst(matches)
+    if (headLineIndex < 0) {
+      return current
+    }
+    val headLine = headLines[headLineIndex]
+    if (current.lineSequence().any(matches)) {
+      return current
+    }
+    val lines = current.split('\n').toMutableList()
+    val headPreviousTopLevel = headLines.asSequence()
+      .take(headLineIndex)
+      .lastOrNull { line -> leadingSpaces(line) == 0 && line.isNotBlank() && line.contains(':') }
+      ?.substringBefore(':')
+    if (headPreviousTopLevel != null) {
+      val block = topLevelBlockLineRange(lines, headPreviousTopLevel)
+      if (block != null) {
+        val headBlock = topLevelBlockLineRange(headLines, headPreviousTopLevel)
+        val insertionIndex =
+          if (itemIndent != null && headBlock != null) {
+            orderedFlatListItemInsertIndex(
+              lines = lines,
+              block = block,
+              headLines = headLines,
+              headBlock = headBlock,
+              headItemStart = headLineIndex,
+              itemIndent = itemIndent,
+            )
+          } else {
+            block.last + 1
+          }
+        lines.add(insertionIndex, headLine)
+        return lines.joinToString("\n")
+      }
+    }
+    lines.add(headLine)
+    return lines.joinToString("\n")
+  }
+
+  private fun restoreLineIntoNestedBlockFromHead(
+    current: String,
+    head: String,
+    topLevelBlockName: String,
+    nestedKey: String,
+    matches: (String) -> Boolean,
+  ): String {
+    val headLines = head.split('\n')
+    val headLineIndex = headLines.indexOfFirst(matches)
+    if (headLineIndex < 0) {
+      return current
+    }
+    val headLine = headLines[headLineIndex]
+    if (current.lineSequence().any(matches)) {
+      return current
+    }
+    val lines = current.split('\n').toMutableList()
+    val block = topLevelBlockLineRange(lines, topLevelBlockName)
+      ?: return restoreLineFromHead(current, head, matches = matches)
+    val nested = nestedMappingLineRange(lines, block, nestedKey)
+      ?: return restoreLineFromHead(current, head, matches = matches)
+    val headBlock = topLevelBlockLineRange(headLines, topLevelBlockName)
+      ?: return restoreLineFromHead(current, head, matches = matches)
+    val headNested = nestedMappingLineRange(headLines, headBlock, nestedKey)
+      ?: return restoreLineFromHead(current, head, matches = matches)
+    lines.add(
+      orderedNestedMappingLineInsertIndex(
+        lines = lines,
+        nestedRange = nested,
+        headLines = headLines,
+        headNestedRange = headNested,
+        headLineIndex = headLineIndex,
+        itemIndent = leadingSpaces(headLine),
+      ),
+      headLine,
+    )
+    return lines.joinToString("\n")
+  }
+
+  private fun insertLineIntoTopLevelBlock(
+    current: String,
+    blockName: String,
+    line: String,
+    insertionIndex: ((List<String>, IntRange) -> Int)? = null,
+  ): String {
+    val lines = current.split('\n').toMutableList()
+    val block = topLevelBlockLineRange(lines, blockName)
+    if (block == null) {
+      lines.add("")
+      lines.add("$blockName:")
+      lines.add(line)
+    } else {
+      lines.add(insertionIndex?.invoke(lines, block) ?: block.last + 1, line)
+    }
+    return lines.joinToString("\n")
+  }
+
+  private fun parentNestedMappingFor(lines: List<String>, block: IntRange, childIndex: Int): String? =
+    (childIndex - 1 downTo block.first + 1)
+      .firstOrNull { idx -> leadingSpaces(lines[idx]) == 2 && lines[idx].trimEnd().endsWith(":") }
+      ?.let { idx -> lines[idx].trim() }
+      ?.removeSuffix(":")
+
+  private fun topLevelBlockLineRange(lines: List<String>, blockName: String): IntRange? {
+    val start = lines.indexOfFirst { line -> line == "$blockName:" || line == "$blockName: {}" }
+    if (start < 0 || lines[start] == "$blockName: {}") return null
+    val next = lines.asSequence()
+      .drop(start + 1)
+      .indexOfFirst { line -> line.isNotBlank() && leadingSpaces(line) == 0 && line.contains(':') }
+      .let { offset -> if (offset < 0) lines.lastIndex else start + offset }
+    return start..next
+  }
+
+  private fun nestedMappingLineRange(lines: List<String>, block: IntRange, nestedKey: String): IntRange? {
+    val start = (block.first + 1..block.last).firstOrNull { idx ->
+      lines.getOrNull(idx) == "  $nestedKey:"
+    } ?: return null
+    val end = lines.asSequence()
+      .drop(start + 1)
+      .take(block.last - start)
+      .indexOfFirst { line -> line.isNotBlank() && leadingSpaces(line) <= 2 }
+      .let { offset -> if (offset < 0) block.last else start + offset }
+    return start..end
+  }
+
+  private fun listItemEnd(lines: List<String>, start: Int, maxExclusive: Int): Int {
+    var idx = start + 1
+    while (idx < maxExclusive && idx < lines.size) {
+      val line = lines[idx]
+      if (line.isNotBlank() && leadingSpaces(line) <= leadingSpaces(lines[start])) break
+      idx += 1
+    }
+    return idx
+  }
+
+  private fun isAddonUsageItemStart(line: String): Boolean =
+    leadingSpaces(line) == 4 && line.trimStart().startsWith("- slug:")
+
+  private fun namedListEntryValue(line: String, key: String): String? {
+    val trimmed = line.trim()
+    val prefix = "- $key:"
+    return if (trimmed.startsWith(prefix)) unquoteYamlScalar(trimmed.removePrefix(prefix).trim()) else null
+  }
+
+  private fun keyValue(line: String, key: String): String? {
+    val trimmed = line.trim()
+    val prefix = "$key:"
+    return if (trimmed.startsWith(prefix)) unquoteYamlScalar(trimmed.removePrefix(prefix).trim()) else null
+  }
+
+  private fun yamlListScalar(line: String): String? {
+    val trimmed = line.trim()
+    return if (trimmed.startsWith("- ")) unquoteYamlScalar(trimmed.removePrefix("- ").trim()) else null
+  }
+
+  private fun unquoteYamlScalar(value: String): String = value.removeSurrounding("\"").removeSurrounding("'")
+
+  private fun leadingSpaces(line: String): Int = line.takeWhile { it == ' ' }.length
+
+  private fun isAuthoredContentPath(path: String): Boolean =
+    path.endsWith("/content.md") && (path.startsWith("skills/") || path.startsWith("platform-packs/"))
+
+  private fun isGovernedAddonPath(path: String): Boolean =
+    path.startsWith("platform-packs/") && path.contains("/addons/") && path.endsWith(".md")
 
   private fun parseCommitLog(stdout: String): List<CommitEntry> {
     if (stdout.isBlank()) {

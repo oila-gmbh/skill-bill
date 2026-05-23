@@ -124,6 +124,211 @@ class RuntimeGitGatewayTest {
   }
 
   @Test
+  fun `discard deleted add-on restores only that add-on metadata`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    Files.createDirectories(repo.resolve("platform-packs/kmp/addons"))
+    Files.createDirectories(repo.resolve("orchestration/skill-classes"))
+    Files.writeString(repo.resolve("platform-packs/kmp/addons/a.md"), "# a\n")
+    Files.writeString(repo.resolve("platform-packs/kmp/addons/b.md"), "# b\n")
+    Files.writeString(repo.resolve("platform-packs/kmp/addons/c.md"), "# c\n")
+    Files.writeString(
+      repo.resolve("platform-packs/kmp/platform.yaml"),
+      """
+        |platform: kmp
+        |pointers:
+        |  code-review/bill-kmp-code-review:
+        |    - name: a.md
+        |      target: platform-packs/kmp/addons/a.md
+        |    - name: b.md
+        |      target: platform-packs/kmp/addons/b.md
+        |    - name: c.md
+        |      target: platform-packs/kmp/addons/c.md
+        |  code-review/bill-kmp-code-review-ui:
+        |    - name: a.md
+        |      target: platform-packs/kmp/addons/a.md
+        |    - name: b.md
+        |      target: platform-packs/kmp/addons/b.md
+        |    - name: c.md
+        |      target: platform-packs/kmp/addons/c.md
+        |addon_usage:
+        |  code-review/bill-kmp-code-review:
+        |    - slug: compose
+        |      entrypoint: compose.md
+        |      companion_pointers:
+        |        - a.md
+        |        - b.md
+        |        - c.md
+      """.trimMargin() + "\n",
+    )
+    Files.writeString(
+      repo.resolve("orchestration/skill-classes/feature-implement.yaml"),
+      """
+        |class: feature-implement
+        |pointers:
+        |  - a
+        |  - b
+        |  - c
+        |
+        |ceremony_lines:
+        |  - keep ceremony
+      """.trimMargin() + "\n",
+    )
+    runGit(repo, "add", ".")
+    runGit(repo, "commit", "-q", "-m", "add add-ons")
+
+    Files.delete(repo.resolve("platform-packs/kmp/addons/a.md"))
+    Files.delete(repo.resolve("platform-packs/kmp/addons/b.md"))
+    Files.writeString(
+      repo.resolve("platform-packs/kmp/platform.yaml"),
+      """
+        |platform: kmp
+        |pointers:
+        |  code-review/bill-kmp-code-review:
+        |    - name: c.md
+        |      target: platform-packs/kmp/addons/c.md
+        |  code-review/bill-kmp-code-review-ui:
+        |    - name: c.md
+        |      target: platform-packs/kmp/addons/c.md
+        |addon_usage:
+        |  code-review/bill-kmp-code-review:
+        |    - slug: compose
+        |      entrypoint: compose.md
+        |      companion_pointers:
+        |        - c.md
+      """.trimMargin() + "\n",
+    )
+    Files.writeString(
+      repo.resolve("orchestration/skill-classes/feature-implement.yaml"),
+      """
+        |class: feature-implement
+        |pointers:
+        |  - c
+        |
+        |ceremony_lines:
+        |  - keep ceremony
+      """.trimMargin() + "\n",
+    )
+
+    val snapshot = service.discard(session, listOf("platform-packs/kmp/addons/a.md"))
+
+    assertFalse(snapshot.files.any { it.path == "platform-packs/kmp/addons/a.md" })
+    assertTrue(Files.exists(repo.resolve("platform-packs/kmp/addons/a.md")))
+    assertFalse(Files.exists(repo.resolve("platform-packs/kmp/addons/b.md")))
+    val platformManifest = Files.readString(repo.resolve("platform-packs/kmp/platform.yaml"))
+    assertTrue("a.md" in platformManifest, platformManifest)
+    assertFalse("b.md" in platformManifest, platformManifest)
+    assertTrue(platformManifest.indexOf("- name: a.md") < platformManifest.indexOf("- name: c.md"), platformManifest)
+    assertTrue(
+      platformManifest.indexOf("        - a.md") < platformManifest.indexOf("        - c.md"),
+      platformManifest,
+    )
+    assertTrue(
+      Regex("code-review/bill-kmp-code-review-ui:[\\s\\S]*- name: a\\.md").containsMatchIn(platformManifest),
+      platformManifest,
+    )
+    val skillClassManifest = Files.readString(repo.resolve("orchestration/skill-classes/feature-implement.yaml"))
+    assertTrue("  - a" in skillClassManifest, skillClassManifest)
+    assertFalse("  - b" in skillClassManifest, skillClassManifest)
+    assertTrue(skillClassManifest.indexOf("  - a") < skillClassManifest.indexOf("  - c"), skillClassManifest)
+    assertTrue(skillClassManifest.indexOf("  - c\n\nceremony_lines:") >= 0, skillClassManifest)
+  }
+
+  @Test
+  fun `discard deleted platform content restores only that content metadata`() {
+    val repo = newRepoWithCommit()
+    val service = RuntimeGitGateway()
+    val session = loadedSession(repo)
+    val uiContent = repo.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md")
+    val uxContent = repo.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md")
+    val zetaContent = repo.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-zeta/content.md")
+    Files.createDirectories(uiContent.parent)
+    Files.createDirectories(uxContent.parent)
+    Files.createDirectories(zetaContent.parent)
+    Files.writeString(uiContent, "# ui\n")
+    Files.writeString(uxContent, "# ux\n")
+    Files.writeString(zetaContent, "# zeta\n")
+    Files.writeString(
+      repo.resolve("platform-packs/kmp/platform.yaml"),
+      """
+        |platform: kmp
+        |declared_code_review_areas:
+        |  - ui
+        |  - ux-accessibility
+        |  - zeta
+        |declared_files:
+        |  areas:
+        |    ui: code-review/bill-kmp-code-review-ui/content.md
+        |    ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
+        |    zeta: code-review/bill-kmp-code-review-zeta/content.md
+        |area_metadata:
+        |  ui:
+        |    focus: UI
+        |  ux-accessibility:
+        |    focus: UX
+        |  zeta:
+        |    focus: Zeta
+        |pointers:
+        |  code-review/bill-kmp-code-review-ui:
+        |    - name: shell-ceremony.md
+        |      target: orchestration/shell-content-contract/shell-ceremony.md
+        |  code-review/bill-kmp-code-review-ux-accessibility:
+        |    - name: shell-ceremony.md
+        |      target: orchestration/shell-content-contract/shell-ceremony.md
+        |  code-review/bill-kmp-code-review-zeta:
+        |    - name: shell-ceremony.md
+        |      target: orchestration/shell-content-contract/shell-ceremony.md
+      """.trimMargin() + "\n",
+    )
+    runGit(repo, "add", ".")
+    runGit(repo, "commit", "-q", "-m", "add platform content")
+
+    Files.delete(uiContent)
+    Files.delete(uxContent)
+    Files.writeString(
+      repo.resolve("platform-packs/kmp/platform.yaml"),
+      """
+        |platform: kmp
+        |declared_code_review_areas:
+        |  - zeta
+        |declared_files:
+        |  areas:
+        |    zeta: code-review/bill-kmp-code-review-zeta/content.md
+        |area_metadata:
+        |  zeta:
+        |    focus: Zeta
+        |pointers:
+        |  code-review/bill-kmp-code-review-zeta:
+        |    - name: shell-ceremony.md
+        |      target: orchestration/shell-content-contract/shell-ceremony.md
+      """.trimMargin() + "\n",
+    )
+
+    val snapshot = service.discard(
+      session,
+      listOf("platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md"),
+    )
+
+    assertFalse(snapshot.files.any { it.path == "platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md" })
+    assertTrue(Files.exists(uiContent))
+    assertFalse(Files.exists(uxContent))
+    val manifest = Files.readString(repo.resolve("platform-packs/kmp/platform.yaml"))
+    assertTrue("  - ui" in manifest, manifest)
+    assertFalse("ux-accessibility" in manifest, manifest)
+    assertTrue("ui: code-review/bill-kmp-code-review-ui/content.md" in manifest, manifest)
+    assertTrue("code-review/bill-kmp-code-review-ui:" in manifest, manifest)
+    assertTrue(manifest.indexOf("  - ui") < manifest.indexOf("  - zeta"), manifest)
+    assertTrue(manifest.indexOf("    ui:") < manifest.indexOf("    zeta:"), manifest)
+    assertTrue(manifest.indexOf("  ui:") < manifest.indexOf("  zeta:"), manifest)
+    assertTrue(
+      manifest.indexOf("  code-review/bill-kmp-code-review-ui:") <
+        manifest.indexOf("  code-review/bill-kmp-code-review-zeta:"),
+      manifest,
+    )
+  }
+
+  @Test
   fun `errors on non-git directories surface in snapshot without throwing`() {
     val nonRepo = Files.createTempDirectory("skillbill-non-repo")
     cleanupRoots.add(nonRepo)
