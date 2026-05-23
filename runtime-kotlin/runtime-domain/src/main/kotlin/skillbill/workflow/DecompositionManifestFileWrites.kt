@@ -39,7 +39,7 @@ private fun projectStatus(text: String, status: String): String {
     else -> status
   }
   val end = text.indexOf("\n---\n", startIndex = 4)
-  return if (!text.startsWith("---\n") || end == -1) {
+  val frontMatterProjected = if (!text.startsWith("---\n") || end == -1) {
     text
   } else {
     val frontMatter = text.substring(0, end + 1)
@@ -52,4 +52,11 @@ private fun projectStatus(text: String, status: String): String {
       }
     replaced + "---\n" + body
   }
+  return projectStatusSection(frontMatterProjected, humanStatus)
+}
+
+private fun projectStatusSection(text: String, humanStatus: String): String {
+  val statusSection = Regex("(?ms)(^## Status\\s*\\n\\n)(.*?)(?=\\n## |\\z)")
+  val match = statusSection.find(text) ?: return text
+  return text.replaceRange(match.range, match.groupValues[1] + humanStatus + "\n")
 }

@@ -90,6 +90,7 @@ internal fun DecompositionManifest.withRuntimeUpdate(
 }
 
 internal fun projectCurrentSubtaskStatus(repoRoot: Path, manifest: DecompositionManifest) {
+  projectDecompositionSpecStatus(resolvedParentSpecPath(repoRoot, Path.of(manifest.parentSpecPath)), manifest.status)
   manifest.subtasks.forEach { subtask ->
     if (subtask.status != "pending") {
       projectDecompositionSpecStatus(resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)), subtask.status)

@@ -96,6 +96,11 @@ agents:
       - Keep `spec.md` as the parent overview. Each subtask spec links back to `spec.md`, contains only the scope for that subtask, and includes acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
       - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-implement run.
       - Order subtasks by dependency and identify the first subtask to run.
+      - The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order.
+      - The manifest must declare `contract_version`, `parent_spec_path`, ordered `subtasks`, dependency ids, each subtask `spec_path`, `execution_model`, `base_branch`, either `feature_branch` or ordered `stack_branches`, and `current_subtask_intent` derived from the recommended first/current subtask.
+      - Same-branch decompositions advance one subtask at a time on the parent feature branch. Each completed subtask gets an individual commit before the next pending dependency-complete subtask starts.
+      - Stacked decompositions are opt-in only. Every subtask must declare its branch and base branch; continuation must stop instead of advancing onto the wrong branch/base.
+      - Blocked subtasks are sticky: continuation reports the blocked reason and stops unless a later subtask's dependency marks the blocked dependency both optional and skipped.
       
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
       

@@ -1,3 +1,11 @@
+## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
+Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement
+- Parent decomposition projection now updates the parent spec status in addition to subtask frontmatter, and Markdown `## Status` sections are projected when present. reusable
+- Final all-subtasks completion coverage asserts parent/subtask manifest state, commit advancement, and human-readable spec projection in one application-level flow.
+- `bill-feature-implement` provider-neutral planning agents now carry the same decomposition manifest/execution-model guidance as governed `content.md`; source install was refreshed with `./install.sh`.
+Feature flag: N/A
+Acceptance criteria: 16/16 implemented
+
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-continuation-branching
 Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs
 - Parent issue-key continuation now resolves decomposed feature parents from durable `artifacts.decomposition_runtime`, then resumes an in-progress subtask or starts the first dependency-complete pending subtask without requiring a subtask path. reusable

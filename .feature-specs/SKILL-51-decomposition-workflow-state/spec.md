@@ -1,7 +1,7 @@
 ---
 issue_key: SKILL-51
 feature_name: decomposition-workflow-state
-status: In Progress
+status: Complete
 feature_size: LARGE
 rollout_needed: false
 sources:
@@ -12,7 +12,7 @@ sources:
 
 ## Status
 
-In Progress
+Complete
 
 ## Consolidated Spec
 

@@ -485,6 +485,37 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
+  fun `workflow service completes all subtasks and projects parent spec status`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-complete")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val git = FakeWorkflowGitOperations(commitSha = "abc123")
+    val service = WorkflowService(FakeDatabaseSessionFactory(workflows = workflowRepository), git)
+    createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+    val first = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+    markDecompositionSubtaskComplete(service, first["workflow_id"] as String, subtaskOne)
+    val second = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+    markDecompositionSubtaskComplete(service, second["workflow_id"] as String, subtaskTwo)
+
+    val done = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+
+    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    assertEquals("ok", done["status"])
+    assertEquals("done", done["continue_status"])
+    assertEquals("complete", manifest.status)
+    assertTrue(manifest.subtasks.all { it.status == "complete" })
+    assertTrue(manifest.subtasks.all { it.commitSha == "abc123" })
+    assertEquals(listOf("SKILL-51 subtask 1: foundation", "SKILL-51 subtask 2: runtime"), git.commits)
+    assertEquals("Complete", statusLine(parentSpec))
+    assertEquals("Complete", statusSection(parentSpec))
+    assertEquals("Complete", statusLine(subtaskOne))
+    assertEquals("Complete", statusLine(subtaskTwo))
+  }
+
+  @Test
   fun `workflow service records blocked status when same branch subtask commit fails`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition-commit-fails")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
@@ -1050,7 +1081,7 @@ private fun decompositionPlanPatch(
 
 private fun writeSpecs(parentSpec: Path, vararg subtasks: Path) {
   Files.createDirectories(parentSpec.parent)
-  Files.writeString(parentSpec, "# Parent")
+  Files.writeString(parentSpec, "---\nstatus: Pending\n---\n\n# Parent\n\n## Status\n\nPending\n")
   subtasks.forEach { subtask ->
     Files.writeString(subtask, "---\nstatus: Pending\n---\n\n# Subtask")
   }
@@ -1058,6 +1089,12 @@ private fun writeSpecs(parentSpec: Path, vararg subtasks: Path) {
 
 private fun statusLine(path: Path): String =
   Files.readAllLines(path).first { it.startsWith("status: ") }.removePrefix("status: ")
+
+private fun statusSection(path: Path): String {
+  val lines = Files.readAllLines(path)
+  val statusHeading = lines.indexOf("## Status")
+  return lines.drop(statusHeading + 1).first(String::isNotBlank)
+}
 
 private class InMemoryWorkflowStateRepository(
   private val implementSessionSummary: FeatureImplementSessionSummary? = null,
