@@ -161,6 +161,8 @@ private fun ManifestEdit.toDesktop(): DesktopManifestEdit = DesktopManifestEdit(
     ManifestEditKind.REMOVE_AREA_METADATA_ENTRY -> DesktopManifestEditKind.REMOVE_AREA_METADATA_ENTRY
     ManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> DesktopManifestEditKind.REMOVE_DECLARED_FILES_BASELINE
     ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> DesktopManifestEditKind.REMOVE_POINTERS_BLOCK_KEY
+    ManifestEditKind.REMOVE_ADDON_REFERENCES -> DesktopManifestEditKind.REMOVE_ADDON_REFERENCES
+    ManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> DesktopManifestEditKind.REMOVE_SKILL_CLASS_POINTER
   },
   detail = detail,
 )

@@ -260,6 +260,38 @@ class SkillRemoveJvmFileSystemTest {
     )
   }
 
+  @Test
+  fun `executeRemoval AddOn removes platform and skill-class references`() {
+    val (repoRoot, addon) = seedRepoWithAddonReferences()
+    val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
+    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.AddOn("platform-packs/kmp/addons/android-compose-edge-to-edge.md"),
+      repoRootAbsolutePath = repoRoot.toString(),
+    )
+
+    service.executeRemoval(request)
+
+    assertTrue(!Files.exists(addon, LinkOption.NOFOLLOW_LINKS), "add-on file should be deleted")
+    val platformManifest = Files.readString(repoRoot.resolve("platform-packs/kmp/platform.yaml"))
+    assertTrue("android-compose-edge-to-edge.md" !in platformManifest, platformManifest)
+    assertTrue("android-compose-review.md" in platformManifest, platformManifest)
+    val skillClassManifest = Files.readString(repoRoot.resolve("orchestration/skill-classes/feature-implement.yaml"))
+    assertTrue("android-compose-edge-to-edge" !in skillClassManifest, skillClassManifest)
+    assertTrue("android-navigation-implementation" in skillClassManifest, skillClassManifest)
+  }
+
+  private fun seedRepoWithAddonReferences(): Pair<Path, Path> {
+    val repoRoot = seedRepo()
+    val addon = repoRoot.resolve("platform-packs/kmp/addons/android-compose-edge-to-edge.md")
+    Files.createDirectories(addon.parent)
+    Files.writeString(addon, "# Edge to edge\n")
+    Files.createDirectories(repoRoot.resolve("orchestration/skill-classes"))
+    Files.writeString(repoRoot.resolve("orchestration/skill-classes/feature-implement.yaml"), ADDON_SKILL_CLASS_YAML)
+    Files.writeString(repoRoot.resolve("platform-packs/kmp/platform.yaml"), KMP_PLATFORM_YAML_WITH_ADDON_REFERENCES)
+    return repoRoot to addon
+  }
+
   private fun seedRepo(): Path {
     val repoRoot = Files.createTempDirectory("skillbill-skill-remove-fs").also(tempDirs::add)
     seedSkillDir(repoRoot.resolve("skills/bill-code-review"))
@@ -331,6 +363,48 @@ class SkillRemoveJvmFileSystemTest {
       |  code-review/bill-kmp-code-review-ui:
       |    - name: shell-ceremony.md
       |      target: orchestration/shell-content-contract/shell-ceremony.md
+      |
+    """.trimMargin()
+
+    private val ADDON_SKILL_CLASS_YAML = """
+      |class: feature-implement
+      |contract_version: "1.1"
+      |matchers:
+      |  - exact: bill-feature-implement
+      |pointers:
+      |  - shell-ceremony
+      |  - android-compose-edge-to-edge
+      |  - android-navigation-implementation
+      |ceremony_lines: []
+      |
+    """.trimMargin()
+
+    private val KMP_PLATFORM_YAML_WITH_ADDON_REFERENCES = """
+      |platform: kmp
+      |contract_version: "1.1"
+      |routing_signals:
+      |  strong:
+      |    - "androidMain"
+      |declared_code_review_areas: []
+      |declared_files:
+      |  baseline: code-review/bill-kmp-code-review/content.md
+      |  areas: {}
+      |area_metadata: {}
+      |pointers:
+      |  code-review/bill-kmp-code-review:
+      |    - name: shell-ceremony.md
+      |      target: orchestration/shell-content-contract/shell-ceremony.md
+      |    - name: android-compose-edge-to-edge.md
+      |      target: platform-packs/kmp/addons/android-compose-edge-to-edge.md
+      |    - name: android-compose-review.md
+      |      target: platform-packs/kmp/addons/android-compose-review.md
+      |addon_usage:
+      |  code-review/bill-kmp-code-review:
+      |    - slug: android-compose
+      |      entrypoint: android-compose-review.md
+      |      companion_pointers:
+      |        - android-compose-edge-to-edge.md
+      |        - android-navigation-review.md
       |
     """.trimMargin()
   }

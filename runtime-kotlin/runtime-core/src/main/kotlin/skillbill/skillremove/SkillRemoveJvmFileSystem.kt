@@ -29,10 +29,12 @@ import skillbill.install.NativeAgentLinkRequest
 import skillbill.nativeagent.NativeAgentProvider
 import skillbill.scaffold.ReadmeCatalogEdits
 import skillbill.scaffold.ReadmeEditOutcome
+import skillbill.scaffold.removeAddonReferences
 import skillbill.scaffold.removeCodeReviewArea
 import skillbill.scaffold.removeDeclaredFilesBaseline
 import skillbill.scaffold.removeDeclaredQualityCheckFile
 import skillbill.scaffold.removePointersBlockKey
+import skillbill.scaffold.removeSkillClassPointer
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -121,7 +123,7 @@ class SkillRemoveJvmFileSystem(
     when (val target = request.target) {
       is SkillRemovalTarget.HorizontalSkill -> horizontalManifestEdits(repoRoot(request), target.skillName)
       is SkillRemovalTarget.PlatformPack -> emptyList() // the manifest itself is deleted with the tree
-      is SkillRemovalTarget.AddOn -> emptyList()
+      is SkillRemovalTarget.AddOn -> addonReferenceEdits(repoRoot(request), target.relativePath)
     }
 
   override fun planAgentSymlinkUnlinks(
@@ -192,6 +194,12 @@ class SkillRemoveJvmFileSystem(
           }
           ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> {
             removePointersBlockKey(manifest, edit.detail)
+          }
+          ManifestEditKind.REMOVE_ADDON_REFERENCES -> {
+            removeAddonReferences(manifest, edit.detail)
+          }
+          ManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> {
+            removeSkillClassPointer(manifest, edit.detail)
           }
         }
         editedManifests += edit.manifestPath
@@ -366,6 +374,58 @@ class SkillRemoveJvmFileSystem(
     }
     return edits
   }
+
+  private fun addonReferenceEdits(repoRoot: Path, relativePath: String): List<ManifestEdit> {
+    val normalized = relativePath.replace('\\', '/')
+    val parts = normalized.split('/')
+    if (!isPackAddonPath(parts)) return emptyList()
+    val pointerName = parts[ADDON_FILE_SEGMENT]
+    val pointerSlug = pointerName.removeSuffix(".md")
+    val platformManifest = repoRoot.resolve("platform-packs/${parts[ADDON_PLATFORM_SEGMENT]}/platform.yaml")
+    val edits = mutableListOf<ManifestEdit>()
+    if (Files.isRegularFile(platformManifest, LinkOption.NOFOLLOW_LINKS)) {
+      val text = Files.readString(platformManifest)
+      if (text.contains(pointerName) || text.contains(normalized)) {
+        edits += ManifestEdit(
+          repoRoot.relativize(platformManifest).toString().replace('\\', '/'),
+          ManifestEditKind.REMOVE_ADDON_REFERENCES,
+          pointerName,
+        )
+      }
+    }
+    val skillClassesDir = repoRoot.resolve("orchestration/skill-classes")
+    if (Files.isDirectory(skillClassesDir, LinkOption.NOFOLLOW_LINKS)) {
+      Files.list(skillClassesDir).use { stream ->
+        stream
+          .filter { path ->
+            Files.isRegularFile(
+              path,
+              LinkOption.NOFOLLOW_LINKS,
+            ) && path.fileName.toString().endsWith(".yaml")
+          }
+          .forEach { manifest ->
+            val text = Files.readString(manifest)
+            if (Regex(
+                "^\\s*-\\s*['\"]?${Regex.escape(pointerSlug)}['\"]?\\s*$",
+                RegexOption.MULTILINE,
+              ).containsMatchIn(text)
+            ) {
+              edits += ManifestEdit(
+                repoRoot.relativize(manifest).toString().replace('\\', '/'),
+                ManifestEditKind.REMOVE_SKILL_CLASS_POINTER,
+                pointerSlug,
+              )
+            }
+          }
+      }
+    }
+    return edits
+  }
+
+  private fun isPackAddonPath(parts: List<String>): Boolean = parts.size == ADDON_PATH_SEGMENT_COUNT &&
+    parts[ADDON_ROOT_SEGMENT] == "platform-packs" &&
+    parts[ADDON_FOLDER_SEGMENT] == "addons" &&
+    parts[ADDON_FILE_SEGMENT].endsWith(".md")
 
   private fun agentUnlinksForSkills(repoRoot: Path, cascadedSkillNames: List<String>): List<AgentSymlinkUnlink> {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
@@ -553,6 +613,11 @@ class SkillRemoveJvmFileSystem(
   }
 
   private companion object {
+    private const val ADDON_PATH_SEGMENT_COUNT = 4
+    private const val ADDON_ROOT_SEGMENT = 0
+    private const val ADDON_PLATFORM_SEGMENT = 1
+    private const val ADDON_FOLDER_SEGMENT = 2
+    private const val ADDON_FILE_SEGMENT = 3
     private val log: Logger = Logger.getLogger("skillbill.skillremove.SkillRemoveJvmFileSystem")
   }
 }

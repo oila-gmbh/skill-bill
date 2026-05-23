@@ -106,4 +106,70 @@ class ScaffoldManifestEditsRemoveTest {
     removeDeclaredQualityCheckFile(manifest)
     assertEquals(original, manifest.toFile().readText())
   }
+
+  @Test
+  fun `removeAddonReferences strips pointer entries and addon usage companions`(@TempDir tempDir: Path) {
+    val manifest = tempDir.resolve("platform.yaml")
+    manifest.toFile().writeText(
+      """
+      platform: "kmp"
+      pointers:
+        code-review/bill-kmp-code-review:
+          - name: "android-compose-edge-to-edge.md"
+            target: "platform-packs/kmp/addons/android-compose-edge-to-edge.md"
+          - name: "android-compose-review.md"
+            target: "platform-packs/kmp/addons/android-compose-review.md"
+        code-review/bill-kmp-code-review-ui:
+          - name: "android-compose-edge-to-edge.md"
+            target: "platform-packs/kmp/addons/android-compose-edge-to-edge.md"
+          - name: "shell-ceremony.md"
+            target: "orchestration/shell-content-contract/shell-ceremony.md"
+      addon_usage:
+        code-review/bill-kmp-code-review:
+          - slug: "android-compose"
+            entrypoint: "android-compose-review.md"
+            companion_pointers:
+              - "android-compose-edge-to-edge.md"
+              - "android-navigation-review.md"
+          - slug: "edge"
+            entrypoint: "android-compose-edge-to-edge.md"
+        code-review/bill-kmp-code-review-ui:
+          - slug: "android-compose"
+            entrypoint: "android-compose-review.md"
+            companion_pointers:
+              - "android-compose-edge-to-edge.md"
+      """.trimIndent() + "\n",
+    )
+
+    removeAddonReferences(manifest, "android-compose-edge-to-edge.md")
+
+    val updated = manifest.toFile().readText()
+    assertFalse(updated.contains("android-compose-edge-to-edge.md"))
+    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-compose-review.md"))
+    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-review.md"))
+    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony.md"))
+  }
+
+  @Test
+  fun `removeSkillClassPointer strips one pointer slug`(@TempDir tempDir: Path) {
+    val manifest = tempDir.resolve("feature-implement.yaml")
+    manifest.toFile().writeText(
+      """
+      class: feature-implement
+      pointers:
+        - shell-ceremony
+        - android-compose-implementation
+        - android-navigation-implementation
+      ceremony_lines:
+        - "Follow the shell ceremony."
+      """.trimIndent() + "\n",
+    )
+
+    removeSkillClassPointer(manifest, "android-compose-implementation")
+
+    val updated = manifest.toFile().readText()
+    assertFalse(updated.contains("android-compose-implementation"))
+    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony"))
+    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-implementation"))
+  }
 }

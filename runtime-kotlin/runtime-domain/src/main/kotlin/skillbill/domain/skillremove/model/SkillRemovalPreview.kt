@@ -56,6 +56,19 @@ enum class ManifestEditKind {
    * mapping entry to strip.
    */
   REMOVE_POINTERS_BLOCK_KEY,
+
+  /**
+   * Remove every platform-pack `pointers:` entry and `addon_usage` reference for a governed
+   * add-on pointer filename. The `detail` field carries the pointer filename, e.g.
+   * `android-compose-review.md`.
+   */
+  REMOVE_ADDON_REFERENCES,
+
+  /**
+   * Remove one pointer slug from an orchestration skill-class manifest. The `detail` field
+   * carries the slug without `.md`, e.g. `android-compose-implementation`.
+   */
+  REMOVE_SKILL_CLASS_POINTER,
 }
 
 /** A single agent-symlink unlink the executor will apply. */

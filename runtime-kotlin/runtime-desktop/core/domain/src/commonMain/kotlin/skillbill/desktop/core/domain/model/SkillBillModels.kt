@@ -410,11 +410,28 @@ data class ChangedFile(
   val isSkillContent: Boolean
     get() {
       val normalized = path.trim().replace('\\', '/')
-      return !isGenerated &&
-        normalized.endsWith("/content.md") &&
-        (normalized.startsWith("skills/") || normalized.startsWith("platform-packs/"))
+      return !isGenerated && isSkillBillManagedSource(normalized)
     }
 }
+
+private fun isSkillBillManagedSource(path: String): Boolean =
+  isAuthoredContentSource(path) ||
+    isGovernedAddonSource(path) ||
+    isPlatformPackManifestSource(path) ||
+    isSkillClassManifestSource(path) ||
+    path == "README.md"
+
+private fun isAuthoredContentSource(path: String): Boolean =
+  path.endsWith("/content.md") && (path.startsWith("skills/") || path.startsWith("platform-packs/"))
+
+private fun isGovernedAddonSource(path: String): Boolean =
+  path.startsWith("platform-packs/") && path.contains("/addons/") && path.endsWith(".md")
+
+private fun isPlatformPackManifestSource(path: String): Boolean =
+  path.startsWith("platform-packs/") && path.endsWith("/platform.yaml")
+
+private fun isSkillClassManifestSource(path: String): Boolean =
+  path.startsWith("orchestration/skill-classes/") && path.endsWith(".yaml")
 
 enum class GovernedChangeConcept(val label: String) {
   SKILLS("Skills"),
