@@ -194,7 +194,7 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
       ),
       telemetryLevel = request.telemetryLevel.toInstallTelemetryLevel(),
       mcpRegistrationChoice = McpRegistrationChoice(
-        register = true,
+        register = request.registerMcp,
         runtimeMcpBin = runtimeAssets.runtimeMcpBin() ?: defaultRuntimeMcpBin(home),
       ),
       runtimeDistributionInputs = RuntimeDistributionInputs(

@@ -176,7 +176,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("claude"), reopened.selectedAgentIds)
     assertEquals(setOf("kotlin"), reopened.selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, reopened.telemetryLevel)
-    assertTrue(reopened.registerMcp)
+    assertFalse(reopened.registerMcp)
 
     val discoveryRequest = assertNotNull(viewModel.beginFirstRunDiscovery())
     val discovered = viewModel.finishFirstRunDiscovery(viewModel.runFirstRunDiscovery(discoveryRequest))
@@ -184,7 +184,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("claude"), discovered.firstRunSetup?.selectedAgentIds)
     assertEquals(setOf("kotlin"), discovered.firstRunSetup?.selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, discovered.firstRunSetup?.telemetryLevel)
-    assertTrue(discovered.firstRunSetup?.registerMcp ?: false)
+    assertFalse(discovered.firstRunSetup?.registerMcp ?: true)
   }
 
   @Test

@@ -23,6 +23,7 @@ import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
+import skillbill.desktop.core.domain.model.FirstRunPlanResult
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -30,6 +31,7 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.ui.di.rememberScreenComponent
 import skillbill.desktop.feature.skillbill.di.SkillBillComponent
+import skillbill.desktop.feature.skillbill.state.PostPublishReinstallResponse
 import skillbill.desktop.feature.skillbill.state.PublishRunResult
 
 @Suppress("DEPRECATION")
@@ -138,6 +140,33 @@ fun SkillBillRoute(
                   request = request,
                   validationSummary = request.previousValidationSummary,
                   pushResult = GitOperationResult.failed("Publish was cancelled."),
+                ),
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fun runPostPublishReinstall() {
+    val request = viewModel.beginPostPublishReinstall()
+    state = viewModel.state()
+    if (request != null) {
+      coroutineScope.launch {
+        var finished = false
+        try {
+          val response = withContext(Dispatchers.Default) { viewModel.runPostPublishReinstall(request) }
+          state = viewModel.finishPostPublishReinstall(response)
+          finished = true
+        } finally {
+          if (!finished) {
+            withContext(NonCancellable) {
+              state = viewModel.finishPostPublishReinstall(
+                PostPublishReinstallResponse(
+                  request = request,
+                  planResult = FirstRunPlanResult.Failed("Reinstall was cancelled."),
+                  applyResult = null,
                 ),
               )
             }
@@ -257,6 +286,7 @@ fun SkillBillRoute(
 
   fun canStartRepoScopedAction(): Boolean = state.busyOperation == null &&
     state.firstRunSetup == null &&
+    state.postPublishReinstall == null &&
     !state.publishBusy &&
     !state.commitBusy &&
     !state.commitValidationRunning &&
@@ -947,6 +977,12 @@ fun SkillBillRoute(
         state = viewModel.dismissFirstRunSetup()
       },
     ),
+    postPublishReinstallCallbacks = PostPublishReinstallCallbacks(
+      onReinstall = ::runPostPublishReinstall,
+      onDismiss = {
+        state = viewModel.dismissPostPublishReinstall()
+      },
+    ),
     recentlyCopiedKey = recentlyCopiedKey,
     recentlyOpenedCompareUrlKey = recentlyOpenedCompareUrlKey,
   )
@@ -960,6 +996,7 @@ private const val REPO_CHANGE_REFRESH_DEBOUNCE_MILLIS: Long = 500L
 internal fun canAutoRefreshGitStatus(state: SkillBillState): Boolean = state.selectedRepoPath != null &&
   state.repoStatus.state == RepoLoadState.LOADED &&
   state.busyOperation == null &&
+  state.postPublishReinstall == null &&
   !state.changesBusy &&
   !state.publishBusy &&
   !state.commitBusy &&

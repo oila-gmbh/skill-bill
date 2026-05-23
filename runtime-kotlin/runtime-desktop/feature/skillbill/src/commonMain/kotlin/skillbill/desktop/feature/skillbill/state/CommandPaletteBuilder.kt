@@ -470,6 +470,7 @@ private fun SkillBillBusyOperation.label(): String = when (this) {
   SkillBillBusyOperation.FIRST_RUN_SETUP -> "setup"
   SkillBillBusyOperation.DELETE -> "delete"
   SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "validate agent configs"
+  SkillBillBusyOperation.REINSTALL -> "reinstall"
 }
 
 private fun List<SkillBillTreeItem>.flattenPaletteTree(): List<SkillBillTreeItem> =

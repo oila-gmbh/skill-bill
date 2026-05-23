@@ -1,5 +1,14 @@
 # SkillBill desktop feature — history
 
+## [2026-05-23] SKILL-51 auto-reinstall-after-publish
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/core/datastore
+- Successful desktop publish/push now opens a post-publish reinstall prompt when completed setup preferences include reusable agent selections; declining leaves the publish result intact.
+- Reinstall reuses the latest saved setup request, runs the existing typed first-run plan/apply gateway, and reports success/warning/failure in dialog state without reopening the wizard.
+- Reusable: setup preferences now preserve MCP registration choice end-to-end, so future install replay paths can use `DesktopFirstRunPreferences` as the source of truth.
+- Tests cover prompt gating, saved preference replay, gateway MCP mapping, success persistence, and failure retaining the publish link.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-23] SKILL-48 desktop repo-browser path normalization
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data
 - RuntimeRepoBrowserService now derives displayed/tree paths against the selected repo root first, then falls back to real-path containment, so discovery results returned via resolved paths still render as repo-relative IDs and authored paths. reusable

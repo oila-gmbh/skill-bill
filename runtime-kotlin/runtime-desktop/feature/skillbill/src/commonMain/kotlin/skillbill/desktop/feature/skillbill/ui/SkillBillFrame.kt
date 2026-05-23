@@ -265,6 +265,7 @@ fun SkillBillFrame(
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
+  postPublishReinstallCallbacks: PostPublishReinstallCallbacks,
   // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
   // the frame stays free of repo/skill semantics.
   onShowDeleteContextMenu: (SkillBillTreeItem) -> Unit = {},
@@ -571,6 +572,9 @@ fun SkillBillFrame(
     }
     state.firstRunSetup?.let { setup ->
       FirstRunSetupDialog(state = setup, callbacks = firstRunSetupCallbacks)
+    }
+    state.postPublishReinstall?.let { reinstall ->
+      PostPublishReinstallDialog(state = reinstall, callbacks = postPublishReinstallCallbacks)
     }
     state.confirmDeletion?.let { confirmation ->
       ConfirmDeletionDialog(
@@ -1012,6 +1016,7 @@ private fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.FIRST_RUN_SETUP -> "Setting up..."
     SkillBillBusyOperation.DELETE -> "Deleting..."
     SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "Validating agent configs..."
+    SkillBillBusyOperation.REINSTALL -> "Reinstalling..."
   }
   Row(
     modifier = Modifier.padding(start = 4.dp),

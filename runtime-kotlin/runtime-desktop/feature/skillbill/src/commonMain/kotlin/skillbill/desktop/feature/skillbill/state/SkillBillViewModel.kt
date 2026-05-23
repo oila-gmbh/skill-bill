@@ -31,6 +31,7 @@ import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
 import skillbill.desktop.core.domain.model.GitPushTarget
+import skillbill.desktop.core.domain.model.PostPublishReinstallState
 import skillbill.desktop.core.domain.model.PrPublishingRequest
 import skillbill.desktop.core.domain.model.PrPublishingResult
 import skillbill.desktop.core.domain.model.PublishLink
@@ -174,6 +175,8 @@ class SkillBillViewModel(
       desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
     }
   private var activeFirstRunToken: Long = 0L
+  private var postPublishReinstall: PostPublishReinstallState? = null
+  private var activePostPublishReinstallToken: Long = 0L
   private var currentState = createState()
 
   init {
@@ -650,6 +653,7 @@ class SkillBillViewModel(
       commandPalette = paletteState,
       scaffoldWizard = wizardState,
       firstRunSetup = firstRunSetup,
+      postPublishReinstall = postPublishReinstall,
       confirmDeletion = confirmDeletion,
       validateAgentConfigs = validateAgentConfigsSummary,
       partialMutationPostMortem = partialMutationPostMortem,
@@ -671,7 +675,7 @@ class SkillBillViewModel(
   }
 
   fun openFirstRunSetup(): SkillBillState {
-    if (busyOperation != null || scaffoldWizard != null || firstRunSetup != null) {
+    if (busyOperation != null || scaffoldWizard != null || firstRunSetup != null || postPublishReinstall != null) {
       return currentState
     }
     firstRunSetup = desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
@@ -1632,6 +1636,82 @@ class SkillBillViewModel(
     return currentState
   }
 
+  fun dismissPostPublishReinstall(): SkillBillState {
+    val prompt = postPublishReinstall ?: return currentState
+    if (prompt.busy) {
+      return currentState
+    }
+    postPublishReinstall = null
+    currentState = createState()
+    return currentState
+  }
+
+  fun beginPostPublishReinstall(): PostPublishReinstallRequest? {
+    val prompt = postPublishReinstall ?: return null
+    if (prompt.busy) {
+      return null
+    }
+    val setupRequest = latestInstallSetupRequest() ?: return null
+    activePostPublishReinstallToken += 1
+    busyOperation = SkillBillBusyOperation.REINSTALL
+    postPublishReinstall = prompt.copy(busy = true, outcome = null)
+    currentState = createState()
+    return PostPublishReinstallRequest(
+      token = activePostPublishReinstallToken,
+      setupRequest = setupRequest,
+    )
+  }
+
+  suspend fun runPostPublishReinstall(request: PostPublishReinstallRequest): PostPublishReinstallResponse {
+    val planResult = firstRunGateway.planSetup(request.setupRequest)
+    val applyResult = when (planResult) {
+      is FirstRunPlanResult.Planned -> firstRunGateway.applySetup(planResult.plan)
+      is FirstRunPlanResult.Failed -> null
+    }
+    return PostPublishReinstallResponse(
+      request = request,
+      planResult = planResult,
+      applyResult = applyResult,
+    )
+  }
+
+  fun finishPostPublishReinstall(response: PostPublishReinstallResponse): SkillBillState {
+    if (response.request.token != activePostPublishReinstallToken) {
+      return currentState
+    }
+    if (busyOperation == SkillBillBusyOperation.REINSTALL) {
+      busyOperation = null
+    }
+    val prompt = postPublishReinstall ?: return currentState
+    val outcome = when (val planResult = response.planResult) {
+      is FirstRunPlanResult.Failed -> FirstRunInstallOutcome(
+        status = FirstRunInstallStatus.FAILURE,
+        title = "Reinstall planning failed.",
+        details = listOf(
+          skillbill.desktop.core.domain.model.FirstRunInstallDetail(
+            label = "Install",
+            message = planResult.message,
+            severity = skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity.ERROR,
+          ),
+        ),
+      )
+      is FirstRunPlanResult.Planned -> when (val applyResult = response.applyResult) {
+        is FirstRunApplyResult.Applied -> applyResult.outcome
+        is FirstRunApplyResult.Failed -> applyResult.outcome
+        null -> FirstRunInstallOutcome(
+          status = FirstRunInstallStatus.FAILURE,
+          title = "Reinstall did not run.",
+        )
+      }
+    }
+    postPublishReinstall = prompt.copy(busy = false, outcome = outcome)
+    if (outcome.status != FirstRunInstallStatus.FAILURE) {
+      desktopPreferenceStore.markFirstRunCompleted(response.request.setupRequest.toPreferences())
+    }
+    currentState = createState()
+    return currentState
+  }
+
   // --- Publish ---
 
   fun beginPublish(allowFailedValidation: Boolean = false, allowCanonicalRemote: Boolean = false): PublishRunRequest? {
@@ -1861,6 +1941,9 @@ class SkillBillViewModel(
     commitValidationFailed = false
     failedValidationStagedAuthoredPaths = null
     applyPublishRefreshes(result)
+    if (pushResult?.success == true) {
+      showPostPublishReinstallPrompt()
+    }
     currentState = createState()
     return currentState
   }
@@ -2096,6 +2179,9 @@ class SkillBillViewModel(
     if (busyOperation != null || changesBusy || publishBusy || commitBusy || commitValidationRunning || pushBusy) {
       return "Repository operation is already running."
     }
+    if (postPublishReinstall != null) {
+      return "Finish or dismiss the reinstall prompt before publishing again."
+    }
     if (changesSnapshot.nonSkillContentFiles.isNotEmpty()) {
       return "Repository has non-content.md changes. Resolve or stash those files before publishing from Skill Bill."
     }
@@ -2156,6 +2242,29 @@ class SkillBillViewModel(
       canonicalPushConfirmationTarget = null
     }
     publishingStatus = status
+  }
+
+  private fun showPostPublishReinstallPrompt() {
+    val request = latestInstallSetupRequest() ?: return
+    postPublishReinstall = PostPublishReinstallState(
+      selectedAgentIds = request.selectedAgentIds,
+      selectedPlatformSlugs = request.selectedPlatformSlugs,
+      telemetryLevel = request.telemetryLevel,
+      registerMcp = request.registerMcp,
+    )
+  }
+
+  private fun latestInstallSetupRequest(): FirstRunSetupRequest? {
+    val preferences = desktopPreferenceStore.firstRunPreferences.value
+    if (!preferences.completed || preferences.selectedAgentIds.isEmpty()) {
+      return null
+    }
+    return FirstRunSetupRequest(
+      selectedAgentIds = preferences.selectedAgentIds,
+      selectedPlatformSlugs = preferences.selectedPlatformSlugs,
+      telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
+      registerMcp = preferences.registerMcp,
+    )
   }
 
   private fun containsTreeItem(itemId: String): Boolean = treeItems.flatten().any { item -> item.id == itemId }
@@ -3298,11 +3407,22 @@ data class FirstRunApplyResponse(
   val applyResult: FirstRunApplyResult?,
 )
 
+data class PostPublishReinstallRequest(
+  val token: Long,
+  val setupRequest: FirstRunSetupRequest,
+)
+
+data class PostPublishReinstallResponse(
+  val request: PostPublishReinstallRequest,
+  val planResult: FirstRunPlanResult,
+  val applyResult: FirstRunApplyResult?,
+)
+
 private fun DesktopFirstRunPreferences.toFirstRunSetupState(): FirstRunSetupState = FirstRunSetupState(
   selectedAgentIds = selectedAgentIds,
   selectedPlatformSlugs = selectedPlatformSlugs,
   telemetryLevel = FirstRunTelemetryLevel.fromId(telemetryLevelId),
-  registerMcp = true,
+  registerMcp = registerMcp,
 )
 
 private fun FirstRunSetupState.applyDiscovery(
@@ -3327,7 +3447,7 @@ private fun FirstRunSetupState.applyDiscovery(
     selectedAgentIds = selectedAgents,
     selectedPlatformSlugs = selectedPlatforms,
     telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
-    registerMcp = true,
+    registerMcp = preferences.registerMcp,
   )
 }
 
@@ -3336,7 +3456,15 @@ private fun FirstRunSetupState.toPreferences(): DesktopFirstRunPreferences = Des
   selectedAgentIds = selectedAgentIds,
   selectedPlatformSlugs = selectedPlatformSlugs,
   telemetryLevelId = telemetryLevel.id,
-  registerMcp = true,
+  registerMcp = registerMcp,
+)
+
+private fun FirstRunSetupRequest.toPreferences(): DesktopFirstRunPreferences = DesktopFirstRunPreferences(
+  completed = false,
+  selectedAgentIds = selectedAgentIds,
+  selectedPlatformSlugs = selectedPlatformSlugs,
+  telemetryLevelId = telemetryLevel.id,
+  registerMcp = registerMcp,
 )
 
 private fun FirstRunSetupStep.next(): FirstRunSetupStep = when (this) {

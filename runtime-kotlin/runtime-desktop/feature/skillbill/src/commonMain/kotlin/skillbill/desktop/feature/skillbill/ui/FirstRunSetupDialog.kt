@@ -40,6 +40,7 @@ import skillbill.desktop.core.domain.model.FirstRunInstallStatus
 import skillbill.desktop.core.domain.model.FirstRunSetupState
 import skillbill.desktop.core.domain.model.FirstRunSetupStep
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
+import skillbill.desktop.core.domain.model.PostPublishReinstallState
 
 data class FirstRunSetupCallbacks(
   val onAgentSelectionChanged: (String, Boolean) -> Unit,
@@ -50,6 +51,11 @@ data class FirstRunSetupCallbacks(
   val onApply: () -> Unit,
   val onRetry: () -> Unit,
   val onFinish: () -> Unit,
+  val onDismiss: () -> Unit,
+)
+
+data class PostPublishReinstallCallbacks(
+  val onReinstall: () -> Unit,
   val onDismiss: () -> Unit,
 )
 
@@ -97,6 +103,122 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
       }
       HorizontalDivider(color = semanticTones.dialog.border)
       SetupFooter(state, callbacks)
+    }
+  }
+}
+
+@Composable
+fun PostPublishReinstallDialog(state: PostPublishReinstallState, callbacks: PostPublishReinstallCallbacks) {
+  val semanticTones = SkillBillTheme.semanticTones
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(semanticTones.scrim)
+      .semantics { contentDescription = "Reinstall Skill Bill after publishing" }
+      .clickable(enabled = !state.busy, role = Role.Button, onClick = callbacks.onDismiss),
+  ) {
+    Column(
+      modifier = Modifier
+        .align(Alignment.Center)
+        .widthIn(min = 520.dp, max = 720.dp)
+        .heightIn(max = 620.dp)
+        .clip(RoundedCornerShape(8.dp))
+        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .background(semanticTones.dialog.container)
+        .clickable(enabled = false, onClick = {}),
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+      ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Text(
+            text = "Reinstall Skill Bill",
+            color = semanticTones.dialog.content,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+          )
+          Text(
+            text = "Published source changes need a reinstall before installed agents use them.",
+            color = SkillBillTheme.colors.onSurfaceVariant,
+            fontSize = 12.sp,
+          )
+        }
+        Text(
+          text = "x",
+          color = SkillBillTheme.colors.onSurfaceVariant,
+          fontSize = 14.sp,
+          modifier = Modifier
+            .semantics { contentDescription = "Dismiss reinstall prompt" }
+            .clickable(enabled = !state.busy, role = Role.Button, onClick = callbacks.onDismiss)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+      }
+      HorizontalDivider(color = semanticTones.dialog.border)
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f, fill = false)
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        if (state.busy) {
+          SetupBanner(
+            title = "Reinstalling",
+            message = "Reusing the latest saved install selections.",
+            tone = semanticTones.warningBanner,
+          )
+        } else if (state.outcome == null) {
+          SetupBanner(
+            title = "Apply published changes locally",
+            message = "Reinstall now using the latest saved selections.",
+            tone = semanticTones.successBanner,
+          )
+        }
+        SummaryLine(label = "Agents", value = state.selectedAgentIds.sorted().joinToString(", "))
+        SummaryLine(
+          label = "Platform packs",
+          value = state.selectedPlatformSlugs.sorted().joinToString(", ").ifBlank { "none" },
+        )
+        SummaryLine(label = "Telemetry", value = state.telemetryLevel.id)
+        SummaryLine(label = "MCP", value = if (state.registerMcp) "register" else "skip")
+        state.outcome?.let { outcome ->
+          val tone = when (outcome.status) {
+            FirstRunInstallStatus.SUCCESS -> semanticTones.successBanner
+            FirstRunInstallStatus.WARNING -> semanticTones.warningBanner
+            FirstRunInstallStatus.FAILURE -> semanticTones.errorBanner
+          }
+          SetupBanner(title = outcome.title, message = outcome.status.name.lowercase(), tone = tone)
+          outcome.details.forEach { detail -> DetailRow(detail) }
+        }
+      }
+      HorizontalDivider(color = semanticTones.dialog.border)
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        if (!state.busy && state.outcome?.status == FirstRunInstallStatus.FAILURE) {
+          SetupButton(label = "Retry", enabled = true, primary = true, onClick = callbacks.onReinstall)
+          SetupButton(label = "Done", enabled = true, onClick = callbacks.onDismiss)
+        } else if (state.hasFinished) {
+          SetupButton(label = "Done", enabled = !state.busy, primary = true, onClick = callbacks.onDismiss)
+        } else {
+          SetupButton(label = "Later", enabled = !state.busy, onClick = callbacks.onDismiss)
+          SetupButton(
+            label = if (state.busy) "Reinstalling..." else "Reinstall",
+            enabled = !state.busy,
+            primary = true,
+            onClick = callbacks.onReinstall,
+          )
+        }
+      }
     }
   }
 }
@@ -205,7 +327,11 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
   Spacer(modifier = Modifier.height(4.dp))
   SectionTitle("MCP")
   Text(
-    text = "Skill Bill MCP server will be registered for selected agents.",
+    text = if (state.registerMcp) {
+      "Skill Bill MCP server will be registered for selected agents."
+    } else {
+      "Skill Bill MCP server registration is skipped."
+    },
     color = colors.onSurfaceVariant,
     fontSize = 12.sp,
   )
@@ -222,7 +348,7 @@ private fun ApplyStep(state: FirstRunSetupState) {
     },
   )
   SummaryLine(label = "Telemetry", value = state.telemetryLevel.id)
-  SummaryLine(label = "MCP", value = "register")
+  SummaryLine(label = "MCP", value = if (state.registerMcp) "register" else "skip")
 }
 
 @Composable

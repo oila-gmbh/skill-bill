@@ -70,7 +70,7 @@ class JvmDesktopFirstRunGatewayTest {
   }
 
   @Test
-  fun `plan maps desktop request into shared install plan request with MCP registration`() = runBlocking {
+  fun `plan maps desktop request into shared install plan request with MCP preference`() = runBlocking {
     val root = Files.createTempDirectory("skillbill-first-run-root")
     var capturedRequest: InstallPlanRequest? = null
     val gateway = JvmDesktopFirstRunGateway().apply {
@@ -98,7 +98,7 @@ class JvmDesktopFirstRunGatewayTest {
     assertEquals(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX), request.agentSelection.manualAgents)
     assertEquals(setOf("kotlin"), request.platformPackSelection.selectedSlugs)
     assertEquals("full", request.telemetryLevel.id)
-    assertTrue(request.mcpRegistrationChoice.register)
+    assertFalse(request.mcpRegistrationChoice.register)
     assertEquals(
       root.resolve("runtime-mcp/bin/runtime-mcp").toAbsolutePath().normalize(),
       request.mcpRegistrationChoice.runtimeMcpBin,

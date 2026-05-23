@@ -1,9 +1,21 @@
 package skillbill.desktop.feature.skillbill.state
 
+import kotlinx.coroutines.runBlocking
+import skillbill.desktop.core.datastore.DesktopFirstRunPreferences
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.CommitEntry
+import skillbill.desktop.core.domain.model.FirstRunApplyResult
+import skillbill.desktop.core.domain.model.FirstRunDiscoveryResult
+import skillbill.desktop.core.domain.model.FirstRunInstallOutcome
+import skillbill.desktop.core.domain.model.FirstRunInstallPlan
+import skillbill.desktop.core.domain.model.FirstRunInstallPlanHandle
+import skillbill.desktop.core.domain.model.FirstRunInstallStatus
+import skillbill.desktop.core.domain.model.FirstRunPlanResult
+import skillbill.desktop.core.domain.model.FirstRunPlatformPackOption
+import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
+import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.model.GitAheadBehind
 import skillbill.desktop.core.domain.model.GitOperationResult
 import skillbill.desktop.core.domain.model.GitPublishingStatus
@@ -30,12 +42,14 @@ import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
+import skillbill.desktop.core.testing.FakeDesktopPreferenceStore
 import skillbill.desktop.core.testing.FakeGitGateway
 import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
+import skillbill.desktop.core.testing.install.FakeDesktopFirstRunGateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1356,6 +1370,197 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
+  fun `successful publish prompts reinstall when completed install preferences exist`() {
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val preferenceStore = FakeDesktopPreferenceStore(
+      initialFirstRunPreferences = DesktopFirstRunPreferences(
+        completed = true,
+        selectedAgentIds = setOf("codex"),
+        selectedPlatformSlugs = setOf("kotlin"),
+        telemetryLevelId = FirstRunTelemetryLevel.FULL.id,
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway, desktopPreferenceStore = preferenceStore)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    val reinstall = assertNotNull(state.postPublishReinstall)
+    assertEquals(setOf("codex"), reinstall.selectedAgentIds)
+    assertEquals(setOf("kotlin"), reinstall.selectedPlatformSlugs)
+    assertEquals(FirstRunTelemetryLevel.FULL, reinstall.telemetryLevel)
+    assertEquals(1, gitGateway.pushCallCount)
+  }
+
+  @Test
+  fun `successful publish does not prompt reinstall without reusable install preferences`() {
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      desktopPreferenceStore = FakeDesktopPreferenceStore(
+        initialFirstRunPreferences = DesktopFirstRunPreferences(completed = true),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    val state = viewModel.finishPublish(viewModel.runPublish(request))
+
+    assertNull(state.postPublishReinstall)
+  }
+
+  @Test
+  fun `dismissing post publish reinstall leaves publish result and install preferences intact`() {
+    val initialPreferences = DesktopFirstRunPreferences(
+      completed = true,
+      selectedAgentIds = setOf("codex"),
+      selectedPlatformSlugs = setOf("kotlin"),
+      telemetryLevelId = FirstRunTelemetryLevel.FULL.id,
+      registerMcp = false,
+    )
+    val preferenceStore = FakeDesktopPreferenceStore(initialFirstRunPreferences = initialPreferences)
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      prPublishingGateway = FakePrPublishingGateway(
+        scriptedResult = PrPublishingResult.CreatedDraftPullRequest("https://github.com/acme/repo/pull/51"),
+      ),
+      desktopPreferenceStore = preferenceStore,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    val publishRequest = viewModel.beginPublish()
+    assertNotNull(publishRequest)
+    val published = viewModel.finishPublish(viewModel.runPublish(publishRequest))
+    assertNotNull(published.postPublishReinstall)
+    assertEquals(PublishLinkKind.DRAFT_PR, published.publishLink?.kind)
+
+    val setupBlocked = viewModel.openFirstRunSetup()
+    assertNull(setupBlocked.firstRunSetup)
+    assertNotNull(setupBlocked.postPublishReinstall)
+
+    val dismissed = viewModel.dismissPostPublishReinstall()
+
+    assertNull(dismissed.postPublishReinstall)
+    assertEquals(PublishLinkKind.DRAFT_PR, dismissed.publishLink?.kind)
+    assertEquals(initialPreferences, preferenceStore.firstRunPreferences.value)
+  }
+
+  @Test
+  fun `post publish reinstall reuses saved setup request and reports success`() = runBlocking {
+    val plan = reinstallPlan()
+    val gateway = FakeDesktopFirstRunGateway(
+      discoveryResult = FirstRunDiscoveryResult.Success(
+        FirstRunSetupDiscovery(agents = emptyList(), platformPacks = emptyList()),
+      ),
+      planResult = FirstRunPlanResult.Planned(plan),
+      applyResult = FirstRunApplyResult.Applied(
+        FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+      ),
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val preferenceStore = FakeDesktopPreferenceStore(
+      initialFirstRunPreferences = DesktopFirstRunPreferences(
+        completed = true,
+        selectedAgentIds = setOf("codex", "claude"),
+        selectedPlatformSlugs = setOf("kotlin"),
+        telemetryLevelId = FirstRunTelemetryLevel.OFF.id,
+      ),
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      firstRunGateway = gateway,
+      desktopPreferenceStore = preferenceStore,
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    val publishRequest = viewModel.beginPublish()
+    assertNotNull(publishRequest)
+    viewModel.finishPublish(viewModel.runPublish(publishRequest))
+
+    val reinstallRequest = viewModel.beginPostPublishReinstall()
+    assertNotNull(reinstallRequest)
+    val state = viewModel.finishPostPublishReinstall(viewModel.runPostPublishReinstall(reinstallRequest))
+
+    assertEquals(setOf("claude", "codex"), gateway.planRequests.single().selectedAgentIds)
+    assertEquals(setOf("kotlin"), gateway.planRequests.single().selectedPlatformSlugs)
+    assertEquals(FirstRunTelemetryLevel.OFF, gateway.planRequests.single().telemetryLevel)
+    assertEquals(1, gateway.applyCallCount)
+    assertEquals(FirstRunInstallStatus.SUCCESS, state.postPublishReinstall?.outcome?.status)
+    assertTrue(preferenceStore.firstRunPreferences.value.completed)
+  }
+
+  @Test
+  fun `post publish reinstall failure stays in prompt and does not clear publish link`() = runBlocking {
+    val gateway = FakeDesktopFirstRunGateway(
+      discoveryResult = FirstRunDiscoveryResult.Success(
+        FirstRunSetupDiscovery(agents = emptyList(), platformPacks = emptyList()),
+      ),
+      planResult = FirstRunPlanResult.Failed("plan failed"),
+      applyResult = FirstRunApplyResult.Failed(
+        FirstRunInstallOutcome(status = FirstRunInstallStatus.FAILURE, title = "not used"),
+      ),
+    )
+    val gitGateway = FakeGitGateway(
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+        aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
+      ),
+    )
+    val viewModel = newViewModel(
+      gitGateway = gitGateway,
+      firstRunGateway = gateway,
+      prPublishingGateway = FakePrPublishingGateway(
+        scriptedResult = PrPublishingResult.CreatedDraftPullRequest("https://github.com/acme/repo/pull/51"),
+      ),
+      desktopPreferenceStore = FakeDesktopPreferenceStore(
+        initialFirstRunPreferences = DesktopFirstRunPreferences(
+          completed = true,
+          selectedAgentIds = setOf("codex"),
+        ),
+      ),
+    )
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    val publishRequest = viewModel.beginPublish()
+    assertNotNull(publishRequest)
+    viewModel.finishPublish(viewModel.runPublish(publishRequest))
+
+    val reinstallRequest = viewModel.beginPostPublishReinstall()
+    assertNotNull(reinstallRequest)
+    val state = viewModel.finishPostPublishReinstall(viewModel.runPostPublishReinstall(reinstallRequest))
+
+    assertEquals(FirstRunInstallStatus.FAILURE, state.postPublishReinstall?.outcome?.status)
+    assertEquals(PublishLinkKind.DRAFT_PR, state.publishLink?.kind)
+    assertEquals(0, gateway.applyCallCount)
+  }
+
+  @Test
   fun `publish to likely canonical remote is blocked by default`() {
     val target = GitPushTarget(
       remoteName = "origin",
@@ -1503,12 +1708,24 @@ class SkillBillViewModelGitTest {
     ),
   )
 
+  private fun reinstallPlan(): FirstRunInstallPlan = FirstRunInstallPlan(
+    handle = GitTestPlanHandle,
+    selectedAgentIds = setOf("codex"),
+    selectedPlatformSlugs = setOf("kotlin"),
+    platformPacks = listOf(FirstRunPlatformPackOption(slug = "kotlin", packRoot = "/repo/platform-packs/kotlin")),
+    baseSkillCount = 4,
+    platformSkillCount = 2,
+    stagingRoot = "/home/user/.skill-bill/installed-skills",
+  )
+
   // Confirm the unused parameters don't trigger warnings.
   @Suppress("unused")
   private fun referenceUnused(): Pair<ValidationSummary, RenderSummary> =
     ValidationSummary(state = ValidationRunState.UNAVAILABLE) to
       RenderSummary(state = RenderRunState.UNAVAILABLE)
 }
+
+private object GitTestPlanHandle : FirstRunInstallPlanHandle
 
 private fun defaultTree(): List<SkillBillTreeItem> = listOf(
   SkillBillTreeItem(

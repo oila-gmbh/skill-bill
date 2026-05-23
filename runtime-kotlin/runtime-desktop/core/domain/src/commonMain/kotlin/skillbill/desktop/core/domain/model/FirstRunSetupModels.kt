@@ -162,6 +162,18 @@ data class FirstRunSetupState(
     selectedAgentIds = selectedAgentIds,
     selectedPlatformSlugs = selectedPlatformSlugs,
     telemetryLevel = telemetryLevel,
-    registerMcp = true,
+    registerMcp = registerMcp,
   )
+}
+
+data class PostPublishReinstallState(
+  val selectedAgentIds: Set<String>,
+  val selectedPlatformSlugs: Set<String>,
+  val telemetryLevel: FirstRunTelemetryLevel,
+  val registerMcp: Boolean,
+  val busy: Boolean = false,
+  val outcome: FirstRunInstallOutcome? = null,
+) {
+  val hasFinished: Boolean
+    get() = outcome != null
 }

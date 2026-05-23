@@ -69,6 +69,7 @@ data class SkillBillState(
   val commandPalette: CommandPaletteState = CommandPaletteState(),
   val scaffoldWizard: ScaffoldWizardState? = null,
   val firstRunSetup: FirstRunSetupState? = null,
+  val postPublishReinstall: PostPublishReinstallState? = null,
   /** SKILL-46: non-null while the tree-context-menu Delete dialog is on screen. */
   val confirmDeletion: ConfirmDeletionState? = null,
   /** SKILL-46 AC8: post-delete output of scripts/validate_agent_configs piped into the dock console. */
@@ -204,6 +205,12 @@ enum class SkillBillBusyOperation {
    * surface a different running label.
    */
   VALIDATE_AGENT_CONFIGS,
+
+  /**
+   * Replays the latest completed desktop setup selection after publishing governed source changes,
+   * so refreshed installed skills take effect without reopening the full setup wizard.
+   */
+  REINSTALL,
 }
 
 data class CommandPaletteState(
