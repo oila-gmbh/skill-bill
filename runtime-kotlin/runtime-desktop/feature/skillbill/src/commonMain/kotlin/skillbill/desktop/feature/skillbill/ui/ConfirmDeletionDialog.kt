@@ -458,6 +458,8 @@ private fun displayLabelFor(kind: DesktopManifestEditKind): String = when (kind)
   DesktopManifestEditKind.REMOVE_AREA_METADATA_ENTRY -> "remove area-metadata entry"
   DesktopManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> "remove declared-files baseline"
   DesktopManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> "remove pointers block key"
+  DesktopManifestEditKind.REMOVE_ADDON_REFERENCES -> "remove add-on references"
+  DesktopManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> "remove skill-class pointer"
 }
 
 private fun displayLabelFor(kind: DesktopReadmeCatalogEditKind): String = when (kind) {

@@ -399,6 +399,226 @@ internal fun removePointersBlockKey(manifestPath: Path, key: String) {
   }
 }
 
+/**
+ * Removes every platform-pack manifest reference to an add-on pointer filename.
+ *
+ * This handles both generated pointer declarations and governed add-on usage:
+ * - `pointers.<skill-dir>[]` entries whose `name` matches [pointerName]
+ * - `addon_usage.<skill-dir>[]` entries whose `entrypoint` matches [pointerName]
+ * - `companion_pointers` list values matching [pointerName]
+ */
+internal fun removeAddonReferences(manifestPath: Path, pointerName: String) {
+  val original = manifestPath.toFile().readText()
+  var updated = removeNamedPointerEntries(original, blockName = "pointers", pointerName = pointerName)
+  updated = removeAddonUsageEntries(updated, pointerName)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+/** Removes one pointer slug from an orchestration skill-class manifest's `pointers:` list. */
+internal fun removeSkillClassPointer(manifestPath: Path, pointerSlug: String) {
+  val original = manifestPath.toFile().readText()
+  val lines = original.split('\n').toMutableList()
+  val block = topLevelBlockLineRange(lines, "pointers") ?: return
+  val removeIdx = (block.first + 1..block.last).firstOrNull { idx ->
+    val line = lines.getOrNull(idx) ?: return@firstOrNull false
+    leadingSpaces(line) == 2 && yamlListScalar(line) == pointerSlug
+  } ?: return
+  lines.removeAt(removeIdx)
+  val updated = lines.joinToString("\n")
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
+private fun removeNamedPointerEntries(text: String, blockName: String, pointerName: String): String {
+  val lines = text.split('\n').toMutableList()
+  var changed = false
+  var block = topLevelBlockLineRange(lines, blockName) ?: return text
+  var idx = block.first + 1
+  while (idx <= block.last && idx < lines.size) {
+    val line = lines[idx]
+    if (leadingSpaces(line) == 4 && namedListEntryValue(line, "name") == pointerName) {
+      val end = listItemEnd(lines, idx, maxExclusive = block.last + 1)
+      repeat(end - idx) { lines.removeAt(idx) }
+      changed = true
+      block = topLevelBlockLineRange(lines, blockName) ?: return lines.joinToString("\n")
+      continue
+    }
+    idx += 1
+  }
+  if (changed) {
+    collapseEmptyNestedMappings(lines, blockName)
+  }
+  return if (changed) lines.joinToString("\n") else text
+}
+
+private fun removeAddonUsageEntries(text: String, pointerName: String): String {
+  val lines = text.split('\n').toMutableList()
+  var changed = removeAddonUsageEntrypointItems(lines, pointerName)
+  changed = removeAddonUsageCompanionPointers(lines, pointerName) || changed
+  if (changed) {
+    collapseEmptyCompanionPointerBlocks(lines)
+    collapseEmptyNestedMappings(lines, "addon_usage")
+  }
+  return if (changed) lines.joinToString("\n") else text
+}
+
+private fun removeAddonUsageEntrypointItems(lines: MutableList<String>, pointerName: String): Boolean {
+  var changed = false
+  var block = topLevelBlockLineRange(lines, "addon_usage") ?: return false
+  var idx = block.first + 1
+  while (idx <= block.last && idx < lines.size) {
+    val removesItem = isAddonUsageItemStart(lines[idx]) &&
+      listItemContainsEntrypoint(lines, idx, block.last + 1, pointerName)
+    if (removesItem) {
+      val end = listItemEnd(lines, idx, maxExclusive = block.last + 1)
+      repeat(end - idx) { lines.removeAt(idx) }
+      changed = true
+      block = topLevelBlockLineRange(lines, "addon_usage") ?: return true
+    } else {
+      idx += 1
+    }
+  }
+  return changed
+}
+
+private fun removeAddonUsageCompanionPointers(lines: MutableList<String>, pointerName: String): Boolean {
+  var changed = false
+  var block = topLevelBlockLineRange(lines, "addon_usage") ?: return false
+  var idx = block.first + 1
+  while (idx <= block.last && idx < lines.size) {
+    if (leadingSpaces(lines[idx]) == COMPANION_POINTER_ITEM_INDENT && yamlListScalar(lines[idx]) == pointerName) {
+      lines.removeAt(idx)
+      changed = true
+      block = topLevelBlockLineRange(lines, "addon_usage") ?: return true
+    } else {
+      idx += 1
+    }
+  }
+  return changed
+}
+
+private fun isAddonUsageItemStart(line: String): Boolean =
+  leadingSpaces(line) == NESTED_LIST_ITEM_INDENT && line.trimStart().startsWith("- slug:")
+
+private fun listItemContainsEntrypoint(
+  lines: List<String>,
+  start: Int,
+  maxExclusive: Int,
+  pointerName: String,
+): Boolean {
+  val end = listItemEnd(lines, start, maxExclusive)
+  return lines.subList(start, end).any { line -> keyValue(line, "entrypoint") == pointerName }
+}
+
+private fun topLevelBlockLineRange(lines: List<String>, blockName: String): IntRange? {
+  val start = lines.indexOfFirst { line -> line == "$blockName:" || line == "$blockName: {}" }
+  if (start < 0 || lines[start] == "$blockName: {}") return null
+  val next = lines.asSequence()
+    .drop(start + 1)
+    .indexOfFirst { line -> line.isNotBlank() && leadingSpaces(line) == 0 && line.contains(':') }
+    .let { offset -> if (offset < 0) lines.size else start + 1 + offset }
+  return start until next
+}
+
+private fun listItemEnd(lines: List<String>, start: Int, maxExclusive: Int): Int {
+  var idx = start + 1
+  while (idx < maxExclusive && idx < lines.size) {
+    val line = lines[idx]
+    if (line.isNotBlank() && leadingSpaces(line) <= leadingSpaces(lines[start])) break
+    idx += 1
+  }
+  return idx
+}
+
+private fun collapseEmptyCompanionPointerBlocks(lines: MutableList<String>) {
+  var idx = 0
+  while (idx < lines.size) {
+    if (leadingSpaces(lines[idx]) == COMPANION_POINTER_HEADER_INDENT && lines[idx].trim() == "companion_pointers:") {
+      val next = idx + 1
+      val hasCompanions = next < lines.size &&
+        leadingSpaces(lines[next]) == COMPANION_POINTER_ITEM_INDENT &&
+        lines[next].trimStart().startsWith("- ")
+      if (!hasCompanions) {
+        lines.removeAt(idx)
+        continue
+      }
+    }
+    idx += 1
+  }
+}
+
+private fun collapseEmptyNestedMappings(lines: MutableList<String>, blockName: String) {
+  removeEmptyNestedMappingBlocks(lines, blockName)
+  collapseTopLevelMappingIfEmpty(lines, blockName)
+}
+
+private fun removeEmptyNestedMappingBlocks(lines: MutableList<String>, blockName: String) {
+  var block = topLevelBlockLineRange(lines, blockName) ?: return
+  var idx = block.first + 1
+  while (idx <= block.last && idx < lines.size) {
+    val end = nestedMappingEnd(lines, idx, block.last + 1)
+    if (isNestedMappingHeader(lines[idx]) && !nestedMappingHasListItem(lines, idx, end)) {
+      lines.subList(idx, end.coerceAtMost(lines.size)).clear()
+      block = topLevelBlockLineRange(lines, blockName) ?: return
+      continue
+    }
+    idx += 1
+  }
+}
+
+private fun collapseTopLevelMappingIfEmpty(lines: MutableList<String>, blockName: String) {
+  val block = topLevelBlockLineRange(lines, blockName) ?: return
+  val hasNestedMappings = lines.subList(block.first + 1, (block.last + 1).coerceAtMost(lines.size)).any { line ->
+    line.isNotBlank() && leadingSpaces(line) == NESTED_MAPPING_INDENT
+  }
+  if (!hasNestedMappings) {
+    lines[block.first] = "$blockName: {}"
+  }
+}
+
+private fun isNestedMappingHeader(line: String): Boolean =
+  leadingSpaces(line) == NESTED_MAPPING_INDENT && line.trimEnd().endsWith(":")
+
+private fun nestedMappingEnd(lines: List<String>, start: Int, maxExclusive: Int): Int = lines.asSequence()
+  .drop(start + 1)
+  .take(maxExclusive - start - 1)
+  .indexOfFirst { line -> line.isNotBlank() && leadingSpaces(line) <= NESTED_MAPPING_INDENT }
+  .let { offset -> if (offset < 0) maxExclusive else start + 1 + offset }
+
+private fun nestedMappingHasListItem(lines: List<String>, start: Int, end: Int): Boolean =
+  lines.subList(start + 1, end.coerceAtMost(lines.size)).any { line ->
+    line.isNotBlank() && leadingSpaces(line) == NESTED_LIST_ITEM_INDENT && line.trimStart().startsWith("- ")
+  }
+
+private fun namedListEntryValue(line: String, key: String): String? {
+  val trimmed = line.trim()
+  val prefix = "- $key:"
+  return if (trimmed.startsWith(prefix)) unquoteYamlScalar(trimmed.removePrefix(prefix).trim()) else null
+}
+
+private fun keyValue(line: String, key: String): String? {
+  val trimmed = line.trim()
+  val prefix = "$key:"
+  return if (trimmed.startsWith(prefix)) unquoteYamlScalar(trimmed.removePrefix(prefix).trim()) else null
+}
+
+private fun yamlListScalar(line: String): String? {
+  val trimmed = line.trim()
+  return if (trimmed.startsWith("- ")) unquoteYamlScalar(trimmed.removePrefix("- ").trim()) else null
+}
+
+private fun unquoteYamlScalar(value: String): String = value.removeSurrounding("\"").removeSurrounding("'")
+
+private fun leadingSpaces(line: String): Int = line.takeWhile { it == ' ' }.length
+
+private const val NESTED_MAPPING_INDENT = 2
+private const val NESTED_LIST_ITEM_INDENT = 4
+private const val COMPANION_POINTER_HEADER_INDENT = 6
+private const val COMPANION_POINTER_ITEM_INDENT = 8
+
 private fun collapseEmptyPointersBlock(text: String): String {
   val lines = text.split('\n')
   val pointersIdx = lines.indexOfFirst { it == "pointers:" }

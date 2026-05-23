@@ -1016,6 +1016,48 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
+  fun `publish treats add-on removal cascade files as managed source changes`() {
+    val cascadePaths = setOf(
+      "platform-packs/kmp/addons/android-compose-adaptive-layouts.md",
+      "platform-packs/kmp/platform.yaml",
+      "orchestration/skill-classes/feature-implement.yaml",
+    )
+    val gitGateway = FakeGitGateway(
+      initialSnapshot = ChangesSnapshot(
+        files = listOf(
+          ChangedFile(
+            path = "platform-packs/kmp/addons/android-compose-adaptive-layouts.md",
+            group = ChangedFileGroup.UNSTAGED,
+            statusCode = "D",
+          ),
+          ChangedFile(path = "platform-packs/kmp/platform.yaml", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
+          ChangedFile(
+            path = "orchestration/skill-classes/feature-implement.yaml",
+            group = ChangedFileGroup.UNSTAGED,
+            statusCode = "M",
+          ),
+        ),
+      ),
+      scriptedPublishingStatus = GitPublishingStatus(
+        pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
+      ),
+    )
+    val viewModel = newViewModel(gitGateway = gitGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.refreshGit()
+    val state = viewModel.updateCommitMessage("remove compose adaptive add-on")
+
+    assertEquals(cascadePaths, state.selectedPublishPaths)
+    assertTrue(state.changes.nonSkillContentFiles.isEmpty())
+    assertTrue(state.canPublish)
+    assertNull(state.publishDisabledReason)
+
+    val request = viewModel.beginPublish()
+    assertNotNull(request)
+    assertEquals(cascadePaths.sorted(), request.selectedPaths)
+  }
+
+  @Test
   fun `publish runs preflight before selected-file commit and requires explicit override after failure`() {
     val gitGateway = FakeGitGateway(
       initialSnapshot = ChangesSnapshot(
