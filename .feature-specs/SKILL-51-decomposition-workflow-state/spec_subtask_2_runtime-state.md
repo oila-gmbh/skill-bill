@@ -4,7 +4,7 @@ feature_name: decomposition-workflow-state
 subtask_id: 2
 subtask_name: runtime-state
 parent_spec: .feature-specs/SKILL-51-decomposition-workflow-state/spec.md
-status: Pending
+status: Complete
 ---
 
 # SKILL-51 Subtask 2: Runtime State

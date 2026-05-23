@@ -43,6 +43,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ApplicationPersistencePortTest {
@@ -295,6 +297,76 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
+  fun `workflow service does not add decomposition runtime for single spec implement plan`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-single-spec")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-single/spec.md")
+    Files.createDirectories(parentSpec.parent)
+    Files.writeString(parentSpec, "# Parent")
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+    val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
+    val workflowId = opened["workflow_id"] as String
+
+    val updated = service.update(
+      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowUpdateRequest(
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
+        artifactsPatch =
+        mapOf(
+          "plan" to
+            mapOf(
+              "mode" to "implement",
+              "task_count" to 1,
+              "parent_spec_path" to parentSpec.toString(),
+            ),
+        ),
+      ),
+      dbOverride = null,
+    )
+
+    val artifacts = updated["artifacts"] as Map<*, *>
+    assertEquals("ok", updated["status"])
+    assertEquals("implement", (artifacts["plan"] as Map<*, *>)["mode"])
+    assertFalse(artifacts.containsKey("decomposition_runtime"))
+    assertFalse(Files.exists(parentSpec.parent.resolve("decomposition-manifest.yaml")))
+  }
+
+  @Test
+  fun `workflow service does not write decomposition projection when durable save fails`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-save-fails")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    Files.createDirectories(parentSpec.parent)
+    Files.writeString(parentSpec, "# Parent")
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+    val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
+    val workflowId = opened["workflow_id"] as String
+
+    workflowRepository.failNextImplementSave = true
+    assertFailsWith<IllegalStateException> {
+      service.update(
+        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowUpdateRequest(
+          workflowId = workflowId,
+          workflowStatus = "running",
+          currentStepId = "plan",
+          stepUpdates = listOf(mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1)),
+          artifactsPatch = decompositionPlanPatch(parentSpec, subtaskSpec),
+        ),
+        dbOverride = null,
+      )
+    }
+
+    assertFalse(Files.exists(parentSpec.parent.resolve("decomposition-manifest.yaml")))
+  }
+
+  @Test
   fun `workflow service updates decomposition subtask runtime status for blocked and skipped outcomes`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition-state")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
@@ -322,6 +394,48 @@ class ApplicationPersistencePortTest {
     assertEquals("skipped", skippedManifest.subtasks.single().status)
     assertEquals("none", skippedManifest.currentSubtaskIntent.action)
     assertEquals("Skipped", statusLine(subtaskSpec))
+  }
+
+  @Test
+  fun `workflow service reopens blocked decomposition subtask runtime state on continuation`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-reopen")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    Files.createDirectories(parentSpec.parent)
+    Files.writeString(parentSpec, "# Parent")
+    Files.writeString(subtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = WorkflowService(database)
+    val workflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
+
+    service.update(
+      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowUpdateRequest(
+        workflowId = workflowId,
+        workflowStatus = "blocked",
+        currentStepId = "validate",
+        stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "blocked", "attempt_count" to 1)),
+        artifactsPatch =
+        mapOf(
+          "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+          "audit_report" to mapOf("gap_count" to 0),
+          "blocked_reason" to "Validation paused.",
+        ),
+      ),
+      dbOverride = null,
+    )
+
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null)
+
+    val manifest = DecompositionManifestCodec.load(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val subtask = manifest.subtasks.single()
+    assertEquals("ok", continued["status"])
+    assertEquals("reopened", continued["continue_status"])
+    assertEquals("in_progress", subtask.status)
+    assertEquals(null, subtask.blockedReason)
+    assertEquals("validate", subtask.lastResumableStep)
+    assertEquals("In Progress", statusLine(subtaskSpec))
   }
 
   @Test
@@ -734,8 +848,13 @@ private class InMemoryWorkflowStateRepository(
 ) : WorkflowStateRepository {
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
+  var failNextImplementSave: Boolean = false
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
+    if (failNextImplementSave) {
+      failNextImplementSave = false
+      error("save failed")
+    }
     implementRows[row.workflowId] = row
   }
 

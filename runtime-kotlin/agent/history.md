@@ -1,9 +1,9 @@
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-runtime-state
 Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-core/application tests
 - `decomposition-manifest-schema.yaml` now carries parent/subtask runtime state: parent `status`, and per-subtask `branch`, `commit_sha`, `workflow_id`, `review_result`, `audit_result`, `validation_result`, `blocked_reason`, and `last_resumable_step`. The Kotlin model/codec/wire-map emit the same fields under the existing validator-backed manifest contract. reusable
-- `WorkflowService.update` projects feature-implement workflow updates into an existing sibling `decomposition-manifest.yaml` when the workflow assessment points at a decomposed subtask spec; ordinary single-spec workflows still no-op when no manifest exists.
+- `WorkflowService.update` persists `artifacts.decomposition_runtime` first, then writes `decomposition-manifest.yaml` / subtask frontmatter as a post-save human-readable projection; ordinary single-spec workflows still do not create decomposition runtime or manifests. reusable
 - Execution-model changes are allowed while every subtask is still pending. Once any subtask has recorded runtime state, `DecompositionManifestWriter` rejects an `execution_model` change with `InvalidDecompositionManifestSchemaError` and a manual-migration/reset message. reusable
-- Subtask status projection currently covers implementation/review/audit/validation/PR-description blocked/skipped/complete events and writes human-readable frontmatter `status` in the touched subtask spec. Parent manifest status is derived from subtask statuses; continuation selection and branch/commit advancement remain deferred to SKILL-51 subtasks 3/4.
+- Subtask status projection covers implementation/review/audit/validation/PR-description blocked/skipped/complete events, but explicit unmatched `assessment.spec_path` no-ops rather than falling back to current intent; continuation selection and branch/commit advancement remain deferred to SKILL-51 subtasks 3/4.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 

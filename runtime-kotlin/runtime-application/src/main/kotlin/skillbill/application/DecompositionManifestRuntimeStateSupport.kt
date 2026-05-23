@@ -9,6 +9,7 @@ import java.nio.file.Path
 
 private val statusTrackedSteps = setOf("implement", "review", "audit", "validate", "pr_description", "finish")
 private val completionSteps = setOf("pr_description", "finish")
+private val terminalSkippedSteps = setOf("pr_description", "finish")
 
 internal fun DecompositionSubtask.withRuntimeFields(
   manifest: DecompositionManifest,
@@ -37,14 +38,18 @@ internal fun DecompositionManifest.currentSubtaskIdForUpdate(
   val assessment = mergedArtifacts(update)["assessment"] as? Map<*, *>
   val specPath = assessment?.get("spec_path")?.toString()?.takeIf(String::isNotBlank)
   val matchedId = specPath?.let { matchingSubtaskId(repoRoot, it) }
-  return matchedId ?: currentSubtaskIntent.subtaskId.takeIf { it != 0 }
+  return if (specPath != null) {
+    matchedId
+  } else {
+    currentSubtaskIntent.subtaskId.takeIf { it != 0 }
+  }
 }
 
 internal fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
   val stepUpdates = update.stepUpdates.orEmpty()
   return when {
     update.workflowStatus == "blocked" || stepUpdates.any { it["status"] == "blocked" } -> "blocked"
-    stepUpdates.any { it["status"] == "skipped" && it["step_id"] in statusTrackedSteps } -> "skipped"
+    stepUpdates.any { it["status"] == "skipped" && it["step_id"] in terminalSkippedSteps } -> "skipped"
     update.workflowStatus == "completed" ||
       stepUpdates.any { it["status"] == "completed" && it["step_id"] in completionSteps } -> "complete"
     update.currentStepId in statusTrackedSteps || stepUpdates.any { it["step_id"] in statusTrackedSteps } ->

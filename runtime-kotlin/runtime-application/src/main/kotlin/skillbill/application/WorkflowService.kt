@@ -13,6 +13,7 @@ import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.toWireMap
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Path
 import java.time.OffsetDateTime
@@ -49,26 +50,24 @@ class WorkflowService(
     WorkflowEngine.validateUpdate(family.definition, input)?.let { error ->
       return errorPayload(request.workflowId, error)
     }
-    return database.transaction(dbOverride) { unitOfWork ->
+    var projectionArtifactsJson: String? = null
+    val payload = database.transaction(dbOverride) { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction unknownWorkflowPayload(request.workflowId)
-      if (family == WorkflowFamily.IMPLEMENT) {
-        DecompositionManifestWriter.writeFromWorkflowUpdate(
-          repoRoot = Path.of("").toAbsolutePath(),
-          existingArtifactsJson = existing.artifactsJson,
-          artifactsPatch = input.artifactsPatch,
-          runtimeUpdate = DecompositionManifestRuntimeUpdate(
-            workflowId = request.workflowId,
-            workflowStatus = input.workflowStatus,
-            currentStepId = input.currentStepId,
-            stepUpdates = input.stepUpdates,
-          ),
-        )
+      val runtimeInput = family.withDecompositionRuntime(existing, input, request.workflowId)
+      val effectiveInput = runtimeInput.input
+      val updatedRecord = WorkflowEngine.updateRecord(family.definition, existing, effectiveInput)
+      family.save(unitOfWork.workflowStates, updatedRecord)
+      val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
+      if (runtimeInput.updated) {
+        projectionArtifactsJson = updated.artifactsJson
       }
-      family.save(unitOfWork.workflowStates, WorkflowEngine.updateRecord(family.definition, existing, input))
-      val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: existing
       ok(WorkflowEngine.fullPayload(family.definition, updated), unitOfWork)
     }
+    projectionArtifactsJson?.let { artifactsJson ->
+      DecompositionManifestWriter.writeProjectionFromWorkflowState(Path.of("").toAbsolutePath(), artifactsJson)
+    }
+    return payload
   }
 
   fun get(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): Map<String, Any?> =
@@ -111,8 +110,9 @@ class WorkflowService(
       ok(WorkflowEngine.resumePayload(family.definition, record), unitOfWork)
     }
 
-  fun continueWorkflow(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): Map<String, Any?> =
-    database.transaction(dbOverride) { unitOfWork ->
+  fun continueWorkflow(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): Map<String, Any?> {
+    var projectionArtifactsJson: String? = null
+    val payload = database.transaction(dbOverride) { unitOfWork ->
       val family = kind.workflowFamily()
       var record = family.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction unknownWorkflowPayload(workflowId, unitOfWork.dbPath.toString())
@@ -120,13 +120,18 @@ class WorkflowService(
       var decision = WorkflowEngine.continueDecision(family.definition, record, sessionSummary)
       if (decision.shouldReopen) {
         val continueStatus = decision.payload["continue_status"]
+        val reopenInput = decision.toReopenInput(record.sessionId)
+        val runtimeInput = family.withDecompositionRuntime(record, reopenInput, workflowId)
         val reopened = WorkflowEngine.updateRecord(
           family.definition,
           record,
-          decision.toReopenInput(record.sessionId),
+          runtimeInput.input,
         )
         family.save(unitOfWork.workflowStates, reopened)
         record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
+        if (runtimeInput.updated) {
+          projectionArtifactsJson = record.artifactsJson
+        }
         val refreshedPayload =
           LinkedHashMap(
             WorkflowEngine.continueDecision(family.definition, record, sessionSummary).payload,
@@ -136,6 +141,11 @@ class WorkflowService(
       }
       continuePayload(decision.payload, unitOfWork)
     }
+    projectionArtifactsJson?.let { artifactsJson ->
+      DecompositionManifestWriter.writeProjectionFromWorkflowState(Path.of("").toAbsolutePath(), artifactsJson)
+    }
+    return payload
+  }
 }
 
 private const val DEFAULT_LIST_LIMIT: Int = 20
@@ -165,6 +175,40 @@ private fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(sess
     artifactsPatch = null,
     sessionId = sessionId,
   )
+
+private fun WorkflowFamily.withDecompositionRuntime(
+  existing: WorkflowStateSnapshot,
+  input: WorkflowUpdateInput,
+  workflowId: String,
+): DecompositionRuntimeInput = if (this != WorkflowFamily.IMPLEMENT) {
+  DecompositionRuntimeInput(input = input, updated = false)
+} else {
+  DecompositionManifestWriter.manifestFromWorkflowUpdate(
+    repoRoot = Path.of("").toAbsolutePath(),
+    existingArtifactsJson = existing.artifactsJson,
+    artifactsPatch = input.artifactsPatch,
+    runtimeUpdate = DecompositionManifestRuntimeUpdate(
+      workflowId = workflowId,
+      workflowStatus = input.workflowStatus,
+      currentStepId = input.currentStepId,
+      stepUpdates = input.stepUpdates,
+    ),
+  )?.let { manifest ->
+    DecompositionRuntimeInput(
+      input = input.copy(
+        artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
+          put(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, manifest.toWireMap())
+        },
+      ),
+      updated = true,
+    )
+  } ?: DecompositionRuntimeInput(input = input, updated = false)
+}
+
+private data class DecompositionRuntimeInput(
+  val input: WorkflowUpdateInput,
+  val updated: Boolean,
+)
 
 private fun ok(payload: Map<String, Any?>, unitOfWork: UnitOfWork): Map<String, Any?> = LinkedHashMap(payload).apply {
   put("status", "ok")
