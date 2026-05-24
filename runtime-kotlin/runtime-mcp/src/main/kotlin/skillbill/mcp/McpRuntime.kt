@@ -214,7 +214,7 @@ object McpWorkflowRuntime {
     sessionId = sessionId,
     currentStepId = currentStepId,
     dbOverride = null,
-  )
+  ).toMcpMap()
 
   fun update(
     kind: WorkflowFamilyKind,
@@ -224,34 +224,38 @@ object McpWorkflowRuntime {
     kind,
     request,
     dbOverride = null,
-  )
+  ).toMcpMap()
 
   fun get(
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.get(kind, workflowId, dbOverride = null)
+  ): Map<String, Any?> = services(context).workflowService.get(kind, workflowId, dbOverride = null).toMcpMap()
 
   fun list(
     kind: WorkflowFamilyKind,
     limit: Int = 20,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.list(kind, limit, dbOverride = null)
+  ): Map<String, Any?> = services(context).workflowService.list(kind, limit, dbOverride = null).toMcpMap()
 
   fun latest(kind: WorkflowFamilyKind, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).workflowService.latest(kind, dbOverride = null)
+    services(context).workflowService.latest(kind, dbOverride = null).toMcpMap()
 
   fun resume(
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.resume(kind, workflowId, dbOverride = null)
+  ): Map<String, Any?> = services(context).workflowService.resume(kind, workflowId, dbOverride = null).toMcpMap()
 
   fun continueWorkflow(
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.continueWorkflow(kind, workflowId, dbOverride = null)
+  ): Map<String, Any?> = services(context).workflowService.continueWorkflow(
+    kind,
+    workflowId,
+    dbOverride = null,
+  ).toMcpMap()
 }
 
 internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {

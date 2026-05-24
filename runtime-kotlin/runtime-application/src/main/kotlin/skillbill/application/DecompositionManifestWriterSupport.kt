@@ -17,7 +17,7 @@ internal fun repoRelativePath(repoRoot: Path, path: Path): String {
 }
 
 internal fun issueAndFeature(directoryName: String): Pair<String, String> {
-  val match = Regex("^([A-Z]+-\\d+)-(.+)$").matchEntire(directoryName)
+  val match = Regex("^([A-Z][A-Z0-9]+-\\d+(?:\\.\\d+)?)-(.+)$").matchEntire(directoryName)
   if (match != null) {
     return match.groupValues[1] to match.groupValues[2]
   }

@@ -47,7 +47,6 @@ class DecompositionManifestWriterTest {
     assertEquals(1, loaded.currentSubtaskIntent.subtaskId)
     assertEquals("start", loaded.currentSubtaskIntent.action)
     assertEquals(null, loaded.subtasks.first().workflowId)
-    assertEquals(null, loaded.subtasks.first().reviewResult)
   }
 
   @Test
@@ -116,7 +115,6 @@ class DecompositionManifestWriterTest {
     assertEquals("in_progress", runtimeSubtask.status)
     assertEquals("feature/SKILL-51-decomposition", runtimeSubtask.branch)
     assertEquals("wfl-subtask-2", runtimeSubtask.workflowId)
-    assertEquals(mapOf("finding_count" to 0), runtimeSubtask.reviewResult)
     assertEquals("audit", runtimeSubtask.lastResumableStep)
     assertContains(Files.readString(secondSubtaskSpec), "status: In Progress")
   }
@@ -277,7 +275,8 @@ class DecompositionManifestWriterTest {
 
     assertNotNull(result)
     assertTrue(Files.isRegularFile(initial.manifestPath))
-    assertEquals(mapOf("passed" to true), result.manifest.subtasks.first().validationResult)
+    assertEquals("in_progress", result.manifest.subtasks.first().status)
+    assertEquals("wfl-subtask-1", result.manifest.subtasks.first().workflowId)
   }
 
   @Test
@@ -323,7 +322,6 @@ class DecompositionManifestWriterTest {
     val subtask = result.manifest.subtasks.first()
     assertEquals("abc123", subtask.commitSha)
     assertEquals("wfl-subtask-1", subtask.workflowId)
-    assertEquals(mapOf("finding_count" to 0), subtask.reviewResult)
   }
 
   @Test
@@ -500,9 +498,8 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val payload = WorkflowEngine.fullPayload(definition, updated)
-    val artifacts = payload["artifacts"] as Map<*, *>
-    assertEquals(mapOf("mode" to "implement", "task_count" to 1), artifacts["plan"])
+    val snapshot = WorkflowEngine.snapshotView(definition, updated)
+    assertEquals(mapOf("mode" to "implement", "task_count" to 1), snapshot.artifacts["plan"])
   }
 
   @Test

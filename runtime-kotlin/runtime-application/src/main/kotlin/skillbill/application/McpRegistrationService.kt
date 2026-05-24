@@ -1,15 +1,19 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.install.McpRegistrationGateway
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.install.mcp.model.InstallMcpRegistrationRequest
+import skillbill.ports.install.mcp.model.InstallMcpUnregistrationRequest
 import java.nio.file.Path
 
 @Inject
 class McpRegistrationService(
-  private val gateway: McpRegistrationGateway,
+  private val mcpRegistrationPort: InstallMcpRegistrationPort,
 ) {
-  fun registerMcp(agent: String, runtimeMcpBin: Path, home: Path? = null) =
-    gateway.registerMcp(agent, runtimeMcpBin, home)
+  fun registerMcp(agent: String, runtimeMcpBin: Path, home: Path? = null) = mcpRegistrationPort.registerMcp(
+    InstallMcpRegistrationRequest(agent = agent, runtimeMcpBin = runtimeMcpBin, home = home),
+  ).mutation
 
-  fun unregisterMcp(agent: String, home: Path? = null) = gateway.unregisterMcp(agent, home)
+  fun unregisterMcp(agent: String, home: Path? = null) =
+    mcpRegistrationPort.unregisterMcp(InstallMcpUnregistrationRequest(agent = agent, home = home)).mutation
 }

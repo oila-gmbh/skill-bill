@@ -1,3 +1,81 @@
+## [2026-05-24] SKILL-52.1 final-validation-and-contract-lock
+Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop/core/data
+- SKILL-52.1 closes with architecture documentation and tests aligned on raw-map open-boundary parity, inert `Path` handling outside adapters/composition, install-policy ownership with dual install-plan validation, and the narrowed runtime-core public ABI edge. reusable
+- The runtime-core shrink rule is now explicit: generated Kotlin-Inject ABI edges are the only retained public runtime-core surface, and architecture tests must reject growth into infrastructure or entrypoint modules. reusable
+- Final validation passed with `skill-bill validate`, `scripts/validate_agent_configs`, `npx --yes agnix --strict .`, and `(cd runtime-kotlin && ./gradlew check)`.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-05-24] SKILL-52.1 path-policy-and-core-shrink
+Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-http, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-desktop/core/data
+- Path policy is now explicit: application/domain/ports may carry `java.nio.file.Path` only as inert data; Files IO, home expansion, `System.getenv`, and `System.getProperty` belong at adapter/composition seams. reusable
+- `RuntimeContext` defaults are pure sentinels; `RuntimeComponent` and public concrete adapters resolve process defaults locally, with `HttpTelemetryClient` also resolving `UnconfiguredHttpRequester` to `JdkHttpRequester`. reusable
+- Review and telemetry `~/...` expansion moved out of domain helpers into fs adapters, with adapter tests for context-bound review home and telemetry env-path expansion.
+- `runtime-core` now publishes only generated Kotlin-Inject ABI edges (`runtime-application`, `runtime-ports` direct; documented transitive closure through domain/contracts) and architecture tests reject closure growth into infra/entrypoint modules. reusable
+- Boundary tests now ban broader JDBC/HTTP/Clikt/framework APIs, process/home lookup, direct file IO, runtime-core implementation packages, and adapter imports of low-level implementation packages.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-05-24] SKILL-52.1 install-contract-validation
+Areas: runtime-kotlin/runtime-domain install wire maps, runtime-kotlin/runtime-infra-fs install builder, runtime-kotlin/runtime-cli install JSON, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
+- `validateInstallPlanWireSnapshot(plan)` is now the shared install-plan wire validation helper used at both approved seams: builder return and CLI JSON emission; keep the dual seam per the 2026-05-19 decision. reusable
+- CLI install plan/apply byte-equivalence coverage now compares stdout against static golden payload maps built from fixture paths, not decoded actual output; use this pattern when guarding JSON order/shape. reusable
+- Adapter ownership coverage rejects install planner/validator policy via direct FQN, alias import, wildcard import, and unapproved validation-helper usage; relativized paths are normalized to `/` for cross-platform allow-list checks.
+- `install.sh` and MCP install envelopes were intentionally left unchanged; full Gradle validation passed after focused review fixes.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-24] SKILL-52.1 install-capability-ports-and-adapters
+Areas: runtime-kotlin/runtime-ports install ports, runtime-kotlin/runtime-application InstallService, runtime-kotlin/runtime-infra-fs filesystem install adapters, runtime-kotlin/runtime-core DI + architecture tests
+- The retired monolithic install gateway was split into capability ports for planning facts/materialization/staging/apply/link/agent/native-agent/MCP, each with one `*Request` input and `*Result` output model; mirror this shape for remaining runtime seams. reusable
+- `InstallService` now orchestrates InstallPlanPolicy plus capability ports directly while infra-fs still owns filesystem snapshots, staging, symlinks, MCP config mutation, native-agent links, Windows preflight, and rollback mechanics. reusable
+- Planning carries one platform manifest snapshot through materialization and staging; do not rediscover packs mid-plan or carry duplicate snapshot representations that can drift under concurrent repo changes.
+- Architecture coverage now rejects retired install gateway names, raw public install port maps, and port functions that lack typed request/result signatures; keep fixture-strength scanners when extending this guard.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-24] SKILL-52.1 install-policy-foundation
+Areas: runtime-kotlin/runtime-domain install policy/model, runtime-kotlin/runtime-infra-fs install builder, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
+- Install request validation and pure plan construction now live in `skillbill.install.policy` over typed snapshots (`InstallPolicyInput`, `InstallPlatformPackSnapshot`, detected/default agent targets) and produce `InstallPlanDraft`; no public raw-map policy API was added. reusable
+- `runtime-infra-fs` still owns discovery, platform schema parsing, agent/path probing, pointer realpath checks, content hashing, staging paths, symlink/native-agent/MCP/apply mechanics, Windows preflight, and rollback; it converts those facts into snapshots before policy execution. reusable
+- Builder and CLI install-plan schema validation remain dual-seam: builder still validates `buildInstallPlanWireMap(plan)` through `InstallPlanSchemaValidator`, and CLI emission still revalidates the same wire helper.
+- Architecture coverage now blocks install policy from importing filesystem/process or infra-fs install implementation mechanics; follow this pattern when extracting the remaining install seams.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-05-24] SKILL-52.1 scaffold-raw-map-elimination
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-core/architecture tests + DI, runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-desktop/core/data
+- Eight `ScaffoldGateway` raw-map producers (`list`, `show`, `explain`, `validate`, `upgrade`, `fill`, `saveExactContent`, `editWithBodyFile`) now return typed `Scaffold*Result` models under `runtime-ports/.../scaffold/<capability>/model/`, each lifting stable top-level scalars plus a single `@OpenBoundaryMap`-annotated `payload: Map<String, Any?>` field; `init { require(...) }` invariants enforce typed/payload consistency at construction. Mirror this triad shape for any future raw-map seam. reusable
+- `FileSystemScaffoldGateway` lifts via `requireScalar<T>(op, key)` / `requireInt(op, key)` helpers throwing `InvalidScaffoldPayloadError` with op + key + expected/got type; `requireInt` tolerates `Number` widening for JSON round-trips. Never replace these with raw `as` casts. reusable
+- New `FileSystemScaffoldOrchestrator` (`@Inject` DI-bound) replaces the prior file-static `FileSystemScaffold*` singletons inside `skillbill.scaffold.ScaffoldService.kt`; carved IO-coupled validators (`validateBaselineLayerPayloadReferences`, `validateScaffold`, `plannedAuthoringTarget`, `resolveAddonConsumerSkillDirs`, `validateAddonConsumerSkillDir`, `optionalBaselineLayers`) live as `internal fun` on the existing capability adapters. Orchestrator injects concrete adapters (NOT port interfaces) because these validators are internal-on-adapter, not port-level. Test-only `ScaffoldStandaloneEntrypoint.scaffold(...)` wrapper keeps the legacy in-tree test call shape without singletons.
+- 16 of 18 scaffold raw-map allow-list entries removed from `RuntimeArchitectureTest.RAW_MAP_OPEN_BOUNDARY_ALLOWLIST` + ARCHITECTURE.md `<!-- open-boundary-allowlist:start/end -->` markers; 2 retained for `scaffold(...)` INPUT (subtask 4). 8 new typed-model `payload` FQN entries added. New `LEGACY_FORBIDDEN_TOP_LEVEL_REGEX` (modifier-agnostic — catches `private/internal/bare/public fun` and ktfmt-wrapped multilines) replaces brittle substring checks. Gateway raw-map producer regex now `DOT_MATCHES_ALL` with wrapped-signature fixture, replicating the subtask-1 F-007 fixture-based-scanner pattern.
+- CLI mapper (`ScaffoldCliResultMappers.kt`) lives in `runtime-cli` adapter only; `runtime-application/ScaffoldService.kt` is a pure pass-through with no wire-mapping. `ScaffoldMcpResultMappers.kt` was created then deleted because `McpScaffoldRuntime` only exposes typed `newSkillScaffold(...)` today — when MCP gains raw-map endpoints, re-introduce the mapper alongside that wiring with a smoke test. ARCHITECTURE.md "Typed-Result-Model Open-Boundary Pattern" section documents both the doctrine and the MCP deletion rationale.
+- Deferred to subtask 4 (with doc note in ARCHITECTURE.md): `RuntimeRepoBrowserService` desktop adapter still reads `.payload` directly — third reader of the open-boundary map, must be migrated when typed list/show/validate structural fields are lifted; `ScaffoldShowResult.completion_status` typed lift; `ScaffoldValidateStatus` sealed/enum (CLI exit-code branches on raw string today); generalized `scaffoldApplicationServiceFileNames` filename allow-list; `scaffold(...)` INPUT raw-map allow-list entries.
+- Pitfalls to avoid: (a) wire-mapper triplication keeps re-appearing — adapter modules only, never `runtime-application`; (b) do NOT relax the typed-result `init` invariants to a softer check; (c) do NOT replace `requireScalar`/`requireInt` with raw `as` casts; (d) keep `ScaffoldStandaloneEntrypoint.scaffold(...)` test-only (F-016 residual — tighten to `internal` once spotless compat verified); (e) gateway raw-map regex companion-object extraction would let fixture and prod assertion share a single constant (F-018 residual — apply when next subtask touches that file).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented (AC5 carries an accepted spec-literal-vs-intent interpretation: MCP mapper file deletion accepted because MCP currently has no raw-map endpoints to map)
+
+## [2026-05-24] SKILL-52.1 scaffold-ports-and-pure-policy
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core/di + architecture tests, runtime-kotlin/ARCHITECTURE.md
+- Five capability-named scaffold ports replace the prior monolithic `ScaffoldGateways.kt`: `ScaffoldSourceLoaderPort`, `ScaffoldManifestPersistencePort`, `ScaffoldGeneratedStagingPort`, `ScaffoldInstallLinkPort`, `ScaffoldRepoValidationPort`, each with typed request/result data classes under `ports/scaffold/<capability>/model/` (TelemetryLevelMutator shape). `FileSystem<Capability>` adapters in `runtime-infra-fs` delegate into existing `skillbill.scaffold.AuthoringOperations` / `scaffold(...)` without splitting the 1358-LOC `ScaffoldService.kt`. reusable
+- Eleven pure-policy functions moved into `runtime-domain/skillbill/scaffold/policy/` (`ScaffoldPayloadPolicy`, `ScaffoldSubagentPolicy`, `PlatformPackPolicy`, `PlatformPackManifestPolicy`, `ScaffoldPolicyConstants`, `ScaffoldPolicySupport`); shrank `runtime-infra-fs/ScaffoldService.kt` by 363 LOC and `ScaffoldManifestEdits.kt` by 117 LOC. IO-coupled validators (`validateBaselineLayerPayloadReferences`, `validateScaffold`, `resolveAddonConsumerSkillDirs`, `validateAddonConsumerSkillDir`, `plannedAuthoringTarget`, `optionalBaselineLayers`) intentionally stay in infra-fs — deferred to subtask 3 alongside `ScaffoldGateway` raw-map elimination and removal of the 18 legacy scaffold allow-list entries. reusable
+- New `ImplementationOwnershipArchitectureTest.scaffoldPolicyPackagesMustNotImportInfraFs` scans `runtime-domain/scaffold/policy/*` + scaffold-related application services and forbids `skillbill.infrastructure.fs.*` or `skillbill.scaffold.{ScaffoldService|FileSystem.*}` imports. Paired with a fixture-based negative regex test (replicating subtask-1 F-007 pattern) so a future regex regression loud-fails instead of silently passing. reusable
+- `SHELL_CONTRACT_VERSION` in infra-fs is now a `get()` alias of `PLATFORM_PACK_SHELL_CONTRACT_VERSION` in `runtime-domain/scaffold/policy/PlatformPackManifestPolicy.kt`, same pattern used earlier for `SCAFFOLD_PAYLOAD_VERSION`. Single source of truth across the alias chain.
+- Pitfalls to avoid in subtask 3: ScaffoldManifestPersistencePort currently mixes pure rendering (`renderPlatformPackManifest`, `renderGovernedAddonRegistrationPreview`) with IO persistence on one capability surface — defer reshape until consumers exist; loud-fail at parse seams when threading typed requests so existing `InvalidScaffoldPayloadError`/`ScaffoldPayloadVersionMismatchError`/`UnknownSkillKindError` throws are preserved; detekt `ThrowsCount`/`LongMethod` are fixed at root cause via private `failXxx(...): Nothing` helpers and test-helper extraction, never with suppressions.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-05-24] SKILL-52.1 typed-boundary-foundation
+Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core/architecture tests, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
+- New raw-map architecture-test guard fails loudly on any public `Map<String, Any?>` / `Map<String, *>` / `MutableMap<String, Any?>` declaration in runtime-application/domain/ports unless allow-listed by FQN or marked `@OpenBoundaryMap`; pair this with a fixture-based negative test so the scanner is itself regression-proof. reusable
+- `@OpenBoundaryMap` lives in a neutral `skillbill.boundary` package inside runtime-domain so application and ports can both import it without circular deps. reusable
+- ARCHITECTURE.md is the source of truth: HTML-comment markers (`<!-- allow-list:start -->` … `:end -->`) wrap the Open-Boundary Allow-List section so a two-direction parity test parses bullets out of the doc instead of self-referential hardcoded lists. reusable
+- WorkflowService public methods now return typed sealed `WorkflowXxxResult` models from `skillbill.application.model.WorkflowResults`; WorkflowEngine exposes typed `snapshotView`/`summaryView`/`resumeView`/`continueDecision` plus open-boundary `*Map` serializers consumed by parallel `WorkflowCliResultMappers` and `WorkflowMcpResultMappers`. `WorkflowEngine.validatedSnapshotMap` stays private to preserve the `InvalidWorkflowStateSchemaError` loud-fail seam. reusable
+- Legacy raw-map allow-list entries are grouped by which follow-up subtask (2 scaffold / 3 install / 4 telemetry+review) will retire them, so cleanup PRs are mechanical.
+- Pitfalls to avoid in subtasks 2-4: short-name allow-list lookup, blanket `*.model` package skip in source scanners, wire-mapper triplication (the test-only mapper invites drift — assert on typed result fields instead), and silent envelope-field additions on error paths (cover both error variants with explicit wire-shape regression tests).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-05-24] SKILL-52 architecture-enforcement-validation
 Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core/architecture tests, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-sqlite
 - `ARCHITECTURE.md`, `RuntimeModule`, Gradle settings, and architecture tests now pin the final hexagonal graph with runtime-core as composition only and runtime-contracts owning schema validators at parse seams. reusable
@@ -55,7 +133,7 @@ Acceptance criteria: 10/10 implemented
 
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-runtime-state
 Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-core/application tests
-- `decomposition-manifest-schema.yaml` now carries parent/subtask runtime state: parent `status`, and per-subtask `branch`, `commit_sha`, `workflow_id`, `review_result`, `audit_result`, `validation_result`, `blocked_reason`, and `last_resumable_step`. The Kotlin model/codec/wire-map emit the same fields under the existing validator-backed manifest contract. reusable
+- `decomposition-manifest-schema.yaml` now carries parent/subtask runtime state: parent `status`, and per-subtask `branch`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Review/audit/validation result payloads stay in workflow telemetry/artifacts, not the decomposition manifest. reusable
 - `WorkflowService.update` persists `artifacts.decomposition_runtime` first, then writes `decomposition-manifest.yaml` / subtask frontmatter as a post-save human-readable projection; ordinary single-spec workflows still do not create decomposition runtime or manifests. reusable
 - Execution-model changes are allowed while every subtask is still pending. Once any subtask has recorded runtime state, `DecompositionManifestWriter` rejects an `execution_model` change with `InvalidDecompositionManifestSchemaError` and a manual-migration/reset message. reusable
 - Subtask status projection covers implementation/review/audit/validation/PR-description blocked/skipped/complete events, but explicit unmatched `assessment.spec_path` no-ops rather than falling back to current intent; continuation selection and branch/commit advancement remain deferred to SKILL-51 subtasks 3/4.

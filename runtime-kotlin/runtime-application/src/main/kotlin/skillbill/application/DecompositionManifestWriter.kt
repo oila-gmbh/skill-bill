@@ -14,7 +14,6 @@ import java.io.IOException
 import java.nio.file.Path
 
 private const val DECOMPOSITION_MODE: String = "decompose"
-private const val DECOMPOSITION_MANIFEST_FILENAME: String = "decomposition-manifest.yaml"
 internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
 
 object DecompositionManifestWriter {
@@ -91,11 +90,8 @@ object DecompositionManifestWriter {
     val runtime = artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
       ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
       ?: return null
-    val manifestPath = resolvedParentSpecPath(repoRoot, Path.of(runtime.parentSpecPath))
-      .parent
-      .resolve(DECOMPOSITION_MANIFEST_FILENAME)
     return try {
-      writeProjection(repoRoot, runtime, manifestPath, fileStore)
+      writeProjection(repoRoot, runtime, runtime.manifestPath(repoRoot), fileStore)
     } catch (_: IOException) {
       null
     }
@@ -116,9 +112,7 @@ object DecompositionManifestWriter {
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
     fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   ): DecompositionManifestWriteResult {
-    val manifestPath = resolvedParentSpecPath(request.repoRoot, request.parentSpecPath)
-      .parent
-      .resolve(DECOMPOSITION_MANIFEST_FILENAME)
+    val manifestPath = request.manifestPath()
     val existing = loadManifestOrNull(manifestPath, fileStore)
     val manifest = request.toManifest()
       .assertExecutionModelCanReplace(existing, manifestPath)
@@ -192,9 +186,14 @@ object DecompositionManifestWriter {
         parentSpecPath.toString(),
         "current subtask id '$currentId' does not reference a planned subtask.",
       )
-    val (issueKey, featureName) = issueAndFeature(
-      resolvedParentSpecPath(repoRoot, parentSpecPath).parent.fileName.toString(),
-    )
+    val parentDirectory = resolvedParentSpecPath(repoRoot, parentSpecPath).parent
+    val manifestDirectory = decompositionManifestDirectory(repoRoot, parentSpecPath, subtasks.map { it.specPath })
+    val (issueKey, parsedFeatureName) = issueAndFeature(parentDirectory.fileName.toString())
+    val featureName = if (manifestDirectory != parentDirectory) {
+      manifestDirectory.fileName.toString()
+    } else {
+      parsedFeatureName
+    }
     return DecompositionManifest(
       issueKey = issueKey,
       featureName = featureName,
@@ -209,11 +208,16 @@ object DecompositionManifestWriter {
   }
 }
 
-private fun DecompositionManifestWriteRequest.manifestPath(): Path =
-  resolvedParentSpecPath(repoRoot, parentSpecPath).parent.resolve(DECOMPOSITION_MANIFEST_FILENAME)
+private fun DecompositionManifestWriteRequest.manifestPath(): Path = decompositionManifestPath(
+  repoRoot,
+  parentSpecPath,
+  parseSubtasks(planningResult, parentSpecPath.toString()).map {
+    it.specPath
+  },
+)
 
 private fun DecompositionManifest.manifestPath(repoRoot: Path): Path =
-  resolvedParentSpecPath(repoRoot, Path.of(parentSpecPath)).parent.resolve(DECOMPOSITION_MANIFEST_FILENAME)
+  decompositionManifestPath(repoRoot, Path.of(parentSpecPath), subtasks.map { it.specPath })
 
 private fun runtimeManifestFromArtifacts(artifacts: Map<String, Any?>): DecompositionManifest? =
   artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()

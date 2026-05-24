@@ -1,9 +1,9 @@
 package skillbill.cli
 
-import skillbill.contracts.install.InstallPlanSchemaValidator
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.buildInstallPlanWireMap
+import skillbill.install.model.validateInstallPlanWireSnapshot
 
 /**
  * SKILL-48 Subtask 2b: install-plan CLI emission boundary. Delegates
@@ -22,7 +22,7 @@ internal fun installPlanPayload(plan: InstallPlan): Map<String, Any?> {
   // requires BOTH `InstallPlanBuilder` and the CLI emission boundary to
   // validate and loud-fail via `InvalidInstallPlanSchemaError`, so any
   // post-build re-assembly drift is caught before the JSON hits the wire.
-  InstallPlanSchemaValidator.validate(wireMap)
+  validateInstallPlanWireSnapshot(plan)
   return wireMap
 }
 

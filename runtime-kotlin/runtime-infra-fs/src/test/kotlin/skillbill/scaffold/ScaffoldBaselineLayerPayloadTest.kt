@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.scaffold.policy.renderPlatformPackManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

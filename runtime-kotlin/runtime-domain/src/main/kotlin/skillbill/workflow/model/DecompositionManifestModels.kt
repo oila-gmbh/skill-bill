@@ -20,9 +20,6 @@ data class DecompositionSubtask(
   val branch: String? = null,
   val commitSha: String? = null,
   val workflowId: String? = null,
-  val reviewResult: Map<String, Any?>? = null,
-  val auditResult: Map<String, Any?>? = null,
-  val validationResult: Map<String, Any?>? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
   val dependencies: List<DecompositionDependency> = emptyList(),
@@ -31,9 +28,6 @@ data class DecompositionSubtask(
     branch != null ||
     commitSha != null ||
     workflowId != null ||
-    reviewResult != null ||
-    auditResult != null ||
-    validationResult != null ||
     blockedReason != null ||
     lastResumableStep != null
 }

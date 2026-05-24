@@ -1,8 +1,7 @@
 package skillbill.application
 
+import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.WorkflowEngine
@@ -19,13 +18,13 @@ internal fun continueExistingWorkflow(
   workflowId: String,
   unitOfWork: UnitOfWork,
   fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-): ContinuationResult {
+): ContinuationStepResult {
   var record = initialRecord
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
   var decision = WorkflowEngine.continueDecision(family.definition, record, sessionSummary)
   var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
-    val continueStatus = decision.payload["continue_status"]
+    val originalContinueStatus = decision.view.continueStatus
     val runtimeInput = family.withDecompositionRuntime(
       record,
       decision.toReopenInput(record.sessionId),
@@ -36,18 +35,20 @@ internal fun continueExistingWorkflow(
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
     if (runtimeInput.updated) projectionArtifactsJson = record.artifactsJson
-    val refreshedPayload = LinkedHashMap(
-      WorkflowEngine.continueDecision(family.definition, record, sessionSummary).payload,
-    )
-    refreshedPayload["continue_status"] = continueStatus
-    decision = decision.copy(payload = refreshedPayload)
+    val refreshed = WorkflowEngine.continueDecision(family.definition, record, sessionSummary)
+    // Preserve the pre-reopen continue_status so the wire shape matches
+    // the historical "reopened" status even though the underlying record
+    // is now running again.
+    decision = refreshed.copy(view = refreshed.view.copy(continueStatus = originalContinueStatus))
   }
-  return ContinuationResult(continuePayload(decision.payload, unitOfWork), projectionArtifactsJson)
+  return ContinuationStepResult(
+    WorkflowContinueResult.Standard(
+      dbPath = unitOfWork.dbPath.toString(),
+      view = decision.view,
+    ),
+    projectionArtifactsJson,
+  )
 }
-
-internal fun WorkflowStateSnapshot.decompositionRuntime(): DecompositionManifest? =
-  decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-    ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
 internal fun alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
@@ -131,10 +132,3 @@ internal fun DecompositionManifest.baseForSubtask(subtaskId: Int): String? = whe
 }
 
 internal fun repoRoot(): Path = Path.of("").toAbsolutePath()
-
-internal fun WorkflowStateRepository.findDecomposedParentWorkflow(issueKey: String): WorkflowStateRecord? {
-  val normalizedIssueKey = issueKey.trim()
-  return listFeatureImplementWorkflows(Int.MAX_VALUE).firstOrNull { row ->
-    row.toSnapshot().decompositionRuntime()?.issueKey == normalizedIssueKey
-  }
-}

@@ -32,7 +32,10 @@ description: >
   Schema for the parent manifest written when bill-feature-implement
   decomposes an oversized feature into ordered subtask specs. The
   manifest is optional for ordinary single-spec workflows, but required
-  at the decomposition write seam.
+  at the decomposition write seam. Review, audit, validation, and
+  telemetry payloads stay in workflow artifacts and telemetry events;
+  this manifest carries only decomposition, dependency, status, and
+  implementation-routing state.
 type: object
 additionalProperties: false
 $defs:
@@ -54,11 +57,6 @@ $defs:
       - blocked
       - complete
       - skipped
-  runtimeResult:
-    type:
-      - object
-      - "null"
-    additionalProperties: true
   dependency:
     type: object
     additionalProperties: false
@@ -84,9 +82,6 @@ $defs:
       - branch
       - commit_sha
       - workflow_id
-      - review_result
-      - audit_result
-      - validation_result
       - blocked_reason
       - last_resumable_step
       - dependencies
@@ -116,12 +111,6 @@ $defs:
           - string
           - "null"
         minLength: 1
-      review_result:
-        $ref: "#/$defs/runtimeResult"
-      audit_result:
-        $ref: "#/$defs/runtimeResult"
-      validation_result:
-        $ref: "#/$defs/runtimeResult"
       blocked_reason:
         type:
           - string
@@ -184,7 +173,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   issue_key:
     type: string
     minLength: 1

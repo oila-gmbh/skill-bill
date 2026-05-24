@@ -1,18 +1,21 @@
 package skillbill.install
 
-import skillbill.contracts.install.InstallPlanSchemaValidator
 import skillbill.install.model.InstallAgent
-import skillbill.install.model.InstallAgentSelectionMode
+import skillbill.install.model.InstallAgentDefaultTarget
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
+import skillbill.install.model.InstallPlatformPackSnapshot
+import skillbill.install.model.InstallPlatformSkillMaterializationRequest
+import skillbill.install.model.InstallPolicyInput
 import skillbill.install.model.InstallStagingIntent
 import skillbill.install.model.InstallStagingPathIntent
-import skillbill.install.model.McpRegistrationIntent
-import skillbill.install.model.PlannedPlatformPack
-import skillbill.install.model.buildInstallPlanWireMap
+import skillbill.install.model.validateInstallPlanWireSnapshot
+import skillbill.install.policy.InstallPlanPolicy
+import skillbill.ports.install.plan.model.InstallPlanningFacts
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Files
@@ -21,47 +24,18 @@ import java.nio.file.Path
 
 internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   requireSupportedAgentContract()
-  val agents = resolveAgentTargets(request)
-  val installationTargetPaths = request.targetPaths.copy(agentTargets = agents)
   val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
-  val selectedPlatformSlugs = selectedPlatformSlugs(request, platformManifests)
-  val discoveredPlatformPacks = platformManifests.map { manifest ->
-    PlannedPlatformPack(
-      slug = manifest.slug,
-      packRoot = manifest.packRoot,
-      selected = manifest.slug in selectedPlatformSlugs,
-    )
-  }
-  val skills = discoverBaseSkills(request.targetPaths.skillsRoot) +
-    platformManifests
-      .filter { manifest -> manifest.slug in selectedPlatformSlugs }
-      .flatMap(::platformSkills)
-  requireUniqueSkillNames(skills)
-  val staging = buildStagingIntent(request, skills, platformManifests)
-  val plan = InstallPlan(
-    request = request,
-    agents = agents,
-    discoveredPlatformPacks = discoveredPlatformPacks,
-    selectedPlatformSlugs = selectedPlatformSlugs,
-    skills = skills,
-    staging = staging,
-    telemetryLevel = request.telemetryLevel,
-    mcpRegistrationIntent = McpRegistrationIntent(
-      register = request.mcpRegistrationChoice.register,
-      runtimeMcpBin = request.mcpRegistrationChoice.runtimeMcpBin,
-      agents = agents.map { target -> target.agent },
-    ),
-    runtimeDistributionInputs = request.runtimeDistributionInputs,
-    installationTargetPaths = installationTargetPaths,
-    windowsSymlinkPreflight = request.windowsSymlinkPreflight,
-  )
+  val policyInput = buildInstallPolicyInput(request, platformManifests)
+  val draft = InstallPlanPolicy.buildPlanDraft(policyInput)
+  val staging = buildStagingIntent(request, draft.skills, platformManifests)
+  val plan = draft.toInstallPlan(staging)
   // SKILL-48 Subtask 2b: validate the install-plan wire shape at the
   // builder seam. The CLI emission boundary validates again — both
   // sites cover the parse seam so any regression in shape (e.g. an
   // unknown agent id slipping through a future builder change)
   // loud-fails with `InvalidInstallPlanSchemaError` before the plan is
   // handed to the apply pipeline.
-  InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
+  validateInstallPlanWireSnapshot(plan)
   return plan
 }
 
@@ -71,38 +45,94 @@ private fun requireSupportedAgentContract() {
   }
 }
 
-private fun resolveAgentTargets(request: InstallPlanRequest): List<InstallAgentTarget> =
-  when (request.agentSelection.mode) {
-    InstallAgentSelectionMode.DETECTED -> resolveDetectionDerivedTargets(request)
-    InstallAgentSelectionMode.MANUAL -> resolveManualTargets(request)
-  }
-
-private fun resolveDetectionDerivedTargets(request: InstallPlanRequest): List<InstallAgentTarget> {
-  val detected = request.agentSelection.detectedTargets.ifEmpty {
-    detectAgents(request.home).map { target ->
+private fun buildInstallPolicyInput(
+  request: InstallPlanRequest,
+  platformManifests: List<PlatformManifest>,
+): InstallPolicyInput {
+  val discoveredPlatformPacks = platformManifests.toDiscoverySnapshots()
+  val materializationPlan = InstallPlanPolicy.planPlatformSkillMaterialization(
+    InstallPlatformSkillMaterializationRequest(
+      installRequest = request,
+      platformPacks = discoveredPlatformPacks,
+    ),
+  )
+  val selectedPlatformSlugs = materializationPlan.selectedPlatformSlugs.toSet()
+  return InstallPolicyInput(
+    request = request,
+    baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot),
+    platformPacks = platformManifests.map { manifest ->
+      InstallPlatformPackSnapshot(
+        slug = manifest.slug,
+        packRoot = manifest.packRoot,
+        skills = if (manifest.slug in selectedPlatformSlugs) {
+          platformSkills(manifest)
+        } else {
+          emptyList()
+        },
+      )
+    },
+    detectedAgentTargets = detectAgents(request.home).map { target ->
       InstallAgentTarget(
         agent = InstallAgent.fromId(target.name),
         path = target.path,
         source = InstallAgentTargetSource.DETECTED,
       )
-    }
-  }
-  return detected.map { target -> target.copy(source = InstallAgentTargetSource.DETECTED) }
+    },
+    defaultAgentTargets = agentPaths(request.home).map { (agentId, path) ->
+      InstallAgentDefaultTarget(
+        agent = InstallAgent.fromId(agentId),
+        path = path,
+      )
+    },
+  )
 }
 
-private fun resolveManualTargets(request: InstallPlanRequest): List<InstallAgentTarget> {
-  val explicitTargets = request.targetPaths.agentTargets.associateBy { target -> target.agent }
-  val manualAgents = request.agentSelection.manualAgents.ifEmpty { explicitTargets.keys }
-  return manualAgents
-    .sortedBy(InstallAgent::id)
-    .map { agent ->
-      explicitTargets[agent]?.copy(source = InstallAgentTargetSource.MANUAL)
-        ?: InstallAgentTarget(
-          agent = agent,
-          path = agentPaths(request.home).getValue(agent.id),
-          source = InstallAgentTargetSource.MANUAL,
-        )
-    }
+internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPlanningFacts {
+  requireSupportedAgentContract()
+  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
+  return InstallPlanningFacts(
+    baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot),
+    platformManifests = platformManifests,
+    detectedAgentTargets = detectAgents(request.home).map { target ->
+      InstallAgentTarget(
+        agent = InstallAgent.fromId(target.name),
+        path = target.path,
+        source = InstallAgentTargetSource.DETECTED,
+      )
+    },
+    defaultAgentTargets = agentPaths(request.home).map { (agentId, path) ->
+      InstallAgentDefaultTarget(
+        agent = InstallAgent.fromId(agentId),
+        path = path,
+      )
+    },
+  )
+}
+
+internal fun materializeSelectedPlatformSkills(
+  platformManifests: List<PlatformManifest>,
+  selectedPlatformSlugs: List<String>,
+): List<InstallPlatformPackSnapshot> {
+  val selected = selectedPlatformSlugs.toSet()
+  return platformManifests.map { manifest ->
+    InstallPlatformPackSnapshot(
+      slug = manifest.slug,
+      packRoot = manifest.packRoot,
+      skills = if (manifest.slug in selected) {
+        platformSkills(manifest)
+      } else {
+        emptyList()
+      },
+    )
+  }
+}
+
+internal fun buildInstallStagingIntent(
+  request: InstallPlanRequest,
+  draftSkills: List<InstallPlanSkill>,
+  platformManifests: List<PlatformManifest>,
+): InstallStagingIntent {
+  return buildStagingIntent(request, draftSkills, platformManifests)
 }
 
 private fun buildStagingIntent(
@@ -190,3 +220,11 @@ private fun validatePointerInputs(
     }
   }
 }
+
+private fun List<PlatformManifest>.toDiscoverySnapshots(): List<InstallPlatformPackDiscoverySnapshot> =
+  map { manifest ->
+    InstallPlatformPackDiscoverySnapshot(
+      slug = manifest.slug,
+      packRoot = manifest.packRoot,
+    )
+  }

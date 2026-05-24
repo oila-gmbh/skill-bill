@@ -7,7 +7,6 @@ import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY
 import skillbill.telemetry.defaultLocalTelemetryConfig
-import skillbill.telemetry.expandAndNormalizeTelemetryPath
 import skillbill.telemetry.parseTelemetryBoolValue
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,9 +15,11 @@ import java.nio.file.Path
 class FileTelemetryConfigStore(
   private val context: RuntimeContext,
 ) : TelemetryConfigStore {
-  override fun stateDir(): Path = resolveTelemetryStateDir(context.environment, context.userHome)
+  private val resolvedContext = context.withProcessDefaults()
 
-  override fun configPath(): Path = resolveTelemetryConfigPath(context.environment, context.userHome)
+  override fun stateDir(): Path = resolveTelemetryStateDir(resolvedContext.environment, resolvedContext.userHome)
+
+  override fun configPath(): Path = resolveTelemetryConfigPath(resolvedContext.environment, resolvedContext.userHome)
 
   override fun read(): Map<String, Any?>? = readTelemetryConfigFile(configPath())
 
@@ -42,6 +43,16 @@ internal fun resolveTelemetryConfigPath(
 ): Path = environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
   expandAndNormalizeTelemetryPath(it, userHome)
 } ?: userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
+
+private fun expandAndNormalizeTelemetryPath(rawPath: String, userHome: Path): Path {
+  val normalized =
+    when {
+      rawPath == "~" -> userHome.toString()
+      rawPath.startsWith("~/") -> userHome.resolve(rawPath.removePrefix("~/")).toString()
+      else -> rawPath
+    }
+  return Path.of(normalized).toAbsolutePath().normalize()
+}
 
 internal fun readTelemetryConfigFile(path: Path): Map<String, Any?>? {
   if (!Files.exists(path)) {

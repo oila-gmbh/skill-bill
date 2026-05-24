@@ -1,12 +1,19 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.model.RuntimeContext
 import skillbill.ports.review.ReviewInputSource
-import skillbill.review.expandAndNormalizePath
 import java.nio.file.Files
+import java.nio.file.Path
 
 @Inject
-class FileSystemReviewInputSource : ReviewInputSource {
+class FileSystemReviewInputSource(
+  context: RuntimeContext,
+) : ReviewInputSource {
+  constructor() : this(RuntimeContext())
+
+  private val resolvedContext = context.withProcessDefaults()
+
   override fun readInput(inputPath: String, stdinText: String?): Pair<String, String?> {
     if (inputPath == "-") {
       require(stdinText != null) { "stdinText is required when inputPath is '-'." }
@@ -14,5 +21,29 @@ class FileSystemReviewInputSource : ReviewInputSource {
     }
     val path = expandAndNormalizePath(inputPath)
     return Files.readString(path) to path.toString()
+  }
+
+  private fun expandAndNormalizePath(rawPath: String): Path {
+    val normalized =
+      when {
+        rawPath == "~" -> resolvedContext.userHome.toString()
+        rawPath.startsWith("~/") -> resolvedContext.userHome.resolve(rawPath.removePrefix("~/")).toString()
+        else -> rawPath
+      }
+    return Path.of(normalized).toAbsolutePath().normalize()
+  }
+}
+
+internal fun RuntimeContext.withProcessDefaults(): RuntimeContext {
+  val withUserHome =
+    if (userHome == RuntimeContext.UnspecifiedUserHome) {
+      copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
+    } else {
+      copy(userHome = userHome.toAbsolutePath().normalize())
+    }
+  return if (withUserHome.environment === RuntimeContext.UnspecifiedEnvironment) {
+    withUserHome.copy(environment = System.getenv())
+  } else {
+    withUserHome
   }
 }

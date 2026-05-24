@@ -1,5 +1,6 @@
 package skillbill.scaffold.model
 
+import skillbill.boundary.OpenBoundaryMap
 import java.nio.file.Path
 
 data class RoutingSignals(
@@ -87,6 +88,7 @@ data class PlatformManifest(
    * fork-specific keys to the canonical schema without runtime support being added first;
    * generating Kotlin types for these fields is out of scope.
    */
+  @OpenBoundaryMap("Schema custom-field passthrough for platform packs")
   val customFields: Map<String, Any?> = emptyMap(),
 ) {
   /**

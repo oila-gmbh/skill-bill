@@ -8,7 +8,6 @@ import skillbill.model.RuntimeContext
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class WorkflowServiceRuntimeComponentTest {
@@ -29,7 +28,8 @@ class WorkflowServiceRuntimeComponentTest {
         ),
       ).workflowService
     val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
-    val workflowId = opened["workflow_id"] as String
+    val workflowId =
+      (opened as skillbill.application.model.WorkflowOpenResult.Ok).workflowId
 
     val updated =
       service.update(
@@ -45,7 +45,7 @@ class WorkflowServiceRuntimeComponentTest {
       )
 
     val manifest = parentSpec.parent.resolve("decomposition-manifest.yaml")
-    assertEquals("ok", updated["status"])
+    assertTrue(updated is skillbill.application.model.WorkflowUpdateResult.Ok)
     assertTrue(Files.isRegularFile(manifest), "RuntimeComponent must bind a writable decomposition manifest store.")
     assertTrue(Files.readString(manifest).contains("same_branch_commit_per_subtask"))
   }

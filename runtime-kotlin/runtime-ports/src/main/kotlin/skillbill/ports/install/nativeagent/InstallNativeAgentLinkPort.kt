@@ -1,0 +1,11 @@
+package skillbill.ports.install.nativeagent
+
+import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationRequest
+import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationResult
+import skillbill.ports.install.nativeagent.model.InstallNativeAgentUnlinkOperationResult
+
+interface InstallNativeAgentLinkPort {
+  fun linkNativeAgents(request: InstallNativeAgentLinkOperationRequest): InstallNativeAgentLinkOperationResult
+
+  fun unlinkNativeAgents(request: InstallNativeAgentLinkOperationRequest): InstallNativeAgentUnlinkOperationResult
+}

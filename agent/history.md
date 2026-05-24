@@ -1,3 +1,11 @@
+## [2026-05-24] SKILL-52.1 final-validation-and-contract-lock
+Areas: runtime-kotlin hexagonal runtime hardening, repo validation, governed source/generated boundaries
+- Final SKILL-52.1 lock ties the runtime architecture tests, golden tests, and repository validation gates to the same governed contracts: typed boundaries, schema parse seams, inert path handling, install-plan dual validation, and runtime-core as composition only. reusable
+- Source/generated boundaries remain part of the release gate: governed `content.md` stays source, while SKILL.md wrappers, support pointers, provider-native outputs, and install staging artifacts must stay uncommitted. reusable
+- Final validation passed with `skill-bill validate`, `scripts/validate_agent_configs`, `npx --yes agnix --strict .`, and `(cd runtime-kotlin && ./gradlew check)`.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-05-22] scaffold-payload-cli
 Areas: orchestration/shell-content-contract, runtime-kotlin/runtime-core scaffold, runtime-kotlin/runtime-cli, docs
 - SKILL-50 subtask 3 extended platform-pack scaffold payloads with optional `baseline_layers`, validating references before mutation and rendering them as `code_review_composition.baseline_layers`. reusable

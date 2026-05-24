@@ -7,6 +7,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
 class RuntimeArchitectureTest {
   private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/ReadianMcpRuntime.kt"
   private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
@@ -129,6 +130,67 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `domain and ports avoid JDBC HTTP and entrypoint frameworks`() {
+    val domainAndPortFiles =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/") ||
+            file.relativePath.startsWith("runtime-ports/src/main/kotlin/")
+        }
+
+    assertNoBannedImports(
+      files = domainAndPortFiles,
+      bannedImports = boundaryFrameworkImports,
+    )
+    assertNoBannedSourceReferences(
+      files = domainAndPortFiles,
+      bannedReferences = boundaryFrameworkSourceReferences,
+      description = "JDBC, HTTP, or entrypoint framework dependency",
+    )
+  }
+
+  @Test
+  fun `application domain and ports use Path only as an inert value type`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+    assertContains(architecture, "`java.nio.file.Path` is allowed")
+    assertContains(architecture, "only as an inert value type")
+    assertContains(architecture, "home-directory expansion")
+    assertContains(architecture, "`System.getenv`")
+    assertContains(architecture, "`System.getProperty`")
+
+    val boundaryFiles =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-application/src/main/kotlin/") ||
+            file.relativePath.startsWith("runtime-domain/src/main/kotlin/") ||
+            file.relativePath.startsWith("runtime-ports/src/main/kotlin/")
+        }
+    val pathImportingFiles = boundaryFiles.filter { file -> "java.nio.file.Path" in file.imports }
+    assertTrue(
+      pathImportingFiles.isNotEmpty(),
+      "The architecture intentionally allows java.nio.file.Path as a value type; the test must " +
+        "exercise at least one current application/domain/port Path model or contract.",
+    )
+    assertNoBannedSourceReferences(
+      files = boundaryFiles,
+      bannedReferences = processAccessSourceReferences,
+      description = "process or home-directory lookup",
+    )
+    assertNoBannedSourceReferences(
+      files = boundaryFiles,
+      bannedReferences = homeExpansionSourceReferences,
+      description = "home-directory path expansion",
+    )
+
+    val reviewParsingPatterns = Files.readString(sourcePath("skillbill/review/ReviewParsingPatterns.kt"))
+    assertTrue(
+      "expandAndNormalizePath" !in reviewParsingPatterns,
+      "ReviewParsingPatterns must stay pure string/regex parsing; filesystem path normalization belongs " +
+        "to the adapter input seam.",
+    )
+  }
+
+  @Test
   fun `learnings domain owns learning records without persistence dependencies`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.learnings") },
@@ -161,6 +223,7 @@ class RuntimeArchitectureTest {
           publicModelDeclarationPattern
             .findAll(source)
             .filter { !file.packageName.split('.').contains("model") }
+            .filter { !file.packageName.startsWith("skillbill.boundary") }
             .map { match ->
               val lineNumber = source.substring(0, match.range.first).count { it == '\n' } + 1
               "${file.relativePath}:$lineNumber declares ${match.groupValues.last()} outside a model package"
@@ -507,6 +570,211 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `runtime architecture forbids raw map shapes outside the open-boundary allowlist`() {
+    val boundaryFiles = sourceFiles().filter { file ->
+      file.relativePath.startsWith("runtime-application/src/main/kotlin/") ||
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/") ||
+        file.relativePath.startsWith("runtime-ports/src/main/kotlin/")
+    }
+    val violations = boundaryFiles.flatMap { file ->
+      findRawMapViolations(file)
+    }
+    assertTrue(
+      violations.isEmpty(),
+      "Public application/domain/port declarations must not use raw Map<String, Any?> " +
+        "shapes outside the open-boundary allow-list. Either annotate the declaration with " +
+        "@OpenBoundaryMap or add it to RAW_MAP_OPEN_BOUNDARY_ALLOWLIST in " +
+        "RuntimeArchitectureTest.kt.\nViolations:\n" + violations.joinToString(separator = "\n"),
+    )
+  }
+
+  @Test
+  fun `install ports expose typed capability APIs instead of retired gateways`() {
+    val installPortFiles = sourceFiles()
+      .filter { sourceFile ->
+        sourceFile.relativePath.startsWith(
+          "runtime-ports/src/main/kotlin/skillbill/ports/install/",
+        )
+      }
+    assertTrue(installPortFiles.isNotEmpty(), "Install capability ports must exist.")
+
+    val sourceText = installPortFiles.joinToString(separator = "\n", transform = SourceFile::source)
+    listOf(
+      "interface InstallPlanningFactsPort",
+      "interface InstallPlatformSkillMaterializationPort",
+      "interface InstallStagingIntentPort",
+      "interface InstallApplyExecutionPort",
+      "interface InstallSkillLinkPort",
+      "interface InstallAgentTargetPort",
+      "interface InstallNativeAgentLinkPort",
+      "interface InstallMcpRegistrationPort",
+    ).forEach { expectedDeclaration ->
+      assertContains(sourceText, expectedDeclaration)
+    }
+
+    listOf(
+      "InstallPlanGateway",
+      "InstallAgentGateway",
+      "NativeAgentInstallGateway",
+      "McpRegistrationGateway",
+      "Map<String, Any?>",
+      "Map<String, *>",
+      "MutableMap<String, Any?>",
+    ).forEach { forbiddenText ->
+      assertTrue(
+        forbiddenText !in sourceText,
+        "Install port public surface must not contain retired/raw-map shape '$forbiddenText'.",
+      )
+    }
+
+    val nonRequestResultSignatures = installPortFiles
+      .filter { sourceFile -> sourceFile.relativePath.endsWith("Port.kt") }
+      .flatMap { sourceFile ->
+        installPortFunctionSignatures(sourceFile).mapNotNull { signature ->
+          if (signature.hasSingleRequestParameter && signature.hasResultReturn) null else signature.render()
+        }
+      }
+    assertTrue(
+      nonRequestResultSignatures.isEmpty(),
+      "Install capability port functions must accept exactly one *Request model and return a *Result model.\n" +
+        nonRequestResultSignatures.joinToString(separator = "\n"),
+    )
+  }
+
+  private fun installPortFunctionSignatures(sourceFile: SourceFile): List<InstallPortFunctionSignature> {
+    val lines = sourceFile.source.lines()
+    return lines.mapIndexedNotNull { index, line ->
+      val match = portFunctionStartPattern.find(line.trim()) ?: return@mapIndexedNotNull null
+      val signatureText = collectFunctionSignature(lines, index)
+      val parsed = portFunctionSignaturePattern.find(signatureText)
+      val functionName = match.groupValues[1]
+      val parameters = parsed?.groupValues?.get(2).orEmpty().trim()
+      val returnType = parsed?.groupValues?.get(3).orEmpty()
+      val parameterTypes = parameters.split(",")
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .map { parameter -> parameter.substringAfter(":").trim().substringAfterLast(".") }
+      InstallPortFunctionSignature(
+        sourcePath = sourceFile.relativePath,
+        functionName = functionName,
+        parameters = parameters,
+        returnType = returnType,
+        hasSingleRequestParameter = parameterTypes.size == 1 && parameterTypes.single().endsWith("Request"),
+        hasResultReturn = returnType.substringBefore("<").substringAfterLast(".").endsWith("Result"),
+      )
+    }
+  }
+
+  private fun collectFunctionSignature(lines: List<String>, startIndex: Int): String {
+    val signature = StringBuilder()
+    var openParens = 0
+    var sawParen = false
+    var index = startIndex
+    var shouldStop = false
+    while (index < lines.size && !shouldStop) {
+      val current = lines[index]
+      signature.append(current.trim()).append(' ')
+      current.forEach { char ->
+        when (char) {
+          '(' -> {
+            openParens += 1
+            sawParen = true
+          }
+          ')' -> openParens -= 1
+        }
+      }
+      if (sawParen && openParens == 0) {
+        val text = signature.toString()
+        shouldStop = hasFunctionSignatureTerminator(text)
+        val nextLine = lines.getOrNull(index + 1)?.trim().orEmpty()
+        if (!nextLine.startsWith(":")) shouldStop = true
+      }
+      index += 1
+    }
+    return signature.toString()
+  }
+
+  private fun hasFunctionSignatureTerminator(text: String): Boolean =
+    containsReturnTypeSeparator(text) || " =" in text || text.trim().endsWith("{")
+
+  private fun containsReturnTypeSeparator(text: String): Boolean = "):" in text || ") :" in text
+
+  @Test
+  fun `open-boundary allow-list documents required exceptions`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+    val documentedEntries = parseArchitectureAllowList(architecture)
+    assertTrue(
+      documentedEntries.isNotEmpty(),
+      "ARCHITECTURE.md must declare an Open-Boundary Allow-List section parseable by the architecture test.",
+    )
+    val allowListEntries = RAW_MAP_OPEN_BOUNDARY_ALLOWLIST.toSet()
+    val missingFromAllowlist = documentedEntries - allowListEntries
+    val missingFromDoc = allowListEntries - documentedEntries
+    assertTrue(
+      missingFromAllowlist.isEmpty() && missingFromDoc.isEmpty(),
+      "ARCHITECTURE.md and RAW_MAP_OPEN_BOUNDARY_ALLOWLIST must agree on the set of " +
+        "open-boundary entries.\nMissing from constant: $missingFromAllowlist\n" +
+        "Missing from doc: $missingFromDoc",
+    )
+    // The architecture document must mention the legacy raw-map
+    // grandfather clause so future readers know why the allow-list is
+    // larger than the required workflow entries.
+    assertContains(architecture, "legacy raw-map")
+    assertContains(architecture, "grandfathers")
+  }
+
+  @Test
+  fun `every OpenBoundaryMap annotated declaration is documented in the architecture allow-list`() {
+    val boundaryFiles = sourceFiles().filter { file ->
+      file.relativePath.startsWith("runtime-application/src/main/kotlin/") ||
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/") ||
+        file.relativePath.startsWith("runtime-ports/src/main/kotlin/")
+    }
+    val annotated = boundaryFiles.flatMap(::findAnnotatedOpenBoundaryDeclarations)
+    val documentedEntries = parseArchitectureAllowList(
+      Files.readString(runtimeRoot.resolve("ARCHITECTURE.md")),
+    )
+    val undocumented = annotated.filterNot { fqn -> fqn in documentedEntries }
+    assertTrue(
+      undocumented.isEmpty(),
+      "Every @OpenBoundaryMap-annotated public declaration must appear by FQN in the " +
+        "ARCHITECTURE.md Open-Boundary Allow-List section so the annotation cannot " +
+        "act as a silent escape valve.\nUndocumented: $undocumented",
+    )
+  }
+
+  @Test
+  fun `raw map violation scanner fires on known violation fixtures`() {
+    val fixture = SourceFile(
+      relativePath = "test-fixture/Fake.kt",
+      packageName = "skillbill.application",
+      imports = emptyList(),
+      source =
+      """
+      package skillbill.application
+
+      class Fake {
+        public fun foo(): Map<String, Any?> = emptyMap()
+
+        fun bar(): Map<String, *> = emptyMap<String, Any?>()
+
+        fun baz(input: MutableMap<String, Any?>) { input.clear() }
+
+        fun multiLine(
+          first: String,
+        ): Map<String, Any?> = emptyMap()
+      }
+      """.trimIndent(),
+    )
+    val violations = findRawMapViolations(fixture)
+    val violatingNames = violations.map { it.substringAfter("public `").substringBefore('`') }
+    assertEquals(
+      listOf("foo", "bar", "baz", "multiLine").sorted(),
+      violatingNames.sorted(),
+    )
+  }
+
+  @Test
   fun `cli text rendering consumes typed presenter models instead of raw maps`() {
     val cliOutput = Files.readString(sourcePath("skillbill/cli/CliOutput.kt"))
     val cliPresenters = Files.readString(sourcePath("skillbill/cli/CliPresenters.kt"))
@@ -516,6 +784,272 @@ class RuntimeArchitectureTest {
     assertContains(cliOutput, "CliResolvedLearningsPresentation")
     assertContains(cliPresenters, "data class CliTriagePresentation")
     assertContains(cliPresenters, "data class CliLearningListPresentation")
+  }
+
+  /**
+   * SKILL-52.1 — best-effort source scan for raw-map violations.
+   * Detects public function and property declarations whose return type
+   * or any parameter type contains one of the banned raw-map shapes.
+   * Tracks the enclosing object/class lexically so allow-list lookups
+   * use the fully-qualified name (package + class + member).
+   *
+   * Skips:
+   *  - declarations annotated with `@OpenBoundaryMap`,
+   *  - declarations whose computed FQN is listed in
+   *    [RAW_MAP_OPEN_BOUNDARY_ALLOWLIST],
+   *  - declarations marked `private` or `internal`.
+   */
+  @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements", "NestedBlockDepth", "LongMethod")
+  private fun findRawMapViolations(file: SourceFile): List<String> {
+    val bannedShapes =
+      listOf("Map<String, Any?>", "Map<String, *>", "MutableMap<String, Any?>")
+    val lines = file.source.lines()
+    val violations = mutableListOf<String>()
+    val tracker = ScopeTracker()
+    val allowlistSet = RAW_MAP_OPEN_BOUNDARY_ALLOWLIST.toSet()
+    lines.forEachIndexed { index, line ->
+      tracker.consume(line)
+      val enclosingStack = tracker.enclosingStack
+
+      val trimmed = line.trim()
+      val funMatch = Regex("""^(?:public\s+)?fun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+\.)?([A-Za-z0-9_]+)\s*\(""")
+        .find(trimmed)
+      val valMatch = Regex("""^(?:public\s+)?(?:val|var)\s+([A-Za-z0-9_]+)\s*:""")
+        .find(trimmed)
+      val declName = funMatch?.groupValues?.get(2) ?: valMatch?.groupValues?.get(1) ?: return@forEachIndexed
+      // Extract the FULL signature: accumulate lines until parens
+      // balance closes, then accumulate one more line that contains
+      // the return type or body marker.
+      val signature = StringBuilder()
+      var j = index
+      var openParens = 0
+      var sawParen = false
+      var awaitingReturn = false
+      while (j < lines.size) {
+        val current = lines[j]
+        signature.append(current).append('\n')
+        current.forEach { ch ->
+          when (ch) {
+            '(' -> {
+              openParens += 1
+              sawParen = true
+            }
+            ')' -> openParens -= 1
+          }
+        }
+        val closed = sawParen && openParens == 0
+        if (closed) {
+          val containsReturnMarker = current.contains("):") || current.contains(") :") ||
+            current.endsWith(":") || current.contains(" {") || current.endsWith("{") ||
+            current.contains(" =") || current.endsWith("= ") || current.endsWith(") = null")
+          if (containsReturnMarker) break
+          if (awaitingReturn) break
+          awaitingReturn = true
+        }
+        if (!sawParen && valMatch != null && current.contains(": ")) break
+        j += 1
+        if (j - index > 30) break
+      }
+      val sigText = signature.toString()
+      val containsBanned = bannedShapes.any { shape -> shape in sigText }
+      if (!containsBanned) return@forEachIndexed
+      val precedingLines = lines.subList(maxOf(0, index - 4), index)
+      // Only consider preceding lines that look like annotation continuations
+      // (start with `@`) so unrelated `private` declarations above the
+      // current line do not silently mask a public violation.
+      val annotationPrecedingLines = precedingLines
+        .map(String::trim)
+        .takeLastWhile { it.startsWith("@") || it.isEmpty() }
+      val annotated = "@OpenBoundaryMap" in sigText ||
+        annotationPrecedingLines.any { "@OpenBoundaryMap" in it }
+      val nonPublicMarker = Regex("""^(?:private|internal)\s+""").containsMatchIn(trimmed) ||
+        tracker.insideNonPublicScope
+      // Build the FQN: package + enclosing scope chain + declName.
+      val enclosingPrefix = enclosingStack.joinToString(".").let { if (it.isEmpty()) "" else "$it." }
+      val fqn = listOf(file.packageName, "$enclosingPrefix$declName")
+        .filter(String::isNotBlank)
+        .joinToString(".")
+      val allowed = fqn in allowlistSet
+      if (!annotated && !allowed && !nonPublicMarker) {
+        violations += "${file.relativePath}:${index + 1} public `$declName` exposes raw map shape (fqn=$fqn)"
+      }
+    }
+    return violations
+  }
+
+  /**
+   * SKILL-52.1 (F-003) — walks a source file and returns every FQN whose
+   * declaration carries an `@OpenBoundaryMap` annotation. Used to ensure
+   * the annotation does not act as a silent escape valve.
+   */
+  @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "LongMethod")
+  private fun findAnnotatedOpenBoundaryDeclarations(file: SourceFile): List<String> {
+    val lines = file.source.lines()
+    val results = mutableListOf<String>()
+    val tracker = ScopeTracker()
+    lines.forEachIndexed { index, line ->
+      tracker.consume(line)
+      val enclosingStack = tracker.enclosingStack
+      val trimmed = line.trim()
+      if (!trimmed.startsWith("@OpenBoundaryMap")) return@forEachIndexed
+      // Walk forward to the next non-blank, non-annotation line carrying a fun/val/var/data class declaration.
+      val candidate = lines.drop(index + 1)
+        .map(String::trim)
+        .firstOrNull { it.isNotBlank() && !it.startsWith("@") }
+        ?: return@forEachIndexed
+      val funMatch = Regex("""^(?:public\s+)?fun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+\.)?([A-Za-z0-9_]+)\s*\(""")
+        .find(candidate)
+      val valMatch = Regex("""^(?:public\s+)?(?:val|var)\s+([A-Za-z0-9_]+)\s*:""")
+        .find(candidate)
+      val classMatch = scopeDeclarationPattern.find(candidate)
+      val declName = funMatch?.groupValues?.get(2)
+        ?: valMatch?.groupValues?.get(1)
+        ?: classMatch?.groupValues?.get(1)
+        ?: return@forEachIndexed
+      val enclosingPrefix = enclosingStack.joinToString(".").let { if (it.isEmpty()) "" else "$it." }
+      val fqn = listOf(file.packageName, "$enclosingPrefix$declName")
+        .filter(String::isNotBlank)
+        .joinToString(".")
+      results += fqn
+    }
+    return results
+  }
+
+  /**
+   * SKILL-52.1 (F-006) — parses the curated Open-Boundary Allow-List
+   * bullet section in `ARCHITECTURE.md` into a set of FQN strings.
+   * The parsed bullets must use a leading `- ` then begin with the
+   * FQN as backticked monospace text (the canonical doc format
+   * established by this subtask).
+   */
+  private fun parseArchitectureAllowList(architecture: String): Set<String> {
+    val sectionStart = architecture.indexOf("<!-- open-boundary-allowlist:start -->")
+    val sectionEnd = architecture.indexOf("<!-- open-boundary-allowlist:end -->")
+    require(sectionStart >= 0 && sectionEnd > sectionStart) {
+      "ARCHITECTURE.md must declare an Open-Boundary Allow-List section bracketed by " +
+        "'<!-- open-boundary-allowlist:start -->' / '<!-- open-boundary-allowlist:end -->' " +
+        "machine-readable markers."
+    }
+    val body = architecture.substring(sectionStart, sectionEnd)
+    return Regex("""^\s*-\s+`([A-Za-z0-9_.]+)`""", RegexOption.MULTILINE)
+      .findAll(body)
+      .map { it.groupValues[1] }
+      .toSet()
+  }
+
+  /**
+   * SKILL-52.1 — line-by-line lexical scope tracker for the architecture
+   * scanner. Recognises `class`, `data class`, `object`, and `interface`
+   * declarations and tracks the enclosing scope chain for downstream
+   * FQN composition. Handles both brace-bodied scopes
+   * (`object X { ... }`) and bodyless data classes
+   * (`data class X(...)`) — the latter exit when the constructor
+   * paren balance drops back to zero with no `{` ever opened.
+   */
+  private class ScopeTracker {
+    val enclosingStack: ArrayDeque<String> = ArrayDeque()
+    val scopeNonPublic: ArrayDeque<Boolean> = ArrayDeque()
+    private val scopeKind: ArrayDeque<Kind> = ArrayDeque()
+
+    // For BRACE scopes: track the brace depth at scope start.
+    // For PAREN scopes: track the paren depth at scope start.
+    private val scopeDepth: ArrayDeque<Int> = ArrayDeque()
+    private var braceDepth = 0
+    private var parenDepth = 0
+    private var pendingScopeName: String? = null
+    private var pendingScopeIsData = false
+    private var pendingScopeNonPublic = false
+
+    enum class Kind { BRACE, PAREN }
+
+    val insideNonPublicScope: Boolean get() = scopeNonPublic.any { it }
+
+    // For data classes, the constructor `(...)` and optional body `{...}`
+    // both belong to the SAME class scope. When the ctor closes we may
+    // need to re-push the class name once the body's `{` opens.
+    private var resumeClassName: String? = null
+    private var resumeClassNonPublic = false
+
+    fun consume(lineText: String) {
+      noteScopeDeclaration(lineText)
+      lineText.forEach { ch ->
+        when (ch) {
+          '{' -> onOpenBrace()
+          '}' -> onCloseBrace()
+          '(' -> onOpenParen()
+          ')' -> onCloseParen()
+        }
+      }
+    }
+
+    private fun noteScopeDeclaration(lineText: String) {
+      val scopeMatch = scopeDeclarationPattern.find(lineText) ?: return
+      pendingScopeName = scopeMatch.groupValues[1]
+      pendingScopeIsData = lineText.contains(Regex("""\bdata\s+class\b"""))
+      pendingScopeNonPublic = Regex("""^\s*(?:private|internal)\s+""").containsMatchIn(lineText)
+      resumeClassName = null
+      resumeClassNonPublic = false
+    }
+
+    private fun onOpenBrace() {
+      val pendingName = pendingScopeName
+      val resumeName = resumeClassName
+      when {
+        pendingName != null -> {
+          pushScope(pendingName, Kind.BRACE, braceDepth, pendingScopeNonPublic)
+          pendingScopeName = null
+          pendingScopeIsData = false
+          pendingScopeNonPublic = false
+        }
+        resumeName != null && parenDepth == 0 -> {
+          pushScope(resumeName, Kind.BRACE, braceDepth, resumeClassNonPublic)
+          resumeClassName = null
+          resumeClassNonPublic = false
+        }
+      }
+      braceDepth += 1
+    }
+
+    private fun onCloseBrace() {
+      braceDepth -= 1
+      popScopesWhile(Kind.BRACE) { braceDepth <= it }
+    }
+
+    private fun onOpenParen() {
+      val pendingName = pendingScopeName
+      if (pendingName != null && pendingScopeIsData) {
+        pushScope(pendingName, Kind.PAREN, parenDepth, pendingScopeNonPublic)
+        // Remember the class name in case the constructor is
+        // followed by a body `{...}` belonging to the same class.
+        resumeClassName = pendingName
+        resumeClassNonPublic = pendingScopeNonPublic
+        pendingScopeName = null
+        pendingScopeIsData = false
+        pendingScopeNonPublic = false
+      }
+      parenDepth += 1
+    }
+
+    private fun onCloseParen() {
+      parenDepth -= 1
+      popScopesWhile(Kind.PAREN) { parenDepth <= it }
+    }
+
+    private fun pushScope(name: String, kind: Kind, depth: Int, nonPublic: Boolean) {
+      enclosingStack.addLast(name)
+      scopeKind.addLast(kind)
+      scopeDepth.addLast(depth)
+      scopeNonPublic.addLast(nonPublic)
+    }
+
+    private inline fun popScopesWhile(kind: Kind, condition: (Int) -> Boolean) {
+      while (scopeKind.isNotEmpty() && scopeKind.last() == kind && condition(scopeDepth.last())) {
+        scopeKind.removeLast()
+        scopeDepth.removeLast()
+        enclosingStack.removeLast()
+        scopeNonPublic.removeLast()
+      }
+    }
   }
 
   private fun assertNoBannedImports(files: List<SourceFile>, bannedImports: List<String>) {
@@ -623,7 +1157,152 @@ class RuntimeArchitectureTest {
     val source: String,
   )
 
+  private data class InstallPortFunctionSignature(
+    val sourcePath: String,
+    val functionName: String,
+    val parameters: String,
+    val returnType: String,
+    val hasSingleRequestParameter: Boolean,
+    val hasResultReturn: Boolean,
+  ) {
+    fun render(): String = "$sourcePath::$functionName($parameters): ${returnType.ifBlank { "<missing>" }}"
+  }
+
   private companion object {
+    /**
+     * SKILL-52.1 — curated open-boundary allow-list for the raw-map
+     * boundary rule. New entries MUST also be documented by FQN in
+     * `runtime-kotlin/ARCHITECTURE.md` within the
+     * `<!-- open-boundary-allowlist:start --> ... <!-- open-boundary-allowlist:end -->`
+     * delimited section. The parity test `open-boundary allow-list
+     * documents required exceptions` enforces a strict set equality
+     * between this constant and the document.
+     */
+    val RAW_MAP_OPEN_BOUNDARY_ALLOWLIST: List<String> = listOf(
+      // SKILL-52.1 documented workflow-scope open boundaries.
+      "skillbill.workflow.WorkflowEngine.snapshotMap",
+      "skillbill.workflow.WorkflowEngine.summaryMap",
+      "skillbill.workflow.WorkflowEngine.resumeMap",
+      "skillbill.workflow.WorkflowEngine.continueMap",
+      "skillbill.workflow.DecompositionManifestCodec.decodeMap",
+      "skillbill.workflow.toWireMap",
+      "skillbill.application.decodeDecompositionManifestMap",
+      "skillbill.application.encodeDecompositionManifestMap",
+      "skillbill.application.DecompositionManifestWriter.writeFromWorkflowUpdate",
+      "skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate",
+      "skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
+      "skillbill.application.WorkflowFamily.sessionSummary",
+      // SKILL-52.1 subtask 3: the 8 raw-map producer FQNs on `ScaffoldGateway`,
+      // `runtime-infra-fs.ScaffoldService`, and `runtime-application.ScaffoldService` are
+      // RETIRED — each producer now returns a typed result model under
+      // `skillbill.ports.scaffold.{catalog,repo,source}.model`. The remaining typed-DTO
+      // open-boundary `payload` fields are listed near the bottom of this allow-list with
+      // the `@OpenBoundaryMap`-annotated typed-DTO entries. `scaffold(...)` still accepts
+      // a raw-map payload — that entry stays as the documented input-side seam until
+      // subtask 4 introduces a typed scaffold payload DTO.
+      "skillbill.application.ScaffoldService.scaffold",
+      "skillbill.ports.scaffold.ScaffoldGateway.scaffold",
+      // SKILL-52.1 subtask 2 documented seams (pure-policy entrypoints that accept the wire
+      // payload Map<String, Any?>). Retired together with the legacy ScaffoldGateway raw-map
+      // surface above by subtask 4, which introduces a typed scaffold payload DTO.
+      "skillbill.scaffold.policy.requireString",
+      "skillbill.scaffold.policy.requireStringOrDefault",
+      "skillbill.scaffold.policy.validatePayloadVersion",
+      "skillbill.scaffold.policy.detectKind",
+      "skillbill.scaffold.policy.optionalSpecialistSubagents",
+      "skillbill.scaffold.policy.rejectLeafSubagentSpecialists",
+      "skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack",
+      "skillbill.scaffold.policy.resolvePlatformPackSelection",
+      "skillbill.scaffold.policy.resolvePlatformPackDefaults",
+      // Subtask 3 will remove (install policy extraction):
+      "skillbill.application.SystemService.doctor",
+      "skillbill.application.SystemService.version",
+      // Subtask 4 will remove (telemetry/review typed-DTO pass):
+      "skillbill.application.lifecycleOkPayload",
+      "skillbill.application.lifecycleSkippedPayload",
+      "skillbill.application.lifecycleErrorPayload",
+      "skillbill.application.orchestratedStartedSkippedPayload",
+      "skillbill.application.orchestratedPayload",
+      "skillbill.application.LifecycleTelemetryService.featureImplementStarted",
+      "skillbill.application.LifecycleTelemetryService.featureImplementFinished",
+      "skillbill.application.LifecycleTelemetryService.qualityCheckStarted",
+      "skillbill.application.LifecycleTelemetryService.qualityCheckFinished",
+      "skillbill.application.LifecycleTelemetryService.featureVerifyStarted",
+      "skillbill.application.LifecycleTelemetryService.featureVerifyFinished",
+      "skillbill.application.LifecycleTelemetryService.prDescriptionGenerated",
+      "skillbill.application.ReviewService.previewImport",
+      "skillbill.application.ReviewService.importReview",
+      "skillbill.application.ReviewService.reviewFinishedTelemetryPayload",
+      "skillbill.application.ReviewService.recordFeedback",
+      "skillbill.application.ReviewService.telemetryPayload",
+      "skillbill.application.ReviewService.reviewStats",
+      "skillbill.application.ReviewService.featureImplementStats",
+      "skillbill.application.ReviewService.featureVerifyStats",
+      "skillbill.application.telemetryPayload",
+      "skillbill.application.TelemetryService.status",
+      "skillbill.application.TelemetryService.setLevel",
+      "skillbill.application.TelemetryService.capabilities",
+      "skillbill.application.TelemetryService.remoteStats",
+      "skillbill.telemetry.defaultLocalTelemetryConfig",
+      "skillbill.telemetry.validateRemoteStatsCapabilities",
+      "skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig",
+      "skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig",
+      "skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig",
+      "skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities",
+      "skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats",
+      "skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload",
+      "skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload",
+      "skillbill.workflow.WorkflowEngine.continueDecision",
+      "skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState",
+      "skillbill.ports.persistence.ReviewRepository.recordFeedback",
+      "skillbill.ports.persistence.ReviewRepository.reviewStatsPayload",
+      "skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload",
+      "skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload",
+      "skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities",
+      "skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats",
+      "skillbill.ports.telemetry.TelemetryConfigStore.read",
+      "skillbill.ports.telemetry.TelemetryConfigStore.ensure",
+      "skillbill.ports.telemetry.TelemetryConfigStore.write",
+      "skillbill.learnings.learningPayload",
+      "skillbill.learnings.learningSummaryPayload",
+      "skillbill.learnings.scopeCounts",
+      "skillbill.learnings.learningSessionJson",
+      "skillbill.learnings.summarizeLearningReferences",
+      "skillbill.learnings.learningEntryPayload",
+      // @OpenBoundaryMap-annotated typed-DTO open boundaries.
+      "skillbill.application.model.WorkflowUpdateRequest.stepUpdates",
+      "skillbill.application.model.WorkflowUpdateRequest.artifactsPatch",
+      "skillbill.application.model.FeatureImplementFinishedRequest.childSteps",
+      "skillbill.application.model.TelemetrySyncPayload.payload",
+      "skillbill.application.model.TriageResult.payload",
+      "skillbill.application.model.TriageResult.telemetryPayload",
+      "skillbill.application.model.DecompositionManifestWriteRequest.planningResult",
+      "skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates",
+      "skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
+      "skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
+      "skillbill.install.model.buildInstallPlanWireMap",
+      "skillbill.scaffold.model.PlatformManifest.customFields",
+      // SKILL-52.1 subtask 3 — typed scaffold result models that carry the legacy raw-map
+      // wire payload through a single `@OpenBoundaryMap`-annotated `payload` field.
+      "skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload",
+      "skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload",
+      "skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload",
+      "skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload",
+      "skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload",
+      "skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps",
+      "skillbill.workflow.model.WorkflowSnapshotView.artifacts",
+      "skillbill.workflow.model.WorkflowContinueView.stepArtifacts",
+      "skillbill.workflow.model.WorkflowContinueView.extraFields",
+      "skillbill.workflow.model.WorkflowContinueView.sessionSummary",
+      "skillbill.workflow.model.WorkflowUpdateInput.stepUpdates",
+      "skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch",
+      "skillbill.ports.validation.model.RepoValidationReport.toPayload",
+      "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
+    )
+
     val directFileIoImports: List<String> =
       listOf(
         "java.io.File",
@@ -655,12 +1334,67 @@ class RuntimeArchitectureTest {
         "kotlin.io.path.bufferedReader",
         "kotlin.io.path.bufferedWriter",
       )
+    val processAccessSourceReferences: List<String> =
+      listOf(
+        "System.getenv",
+        "System.getProperty",
+      )
+    val boundaryFrameworkImports: List<String> =
+      listOf(
+        "com.github.ajalt.clikt",
+        "com.zaxxer.hikari",
+        "io.ktor.client",
+        "java.net.HttpURLConnection",
+        "java.net.URL",
+        "java.net.URLConnection",
+        "java.net.http",
+        "java.sql",
+        "javax.sql",
+        "okhttp3",
+        "org.http4k",
+        "org.jooq",
+        "org.sqlite",
+        "retrofit2",
+      )
+    val boundaryFrameworkSourceReferences: List<String> =
+      listOf(
+        "com.github.ajalt.clikt",
+        "com.zaxxer.hikari",
+        "HttpURLConnection",
+        "io.ktor.client",
+        "java.net.HttpURLConnection",
+        "java.net.URL",
+        "java.net.URLConnection",
+        "java.net.http",
+        "java.sql",
+        "javax.sql",
+        "okhttp3",
+        "org.http4k",
+        "org.jooq",
+        "org.sqlite",
+        "retrofit2",
+      )
+    val homeExpansionSourceReferences: List<String> =
+      listOf(
+        "== \"~\"",
+        ".startsWith(\"~/\")",
+        ".removePrefix(\"~/\")",
+      )
     val packagePattern: Regex = Regex("^package\\s+([A-Za-z0-9_.]+)", RegexOption.MULTILINE)
     val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)
+    val portFunctionStartPattern: Regex = Regex("^fun\\s+([A-Za-z0-9_]+)\\s*\\(")
+    val portFunctionSignaturePattern: Regex =
+      Regex("fun\\s+([A-Za-z0-9_]+)\\s*\\((.*?)\\)\\s*:\\s*([A-Za-z0-9_.<>]+)")
     val publicModelDeclarationPattern: Regex =
       Regex(
         "^\\s*(?:public\\s+)?(data\\s+class|enum\\s+class|sealed\\s+(?:class|interface))\\s+([A-Za-z0-9_]+)",
         RegexOption.MULTILINE,
+      )
+    val scopeDeclarationPattern: Regex =
+      Regex(
+        """^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|open\s+|sealed\s+""" +
+          """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+)*""" +
+          """(?:class|object|interface)\s+([A-Za-z0-9_]+)""",
       )
   }
 }

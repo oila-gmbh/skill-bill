@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
@@ -15,13 +16,18 @@ internal class DecompositionWorkflowContinuation(
   private val gitOperations: WorkflowGitOperations,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ) {
-  fun continueDecomposedParentByIssueKey(issueKey: String, unitOfWork: UnitOfWork): ContinuationResult {
+  fun continueDecomposedParentByIssueKey(issueKey: String, unitOfWork: UnitOfWork): ContinuationStepResult {
     val parentRecord = unitOfWork.workflowStates
       .findDecomposedParentWorkflow(issueKey)
       ?.toSnapshot()
     val manifest = parentRecord?.decompositionRuntime()
     val result = if (parentRecord == null || manifest == null) {
-      ContinuationResult(unknownWorkflowPayload(issueKey, unitOfWork.dbPath.toString()))
+      ContinuationStepResult(
+        WorkflowContinueResult.UnknownWorkflow(
+          dbPath = unitOfWork.dbPath.toString(),
+          workflowId = issueKey,
+        ),
+      )
     } else {
       continueManifest(parentRecord, manifest, unitOfWork)
     }
@@ -32,11 +38,11 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
-  ): ContinuationResult {
+  ): ContinuationStepResult {
     val advancement = advanceCompletedSubtasks(parentRecord, manifest, unitOfWork)
     if (advancement.error != null) {
-      return ContinuationResult(
-        blockedGitPayload(parentRecord.workflowId, manifest.issueKey, unitOfWork.dbPath.toString(), advancement.error),
+      return ContinuationStepResult(
+        blockedGitResult(parentRecord.workflowId, manifest.issueKey, unitOfWork.dbPath.toString(), advancement.error),
         advancement.projectionArtifactsJson,
       )
     }
@@ -51,24 +57,24 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
-  ): ContinuationResult = when (val selection = DecompositionContinuationSelector.select(manifest)) {
+  ): ContinuationStepResult = when (val selection = DecompositionContinuationSelector.select(manifest)) {
     is DecompositionContinuationSelection.Resume -> continueSelectedSubtask(selection, unitOfWork)
     is DecompositionContinuationSelection.Start -> startSelectedSubtask(parentRecord, manifest, selection, unitOfWork)
     is DecompositionContinuationSelection.Blocked ->
-      ContinuationResult(blockedSubtaskPayload(parentRecord, manifest, selection, unitOfWork.dbPath.toString()))
+      ContinuationStepResult(blockedSubtaskResult(parentRecord, manifest, selection, unitOfWork.dbPath.toString()))
     is DecompositionContinuationSelection.Done ->
-      ContinuationResult(doneDecompositionPayload(parentRecord, selection.manifest, unitOfWork.dbPath.toString()))
+      ContinuationStepResult(doneDecompositionResult(parentRecord, selection.manifest, unitOfWork.dbPath.toString()))
   }
 
   private fun continueSelectedSubtask(
     selection: DecompositionContinuationSelection.Resume,
     unitOfWork: UnitOfWork,
-  ): ContinuationResult {
+  ): ContinuationStepResult {
     val record = selection.workflowId
       .takeIf(String::isNotBlank)
       ?.let { WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, it) }
     return if (record == null) {
-      missingSubtaskWorkflowPayload(selection, unitOfWork)
+      missingSubtaskWorkflowResult(selection, unitOfWork)
     } else {
       val alignedRecord = alignSubtaskResumeStep(record, selection.resumeStepId, unitOfWork)
       continueExistingWorkflow(WorkflowFamily.IMPLEMENT, alignedRecord, selection.workflowId, unitOfWork, fileStore)
@@ -81,10 +87,10 @@ internal class DecompositionWorkflowContinuation(
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
-  ): ContinuationResult {
+  ): ContinuationStepResult {
     val branchError = checkoutAndValidateBranch(parentRecord, manifest, selection, unitOfWork)
     return if (branchError != null) {
-      ContinuationResult(branchError)
+      ContinuationStepResult(branchError)
     } else {
       openSubtaskWorkflow(parentRecord, manifest, selection, unitOfWork)
     }
@@ -95,20 +101,20 @@ internal class DecompositionWorkflowContinuation(
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
-  ): Map<String, Any?>? {
+  ): WorkflowContinueResult? {
     val branchPlan = selection.branchPlan
-    var errorPayload: Map<String, Any?>? = null
+    var errorResult: WorkflowContinueResult? = null
     if (branchPlan.branch.isNotBlank()) {
       val checkout = gitOperations.checkoutBranch(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
-      errorPayload = checkout.takeUnless { it.ok }
-        ?.let { blockedBranchStartPayload(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
-      if (errorPayload == null && branchPlan.validateBase) {
-        errorPayload = gitOperations.validateBranchBase(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
+      errorResult = checkout.takeUnless { it.ok }
+        ?.let { blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+      if (errorResult == null && branchPlan.validateBase) {
+        errorResult = gitOperations.validateBranchBase(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
           .takeUnless { it.ok }
-          ?.let { blockedBranchStartPayload(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+          ?.let { blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
       }
     }
-    return errorPayload
+    return errorResult
   }
 
   private fun openSubtaskWorkflow(
@@ -116,7 +122,7 @@ internal class DecompositionWorkflowContinuation(
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
-  ): ContinuationResult {
+  ): ContinuationStepResult {
     val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
     val updatedManifest = manifest.withStartedSubtask(selection.subtask.id, workflowId, selection.branchPlan.branch)
     val opened = WorkflowEngine.openRecord(

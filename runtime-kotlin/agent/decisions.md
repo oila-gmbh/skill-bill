@@ -4,6 +4,48 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-05-24 — Runtime paths stay inert outside adapters and composition
+
+**Context.** SKILL-52.1 tightened hexagonal boundaries while several public
+application/domain/port models still need to carry `java.nio.file.Path` values
+for caller-provided homes, repo roots, and generated plan locations.
+
+**Decision.** Keep `Path` legal as inert data in application/domain/port public
+models, but ban filesystem IO, home expansion, process environment reads, and
+system-property reads outside adapters or composition.
+
+**Reason.** Replacing every path with strings would make typed runtime contracts
+weaker, while allowing `Path` operations that touch the host would leak adapter
+responsibilities back into domain and port code.
+
+## 2026-05-24 — Preserve dual install-plan validation after policy extraction
+
+**Context.** SKILL-52.1 moved install planning toward typed policy and
+capability ports, but install-plan wire maps still cross two independent
+emission seams: builder output and CLI JSON emission.
+
+**Decision.** Keep the shared install-plan wire-snapshot validator at both the
+builder seam and CLI emission seam after the refactor.
+
+**Reason.** The builder proves the pure plan shape, while CLI emission can still
+assemble or project a payload after planning; validating both seams preserves
+the existing loud-fail contract instead of relying on one earlier check.
+
+## 2026-05-24 — Runtime-core retains only generated DI public ABI edges
+
+**Context.** The runtime-core shrink makes the module a composition root rather
+than an implementation umbrella, but Kotlin-Inject generated components expose
+some application service and port types in the public `RuntimeComponent` ABI.
+
+**Decision.** Retain only the generated Kotlin-Inject public ABI edges required
+by `RuntimeComponent`: direct API edges to runtime-application services and
+runtime-ports context/port types, with the documented transitive domain and
+contracts closure, and no infrastructure or entrypoint API edges.
+
+**Reason.** Hiding the generated DI ABI would fight the toolchain and break
+callers, but documenting and testing the narrow edge prevents runtime-core from
+growing back into a compatibility umbrella.
+
 ## 2026-05-18 — Platform-pack manifest validation moves to a canonical JSON Schema
 
 **Context.** Before SKILL-47 the rules describing
