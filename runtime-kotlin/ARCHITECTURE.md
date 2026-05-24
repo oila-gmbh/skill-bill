@@ -401,9 +401,6 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowContinueView.sessionSummary`
     - `skillbill.workflow.model.WorkflowUpdateInput.stepUpdates`
     - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
-    - `skillbill.workflow.model.DecompositionSubtask.reviewResult`
-    - `skillbill.workflow.model.DecompositionSubtask.auditResult`
-    - `skillbill.workflow.model.DecompositionSubtask.validationResult`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 

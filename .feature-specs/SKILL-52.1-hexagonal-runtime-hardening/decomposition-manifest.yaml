@@ -1,322 +1,49 @@
 ---
-contract_version: "0.1"
-issue_key: "SKILL"
-feature_name: "52.1-hexagonal-runtime-hardening"
-parent_spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec.md"
-status: "complete"
-execution_model: "same_branch_commit_per_subtask"
-base_branch: "main"
-feature_branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
+contract_version: '0.2'
+issue_key: SKILL
+feature_name: 52.1-hexagonal-runtime-hardening
+parent_spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec.md
+status: complete
+execution_model: same_branch_commit_per_subtask
+base_branch: main
+feature_branch: feat/SKILL-52.1-hexagonal-runtime-hardening
 stack_branches: []
 current_subtask_intent:
   subtask_id: 0
-  action: "none"
+  action: none
 subtasks:
 - id: 1
-  name: "typed-boundary-foundation"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_1_typed-boundary-foundation.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
+  name: typed-boundary-foundation
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_1_typed-boundary-foundation.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
   commit_sha: null
-  workflow_id: "wfl-20260524-055555-ule6"
-  review_result:
-    review_session_id: "rvs-7c3a8e2f-1b4d-4f5c-9e8a-6b2c1d3e4f5a"
-    review_run_id: "rvw-20260524-064100-x7k2"
-    routed_skill: "bill-kotlin-code-review"
-    detected_stack: "kotlin"
-    execution_mode: "delegated"
-    specialists_run:
-    - "architecture"
-    - "platform-correctness"
-    - "testing"
-    - "api-contracts"
-    - "persistence"
-    iterations: 2
-    iteration_1_findings: 18
-    iteration_1_blockers: 5
-    iteration_1_majors: 8
-    iteration_1_minors: 12
-    iteration_1_nits: 2
-    iteration_2_findings: 0
-    iteration_2_verdict: "approve"
-    fix_loop_completed: true
-    applied_learnings: "none"
-    telemetry_payload_captured: true
-    key_fixes:
-    - "F-001 FQN-based allow-list lookup"
-    - "F-002 dropped blanket model-package skip"
-    - "F-003 new arch test enforces @OpenBoundaryMap docs parity"
-    - "F-004 collapsed wire-mapper triplication (deleted TestWorkflowResultWireMaps.kt)"
-    - "F-005 dropped db_path leak on update unknown-workflow error"
-    - "F-006 ARCHITECTURE.md allow-list parsed via HTML-comment markers"
-    - "F-007 added fixture-based negative test for raw-map scanner"
-    - "F-008 deferred-debt note for WorkflowContinueView raw maps"
-    - "F-009 OpenBoundaryMap moved to neutral skillbill.boundary package"
-  audit_result:
-    pass: true
-    per_criterion_count: 8
-    gaps: []
-    verdict: "all_pass"
-    iterations: 1
-  validation_result:
-    result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    detected_stack: "kotlin"
-    initial_failure_count: 0
-    final_failure_count: 0
-    iterations: 1
-    fixes_applied: "none"
-    goldens_byte_diff_zero: true
+  workflow_id: wfl-20260524-055555-ule6
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies: []
 - id: 2
-  name: "scaffold-ports-and-pure-policy"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_2_scaffold-ports-and-pure-policy.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: "d92ac9a"
-  workflow_id: "wfl-20260524-090650-c8ql"
-  review_result:
-    review_session_id: "rvs-skill52-1-sub2-20260524"
-    review_run_id: "rvw-20260524-095000-s52b"
-    routed_skill: "bill-kotlin-code-review"
-    detected_stack: "kotlin"
-    execution_mode: "delegated"
-    specialists_run:
-    - "architecture"
-    - "platform-correctness"
-    - "testing"
-    - "api-contracts"
-    - "testing-iter2"
-    iterations: 2
-    iteration_1_findings: 13
-    iteration_1_blockers: 0
-    iteration_1_majors: 1
-    iteration_1_minors: 12
-    iteration_1_nits: 3
-    iteration_2_findings: 0
-    iteration_2_verdict: "approve"
-    fix_loop_completed: true
-    applied_learnings: "none"
-    telemetry_payload_captured: true
-    fixes_applied: 12
-    fixes_deferred_subtask_3:
-    - "F-003 ScaffoldManifestPersistencePort capability-mixing"
-    key_fixes:
-    - "F-001 fixture-based negative test for scaffold-policy import regex (subtask-1\
-      \ F-007 pattern replicated)"
-    - "F-002 deleted duplicate sharedContractNote in infra-fs"
-    - "F-004 SHELL_CONTRACT_VERSION aliased to PLATFORM_PACK_SHELL_CONTRACT_VERSION\
-      \ (single source of truth)"
-    - "F-005 deleted private require* helpers in infra-fs ScaffoldService"
-    - "F-006/F-007 deleted unused dead request data classes"
-    - "F-008 removed phantom UnsupportedScaffoldService.kt allow-list entry"
-    - "F-009 added baseline_layers branch golden in PlatformPackManifestPolicyTest"
-    - "F-010 added optionalSpecialistSubagents type-shape negatives"
-    - "F-011 added skeleton_mode out-of-range + mutual-exclusion negatives"
-    - "F-012 strengthened parseBaselineLayerPayload field-prefix assertions"
-    - "F-013 added blank-string negative coverage"
-  audit_result:
-    pass: true
-    per_criterion_count: 8
-    verdict: "all_pass"
-    iterations: 1
-    gaps: []
-    evidence_anchors:
-      AC1: "runtime-domain/scaffold/policy/*.kt with focused unit tests; 11 functions\
-        \ extracted; IO-coupled validators stay in infra-fs"
-      AC2: "21 Files.* calls retained in infra-fs ScaffoldService.kt:265-1047; runtime-domain\
-        \ has zero Files.*"
-      AC3: "5 capability ports under ports/scaffold/<capability>/, 5 FileSystem<Capability>\
-        \ adapters"
-      AC4: "rollback test bodies unchanged; only single-line import additions in 3\
-        \ infra-fs tests"
-      AC5: "ImplementationOwnershipArchitectureTest.kt:347 production scan + :383\
-        \ iter-2 fixture-based regex test"
-      AC6: "ARCHITECTURE.md:438 new section + 18 legacy allow-list entries preserved\
-        \ verbatim"
-      AC7: "no CLI/MCP files touched in diff"
-      AC8: "implementation reported BUILD SUCCESSFUL; Step 6b authoritative rerun"
-  validation_result:
-    result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    detected_stack: "kotlin"
-    scope_type: "branch_diff"
-    initial_failure_count: 3
-    final_failure_count: 0
-    iterations: 2
-    duration_seconds: 120
-    failing_check_names:
-    - "runtime-ports:spotlessKotlin"
-    - "runtime-ports:detekt"
-    - "runtime-domain:detekt"
-    fixes_applied: "Threaded typed ScaffoldPlatformPackLoadRequest through ScaffoldSourceLoaderPort\
-      \ + FileSystemScaffoldSourceLoader (resolves spotless standard:filename and\
-      \ detekt MatchingDeclarationName on ScaffoldSourceLoaderModels.kt; also strengthens\
-      \ typed boundary in line with api-contracts feedback). Extracted helpers in\
-      \ PlatformPackManifestPolicyTest baseline-layers test (resolves detekt LongMethod\
-      \ 68>60). No suppressions."
-    telemetry_child_step:
-      tool: "quality_check_finished"
-      routed_skill: "bill-kotlin-quality-check"
-      detected_stack: "kotlin"
-      scope_type: "branch_diff"
-      initial_failure_count: 3
-      final_failure_count: 0
-      iterations: 2
-      result: "pass"
-      duration_seconds: 120
-      skill: "bill-quality-check"
-      failing_check_names:
-      - "runtime-ports:spotlessKotlin"
-      - "runtime-ports:detekt"
-      - "runtime-domain:detekt"
-      unsupported_reason: ""
-      mode: "orchestrated"
+  name: scaffold-ports-and-pure-policy
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_2_scaffold-ports-and-pure-policy.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
+  commit_sha: d92ac9a
+  workflow_id: wfl-20260524-090650-c8ql
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies:
   - subtask_id: 1
     optional: false
     skipped: false
 - id: 3
-  name: "scaffold-raw-map-elimination"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_scaffold-raw-map-elimination.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: "143e4c7"
-  workflow_id: "wfl-20260524-102450-fo9n"
-  review_result:
-    review_session_id: "rvs-skill52-1-sub3-20260524"
-    iterations: 2
-    iter1_review_run_id: "rvw-20260524-103200-s52c"
-    iter2_review_run_id: "rvw-20260524-103200-s52c-iter2"
-    routed_skill: "bill-kotlin-code-review"
-    detected_stack: "kotlin"
-    execution_mode: "delegated"
-    specialists_run_iter1:
-    - "architecture"
-    - "platform-correctness"
-    - "api-contracts"
-    - "persistence"
-    - "testing"
-    specialists_run_iter2:
-    - "architecture"
-    - "api-contracts"
-    - "testing"
-    iter1_findings: 13
-    iter1_blockers: 0
-    iter1_majors: 5
-    iter1_minors: 7
-    iter1_nits: 1
-    iter1_accepted: 9
-    iter1_rejected: 4
-    iter1_fix_categories:
-      F-001: "DI-bound orchestrator (FileSystemScaffoldOrchestrator) replaces file-static\
-        \ singletons"
-      F-003: "requireScalar/requireInt helpers with InvalidScaffoldPayloadError typed\
-        \ throws"
-      F-004: "ScaffoldMcpResultMappers.kt deleted (dead code)"
-      F-005: "LEGACY_FORBIDDEN_TOP_LEVEL_REGEX modifier-agnostic + fixture coverage"
-      F-006: "carved validator visibility tightened to internal"
-      F-007: "positive substrings anchored with `(` + DOT_MATCHES_ALL on gateway regex\
-        \ + fixture"
-      F-010: "init {} typed/payload invariants on 7 typed result models"
-      F-011: "KDoc references aligned with producer reality (mapOf+mapOf / mutateContent+mapOf\
-        \ / mutableMapOf)"
-      F-012: "Number widening for Int lifts via requireInt"
-    iter1_deferred_to_subtask_4:
-    - "F-002 desktop payload reads (doc note added to ARCHITECTURE.md)"
-    - "F-008 ScaffoldValidateStatus enum"
-    - "F-009 ScaffoldShowResult completion_status lift"
-    - "F-013 filename allow-list"
-    iter2_findings: 3
-    iter2_blockers: 0
-    iter2_majors: 0
-    iter2_verdict: "approve"
-    iter2_residuals_minor_nit:
-    - "F-016 ScaffoldStandaloneEntrypoint visibility"
-    - "F-018 gateway regex companion-object extraction"
-    - "F-019 KDoc/comment false-positive negative case"
-    fix_loop_completed: true
-    applied_learnings: "none"
-    telemetry_payload_captured: true
-    mcp_transport: "session_tool_path_ok"
-  audit_result:
-    pass: true
-    iterations: 1
-    per_criterion_count: 8
-    verdict_breakdown:
-      pass: 7
-      partial: 1
-      fail: 0
-    evidence_anchors:
-      AC1: "FileSystemScaffoldRepoValidation.kt:69/93/127/143 (optionalBaselineLayers,\
-        \ validateBaselineLayerPayloadReferences, validateScaffold, plannedAuthoringTarget)\
-        \ + FileSystemScaffoldSourceLoader.kt:47/73 + ImplementationOwnershipArchitectureTest.kt:384\
-        \ ownership + :449 LEGACY_FORBIDDEN_TOP_LEVEL_REGEX guard"
-      AC2: "ScaffoldGateways.kt:21-44 (8 producers typed) + application/ScaffoldService.kt:32-56\
-        \ typed + ImplementationOwnershipArchitectureTest.kt:540-566 gateway raw-map\
-        \ guard + :504-537 wrapped-signature fixture + RuntimeArchitectureTest.kt:1020-1021\
-        \ only scaffold input retained"
-      AC3: "ARCHITECTURE.md:243-283 typed-result-model pattern section + service/gateway\
-        \ prohibition"
-      AC4: "CliScaffoldRuntimeTest.kt 8 @Test cases + McpRuntimeTest.kt:147 newSkillScaffold\
-        \ envelope + ScaffoldCliResultMappers.kt:31-45 payload pass-through preserves\
-        \ order + FileSystemScaffoldGateway.kt:42-108 verbatim AuthoringOperations\
-        \ payload forwarded into typed model + gradlew check passes"
-      AC5: "ScaffoldCliResultMappers.kt in runtime-cli (adapter); application/ScaffoldService.kt\
-        \ is pure pass-through; ScaffoldMcpResultMappers.kt deleted during fix-loop\
-        \ F-004 since McpScaffoldRuntime only exposes newSkillScaffold (typed ScaffoldResult);\
-        \ ARCHITECTURE.md:256-259 documents the MCP-mapper deferral rationale. PARTIAL\
-        \ verdict: spec literal wording requires both mappers; implementer interpretation\
-        \ 'mappers in adapter modules only when adapter has raw-map endpoint' accepted\
-        \ per auditor recommendation."
-      AC6: "16 producer entries deleted from RuntimeArchitectureTest.kt + 2 input\
-        \ entries retained at :1020-1021 (subtask 4 scope); 8 new typed-model payload\
-        \ FQNs added at :1104-1111; matching ARCHITECTURE.md:375-382 entries between\
-        \ markers"
-      AC7: "ScaffoldServiceParityTest.kt:603 rollback test unchanged; ScaffoldStandaloneEntrypoint.kt:22-31\
-        \ preserves test entrypoint with seamed adapters; ScaffoldService.kt:769-781\
-        \ rollback flow untouched"
-      AC8: "implementer claim: gradlew check passes after fix-loop"
-    gaps:
-    - criterion_id: 5
-      missing: "Spec literal vs implementer interpretation re: MCP mapper file existence"
-      suggested_fix: "Accept implementer interpretation; deferred-debt documented\
-        \ in ARCHITECTURE.md:256-259. Optionally amend decomposition manifest to record\
-        \ AC5 intent."
-      resolution: "accepted"
-  validation_result:
-    result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    detected_stack: "kotlin"
-    scope_type: "branch_diff"
-    initial_failure_count: 0
-    final_failure_count: 0
-    iterations: 1
-    duration_seconds: 2
-    fixes_applied: "None required — ./gradlew check passed first run (BUILD SUCCESSFUL,\
-      \ 248 tasks). No detekt LongMethod/ThrowsCount or other violations surfaced\
-      \ in the diff scope."
-    failing_check_names: []
-    telemetry_child_step:
-      tool: "quality_check_finished"
-      routed_skill: "bill-kotlin-quality-check"
-      detected_stack: "kotlin"
-      scope_type: "branch_diff"
-      initial_failure_count: 0
-      final_failure_count: 0
-      iterations: 1
-      result: "pass"
-      duration_seconds: 2
-      skill: "bill-quality-check"
-      failing_check_names: []
-      unsupported_reason: ""
-      mode: "orchestrated"
+  name: scaffold-raw-map-elimination
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_scaffold-raw-map-elimination.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
+  commit_sha: 143e4c7
+  workflow_id: wfl-20260524-102450-fo9n
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies:
   - subtask_id: 1
     optional: false
@@ -325,29 +52,14 @@ subtasks:
     optional: false
     skipped: false
 - id: 4
-  name: "install-policy-extraction"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_install-policy-extraction.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: "7bfbe9a"
-  workflow_id: "wfl-20260524-114234-ex4i"
-  review_result:
-    nested_manifest: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy-extraction/decomposition-manifest.yaml"
-    child_workflows:
-    - "wfl-20260524-120003-jhue"
-    - "wfl-20260524-132601-u4fi"
-    - "wfl-20260524-150908-jz8c"
-    final_verdict: "approve"
-  audit_result:
-    pass: true
-    verdict: "all_pass"
-    nested_manifest: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy-extraction/decomposition-manifest.yaml"
-  validation_result:
-    result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    nested_manifest: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy-extraction/decomposition-manifest.yaml"
+  name: install-policy-extraction
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_install-policy-extraction.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
+  commit_sha: 7bfbe9a
+  workflow_id: wfl-20260524-114234-ex4i
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies:
   - subtask_id: 1
     optional: false
@@ -359,163 +71,14 @@ subtasks:
     optional: false
     skipped: false
 - id: 5
-  name: "path-policy-and-core-shrink"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_4_path-policy-and-core-shrink.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: "21f8b2f"
-  workflow_id: "wfl-20260524-155748-mjk4"
-  review_result:
-    review_session_id: "fis-20260524-155742-glj1"
-    review_run_id: "review-SKILL-52.1-subtask4-20260524T164331Z-final"
-    routed_skill: "bill-kotlin-code-review"
-    detected_stack: "kotlin"
-    scope: "branch_diff"
-    execution_mode: "delegated"
-    specialists:
-    - "architecture"
-    - "platform-correctness"
-    - "api-contracts"
-    - "testing"
-    iterations: 4
-    final_findings: 0
-    verdict: "pass"
-    fixed_findings:
-    - "Resolved RuntimeContext sentinel defaults at RuntimeComponent and public adapter\
-      \ boundaries."
-    - "Resolved HttpTelemetryClient requester sentinel at the public adapter boundary."
-    - "Restored desktop environment propagation into RuntimeComponent."
-    - "Moved review and telemetry home expansion to adapter/composition seams and\
-      \ added adapter tests."
-    - "Strengthened runtime-core direct and transitive public ABI tests/docs."
-    - "Broadened domain/port bans for filesystem, process, JDBC, HTTP, Clikt, entrypoint\
-      \ and infrastructure dependencies."
-    validation:
-    - "Focused architecture and HTTP compile checks passed."
-    - "(cd runtime-kotlin && ./gradlew check) passed."
-    telemetry_payload:
-      total_findings: 0
-      accepted_findings: 0
-      unresolved_findings: 0
-      accepted_rate: 0.0
-      accepted_finding_details: []
-      rejected_finding_details: []
-      review_run_id: "review-SKILL-52.1-subtask4-20260524T164331Z-final"
-      review_session_id: "fis-20260524-155742-glj1"
-      routed_skill: "bill-kotlin-code-review"
-      review_subskills:
-      - "architecture"
-      - "platform-correctness"
-      - "api-contracts"
-      - "testing"
-      review_scope: "branch_diff"
-      review_platform: "kotlin"
-      execution_mode: "delegated"
-      review_finished_at: "2026-05-24 16:44:05"
-      learnings:
-        applied_count: 0
-        applied_references: []
-        applied_summary: "none"
-        scope_counts:
-          global: 0
-          repo: 0
-          skill: 0
-        entries: []
-      skill: "bill-code-review"
-  audit_result:
-    pass: true
-    iterations: 1
-    per_criterion:
-    - criterion: 1
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/ARCHITECTURE.md:416"
-      - "runtime-kotlin/ARCHITECTURE.md:419"
-      notes: "Path is documented as an inert value type; filesystem IO, home expansion,\
-        \ System.getProperty, and environment reads are adapter/composition concerns."
-    - criterion: 2
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:112"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:132"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:152"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:212"
-      notes: "Architecture tests cover direct file IO, process/home lookup, JDBC,\
-        \ HTTP, Clikt, MCP/Desktop/infrastructure import bans for application/domain/ports."
-    - criterion: 3
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/review/ReviewParsingPatterns.kt:1"
-      - "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemReviewInputSource.kt:26"
-      - "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemReviewInputSource.kt:37"
-      - "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileTelemetryConfigStore.kt:47"
-      notes: "Domain review parsing no longer contains expandAndNormalizePath; path/home\
-        \ normalization now lives in fs adapter code."
-    - criterion: 4
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-core/build.gradle.kts:12"
-      - "runtime-kotlin/runtime-core/build.gradle.kts:14"
-      - "runtime-kotlin/ARCHITECTURE.md:53"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeImplementationImportRules.kt:32"
-      notes: "runtime-domain is implementation-only; remaining api edges are runtime-application/runtime-ports,\
-        \ documented as Kotlin-Inject ABI edges and tested."
-    - criterion: 5
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:121"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:139"
-      - "runtime-kotlin/runtime-core/src/main/kotlin/skillbill/RuntimeModule.kt"
-      - "runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponent.kt"
-      notes: "runtime-core main source is limited to skillbill and skillbill.di, with\
-        \ no implementation package files."
-    - criterion: 6
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-cli/build.gradle.kts:9"
-      - "runtime-kotlin/runtime-mcp/build.gradle.kts:11"
-      - "runtime-kotlin/runtime-desktop/core/data/build.gradle.kts:15"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:265"
-      notes: "CLI, MCP, and Desktop data declare direct runtime dependencies beside\
-        \ runtime-core; tests reject runtime-core API umbrella use."
-    - criterion: 7
-      status: "pass"
-      evidence:
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:117"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeImplementationImportRules.kt:7"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeImplementationImportRulesTest.kt:7"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:354"
-      notes: "New coverage rejects runtime-core implementation packages/re-export\
-        \ growth and adapter imports of low-level runtime implementation packages."
-    - criterion: 8
-      status: "pass"
-      evidence:
-      - "(cd runtime-kotlin && ./gradlew check): BUILD SUCCESSFUL"
-      notes: "Full Gradle check passed against the current working tree."
-    gaps: []
-  validation_result:
-    validation_result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    detected_stack: "kotlin"
-    initial_failure_count: 0
-    final_failure_count: 0
-    iterations: 1
-    failing_check_names: []
-    fixes_applied: "none"
-    notes: "(cd runtime-kotlin && ./gradlew check) passed cleanly on the first run;\
-      \ no files edited."
-    telemetry_payload:
-      routed_skill: "bill-kotlin-quality-check"
-      detected_stack: "kotlin"
-      scope_type: "working_tree"
-      initial_failure_count: 0
-      final_failure_count: 0
-      iterations: 1
-      result: "pass"
-      duration_seconds: 1
-      skill: "bill-quality-check"
+  name: path-policy-and-core-shrink
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_4_path-policy-and-core-shrink.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
+  commit_sha: 21f8b2f
+  workflow_id: wfl-20260524-155748-mjk4
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies:
   - subtask_id: 1
     optional: false
@@ -530,169 +93,14 @@ subtasks:
     optional: false
     skipped: false
 - id: 6
-  name: "final-validation-and-contract-lock"
-  spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_5_final-validation-and-contract-lock.md"
-  status: "complete"
-  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: "52f7986"
-  workflow_id: "wfl-20260524-170101-0nwq"
-  review_result:
-    review_session_id: "rvs-skill52-1-final-validation-20260524"
-    review_run_id: "rvw-20260524-171300-s52final"
-    routed_skill: "bill-code-review"
-    detected_stack: "documentation/governance"
-    execution_mode: "inline-orchestrator"
-    iterations: 1
-    initial_findings: 1
-    initial_blockers: 0
-    initial_majors: 1
-    final_findings: 0
-    final_verdict: "approve"
-    fix_loop_completed: true
-    accepted_findings:
-    - finding_id: "F-001"
-      severity: "Major"
-      confidence: "High"
-      outcome_type: "fix_applied"
-      location: "runtime-kotlin/agent/decisions.md:25"
-      description: "Corrected dual install-plan validation decision wording from CLI/MCP\
-        \ JSON emission to CLI JSON emission."
-    telemetry_payload:
-      total_findings: 0
-      accepted_findings: 0
-      unresolved_findings: 0
-      accepted_rate: 0.0
-      accepted_finding_details: []
-      rejected_finding_details: []
-      review_run_id: "rvw-20260524-171300-s52final"
-      review_session_id: "rvs-skill52-1-final-validation-20260524"
-      routed_skill: null
-      review_subskills: []
-      review_scope: ""
-      review_platform: "documentation/governance"
-      execution_mode: null
-      review_finished_at: "2026-05-24 17:12:01"
-      learnings:
-        applied_count: 0
-        applied_references: []
-        applied_summary: "none"
-        scope_counts:
-          global: 0
-          repo: 0
-          skill: 0
-        entries: []
-      skill: "bill-code-review"
-  audit_result:
-    pass: true
-    per_criterion:
-    - id: 1
-      criterion: "(cd runtime-kotlin && ./gradlew check) passes from a clean state."
-      verdict: "pass"
-      evidence:
-      - "command: (cd runtime-kotlin && ./gradlew check) -> exit 0; BUILD SUCCESSFUL"
-      - "command: (cd runtime-kotlin && ./gradlew clean check) -> exit 0; BUILD SUCCESSFUL\
-        \ in 8s"
-    - id: 2
-      criterion: "skill-bill validate passes."
-      verdict: "pass"
-      evidence:
-      - "command: skill-bill validate -> exit 0; status: pass; issues: []"
-    - id: 3
-      criterion: "scripts/validate_agent_configs passes."
-      verdict: "pass"
-      evidence:
-      - "command: scripts/validate_agent_configs -> exit 0; Agent-config validation\
-        \ passed"
-    - id: 4
-      criterion: "npx --yes agnix --strict . passes."
-      verdict: "pass"
-      evidence:
-      - "command: npx --yes agnix --strict . -> exit 0; No issues found"
-    - id: 5
-      criterion: "No generated support pointers, SKILL.md wrappers, native-agent outputs,\
-        \ or install staging artifacts are committed."
-      verdict: "pass"
-      evidence:
-      - "command: git status --short -> only .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/decomposition-manifest.yaml,\
-        \ agent/history.md, runtime-kotlin/agent/decisions.md, runtime-kotlin/agent/history.md\
-        \ modified"
-      - "command: git ls-files forbidden SKILL.md/native-output/staging patterns ->\
-        \ empty"
-      - "command: git ls-files --others --exclude-standard forbidden SKILL.md/native-output/staging\
-        \ patterns -> empty"
-      - "command: git ls-files forbidden support-pointer filename patterns -> empty"
-    - id: 6
-      criterion: "Boundary history is updated for the touched modules with reusable,\
-        \ high-signal entries (no churn-only entries)."
-      verdict: "pass"
-      evidence:
-      - "agent/history.md:1"
-      - "agent/history.md:3"
-      - "agent/history.md:4"
-      - "runtime-kotlin/agent/history.md:1"
-      - "runtime-kotlin/agent/history.md:3"
-      - "runtime-kotlin/agent/history.md:4"
-    - id: 7
-      criterion: "Architecture decisions are recorded in agent/decisions.md for: Path\
-        \ policy, install-plan dual-validation seam preservation, any retained narrow\
-        \ runtime-core public edge."
-      verdict: "pass"
-      evidence:
-      - "runtime-kotlin/agent/decisions.md:7"
-      - "runtime-kotlin/agent/decisions.md:13"
-      - "runtime-kotlin/agent/decisions.md:21"
-      - "runtime-kotlin/agent/decisions.md:27"
-      - "runtime-kotlin/agent/decisions.md:34"
-      - "runtime-kotlin/agent/decisions.md:40"
-    - id: 8
-      criterion: "runtime-kotlin/ARCHITECTURE.md documents all new rules introduced\
-        \ by SKILL-52.1 (raw-map exceptions, Path policy, runtime-core shrink rule)."
-      verdict: "pass"
-      evidence:
-      - "runtime-kotlin/ARCHITECTURE.md:51"
-      - "runtime-kotlin/ARCHITECTURE.md:53"
-      - "runtime-kotlin/ARCHITECTURE.md:60"
-      - "runtime-kotlin/ARCHITECTURE.md:206"
-      - "runtime-kotlin/ARCHITECTURE.md:221"
-      - "runtime-kotlin/ARCHITECTURE.md:416"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureDocumentationTest.kt:61"
-    - id: 9
-      criterion: "Parent ACs 1-12 are collectively satisfied across the 5 subtasks\
-        \ (verified by green arch tests + golden tests + validation suite)."
-      verdict: "pass"
-      evidence:
-      - "command: (cd runtime-kotlin && ./gradlew clean check) -> exit 0; BUILD SUCCESSFUL"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:153"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:573"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt:703"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ImplementationOwnershipArchitectureTest.kt:117"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeImplementationImportRules.kt:52"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/InstallPolicyOwnershipArchitectureTest.kt:24"
-      - "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/InstallPolicyOwnershipArchitectureTest.kt:83"
-      - "runtime-kotlin/runtime-cli/src/test/kotlin/skillbill/cli/CliInstallPlanApplyRuntimeTest.kt:322"
-      - "command: skill-bill validate -> exit 0"
-      - "command: scripts/validate_agent_configs -> exit 0"
-      - "command: npx --yes agnix --strict . -> exit 0"
-    gaps: []
-  validation_result:
-    validation_result: "pass"
-    routed_skill: "bill-kotlin-quality-check"
-    detected_stack: "kotlin"
-    initial_failure_count: 0
-    final_failure_count: 0
-    fixes_applied: "No fixes applied; all required gates passed on first run."
-    telemetry_payload:
-      routed_skill: "bill-kotlin-quality-check"
-      detected_stack: "kotlin"
-      scope_type: "branch_diff"
-      initial_failure_count: 0
-      final_failure_count: 0
-      iterations: 1
-      result: "pass"
-      duration_seconds: 5
-      skill: "bill-quality-check"
+  name: final-validation-and-contract-lock
+  spec_path: .feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_5_final-validation-and-contract-lock.md
+  status: complete
+  branch: feat/SKILL-52.1-hexagonal-runtime-hardening
+  commit_sha: 52f7986
+  workflow_id: wfl-20260524-170101-0nwq
   blocked_reason: null
-  last_resumable_step: "finish"
+  last_resumable_step: finish
   dependencies:
   - subtask_id: 1
     optional: false

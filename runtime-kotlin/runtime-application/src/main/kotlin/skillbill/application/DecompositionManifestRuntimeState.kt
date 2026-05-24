@@ -68,9 +68,6 @@ internal fun DecompositionManifest.withPreservedRuntimeState(existing: Decomposi
         branch = previous.branch,
         commitSha = previous.commitSha,
         workflowId = previous.workflowId,
-        reviewResult = previous.reviewResult,
-        auditResult = previous.auditResult,
-        validationResult = previous.validationResult,
         blockedReason = previous.blockedReason,
         lastResumableStep = previous.lastResumableStep,
       )
