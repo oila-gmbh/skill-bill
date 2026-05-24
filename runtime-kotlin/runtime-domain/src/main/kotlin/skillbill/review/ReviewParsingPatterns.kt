@@ -1,7 +1,5 @@
 package skillbill.review
 
-import java.nio.file.Path
-
 val reviewRunIdPattern =
   Regex(
     "^Review run ID:\\s*(?<value>[A-Za-z0-9._:-]+)\\s*$",
@@ -47,14 +45,3 @@ val severityAliases: Map<String, String> =
     "minor" to "Minor",
     "info" to "Minor",
   )
-
-fun expandAndNormalizePath(rawPath: String): Path {
-  val userHome = Path.of(System.getProperty("user.home"))
-  val normalized =
-    when {
-      rawPath == "~" -> userHome.toString()
-      rawPath.startsWith("~/") -> userHome.resolve(rawPath.removePrefix("~/")).toString()
-      else -> rawPath
-    }
-  return Path.of(normalized).toAbsolutePath().normalize()
-}

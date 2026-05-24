@@ -31,9 +31,6 @@ fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
       "branch" to subtask.branch,
       "commit_sha" to subtask.commitSha,
       "workflow_id" to subtask.workflowId,
-      "review_result" to subtask.reviewResult,
-      "audit_result" to subtask.auditResult,
-      "validation_result" to subtask.validationResult,
       "blocked_reason" to subtask.blockedReason,
       "last_resumable_step" to subtask.lastResumableStep,
       "dependencies" to subtask.dependencies.map { dependency ->

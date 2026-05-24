@@ -6,14 +6,20 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.WorkflowContinueDecision
+import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowResumeView
+import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.workflow.model.WorkflowStepState
+import skillbill.workflow.model.WorkflowSummaryView
 import skillbill.workflow.model.WorkflowUpdateInput
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -33,14 +39,11 @@ object WorkflowEngine {
    * SKILL-48 Subtask 2a: builds the canonical snapshot-shape map for the
    * given [record], validates it against the workflow-state schema, and
    * returns the validated map for callers to derive their payloads from.
-   * Centralising the field set here means `openRecord` / `updateRecord`
-   * / `fullPayload` / `summaryPayload` cannot drift on the snapshot
-   * envelope — they all reuse the same map builder.
    *
-   * The map is the schema-shaped snapshot envelope, NOT the resume /
-   * continue derivatives. The derivatives are validated transitively
-   * because they are constructed from this map (no additional snapshot
-   * fields are injected downstream).
+   * SKILL-52.1: kept PRIVATE and `Map<String, Any?>`-shaped because the
+   * schema validator validates against the canonical map envelope. The
+   * map shape never escapes this object — every public surface returns a
+   * typed view derived from this map.
    */
   private fun validatedSnapshotMap(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> {
     val snapshot = linkedMapOf<String, Any?>(
@@ -139,51 +142,57 @@ object WorkflowEngine {
     )
     // SKILL-48 Subtask 2a: validate the updated snapshot. `validateUpdate`
     // already loud-fails on enum/required violations, but the schema
-    // catches structural drift the validator does not (e.g. per-skill
-    // status divergence after the definition itself moves).
+    // catches structural drift the validator does not.
     validatedSnapshotMap(definition, updated)
     return updated
   }
 
-  fun fullPayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> =
-    // SKILL-48 Subtask 2a: every payload returned to the caller is derived
-    // from a validated snapshot map. Validation happens once per call so
-    // even snapshots reconstituted from the durable store loud-fail at
-    // the read seam if the on-disk shape ever drifted.
-    WorkflowContracts.fullWorkflowPayload(validatedSnapshotMap(definition, record))
+  /**
+   * SKILL-52.1: returns the typed snapshot view. Map-shaped derivative
+   * still passes through the schema validator at construction time via
+   * [validatedSnapshotMap].
+   */
+  fun snapshotView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowSnapshotView {
+    val map = validatedSnapshotMap(definition, record)
+    return snapshotViewFromMap(map)
+  }
 
-  fun summaryPayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> =
-    // SKILL-48 Subtask 2a: validate the full snapshot envelope, then
-    // derive the summary payload (which strips `steps`/`artifacts`). The
-    // schema covers the full envelope, so deriving the summary AFTER the
-    // validator runs keeps the parse seam authoritative.
-    WorkflowContracts.summaryWorkflowPayload(validatedSnapshotMap(definition, record))
+  fun summaryView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowSummaryView {
+    val map = validatedSnapshotMap(definition, record)
+    return WorkflowSummaryView(
+      workflowId = map["workflow_id"] as String,
+      sessionId = map["session_id"] as String,
+      workflowName = map["workflow_name"] as String,
+      contractVersion = map["contract_version"] as String,
+      workflowStatus = map["workflow_status"] as String,
+      currentStepId = map["current_step_id"] as String,
+      startedAt = map["started_at"] as String,
+      updatedAt = map["updated_at"] as String,
+      finishedAt = map["finished_at"] as String,
+    )
+  }
 
-  fun resumePayload(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> {
-    val payload = fullPayload(definition, record)
-    val workflowStatus = payload["workflow_status"] as String
-    val currentStepId = payload["current_step_id"] as String
-    val steps = payload["steps"].asStepList()
-    val artifacts = payload["artifacts"].asStringAnyMap()
-    val stepsById = steps.associateBy { it["step_id"].toString() }
+  fun resumeView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowResumeView {
+    val snapshot = snapshotView(definition, record)
+    val stepsById = snapshot.steps.associateBy { it.stepId }
     val lastCompletedStepId =
-      definition.stepIds.lastOrNull { stepId -> stepsById[stepId]?.get("status") == "completed" }.orEmpty()
+      definition.stepIds.lastOrNull { stepId -> stepsById[stepId]?.status == "completed" }.orEmpty()
 
-    var resumeStepId = currentStepId
+    var resumeStepId = snapshot.currentStepId
     val resumeMode =
       when {
-        workflowStatus == "completed" -> "done"
-        workflowStatus in definition.terminalStatuses -> "recover"
+        snapshot.workflowStatus == "completed" -> "done"
+        snapshot.workflowStatus in definition.terminalStatuses -> "recover"
         else -> "resume"
       }
-    if (resumeMode == "resume" && stepsById[currentStepId]?.get("status") == "completed") {
+    if (resumeMode == "resume" && stepsById[snapshot.currentStepId]?.status == "completed") {
       resumeStepId =
-        definition.stepIds.firstOrNull { stepId -> stepsById[stepId]?.get("status") in resumableStepStatuses }
-          ?: currentStepId
+        definition.stepIds.firstOrNull { stepId -> stepsById[stepId]?.status in resumableStepStatuses }
+          ?: snapshot.currentStepId
     }
-    val availableArtifacts = artifacts.keys.sorted()
+    val availableArtifacts = snapshot.artifacts.keys.sorted()
     val requiredArtifacts = definition.requiredArtifactsByStep[resumeStepId].orEmpty()
-    val missingArtifacts = requiredArtifacts.filterNot(artifacts::containsKey)
+    val missingArtifacts = requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
     val canResume = resumeMode != "done" && missingArtifacts.isEmpty()
     val nextAction =
       if (resumeMode == "done") {
@@ -192,18 +201,16 @@ object WorkflowEngine {
         definition.resumeActions[resumeStepId]
           ?: "Inspect workflow state, refresh missing artifacts, and continue from the current step."
       }
-    return WorkflowContracts.resumePayload(
-      payload,
-      mapOf(
-        "resume_mode" to resumeMode,
-        "resume_step_id" to resumeStepId,
-        "last_completed_step_id" to lastCompletedStepId,
-        "available_artifacts" to availableArtifacts,
-        "required_artifacts" to requiredArtifacts,
-        "missing_artifacts" to missingArtifacts,
-        "can_resume" to canResume,
-        "next_action" to nextAction,
-      ),
+    return WorkflowResumeView(
+      snapshot = snapshot,
+      resumeMode = resumeMode,
+      resumeStepId = resumeStepId,
+      lastCompletedStepId = lastCompletedStepId,
+      availableArtifacts = availableArtifacts,
+      requiredArtifacts = requiredArtifacts,
+      missingArtifacts = missingArtifacts,
+      canResume = canResume,
+      nextAction = nextAction,
     )
   }
 
@@ -212,82 +219,182 @@ object WorkflowEngine {
     record: WorkflowStateSnapshot,
     sessionSummary: Map<String, Any?> = emptyMap(),
   ): WorkflowContinueDecision {
-    val resumePayload = resumePayload(definition, record)
-    val workflowStatusBefore = resumePayload["workflow_status"] as String
-    val resumeMode = resumePayload["resume_mode"] as String
-    val resumeStepId = resumePayload["resume_step_id"] as String
-    val currentStepId = resumePayload["current_step_id"] as String
-    val artifacts = resumePayload["artifacts"].asStringAnyMap()
-    val steps = resumePayload["steps"].asStepList()
-    val canResume = resumePayload["can_resume"] as Boolean
-    val stepArtifacts = continueArtifactKeys(definition, resumeStepId, artifacts)
-    val currentStep = steps.firstOrNull { it["step_id"] == resumeStepId }.orEmpty()
-    val attemptCount = currentStep["attempt_count"].asExactIntOrNull() ?: 0
+    val resume = resumeView(definition, record)
+    val snapshot = resume.snapshot
+    val currentStep = snapshot.steps.firstOrNull { it.stepId == resume.resumeStepId }
+    val attemptCount = currentStep?.attemptCount ?: 0
     val alreadyRunning =
-      workflowStatusBefore == "running" &&
-        currentStepId == resumeStepId &&
-        currentStep["status"] == "running"
+      snapshot.workflowStatus == "running" &&
+        snapshot.currentStepId == resume.resumeStepId &&
+        currentStep?.status == "running"
     val continueStatus =
       when {
-        resumeMode == "done" -> "done"
-        canResume && alreadyRunning -> "already_running"
-        canResume -> "reopened"
+        resume.resumeMode == "done" -> "done"
+        resume.canResume && alreadyRunning -> "already_running"
+        resume.canResume -> "reopened"
         else -> "blocked"
       }
+    val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot.artifacts)
+    val stepArtifacts = stepArtifactKeys.associateWith { snapshot.artifacts.getValue(it) }
     val extraFields =
       if (definition.skillName == "bill-feature-implement") {
-        implementExtraFields(artifacts)
+        implementExtraFields(snapshot.artifacts)
       } else {
         emptyMap()
       }
-    val payload =
-      WorkflowContracts.continuePayload(
-        resumePayload,
-        mapOf(
-          "skill_name" to definition.skillName,
-          "workflow_status_before_continue" to workflowStatusBefore,
-          "continue_status" to continueStatus,
-          "continue_step_id" to resumeStepId,
-          "continue_step_label" to (definition.stepLabels[resumeStepId] ?: resumeStepId),
-          "continue_step_directive" to (
-            definition.continuationDirectives[resumeStepId]
-              ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context."
-            ),
-          "reference_sections" to definition.continuationReferenceSections[resumeStepId].orEmpty(),
-          "step_artifact_keys" to stepArtifacts,
-          "step_artifacts" to stepArtifacts.associateWith { artifacts.getValue(it) },
-          "session_summary" to sessionSummary,
-          "continuation_brief" to
-            continuationBrief(
-              definition = definition,
-              workflowId = record.workflowId,
-              resumeStepId = resumeStepId,
-              continueStatus = continueStatus,
-              nextAction = resumePayload["next_action"].toString(),
-              artifactKeys = stepArtifacts,
-            ),
-          "continuation_entry_prompt" to
-            continuationEntryPrompt(
-              definition = definition,
-              workflowId = record.workflowId,
-              sessionId = record.sessionId.orEmpty(),
-              resumeStepId = resumeStepId,
-              continueStatus = continueStatus,
-              artifactKeys = stepArtifacts,
-              nextAction = resumePayload["next_action"].toString(),
-              sessionSummary = sessionSummary,
-              extraFields = extraFields,
-            ),
-          "extra_fields" to extraFields,
-        ),
-      )
+    val continuationBrief = continuationBrief(
+      definition = definition,
+      workflowId = record.workflowId,
+      resumeStepId = resume.resumeStepId,
+      continueStatus = continueStatus,
+      nextAction = resume.nextAction,
+      artifactKeys = stepArtifactKeys,
+    )
+    val continuationEntryPrompt = continuationEntryPrompt(
+      definition = definition,
+      workflowId = record.workflowId,
+      sessionId = record.sessionId.orEmpty(),
+      resumeStepId = resume.resumeStepId,
+      continueStatus = continueStatus,
+      artifactKeys = stepArtifactKeys,
+      nextAction = resume.nextAction,
+      sessionSummary = sessionSummary,
+      extraFields = extraFields,
+    )
+    val view = WorkflowContinueView(
+      resume = resume,
+      skillName = definition.skillName,
+      workflowStatusBeforeContinue = snapshot.workflowStatus,
+      continueStatus = continueStatus,
+      continueStepId = resume.resumeStepId,
+      continueStepLabel = definition.stepLabels[resume.resumeStepId] ?: resume.resumeStepId,
+      continueStepDirective = definition.continuationDirectives[resume.resumeStepId]
+        ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
+      referenceSections = definition.continuationReferenceSections[resume.resumeStepId].orEmpty(),
+      stepArtifactKeys = stepArtifactKeys,
+      stepArtifacts = stepArtifacts,
+      extraFields = extraFields,
+      sessionSummary = sessionSummary,
+      continuationBrief = continuationBrief,
+      continuationEntryPrompt = continuationEntryPrompt,
+    )
     return WorkflowContinueDecision(
-      payload = payload,
+      view = view,
       shouldReopen = continueStatus == "reopened",
-      resumeStepId = resumeStepId,
+      resumeStepId = resume.resumeStepId,
       nextAttemptCount = maxOf(attemptCount + 1, 1),
     )
   }
+
+  /**
+   * SKILL-52.1: open-boundary serializer that produces the wire-shape
+   * ordered map for a snapshot view. Used by CLI/MCP adapter mappers
+   * to preserve byte-equivalent JSON payloads against goldens. The map
+   * shape is locked by `WorkflowContracts.fullWorkflowPayload`.
+   */
+  @OpenBoundaryMap("Wire-shape ordered snapshot map for CLI/MCP adapters")
+  fun snapshotMap(view: WorkflowSnapshotView): Map<String, Any?> = WorkflowContracts.fullWorkflowPayload(
+    linkedMapOf(
+      "workflow_id" to view.workflowId,
+      "session_id" to view.sessionId,
+      "workflow_name" to view.workflowName,
+      "contract_version" to view.contractVersion,
+      "workflow_status" to view.workflowStatus,
+      "current_step_id" to view.currentStepId,
+      "steps" to view.steps.map(::stepMap),
+      "artifacts" to view.artifacts,
+      "started_at" to view.startedAt,
+      "updated_at" to view.updatedAt,
+      "finished_at" to view.finishedAt,
+    ),
+  )
+
+  @OpenBoundaryMap("Wire-shape ordered summary map for CLI/MCP adapters")
+  fun summaryMap(view: WorkflowSummaryView): Map<String, Any?> = WorkflowContracts.summaryWorkflowPayload(
+    linkedMapOf(
+      "workflow_id" to view.workflowId,
+      "session_id" to view.sessionId,
+      "workflow_name" to view.workflowName,
+      "contract_version" to view.contractVersion,
+      "workflow_status" to view.workflowStatus,
+      "current_step_id" to view.currentStepId,
+      "started_at" to view.startedAt,
+      "updated_at" to view.updatedAt,
+      "finished_at" to view.finishedAt,
+    ),
+  )
+
+  @OpenBoundaryMap("Wire-shape ordered resume map for CLI/MCP adapters")
+  fun resumeMap(view: WorkflowResumeView): Map<String, Any?> = WorkflowContracts.resumePayload(
+    snapshotMap(view.snapshot),
+    linkedMapOf(
+      "resume_mode" to view.resumeMode,
+      "resume_step_id" to view.resumeStepId,
+      "last_completed_step_id" to view.lastCompletedStepId,
+      "available_artifacts" to view.availableArtifacts,
+      "required_artifacts" to view.requiredArtifacts,
+      "missing_artifacts" to view.missingArtifacts,
+      "can_resume" to view.canResume,
+      "next_action" to view.nextAction,
+    ),
+  )
+
+  @OpenBoundaryMap("Wire-shape ordered continue map for CLI/MCP adapters")
+  fun continueMap(view: WorkflowContinueView): Map<String, Any?> = WorkflowContracts.continuePayload(
+    resumeMap(view.resume),
+    linkedMapOf(
+      "skill_name" to view.skillName,
+      "workflow_status_before_continue" to view.workflowStatusBeforeContinue,
+      "continue_status" to view.continueStatus,
+      "continue_step_id" to view.continueStepId,
+      "continue_step_label" to view.continueStepLabel,
+      "continue_step_directive" to view.continueStepDirective,
+      "reference_sections" to view.referenceSections,
+      "step_artifact_keys" to view.stepArtifactKeys,
+      "step_artifacts" to view.stepArtifacts,
+      "session_summary" to view.sessionSummary,
+      "continuation_brief" to view.continuationBrief,
+      "continuation_entry_prompt" to view.continuationEntryPrompt,
+      "extra_fields" to view.extraFields,
+    ),
+  )
+
+  private fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
+    @Suppress("UNCHECKED_CAST")
+    val rawSteps = map["steps"] as List<Map<String, Any?>>
+
+    @Suppress("UNCHECKED_CAST")
+    val artifacts = map["artifacts"] as Map<String, Any?>
+    val steps = rawSteps.map { stepMap ->
+      WorkflowStepState(
+        stepId = stepMap["step_id"] as String,
+        status = stepMap["status"] as String,
+        attemptCount = stepMap["attempt_count"].asExactIntOrNull()
+          ?: throw InvalidWorkflowStateSchemaError(
+            "Workflow state step attempt_count must decode to an integer.",
+          ),
+      )
+    }
+    return WorkflowSnapshotView(
+      workflowId = map["workflow_id"] as String,
+      sessionId = map["session_id"] as String,
+      workflowName = map["workflow_name"] as String,
+      contractVersion = map["contract_version"] as String,
+      workflowStatus = map["workflow_status"] as String,
+      currentStepId = map["current_step_id"] as String,
+      steps = steps,
+      artifacts = artifacts,
+      startedAt = map["started_at"] as String,
+      updatedAt = map["updated_at"] as String,
+      finishedAt = map["finished_at"] as String,
+    )
+  }
+
+  private fun stepMap(step: WorkflowStepState): Map<String, Any?> = linkedMapOf(
+    "step_id" to step.stepId,
+    "status" to step.status,
+    "attempt_count" to step.attemptCount,
+  )
 
   private fun defaultSteps(definition: WorkflowDefinition, initialStepId: String): List<Map<String, Any?>> {
     var seenInitial = false
@@ -473,11 +580,6 @@ object WorkflowEngine {
     }
 
   private fun Any?.toStringOrEmpty(): String = this?.toString().orEmpty()
-
-  private fun Any?.asStepList(): List<Map<String, Any?>> =
-    (this as? List<*>).orEmpty().mapNotNull(JsonSupport::anyToStringAnyMap)
-
-  private fun Any?.asStringAnyMap(): Map<String, Any?> = JsonSupport.anyToStringAnyMap(this).orEmpty()
 
   private fun Any?.asExactIntOrNull(): Int? = when (this) {
     is Byte -> toInt()

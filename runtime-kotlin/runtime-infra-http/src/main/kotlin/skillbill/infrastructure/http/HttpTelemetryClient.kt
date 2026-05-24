@@ -8,6 +8,7 @@ import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetryClient
+import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
@@ -20,6 +21,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse.BodyHandlers
+import java.nio.file.Path
 
 object JdkHttpRequester : HttpRequester {
   override fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse {
@@ -37,10 +39,18 @@ object JdkHttpRequester : HttpRequester {
 class HttpTelemetryClient(
   private val context: RuntimeContext,
 ) : TelemetryClient {
+  private val resolvedContext = context.withProcessDefaults()
+
   constructor(
     requester: HttpRequester,
     environment: Map<String, String> = System.getenv(),
-  ) : this(RuntimeContext(environment = environment, requester = requester))
+  ) : this(requester, environment, Path.of(System.getProperty("user.home")))
+
+  constructor(
+    requester: HttpRequester,
+    environment: Map<String, String>,
+    userHome: Path,
+  ) : this(RuntimeContext(environment = environment, userHome = userHome, requester = requester))
 
   override fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>) {
     require(settings.proxyUrl.isNotBlank()) { "Telemetry relay URL is not configured." }
@@ -54,7 +64,7 @@ class HttpTelemetryClient(
       url = settings.proxyUrl,
       payload = telemetryProxyBatchPayload(settings, rows).toPayload(),
       errorContext = errorContext,
-      requester = context.requester,
+      requester = resolvedContext.requester,
     )
   }
 
@@ -65,8 +75,8 @@ class HttpTelemetryClient(
       requestJsonGet(
         url = capabilitiesUrl,
         errorContext = "Telemetry proxy capabilities request",
-        headers = proxyAuthHeaders(context.environment),
-        requester = context.requester,
+        headers = proxyAuthHeaders(resolvedContext.environment),
+        requester = resolvedContext.requester,
       ).toMutableMap().apply {
         putIfAbsent("contract_version", TELEMETRY_PROXY_CONTRACT_VERSION)
         putIfAbsent("source", "remote_proxy")
@@ -113,8 +123,8 @@ class HttpTelemetryClient(
           groupBy = request.groupBy,
         ).toPayload(),
         errorContext = "Remote telemetry stats request",
-        headers = proxyAuthHeaders(context.environment),
-        requester = context.requester,
+        headers = proxyAuthHeaders(resolvedContext.environment),
+        requester = resolvedContext.requester,
       ).toMutableMap()
     payload.putIfAbsent("workflow", request.workflow)
     payload.putIfAbsent("date_from", resolvedDateFrom)
@@ -219,6 +229,26 @@ private fun bodyPublisher(bodyJson: String?): HttpRequest.BodyPublisher = if (bo
   HttpRequest.BodyPublishers.noBody()
 } else {
   HttpRequest.BodyPublishers.ofString(bodyJson)
+}
+
+private fun RuntimeContext.withProcessDefaults(): RuntimeContext {
+  val withUserHome =
+    if (userHome == RuntimeContext.UnspecifiedUserHome) {
+      copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
+    } else {
+      copy(userHome = userHome.toAbsolutePath().normalize())
+    }
+  return if (withUserHome.environment === RuntimeContext.UnspecifiedEnvironment) {
+    withUserHome.copy(environment = System.getenv())
+  } else {
+    withUserHome
+  }.let { context ->
+    if (context.requester === UnconfiguredHttpRequester) {
+      context.copy(requester = JdkHttpRequester)
+    } else {
+      context
+    }
+  }
 }
 
 private const val HTTP_OK_MIN: Int = 200

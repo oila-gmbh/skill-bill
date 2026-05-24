@@ -6,24 +6,29 @@ import skillbill.error.MissingSupportingFileTargetError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
+import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS as POLICY_APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.PLATFORM_PACK_PRESETS as POLICY_PLATFORM_PACK_PRESETS
+import skillbill.scaffold.policy.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
+import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION as POLICY_SCAFFOLD_PAYLOAD_VERSION
+import skillbill.scaffold.policy.displayNameFromSlug as policyDisplayNameFromSlug
 
-internal const val SHELL_CONTRACT_VERSION: String = "1.1"
-internal const val SCAFFOLD_PAYLOAD_VERSION: String = "1.0"
+// SKILL-52.1 subtask 2: the canonical shell-contract version now lives in `runtime-domain` under
+// `skillbill.scaffold.policy.PLATFORM_PACK_SHELL_CONTRACT_VERSION`. This alias keeps the existing
+// internal callsites compiling against a single source of truth — bumping the version in one place
+// updates both the manifest renderer and the shell validation seam.
+internal val SHELL_CONTRACT_VERSION: String get() = POLICY_SHELL_CONTRACT_VERSION
+
+// SKILL-52.1 subtask 2: the canonical scaffold-payload version now lives in
+// `runtime-domain` under `skillbill.scaffold.policy`. This alias keeps the existing internal
+// callsites and `ScaffoldCatalog` projection working without changing the source-of-truth.
+internal val SCAFFOLD_PAYLOAD_VERSION: String get() = POLICY_SCAFFOLD_PAYLOAD_VERSION
 internal const val CONTENT_BODY_FILENAME: String = "content.md"
 
-internal val APPROVED_CODE_REVIEW_AREAS: Set<String> =
-  setOf(
-    "architecture",
-    "performance",
-    "platform-correctness",
-    "security",
-    "testing",
-    "api-contracts",
-    "persistence",
-    "reliability",
-    "ui",
-    "ux-accessibility",
-  )
+// SKILL-52.1 subtask 2: approved code-review areas and built-in platform-pack preset projection
+// are owned by `skillbill.scaffold.policy` in `runtime-domain`. The aliases below keep the
+// existing infra-fs callsites (ScaffoldCatalog, ScaffoldService, ShellContentLoader) compiling
+// against a single source of truth.
+internal val APPROVED_CODE_REVIEW_AREAS: Set<String> get() = POLICY_APPROVED_CODE_REVIEW_AREAS
 
 // F-001: Authoritative source for the pre-shell vs shelled family taxonomy. The desktop wizard's
 // `ScaffoldCatalog` delegates to these so the runtime stays the single source of truth.
@@ -31,12 +36,9 @@ internal val SHELLED_FAMILIES: Set<String> = setOf("code-review", "quality-check
 internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-implement", "feature-verify")
 
 // F-001: Built-in platform-pack presets keyed by slug. The full descriptors (routing signals etc.)
-// live in `ScaffoldService.kt`; this map is the wizard-facing display projection so callers can
-// render a slug -> displayName list without depending on internal runtime types.
-internal val PLATFORM_PACK_PRESETS: Map<String, String> = mapOf(
-  "java" to "Java",
-  "php" to "PHP",
-)
+// live in the pure-policy table; this projection is the wizard-facing display projection so
+// callers can render a slug -> displayName list without depending on internal runtime types.
+internal val PLATFORM_PACK_PRESETS: Map<String, String> get() = POLICY_PLATFORM_PACK_PRESETS
 
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =
   listOf("## Descriptor", "## Execution", "## Ceremony")
@@ -65,11 +67,9 @@ internal data class TemplateContext(
   val displayName: String,
 )
 
-internal fun displayNameFromSlug(slug: String): String = slug.split('-').joinToString(" ") { part ->
-  part.replaceFirstChar {
-    if (it.isLowerCase()) it.titlecase() else it.toString()
-  }
-}
+// SKILL-52.1 subtask 2: canonical implementation now lives in `skillbill.scaffold.policy`.
+// This thin alias preserves the historical infra-fs callsite surface.
+internal fun displayNameFromSlug(slug: String): String = policyDisplayNameFromSlug(slug)
 
 /**
  * Static lookup of orchestration playbook target paths used by scaffolding when a brand-new skill

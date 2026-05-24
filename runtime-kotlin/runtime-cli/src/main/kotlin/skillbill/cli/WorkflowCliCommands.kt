@@ -127,7 +127,7 @@ open class WorkflowOpenCommand(
 
   override fun run() {
     val payload =
-      service.open(kind, sessionId, currentStepId, state.dbOverride)
+      service.open(kind, sessionId, currentStepId, state.dbOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -169,7 +169,7 @@ open class WorkflowUpdateCommand(
         sessionId = sessionId,
       )
     val payload =
-      service.update(kind, request, state.dbOverride)
+      service.update(kind, request, state.dbOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -214,7 +214,7 @@ open class WorkflowGetCommand(
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.get(kind, requireNotNull(resolution.workflowId), state.dbOverride)
+        service.get(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }
@@ -244,7 +244,7 @@ open class WorkflowListCommand(
 
   override fun run() {
     val payload =
-      service.list(kind, limit, state.dbOverride)
+      service.list(kind, limit, state.dbOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -271,7 +271,7 @@ open class WorkflowLatestCommand(
 
   override fun run() {
     val payload =
-      service.latest(kind, state.dbOverride)
+      service.latest(kind, state.dbOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -304,7 +304,7 @@ open class WorkflowResumeCommand(
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.resume(kind, requireNotNull(resolution.workflowId), state.dbOverride)
+        service.resume(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }
@@ -340,7 +340,7 @@ open class WorkflowContinueCommand(
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.continueWorkflow(kind, requireNotNull(resolution.workflowId), state.dbOverride)
+        service.continueWorkflow(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }
@@ -372,15 +372,12 @@ private fun resolveWorkflowId(
 ): WorkflowIdResolution {
   workflowId?.let { return WorkflowIdResolution(workflowId = it) }
   require(latest) { "Provide a workflow_id or pass --latest." }
-  val latestPayload =
-    when (kind) {
-      WorkflowFamilyKind.IMPLEMENT -> service.latest(WorkflowFamilyKind.IMPLEMENT, state.dbOverride)
-      WorkflowFamilyKind.VERIFY -> service.latest(WorkflowFamilyKind.VERIFY, state.dbOverride)
-    }
-  return WorkflowIdResolution(
-    workflowId = latestPayload["workflow_id"] as? String,
-    errorPayload = latestPayload.takeIf { it["status"] == "error" },
-  )
+  return when (val latestResult = service.latest(kind, state.dbOverride)) {
+    is skillbill.application.model.WorkflowLatestResult.Ok ->
+      WorkflowIdResolution(workflowId = latestResult.summary.workflowId)
+    is skillbill.application.model.WorkflowLatestResult.Error ->
+      WorkflowIdResolution(workflowId = null, errorPayload = latestResult.toCliMap())
+  }
 }
 
 private const val DEFAULT_WORKFLOW_LIST_LIMIT: Int = 20

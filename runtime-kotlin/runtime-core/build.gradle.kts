@@ -10,8 +10,8 @@ plugins {
 
 dependencies {
   api(project(":runtime-application"))
-  api(project(":runtime-domain"))
   api(project(":runtime-ports"))
+  implementation(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
   implementation(project(":runtime-infra-fs"))
   implementation(project(":runtime-infra-http"))

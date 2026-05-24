@@ -58,6 +58,10 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "`model` packages")
     assertContains(architecture, "runtime-ports")
     assertContains(architecture, "gradle-module-split-evaluation.md")
+    assertContains(architecture, "Raw Map Boundary Rule")
+    assertContains(architecture, "Open-Boundary Allow-List")
+    assertContains(architecture, "@OpenBoundaryMap")
+    assertContains(architecture, "RAW_MAP_OPEN_BOUNDARY_ALLOWLIST")
     assertFalse(architecture.contains("Temporary SKILL-52 blocker"))
     assertFalse(architecture.contains("compatibility umbrella"))
     assertFalse(architecture.contains("while the"))
@@ -70,6 +74,7 @@ class RuntimeArchitectureDocumentationTest {
     assertEquals(
       setOf(
         "skillbill.application",
+        "skillbill.boundary",
         "skillbill.cli",
         "skillbill.contracts",
         "skillbill.db",

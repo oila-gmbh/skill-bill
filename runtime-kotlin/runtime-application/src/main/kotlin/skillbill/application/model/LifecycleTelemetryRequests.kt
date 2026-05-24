@@ -1,5 +1,7 @@
 package skillbill.application.model
 
+import skillbill.boundary.OpenBoundaryMap
+
 data class FeatureImplementStartedRequest(
   val featureSize: String,
   val acceptanceCriteriaCount: Int,
@@ -32,6 +34,7 @@ data class FeatureImplementFinishedRequest(
   val featureFlagPattern: String,
   val boundaryHistoryValue: String,
   val planDeviationNotes: String,
+  @OpenBoundaryMap("Caller-supplied JSON child-step telemetry payload")
   val childSteps: List<Map<String, Any?>>,
 )
 

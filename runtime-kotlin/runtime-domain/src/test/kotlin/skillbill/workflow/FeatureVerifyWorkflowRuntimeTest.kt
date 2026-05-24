@@ -12,12 +12,12 @@ class FeatureVerifyWorkflowRuntimeTest {
   @Test
   fun `verify open completes steps before the initial step`() {
     val record = WorkflowEngine.openRecord(definition, "wfv-001", "fvr-001", "code_review")
-    val steps = WorkflowEngine.fullPayload(definition, record).steps()
+    val steps = WorkflowEngine.snapshotView(definition, record).steps
 
-    assertEquals("completed", steps.single { it["step_id"] == "collect_inputs" }["status"])
-    assertEquals("completed", steps.single { it["step_id"] == "gather_diff" }["status"])
-    assertEquals("running", steps.single { it["step_id"] == "code_review" }["status"])
-    assertEquals("pending", steps.single { it["step_id"] == "verdict" }["status"])
+    assertEquals("completed", steps.single { it.stepId == "collect_inputs" }.status)
+    assertEquals("completed", steps.single { it.stepId == "gather_diff" }.status)
+    assertEquals("running", steps.single { it.stepId == "code_review" }.status)
+    assertEquals("pending", steps.single { it.stepId == "verdict" }.status)
   }
 
   @Test
@@ -37,8 +37,8 @@ class FeatureVerifyWorkflowRuntimeTest {
       )
     val failed = completed.copy(workflowStatus = "failed")
 
-    assertEquals("done", WorkflowEngine.resumePayload(definition, completed)["resume_mode"])
-    assertEquals("recover", WorkflowEngine.resumePayload(definition, failed)["resume_mode"])
+    assertEquals("done", WorkflowEngine.resumeView(definition, completed).resumeMode)
+    assertEquals("recover", WorkflowEngine.resumeView(definition, failed).resumeMode)
   }
 
   @Test
@@ -70,12 +70,12 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     val decision = WorkflowEngine.continueDecision(definition, record)
 
-    assertEquals("reopened", decision.payload["continue_status"])
+    assertEquals("reopened", decision.view.continueStatus)
     assertEquals(
       listOf("criteria_summary", "diff_summary", "review_result", "completeness_audit_result"),
-      decision.payload["step_artifact_keys"],
+      decision.view.stepArtifactKeys,
     )
-    assertTrue(decision.payload["continue_step_directive"].toString().contains("final verdict"))
+    assertTrue(decision.view.continueStepDirective.contains("final verdict"))
   }
 
   @Test
@@ -92,7 +92,7 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     assertEquals(null, WorkflowEngine.validateUpdate(definition, pending))
     assertEquals(null, WorkflowEngine.validateUpdate(definition, abandoned))
-    assertEquals("recover", WorkflowEngine.resumePayload(definition, completedAs("abandoned"))["resume_mode"])
+    assertEquals("recover", WorkflowEngine.resumeView(definition, completedAs("abandoned")).resumeMode)
     assertEquals(
       "Invalid workflow_status 'blocked'. Allowed: pending, running, completed, failed, abandoned",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "blocked")),
@@ -125,5 +125,3 @@ class FeatureVerifyWorkflowRuntimeTest {
     ),
   )
 }
-
-private fun Map<String, Any?>.steps(): List<Map<*, *>> = (this["steps"] as List<*>).map { step -> step as Map<*, *> }

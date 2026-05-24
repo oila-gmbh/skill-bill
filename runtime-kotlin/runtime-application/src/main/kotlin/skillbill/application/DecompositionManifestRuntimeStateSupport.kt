@@ -22,9 +22,6 @@ internal fun DecompositionSubtask.withRuntimeFields(
     status = nextStatus,
     branch = branchName(artifacts["branch"]).ifBlank { manifest.branchFor(id) ?: branch },
     workflowId = update.workflowId.ifBlank { workflowId },
-    reviewResult = artifacts["review_result"].asStringAnyMapOrNull() ?: reviewResult,
-    auditResult = artifacts["audit_report"].asStringAnyMapOrNull() ?: auditResult,
-    validationResult = artifacts["validation_result"].asStringAnyMapOrNull() ?: validationResult,
     blockedReason = blockedReasonFrom(update, nextStatus) ?: blockedReason.takeUnless { nextStatus != "blocked" },
     lastResumableStep = update.currentStepId.takeIf(String::isNotBlank) ?: lastResumableStep,
   )

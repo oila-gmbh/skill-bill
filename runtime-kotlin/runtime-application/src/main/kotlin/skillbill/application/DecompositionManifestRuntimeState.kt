@@ -8,8 +8,6 @@ import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
-private const val DECOMPOSITION_MANIFEST_FILENAME: String = "decomposition-manifest.yaml"
-
 internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
   JsonSupport.parseObjectOrNull(existingArtifactsJson)
     ?.let(JsonSupport::jsonElementToValue)
@@ -31,6 +29,9 @@ internal fun manifestPathFromArtifacts(
   artifactsPatch?.let(merged::putAll)
   val specPath = (merged["assessment"] as? Map<*, *>)?.get("spec_path")?.toString()?.takeIf(String::isNotBlank)
     ?: (merged["plan"] as? Map<*, *>)?.get("parent_spec_path")?.toString()?.takeIf(String::isNotBlank)
+  (merged["plan"] as? Map<*, *>)?.asStringAnyMapOrNull()?.takeIf { it["mode"] == "decompose" }?.let { plan ->
+    return decompositionManifestPath(repoRoot, Path.of(parentSpecPath(plan)), planSubtaskSpecPaths(plan))
+  }
   return specPath?.let { resolvedParentSpecPath(repoRoot, Path.of(it)).parent.resolve(DECOMPOSITION_MANIFEST_FILENAME) }
 }
 
@@ -48,6 +49,11 @@ internal fun DecompositionManifest.assertExecutionModelCanReplace(
   return this
 }
 
+private fun planSubtaskSpecPaths(plan: Map<String, Any?>): List<String> =
+  (plan["subtasks"] as? List<*>).orEmpty().mapNotNull { raw ->
+    raw.asStringAnyMapOrNull()?.get("spec_path")?.toString()?.takeIf(String::isNotBlank)
+  }
+
 internal fun DecompositionManifest.withPreservedRuntimeState(existing: DecompositionManifest?): DecompositionManifest {
   if (existing == null) {
     return this
@@ -62,9 +68,6 @@ internal fun DecompositionManifest.withPreservedRuntimeState(existing: Decomposi
         branch = previous.branch,
         commitSha = previous.commitSha,
         workflowId = previous.workflowId,
-        reviewResult = previous.reviewResult,
-        auditResult = previous.auditResult,
-        validationResult = previous.validationResult,
         blockedReason = previous.blockedReason,
         lastResumableStep = previous.lastResumableStep,
       )

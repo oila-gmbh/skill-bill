@@ -137,7 +137,7 @@ class ListSkillsCommand(
   override fun run() {
     state.result =
       authoringResult(format) {
-        scaffoldService.list(Path.of(repoRoot), skillNames)
+        scaffoldService.list(Path.of(repoRoot), skillNames).toCliMap()
       }
   }
 }
@@ -164,7 +164,7 @@ class ShowSkillCommand(
   override fun run() {
     state.result =
       authoringResult(format) {
-        scaffoldService.show(Path.of(repoRoot), skillName, content)
+        scaffoldService.show(Path.of(repoRoot), skillName, content).toCliMap()
       }
   }
 }
@@ -184,7 +184,7 @@ class ExplainSkillCommand(
   override fun run() {
     state.result =
       authoringResult(format) {
-        scaffoldService.explain(Path.of(repoRoot), skillName)
+        scaffoldService.explain(Path.of(repoRoot), skillName).toCliMap()
       }
   }
 }
@@ -208,7 +208,7 @@ class ValidateSkillCommand(
   override fun run() {
     state.result =
       authoringResult(format, successExitCode = { payload -> if (payload["status"] == "pass") 0 else 1 }) {
-        scaffoldService.validate(Path.of(repoRoot), skillNames)
+        scaffoldService.validate(Path.of(repoRoot), skillNames).toCliMap()
       }
   }
 }
@@ -259,7 +259,7 @@ open class WrapperRegenerationCommand(
   override fun run() {
     state.result =
       authoringResult(format) {
-        scaffoldService.upgrade(Path.of(repoRoot), skillNames, validate = !skipValidate)
+        scaffoldService.upgrade(Path.of(repoRoot), skillNames, validate = !skipValidate).toCliMap()
       }
   }
 }
@@ -297,7 +297,7 @@ class EditSkillCommand(
               skillName,
               readCliTextFile(bodyFile.orEmpty(), state),
               section,
-            )
+            ).toCliMap()
           }
         else ->
           unsupportedNativeScaffoldResult(
@@ -337,7 +337,7 @@ class FillSkillCommand(
               skillName,
               body ?: readCliTextFile(bodyFile.orEmpty(), state),
               section,
-            )
+            ).toCliMap()
           }
       }
   }

@@ -4,10 +4,40 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
 import skillbill.db.DbConstants
 import skillbill.db.TelemetryOutboxStore
+import skillbill.error.InvalidInstallPlanSchemaError
+import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallAgentSelection
+import skillbill.install.model.InstallAgentSelectionMode
+import skillbill.install.model.InstallAgentTarget
+import skillbill.install.model.InstallAgentTargetSource
+import skillbill.install.model.InstallApplyResult
+import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.InstallPlan
+import skillbill.install.model.InstallPlanRequest
+import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.model.InstallStagingIntent
+import skillbill.install.model.InstallStagingPathIntent
+import skillbill.install.model.InstallTelemetryApplyOutcome
+import skillbill.install.model.InstallTelemetryApplyStatus
+import skillbill.install.model.InstallTelemetryLevel
+import skillbill.install.model.InstallationTargetPaths
+import skillbill.install.model.McpRegistrationChoice
+import skillbill.install.model.McpRegistrationIntent
+import skillbill.install.model.PlatformPackSelection
+import skillbill.install.model.PlatformPackSelectionMode
+import skillbill.install.model.RuntimeDistributionInputs
+import skillbill.install.model.WindowsSymlinkApplyOutcome
+import skillbill.install.model.WindowsSymlinkDecision
+import skillbill.install.model.WindowsSymlinkFallbackState
+import skillbill.install.model.WindowsSymlinkPreflight
+import skillbill.install.model.WindowsSymlinkPreflightState
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -272,6 +302,38 @@ class CliInstallPlanApplyRuntimeTest {
     )
   }
 
+  @Test
+  fun `cli plan and apply seams loud fail typed install-plan schema errors`() {
+    val fixture = installPlanApplyFixture()
+    val invalidPlan = invalidCliInstallPlan(fixture)
+
+    val planError = assertFailsWith<InvalidInstallPlanSchemaError> {
+      installPlanPayload(invalidPlan)
+    }
+    assertContains(planError.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
+
+    val applyError = assertFailsWith<InvalidInstallPlanSchemaError> {
+      installApplyPayload(invalidPlan, minimalApplyResult(invalidPlan))
+    }
+    assertContains(applyError.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
+  }
+
+  @Test
+  fun `install plan and apply JSON preserve byte-equivalent wire ordering`() {
+    val fixture = installByteEquivalenceFixture()
+
+    val planResult = CliRuntime.run(singleCodexPlanArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    assertEquals(0, planResult.exitCode, planResult.stdout)
+    assertEquals(CliOutput.emit(singleCodexPlanGoldenPayload(fixture), CliFormat.JSON), planResult.stdout)
+
+    val applyResult = CliRuntime.run(
+      singleCodexApplyArguments(fixture, platformMode = "none"),
+      CliRuntimeContext(userHome = fixture.home),
+    )
+    assertEquals(0, applyResult.exitCode, applyResult.stdout)
+    assertEquals(CliOutput.emit(singleCodexApplyGoldenPayload(fixture), CliFormat.JSON), applyResult.stdout)
+  }
+
   private fun assertPlannedSkillKinds(payload: Map<String, Any?>) {
     val skills = payload.listOfMaps("skills").associateBy { skill -> skill["name"] }
     assertEquals("base", skills.getValue("bill-code-review")["kind"])
@@ -433,6 +495,27 @@ class CliInstallPlanApplyRuntimeTest {
     "--format",
     "json",
   )
+
+  private fun singleCodexPlanArguments(fixture: InstallPlanApplyFixture): List<String> = listOf(
+    "install",
+    "plan",
+    "--repo-root",
+    fixture.repoRoot.toString(),
+    "--agent-mode",
+    "manual",
+    "--agent",
+    "codex",
+    "--agent-target",
+    "codex=${fixture.home.resolve("manual-targets/codex")}",
+    "--platform-mode",
+    "none",
+    "--telemetry",
+    "anonymous",
+    "--mcp",
+    "skip",
+    "--format",
+    "json",
+  )
 }
 
 private val supportedAgents = setOf("copilot", "claude", "codex", "opencode", "junie")
@@ -446,6 +529,112 @@ private fun installPlanApplyFixture(): InstallPlanApplyFixture {
   seedCliPlatformPack(repoRoot, "kotlin")
   return InstallPlanApplyFixture(repoRoot = repoRoot, home = home)
 }
+
+private fun installByteEquivalenceFixture(): InstallPlanApplyFixture {
+  val home = Files.createTempDirectory("skillbill-cli-install-byte-equivalence-home")
+  val repoRoot = Files.createTempDirectory("skillbill-cli-install-byte-equivalence-repo")
+  Files.createDirectories(repoRoot.resolve("platform-packs"))
+  seedCliBaseSkill(repoRoot, "bill-code-review")
+  seedCliBaseSkill(repoRoot, "bill-quality-check")
+  return InstallPlanApplyFixture(repoRoot = repoRoot, home = home)
+}
+
+private fun invalidCliInstallPlan(fixture: InstallPlanApplyFixture): InstallPlan {
+  val target = codexInstallTarget(fixture)
+  val sourceDir = fixture.repoRoot.resolve("skills/bill-code-review")
+  val request = invalidCliInstallRequest(fixture, target)
+  val stagingRoot = fixture.home.resolve(".skill-bill/installed-skills")
+  return InstallPlan(
+    request = request,
+    agents = listOf(target),
+    discoveredPlatformPacks = emptyList(),
+    selectedPlatformSlugs = emptyList(),
+    skills = listOf(baseInstallPlanSkill(sourceDir)),
+    staging = invalidCliStagingIntent(stagingRoot, sourceDir),
+    telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
+    mcpRegistrationIntent = invalidMcpRegistrationIntent(),
+    runtimeDistributionInputs = request.runtimeDistributionInputs,
+    installationTargetPaths = request.targetPaths,
+    windowsSymlinkPreflight = request.windowsSymlinkPreflight,
+  )
+}
+
+private fun codexInstallTarget(fixture: InstallPlanApplyFixture): InstallAgentTarget = InstallAgentTarget(
+  agent = InstallAgent.CODEX,
+  path = fixture.home.resolve("manual-targets/codex"),
+  source = InstallAgentTargetSource.MANUAL,
+)
+
+private fun invalidCliInstallRequest(
+  fixture: InstallPlanApplyFixture,
+  target: InstallAgentTarget,
+): InstallPlanRequest = InstallPlanRequest(
+  repoRoot = fixture.repoRoot,
+  home = fixture.home,
+  agentSelection = InstallAgentSelection(
+    mode = InstallAgentSelectionMode.MANUAL,
+    manualAgents = setOf(InstallAgent.CODEX),
+  ),
+  platformPackSelection = PlatformPackSelection(PlatformPackSelectionMode.NONE),
+  telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
+  mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("")),
+  runtimeDistributionInputs = RuntimeDistributionInputs(
+    runtimeInstallRoot = fixture.home.resolve(".skill-bill/runtime"),
+  ),
+  targetPaths = InstallationTargetPaths(
+    skillsRoot = fixture.repoRoot.resolve("skills"),
+    platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+    agentTargets = listOf(target),
+  ),
+  windowsSymlinkPreflight = WindowsSymlinkPreflight(
+    state = WindowsSymlinkPreflightState.NOT_WINDOWS,
+    decision = WindowsSymlinkDecision.NOT_REQUIRED,
+  ),
+)
+
+private fun baseInstallPlanSkill(sourceDir: Path): InstallPlanSkill = InstallPlanSkill(
+  name = "bill-code-review",
+  sourceDir = sourceDir,
+  kind = InstallPlanSkillKind.BASE,
+)
+
+private fun invalidCliStagingIntent(stagingRoot: Path, sourceDir: Path): InstallStagingIntent = InstallStagingIntent(
+  root = stagingRoot,
+  skillPaths = listOf(
+    InstallStagingPathIntent(
+      skillName = "bill-code-review",
+      sourceDir = sourceDir,
+      stagingRoot = stagingRoot,
+      stagingDir = stagingRoot.resolve("bill-code-review-testhash"),
+      contentHash = "testhash",
+    ),
+  ),
+)
+
+private fun invalidMcpRegistrationIntent(): McpRegistrationIntent = McpRegistrationIntent(
+  register = true,
+  runtimeMcpBin = Path.of(""),
+  agents = listOf(InstallAgent.CODEX),
+)
+
+private fun minimalApplyResult(plan: InstallPlan): InstallApplyResult = InstallApplyResult(
+  status = InstallApplyStatus.SUCCESS,
+  skills = emptyList(),
+  nativeAgents = emptyList(),
+  telemetryOutcome = InstallTelemetryApplyOutcome(
+    level = plan.telemetryLevel,
+    status = InstallTelemetryApplyStatus.SKIPPED,
+  ),
+  mcpRegistrationOutcomes = emptyList(),
+  warnings = emptyList(),
+  failures = emptyList(),
+  windowsSymlinkOutcome = WindowsSymlinkApplyOutcome(
+    preflight = plan.windowsSymlinkPreflight,
+    fallbackState = WindowsSymlinkFallbackState.NOT_REQUIRED,
+  ),
+  telemetryLevel = plan.telemetryLevel,
+  mcpRegistrationIntent = plan.mcpRegistrationIntent,
+)
 
 private fun seedCliBaseSkill(repoRoot: Path, skillName: String) {
   val skillDir = repoRoot.resolve("skills").resolve(skillName)
@@ -539,6 +728,222 @@ private data class InstallPlanApplyFixture(
 private fun decodeInstallPlanApplyJson(rawJson: String): Map<String, Any?> =
   JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
     ?: emptyMap()
+
+private fun singleCodexPlanGoldenPayload(fixture: InstallPlanApplyFixture): Map<String, Any?> {
+  val paths = SingleCodexGoldenPaths(fixture)
+  return mapOf(
+    "status" to "planned",
+    "contract_version" to "0.1",
+    "agents" to listOf(codexAgentGoldenPayload(paths)),
+    "platform_packs" to emptyList<Map<String, Any?>>(),
+    "selected_platforms" to emptyList<String>(),
+    "skills" to listOf(
+      plannedSkillGoldenPayload("bill-code-review", paths.codeReviewSourceDir),
+      plannedSkillGoldenPayload("bill-quality-check", paths.qualityCheckSourceDir),
+    ),
+    "staging_root" to paths.stagingRoot,
+    "staging" to listOf(
+      stagingIntentGoldenPayload(
+        skillName = "bill-code-review",
+        sourceDir = paths.codeReviewSourceDir,
+        stagingDir = paths.codeReviewStagingDir,
+        contentHash = CODE_REVIEW_GOLDEN_CONTENT_HASH,
+      ),
+      stagingIntentGoldenPayload(
+        skillName = "bill-quality-check",
+        sourceDir = paths.qualityCheckSourceDir,
+        stagingDir = paths.qualityCheckStagingDir,
+        contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
+      ),
+    ),
+    "telemetry_level" to "anonymous",
+    "mcp_registration" to mapOf(
+      "register" to false,
+      "runtime_mcp_bin" to null,
+      "agents" to listOf("codex"),
+    ),
+    "runtime_distribution" to runtimeDistributionGoldenPayload(paths),
+    "windows_symlink_preflight" to windowsPreflightGoldenPayload(),
+    "replace_existing_skill_bill_links" to false,
+  )
+}
+
+private fun singleCodexApplyGoldenPayload(fixture: InstallPlanApplyFixture): Map<String, Any?> {
+  val paths = SingleCodexGoldenPaths(fixture)
+  return singleCodexPlanGoldenPayload(fixture) + mapOf(
+    "status" to "success",
+    "skills" to appliedSkillsGoldenPayload(paths),
+    "native_agents" to nativeAgentsGoldenPayload(),
+    "telemetry" to telemetryGoldenPayload(paths),
+    "mcp_registration" to applyMcpRegistrationGoldenPayload(),
+    "warnings" to emptyList<Map<String, Any?>>(),
+    "failures" to emptyList<Map<String, Any?>>(),
+    "windows_symlink_outcome" to windowsSymlinkOutcomeGoldenPayload(),
+  )
+}
+
+private fun appliedSkillsGoldenPayload(paths: SingleCodexGoldenPaths): List<Map<String, Any?>> = listOf(
+  appliedSkillGoldenPayload(
+    AppliedSkillGoldenValues(
+      skillName = "bill-code-review",
+      sourceDir = paths.codeReviewSourceDir,
+      stagingDir = paths.codeReviewStagingDir,
+      renderedSkillFile = paths.codeReviewRenderedSkillFile,
+      contentHash = CODE_REVIEW_GOLDEN_CONTENT_HASH,
+      targetDir = paths.codexTargetDir,
+      linkPath = paths.codeReviewLinkPath,
+    ),
+  ),
+  appliedSkillGoldenPayload(
+    AppliedSkillGoldenValues(
+      skillName = "bill-quality-check",
+      sourceDir = paths.qualityCheckSourceDir,
+      stagingDir = paths.qualityCheckStagingDir,
+      renderedSkillFile = paths.qualityCheckRenderedSkillFile,
+      contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
+      targetDir = paths.codexTargetDir,
+      linkPath = paths.qualityCheckLinkPath,
+    ),
+  ),
+)
+
+private fun nativeAgentsGoldenPayload(): List<Map<String, Any?>> = listOf(
+  mapOf(
+    "provider" to "codex",
+    "agent" to "codex",
+    "status" to "skipped",
+    "path" to null,
+    "message" to "no native-agent target or artifacts available for selected plan",
+    "issue" to null,
+  ),
+)
+
+private fun telemetryGoldenPayload(paths: SingleCodexGoldenPaths): Map<String, Any?> = mapOf(
+  "level" to "anonymous",
+  "status" to "success",
+  "config_path" to paths.telemetryConfigPath,
+  "cleared_events" to 0,
+  "message" to "Telemetry level set to 'anonymous'.",
+  "issue" to null,
+)
+
+private fun applyMcpRegistrationGoldenPayload(): Map<String, Any?> = mapOf(
+  "register" to false,
+  "runtime_mcp_bin" to null,
+  "agents" to listOf("codex"),
+  "outcomes" to listOf(
+    mapOf(
+      "agent" to "codex",
+      "status" to "skipped",
+      "config_path" to null,
+      "changed" to false,
+      "message" to "MCP registration not requested.",
+      "issue" to null,
+    ),
+  ),
+)
+
+private fun windowsSymlinkOutcomeGoldenPayload(): Map<String, Any?> = mapOf(
+  "preflight" to windowsPreflightGoldenPayload(),
+  "fallback_state" to "not_required",
+  "guidance" to WINDOWS_SYMLINK_GUIDANCE,
+)
+
+private fun codexAgentGoldenPayload(paths: SingleCodexGoldenPaths): Map<String, Any?> = mapOf(
+  "agent" to "codex",
+  "path" to paths.codexTargetDir,
+  "source" to "manual",
+)
+
+private fun plannedSkillGoldenPayload(skillName: String, sourceDir: String): Map<String, Any?> = mapOf(
+  "name" to skillName,
+  "kind" to "base",
+  "platform" to null,
+  "source_dir" to sourceDir,
+)
+
+private fun appliedSkillGoldenPayload(values: AppliedSkillGoldenValues): Map<String, Any?> =
+  plannedSkillGoldenPayload(values.skillName, values.sourceDir) + mapOf(
+    "staging" to mapOf(
+      "status" to "staged",
+      "staging_dir" to values.stagingDir,
+      "rendered_skill_file" to values.renderedSkillFile,
+      "content_hash" to values.contentHash,
+      "issue" to null,
+    ),
+    "links" to listOf(
+      mapOf(
+        "agent" to "codex",
+        "target_dir" to values.targetDir,
+        "link_path" to values.linkPath,
+        "link_target" to values.stagingDir,
+        "status" to "created",
+        "message" to "linked to ${values.stagingDir}",
+        "issue" to null,
+      ),
+    ),
+  )
+
+private data class AppliedSkillGoldenValues(
+  val skillName: String,
+  val sourceDir: String,
+  val stagingDir: String,
+  val renderedSkillFile: String,
+  val contentHash: String,
+  val targetDir: String,
+  val linkPath: String,
+)
+
+private fun stagingIntentGoldenPayload(
+  skillName: String,
+  sourceDir: String,
+  stagingDir: String,
+  contentHash: String,
+): Map<String, Any?> = mapOf(
+  "skill_name" to skillName,
+  "source_dir" to sourceDir,
+  "staging_dir" to stagingDir,
+  "content_hash" to contentHash,
+)
+
+private fun runtimeDistributionGoldenPayload(paths: SingleCodexGoldenPaths): Map<String, Any?> = mapOf(
+  "runtime_install_root" to paths.runtimeInstallRoot,
+  "runtime_cli_build_dir" to null,
+  "runtime_mcp_build_dir" to null,
+  "runtime_cli_install_dir" to null,
+  "runtime_mcp_install_dir" to null,
+  "runtime_launcher_bin_dir" to null,
+)
+
+private fun windowsPreflightGoldenPayload(): Map<String, Any?> = mapOf(
+  "state" to "not_windows",
+  "decision" to "not_required",
+  "message" to "",
+)
+
+private data class SingleCodexGoldenPaths(private val fixture: InstallPlanApplyFixture) {
+  val codexTargetDir: String = fixture.home.resolve("manual-targets/codex").toString()
+  val stagingRoot: String = fixture.home.resolve(".skill-bill/installed-skills").toString()
+  val runtimeInstallRoot: String = fixture.home.resolve(".skill-bill/runtime").toString()
+  val telemetryConfigPath: String = fixture.home.resolve(".skill-bill/config.json").toString()
+  val codeReviewSourceDir: String = fixture.repoRoot.resolve("skills/bill-code-review").toString()
+  val qualityCheckSourceDir: String = fixture.repoRoot.resolve("skills/bill-quality-check").toString()
+  val codeReviewStagingDir: String = stagingDir("bill-code-review", CODE_REVIEW_GOLDEN_CONTENT_HASH)
+  val qualityCheckStagingDir: String = stagingDir("bill-quality-check", QUALITY_CHECK_GOLDEN_CONTENT_HASH)
+  val codeReviewRenderedSkillFile: String = Path.of(codeReviewStagingDir).resolve("SKILL.md").toString()
+  val qualityCheckRenderedSkillFile: String = Path.of(qualityCheckStagingDir).resolve("SKILL.md").toString()
+  val codeReviewLinkPath: String = fixture.home.resolve("manual-targets/codex/bill-code-review").toString()
+  val qualityCheckLinkPath: String = fixture.home.resolve("manual-targets/codex/bill-quality-check").toString()
+
+  private fun stagingDir(skillName: String, contentHash: String): String =
+    fixture.home.resolve(".skill-bill/installed-skills").resolve("$skillName-$contentHash").toString()
+}
+
+private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "f8ac2740c5fa2af0"
+private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "24c743bc4dd89750"
+private const val WINDOWS_SYMLINK_GUIDANCE =
+  "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) or run the install command " +
+    "from an elevated shell so the JVM can create symlinks."
 
 private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> = requireStringAnyMap(get(key), key)
 

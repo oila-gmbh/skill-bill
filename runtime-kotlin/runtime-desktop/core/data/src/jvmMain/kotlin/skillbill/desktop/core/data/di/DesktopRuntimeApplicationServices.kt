@@ -87,7 +87,11 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
   )
 }
 
-private fun runtimeComponentForHome(userHome: Path): RuntimeComponent =
-  RuntimeComponent::class.create(RuntimeContext(userHome = userHome.toAbsolutePath().normalize()))
+private fun runtimeComponentForHome(userHome: Path): RuntimeComponent = RuntimeComponent::class.create(
+  RuntimeContext(
+    environment = System.getenv(),
+    userHome = userHome.toAbsolutePath().normalize(),
+  ),
+)
 
 private fun currentUserHome(): Path = Path.of(System.getProperty("user.home"))

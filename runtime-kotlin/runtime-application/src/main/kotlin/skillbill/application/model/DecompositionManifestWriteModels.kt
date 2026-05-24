@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionStackBranch
@@ -8,6 +9,7 @@ import java.nio.file.Path
 data class DecompositionManifestWriteRequest(
   val repoRoot: Path,
   val parentSpecPath: Path,
+  @OpenBoundaryMap("Caller-supplied JSON plan payload")
   val planningResult: Map<String, Any?>,
   val baseBranch: String,
   val featureBranch: String?,
@@ -20,8 +22,11 @@ data class DecompositionManifestRuntimeUpdate(
   val workflowId: String = "",
   val workflowStatus: String = "",
   val currentStepId: String = "",
+  @OpenBoundaryMap("Caller-supplied JSON patch for workflow step updates")
   val stepUpdates: List<Map<String, Any?>>? = null,
+  @OpenBoundaryMap("Caller-supplied JSON patch for durable workflow artifacts")
   val artifactsPatch: Map<String, Any?>? = null,
+  @OpenBoundaryMap("Workflow artifacts snapshot (caller-supplied JSON passthrough)")
   val existingArtifacts: Map<String, Any?> = emptyMap(),
 )
 

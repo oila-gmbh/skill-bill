@@ -31,9 +31,6 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
       branch = item.nullableStringValue("branch", sourceLabel),
       commitSha = item.nullableStringValue("commit_sha", sourceLabel),
       workflowId = item.nullableStringValue("workflow_id", sourceLabel),
-      reviewResult = item.nullableMapValue("review_result", sourceLabel),
-      auditResult = item.nullableMapValue("audit_result", sourceLabel),
-      validationResult = item.nullableMapValue("validation_result", sourceLabel),
       blockedReason = item.nullableStringValue("blocked_reason", sourceLabel),
       lastResumableStep = item.nullableStringValue("last_resumable_step", sourceLabel),
       dependencies = item.listValue("dependencies").mapIndexed { depIndex, dep ->
@@ -82,16 +79,6 @@ private fun Map<String, Any?>.nullableStringValue(key: String, sourceLabel: Stri
     null -> null
     is String -> value
     else -> invalidDecompositionManifest(sourceLabel, "$key must be a string or null.")
-  }
-
-private fun Map<String, Any?>.nullableMapValue(key: String, sourceLabel: String): Map<String, Any?>? =
-  when (val value = this[key]) {
-    null -> null
-    is Map<*, *> -> value.entries.associateTo(LinkedHashMap<String, Any?>()) { (mapKey, mapValue) ->
-      val stringKey = mapKey as? String ?: invalidDecompositionManifest(sourceLabel, "$key contains a non-string key.")
-      stringKey to mapValue
-    }
-    else -> invalidDecompositionManifest(sourceLabel, "$key must be an object or null.")
   }
 
 private fun Map<String, Any?>.intValue(key: String, sourceLabel: String): Int = this[key].asInt(sourceLabel, key)

@@ -1,5 +1,7 @@
 package skillbill.ports.validation.model
 
+import skillbill.boundary.OpenBoundaryMap
+
 data class RepoValidationReport(
   val issues: List<String>,
   val skillCount: Int,
@@ -10,6 +12,7 @@ data class RepoValidationReport(
 ) {
   val passed: Boolean = issues.isEmpty()
 
+  @OpenBoundaryMap("Wire-shape serializer for repo-validation report")
   fun toPayload(): Map<String, Any?> = mapOf(
     "status" to if (passed) "passed" else "failed",
     "skill_count" to skillCount,
@@ -61,6 +64,7 @@ data class ReleaseRefMetadata(
   val version: String,
   val prerelease: Boolean,
 ) {
+  @OpenBoundaryMap("Wire-shape serializer for release-ref metadata")
   fun toPayload(): Map<String, Any?> = mapOf(
     "tag" to tag,
     "version" to version,

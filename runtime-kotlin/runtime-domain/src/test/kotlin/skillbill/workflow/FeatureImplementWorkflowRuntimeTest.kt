@@ -16,13 +16,12 @@ class FeatureImplementWorkflowRuntimeTest {
   @Test
   fun `implement open starts only the requested step`() {
     val record = WorkflowEngine.openRecord(definition, "wfl-001", "fis-001", "plan")
-    val payload = WorkflowEngine.fullPayload(definition, record)
-    val steps = payload.steps()
+    val snapshot = WorkflowEngine.snapshotView(definition, record)
 
-    assertEquals("bill-feature-implement", payload["workflow_name"])
-    assertEquals("plan", payload["current_step_id"])
-    assertEquals("running", steps.single { it["step_id"] == "plan" }["status"])
-    assertTrue(steps.filterNot { it["step_id"] == "plan" }.all { it["status"] == "pending" })
+    assertEquals("bill-feature-implement", snapshot.workflowName)
+    assertEquals("plan", snapshot.currentStepId)
+    assertEquals("running", snapshot.steps.single { it.stepId == "plan" }.status)
+    assertTrue(snapshot.steps.filterNot { it.stepId == "plan" }.all { it.status == "pending" })
   }
 
   @Test
@@ -45,11 +44,11 @@ class FeatureImplementWorkflowRuntimeTest {
         ),
       )
 
-    val payload = WorkflowEngine.fullPayload(definition, updated)
-    val steps = payload.steps()
-    val artifacts = payload["artifacts"] as Map<*, *>
-    assertEquals(definition.stepIds, steps.map { it["step_id"] })
-    assertEquals("completed", steps.first()["status"])
+    val snapshot = WorkflowEngine.snapshotView(definition, updated)
+    val steps = snapshot.steps
+    val artifacts = snapshot.artifacts
+    assertEquals(definition.stepIds, steps.map { it.stepId })
+    assertEquals("completed", steps.first().status)
     assertEquals(mapOf("feature_name" to "workflow-runtime"), artifacts["assessment"])
   }
 
@@ -70,8 +69,8 @@ class FeatureImplementWorkflowRuntimeTest {
       )
 
     val blockedDecision = WorkflowEngine.continueDecision(definition, blocked)
-    assertEquals("blocked", blockedDecision.payload["continue_status"])
-    assertEquals(listOf("plan"), blockedDecision.payload["missing_artifacts"])
+    assertEquals("blocked", blockedDecision.view.continueStatus)
+    assertEquals(listOf("plan"), blockedDecision.view.resume.missingArtifacts)
     assertFalse(blockedDecision.shouldReopen)
 
     val resumable =
@@ -87,7 +86,7 @@ class FeatureImplementWorkflowRuntimeTest {
         ),
       )
     val reopened = WorkflowEngine.continueDecision(definition, resumable)
-    assertEquals("reopened", reopened.payload["continue_status"])
+    assertEquals("reopened", reopened.view.continueStatus)
     assertTrue(reopened.shouldReopen)
     assertEquals(2, reopened.nextAttemptCount)
   }
@@ -114,7 +113,7 @@ class FeatureImplementWorkflowRuntimeTest {
     )
 
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowEngine.fullPayload(definition, persisted)
+      WorkflowEngine.snapshotView(definition, persisted)
     }
 
     assertContains(error.message.orEmpty(), "stepsJson")
@@ -128,7 +127,7 @@ class FeatureImplementWorkflowRuntimeTest {
     )
 
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowEngine.fullPayload(definition, persisted)
+      WorkflowEngine.snapshotView(definition, persisted)
     }
 
     assertContains(error.message.orEmpty(), "stepsJson")
@@ -142,7 +141,7 @@ class FeatureImplementWorkflowRuntimeTest {
     )
 
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowEngine.fullPayload(definition, persisted)
+      WorkflowEngine.snapshotView(definition, persisted)
     }
 
     assertContains(error.message.orEmpty(), "artifactsJson")
@@ -156,7 +155,7 @@ class FeatureImplementWorkflowRuntimeTest {
     )
 
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowEngine.fullPayload(definition, persisted)
+      WorkflowEngine.snapshotView(definition, persisted)
     }
 
     assertContains(error.message.orEmpty(), "artifactsJson")
@@ -174,7 +173,7 @@ class FeatureImplementWorkflowRuntimeTest {
 
     blankSnapshots.forEach { (fieldName, persisted) ->
       val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-        WorkflowEngine.fullPayload(definition, persisted)
+        WorkflowEngine.snapshotView(definition, persisted)
       }
       assertContains(error.message.orEmpty(), fieldName)
     }
@@ -194,7 +193,7 @@ class FeatureImplementWorkflowRuntimeTest {
 
     assertEquals(null, WorkflowEngine.validateUpdate(definition, pending))
     assertEquals(null, WorkflowEngine.validateUpdate(definition, abandoned))
-    assertEquals("recover", WorkflowEngine.resumePayload(definition, completedAs("abandoned"))["resume_mode"])
+    assertEquals("recover", WorkflowEngine.resumeView(definition, completedAs("abandoned")).resumeMode)
     assertEquals(
       "Invalid workflow_status 'canceled'. Allowed: pending, running, completed, failed, abandoned, blocked",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "canceled")),
@@ -278,5 +277,3 @@ class FeatureImplementWorkflowRuntimeTest {
     ),
   )
 }
-
-private fun Map<String, Any?>.steps(): List<Map<*, *>> = (this["steps"] as List<*>).map { step -> step as Map<*, *> }

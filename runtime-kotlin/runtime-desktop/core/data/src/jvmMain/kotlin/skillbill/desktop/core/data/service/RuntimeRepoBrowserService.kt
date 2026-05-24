@@ -64,7 +64,7 @@ class RuntimeRepoBrowserService(
     scaffoldService.render(root, skillName)
   }
   internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
-    scaffoldService.saveExactContent(root, skillName, body)
+    scaffoldService.saveExactContent(root, skillName, body).payload
   }
   internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)
@@ -205,7 +205,7 @@ class RuntimeRepoBrowserService(
     val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
       ?: return ValidationSummary.unavailable
     val skillName = detail.skillName ?: return ValidationSummary.unavailable
-    return runCatching { scaffoldService.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
+    return runCatching { scaffoldService.validate(root, listOf(skillName)).payload.toSelectedValidationSummary(root) }
       .getOrElse { error ->
         ValidationSummary(
           state = ValidationRunState.FAILED,
@@ -414,7 +414,7 @@ class RuntimeRepoBrowserService(
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): AuthoredSkillGroups {
-    val payload = scaffoldService.list(root, emptyList())
+    val payload = scaffoldService.list(root, emptyList()).payload
     val skills = payload["skills"] as? List<*> ?: emptyList<Any?>()
     val horizontal = mutableListOf<SkillBillTreeItem>()
     val platformChildren = linkedMapOf<String, MutableList<SkillBillTreeItem>>()

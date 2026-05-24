@@ -84,18 +84,19 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       // fullPayload: validates internally, and the emitted map is the
       // canonical snapshot envelope. Re-validate externally to pin the
       // schema 1:1 against engine output.
-      val full = WorkflowEngine.fullPayload(definition, record)
+      val snapshotView = WorkflowEngine.snapshotView(definition, record)
+      val full = WorkflowEngine.snapshotMap(snapshotView)
       validator.validate(full, definition.workflowName)
-      // summaryPayload: validates internally (calls validatedSnapshotMap
+      // summaryView: validates internally (calls validatedSnapshotMap
       // before stripping steps/artifacts). Invoking it without an
       // exception is the pin; the emitted shape itself is a derivative
       // that cannot be validated against the snapshot schema.
-      WorkflowEngine.summaryPayload(definition, record)
-      // resumePayload: validates internally (via fullPayload), then
+      WorkflowEngine.summaryView(definition, record)
+      // resumeView: validates internally (via snapshotView), then
       // extends the envelope with non-snapshot derivative fields. The
       // snapshot-shape subset must still satisfy the schema, so
       // re-validate that subset.
-      val resumed = WorkflowEngine.resumePayload(definition, record)
+      val resumed = WorkflowEngine.resumeMap(WorkflowEngine.resumeView(definition, record))
       validator.validate(resumed.filterKeys { it in SNAPSHOT_KEYS }, definition.workflowName)
     }
   }
@@ -144,7 +145,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       } else {
         updated
       }
-      val payload = WorkflowEngine.fullPayload(definition, withFinishedAt)
+      val payload = WorkflowEngine.snapshotMap(WorkflowEngine.snapshotView(definition, withFinishedAt))
       validator.validate(payload, definition.workflowName)
     }
   }

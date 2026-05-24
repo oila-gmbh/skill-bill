@@ -63,6 +63,7 @@ class RuntimeModuleSmokeTest {
       expectedSubsystemPackages -
         setOf(
           "skillbill.application",
+          "skillbill.boundary",
           "skillbill.contracts",
           "skillbill.desktop",
           "skillbill.di",
@@ -114,6 +115,7 @@ class RuntimeModuleSmokeTest {
     val expectedSubsystemPackages: Set<String> =
       setOf(
         "skillbill.application",
+        "skillbill.boundary",
         "skillbill.cli",
         "skillbill.desktop",
         "skillbill.di",

@@ -1,29 +1,45 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.install.InstallAgentGateway
+import skillbill.ports.install.agent.InstallAgentTargetPort
+import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
+import skillbill.ports.install.agent.model.InstallAgentDirectoryRequest
+import skillbill.ports.install.agent.model.InstallAgentPathRequest
+import skillbill.ports.install.agent.model.InstallAgentTargetCleanupRequest
 import java.nio.file.Path
 
 @Inject
 class InstallAgentService(
-  private val gateway: InstallAgentGateway,
+  private val agentTargetPort: InstallAgentTargetPort,
 ) {
-  fun agentPath(agent: String, home: Path? = null): Path = gateway.agentPath(agent, home)
+  fun agentPath(agent: String, home: Path? = null): Path =
+    agentTargetPort.agentPath(InstallAgentPathRequest(agent = agent, home = home)).path
 
-  fun detectAgentTargets(home: Path? = null) = gateway.detectAgentTargets(home)
+  fun detectAgentTargets(home: Path? = null) =
+    agentTargetPort.detectAgentTargets(DetectInstallAgentTargetsRequest(home)).targets
 
-  fun codexAgentsPath(home: Path? = null): Path = gateway.codexAgentsPath(home)
+  fun codexAgentsPath(home: Path? = null): Path = agentDirectory("codex", home)
 
-  fun claudeAgentsPath(home: Path? = null): Path = gateway.claudeAgentsPath(home)
+  fun claudeAgentsPath(home: Path? = null): Path = agentDirectory("claude", home)
 
-  fun opencodeAgentsPath(home: Path? = null): Path = gateway.opencodeAgentsPath(home)
+  fun opencodeAgentsPath(home: Path? = null): Path = agentDirectory("opencode", home)
 
-  fun junieAgentsPath(home: Path? = null): Path = gateway.junieAgentsPath(home)
+  fun junieAgentsPath(home: Path? = null): Path = agentDirectory("junie", home)
 
   fun cleanupAgentTarget(
     targetDir: Path,
     skillNames: List<String>,
     legacyNames: List<String>,
     managedInstallMarker: String,
-  ) = gateway.cleanupAgentTarget(targetDir, skillNames, legacyNames, managedInstallMarker)
+  ) = agentTargetPort.cleanupAgentTarget(
+    InstallAgentTargetCleanupRequest(
+      targetDir = targetDir,
+      skillNames = skillNames,
+      legacyNames = legacyNames,
+      managedInstallMarker = managedInstallMarker,
+    ),
+  ).cleanup
+
+  private fun agentDirectory(agent: String, home: Path?): Path =
+    agentTargetPort.agentDirectory(InstallAgentDirectoryRequest(agent = agent, home = home)).path
 }

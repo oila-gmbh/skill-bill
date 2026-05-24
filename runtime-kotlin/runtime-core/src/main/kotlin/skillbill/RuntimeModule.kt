@@ -33,6 +33,7 @@ object RuntimeModule {
   val declaredSubsystemPackages: List<String> =
     listOf(
       "skillbill.application",
+      "skillbill.boundary",
       "skillbill.cli",
       "skillbill.desktop",
       "skillbill.di",

@@ -1,6 +1,7 @@
 package skillbill.install
 
 import skillbill.error.ContractVersionMismatchError
+import skillbill.error.InvalidInstallPlanSchemaError
 import skillbill.error.MissingContentFileError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -512,6 +513,21 @@ class InstallPlanBuilderTest {
       plan.windowsSymlinkPreflight.message,
     )
     assertEquals(before, snapshotTree(fixture.repoRoot), "planning must not write generated artifacts into source")
+  }
+
+  @Test
+  fun `builder seam still validates install plan wire map with typed schema error`() {
+    val fixture = setupPlanFixture()
+
+    val error = assertFailsWith<InvalidInstallPlanSchemaError> {
+      InstallOperations.planInstall(
+        fixture.request().copy(
+          mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("")),
+        ),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
   }
 
   private fun setupPlanFixture(): PlanFixture {

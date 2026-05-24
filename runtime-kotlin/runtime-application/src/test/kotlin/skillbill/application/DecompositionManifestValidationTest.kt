@@ -60,6 +60,17 @@ class DecompositionManifestValidationTest {
   }
 
   @Test
+  fun `decomposition manifest rejects telemetry-like result payload fields`() {
+    val wireMap = validWireMap()
+    wireMap.mutableSubtasks()[0]["review_result"] = mapOf("finding_count" to 0)
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      decodeDecompositionManifestMap(wireMap, "result-payload-noise")
+    }
+    assertContains(error.reason, "review_result")
+  }
+
+  @Test
   fun `subtask ids above Kotlin Int max fail at application decode seam`() {
     val wireMap = validWireMap()
     wireMap.mutableSubtasks()[0]["id"] = Int.MAX_VALUE.toLong() + 1L
