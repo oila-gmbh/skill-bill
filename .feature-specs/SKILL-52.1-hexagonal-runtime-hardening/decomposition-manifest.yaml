@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "typed-boundary-foundation"
@@ -361,9 +361,9 @@ subtasks:
 - id: 5
   name: "path-policy-and-core-shrink"
   spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_4_path-policy-and-core-shrink.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
-  commit_sha: null
+  commit_sha: "21f8b2f"
   workflow_id: "wfl-20260524-155748-mjk4"
   review_result:
     review_session_id: "fis-20260524-155742-glj1"
@@ -515,7 +515,7 @@ subtasks:
       duration_seconds: 1
       skill: "bill-quality-check"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false
