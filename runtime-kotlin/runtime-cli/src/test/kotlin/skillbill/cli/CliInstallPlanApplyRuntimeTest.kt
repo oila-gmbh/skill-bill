@@ -155,6 +155,14 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals(false, mcp["register"])
     assertEquals(supportedAgents, (mcp["agents"] as List<*>).toSet())
     assertTrue(mcp.listOfMaps("outcomes").all { outcome -> outcome["status"] == "skipped" })
+
+    val selection = readInstallSelection(fixture.home)
+    assertEquals(supportedAgents, (selection["selected_agents"] as List<*>).toSet())
+    assertEquals("none", selection.mapValue("platform_pack_selection")["mode"])
+    assertEquals(emptyList<String>(), selection.mapValue("platform_pack_selection")["selected_slugs"])
+    assertEquals("anonymous", selection["telemetry_level"])
+    assertEquals(false, selection.mapValue("mcp_registration")["register"])
+    assertEquals(null, selection.mapValue("mcp_registration")["runtime_mcp_bin"])
   }
 
   @Test
@@ -251,6 +259,25 @@ class CliInstallPlanApplyRuntimeTest {
   }
 
   @Test
+  fun `install apply persists detected agents platform packs telemetry and mcp choice`() {
+    val fixture = installPlanApplyFixture()
+    createDetectedAgentHomes(fixture.home)
+
+    val result = CliRuntime.run(detectedApplyArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val selection = readInstallSelection(fixture.home)
+    assertEquals(supportedAgents, (selection["selected_agents"] as List<*>).toSet())
+    val platformSelection = selection.mapValue("platform_pack_selection")
+    assertEquals("all", platformSelection["mode"])
+    assertEquals(emptyList<String>(), platformSelection["selected_slugs"])
+    assertEquals("off", selection["telemetry_level"])
+    val mcp = selection.mapValue("mcp_registration")
+    assertEquals(false, mcp["register"])
+    assertEquals(null, mcp["runtime_mcp_bin"])
+  }
+
+  @Test
   fun `install apply parses replace existing flag and removes legacy managed targets`() {
     val fixture = installPlanApplyFixture()
     val targetDir = fixture.home.resolve("manual-targets/codex")
@@ -300,6 +327,7 @@ class CliInstallPlanApplyRuntimeTest {
       "Windows requires elevation or Developer Mode before symlink install.",
       failures.single()["message"],
     )
+    assertFalse(Files.exists(installSelectionPath(fixture.home)))
   }
 
   @Test
@@ -467,6 +495,23 @@ class CliInstallPlanApplyRuntimeTest {
     "all",
     "--telemetry",
     telemetry,
+    "--mcp",
+    "skip",
+    "--format",
+    "json",
+  )
+
+  private fun detectedApplyArguments(fixture: InstallPlanApplyFixture): List<String> = listOf(
+    "install",
+    "apply",
+    "--repo-root",
+    fixture.repoRoot.toString(),
+    "--agent-mode",
+    "detected",
+    "--platform-mode",
+    "all",
+    "--telemetry",
+    "off",
     "--mcp",
     "skip",
     "--format",
@@ -728,6 +773,11 @@ private data class InstallPlanApplyFixture(
 private fun decodeInstallPlanApplyJson(rawJson: String): Map<String, Any?> =
   JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
     ?: emptyMap()
+
+private fun readInstallSelection(home: Path): Map<String, Any?> =
+  decodeInstallPlanApplyJson(Files.readString(installSelectionPath(home)))
+
+private fun installSelectionPath(home: Path): Path = home.resolve(".skill-bill/install-selection.json")
 
 private fun singleCodexPlanGoldenPayload(fixture: InstallPlanApplyFixture): Map<String, Any?> {
   val paths = SingleCodexGoldenPaths(fixture)

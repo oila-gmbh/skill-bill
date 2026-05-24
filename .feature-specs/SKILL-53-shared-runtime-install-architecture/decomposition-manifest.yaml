@@ -1,5 +1,5 @@
 ---
-contract_version: "0.1"
+contract_version: "0.2"
 issue_key: "SKILL-53"
 feature_name: "shared-runtime-install-architecture"
 parent_spec_path: ".feature-specs/SKILL-53-shared-runtime-install-architecture/spec.md"
@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-53-shared-runtime-install-architecture"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 3
+  action: "start"
 subtasks:
 - id: 1
   name: "shared-install-selection-foundation"
@@ -142,15 +142,77 @@ subtasks:
 - id: 2
   name: "cli-shell-persistence"
   spec_path: ".feature-specs/SKILL-53-shared-runtime-install-architecture/spec_subtask_2_cli-shell-persistence.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-53-shared-runtime-install-architecture"
   commit_sha: null
   workflow_id: null
-  review_result: null
-  audit_result: null
-  validation_result: null
+  review_result:
+    review_iterations: 1
+    result: "passed_no_blocker_major_findings"
+    remaining_blocker_major_findings: 0
+    remaining_minor_findings: 0
+    initial_findings: []
+    fixes_applied: []
+    review_telemetry_note: "Workflow state was unavailable for SKILL-53 continuation in this local Codex run; review was performed inline against the working-tree diff without bill-code-review import telemetry."
+  audit_result:
+    pass: true
+    per_criterion:
+    - id: 1
+      criterion: "`skill-bill install apply` can persist latest successful install choices without introducing a dependency on desktop modules."
+      verdict: "pass"
+      evidence:
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:70"
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:97"
+      - "runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponent.kt:172"
+    - id: 2
+      criterion: "`install.sh` delegates persistence through the runtime CLI or shared runtime API after successful apply and does not hand-write desktop preference internals."
+      verdict: "pass"
+      evidence:
+      - "install.sh:890"
+      - "install.sh:924"
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:97"
+    - id: 3
+      criterion: "Detected-agent installs persist the actual resolved installed agents when available from the typed apply result."
+      verdict: "pass"
+      evidence:
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:101"
+      - "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/InstallServiceTest.kt:89"
+      - "runtime-kotlin/runtime-cli/src/test/kotlin/skillbill/cli/CliInstallPlanApplyRuntimeTest.kt:259"
+    - id: 4
+      criterion: "Manual agent selections, selected platform packs, telemetry level, and MCP opt-out choices persist through the shared store."
+      verdict: "pass"
+      evidence:
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:104"
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:112"
+      - "runtime-kotlin/runtime-cli/src/test/kotlin/skillbill/cli/CliInstallPlanApplyRuntimeTest.kt:108"
+      - "runtime-kotlin/runtime-cli/src/test/kotlin/skillbill/cli/CliInstallPlanApplyRuntimeTest.kt:259"
+    - id: 5
+      criterion: "Failed install attempts are not persisted as completed reusable selections."
+      verdict: "pass"
+      evidence:
+      - "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/InstallService.kt:92"
+      - "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/InstallServiceTest.kt:133"
+      - "runtime-kotlin/runtime-cli/src/test/kotlin/skillbill/cli/CliInstallPlanApplyRuntimeTest.kt:284"
+    gaps: []
+  validation_result:
+    validation_result: "pass"
+    routed_skill: "bill-kotlin-quality-check"
+    detected_stack: "kotlin"
+    initial_failure_count: 1
+    final_failure_count: 0
+    fixes_applied: "Applied :runtime-application:spotlessApply after focused tests exposed only formatting drift; focused application and CLI tests plus spotless checks pass."
+    telemetry_payload:
+      routed_skill: "bill-kotlin-quality-check"
+      detected_stack: "kotlin"
+      scope_type: "working_tree"
+      initial_failure_count: 1
+      final_failure_count: 0
+      iterations: 2
+      result: "pass"
+      duration_seconds: 9
+      skill: "bill-quality-check"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false

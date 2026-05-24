@@ -1,3 +1,11 @@
+## [2026-05-24] SKILL-53 cli-shell-persistence
+Areas: runtime-kotlin/runtime-application install service, runtime-kotlin/runtime-cli install apply, install.sh runtime delegation
+- `InstallService.applyInstall` now persists `SharedInstallSelection` through `InstallSelectionPersistencePort` only after non-failure typed apply results, keeping CLI/shell writes outside desktop modules. reusable
+- Persisted agents prefer `InstallApplyResult.resolvedInstalledAgents` and fall back to planned agents only when the apply result has no stronger evidence. reusable
+- CLI coverage now asserts manual/detected selections, platform mode, telemetry level, MCP opt-out, and failure non-persistence through the canonical `install-selection.json` record.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-24] SKILL-53 shared-install-selection-foundation
 Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-ports install selection port, runtime-kotlin/runtime-infra-fs install-selection persistence, runtime-kotlin/runtime-contracts errors, runtime-kotlin/runtime-core DI
 - Shared install selection now lives outside desktop as `SharedInstallSelection` plus `InstallSelectionPersistencePort`; requests carry explicit `installHome` so CLI/Desktop callers can persist the intended runtime install state. reusable
