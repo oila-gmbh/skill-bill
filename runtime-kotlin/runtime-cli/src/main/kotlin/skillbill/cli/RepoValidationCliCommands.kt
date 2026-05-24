@@ -5,21 +5,23 @@ import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
-import skillbill.scaffold.RepoValidationRuntime
+import skillbill.application.RepoValidationService
 import java.nio.file.Path
 
 @Inject
 class RepoValidationCliCommands(
   private val state: CliRunState,
+  private val repoValidationService: RepoValidationService,
 ) {
   val commands = listOf(
-    ValidateAgentConfigsCommand(state),
-    ValidateReleaseRefCommand(state),
+    ValidateAgentConfigsCommand(state, repoValidationService),
+    ValidateReleaseRefCommand(state, repoValidationService),
   )
 }
 
 class ValidateAgentConfigsCommand(
   private val state: CliRunState,
+  private val repoValidationService: RepoValidationService,
 ) : DocumentedCliCommand(
   "validate-agent-configs",
   "Validate Skill Bill governed skills, platform packs, add-ons, docs catalog, and workflow contracts.",
@@ -28,7 +30,7 @@ class ValidateAgentConfigsCommand(
   private val format by formatOption()
 
   override fun run() {
-    val report = RepoValidationRuntime.validateRepo(Path.of(repoRoot))
+    val report = repoValidationService.validateRepo(Path.of(repoRoot))
     val payload = report.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format, exitCode = if (report.passed) 0 else 1)
@@ -56,6 +58,7 @@ class ValidateAgentConfigsCommand(
 
 class ValidateReleaseRefCommand(
   private val state: CliRunState,
+  private val repoValidationService: RepoValidationService,
 ) : DocumentedCliCommand(
   "validate-release-ref",
   "Validate a release tag and emit release metadata.",
@@ -81,7 +84,7 @@ class ValidateReleaseRefCommand(
     }
 
     val metadata = try {
-      RepoValidationRuntime.parseReleaseRef(rawRef)
+      repoValidationService.parseReleaseRef(rawRef)
     } catch (error: IllegalArgumentException) {
       state.completeText(
         "${error.message}\n",
@@ -92,7 +95,7 @@ class ValidateReleaseRefCommand(
     }
 
     githubOutput?.let { outputPath ->
-      RepoValidationRuntime.appendGithubOutput(Path.of(outputPath), metadata)
+      repoValidationService.appendGithubOutput(Path.of(outputPath), metadata)
     }
     state.complete(metadata.toPayload(), format)
   }

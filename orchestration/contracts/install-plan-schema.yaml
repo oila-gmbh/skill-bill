@@ -5,7 +5,7 @@
 # map produced by `runtime-cli` and the `buildInstallPlanWireMap`
 # helper in `runtime-domain`). It is authored in YAML for human
 # readability and consumed as a JSON Schema (Draft 2020-12) by the
-# Kotlin runtime (`InstallPlanSchemaValidator` in `runtime-domain`).
+# Kotlin runtime (`InstallPlanSchemaValidator` in `runtime-contracts`).
 #
 # What lives here vs. in Kotlin:
 #
@@ -21,7 +21,7 @@
 # Versioning rule:
 #
 # - `contract_version` is pinned by `INSTALL_PLAN_CONTRACT_VERSION` in
-#   `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaPaths.kt`.
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt`.
 # - The parity test `InstallPlanSchemaContractVersionTest` fails the
 #   build if they diverge. To bump the contract, edit BOTH constants in
 #   the same change.

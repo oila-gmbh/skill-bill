@@ -12,10 +12,16 @@ kotlin {
     }
 
     jvmMain.dependencies {
+      implementation(project(":runtime-application"))
       implementation(project(":runtime-core"))
+      implementation(project(":runtime-domain"))
+      implementation(project(":runtime-infra-fs"))
+      implementation(project(":runtime-ports"))
+      implementation(libs.kotlin.inject.runtime)
     }
 
     jvmTest.dependencies {
+      implementation(project(":runtime-domain"))
       // SKILL-48 C8: consume the shared `repoRootFromTest()` helper published by runtime-core
       // via the `java-test-fixtures` plugin so this jvmTest can drop its private copy. The KMP
       // DSL does not expose the `testFixtures()` shorthand; depend on the published capability

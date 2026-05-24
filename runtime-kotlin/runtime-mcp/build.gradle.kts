@@ -8,7 +8,13 @@ plugins {
 }
 
 dependencies {
-  api(project(":runtime-core"))
+  implementation(project(":runtime-application"))
+  implementation(project(":runtime-contracts"))
+  implementation(project(":runtime-core"))
+  implementation(project(":runtime-domain"))
+  implementation(project(":runtime-infra-fs"))
+  implementation(project(":runtime-infra-http"))
+  implementation(project(":runtime-ports"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.kotlinx.serialization.json)
   // SKILL-48 Subtask 2d: TelemetryEventSchemaValidator wraps the
@@ -22,6 +28,7 @@ dependencies {
   implementation(libs.jackson.dataformat.yaml)
   ksp(libs.kotlin.inject.compiler)
   testImplementation(project(":runtime-cli"))
+  testImplementation(project(":runtime-infra-sqlite"))
   // SKILL-48 Subtask 2d: pull in the shared `skillbill.testing.repoRootFromTest()`
   // helper so dedicated parity/violations tests can locate the canonical
   // schema YAML on disk without re-declaring a local helper (C8).

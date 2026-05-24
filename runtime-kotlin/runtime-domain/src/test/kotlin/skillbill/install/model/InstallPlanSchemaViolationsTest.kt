@@ -1,5 +1,7 @@
 package skillbill.install.model
 
+import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
+import skillbill.contracts.install.InstallPlanSchemaValidator
 import skillbill.error.InvalidInstallPlanSchemaError
 import kotlin.test.Test
 import kotlin.test.assertContains

@@ -1,6 +1,5 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.review.ReviewInputReader
 import skillbill.review.ReviewParser
 import skillbill.review.model.FindingMetadata
 import skillbill.review.model.ImportedFinding
@@ -11,9 +10,6 @@ import java.sql.Connection
 
 object ReviewRuntime {
   fun parseReview(text: String): ImportedReview = ReviewParser.parseReview(text)
-
-  fun readInput(inputPath: String, stdinText: String? = null): Pair<String, String?> =
-    ReviewInputReader.readInput(inputPath, stdinText)
 
   fun saveImportedReview(connection: Connection, review: ImportedReview, sourcePath: String?) {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)

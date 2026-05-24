@@ -7,13 +7,12 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.SkillRemoveService
 import skillbill.domain.skillremove.SkillRemovalRefusedException
-import skillbill.domain.skillremove.SkillRemove
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
 import skillbill.domain.skillremove.model.SkillRemovalTarget
-import skillbill.skillremove.SkillRemoveJvmFileSystem
 import java.nio.file.Path
 
 /**
@@ -41,6 +40,7 @@ import java.nio.file.Path
 @Inject
 class RemoveCliCommand(
   private val state: CliRunState,
+  private val skillRemoveService: SkillRemoveService,
 ) : DocumentedCliCommand(
   "remove",
   "Remove a horizontal skill, a platform pack, or a governed add-on, including manifest, README, " +
@@ -73,10 +73,13 @@ class RemoveCliCommand(
         return
       }
     val absoluteRepoRoot = Path.of(repoRoot).toAbsolutePath().normalize().toString()
-    val request = SkillRemovalRequest(target = parsed, repoRootAbsolutePath = absoluteRepoRoot)
-    val service = SkillRemove(SkillRemoveJvmFileSystem(home = state.userHome))
+    val request = SkillRemovalRequest(
+      target = parsed,
+      repoRootAbsolutePath = absoluteRepoRoot,
+      userHomeAbsolutePath = state.userHome.toAbsolutePath().normalize().toString(),
+    )
     val outcome = try {
-      if (dryRun) service.previewRemoval(request) else service.executeRemoval(request)
+      if (dryRun) skillRemoveService.previewRemoval(request) else skillRemoveService.executeRemoval(request)
     } catch (refusal: SkillRemovalRefusedException) {
       // Refusal is part of the contract: emit a typed error and exit non-zero.
       // F-S04: scrub absolute paths from any refusal message before it reaches the user.

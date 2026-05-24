@@ -37,9 +37,12 @@ of all runtime implementation code.
 - `runtime-infra-sqlite`: SQLite schema/migrations/stores/repositories and
   SQL-backed review helpers.
 - `runtime-infra-http`: telemetry HTTP requester/client and proxy wire mapping.
-- `runtime-infra-fs`: telemetry config file adapter.
+- `runtime-infra-fs`: telemetry config file adapter plus filesystem/process
+  ownership for install planning/apply/staging, governed scaffold/load/render,
+  native-agent rendering/linking, launcher MCP registration, and skill-remove
+  filesystem cascades.
 - `runtime-core`: Kotlin-Inject runtime composition root, module metadata, and
-  reserved runtime surfaces.
+  compatibility API umbrella over the shared runtime modules.
 - `runtime-cli`: Clikt command tree, CLI option validation, terminal
   presenters, JSON output, help/completion surfaces, and CLI tests.
 - `runtime-desktop`: optional Compose Multiplatform JVM desktop Skill Bill app shell
@@ -89,6 +92,13 @@ No known package-level upward dependencies remain for the implemented split.
 - Public application/domain/port data models now live under explicit `model`
   packages instead of inline service or port files. For example,
   `LearningResolution` lives in `skillbill.ports.persistence.model`.
+- Runtime implementation packages formerly under `runtime-core`
+  (`skillbill.install`, `skillbill.scaffold`, `skillbill.nativeagent`,
+  `skillbill.launcher`, and concrete `skillbill.skillremove`) now live in
+  `runtime-infra-fs`. Workflow runtime-surface metadata lives in
+  `runtime-application`; `runtime-core` is limited to DI composition and module
+  metadata while continuing to re-export the shared modules for existing
+  CLI/MCP/Desktop callers.
 
 ## Proven Boundaries Today
 
@@ -118,6 +128,9 @@ and useful now:
 - Module-owned SQLite tests now live with `runtime-infra-sqlite`, so tests can
   exercise internal migration/schema details without weakening production
   encapsulation.
+- Module-owned install, scaffold, native-agent, launcher, and skill-remove tests
+  now live with `runtime-infra-fs`, so internal filesystem adapters remain
+  covered without returning implementation packages to `runtime-core`.
 
 ## Deeper Split Readiness Criteria
 

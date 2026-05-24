@@ -117,7 +117,7 @@ the loop.
 - the authored body rendered into `## Execution`
 - generated ceremony text in `## Ceremony`
 
-The renderer is implemented in `runtime-kotlin/runtime-core` around
+The renderer is implemented in `runtime-kotlin/runtime-infra-fs` around
 `AuthoringRender.kt` and supporting scaffold renderers.
 
 Important rules:

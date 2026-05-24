@@ -1,6 +1,5 @@
 package skillbill.workflow
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
@@ -8,110 +7,12 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionStackBranch
 import skillbill.workflow.model.DecompositionSubtask
-import java.nio.file.Files
-import java.nio.file.Path
+import java.math.BigDecimal
+import java.math.BigInteger
 
 object DecompositionManifestCodec {
-  private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
-
-  fun load(path: Path): DecompositionManifest = decodeYaml(Files.readString(path), path.toString())
-
   fun decodeMap(wireMap: Map<String, Any?>, sourceLabel: String = "<in-memory>"): DecompositionManifest {
-    DecompositionManifestSchemaValidator.validate(wireMap, sourceLabel)
-    val manifest = wireMap.toDecompositionManifest(sourceLabel)
-    validateCoherence(manifest, sourceLabel)
-    return manifest
-  }
-
-  fun validate(manifest: DecompositionManifest, sourceLabel: String = "<in-memory>") {
-    DecompositionManifestSchemaValidator.validate(manifest.toWireMap(), sourceLabel)
-    validateCoherence(manifest, sourceLabel)
-  }
-
-  fun encodeYaml(manifest: DecompositionManifest): String {
-    validate(manifest)
-    return yamlMapper.writeValueAsString(manifest.toWireMap())
-  }
-
-  fun decodeYaml(yamlText: String, sourceLabel: String = "<in-memory>"): DecompositionManifest {
-    val parsed = DecompositionManifestSchemaValidator.validateYamlText(yamlText, sourceLabel)
-    val manifest = parsed.toDecompositionManifest(sourceLabel)
-    validateCoherence(manifest, sourceLabel)
-    return manifest
-  }
-
-  private fun validateCoherence(manifest: DecompositionManifest, sourceLabel: String) {
-    if (manifest.contractVersion != DECOMPOSITION_MANIFEST_CONTRACT_VERSION) {
-      invalidDecompositionManifest(
-        sourceLabel,
-        "contract_version '${manifest.contractVersion}' must equal '$DECOMPOSITION_MANIFEST_CONTRACT_VERSION'.",
-      )
-    }
-    val seenIds = mutableSetOf<Int>()
-    val seenSpecPaths = mutableSetOf<String>()
-    manifest.subtasks.forEachIndexed { index, subtask ->
-      if (!seenIds.add(subtask.id)) {
-        invalidDecompositionManifest(sourceLabel, "subtasks[$index].id '${subtask.id}' is duplicated.")
-      }
-      if (!seenSpecPaths.add(subtask.specPath)) {
-        invalidDecompositionManifest(sourceLabel, "subtasks[$index].spec_path '${subtask.specPath}' is duplicated.")
-      }
-      subtask.dependencies.forEach { dependency ->
-        if (dependency.subtaskId !in seenIds) {
-          invalidDecompositionManifest(
-            sourceLabel,
-            "subtasks[$index].dependencies references '${dependency.subtaskId}', which is not a prior subtask id.",
-          )
-        }
-      }
-    }
-    validateExecutionModel(manifest, sourceLabel)
-    validateCurrentIntent(manifest, sourceLabel)
-  }
-
-  private fun validateExecutionModel(manifest: DecompositionManifest, sourceLabel: String) {
-    when (manifest.executionModel) {
-      DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> {
-        if (manifest.featureBranch.isNullOrBlank()) {
-          invalidDecompositionManifest(sourceLabel, "same_branch_commit_per_subtask requires feature_branch.")
-        }
-        if (manifest.stackBranches.isNotEmpty()) {
-          invalidDecompositionManifest(
-            sourceLabel,
-            "same_branch_commit_per_subtask requires stack_branches to be empty.",
-          )
-        }
-      }
-      DecompositionExecutionModel.STACKED_BRANCHES -> {
-        if (manifest.featureBranch != null) {
-          invalidDecompositionManifest(sourceLabel, "stacked_branches requires feature_branch to be null.")
-        }
-        val expectedIds = manifest.subtasks.map { it.id }
-        val branchIds = manifest.stackBranches.map { it.subtaskId }
-        if (branchIds != expectedIds) {
-          invalidDecompositionManifest(
-            sourceLabel,
-            "stacked_branches requires stack_branches to declare one branch per subtask in subtask order.",
-          )
-        }
-      }
-    }
-  }
-
-  private fun validateCurrentIntent(manifest: DecompositionManifest, sourceLabel: String) {
-    val current = manifest.currentSubtaskIntent
-    if (current.action == "none") {
-      if (current.subtaskId != 0) {
-        invalidDecompositionManifest(sourceLabel, "current_subtask_intent.subtask_id must be 0 when action is none.")
-      }
-      return
-    }
-    if (manifest.subtasks.none { it.id == current.subtaskId }) {
-      invalidDecompositionManifest(
-        sourceLabel,
-        "current_subtask_intent.subtask_id '${current.subtaskId}' does not reference an existing subtask.",
-      )
-    }
+    return wireMap.toDecompositionManifest(sourceLabel)
   }
 }
 
@@ -209,11 +110,26 @@ private fun Any?.asMap(sourceLabel: String, fieldPath: String): Map<String, Any?
   } ?: invalidDecompositionManifest(sourceLabel, "$fieldPath must be an object.")
 
 private fun Any?.asInt(sourceLabel: String, fieldPath: String): Int = when (this) {
+  is Byte -> toInt()
+  is Short -> toInt()
   is Int -> this
-  is Long -> this.toInt()
-  is Number -> this.toInt()
-  else -> invalidDecompositionManifest(sourceLabel, "$fieldPath must be an integer.")
-}
+  is Long -> try {
+    Math.toIntExact(this)
+  } catch (_: ArithmeticException) {
+    null
+  }
+  is BigInteger -> try {
+    intValueExact()
+  } catch (_: ArithmeticException) {
+    null
+  }
+  is BigDecimal -> try {
+    toBigIntegerExact().intValueExact()
+  } catch (_: ArithmeticException) {
+    null
+  }
+  else -> null
+} ?: invalidDecompositionManifest(sourceLabel, "$fieldPath must be an exact Kotlin Int.")
 
 private fun invalidDecompositionManifest(sourceLabel: String, reason: String): Nothing =
   throw InvalidDecompositionManifestSchemaError(sourceLabel = sourceLabel, reason = reason)

@@ -1,9 +1,12 @@
 package skillbill.workflow
 
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowUpdateInput
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -90,6 +93,94 @@ class FeatureImplementWorkflowRuntimeTest {
   }
 
   @Test
+  fun `implement continue rejects persisted oversized attempt count`() {
+    val persisted = WorkflowEngine.openRecord(definition, "wfl-oversized", "fis-001", "assess").copy(
+      workflowStatus = "running",
+      currentStepId = "implement",
+      stepsJson = """[{"step_id":"implement","status":"blocked","attempt_count":2147483648}]""",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowEngine.continueDecision(definition, persisted)
+    }
+
+    assertContains(error.message.orEmpty(), "attempt_count")
+  }
+
+  @Test
+  fun `implement read seam rejects malformed durable steps JSON`() {
+    val persisted = WorkflowEngine.openRecord(definition, "wfl-bad-steps", "fis-001", "assess").copy(
+      stepsJson = """[{"step_id":"assess"}""",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowEngine.fullPayload(definition, persisted)
+    }
+
+    assertContains(error.message.orEmpty(), "stepsJson")
+    assertContains(error.message.orEmpty(), "malformed JSON")
+  }
+
+  @Test
+  fun `implement read seam rejects non-array durable steps JSON`() {
+    val persisted = WorkflowEngine.openRecord(definition, "wfl-object-steps", "fis-001", "assess").copy(
+      stepsJson = """{"step_id":"assess","status":"running","attempt_count":1}""",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowEngine.fullPayload(definition, persisted)
+    }
+
+    assertContains(error.message.orEmpty(), "stepsJson")
+    assertContains(error.message.orEmpty(), "JSON array")
+  }
+
+  @Test
+  fun `implement read seam rejects malformed durable artifacts JSON`() {
+    val persisted = WorkflowEngine.openRecord(definition, "wfl-bad-artifacts", "fis-001", "assess").copy(
+      artifactsJson = """{"assessment":""",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowEngine.fullPayload(definition, persisted)
+    }
+
+    assertContains(error.message.orEmpty(), "artifactsJson")
+    assertContains(error.message.orEmpty(), "malformed JSON")
+  }
+
+  @Test
+  fun `implement read seam rejects non-object durable artifacts JSON`() {
+    val persisted = WorkflowEngine.openRecord(definition, "wfl-array-artifacts", "fis-001", "assess").copy(
+      artifactsJson = """["assessment"]""",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowEngine.fullPayload(definition, persisted)
+    }
+
+    assertContains(error.message.orEmpty(), "artifactsJson")
+    assertContains(error.message.orEmpty(), "JSON object")
+  }
+
+  @Test
+  fun `implement read seam rejects blank persisted workflow contract fields`() {
+    val baseline = WorkflowEngine.openRecord(definition, "wfl-blank-contract", "fis-001", "assess")
+    val blankSnapshots = listOf(
+      "workflow_name" to baseline.copy(workflowName = ""),
+      "contract_version" to baseline.copy(contractVersion = ""),
+      "workflow_status" to baseline.copy(workflowStatus = ""),
+    )
+
+    blankSnapshots.forEach { (fieldName, persisted) ->
+      val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+        WorkflowEngine.fullPayload(definition, persisted)
+      }
+      assertContains(error.message.orEmpty(), fieldName)
+    }
+  }
+
+  @Test
   fun `implement validation preserves workflow status contract`() {
     val pending =
       WorkflowUpdateInput(
@@ -107,6 +198,41 @@ class FeatureImplementWorkflowRuntimeTest {
     assertEquals(
       "Invalid workflow_status 'canceled'. Allowed: pending, running, completed, failed, abandoned, blocked",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "canceled")),
+    )
+  }
+
+  @Test
+  fun `implement validation rejects non exact integer attempt counts`() {
+    val valid =
+      WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "assess",
+        stepUpdates = listOf(mapOf("step_id" to "assess", "status" to "running", "attempt_count" to 1)),
+        artifactsPatch = null,
+        sessionId = "",
+      )
+    val expected = "step_updates[0].attempt_count must be an integer >= 0."
+
+    assertEquals(null, WorkflowEngine.validateUpdate(definition, valid))
+    assertEquals(
+      expected,
+      WorkflowEngine.validateUpdate(
+        definition,
+        valid.copy(
+          stepUpdates = listOf(mapOf("step_id" to "assess", "status" to "running", "attempt_count" to 1.5)),
+        ),
+      ),
+    )
+    assertEquals(
+      expected,
+      WorkflowEngine.validateUpdate(
+        definition,
+        valid.copy(
+          stepUpdates = listOf(
+            mapOf("step_id" to "assess", "status" to "running", "attempt_count" to 4_294_967_297L),
+          ),
+        ),
+      ),
     )
   }
 

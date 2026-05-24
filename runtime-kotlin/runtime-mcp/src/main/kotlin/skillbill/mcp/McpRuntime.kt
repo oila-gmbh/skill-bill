@@ -17,16 +17,16 @@ import skillbill.contracts.mcp.McpReviewImportSkippedContract
 import skillbill.contracts.mcp.McpTriageSkippedContract
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Path
 
 data class McpRuntimeContext(
-  val requester: HttpRequester = JdkHttpRequester,
+  val requester: HttpRequester = UnconfiguredHttpRequester,
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -254,7 +254,7 @@ object McpWorkflowRuntime {
   ): Map<String, Any?> = services(context).workflowService.continueWorkflow(kind, workflowId, dbOverride = null)
 }
 
-private fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
+internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
   val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))
   return McpComponent::class.create(runtimeComponent).services
 }

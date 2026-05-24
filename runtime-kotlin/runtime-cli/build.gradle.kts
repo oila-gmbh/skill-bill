@@ -6,11 +6,18 @@ plugins {
 }
 
 dependencies {
-  api(project(":runtime-core"))
+  implementation(project(":runtime-application"))
+  implementation(project(":runtime-contracts"))
+  implementation(project(":runtime-core"))
+  implementation(project(":runtime-domain"))
+  implementation(project(":runtime-infra-fs"))
+  implementation(project(":runtime-infra-http"))
+  implementation(project(":runtime-ports"))
   implementation(libs.clikt)
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.kotlinx.serialization.json)
   ksp(libs.kotlin.inject.compiler)
+  testImplementation(project(":runtime-infra-sqlite"))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

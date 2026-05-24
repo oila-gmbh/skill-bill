@@ -2,6 +2,7 @@ package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.ChangedFile
 import skillbill.desktop.core.domain.model.ChangedFileGroup
 import skillbill.desktop.core.domain.model.ChangesSnapshot
@@ -13,7 +14,6 @@ import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.core.domain.service.GitGateway
-import skillbill.scaffold.discoverGeneratedArtifactFiles
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -25,7 +25,12 @@ import kotlin.io.path.relativeTo
 
 @Inject
 @SingleIn(UserScope::class)
-class RuntimeGitGateway : GitGateway {
+class RuntimeGitGateway(
+  private val runtimeServices: DesktopRuntimeApplicationServices =
+    DesktopRuntimeApplicationServices.forCurrentUserHome(),
+) : GitGateway {
+  private val repoSourceDiscoveryService get() = runtimeServices.repoSourceDiscoveryService
+
   override fun statusFor(session: RepoSession?): SourceControlStatus {
     // F-C701: this is a pure derivation; it does NOT shell out to git. The VM holds a cached branch
     // label sourced from ChangesSnapshot.branchLabel (populated by snapshotFor) and only calls this
@@ -235,7 +240,7 @@ class RuntimeGitGateway : GitGateway {
       )
     }
     val generatedSet = runCatching {
-      discoverGeneratedArtifactFiles(root)
+      repoSourceDiscoveryService.discoverGeneratedArtifactFiles(root)
         .map { artifact -> artifact.path.toAbsolutePath().normalize().relativeTo(root).portablePath() }
         .toSet()
     }.getOrDefault(emptySet())

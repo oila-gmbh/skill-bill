@@ -3,6 +3,7 @@ package skillbill.desktop.core.data.service
 import kotlinx.coroutines.CancellationException
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.BaselineReviewCompositionEdge
 import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
 import skillbill.desktop.core.domain.model.BaselineReviewPackOption
@@ -19,9 +20,7 @@ import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillBillRuntimeException
-import skillbill.scaffold.ScaffoldCatalog
 import skillbill.scaffold.model.ScaffoldResult
-import skillbill.scaffold.scaffold
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -45,30 +44,37 @@ import java.nio.file.Path
  */
 @Inject
 @SingleIn(UserScope::class)
-class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
+class JvmRuntimeScaffoldGateway(
+  private val runtimeServices: DesktopRuntimeApplicationServices =
+    DesktopRuntimeApplicationServices.forCurrentUserHome(),
+) : RuntimeScaffoldGateway {
+  private val scaffoldCatalogService get() = runtimeServices.scaffoldCatalogService
+
   // F-107: scaffolder is a functional seam tests can swap to drive the runtime without exercising
   // the real on-disk scaffolder. Kept off the primary constructor so the public ABI of this
   // gateway does not leak `runtime-core` types into the umbrella module's KSP classpath — the
   // umbrella depends on `core:data` via `implementation`, which would otherwise force an
   // `api(:runtime-core)` leak to keep `ScaffoldResult` resolvable to KSP. See
   // RuntimeRepoBrowserService for the same pattern.
-  internal var scaffolder: (Map<String, Any?>, Boolean) -> ScaffoldResult = ::scaffold
+  internal var scaffolder: (Map<String, Any?>, Boolean) -> ScaffoldResult = { payload, dryRun ->
+    runtimeServices.scaffoldService.scaffold(payload, dryRun)
+  }
 
   override suspend fun catalogSnapshot(session: RepoSession?): ScaffoldCatalogSnapshot {
     val piloted = pilotedPlatformPacks(session)
     val baselineCatalog = baselineReviewCatalog(session)
     return ScaffoldCatalogSnapshot(
-      approvedCodeReviewAreas = ScaffoldCatalog.approvedCodeReviewAreas.sorted(),
-      preShellFamilies = ScaffoldCatalog.preShellFamilies.sorted(),
-      shelledFamilies = ScaffoldCatalog.shelledFamilies.sorted(),
-      platformPackPresets = ScaffoldCatalog.platformPackPresets
+      approvedCodeReviewAreas = scaffoldCatalogService.approvedCodeReviewAreas().sorted(),
+      preShellFamilies = scaffoldCatalogService.preShellFamilies().sorted(),
+      shelledFamilies = scaffoldCatalogService.shelledFamilies().sorted(),
+      platformPackPresets = scaffoldCatalogService.platformPackPresets()
         .map { (slug, display) -> PlatformPackPresetEntry(platform = slug, displayName = display) }
         .sortedBy { it.platform },
       pilotedPlatformPacks = piloted,
       baselineReviewPacks = baselineCatalog.packs,
       baselineReviewCompositionEdges = baselineCatalog.edges,
       baselineReviewLayerSuggestions = baselineCatalog.suggestions,
-      scaffoldPayloadVersion = ScaffoldCatalog.scaffoldPayloadVersion,
+      scaffoldPayloadVersion = scaffoldCatalogService.scaffoldPayloadVersion(),
     )
   }
 
@@ -81,7 +87,7 @@ class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
   private fun pilotedPlatformPacks(session: RepoSession?): List<PilotedPlatformPackEntry> {
     val packsRoot = platformPacksRoot(session) ?: return emptyList()
     return try {
-      ScaffoldCatalog.discoverPilotedPlatformPacks(packsRoot)
+      scaffoldCatalogService.discoverPilotedPlatformPacks(packsRoot)
         .map { pack ->
           PilotedPlatformPackEntry(
             platform = pack.slug,
@@ -97,7 +103,7 @@ class JvmRuntimeScaffoldGateway : RuntimeScaffoldGateway {
   private fun baselineReviewCatalog(session: RepoSession?): DesktopBaselineCatalog {
     val packsRoot = platformPacksRoot(session) ?: return DesktopBaselineCatalog()
     return try {
-      val catalog = ScaffoldCatalog.discoverBaselineReviewCatalog(packsRoot)
+      val catalog = scaffoldCatalogService.discoverBaselineReviewCatalog(packsRoot)
       DesktopBaselineCatalog(
         packs = catalog.packs.map { pack ->
           BaselineReviewPackOption(

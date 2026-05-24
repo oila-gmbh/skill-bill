@@ -8,6 +8,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
@@ -15,7 +16,6 @@ import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Path
 import java.time.OffsetDateTime
@@ -26,6 +26,7 @@ import kotlin.random.Random
 class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  private val decompositionManifestFileStore: DecompositionManifestFileStore,
 ) {
   fun open(
     kind: WorkflowFamilyKind,
@@ -57,7 +58,12 @@ class WorkflowService(
     val payload = database.transaction(dbOverride) { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction unknownWorkflowPayload(request.workflowId)
-      val runtimeInput = family.withDecompositionRuntime(existing, input, request.workflowId)
+      val runtimeInput = family.withDecompositionRuntime(
+        existing,
+        input,
+        request.workflowId,
+        decompositionManifestFileStore,
+      )
       val effectiveInput = runtimeInput.input
       val updatedRecord = WorkflowEngine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
@@ -68,7 +74,11 @@ class WorkflowService(
       ok(WorkflowEngine.fullPayload(family.definition, updated), unitOfWork)
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(Path.of("").toAbsolutePath(), artifactsJson)
+      DecompositionManifestWriter.writeProjectionFromWorkflowState(
+        Path.of("").toAbsolutePath(),
+        artifactsJson,
+        decompositionManifestFileStore,
+      )
     }
     return payload
   }
@@ -120,17 +130,30 @@ class WorkflowService(
       var record = family.get(unitOfWork.workflowStates, workflowId)
       if (record == null && family == WorkflowFamily.IMPLEMENT) {
         val resolved =
-          DecompositionWorkflowContinuation(gitOperations).continueDecomposedParentByIssueKey(workflowId, unitOfWork)
+          DecompositionWorkflowContinuation(
+            gitOperations,
+            decompositionManifestFileStore,
+          ).continueDecomposedParentByIssueKey(workflowId, unitOfWork)
         projectionArtifactsJson = resolved.projectionArtifactsJson ?: projectionArtifactsJson
         return@transaction resolved.payload
       }
       record ?: return@transaction unknownWorkflowPayload(workflowId, unitOfWork.dbPath.toString())
-      continueExistingWorkflow(family, record, workflowId, unitOfWork).also { result ->
+      continueExistingWorkflow(
+        family,
+        record,
+        workflowId,
+        unitOfWork,
+        decompositionManifestFileStore,
+      ).also { result ->
         projectionArtifactsJson = result.projectionArtifactsJson ?: projectionArtifactsJson
       }.payload
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(Path.of("").toAbsolutePath(), artifactsJson)
+      DecompositionManifestWriter.writeProjectionFromWorkflowState(
+        Path.of("").toAbsolutePath(),
+        artifactsJson,
+        decompositionManifestFileStore,
+      )
     }
     return payload
   }
@@ -168,6 +191,7 @@ internal fun WorkflowFamily.withDecompositionRuntime(
   existing: WorkflowStateSnapshot,
   input: WorkflowUpdateInput,
   workflowId: String,
+  fileStore: DecompositionManifestFileStore,
 ): DecompositionRuntimeInput = if (this != WorkflowFamily.IMPLEMENT) {
   DecompositionRuntimeInput(input = input, updated = false)
 } else {
@@ -181,11 +205,15 @@ internal fun WorkflowFamily.withDecompositionRuntime(
       currentStepId = input.currentStepId,
       stepUpdates = input.stepUpdates,
     ),
+    fileStore = fileStore,
   )?.let { manifest ->
     DecompositionRuntimeInput(
       input = input.copy(
         artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
-          put(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, manifest.toWireMap())
+          put(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            encodeDecompositionManifestMap(manifest, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+          )
         },
       ),
       updated = true,

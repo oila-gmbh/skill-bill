@@ -1,6 +1,6 @@
 package skillbill
 
-/** Phase-1 declaration of the JVM runtime scaffold. */
+/** Declaration of the enforced JVM runtime module and subsystem graph. */
 object RuntimeModule {
   const val NAME: String = "runtime-kotlin"
   const val TOOLCHAIN_JDK: Int = 17
@@ -49,8 +49,11 @@ object RuntimeModule {
       "skillbill.workflow.verify",
       "skillbill.scaffold",
       "skillbill.contracts",
+      "skillbill.domain.skillremove",
       "skillbill.install",
       "skillbill.nativeagent",
       "skillbill.error",
+      "skillbill.skillremove",
+      "skillbill.workflow",
     )
 }

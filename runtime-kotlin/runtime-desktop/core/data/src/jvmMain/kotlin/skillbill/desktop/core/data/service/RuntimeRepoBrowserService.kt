@@ -2,6 +2,7 @@ package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
@@ -25,20 +26,11 @@ import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.error.SkillBillRuntimeException
-import skillbill.nativeagent.NativeAgentSource
-import skillbill.nativeagent.discoverNativeAgentSourceFiles
-import skillbill.nativeagent.parseNativeAgentSourceFile
-import skillbill.nativeagent.renderComposedNativeAgentSource
-import skillbill.nativeagent.renderNativeAgentSource
-import skillbill.scaffold.AuthoringOperations
-import skillbill.scaffold.AuthoringRenderResult
-import skillbill.scaffold.RepoValidationIssue
-import skillbill.scaffold.RepoValidationIssueSeverity
-import skillbill.scaffold.RepoValidationReport
-import skillbill.scaffold.RepoValidationRuntime
-import skillbill.scaffold.discoverGeneratedArtifactFiles
-import skillbill.scaffold.discoverGovernedAddonFiles
-import skillbill.scaffold.renderAuthoringTarget
+import skillbill.ports.scaffold.model.NativeAgentSourceProjection
+import skillbill.ports.scaffold.model.ScaffoldRenderResult
+import skillbill.ports.validation.model.RepoValidationIssue
+import skillbill.ports.validation.model.RepoValidationIssueSeverity
+import skillbill.ports.validation.model.RepoValidationReport
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -49,21 +41,30 @@ import kotlin.io.path.relativeTo
 
 @Inject
 @SingleIn(UserScope::class)
-class RuntimeRepoBrowserService :
+class RuntimeRepoBrowserService(
+  private val runtimeServices: DesktopRuntimeApplicationServices =
+    DesktopRuntimeApplicationServices.forCurrentUserHome(),
+) :
   RepoSessionService,
   SkillTreeService,
   AuthoringGateway,
   ValidationGateway,
   RenderGateway {
+  private val scaffoldService get() = runtimeServices.scaffoldService
+  private val repoSourceDiscoveryService get() = runtimeServices.repoSourceDiscoveryService
+  private val repoValidationService get() = runtimeServices.repoValidationService
+
   // F-107: validator is a functional seam tests can swap to drive the onFailure branch of validate()
   // without needing to physically corrupt a repo on disk.
-  internal var validator: (Path) -> RepoValidationReport = RepoValidationRuntime::validateRepo
+  internal var validator: (Path) -> RepoValidationReport = { root -> repoValidationService.validateRepo(root) }
 
   // Mirror of F-107 for render. Tests swap this to drive the runtime-failure branch of render()
   // without needing to physically corrupt the on-disk source.
-  internal var renderer: (Path, String) -> AuthoringRenderResult = ::renderAuthoringTarget
+  internal var renderer: (Path, String) -> ScaffoldRenderResult = { root, skillName ->
+    scaffoldService.render(root, skillName)
+  }
   internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
-    AuthoringOperations.saveExactContent(root, skillName, body)
+    scaffoldService.saveExactContent(root, skillName, body)
   }
   internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)
@@ -204,7 +205,7 @@ class RuntimeRepoBrowserService :
     val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
       ?: return ValidationSummary.unavailable
     val skillName = detail.skillName ?: return ValidationSummary.unavailable
-    return runCatching { AuthoringOperations.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
+    return runCatching { scaffoldService.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
       .getOrElse { error ->
         ValidationSummary(
           state = ValidationRunState.FAILED,
@@ -262,8 +263,13 @@ class RuntimeRepoBrowserService :
   private fun renderSkill(root: Path, detail: SelectionDetail): RenderOutcome {
     val skillName = detail.skillName ?: error("Skill selection is missing a skill name.")
     val result = renderer(root, skillName)
-    val blocks = result.blocks.map { block -> RenderBlock(header = block.header, content = block.content) }
-    val artifacts = result.blocks.mapNotNull { block -> generatedArtifactFromHeader(block.header) }
+    val blocks = result.blocks.map { block ->
+      RenderBlock(
+        header = block.header,
+        content = block.content,
+      )
+    }
+    val artifacts = blocks.mapNotNull { block -> generatedArtifactFromHeader(block.header) }
     return RenderOutcome(blocks = blocks, generatedArtifacts = artifacts)
   }
 
@@ -282,11 +288,11 @@ class RuntimeRepoBrowserService :
         generatedArtifacts = emptyList(),
       )
     }
-    val agents = parseNativeAgentSourceFile(contentFile)
+    val agents = repoSourceDiscoveryService.parseNativeAgentSourceFile(contentFile)
     val blocks = agents.map { agent ->
       RenderBlock(
         header = "===== native-agent: $relative:${agent.name} =====",
-        content = renderNativeAgentSource(agent),
+        content = repoSourceDiscoveryService.renderNativeAgentSource(agent),
       )
     }
     return RenderOutcome(blocks = blocks, generatedArtifacts = emptyList())
@@ -357,7 +363,7 @@ class RuntimeRepoBrowserService :
       )
     }
 
-    return runCatching { RepoValidationRuntime.validateRepo(root) }
+    return runCatching { repoValidationService.validateRepo(root) }
       .fold(
         onSuccess = { report ->
           RepoLoadStatus(
@@ -408,7 +414,7 @@ class RuntimeRepoBrowserService :
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): AuthoredSkillGroups {
-    val payload = AuthoringOperations.list(root, emptyList())
+    val payload = scaffoldService.list(root, emptyList())
     val skills = payload["skills"] as? List<*> ?: emptyList<Any?>()
     val horizontal = mutableListOf<SkillBillTreeItem>()
     val platformChildren = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
@@ -494,7 +500,7 @@ class RuntimeRepoBrowserService :
     selections: MutableMap<String, SelectionDetail>,
   ): List<SkillBillTreeItem> {
     val addonsByPlatform = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
-    discoverGovernedAddonFiles(root)
+    repoSourceDiscoveryService.discoverGovernedAddonFiles(root)
       .forEach { addonFile ->
         val addon = addonFile.addonPath
         val relative = relativePath(root, addon)
@@ -537,13 +543,13 @@ class RuntimeRepoBrowserService :
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): List<SkillBillTreeItem> {
-    val leaves = discoverNativeAgentSourceFiles(
+    val leaves = repoSourceDiscoveryService.discoverNativeAgentSourceFiles(
       platformPacksRoot = root.resolve("platform-packs"),
       skillsRoot = root.resolve("skills"),
     )
       .flatMap { sourceFile ->
         val relative = relativePath(root, sourceFile)
-        runCatching { parseNativeAgentSourceFile(sourceFile) }
+        runCatching { repoSourceDiscoveryService.parseNativeAgentSourceFile(sourceFile) }
           .fold(
             onSuccess = { agents ->
               agents.map { agent ->
@@ -556,10 +562,10 @@ class RuntimeRepoBrowserService :
                     detail = "Provider-neutral native-agent source.",
                     kind = "native agent",
                     authoredPath = relative,
-                  status = agent.composition?.kind?.wireValue ?: "authored",
-                  contentFile = sourceFile,
-                  contentOverride = renderDisplayNativeAgentSource(root, agent),
-                  editable = false,
+                    status = agent.compositionKindWireValue ?: "authored",
+                    contentFile = sourceFile,
+                    contentOverride = renderDisplayNativeAgentSource(root, agent),
+                    editable = false,
                     readOnlyLabel = READ_ONLY_LABEL,
                     readOnlyReason = AUTHORED_SOURCE_READ_ONLY_REASON,
                   )
@@ -570,7 +576,7 @@ class RuntimeRepoBrowserService :
                     label = displayLabelForNativeAgent(agent.name, relative, groupPath),
                     kind = TreeItemKind.NATIVE_AGENT,
                     authoredPath = relative,
-                    status = agent.composition?.kind?.wireValue ?: "authored",
+                    status = agent.compositionKindWireValue ?: "authored",
                     editable = false,
                     readOnlyLabel = READ_ONLY_LABEL,
                     metadata = SkillBillTreeItemMetadata(kind = "native agent"),
@@ -620,9 +626,9 @@ class RuntimeRepoBrowserService :
     return groupNativeAgentLeaves(repoToken, leaves)
   }
 
-  private fun renderDisplayNativeAgentSource(root: Path, agent: NativeAgentSource): String =
-    runCatching { renderComposedNativeAgentSource(root, agent) }
-      .getOrDefault(renderNativeAgentSource(agent))
+  private fun renderDisplayNativeAgentSource(root: Path, agent: NativeAgentSourceProjection): String =
+    runCatching { repoSourceDiscoveryService.renderComposedNativeAgentSource(root, agent) }
+      .getOrDefault(repoSourceDiscoveryService.renderNativeAgentSource(agent))
 
   private fun groupNativeAgentLeaves(repoToken: String, leaves: List<NativeAgentTreeLeaf>): List<SkillBillTreeItem> {
     val root = MutableNativeAgentGroup(label = "", path = emptyList())
@@ -706,7 +712,7 @@ class RuntimeRepoBrowserService :
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): List<SkillBillTreeItem> {
-    return discoverGeneratedArtifactFiles(root).map { generated ->
+    return repoSourceDiscoveryService.discoverGeneratedArtifactFiles(root).map { generated ->
       val artifact = generated.path
       val relative = relativePath(root, artifact)
       val id = selectionId(repoToken, "generated:$relative")
@@ -739,7 +745,7 @@ class RuntimeRepoBrowserService :
   private fun generatedArtifactsForSkill(root: Path, contentFile: Path): List<GeneratedArtifactDetail> {
     val skillDir = contentFile.parent ?: return emptyList()
     val normalizedSkillDir = skillDir.toAbsolutePath().normalize()
-    return discoverGeneratedArtifactFiles(root)
+    return repoSourceDiscoveryService.discoverGeneratedArtifactFiles(root)
       .filter { artifact -> artifact.path.toAbsolutePath().normalize().parent == normalizedSkillDir }
       .map { artifact ->
         GeneratedArtifactDetail(

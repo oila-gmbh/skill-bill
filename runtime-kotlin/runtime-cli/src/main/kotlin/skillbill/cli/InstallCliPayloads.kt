@@ -1,7 +1,7 @@
 package skillbill.cli
 
+import skillbill.contracts.install.InstallPlanSchemaValidator
 import skillbill.install.model.InstallPlan
-import skillbill.install.model.InstallPlanSchemaValidator
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.buildInstallPlanWireMap
 

@@ -5,6 +5,7 @@ package skillbill.desktop.core.data.service
 import kotlinx.coroutines.CancellationException
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
+import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.DesktopAgentSymlinkProvider
 import skillbill.desktop.core.domain.model.DesktopAgentSymlinkUnlink
 import skillbill.desktop.core.domain.model.DesktopManifestEdit
@@ -17,7 +18,6 @@ import skillbill.desktop.core.domain.model.DesktopSkillRemovalRequest
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.domain.skillremove.SkillBillRollbackException
-import skillbill.domain.skillremove.SkillRemove
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
 import skillbill.domain.skillremove.model.AgentSymlinkProvider
 import skillbill.domain.skillremove.model.AgentSymlinkUnlink
@@ -31,7 +31,6 @@ import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import skillbill.error.SkillBillRuntimeException
-import skillbill.skillremove.SkillRemoveJvmFileSystem
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.util.logging.Logger
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway as RuntimeSkillRemoveGatewayInterface
@@ -57,13 +56,22 @@ import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway as Runtim
  */
 @Inject
 @SingleIn(UserScope::class)
-class JvmRuntimeSkillRemoveGateway : RuntimeSkillRemoveGatewayInterface {
+class JvmRuntimeSkillRemoveGateway(
+  private val runtimeServices: DesktopRuntimeApplicationServices =
+    DesktopRuntimeApplicationServices.forCurrentUserHome(),
+) : RuntimeSkillRemoveGatewayInterface {
   /**
    * F-107 seam: tests swap this to feed scripted runtime-domain `SkillRemove` instances without
    * exercising the real on-disk file system. The default builds a `SkillRemove` backed by the
    * JVM file-system implementation.
    */
-  internal var serviceFactory: () -> SkillRemove = { SkillRemove(SkillRemoveJvmFileSystem()) }
+  internal var remover: (SkillRemovalRequest, Boolean) -> SkillRemovalResult = { request, dryRun ->
+    if (dryRun) {
+      runtimeServices.skillRemoveService.previewRemoval(request)
+    } else {
+      runtimeServices.skillRemoveService.executeRemoval(request)
+    }
+  }
 
   override suspend fun preview(request: DesktopSkillRemovalRequest): DesktopSkillRemovalResult =
     invoke(request, dryRun = true)
@@ -74,8 +82,7 @@ class JvmRuntimeSkillRemoveGateway : RuntimeSkillRemoveGatewayInterface {
   @Suppress("TooGenericExceptionCaught")
   private fun invoke(request: DesktopSkillRemovalRequest, dryRun: Boolean): DesktopSkillRemovalResult = try {
     val domainRequest = request.toDomainRequest()
-    val service = serviceFactory()
-    val result = if (dryRun) service.previewRemoval(domainRequest) else service.executeRemoval(domainRequest)
+    val result = remover(domainRequest, dryRun)
     result.toDesktopResult().sanitizeMessages(request.repoRootAbsolutePath)
   } catch (cancellation: CancellationException) {
     throw cancellation

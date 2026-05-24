@@ -1,5 +1,8 @@
 package skillbill.install.model
 
+import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
+import skillbill.contracts.install.InstallPlanSchemaPaths
+
 /**
  * SKILL-48 Subtask 2b: single source of truth for the install-plan
  * wire map. Lives in `runtime-domain` so both `runtime-core` (the

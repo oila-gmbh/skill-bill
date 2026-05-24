@@ -4,7 +4,6 @@ import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -27,7 +26,7 @@ class DecompositionManifestWriterTest {
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
 
-    val result = DecompositionManifestWriter.writeIfDecomposed(
+    val result = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -41,7 +40,7 @@ class DecompositionManifestWriterTest {
     assertTrue(Files.isRegularFile(result.manifestPath))
     assertEquals(parentSpecPath.parent.resolve("decomposition-manifest.yaml"), result.manifestPath)
 
-    val loaded = DecompositionManifestCodec.load(result.manifestPath)
+    val loaded = loadDecompositionManifest(result.manifestPath)
     assertEquals("same_branch_commit_per_subtask", loaded.executionModel.wireValue)
     assertEquals("feature/SKILL-51-decomposition", loaded.featureBranch)
     assertEquals(emptyList(), loaded.stackBranches)
@@ -58,7 +57,7 @@ class DecompositionManifestWriterTest {
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = "{}",
       artifactsPatch = mapOf("plan" to stackedDecompositionPlan()),
@@ -90,7 +89,7 @@ class DecompositionManifestWriterTest {
       # Runtime
       """.trimIndent(),
     )
-    DecompositionManifestWriter.writeIfDecomposed(
+    writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -100,7 +99,7 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = runtimeArtifactsJson(secondSubtaskSpec),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
@@ -139,7 +138,7 @@ class DecompositionManifestWriterTest {
       # Foundation
       """.trimIndent(),
     )
-    val initial = DecompositionManifestWriter.writeIfDecomposed(
+    val initial = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -159,7 +158,7 @@ class DecompositionManifestWriterTest {
       },
     )
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = durableRuntimeArtifactsJson(completed, subtaskSpec),
       artifactsPatch = null,
@@ -184,7 +183,7 @@ class DecompositionManifestWriterTest {
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    DecompositionManifestWriter.writeIfDecomposed(
+    writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -194,7 +193,7 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = runtimeArtifactsJson(parentSpecPath.parent.resolve("missing-subtask.md")),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
@@ -218,7 +217,7 @@ class DecompositionManifestWriterTest {
     val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    DecompositionManifestWriter.writeIfDecomposed(
+    writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -228,7 +227,7 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = runtimeArtifactsJson(subtaskSpec),
       artifactsPatch = null,
@@ -252,7 +251,7 @@ class DecompositionManifestWriterTest {
     val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = DecompositionManifestWriter.writeIfDecomposed(
+    val initial = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -264,7 +263,7 @@ class DecompositionManifestWriterTest {
     assertNotNull(initial)
     Files.delete(initial.manifestPath)
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = durableRuntimeArtifactsJson(initial.manifest, subtaskSpec),
       artifactsPatch = mapOf("validation_result" to mapOf("passed" to true)),
@@ -288,7 +287,7 @@ class DecompositionManifestWriterTest {
     val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = DecompositionManifestWriter.writeIfDecomposed(
+    val initial = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -308,7 +307,7 @@ class DecompositionManifestWriterTest {
       },
     )
 
-    val result = DecompositionManifestWriter.writeFromWorkflowUpdate(
+    val result = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = durableRuntimeArtifactsJson(durable, subtaskSpec),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
@@ -328,12 +327,71 @@ class DecompositionManifestWriterTest {
   }
 
   @Test
+  fun `workflow update rejects schema invalid durable decomposition runtime`() {
+    val repoRoot = Files.createTempDirectory("skillbill-invalid-runtime-update")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    Files.createDirectories(parentSpecPath.parent)
+    Files.writeString(parentSpecPath, "# Parent spec\n")
+    val initial = writeIfDecomposed(
+      DecompositionManifestWriteRequest(
+        repoRoot = repoRoot,
+        parentSpecPath = parentSpecPath,
+        planningResult = decompositionPlan(parentSpecPath),
+        baseBranch = "main",
+        featureBranch = "feature/SKILL-51-decomposition",
+      ),
+    )
+    assertNotNull(initial)
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeFromWorkflowUpdate(
+        repoRoot = repoRoot,
+        existingArtifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
+        artifactsPatch = null,
+      )
+    }
+
+    assertEquals(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, error.sourceLabel)
+    assertContains(error.reason, "contract_version")
+    assertContains(error.reason, "offending value: invalid-contract")
+  }
+
+  @Test
+  fun `workflow projection rejects schema invalid durable decomposition runtime`() {
+    val repoRoot = Files.createTempDirectory("skillbill-invalid-runtime-projection")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    Files.createDirectories(parentSpecPath.parent)
+    Files.writeString(parentSpecPath, "# Parent spec\n")
+    val initial = writeIfDecomposed(
+      DecompositionManifestWriteRequest(
+        repoRoot = repoRoot,
+        parentSpecPath = parentSpecPath,
+        planningResult = decompositionPlan(parentSpecPath),
+        baseBranch = "main",
+        featureBranch = "feature/SKILL-51-decomposition",
+      ),
+    )
+    assertNotNull(initial)
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeProjectionFromWorkflowState(
+        repoRoot = repoRoot,
+        artifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
+      )
+    }
+
+    assertEquals(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, error.sourceLabel)
+    assertContains(error.reason, "contract_version")
+    assertContains(error.reason, "offending value: invalid-contract")
+  }
+
+  @Test
   fun `execution model can change before any subtask starts`() {
     val repoRoot = Files.createTempDirectory("skillbill-model-change-before-start")
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    DecompositionManifestWriter.writeIfDecomposed(
+    writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -343,7 +401,7 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val changed = DecompositionManifestWriter.writeIfDecomposed(
+    val changed = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -365,7 +423,7 @@ class DecompositionManifestWriterTest {
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    DecompositionManifestWriter.writeIfDecomposed(
+    writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -374,7 +432,7 @@ class DecompositionManifestWriterTest {
         featureBranch = "feature/SKILL-51-decomposition",
       ),
     )
-    DecompositionManifestWriter.writeFromWorkflowUpdate(
+    writeFromWorkflowUpdate(
       repoRoot = repoRoot,
       existingArtifactsJson = runtimeArtifactsJson(parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")),
       artifactsPatch = null,
@@ -387,7 +445,7 @@ class DecompositionManifestWriterTest {
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      DecompositionManifestWriter.writeIfDecomposed(
+      writeIfDecomposed(
         DecompositionManifestWriteRequest(
           repoRoot = repoRoot,
           parentSpecPath = parentSpecPath,
@@ -411,7 +469,7 @@ class DecompositionManifestWriterTest {
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
 
-    val result = DecompositionManifestWriter.writeIfDecomposed(
+    val result = writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -445,6 +503,40 @@ class DecompositionManifestWriterTest {
     val payload = WorkflowEngine.fullPayload(definition, updated)
     val artifacts = payload["artifacts"] as Map<*, *>
     assertEquals(mapOf("mode" to "implement", "task_count" to 1), artifacts["plan"])
+  }
+
+  @Test
+  fun `decomposition planning rejects non exact integer subtask ids before schema validation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-decomposition-exact-int")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    Files.createDirectories(parentSpecPath.parent)
+    Files.writeString(parentSpecPath, "# Parent spec\n")
+
+    val fractional = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeIfDecomposed(
+        DecompositionManifestWriteRequest(
+          repoRoot = repoRoot,
+          parentSpecPath = parentSpecPath,
+          planningResult = decompositionPlanWithFirstSubtaskId(parentSpecPath, 1.5),
+          baseBranch = "main",
+          featureBranch = "feature/SKILL-51-decomposition",
+        ),
+      )
+    }
+    val oversized = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeIfDecomposed(
+        DecompositionManifestWriteRequest(
+          repoRoot = repoRoot,
+          parentSpecPath = parentSpecPath,
+          planningResult = decompositionPlanWithFirstSubtaskId(parentSpecPath, 4_294_967_297L),
+          baseBranch = "main",
+          featureBranch = "feature/SKILL-51-decomposition",
+        ),
+      )
+    }
+
+    assertContains(fractional.reason, "id must be an integer")
+    assertContains(oversized.reason, "id must be an integer")
   }
 
   private fun decompositionPlan(
@@ -505,6 +597,24 @@ class DecompositionManifestWriterTest {
       ),
   )
 
+  private fun decompositionPlanWithFirstSubtaskId(
+    parentSpecPath: java.nio.file.Path,
+    subtaskId: Any,
+  ): Map<String, Any?> {
+    val plan = LinkedHashMap(decompositionPlan(parentSpecPath))
+    val subtasks = (plan.getValue("subtasks") as List<*>).mapIndexed { index, raw ->
+      val item = (raw as Map<*, *>).entries.associateTo(LinkedHashMap<String, Any?>()) { (key, value) ->
+        key.toString() to value
+      }
+      if (index == 0) {
+        item["id"] = subtaskId
+      }
+      item
+    }
+    plan["subtasks"] = subtasks
+    return plan
+  }
+
   private fun runtimeArtifactsJson(subtaskSpec: java.nio.file.Path): String =
     """{"assessment":{"spec_path":"${subtaskSpec.toString().replace("\\", "\\\\")}"},""" +
       """"branch":{"branch":"feature/SKILL-51-decomposition"}}"""
@@ -519,4 +629,15 @@ class DecompositionManifestWriterTest {
       "branch" to mapOf("branch" to "feature/SKILL-51-decomposition"),
     ),
   )
+
+  private fun invalidDurableRuntimeArtifactsJson(manifest: skillbill.workflow.model.DecompositionManifest): String {
+    val invalidManifest = LinkedHashMap(manifest.toWireMap()).apply {
+      put("contract_version", "invalid-contract")
+    }
+    return JsonSupport.mapToJsonString(
+      mapOf(
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to invalidManifest,
+      ),
+    )
+  }
 }

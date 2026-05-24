@@ -59,6 +59,49 @@ class RemoveCliCommandTest {
   }
 
   @Test
+  fun `remove dry-run uses top-level home override for agent symlink preview`() {
+    val repoRoot = Files.createTempDirectory("skillbill-cli-remove-home-repo")
+    val contextHome = Files.createTempDirectory("skillbill-cli-remove-context-home")
+    val selectedHome = Files.createTempDirectory("skillbill-cli-remove-selected-home")
+    val skillDir = repoRoot.resolve("skills/bill-foo")
+    Files.createDirectories(skillDir)
+    Files.writeString(skillDir.resolve("content.md"), "# bill-foo\n")
+    val context = CliRuntimeContext(userHome = contextHome)
+
+    val result = CliRuntime.run(
+      listOf(
+        "--home",
+        selectedHome.toString(),
+        "remove",
+        "skill:bill-foo",
+        "--repo-root",
+        repoRoot.toString(),
+        "--allow-shipped",
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      context,
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    val symlinkPaths = (payload["agent_symlink_unlinks"] as? List<*>)
+      .orEmpty()
+      .mapNotNull { entry -> (entry as? Map<*, *>)?.get("path")?.toString() }
+
+    assertTrue(symlinkPaths.isNotEmpty(), "dry-run should preview native-agent symlink paths")
+    assertTrue(
+      symlinkPaths.all { path -> selectedHome.toString() in path },
+      "all symlink preview paths should use the selected --home: $symlinkPaths",
+    )
+    assertTrue(
+      symlinkPaths.none { path -> contextHome.toString() in path },
+      "symlink preview paths must not use the process/context home: $symlinkPaths",
+    )
+  }
+
+  @Test
   fun `remove refuses dot-bill-shared with status error`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-shared")
     val context = CliRuntimeContext(userHome = tempDir)

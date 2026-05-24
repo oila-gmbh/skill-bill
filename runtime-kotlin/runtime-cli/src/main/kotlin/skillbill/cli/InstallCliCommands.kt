@@ -8,16 +8,18 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
-import skillbill.install.InstallCleanupOperations
-import skillbill.install.InstallNativeAgentOperations
-import skillbill.install.InstallOperations
-import skillbill.install.NativeAgentLinkOutcome
-import skillbill.install.NativeAgentLinkRequest
+import skillbill.application.InstallAgentService
+import skillbill.application.InstallService
+import skillbill.application.McpRegistrationService
+import skillbill.application.NativeAgentInstallService
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
+import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallTelemetryLevel
 import skillbill.install.model.InstallationTargetPaths
@@ -28,7 +30,11 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.launcher.McpRegistrationOperations
+import skillbill.model.RuntimeContext
+import skillbill.ports.install.model.NativeAgentLinkOutcome
+import skillbill.ports.install.model.NativeAgentLinkProvider
+import skillbill.ports.install.model.NativeAgentLinkRequest
+import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
 
 internal fun completeNativeAgentLinkOutcome(state: CliRunState, outcome: NativeAgentLinkOutcome) {
@@ -50,9 +56,10 @@ internal fun completeNativeAgentLinkOutcome(state: CliRunState, outcome: NativeA
 @Inject
 class InstallPlanCommand(
   private val state: CliRunState,
+  private val installService: InstallService,
 ) : InstallRequestCommand("plan", "Plan a governed Skill Bill install without mutating user files.") {
   override fun run() {
-    val plan = InstallOperations.planInstall(toRequest(state))
+    val plan = installService.planInstall(toRequest(state))
     state.complete(installPlanPayload(plan), format)
   }
 }
@@ -60,11 +67,21 @@ class InstallPlanCommand(
 @Inject
 class InstallApplyCommand(
   private val state: CliRunState,
+  private val runtimeContext: RuntimeContext,
+  private val installService: InstallService,
 ) : InstallRequestCommand("apply", "Apply a governed Skill Bill install through the shared runtime contract.") {
   override fun run() {
-    val plan = InstallOperations.planInstall(toRequest(state))
-    val result = InstallOperations.applyInstall(plan)
+    val plan = installService.planInstall(toRequest(state))
+    val result = installService.applyInstall(plan, telemetryLevelMutator(plan))
     state.complete(installApplyPayload(plan, result), format, exitCode = if (result.failures.isEmpty()) 0 else 1)
+  }
+
+  private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
+    val reboundContext = runtimeContext.copy(
+      dbPathOverride = state.dbOverride ?: runtimeContext.dbPathOverride,
+      userHome = plan.request.home,
+    )
+    return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator
   }
 }
 
@@ -248,6 +265,7 @@ private fun parseAgentTargets(rawTargets: List<String>): List<InstallAgentTarget
 @Inject
 class InstallCleanupAgentTargetCommand(
   private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("cleanup-agent-target", "Remove Skill Bill symlinks and managed dirs from one agent path.") {
   private val targetDir by option("--target-dir", help = "Agent install directory.").required()
   private val skillNames by option("--skill-name", help = "Current skill name to remove.").multiple()
@@ -255,7 +273,7 @@ class InstallCleanupAgentTargetCommand(
   private val marker by option("--marker", help = "Managed install marker file.").default(".skill-bill-install")
 
   override fun run() {
-    val (removed, skipped) = InstallCleanupOperations.cleanupAgentTarget(
+    val cleanup = installAgentService.cleanupAgentTarget(
       targetDir = Path.of(targetDir),
       skillNames = skillNames,
       legacyNames = legacyNames,
@@ -263,10 +281,10 @@ class InstallCleanupAgentTargetCommand(
     )
     state.completeText(
       (
-        removed.map { path -> "removed\t$path" } +
-          skipped.map { path -> "skipped\t$path" }
+        cleanup.removed.map { path -> "removed\t$path" } +
+          cleanup.skipped.map { path -> "skipped\t$path" }
         ).joinToString("\n"),
-      mapOf("removed" to removed.map(Path::toString), "skipped" to skipped.map(Path::toString)),
+      mapOf("removed" to cleanup.removed.map(Path::toString), "skipped" to cleanup.skipped.map(Path::toString)),
     )
   }
 }
@@ -274,42 +292,47 @@ class InstallCleanupAgentTargetCommand(
 @Inject
 class InstallCodexAgentsPathCommand(
   private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("codex-agents-path", "Print the Codex native subagent TOML directory.") {
   override fun run() {
-    state.completeText(InstallOperations.codexAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.codexAgentsPath(state.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallClaudeAgentsPathCommand(
   private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("claude-agents-path", "Print the Claude native subagent markdown directory.") {
   override fun run() {
-    state.completeText(InstallOperations.claudeAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.claudeAgentsPath(state.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallOpencodeAgentsPathCommand(
   private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("opencode-agents-path", "Print the OpenCode native subagent markdown directory.") {
   override fun run() {
-    state.completeText(InstallOperations.opencodeAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.opencodeAgentsPath(state.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallJunieAgentsPathCommand(
   private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("junie-agents-path", "Print the Junie native subagent markdown directory.") {
   override fun run() {
-    state.completeText(InstallOperations.junieAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.junieAgentsPath(state.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallLinkClaudeAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("link-claude-agents", "Render and link Claude native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -318,21 +341,22 @@ class InstallLinkClaudeAgentsCommand(
   override fun run() {
     completeNativeAgentLinkOutcome(
       state,
-      InstallNativeAgentOperations.linkClaudeAgents(
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = state.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
-        ),
-      ),
+      nativeAgentInstallService.linkNativeAgents(NativeAgentLinkProvider.CLAUDE, nativeAgentLinkRequest()),
     )
   }
+
+  private fun nativeAgentLinkRequest(): NativeAgentLinkRequest = NativeAgentLinkRequest(
+    platformPacksRoot = Path.of(platformPacks),
+    skillsRoot = skills?.let(Path::of),
+    home = state.userHome,
+    selectedPlatforms = platforms.ifEmpty { null },
+  )
 }
 
 @Inject
 class InstallUnlinkClaudeAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("unlink-claude-agents", "Remove Claude native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -340,7 +364,8 @@ class InstallUnlinkClaudeAgentsCommand(
 
   override fun run() {
     val removed =
-      InstallNativeAgentOperations.unlinkClaudeAgents(
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.CLAUDE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -355,6 +380,7 @@ class InstallUnlinkClaudeAgentsCommand(
 @Inject
 class InstallLinkCodexAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("link-codex-agents", "Render and link Codex native subagent TOMLs from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -363,7 +389,8 @@ class InstallLinkCodexAgentsCommand(
   override fun run() {
     completeNativeAgentLinkOutcome(
       state,
-      InstallNativeAgentOperations.linkCodexAgents(
+      nativeAgentInstallService.linkNativeAgents(
+        NativeAgentLinkProvider.CODEX,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -378,6 +405,7 @@ class InstallLinkCodexAgentsCommand(
 @Inject
 class InstallUnlinkCodexAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("unlink-codex-agents", "Remove Codex native subagent TOML symlinks from candidate dirs.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -385,7 +413,8 @@ class InstallUnlinkCodexAgentsCommand(
 
   override fun run() {
     val removed =
-      InstallNativeAgentOperations.unlinkCodexAgents(
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.CODEX,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -400,6 +429,7 @@ class InstallUnlinkCodexAgentsCommand(
 @Inject
 class InstallLinkOpencodeAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand(
   "link-opencode-agents",
   "Render and link OpenCode native subagent markdown from source agents.",
@@ -411,7 +441,8 @@ class InstallLinkOpencodeAgentsCommand(
   override fun run() {
     completeNativeAgentLinkOutcome(
       state,
-      InstallNativeAgentOperations.linkOpencodeAgents(
+      nativeAgentInstallService.linkNativeAgents(
+        NativeAgentLinkProvider.OPENCODE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -426,6 +457,7 @@ class InstallLinkOpencodeAgentsCommand(
 @Inject
 class InstallUnlinkOpencodeAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("unlink-opencode-agents", "Remove OpenCode native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -433,7 +465,8 @@ class InstallUnlinkOpencodeAgentsCommand(
 
   override fun run() {
     val removed =
-      InstallNativeAgentOperations.unlinkOpencodeAgents(
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.OPENCODE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -448,6 +481,7 @@ class InstallUnlinkOpencodeAgentsCommand(
 @Inject
 class InstallLinkJunieAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("link-junie-agents", "Render and link Junie native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -456,7 +490,8 @@ class InstallLinkJunieAgentsCommand(
   override fun run() {
     completeNativeAgentLinkOutcome(
       state,
-      InstallNativeAgentOperations.linkJunieAgents(
+      nativeAgentInstallService.linkNativeAgents(
+        NativeAgentLinkProvider.JUNIE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -471,6 +506,7 @@ class InstallLinkJunieAgentsCommand(
 @Inject
 class InstallUnlinkJunieAgentsCommand(
   private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
 ) : DocumentedCliCommand("unlink-junie-agents", "Remove Junie native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -478,7 +514,8 @@ class InstallUnlinkJunieAgentsCommand(
 
   override fun run() {
     val removed =
-      InstallNativeAgentOperations.unlinkJunieAgents(
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.JUNIE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),
@@ -493,12 +530,13 @@ class InstallUnlinkJunieAgentsCommand(
 @Inject
 class InstallRegisterMcpCommand(
   private val state: CliRunState,
+  private val mcpRegistrationService: McpRegistrationService,
 ) : DocumentedCliCommand("register-mcp", "Register Skill Bill's packaged Kotlin MCP server for one agent.") {
   private val agent by argument(help = "Agent name.")
   private val runtimeMcpBin by option("--runtime-mcp-bin", help = "Packaged runtime-mcp bin script.").required()
 
   override fun run() {
-    val result = McpRegistrationOperations.register(agent, Path.of(runtimeMcpBin), state.userHome)
+    val result = mcpRegistrationService.registerMcp(agent, Path.of(runtimeMcpBin), state.userHome)
     state.completeText(result.configPath.toString(), mapOf("agent" to agent, "changed" to result.changed))
   }
 }
@@ -506,11 +544,12 @@ class InstallRegisterMcpCommand(
 @Inject
 class InstallUnregisterMcpCommand(
   private val state: CliRunState,
+  private val mcpRegistrationService: McpRegistrationService,
 ) : DocumentedCliCommand("unregister-mcp", "Remove Skill Bill MCP registration for one agent.") {
   private val agent by argument(help = "Agent name.")
 
   override fun run() {
-    val result = McpRegistrationOperations.unregister(agent, state.userHome)
+    val result = mcpRegistrationService.unregisterMcp(agent, state.userHome)
     state.completeText(result.configPath.toString(), mapOf("agent" to agent, "changed" to result.changed))
   }
 }

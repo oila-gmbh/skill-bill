@@ -1,6 +1,9 @@
 package skillbill.cli
 
 import skillbill.contracts.JsonSupport
+import skillbill.db.DatabaseRuntime
+import skillbill.db.DbConstants
+import skillbill.db.TelemetryOutboxStore
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -122,6 +125,58 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals(false, mcp["register"])
     assertEquals(supportedAgents, (mcp["agents"] as List<*>).toSet())
     assertTrue(mcp.listOfMaps("outcomes").all { outcome -> outcome["status"] == "skipped" })
+  }
+
+  @Test
+  fun `install apply telemetry uses parsed home and db overrides`() {
+    val componentHome = Files.createTempDirectory("skillbill-cli-install-component-home")
+    val fixture = installPlanApplyFixture()
+    val overrideDb = Files.createTempFile("skillbill-cli-install-override", ".db")
+    val componentDb = DbConstants.defaultDbPath(componentHome)
+    val componentConfig = writeTelemetryConfig(componentHome, "full")
+    val overrideConfig = writeTelemetryConfig(fixture.home, "full")
+    enqueueTelemetryEvent(componentDb)
+    enqueueTelemetryEvent(overrideDb)
+
+    val result = CliRuntime.run(
+      listOf(
+        "--home",
+        fixture.home.toString(),
+        "--db",
+        overrideDb.toString(),
+        "install",
+        "apply",
+        "--repo-root",
+        fixture.repoRoot.toString(),
+        "--agent-mode",
+        "manual",
+        "--agent",
+        "codex",
+        "--agent-target",
+        "codex=${fixture.home.resolve("manual-targets/codex")}",
+        "--platform-mode",
+        "none",
+        "--telemetry",
+        "off",
+        "--mcp",
+        "skip",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(userHome = componentHome, environment = emptyMap()),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeInstallPlanApplyJson(result.stdout)
+    val telemetry = payload.mapValue("telemetry")
+    assertEquals("off", telemetry["level"])
+    assertEquals("success", telemetry["status"])
+    assertEquals(overrideConfig.toString(), telemetry["config_path"])
+    assertEquals(1, telemetry["cleared_events"])
+    assertFalse(Files.exists(overrideConfig))
+    assertTrue(Files.exists(componentConfig))
+    assertEquals(0, pendingTelemetryEvents(overrideDb))
+    assertEquals(1, pendingTelemetryEvents(componentDb))
   }
 
   @Test
@@ -451,6 +506,30 @@ private fun createDetectedAgentHomes(home: Path) {
   Files.createDirectories(home.resolve(".config/opencode"))
   Files.createDirectories(home.resolve(".junie"))
 }
+
+private fun writeTelemetryConfig(home: Path, level: String): Path {
+  val configPath = home.resolve(".skill-bill/config.json").toAbsolutePath().normalize()
+  Files.createDirectories(configPath.parent)
+  Files.writeString(
+    configPath,
+    """
+    |{"install_id":"test-install","telemetry":{"level":"$level","batch_size":100}}
+    |
+    """.trimMargin(),
+  )
+  return configPath
+}
+
+private fun enqueueTelemetryEvent(dbPath: Path) {
+  DatabaseRuntime.openDb(cliValue = dbPath.toString(), environment = emptyMap()).use { db ->
+    TelemetryOutboxStore(db.connection).enqueue("test.event", """{"ok":true}""")
+  }
+}
+
+private fun pendingTelemetryEvents(dbPath: Path): Int =
+  DatabaseRuntime.openDb(cliValue = dbPath.toString(), environment = emptyMap()).use { db ->
+    TelemetryOutboxStore(db.connection).pendingCount()
+  }
 
 private data class InstallPlanApplyFixture(
   val repoRoot: Path,

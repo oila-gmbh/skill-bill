@@ -4,7 +4,7 @@
 # Bill runtime persists and replays for the two shipped workflow families:
 # `bill-feature-implement` and `bill-feature-verify`. It is authored in YAML
 # for human readability and consumed as a JSON Schema (Draft 2020-12) by
-# the Kotlin runtime (`WorkflowStateSchemaValidator` in `runtime-domain`).
+# the Kotlin runtime (`WorkflowStateSchemaValidator` in `runtime-contracts`).
 #
 # What lives here vs. in Kotlin:
 #
@@ -23,7 +23,7 @@
 # Versioning rule:
 #
 # - `contract_version` is pinned by `WORKFLOW_STATE_CONTRACT_VERSION` in
-#   `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaPaths.kt`.
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt`.
 # - The parity test `WorkflowStateSchemaContractVersionTest` fails the
 #   build if they diverge. To bump the contract, edit BOTH constants in
 #   the same change.
@@ -77,6 +77,7 @@ $defs:
       attempt_count:
         type: integer
         minimum: 0
+        maximum: 2147483647
   # Per-skill divergence is encoded with `oneOf` keyed on
   # `workflow_name`. Each branch fixes the allowed `stepId` set under
   # `current_step_id` + `steps[].step_id`, and the allowed

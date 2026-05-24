@@ -3,14 +3,14 @@ package skillbill.application
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.DecompositionManifestCodec
+import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
 import java.nio.file.Path
 
 internal fun continueExistingWorkflow(
@@ -18,6 +18,7 @@ internal fun continueExistingWorkflow(
   initialRecord: WorkflowStateSnapshot,
   workflowId: String,
   unitOfWork: UnitOfWork,
+  fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ): ContinuationResult {
   var record = initialRecord
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
@@ -25,7 +26,12 @@ internal fun continueExistingWorkflow(
   var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
     val continueStatus = decision.payload["continue_status"]
-    val runtimeInput = family.withDecompositionRuntime(record, decision.toReopenInput(record.sessionId), workflowId)
+    val runtimeInput = family.withDecompositionRuntime(
+      record,
+      decision.toReopenInput(record.sessionId),
+      workflowId,
+      fileStore,
+    )
     val reopened = WorkflowEngine.updateRecord(family.definition, record, runtimeInput.input)
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
@@ -41,7 +47,7 @@ internal fun continueExistingWorkflow(
 
 internal fun WorkflowStateSnapshot.decompositionRuntime(): DecompositionManifest? =
   decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-    ?.let { DecompositionManifestCodec.decodeMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
+    ?.let { decodeDecompositionManifestMap(it, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
 internal fun alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
@@ -76,7 +82,12 @@ internal fun persistParentDecompositionRuntime(
       workflowStatus = parentRecord.workflowStatus,
       currentStepId = parentRecord.currentStepId,
       stepUpdates = null,
-      artifactsPatch = mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap()),
+      artifactsPatch = mapOf(
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+          manifest,
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+        ),
+      ),
       sessionId = parentRecord.sessionId.orEmpty(),
     ),
   )

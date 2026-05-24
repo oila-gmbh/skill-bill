@@ -6,10 +6,8 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.telemetry.TelemetryConfigMutations
 import skillbill.telemetry.TelemetrySyncRuntime
 import skillbill.telemetry.model.RemoteStatsRequest
-import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
 class TelemetryService(
@@ -61,7 +59,9 @@ class TelemetryService(
   }
 
   fun setLevel(level: String, dbOverride: String?): Map<String, Any?> {
-    val (settings, clearedEvents) = setTelemetryLevel(level, dbOverride)
+    val result = TelemetryLevelMutationService(database, settingsProvider, configStore).setLevel(level, dbOverride)
+    val settings = result.settings
+    val clearedEvents = result.clearedEvents
     return telemetryMutationPayload(settings, clearedEvents)
   }
 
@@ -82,22 +82,4 @@ class TelemetryService(
   fun remoteStats(request: RemoteStatsRequest): Map<String, Any?> = linkedMapOf<String, Any?>().apply {
     putAll(telemetryClient.fetchRemoteStats(loadTelemetrySettings(settingsProvider), request))
   }
-
-  private fun setTelemetryLevel(level: String, dbOverride: String?): Pair<TelemetrySettings, Int> =
-    if (level == "off" && database.databaseExists(dbOverride)) {
-      database.transaction(dbOverride) { unitOfWork ->
-        TelemetryConfigMutations.setTelemetryLevel(
-          level = level,
-          configStore = configStore,
-          settingsProvider = settingsProvider,
-          outbox = unitOfWork.telemetryOutbox,
-        )
-      }
-    } else {
-      TelemetryConfigMutations.setTelemetryLevel(
-        level = level,
-        configStore = configStore,
-        settingsProvider = settingsProvider,
-      )
-    }
 }

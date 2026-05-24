@@ -2,10 +2,9 @@ package skillbill.application
 
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.contracts.JsonSupport
-import skillbill.workflow.DecompositionManifestCodec
+import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.projectDecompositionSpecStatus
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -17,8 +16,8 @@ internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
-internal fun loadManifestOrNull(path: Path): DecompositionManifest? = try {
-  DecompositionManifestCodec.load(path)
+internal fun loadManifestOrNull(path: Path, fileStore: DecompositionManifestFileStore): DecompositionManifest? = try {
+  loadDecompositionManifest(path, fileStore)
 } catch (_: NoSuchFileException) {
   null
 }
@@ -89,11 +88,23 @@ internal fun DecompositionManifest.withRuntimeUpdate(
   ).withParentStatus()
 }
 
-internal fun projectCurrentSubtaskStatus(repoRoot: Path, manifest: DecompositionManifest) {
-  projectDecompositionSpecStatus(resolvedParentSpecPath(repoRoot, Path.of(manifest.parentSpecPath)), manifest.status)
+internal fun projectCurrentSubtaskStatus(
+  repoRoot: Path,
+  manifest: DecompositionManifest,
+  fileStore: DecompositionManifestFileStore,
+) {
+  projectDecompositionSpecStatus(
+    resolvedParentSpecPath(repoRoot, Path.of(manifest.parentSpecPath)),
+    manifest.status,
+    fileStore,
+  )
   manifest.subtasks.forEach { subtask ->
     if (subtask.status != "pending") {
-      projectDecompositionSpecStatus(resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)), subtask.status)
+      projectDecompositionSpecStatus(
+        resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)),
+        subtask.status,
+        fileStore,
+      )
     }
   }
 }

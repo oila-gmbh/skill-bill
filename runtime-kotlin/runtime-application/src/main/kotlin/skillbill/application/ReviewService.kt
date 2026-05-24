@@ -8,8 +8,8 @@ import skillbill.contracts.review.TriageRecordedContract
 import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.review.ReviewInputReader
 import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
 import skillbill.review.model.FeedbackRequest
@@ -21,15 +21,16 @@ class ReviewService(
   private val context: RuntimeContext,
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
+  private val reviewInputSource: ReviewInputSource,
 ) {
   fun previewImport(input: String): Map<String, Any?> {
-    val (text) = ReviewInputReader.readInput(input, context.stdinText)
+    val (text) = reviewInputSource.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text)
     return review.toReviewPreviewContract().toPayload()
   }
 
   fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
-    val (text, sourcePath) = ReviewInputReader.readInput(input, context.stdinText)
+    val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text)
     return database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)

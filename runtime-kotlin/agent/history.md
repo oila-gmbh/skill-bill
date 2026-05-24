@@ -1,3 +1,40 @@
+## [2026-05-24] SKILL-52 architecture-enforcement-validation
+Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core/architecture tests, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-sqlite
+- `ARCHITECTURE.md`, `RuntimeModule`, Gradle settings, and architecture tests now pin the final hexagonal graph with runtime-core as composition only and runtime-contracts owning schema validators at parse seams. reusable
+- Decomposition manifest file writes and review input loading moved behind explicit ports, with filesystem adapters in infra-fs; SQLite review runtime no longer owns file input helpers. reusable
+- Architecture coverage now rejects non-composition runtime-core packages, forbidden layer imports, adapter bypasses, public app/domain/port models outside `model`, and direct file IO in app/domain/ports. reusable
+- Full validation passed after clearing generated Gradle configuration cache: `./gradlew check`, `skill-bill validate`, `scripts/validate_agent_configs`, and `npx --yes agnix --strict .`.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-23] SKILL-52 adapter-composition-wiring
+Areas: runtime-kotlin/runtime-core, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop/core/data
+- Runtime install, scaffold, repo-validation, MCP-registration, native-agent, and skill-remove entry points now flow through application services plus port interfaces; `runtime-core` remains the composition root that binds concrete adapters. reusable
+- Filesystem implementations live behind explicit infra-fs gateways, with typed port models for install, scaffold catalog/render, and repo validation instead of aggregate adapter bags or raw maps. reusable
+- CLI, MCP, and Desktop declare honest direct Gradle dependencies instead of relying on runtime-core as a broad API umbrella; architecture tests guard runtime-core contents and infra module dependency direction. reusable
+- Desktop first-run and skill-remove seams preserve caller-provided home binding through injected application services, including telemetry config and symlink preview behavior.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-23] SKILL-52 implementation-ownership
+Areas: runtime-kotlin/runtime-core, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-desktop/core/data
+- Install, scaffold, native-agent, launcher, skill-remove, and workflow runtime-surface implementation ownership moved out of `runtime-core`; `runtime-core` now stays a compatibility umbrella/DI composition layer through Gradle `api` edges. reusable
+- Concrete filesystem implementations live in `runtime-infra-fs`; architecture coverage rejects moved infra packages depending on runtime-core, CLI, MCP, Desktop, HTTP, or SQLite sibling adapters. reusable
+- Install telemetry apply now crosses a `TelemetryLevelMutator` port to application-owned mutation, preserving config validation and transactional outbox clearing while CLI rebinding honors parsed `--home`/`--db`. reusable
+- Source/generated boundaries remain guarded after the move: rendered `SKILL.md`, support pointers, provider-native outputs, install staging, and desktop packaging artifacts stay generated.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-05-23] SKILL-52 domain-contract-foundation
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-core/architecture, orchestration/contracts
+- Runtime contract/schema validators and classpath schema resources for install-plan, workflow-state, and decomposition-manifest now live in `runtime-contracts`; domain code consumes typed validated seams rather than owning schema convenience APIs. reusable
+- `DecompositionManifestCodec` is pure model/wire-map conversion; application seams own YAML/file/artifact validation through `load/decode/encodeDecompositionManifest*`, including validated `decomposition_runtime` artifact emission. reusable
+- `WorkflowEngine` read seams loud-fail malformed durable JSON, wrong top-level shapes, blank persisted workflow contract fields, and non-exact/oversized integers with typed workflow schema errors.
+- Same-branch decomposition still creates subtask commits before advancing, but `GitWorkflowGitOperations.createCommit` leaves live `decomposition-manifest.yaml` projections uncommitted so parent bookkeeping can continue across the full decomposition run. reusable
+- Architecture coverage now bans domain workflow schema/YAML seams and raw application `decomposition_runtime` wire emission; the remaining application `Files` projection is documented as a temporary SKILL-52 blocker for later storage-port work.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
 Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement
 - Parent decomposition projection now updates the parent spec status in addition to subtask frontmatter, and Markdown `## Status` sections are projected when present. reusable

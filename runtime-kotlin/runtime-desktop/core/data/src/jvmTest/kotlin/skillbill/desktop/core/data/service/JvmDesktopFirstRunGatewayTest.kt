@@ -40,6 +40,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class JvmDesktopFirstRunGatewayTest {
   @Test
@@ -182,6 +183,51 @@ class JvmDesktopFirstRunGatewayTest {
       bundledRoot.resolve("runtime-mcp/bin/runtime-mcp").toAbsolutePath().normalize(),
       request.mcpRegistrationChoice.runtimeMcpBin,
     )
+  }
+
+  @Test
+  fun `default apply writes telemetry config under planned home`() = runBlocking {
+    val root = Files.createTempDirectory("skillbill-first-run-home-bound-apply")
+    val plannedHome = root.resolve("planned-home")
+    val processHome = root.resolve("process-home")
+    val originalUserHome = System.getProperty("user.home")
+    try {
+      System.setProperty("user.home", processHome.toString())
+      val gateway = JvmDesktopFirstRunGateway().apply {
+        homeProvider = { plannedHome }
+        runtimeAssetsProvider = { root.runtimeAssets() }
+        planInstall = { request -> request.toTelemetryOnlyPlan() }
+      }
+      val planned = assertIs<FirstRunPlanResult.Planned>(
+        gateway.planSetup(
+          FirstRunSetupRequest(
+            selectedAgentIds = emptySet(),
+            selectedPlatformSlugs = emptySet(),
+            telemetryLevel = FirstRunTelemetryLevel.FULL,
+            registerMcp = false,
+          ),
+        ),
+      )
+
+      val applyResult = gateway.applySetup(planned.plan)
+      if (applyResult is FirstRunApplyResult.Failed) {
+        fail(
+          applyResult.outcome.details.joinToString("; ") { detail ->
+            "${detail.label}: ${detail.message}"
+          },
+        )
+      }
+      val applied = assertIs<FirstRunApplyResult.Applied>(applyResult)
+
+      assertEquals(FirstRunInstallStatus.SUCCESS, applied.outcome.status)
+      assertTrue(Files.readString(plannedHome.resolve(".skill-bill/config.json")).contains("\"level\":\"full\""))
+      assertFalse(
+        Files.exists(processHome.resolve(".skill-bill/config.json")),
+        "default apply must not mutate process user.home",
+      )
+    } finally {
+      System.setProperty("user.home", originalUserHome)
+    }
   }
 
   @Test
@@ -390,6 +436,37 @@ private fun InstallPlanRequest.toPlan(): InstallPlan {
     ),
     runtimeDistributionInputs = runtimeDistributionInputs,
     installationTargetPaths = targetPaths.copy(agentTargets = agents),
+    windowsSymlinkPreflight = windowsSymlinkPreflight,
+  )
+}
+
+private fun InstallPlanRequest.toTelemetryOnlyPlan(): InstallPlan {
+  val emptySkillsRoot = home.resolve(".skill-bill/test-empty-skills")
+  val emptyPlatformPacksRoot = home.resolve(".skill-bill/test-empty-platform-packs")
+  Files.createDirectories(emptySkillsRoot)
+  Files.createDirectories(emptyPlatformPacksRoot)
+  return InstallPlan(
+    request = this,
+    agents = emptyList(),
+    discoveredPlatformPacks = emptyList(),
+    selectedPlatformSlugs = emptyList(),
+    skills = emptyList(),
+    staging = InstallStagingIntent(
+      root = home.resolve(".skill-bill/installed-skills"),
+      skillPaths = emptyList(),
+    ),
+    telemetryLevel = telemetryLevel,
+    mcpRegistrationIntent = McpRegistrationIntent(
+      register = false,
+      runtimeMcpBin = null,
+      agents = emptyList(),
+    ),
+    runtimeDistributionInputs = runtimeDistributionInputs,
+    installationTargetPaths = targetPaths.copy(
+      skillsRoot = emptySkillsRoot,
+      platformPacksRoot = emptyPlatformPacksRoot,
+      agentTargets = emptyList(),
+    ),
     windowsSymlinkPreflight = windowsSymlinkPreflight,
   )
 }

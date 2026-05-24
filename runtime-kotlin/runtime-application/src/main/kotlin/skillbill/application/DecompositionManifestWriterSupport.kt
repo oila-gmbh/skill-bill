@@ -1,5 +1,7 @@
 package skillbill.application
 
+import java.math.BigDecimal
+import java.math.BigInteger
 import java.nio.file.Path
 
 internal fun resolvedParentSpecPath(repoRoot: Path, parentSpecPath: Path): Path =
@@ -23,7 +25,11 @@ internal fun issueAndFeature(directoryName: String): Pair<String, String> {
   return parts.first() to parts.getOrElse(1) { "decomposition" }
 }
 
-internal fun Map<String, Any?>.intValueOrNull(key: String): Int? = this[key]?.asIntOrNull()
+internal fun Map<String, Any?>.optionalIntValue(key: String, sourceLabel: String): Int? = if (containsKey(key)) {
+  this[key].asInt(sourceLabel, key)
+} else {
+  null
+}
 
 internal fun Map<String, Any?>.intValue(key: String, sourceLabel: String): Int =
   this[key].asIntOrNull() ?: invalidManifest(sourceLabel, "$key must be an integer.")
@@ -39,9 +45,19 @@ internal fun Any?.asInt(sourceLabel: String, fieldPath: String): Int =
   asIntOrNull() ?: invalidManifest(sourceLabel, "$fieldPath must be an integer.")
 
 internal fun Any?.asIntOrNull(): Int? = when (this) {
-  is Int -> this
-  is Long -> this.toInt()
-  is Number -> this.toInt()
+  is Byte, is Short, is Int -> (this as Number).toInt()
+  is Long -> takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
+  is BigInteger -> runCatching { intValueExact() }.getOrNull()
+  is BigDecimal -> runCatching { intValueExact() }.getOrNull()
+  is Float, is Double -> {
+    val doubleValue = (this as Number).toDouble()
+    runCatching {
+      require(doubleValue.isFinite())
+      require(doubleValue >= Int.MIN_VALUE.toDouble())
+      require(doubleValue <= Int.MAX_VALUE.toDouble())
+      BigDecimal.valueOf(doubleValue).intValueExact()
+    }.getOrNull()?.takeIf { this is Double || it.toFloat() == this }
+  }
   else -> null
 }
 

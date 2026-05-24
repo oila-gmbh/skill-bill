@@ -2,7 +2,8 @@
 
 package skillbill.mcp
 
-import skillbill.scaffold.scaffold
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -19,7 +20,10 @@ object McpScaffoldRuntime {
     val sessionId = generateNewSkillSessionId()
     val repoRoot = findRepoRoot()
     return try {
-      val result = scaffold(payload + ("repo_root" to repoRoot.toString()), dryRun = dryRun)
+      val result =
+        RuntimeComponent::class.create(context.toRuntimeContext())
+          .scaffoldService
+          .scaffold(payload + ("repo_root" to repoRoot.toString()), dryRun)
       val outcome = if (dryRun) "dry-run" else "success"
       val baseTelemetryPayload =
         mapOf(

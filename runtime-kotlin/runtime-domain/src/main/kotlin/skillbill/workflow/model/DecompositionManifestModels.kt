@@ -1,6 +1,6 @@
 package skillbill.workflow.model
 
-import skillbill.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
+import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
 
 enum class DecompositionExecutionModel(val wireValue: String) {
   SAME_BRANCH_COMMIT_PER_SUBTASK("same_branch_commit_per_subtask"),
