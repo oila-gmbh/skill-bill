@@ -275,6 +275,15 @@ runtime-ports
     - `skillbill.ports.scaffold.ScaffoldGateway.saveExactContent`
     - `skillbill.ports.scaffold.ScaffoldGateway.editWithBodyFile`
     - `skillbill.ports.scaffold.ScaffoldGateway.scaffold`
+    - `skillbill.scaffold.policy.requireString`
+    - `skillbill.scaffold.policy.requireStringOrDefault`
+    - `skillbill.scaffold.policy.validatePayloadVersion`
+    - `skillbill.scaffold.policy.detectKind`
+    - `skillbill.scaffold.policy.optionalSpecialistSubagents`
+    - `skillbill.scaffold.policy.rejectLeafSubagentSpecialists`
+    - `skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack`
+    - `skillbill.scaffold.policy.resolvePlatformPackSelection`
+    - `skillbill.scaffold.policy.resolvePlatformPackDefaults`
     - `skillbill.application.SystemService.doctor`
     - `skillbill.application.SystemService.version`
     - `skillbill.application.lifecycleOkPayload`
@@ -425,6 +434,58 @@ skillbill.workflow.verify
 - Telemetry-event schema validation is owned by the MCP adapter because the MCP
   tool registry is the event-name source of truth. The owning parse seam is the
   MCP telemetry tool input validator in `runtime-mcp`.
+
+## Scaffold Capability Ports And Pure-Policy Ownership (SKILL-52.1 subtask 2)
+
+The scaffold pipeline is being decomposed from the single legacy
+`ScaffoldGateway` raw-map surface into typed capability ports and a pure-policy
+module. Subtask 2 lands the port surface and the pure-policy ownership
+boundary; the `ScaffoldGateway` raw-map elimination and the 18 scaffold
+allow-list entries below are intentionally NOT yet removed — they remain
+deferred to subtask 3.
+
+- **Pure-policy ownership boundary:** every payload-shape rule, kind
+  discriminator, subagent-rejection rule, platform-pack selection/defaults/
+  notes computation, install-path builder, and platform-pack manifest YAML
+  renderer that has no filesystem dependency lives in
+  `skillbill.scaffold.policy` inside `runtime-domain`. Files in
+  `runtime-domain/src/main/kotlin/skillbill/scaffold/policy/` MUST NOT
+  import `skillbill.infrastructure.fs.*`,
+  `skillbill.scaffold.ScaffoldService`, or
+  `skillbill.scaffold.FileSystem*`. The
+  `ImplementationOwnershipArchitectureTest.scaffoldPolicyPackagesMustNotImportInfraFs`
+  test enforces this prospectively.
+- **Capability-port surface:** scaffold IO is split across five
+  capability-named ports under `skillbill.ports.scaffold.<capability>/`:
+  - `source/ScaffoldSourceLoaderPort` (with
+    `source/model/ScaffoldSourceLoaderModels`) — parses platform-pack
+    manifests from disk.
+  - `manifest/ScaffoldManifestPersistencePort` (with
+    `manifest/model/ScaffoldManifestPersistenceModels`) — owns the
+    `platform.yaml` read/snapshot/write/restore/render seams.
+  - `staging/ScaffoldGeneratedStagingPort` (with
+    `staging/model/ScaffoldGeneratedStagingModels`) — stages
+    scaffold-generated artifact files with rollback.
+  - `install/ScaffoldInstallLinkPort` (with
+    `install/model/ScaffoldInstallLinkModels`) — applies install links
+    to detected agent targets.
+  - `repo/ScaffoldRepoValidationPort` (with
+    `repo/model/ScaffoldRepoValidationModels`) — runs the post-stage
+    governed-skill validation seam.
+  - Each port has a matching `FileSystem<Capability>` adapter in
+    `runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/` that
+    delegates to the existing `skillbill.scaffold.AuthoringOperations`
+    and `skillbill.scaffold.scaffold` IO seams. The legacy
+    `FileSystemScaffoldGateway` adapter is intentionally retained — its
+    raw-map removal belongs to subtask 3.
+- **Subtask 3 deferred work (do not touch in this subtask):** the
+  `skillbill.application.ScaffoldService.*` and
+  `skillbill.ports.scaffold.ScaffoldGateway.*` raw-map open-boundary
+  allow-list entries below remain in place. The accompanying
+  `RAW_MAP_OPEN_BOUNDARY_ALLOWLIST` constant in
+  `runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt`
+  must continue to list them verbatim; the open-boundary
+  start/end markers must not move.
 
 ## Architecture Guardrails
 

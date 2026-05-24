@@ -1028,6 +1028,18 @@ class RuntimeArchitectureTest {
       "skillbill.ports.scaffold.ScaffoldGateway.saveExactContent",
       "skillbill.ports.scaffold.ScaffoldGateway.editWithBodyFile",
       "skillbill.ports.scaffold.ScaffoldGateway.scaffold",
+      // SKILL-52.1 subtask 2 documented seams (pure-policy entrypoints that accept the wire
+      // payload Map<String, Any?>). Retired together with the legacy ScaffoldGateway raw-map
+      // surface above by subtask 3, which introduces a typed scaffold payload DTO.
+      "skillbill.scaffold.policy.requireString",
+      "skillbill.scaffold.policy.requireStringOrDefault",
+      "skillbill.scaffold.policy.validatePayloadVersion",
+      "skillbill.scaffold.policy.detectKind",
+      "skillbill.scaffold.policy.optionalSpecialistSubagents",
+      "skillbill.scaffold.policy.rejectLeafSubagentSpecialists",
+      "skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack",
+      "skillbill.scaffold.policy.resolvePlatformPackSelection",
+      "skillbill.scaffold.policy.resolvePlatformPackDefaults",
       // Subtask 3 will remove (install policy extraction):
       "skillbill.application.SystemService.doctor",
       "skillbill.application.SystemService.version",

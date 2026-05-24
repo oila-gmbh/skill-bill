@@ -14,7 +14,6 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
@@ -25,59 +24,36 @@ import skillbill.install.installSkill
 import skillbill.install.model.InstallTransaction
 import skillbill.install.uninstallTargets
 import skillbill.scaffold.model.CodeReviewBaselineLayer
-import skillbill.scaffold.model.CodeReviewCompositionMode
-import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
+import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.policy.requireString
+import skillbill.scaffold.policy.requireStringList
+import skillbill.scaffold.policy.requireStringOrDefault
+import skillbill.scaffold.policy.sharedContractNote
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.scaffold.policy.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
+import skillbill.scaffold.policy.detectKind as policyDetectKind
+import skillbill.scaffold.policy.optionalSpecialistSubagents as policyOptionalSpecialistSubagents
+import skillbill.scaffold.policy.parseBaselineLayerPayload as policyParseBaselineLayerPayload
+import skillbill.scaffold.policy.platformPackNotes as policyPlatformPackNotes
+import skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack as policyRejectBaselineLayersForNonPlatformPack
+import skillbill.scaffold.policy.rejectLeafSubagentSpecialists as policyRejectLeafSubagentSpecialists
+import skillbill.scaffold.policy.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
+import skillbill.scaffold.policy.resolvePlatformPackDefaults as policyResolvePlatformPackDefaults
+import skillbill.scaffold.policy.resolvePlatformPackSelection as policyResolvePlatformPackSelection
+import skillbill.scaffold.policy.validatePayloadVersion as policyValidatePayloadVersion
 
-private const val SKILL_KIND_HORIZONTAL = "horizontal"
-private const val SKILL_KIND_PLATFORM_OVERRIDE_PILOTED = "platform-override-piloted"
-private const val SKILL_KIND_PLATFORM_PACK = "platform-pack"
-private const val SKILL_KIND_CODE_REVIEW_AREA = "code-review-area"
-private const val SKILL_KIND_ADD_ON = "add-on"
-
-private val SUPPORTED_SKILL_KINDS =
-  setOf(
-    SKILL_KIND_HORIZONTAL,
-    SKILL_KIND_PLATFORM_OVERRIDE_PILOTED,
-    SKILL_KIND_PLATFORM_PACK,
-    SKILL_KIND_CODE_REVIEW_AREA,
-    SKILL_KIND_ADD_ON,
-  )
-
-// F-001: The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and the
-// slug->displayName platform-pack preset map (`PLATFORM_PACK_PRESETS`) are declared as `internal`
-// in `ScaffoldSupport.kt` so the desktop wizard catalog (`ScaffoldCatalog`) can delegate to them,
-// keeping the runtime as the single source of truth for which families and presets exist. The
-// richer descriptor map (with routing signals and tie-breakers) lives below as
-// `PLATFORM_PACK_PRESET_DESCRIPTORS` and references the same set of slugs.
-
-private val ORCHESTRATOR_KINDS_FOR_SUBAGENTS =
-  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_PLATFORM_PACK)
-private val SUBAGENT_NAME_PATTERN = Regex("^[a-z][a-z0-9-]*$")
-
-internal data class PlatformPackPreset(
-  val displayName: String,
-  val strongSignals: List<String>,
-  val tieBreakers: List<String>,
-)
-
-// Full runtime descriptors for built-in platform-pack presets. The slugs MUST match the keys of
-// the simpler [PLATFORM_PACK_PRESETS] wizard projection in `ScaffoldSupport.kt`.
-private val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
-  mapOf(
-    "java" to PlatformPackPreset(
-      displayName = "Java",
-      strongSignals = listOf("pom.xml", "build.gradle", "src/main/java"),
-      tieBreakers = listOf("Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."),
-    ),
-    "php" to PlatformPackPreset(
-      displayName = "PHP",
-      strongSignals = listOf("composer.json", ".php", "phpunit.xml"),
-      tieBreakers = listOf("Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."),
-    ),
-  )
+// SKILL-52.1 subtask 2: skill-kind discriminators, supported-kinds set, orchestrator-kind set,
+// subagent name pattern, and built-in platform-pack preset descriptors all live in
+// `skillbill.scaffold.policy` (runtime-domain) as the single source of truth. This file imports
+// them above. The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and
+// slug->displayName projection (`PLATFORM_PACK_PRESETS`) remain in `ScaffoldSupport.kt` while
+// the desktop wizard catalog delegation lives there.
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -140,8 +116,8 @@ fun scaffold(payload: Map<String, Any?>, dryRun: Boolean = false): ScaffoldResul
     "Scaffold payload must be a JSON object mapping string keys to values."
   }
 
-  validatePayloadVersion(payload)
-  val kind = detectKind(payload)
+  policyValidatePayloadVersion(payload)
+  val kind = policyDetectKind(payload)
   val repoRoot = resolveRepoRoot(payload)
   val plan = planScaffold(payload, repoRoot, kind)
   return if (dryRun) {
@@ -197,33 +173,6 @@ private fun executeScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRo
   )
 }
 
-private fun validatePayloadVersion(payload: Map<String, Any?>) {
-  val version = payload["scaffold_payload_version"] as? String
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload is missing required field 'scaffold_payload_version'.",
-    )
-  if (version != SCAFFOLD_PAYLOAD_VERSION) {
-    throw ScaffoldPayloadVersionMismatchError(
-      "Scaffold payload declares 'scaffold_payload_version' '$version' " +
-        "but the scaffolder expects '$SCAFFOLD_PAYLOAD_VERSION'.",
-    )
-  }
-}
-
-private fun detectKind(payload: Map<String, Any?>): String {
-  val kind = payload["kind"] as? String
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'kind' must be a non-empty string.",
-    )
-  if (kind !in SUPPORTED_SKILL_KINDS) {
-    throw UnknownSkillKindError(
-      "Scaffold payload declares unsupported kind '$kind'. " +
-        "Supported kinds: $SUPPORTED_SKILL_KINDS.",
-    )
-  }
-  return kind
-}
-
 private fun resolveRepoRoot(payload: Map<String, Any?>): Path {
   val repoRootRaw = payload["repo_root"] as? String ?: return defaultRepoRoot()
   if (repoRootRaw.isBlank()) {
@@ -236,20 +185,20 @@ private fun resolveRepoRoot(payload: Map<String, Any?>): Path {
 
 private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: String): ScaffoldPlan = when (kind) {
   SKILL_KIND_HORIZONTAL -> {
-    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planHorizontal(payload, repoRoot)
   }
   SKILL_KIND_PLATFORM_OVERRIDE_PILOTED -> {
-    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planPlatformOverridePiloted(payload, repoRoot)
   }
   SKILL_KIND_PLATFORM_PACK -> planPlatformPack(payload, repoRoot)
   SKILL_KIND_CODE_REVIEW_AREA -> {
-    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planCodeReviewArea(payload, repoRoot)
   }
   SKILL_KIND_ADD_ON -> {
-    rejectBaselineLayersForNonPlatformPack(payload, kind)
+    policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planAddOn(payload, repoRoot)
   }
   else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
@@ -258,7 +207,7 @@ private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: Strin
 private fun planHorizontal(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val name = requireString(payload, "name")
   val skillPath = repoRoot.resolve("skills").resolve(name)
-  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_HORIZONTAL)
+  val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_HORIZONTAL)
   return ScaffoldPlan(
     kind = SKILL_KIND_HORIZONTAL,
     skillName = name,
@@ -280,7 +229,7 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
   val platform = requireString(payload, "platform")
   val family = requireString(payload, "family")
   val name = canonicalName(payload, defaultName = "bill-$platform-$family")
-  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED)
+  val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED)
   val isShelled = family in SHELLED_FAMILIES
   val notes = mutableListOf<String>()
   if (!isShelled) {
@@ -344,8 +293,8 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
 
 private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val platform = requireString(payload, "platform")
-  val subagents = optionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_PACK)
-  val defaults = resolvePlatformPackDefaults(payload, platform)
+  val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_PACK)
+  val defaults = policyResolvePlatformPackDefaults(payload, platform)
   val packRoot = repoRoot.resolve("platform-packs").resolve(platform)
   if (Files.exists(packRoot)) {
     throw SkillAlreadyExistsError(
@@ -356,7 +305,7 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
   val baselineName = canonicalName(payload, defaultName = "bill-$platform-code-review")
   val qualityCheckName = "bill-$platform-quality-check"
   val baselineLayers = optionalBaselineLayers(payload, repoRoot, platform)
-  val selection = resolvePlatformPackSelection(payload)
+  val selection = policyResolvePlatformPackSelection(payload)
   val selectedAreas = selection.selectedAreas
   val specialistNames =
     selectedAreas.associateWith { area -> "bill-$platform-code-review-$area" }
@@ -384,7 +333,7 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
     } else {
       emptyMap()
     }
-  val notes = platformPackNotes(platform, defaults.presetUsed, selectedAreas)
+  val notes = policyPlatformPackNotes(platform, defaults.presetUsed, selectedAreas)
 
   return ScaffoldPlan(
     kind = SKILL_KIND_PLATFORM_PACK,
@@ -410,7 +359,7 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
     baselineSkillPath = packRoot.resolve("code-review").resolve(baselineName),
     qualityCheckSkillName = qualityCheckName,
     qualityCheckSkillPath = packRoot.resolve("quality-check").resolve(qualityCheckName),
-    installPaths = buildPlatformPackInstallPaths(
+    installPaths = policyBuildPlatformPackInstallPaths(
       packRoot = packRoot,
       baselineName = baselineName,
       qualityCheckName = qualityCheckName,
@@ -424,23 +373,6 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
     subagentsSuppressed = subagents.suppressed,
   )
 }
-
-private fun rejectBaselineLayersForNonPlatformPack(payload: Map<String, Any?>, kind: String) {
-  if (payload.containsKey("baseline_layers")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'baseline_layers' is only supported for kind 'platform-pack'; got '$kind'.",
-    )
-  }
-}
-
-private data class PlatformPackSelection(
-  val selectedAreas: List<String>,
-)
-
-private data class OptionalSubagents(
-  val specialists: List<String>,
-  val suppressed: Boolean,
-)
 
 private fun optionalBaselineLayers(
   payload: Map<String, Any?>,
@@ -458,47 +390,9 @@ private fun optionalBaselineLayers(
       "Scaffold payload field 'baseline_layers' must contain at least one layer when provided.",
     )
   }
-  val layers = raw.mapIndexed { index, entry -> parseBaselineLayerPayload(index, entry) }
+  val layers = raw.mapIndexed { index, entry -> policyParseBaselineLayerPayload(index, entry) }
   validateBaselineLayerPayloadReferences(layers, repoRoot, newPlatform)
   return layers
-}
-
-private fun parseBaselineLayerPayload(index: Int, raw: Any?): CodeReviewBaselineLayer {
-  val layer = raw as? Map<*, *>
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'baseline_layers[$index]' must be an object.",
-    )
-  val fieldPrefix = "baseline_layers[$index]"
-  val scopeValue = requireStringInPayloadMap(layer, "$fieldPrefix.scope", "scope")
-  val modeValue = requireStringInPayloadMap(layer, "$fieldPrefix.mode", "mode")
-  val required = layer["required"] as? Boolean
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field '$fieldPrefix.required' must be an explicit boolean.",
-    )
-  return CodeReviewBaselineLayer(
-    platform = requireStringInPayloadMap(layer, "$fieldPrefix.platform", "platform"),
-    skill = requireStringInPayloadMap(layer, "$fieldPrefix.skill", "skill"),
-    scope = CodeReviewCompositionScope.fromWireValue(scopeValue)
-      ?: throw InvalidScaffoldPayloadError(
-        "Scaffold payload field '$fieldPrefix.scope' has unsupported value '$scopeValue'. " +
-          "Supported values: ${CodeReviewCompositionScope.entries.map { it.wireValue }}.",
-      ),
-    required = required,
-    mode = CodeReviewCompositionMode.fromWireValue(modeValue)
-      ?: throw InvalidScaffoldPayloadError(
-        "Scaffold payload field '$fieldPrefix.mode' has unsupported value '$modeValue'. " +
-          "Supported values: ${CodeReviewCompositionMode.entries.map { it.wireValue }}.",
-      ),
-  )
-}
-
-private fun requireStringInPayloadMap(map: Map<*, *>, fieldLabel: String, key: String): String {
-  val value = map[key] as? String
-    ?: throw InvalidScaffoldPayloadError("Scaffold payload field '$fieldLabel' must be a non-empty string.")
-  if (value.isBlank()) {
-    throw InvalidScaffoldPayloadError("Scaffold payload field '$fieldLabel' must be a non-empty string.")
-  }
-  return value
 }
 
 private fun validateBaselineLayerPayloadReferences(
@@ -546,114 +440,8 @@ private fun validateBaselineLayerModeSupport(index: Int, layer: CodeReviewBaseli
   }
 }
 
-private fun optionalSpecialistSubagents(payload: Map<String, Any?>, kind: String): OptionalSubagents {
-  val rawSpecialists = payload["subagent_specialists"] ?: emptyList<String>()
-  val rawSuppressed = payload["no_subagents"] ?: false
-  if (rawSpecialists !is List<*>) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'subagent_specialists' must be a list of strings.",
-    )
-  }
-  val specialists = mutableListOf<String>()
-  val seen = mutableSetOf<String>()
-  rawSpecialists.forEach { raw ->
-    val specialist = raw as? String
-      ?: throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'subagent_specialists' must contain only non-empty strings.",
-      )
-    if (specialist.isBlank()) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'subagent_specialists' must contain only non-empty strings.",
-      )
-    }
-    if (!SUBAGENT_NAME_PATTERN.matches(specialist)) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'subagent_specialists' contains invalid name '$specialist'; " +
-          "names must match '^[a-z][a-z0-9-]*$'.",
-      )
-    }
-    if (!seen.add(specialist)) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'subagent_specialists' contains duplicate name '$specialist'.",
-      )
-    }
-    specialists += specialist
-  }
-  val suppressed = rawSuppressed as? Boolean
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'no_subagents' must be a boolean when provided.",
-    )
-  if (suppressed && specialists.isNotEmpty()) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload may not set 'no_subagents=true' together with a non-empty 'subagent_specialists' list.",
-    )
-  }
-  if (specialists.isNotEmpty() && kind !in ORCHESTRATOR_KINDS_FOR_SUBAGENTS) {
-    throw InvalidScaffoldPayloadError(
-      "subagent_specialists is only valid for orchestrator kinds " +
-        "(horizontal, platform-override-piloted, platform-pack); got $kind",
-    )
-  }
-  return OptionalSubagents(specialists = specialists, suppressed = suppressed)
-}
-
-private fun rejectLeafSubagentSpecialists(payload: Map<String, Any?>, kind: String) {
-  if (payload["subagent_specialists"] != null) {
-    optionalSpecialistSubagents(payload, kind)
-  }
-}
-
-private fun resolvePlatformPackSelection(payload: Map<String, Any?>): PlatformPackSelection {
-  val skeletonMode = requireStringOrDefault(payload, "skeleton_mode", "full")
-  val specialistAreas = payload["specialist_areas"]?.let {
-    requireStringList(it, "specialist_areas").also { areas ->
-      val unknown = areas.filter { area -> area !in APPROVED_CODE_REVIEW_AREAS }
-      if (unknown.isNotEmpty()) {
-        throw InvalidScaffoldPayloadError(
-          "Scaffold payload field 'specialist_areas' contains unknown areas $unknown; " +
-            "approved areas: $APPROVED_CODE_REVIEW_AREAS.",
-        )
-      }
-    }
-  }
-  if (skeletonMode !in setOf("starter", "full")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'skeleton_mode' must be one of [full, starter] when provided.",
-    )
-  }
-  if (specialistAreas != null && payload.containsKey("skeleton_mode")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload may not provide both 'skeleton_mode' and 'specialist_areas'; " +
-        "choose one specialist selection mode.",
-    )
-  }
-  val selectedAreas =
-    specialistAreas?.let { requested ->
-      APPROVED_CODE_REVIEW_AREAS.sorted().filter { area -> area in requested.toSet() }
-    }
-      ?: if (skeletonMode == "full") APPROVED_CODE_REVIEW_AREAS.sorted() else emptyList()
-  return PlatformPackSelection(selectedAreas = selectedAreas)
-}
-
-private fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAreas: List<String>): List<String> {
-  val notes = mutableListOf<String>()
-  if (presetUsed) {
-    notes +=
-      "Applied built-in platform preset for '$platform'. " +
-      "Override 'routing_signals' only when the defaults need adjustment."
-  }
-  notes += if (selectedAreas.isNotEmpty()) {
-    "Full skeleton scaffolded with ${selectedAreas.size} approved code-review area stubs."
-  } else {
-    "Quality-check scaffolded by default."
-  }
-  notes += "Follow-on code-review-area scaffolds can extend the pack without manual manifest edits."
-  notes += sharedContractNote()
-  return notes
-}
-
 private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
-  rejectLeafSubagentSpecialists(payload, SKILL_KIND_CODE_REVIEW_AREA)
+  policyRejectLeafSubagentSpecialists(payload, SKILL_KIND_CODE_REVIEW_AREA)
   val platform = requireString(payload, "platform")
   val area = requireString(payload, "area")
   if (area !in APPROVED_CODE_REVIEW_AREAS) {
@@ -690,7 +478,7 @@ private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): Scaf
 }
 
 private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
-  rejectLeafSubagentSpecialists(payload, SKILL_KIND_ADD_ON)
+  policyRejectLeafSubagentSpecialists(payload, SKILL_KIND_ADD_ON)
   val name = requireString(payload, "name")
   val platform = requireString(payload, "platform")
   val packRoot = repoRoot.resolve("platform-packs").resolve(platform)
@@ -776,40 +564,6 @@ private fun validateAddonConsumerSkillDir(
     )
   }
   return normalizedDir
-}
-
-private data class PlatformPackDefaults(
-  val displayName: String,
-  val strongSignals: List<String>,
-  val tieBreakers: List<String>,
-  val presetUsed: Boolean,
-)
-
-private fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: String): PlatformPackDefaults {
-  val preset = PLATFORM_PACK_PRESET_DESCRIPTORS[platform]
-  val routing = payload["routing_signals"] as? Map<*, *>
-  val strong = routing?.get("strong")?.let { requireStringList(it, "routing_signals.strong") }
-  val tieBreakers = routing?.get("tie_breakers")?.let { requireStringList(it, "routing_signals.tie_breakers") }
-  val resolvedStrong = strong ?: preset?.strongSignals.orEmpty()
-  val resolvedTieBreakers = tieBreakers ?: preset?.tieBreakers.orEmpty()
-  if (resolvedStrong.isEmpty()) {
-    if (preset == null) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'routing_signals.strong' must contain at least one routing signal " +
-          "when no built-in platform preset exists for '$platform'.",
-      )
-    }
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'routing_signals.strong' must contain at least one routing signal.",
-    )
-  }
-  val displayName = requireStringOrDefault(payload, "display_name", preset?.displayName ?: deriveDisplayName(platform))
-  return PlatformPackDefaults(
-    displayName = displayName,
-    strongSignals = resolvedStrong,
-    tieBreakers = resolvedTieBreakers,
-    presetUsed = preset != null && routing == null,
-  )
 }
 
 private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): ScaffoldExecutionResult {
@@ -1113,51 +867,13 @@ private fun canonicalName(payload: Map<String, Any?>, defaultName: String): Stri
   }
 }
 
-private fun requireString(payload: Map<String, Any?>, key: String): String =
-  (payload[key] as? String)?.takeIf { it.isNotBlank() }
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field '$key' must be a non-empty string.",
-    )
-
-private fun requireStringOrDefault(payload: Map<String, Any?>, key: String, default: String): String =
-  (payload[key] as? String)?.takeIf { it.isNotBlank() } ?: default
-
-private fun requireStringList(value: Any?, fieldName: String): List<String> {
-  if (value !is List<*>) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field '$fieldName' must be a list of strings.",
-    )
-  }
-  return value.map {
-    it as? String ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field '$fieldName' must contain only non-empty strings.",
-    )
-  }.also {
-    if (it.any(String::isBlank)) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field '$fieldName' must contain only non-empty strings.",
-      )
-    }
-  }
-}
+// SKILL-52.1 subtask 2: `requireString`, `requireStringOrDefault`, and `requireStringList` now live
+// in `skillbill.scaffold.policy` (runtime-domain) as the single source of truth. The duplicate
+// private copies that used to live here were removed; callsites use the imported policy versions.
 
 private fun deriveDisplayName(platform: String): String = displayNameFromSlug(platform)
 
 private fun defaultRepoRoot(): Path = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
-
-private fun buildPlatformPackInstallPaths(
-  packRoot: Path,
-  baselineName: String,
-  qualityCheckName: String,
-  specialistPaths: Map<String, Path>,
-  selectedAreas: List<String>,
-): List<Path> = buildList {
-  add(packRoot.resolve("code-review").resolve(baselineName))
-  add(packRoot.resolve("quality-check").resolve(qualityCheckName))
-  selectedAreas.forEach { area ->
-    add(specialistPaths.getValue(area))
-  }
-}
 
 private fun renderPlatformPackManifestContent(
   plan: ScaffoldPlan,
@@ -1166,23 +882,18 @@ private fun renderPlatformPackManifestContent(
   qualityCheckSkillPath: Path,
 ): String {
   val packRoot = plan.manifestPath?.parent ?: repoRoot.resolve("platform-packs").resolve(plan.platform)
-  return renderPlatformPackManifest(
+  return policyRenderPlatformPackManifestContent(
     platform = plan.platform,
     displayName = plan.displayName,
-    strongSignals = plan.routingSignals,
+    routingSignals = plan.routingSignals,
     tieBreakers = plan.tieBreakers,
-    declaredCodeReviewAreas = plan.specialistAreas,
-    baselineContentPath = packRoot.relativize(baselineSkillPath.resolve("content.md"))
-      .toString()
-      .replace('\\', '/'),
-    declaredAreaFiles = plan.specialistSkillPaths.mapValues { (_, path) ->
-      packRoot.relativize(path.resolve("content.md")).toString().replace('\\', '/')
-    },
-    declaredQualityCheckFile = packRoot.relativize(qualityCheckSkillPath.resolve("content.md"))
-      .toString()
-      .replace('\\', '/'),
-    areaMetadata = plan.specialistAreaMetadata,
+    specialistAreas = plan.specialistAreas,
+    specialistAreaMetadata = plan.specialistAreaMetadata,
     baselineLayers = plan.baselineLayers,
+    packRoot = packRoot,
+    baselineSkillPath = baselineSkillPath,
+    qualityCheckSkillPath = qualityCheckSkillPath,
+    specialistSkillPaths = plan.specialistSkillPaths,
   )
 }
 
@@ -1341,8 +1052,9 @@ private fun rollbackDirs(txn: ScaffoldTransaction, errors: MutableList<String>) 
   }
 }
 
-private fun sharedContractNote(): String = "Author skill instructions only in sibling `content.md` files. " +
-  "Generated `SKILL.md` wrappers and platform pointer files are render/install output."
+// SKILL-52.1 subtask 2: `sharedContractNote` is owned by `skillbill.scaffold.policy` (runtime-domain).
+// The duplicate private definition that used to live here was removed; callsites import the policy
+// version (see the top-of-file imports).
 
 private const val ADD_ON_INSTALL_NOTE: String =
   "Add-on shipped as a supporting asset of its owning platform package; auto-install does not apply."

@@ -343,6 +343,100 @@ class ImplementationOwnershipArchitectureTest {
     )
   }
 
+  @Test
+  fun `scaffold policy packages must not import infra-fs`() {
+    // SKILL-52.1 subtask 2: pure-policy ownership boundary. The extracted-policy package under
+    // `runtime-domain` must not depend on filesystem implementations. The application-level
+    // ScaffoldService is also guarded for the same reason — policy callsites must go through the
+    // typed capability ports introduced in subtask 2.
+    val policySourceRoots = listOf(
+      "runtime-domain/src/main/kotlin/skillbill/scaffold/policy",
+      "runtime-application/src/main/kotlin/skillbill/application",
+    ).map { sourceRoot -> runtimeRoot.resolve(sourceRoot) }
+      .filter(Files::isDirectory)
+
+    val forbiddenImportPattern = Regex(
+      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|skillbill\\.scaffold\\.(ScaffoldService|FileSystem.*))$",
+    )
+
+    val violations = policySourceRoots
+      .flatMap(::kotlinFilesUnder)
+      .filter { sourceFile -> isPolicyOrScaffoldApplicationFile(sourceFile) }
+      .flatMap { sourceFile ->
+        sourceFile.readText().lineSequence()
+          .map { line -> line.trim() }
+          .filter(forbiddenImportPattern::matches)
+          .map { importLine -> "${runtimeRoot.relativize(sourceFile)} contains '$importLine'" }
+          .toList()
+      }
+      .sorted()
+
+    assertEquals(
+      emptyList(),
+      violations,
+      "Scaffold pure-policy packages must not import skillbill.infrastructure.fs.* or " +
+        "skillbill.scaffold.ScaffoldService/FileSystem* — those imports leak adapter ownership " +
+        "into runtime-domain/runtime-application policy code (SKILL-52.1 subtask 2).",
+    )
+  }
+
+  @Test
+  fun `scaffold policy import regex catches known bad and passes known good`() {
+    // SKILL-52.1 subtask 2 (review-fix F-001): the production
+    // `scaffold policy packages must not import infra-fs` test only proves the regex is sound
+    // by asserting `emptyList() == emptyList()` against the current source tree. A typo in the
+    // pattern anchors/alternation/grouping would silently disable the only enforcement preventing
+    // pure-policy code from re-acquiring an FS dependency. This fixture-based test exercises the
+    // same `forbiddenImportPattern.matches(...)` predicate the production scan uses against a
+    // synthetic set of import lines so a regression in the pattern itself loud-fails.
+    val forbiddenImportPattern = Regex(
+      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|skillbill\\.scaffold\\.(ScaffoldService|FileSystem.*))$",
+    )
+
+    val mustBeDetectedAsForbidden = listOf(
+      "import skillbill.infrastructure.fs.Foo",
+      "import skillbill.infrastructure.fs.bar.Baz",
+      "import skillbill.scaffold.ScaffoldService",
+      "import skillbill.scaffold.FileSystemAnything",
+      "import skillbill.scaffold.FileSystemScaffoldSourceLoader",
+    )
+    val mustNotBeDetectedAsForbidden = listOf(
+      "import skillbill.scaffold.policy.X",
+      "import skillbill.scaffold.model.Y",
+      "import skillbill.ports.scaffold.foo.Bar",
+      "import java.nio.file.Path",
+    )
+
+    val falseNegatives = mustBeDetectedAsForbidden.filterNot(forbiddenImportPattern::matches)
+    val falsePositives = mustNotBeDetectedAsForbidden.filter(forbiddenImportPattern::matches)
+
+    assertEquals(
+      emptyList(),
+      falseNegatives,
+      "Scaffold-policy forbidden-import regex must detect known-bad import lines.",
+    )
+    assertEquals(
+      emptyList(),
+      falsePositives,
+      "Scaffold-policy forbidden-import regex must not flag known-good import lines.",
+    )
+  }
+
+  private fun isPolicyOrScaffoldApplicationFile(sourceFile: Path): Boolean {
+    val pathString = sourceFile.toString().replace('\\', '/')
+    val inPolicyPackage = pathString.contains("/runtime-domain/src/main/kotlin/skillbill/scaffold/policy/")
+    val inScaffoldApplication = pathString.contains("/runtime-application/src/main/kotlin/skillbill/application/") &&
+      sourceFile.fileName.toString() in scaffoldApplicationServiceFileNames
+    return inPolicyPackage || inScaffoldApplication
+  }
+
+  private companion object {
+    val scaffoldApplicationServiceFileNames: Set<String> = setOf(
+      "ScaffoldService.kt",
+      "ScaffoldCatalogService.kt",
+    )
+  }
+
   private fun forbiddenSourcePackages(moduleSourceRoots: List<String>): Set<String> = moduleSourceRoots
     .map { sourceRoot -> runtimeRoot.resolve(sourceRoot) }
     .flatMap(::kotlinFilesUnder)

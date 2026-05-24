@@ -3,7 +3,6 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Path
 
 private val AREAS_EMPTY_INLINE_PATTERN =
@@ -80,116 +79,12 @@ internal fun renderGovernedAddonManifestRegistration(
   }
 }
 
-internal fun renderPlatformPackManifest(
-  platform: String,
-  displayName: String,
-  strongSignals: List<String>,
-  tieBreakers: List<String> = emptyList(),
-  declaredCodeReviewAreas: List<String> = emptyList(),
-  baselineContentPath: String,
-  declaredAreaFiles: Map<String, String> = emptyMap(),
-  declaredQualityCheckFile: String? = null,
-  areaMetadata: Map<String, String> = emptyMap(),
-  baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
-  notes: String? = null,
-): String {
-  val lines = mutableListOf<String>()
-  lines += "platform: ${yamlScalar(platform)}"
-  lines += "contract_version: ${yamlScalar(SHELL_CONTRACT_VERSION)}"
-  lines += "display_name: ${yamlScalar(displayName)}"
-  lines += ""
-  appendRoutingSignals(lines, strongSignals, tieBreakers)
-  lines += ""
-  appendDeclaredCodeReviewAreas(lines, declaredCodeReviewAreas)
-  lines += ""
-  appendDeclaredFiles(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles)
-  appendAreaMetadata(lines, declaredCodeReviewAreas, areaMetadata)
-  appendQualityCheckDeclaration(lines, declaredQualityCheckFile)
-  appendBaselineLayers(lines, baselineLayers)
-  if (notes != null) {
-    lines += ""
-    lines += "notes: ${yamlScalar(notes)}"
-  }
-  return lines.joinToString("\n") + "\n"
-}
-
-private fun appendRoutingSignals(lines: MutableList<String>, strongSignals: List<String>, tieBreakers: List<String>) {
-  lines += "routing_signals:"
-  lines += "  strong:"
-  strongSignals.forEach { lines += "    - ${yamlScalar(it)}" }
-  if (tieBreakers.isEmpty()) {
-    lines += "  tie_breakers: []"
-  } else {
-    lines += "  tie_breakers:"
-    tieBreakers.forEach { lines += "    - ${yamlScalar(it)}" }
-  }
-}
-
-private fun appendDeclaredCodeReviewAreas(lines: MutableList<String>, declaredCodeReviewAreas: List<String>) {
-  if (declaredCodeReviewAreas.isEmpty()) {
-    lines += "declared_code_review_areas: []"
-  } else {
-    lines += "declared_code_review_areas:"
-    declaredCodeReviewAreas.forEach { lines += "  - ${yamlScalar(it)}" }
-  }
-}
-
-private fun appendDeclaredFiles(
-  lines: MutableList<String>,
-  baselineContentPath: String,
-  declaredCodeReviewAreas: List<String>,
-  declaredAreaFiles: Map<String, String>,
-) {
-  lines += "declared_files:"
-  lines += "  baseline: ${yamlScalar(baselineContentPath)}"
-  if (declaredAreaFiles.isEmpty()) {
-    lines += "  areas: {}"
-  } else {
-    lines += "  areas:"
-    declaredCodeReviewAreas.forEach { area ->
-      declaredAreaFiles[area]?.let { lines += "    $area: ${yamlScalar(it)}" }
-    }
-  }
-}
-
-private fun appendAreaMetadata(
-  lines: MutableList<String>,
-  declaredCodeReviewAreas: List<String>,
-  areaMetadata: Map<String, String>,
-) {
-  if (areaMetadata.isEmpty()) {
-    lines += "area_metadata: {}"
-  } else {
-    lines += "area_metadata:"
-    declaredCodeReviewAreas.forEach { area ->
-      areaMetadata[area]?.let {
-        lines += "  $area:"
-        lines += "    focus: ${yamlScalar(it)}"
-      }
-    }
-  }
-}
-
-private fun appendQualityCheckDeclaration(lines: MutableList<String>, declaredQualityCheckFile: String?) {
-  if (declaredQualityCheckFile != null) {
-    lines += ""
-    lines += "declared_quality_check_file: ${yamlScalar(declaredQualityCheckFile)}"
-  }
-}
-
-private fun appendBaselineLayers(lines: MutableList<String>, baselineLayers: List<CodeReviewBaselineLayer>) {
-  if (baselineLayers.isEmpty()) return
-  lines += ""
-  lines += "code_review_composition:"
-  lines += "  baseline_layers:"
-  baselineLayers.forEach { layer ->
-    lines += "    - platform: ${yamlScalar(layer.platform)}"
-    lines += "      skill: ${yamlScalar(layer.skill)}"
-    lines += "      scope: ${yamlScalar(layer.scope.wireValue)}"
-    lines += "      required: ${layer.required}"
-    lines += "      mode: ${yamlScalar(layer.mode.wireValue)}"
-  }
-}
+// SKILL-52.1 subtask 2: `renderPlatformPackManifest` and its YAML-emit helpers now live in
+// `skillbill.scaffold.policy.PlatformPackManifestPolicy` (runtime-domain). The only remaining
+// platform-pack manifest concerns in this file are the on-disk text mutators
+// (`appendCodeReviewArea`, `setDeclaredQualityCheckFile`, governed-addon registration etc.)
+// which keep their YAML-text helpers below because they edit existing files rather than
+// emitting fresh content.
 
 private fun appendManifestPointer(text: String, skillRelativeDir: String, pointerName: String, target: String): String =
   appendPointerLikeEntry(

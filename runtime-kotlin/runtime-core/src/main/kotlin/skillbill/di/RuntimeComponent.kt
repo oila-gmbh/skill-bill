@@ -30,6 +30,11 @@ import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
+import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
+import skillbill.infrastructure.fs.FileSystemScaffoldInstallLink
+import skillbill.infrastructure.fs.FileSystemScaffoldManifestPersistence
+import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
+import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
@@ -48,6 +53,11 @@ import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
+import skillbill.ports.scaffold.install.ScaffoldInstallLinkPort
+import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
+import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
+import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
+import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -108,6 +118,30 @@ abstract class RuntimeComponent(
 
   @Provides
   internal fun scaffoldGateway(gateway: FileSystemScaffoldGateway): ScaffoldGateway = gateway
+
+  // SKILL-52.1 subtask 2: typed capability ports for the scaffold pipeline. These are wired
+  // alongside the legacy `ScaffoldGateway` raw-map adapter so subtask 3 can migrate the
+  // application-layer scaffold service over without further DI churn. The legacy
+  // `ScaffoldGateway` binding above intentionally stays.
+  @Provides
+  internal fun scaffoldSourceLoaderPort(adapter: FileSystemScaffoldSourceLoader): ScaffoldSourceLoaderPort = adapter
+
+  @Provides
+  internal fun scaffoldManifestPersistencePort(
+    adapter: FileSystemScaffoldManifestPersistence,
+  ): ScaffoldManifestPersistencePort = adapter
+
+  @Provides
+  internal fun scaffoldGeneratedStagingPort(
+    adapter: FileSystemScaffoldGeneratedStaging,
+  ): ScaffoldGeneratedStagingPort = adapter
+
+  @Provides
+  internal fun scaffoldInstallLinkPort(adapter: FileSystemScaffoldInstallLink): ScaffoldInstallLinkPort = adapter
+
+  @Provides
+  internal fun scaffoldRepoValidationPort(adapter: FileSystemScaffoldRepoValidation): ScaffoldRepoValidationPort =
+    adapter
 
   @Provides
   internal fun unsupportedScaffoldGateway(gateway: FileSystemUnsupportedScaffoldGateway): UnsupportedScaffoldGateway =

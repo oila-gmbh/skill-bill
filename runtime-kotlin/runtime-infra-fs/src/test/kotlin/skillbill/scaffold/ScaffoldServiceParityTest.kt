@@ -6,6 +6,7 @@ import skillbill.error.MissingRequiredSectionError
 import skillbill.nativeagent.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.nativeagent.NativeAgentProvider
+import skillbill.scaffold.policy.renderPlatformPackManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
