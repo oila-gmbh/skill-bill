@@ -10,7 +10,7 @@ feature_branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 3
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "typed-boundary-foundation"
@@ -183,15 +183,140 @@ subtasks:
 - id: 3
   name: "scaffold-raw-map-elimination"
   spec_path: ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_scaffold-raw-map-elimination.md"
-  status: "pending"
-  branch: null
+  status: "in_progress"
+  branch: "feat/SKILL-52.1-hexagonal-runtime-hardening"
   commit_sha: null
-  workflow_id: null
-  review_result: null
-  audit_result: null
-  validation_result: null
+  workflow_id: "wfl-20260524-102450-fo9n"
+  review_result:
+    review_session_id: "rvs-skill52-1-sub3-20260524"
+    iterations: 2
+    iter1_review_run_id: "rvw-20260524-103200-s52c"
+    iter2_review_run_id: "rvw-20260524-103200-s52c-iter2"
+    routed_skill: "bill-kotlin-code-review"
+    detected_stack: "kotlin"
+    execution_mode: "delegated"
+    specialists_run_iter1:
+    - "architecture"
+    - "platform-correctness"
+    - "api-contracts"
+    - "persistence"
+    - "testing"
+    specialists_run_iter2:
+    - "architecture"
+    - "api-contracts"
+    - "testing"
+    iter1_findings: 13
+    iter1_blockers: 0
+    iter1_majors: 5
+    iter1_minors: 7
+    iter1_nits: 1
+    iter1_accepted: 9
+    iter1_rejected: 4
+    iter1_fix_categories:
+      F-001: "DI-bound orchestrator (FileSystemScaffoldOrchestrator) replaces file-static\
+        \ singletons"
+      F-003: "requireScalar/requireInt helpers with InvalidScaffoldPayloadError typed\
+        \ throws"
+      F-004: "ScaffoldMcpResultMappers.kt deleted (dead code)"
+      F-005: "LEGACY_FORBIDDEN_TOP_LEVEL_REGEX modifier-agnostic + fixture coverage"
+      F-006: "carved validator visibility tightened to internal"
+      F-007: "positive substrings anchored with `(` + DOT_MATCHES_ALL on gateway regex\
+        \ + fixture"
+      F-010: "init {} typed/payload invariants on 7 typed result models"
+      F-011: "KDoc references aligned with producer reality (mapOf+mapOf / mutateContent+mapOf\
+        \ / mutableMapOf)"
+      F-012: "Number widening for Int lifts via requireInt"
+    iter1_deferred_to_subtask_4:
+    - "F-002 desktop payload reads (doc note added to ARCHITECTURE.md)"
+    - "F-008 ScaffoldValidateStatus enum"
+    - "F-009 ScaffoldShowResult completion_status lift"
+    - "F-013 filename allow-list"
+    iter2_findings: 3
+    iter2_blockers: 0
+    iter2_majors: 0
+    iter2_verdict: "approve"
+    iter2_residuals_minor_nit:
+    - "F-016 ScaffoldStandaloneEntrypoint visibility"
+    - "F-018 gateway regex companion-object extraction"
+    - "F-019 KDoc/comment false-positive negative case"
+    fix_loop_completed: true
+    applied_learnings: "none"
+    telemetry_payload_captured: true
+    mcp_transport: "session_tool_path_ok"
+  audit_result:
+    pass: true
+    iterations: 1
+    per_criterion_count: 8
+    verdict_breakdown:
+      pass: 7
+      partial: 1
+      fail: 0
+    evidence_anchors:
+      AC1: "FileSystemScaffoldRepoValidation.kt:69/93/127/143 (optionalBaselineLayers,\
+        \ validateBaselineLayerPayloadReferences, validateScaffold, plannedAuthoringTarget)\
+        \ + FileSystemScaffoldSourceLoader.kt:47/73 + ImplementationOwnershipArchitectureTest.kt:384\
+        \ ownership + :449 LEGACY_FORBIDDEN_TOP_LEVEL_REGEX guard"
+      AC2: "ScaffoldGateways.kt:21-44 (8 producers typed) + application/ScaffoldService.kt:32-56\
+        \ typed + ImplementationOwnershipArchitectureTest.kt:540-566 gateway raw-map\
+        \ guard + :504-537 wrapped-signature fixture + RuntimeArchitectureTest.kt:1020-1021\
+        \ only scaffold input retained"
+      AC3: "ARCHITECTURE.md:243-283 typed-result-model pattern section + service/gateway\
+        \ prohibition"
+      AC4: "CliScaffoldRuntimeTest.kt 8 @Test cases + McpRuntimeTest.kt:147 newSkillScaffold\
+        \ envelope + ScaffoldCliResultMappers.kt:31-45 payload pass-through preserves\
+        \ order + FileSystemScaffoldGateway.kt:42-108 verbatim AuthoringOperations\
+        \ payload forwarded into typed model + gradlew check passes"
+      AC5: "ScaffoldCliResultMappers.kt in runtime-cli (adapter); application/ScaffoldService.kt\
+        \ is pure pass-through; ScaffoldMcpResultMappers.kt deleted during fix-loop\
+        \ F-004 since McpScaffoldRuntime only exposes newSkillScaffold (typed ScaffoldResult);\
+        \ ARCHITECTURE.md:256-259 documents the MCP-mapper deferral rationale. PARTIAL\
+        \ verdict: spec literal wording requires both mappers; implementer interpretation\
+        \ 'mappers in adapter modules only when adapter has raw-map endpoint' accepted\
+        \ per auditor recommendation."
+      AC6: "16 producer entries deleted from RuntimeArchitectureTest.kt + 2 input\
+        \ entries retained at :1020-1021 (subtask 4 scope); 8 new typed-model payload\
+        \ FQNs added at :1104-1111; matching ARCHITECTURE.md:375-382 entries between\
+        \ markers"
+      AC7: "ScaffoldServiceParityTest.kt:603 rollback test unchanged; ScaffoldStandaloneEntrypoint.kt:22-31\
+        \ preserves test entrypoint with seamed adapters; ScaffoldService.kt:769-781\
+        \ rollback flow untouched"
+      AC8: "implementer claim: gradlew check passes after fix-loop"
+    gaps:
+    - criterion_id: 5
+      missing: "Spec literal vs implementer interpretation re: MCP mapper file existence"
+      suggested_fix: "Accept implementer interpretation; deferred-debt documented\
+        \ in ARCHITECTURE.md:256-259. Optionally amend decomposition manifest to record\
+        \ AC5 intent."
+      resolution: "accepted"
+  validation_result:
+    result: "pass"
+    routed_skill: "bill-kotlin-quality-check"
+    detected_stack: "kotlin"
+    scope_type: "branch_diff"
+    initial_failure_count: 0
+    final_failure_count: 0
+    iterations: 1
+    duration_seconds: 2
+    fixes_applied: "None required — ./gradlew check passed first run (BUILD SUCCESSFUL,\
+      \ 248 tasks). No detekt LongMethod/ThrowsCount or other violations surfaced\
+      \ in the diff scope."
+    failing_check_names: []
+    telemetry_child_step:
+      tool: "quality_check_finished"
+      routed_skill: "bill-kotlin-quality-check"
+      detected_stack: "kotlin"
+      scope_type: "branch_diff"
+      initial_failure_count: 0
+      final_failure_count: 0
+      iterations: 1
+      result: "pass"
+      duration_seconds: 2
+      skill: "bill-quality-check"
+      failing_check_names: []
+      unsupported_reason: ""
+      mode: "orchestrated"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "write_history"
   dependencies:
   - subtask_id: 1
     optional: false

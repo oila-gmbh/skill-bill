@@ -13,7 +13,6 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
-import skillbill.error.MissingRequiredSectionError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
@@ -31,7 +30,6 @@ import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
 import skillbill.scaffold.policy.requireString
-import skillbill.scaffold.policy.requireStringList
 import skillbill.scaffold.policy.requireStringOrDefault
 import skillbill.scaffold.policy.sharedContractNote
 import java.nio.file.Files
@@ -39,7 +37,6 @@ import java.nio.file.Path
 import skillbill.scaffold.policy.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
 import skillbill.scaffold.policy.detectKind as policyDetectKind
 import skillbill.scaffold.policy.optionalSpecialistSubagents as policyOptionalSpecialistSubagents
-import skillbill.scaffold.policy.parseBaselineLayerPayload as policyParseBaselineLayerPayload
 import skillbill.scaffold.policy.platformPackNotes as policyPlatformPackNotes
 import skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack as policyRejectBaselineLayersForNonPlatformPack
 import skillbill.scaffold.policy.rejectLeafSubagentSpecialists as policyRejectLeafSubagentSpecialists
@@ -54,6 +51,25 @@ import skillbill.scaffold.policy.validatePayloadVersion as policyValidatePayload
 // them above. The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and
 // slug->displayName projection (`PLATFORM_PACK_PRESETS`) remain in `ScaffoldSupport.kt` while
 // the desktop wizard catalog delegation lives there.
+//
+// SKILL-52.1 subtask 3 (AC1): IO-coupled validators that previously lived as top-level
+// functions inside this file (`validateBaselineLayerPayloadReferences`, `validateScaffold`,
+// `plannedAuthoringTarget`, `resolveAddonConsumerSkillDirs`, `validateAddonConsumerSkillDir`,
+// `optionalBaselineLayers`) now live on the capability-aligned adapters
+// `FileSystemScaffoldRepoValidation` and `FileSystemScaffoldSourceLoader` under
+// `skillbill.infrastructure.fs`. The orchestrator calls into these adapter instances; the
+// `ImplementationOwnershipArchitectureTest` asserts the function FQN resolves to those
+// adapter classes, not to top-level `skillbill.scaffold`.
+//
+// SKILL-52.1 subtask 3 (F-001): the previous file-static `private val scaffoldRepoValidation`
+// / `scaffoldSourceLoader` singletons coexisted with the DI-bound port instances at runtime
+// (two adapter instances per graph). They are removed. The orchestrator entrypoint
+// `scaffoldWithAdapters(...)` now receives the two adapter instances as explicit parameters;
+// `FileSystemScaffoldOrchestrator` (DI-bound) is the only public caller and threads its
+// kotlin-inject-provided adapters through. This file deliberately does NOT import or
+// reference the `FileSystemScaffoldRepoValidation` / `FileSystemScaffoldSourceLoader`
+// concrete class names; the parameter types below carry that dependency through the
+// orchestrator instead.
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -68,7 +84,7 @@ private data class ScaffoldTransaction(
   val installTargets: MutableList<Path> = mutableListOf(),
 )
 
-private data class ScaffoldPlan(
+internal data class ScaffoldPlan(
   val kind: String,
   val skillName: String,
   val skillPath: Path,
@@ -111,7 +127,19 @@ private data class ScaffoldExecutionResult(
   val notes: List<String>,
 )
 
-fun scaffold(payload: Map<String, Any?>, dryRun: Boolean = false): ScaffoldResult {
+/**
+ * SKILL-52.1 subtask 3 (F-001): orchestrator entrypoint. Receives the two carved IO
+ * validator adapters as explicit parameters so the DI-bound `FileSystemScaffoldOrchestrator`
+ * can thread its kotlin-inject-provided singletons through; this eliminates the prior
+ * file-static parallel instances. The adapters are passed as opaque seams via the
+ * [ScaffoldAdapterSeams] holder so this file does not need to import the concrete adapter
+ * class names directly.
+ */
+internal fun scaffoldWithAdapters(
+  payload: Map<String, Any?>,
+  dryRun: Boolean,
+  adapters: ScaffoldAdapterSeams,
+): ScaffoldResult {
   require(payload.isNotEmpty()) {
     "Scaffold payload must be a JSON object mapping string keys to values."
   }
@@ -119,13 +147,30 @@ fun scaffold(payload: Map<String, Any?>, dryRun: Boolean = false): ScaffoldResul
   policyValidatePayloadVersion(payload)
   val kind = policyDetectKind(payload)
   val repoRoot = resolveRepoRoot(payload)
-  val plan = planScaffold(payload, repoRoot, kind)
+  val plan = planScaffold(payload, repoRoot, kind, adapters)
   return if (dryRun) {
     renderDryRunResult(plan, repoRoot)
   } else {
-    runScaffold(plan, repoRoot)
+    runScaffold(plan, repoRoot, adapters)
   }
 }
+
+/**
+ * Port-style adapter facades that decouple the orchestrator file from the concrete adapter
+ * class names. `FileSystemScaffoldOrchestrator` (in `skillbill.infrastructure.fs`) binds
+ * kotlin-inject-provided adapters into instances of this holder and threads them through
+ * `scaffoldWithAdapters`. Keeping this seam local to `runtime-infra-fs` preserves the F-006
+ * constraint that the carved validators remain `internal fun` on the adapter classes.
+ */
+internal data class ScaffoldAdapterSeams(
+  val validateScaffold: (ScaffoldPlan, Path) -> Unit,
+  val optionalBaselineLayers: (Map<String, Any?>, Path, String) -> List<CodeReviewBaselineLayer>,
+  val resolveAddonConsumerSkillDirs: (
+    Map<String, Any?>,
+    Path,
+    skillbill.scaffold.model.PlatformManifest,
+  ) -> List<String>,
+)
 
 private fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResult = ScaffoldResult(
   kind = plan.kind,
@@ -139,10 +184,10 @@ private fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResu
   notes = plan.notes + listOf("Dry run - no filesystem changes applied."),
 )
 
-private fun runScaffold(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResult {
+private fun runScaffold(plan: ScaffoldPlan, repoRoot: Path, adapters: ScaffoldAdapterSeams): ScaffoldResult {
   val txn = ScaffoldTransaction()
   return try {
-    val execution = executeScaffold(txn, plan, repoRoot)
+    val execution = executeScaffold(txn, plan, repoRoot, adapters)
     ScaffoldResult(
       kind = plan.kind,
       skillName = plan.skillName,
@@ -159,13 +204,18 @@ private fun runScaffold(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResult {
   }
 }
 
-private fun executeScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): ScaffoldExecutionResult {
+private fun executeScaffold(
+  txn: ScaffoldTransaction,
+  plan: ScaffoldPlan,
+  repoRoot: Path,
+  adapters: ScaffoldAdapterSeams,
+): ScaffoldExecutionResult {
   val execution =
     when (plan.kind) {
       SKILL_KIND_PLATFORM_PACK -> createPlatformPack(txn, plan, repoRoot)
       else -> stageSingleScaffold(txn, plan, repoRoot)
     }
-  validateScaffold(plan, repoRoot)
+  adapters.validateScaffold(plan, repoRoot)
   val (installTargets, installNotes) = performInstall(txn, plan, repoRoot)
   return execution.copy(
     installTargets = installTargets,
@@ -183,7 +233,12 @@ private fun resolveRepoRoot(payload: Map<String, Any?>): Path {
   return Path.of(repoRootRaw).toAbsolutePath().normalize()
 }
 
-private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: String): ScaffoldPlan = when (kind) {
+private fun planScaffold(
+  payload: Map<String, Any?>,
+  repoRoot: Path,
+  kind: String,
+  adapters: ScaffoldAdapterSeams,
+): ScaffoldPlan = when (kind) {
   SKILL_KIND_HORIZONTAL -> {
     policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planHorizontal(payload, repoRoot)
@@ -192,14 +247,14 @@ private fun planScaffold(payload: Map<String, Any?>, repoRoot: Path, kind: Strin
     policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planPlatformOverridePiloted(payload, repoRoot)
   }
-  SKILL_KIND_PLATFORM_PACK -> planPlatformPack(payload, repoRoot)
+  SKILL_KIND_PLATFORM_PACK -> planPlatformPack(payload, repoRoot, adapters)
   SKILL_KIND_CODE_REVIEW_AREA -> {
     policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planCodeReviewArea(payload, repoRoot)
   }
   SKILL_KIND_ADD_ON -> {
     policyRejectBaselineLayersForNonPlatformPack(payload, kind)
-    planAddOn(payload, repoRoot)
+    planAddOn(payload, repoRoot, adapters)
   }
   else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
 }
@@ -291,7 +346,11 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
   )
 }
 
-private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
+private fun planPlatformPack(
+  payload: Map<String, Any?>,
+  repoRoot: Path,
+  adapters: ScaffoldAdapterSeams,
+): ScaffoldPlan {
   val platform = requireString(payload, "platform")
   val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_PACK)
   val defaults = policyResolvePlatformPackDefaults(payload, platform)
@@ -304,7 +363,7 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
   }
   val baselineName = canonicalName(payload, defaultName = "bill-$platform-code-review")
   val qualityCheckName = "bill-$platform-quality-check"
-  val baselineLayers = optionalBaselineLayers(payload, repoRoot, platform)
+  val baselineLayers = adapters.optionalBaselineLayers(payload, repoRoot, platform)
   val selection = policyResolvePlatformPackSelection(payload)
   val selectedAreas = selection.selectedAreas
   val specialistNames =
@@ -374,71 +433,9 @@ private fun planPlatformPack(payload: Map<String, Any?>, repoRoot: Path): Scaffo
   )
 }
 
-private fun optionalBaselineLayers(
-  payload: Map<String, Any?>,
-  repoRoot: Path,
-  newPlatform: String,
-): List<CodeReviewBaselineLayer> {
-  val raw = payload["baseline_layers"] ?: return emptyList()
-  if (raw !is List<*>) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'baseline_layers' must be a list of baseline layer objects.",
-    )
-  }
-  if (raw.isEmpty()) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'baseline_layers' must contain at least one layer when provided.",
-    )
-  }
-  val layers = raw.mapIndexed { index, entry -> policyParseBaselineLayerPayload(index, entry) }
-  validateBaselineLayerPayloadReferences(layers, repoRoot, newPlatform)
-  return layers
-}
-
-private fun validateBaselineLayerPayloadReferences(
-  layers: List<CodeReviewBaselineLayer>,
-  repoRoot: Path,
-  newPlatform: String,
-) {
-  val seenTargets = mutableSetOf<Pair<String, String>>()
-  layers.forEachIndexed { index, layer ->
-    val targetLabel = "${layer.platform}/${layer.skill}"
-    if (layer.platform == newPlatform) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'baseline_layers[$index]' self-references the new platform pack '$targetLabel'.",
-      )
-    }
-    if (!seenTargets.add(layer.platform to layer.skill)) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'baseline_layers' contains duplicate layer '$targetLabel'.",
-      )
-    }
-    val targetRoot = repoRoot.resolve("platform-packs").resolve(layer.platform)
-    if (!Files.isDirectory(targetRoot) || !Files.isRegularFile(targetRoot.resolve("platform.yaml"))) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'baseline_layers[$index]' references missing platform pack '${layer.platform}'.",
-      )
-    }
-    val targetPack = loadPlatformPack(targetRoot)
-    if (layer.skill !in targetPack.declaredCodeReviewSkillNames()) {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'baseline_layers[$index]' references missing code-review skill " +
-          "'${layer.skill}' in platform pack '${layer.platform}'.",
-      )
-    }
-    validateBaselineLayerModeSupport(index, layer)
-  }
-}
-
-private fun validateBaselineLayerModeSupport(index: Int, layer: CodeReviewBaselineLayer) {
-  val unsupportedReason = unsupportedCompositionModeReason(layer)
-  if (unsupportedReason != null) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'baseline_layers[$index].mode' uses mode '${layer.mode.wireValue}' with " +
-        "unsupported referenced skill '${layer.platform}/${layer.skill}'. $unsupportedReason",
-    )
-  }
-}
+// SKILL-52.1 subtask 3 (AC1): `optionalBaselineLayers`, `validateBaselineLayerPayloadReferences`,
+// and `validateBaselineLayerModeSupport` now live on `FileSystemScaffoldRepoValidation`.
+// Callsites below delegate to `scaffoldRepoValidation.optionalBaselineLayers(...)`.
 
 private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   policyRejectLeafSubagentSpecialists(payload, SKILL_KIND_CODE_REVIEW_AREA)
@@ -477,7 +474,7 @@ private fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): Scaf
   )
 }
 
-private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
+private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: ScaffoldAdapterSeams): ScaffoldPlan {
   policyRejectLeafSubagentSpecialists(payload, SKILL_KIND_ADD_ON)
   val name = requireString(payload, "name")
   val platform = requireString(payload, "platform")
@@ -503,68 +500,13 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan 
     notes = emptyList(),
     description = requireStringOrDefault(payload, "description", ""),
     addonBody = payload["body"] as? String,
-    addonConsumerSkillDirs = resolveAddonConsumerSkillDirs(payload, packRoot, pack),
+    addonConsumerSkillDirs = adapters.resolveAddonConsumerSkillDirs(payload, packRoot, pack),
   )
 }
 
-private fun resolveAddonConsumerSkillDirs(
-  payload: Map<String, Any?>,
-  packRoot: Path,
-  pack: skillbill.scaffold.model.PlatformManifest,
-): List<String> {
-  val raw = payload["consumer_skill_dirs"]
-  val requested = if (raw == null) {
-    listOfNotNull(pack.declaredFiles.baseline?.let { contentFile -> packRoot.relativize(contentFile.parent) })
-      .map { path -> path.toString().replace('\\', '/') }
-  } else {
-    requireStringList(raw, "consumer_skill_dirs")
-  }
-  val seen = mutableSetOf<String>()
-  return requested.map { dir ->
-    validateAddonConsumerSkillDir(pack, dir)
-  }.filter { dir -> seen.add(dir) }
-}
-
-private fun validateAddonConsumerSkillDir(
-  pack: skillbill.scaffold.model.PlatformManifest,
-  skillRelativeDir: String,
-): String {
-  val relative = try {
-    Path.of(skillRelativeDir)
-  } catch (error: java.nio.file.InvalidPathException) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'consumer_skill_dirs' contains invalid path '$skillRelativeDir': ${error.message}",
-      error,
-    )
-  }
-  if (relative.isAbsolute || skillRelativeDir.startsWith("/") || skillRelativeDir.startsWith("\\")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'consumer_skill_dirs' entries must be relative skill directories.",
-    )
-  }
-  relative.iterator().forEachRemaining { segment ->
-    if (segment.toString() == "..") {
-      throw InvalidScaffoldPayloadError(
-        "Scaffold payload field 'consumer_skill_dirs' entries must not contain '..' segments.",
-      )
-    }
-  }
-  val normalized = relative.normalize()
-  val normalizedDir = normalized.toString().replace('\\', '/')
-  if (!Files.isDirectory(pack.packRoot.resolve(normalized))) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'consumer_skill_dirs' references missing skill directory '$skillRelativeDir'.",
-    )
-  }
-  if (normalizedDir !in pack.declaredSkillRelativeDirs()) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'consumer_skill_dirs' references '$skillRelativeDir', but that directory is not " +
-        "declared as a skill in platform pack '${pack.slug}'. Declared skill directories: " +
-        "${pack.declaredSkillRelativeDirs().sorted()}.",
-    )
-  }
-  return normalizedDir
-}
+// SKILL-52.1 subtask 3 (AC1): `resolveAddonConsumerSkillDirs` and `validateAddonConsumerSkillDir`
+// now live on `FileSystemScaffoldSourceLoader`. Callsites delegate to
+// `scaffoldSourceLoader.resolveAddonConsumerSkillDirs(...)`.
 
 private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): ScaffoldExecutionResult {
   val manifestPath = plan.manifestPath ?: error("Platform pack plan missing manifest path.")
@@ -783,27 +725,9 @@ private fun previewManifestPreviews(plan: ScaffoldPlan, repoRoot: Path): Map<Pat
   else -> emptyMap()
 }
 
-private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
-  if (plan.kind == SKILL_KIND_HORIZONTAL) {
-    val issues = validateTarget(plannedAuthoringTarget(plan), repoRoot)
-    if (issues.isNotEmpty()) {
-      throw MissingRequiredSectionError("Horizontal skill '${plan.skillName}': ${issues.first()}")
-    }
-    return
-  }
-  loadPlatformPack(repoRoot.resolve("platform-packs").resolve(plan.platform))
-}
-
-private fun plannedAuthoringTarget(plan: ScaffoldPlan): AuthoringTarget = AuthoringTarget(
-  skillName = plan.skillName,
-  packageName = plan.platform.ifBlank { "base" },
-  platform = plan.platform,
-  displayName = plan.displayName.ifBlank { displayNameFromSlug(plan.skillName.removePrefix("bill-")) },
-  family = plan.family,
-  area = plan.area,
-  skillFile = plan.skillFile,
-  contentFile = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME),
-)
+// SKILL-52.1 subtask 3 (AC1): `validateScaffold` and `plannedAuthoringTarget` now live on
+// `FileSystemScaffoldRepoValidation`. Callsites delegate to
+// `scaffoldRepoValidation.validateScaffold(...)`.
 
 private fun performInstall(
   txn: ScaffoldTransaction,

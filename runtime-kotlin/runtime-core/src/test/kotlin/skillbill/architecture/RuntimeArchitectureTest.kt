@@ -1009,28 +1009,19 @@ class RuntimeArchitectureTest {
       "skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate",
       "skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
       "skillbill.application.WorkflowFamily.sessionSummary",
-      // Subtask 2 will remove (scaffold policy extraction):
-      "skillbill.application.ScaffoldService.list",
-      "skillbill.application.ScaffoldService.show",
-      "skillbill.application.ScaffoldService.explain",
-      "skillbill.application.ScaffoldService.validate",
-      "skillbill.application.ScaffoldService.upgrade",
-      "skillbill.application.ScaffoldService.fill",
-      "skillbill.application.ScaffoldService.saveExactContent",
-      "skillbill.application.ScaffoldService.editWithBodyFile",
+      // SKILL-52.1 subtask 3: the 8 raw-map producer FQNs on `ScaffoldGateway`,
+      // `runtime-infra-fs.ScaffoldService`, and `runtime-application.ScaffoldService` are
+      // RETIRED — each producer now returns a typed result model under
+      // `skillbill.ports.scaffold.{catalog,repo,source}.model`. The remaining typed-DTO
+      // open-boundary `payload` fields are listed near the bottom of this allow-list with
+      // the `@OpenBoundaryMap`-annotated typed-DTO entries. `scaffold(...)` still accepts
+      // a raw-map payload — that entry stays as the documented input-side seam until
+      // subtask 4 introduces a typed scaffold payload DTO.
       "skillbill.application.ScaffoldService.scaffold",
-      "skillbill.ports.scaffold.ScaffoldGateway.list",
-      "skillbill.ports.scaffold.ScaffoldGateway.show",
-      "skillbill.ports.scaffold.ScaffoldGateway.explain",
-      "skillbill.ports.scaffold.ScaffoldGateway.validate",
-      "skillbill.ports.scaffold.ScaffoldGateway.upgrade",
-      "skillbill.ports.scaffold.ScaffoldGateway.fill",
-      "skillbill.ports.scaffold.ScaffoldGateway.saveExactContent",
-      "skillbill.ports.scaffold.ScaffoldGateway.editWithBodyFile",
       "skillbill.ports.scaffold.ScaffoldGateway.scaffold",
       // SKILL-52.1 subtask 2 documented seams (pure-policy entrypoints that accept the wire
       // payload Map<String, Any?>). Retired together with the legacy ScaffoldGateway raw-map
-      // surface above by subtask 3, which introduces a typed scaffold payload DTO.
+      // surface above by subtask 4, which introduces a typed scaffold payload DTO.
       "skillbill.scaffold.policy.requireString",
       "skillbill.scaffold.policy.requireStringOrDefault",
       "skillbill.scaffold.policy.validatePayloadVersion",
@@ -1108,6 +1099,16 @@ class RuntimeArchitectureTest {
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
       "skillbill.install.model.buildInstallPlanWireMap",
       "skillbill.scaffold.model.PlatformManifest.customFields",
+      // SKILL-52.1 subtask 3 — typed scaffold result models that carry the legacy raw-map
+      // wire payload through a single `@OpenBoundaryMap`-annotated `payload` field.
+      "skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload",
+      "skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload",
+      "skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload",
+      "skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload",
+      "skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload",
+      "skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload",
       "skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps",
       "skillbill.workflow.model.WorkflowSnapshotView.artifacts",
       "skillbill.workflow.model.WorkflowContinueView.stepArtifacts",

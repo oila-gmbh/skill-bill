@@ -381,6 +381,191 @@ class ImplementationOwnershipArchitectureTest {
   }
 
   @Test
+  fun `io-coupled scaffold validators live in capability-aligned adapters`() {
+    // SKILL-52.1 subtask 3 (AC1): the IO-coupled validators that previously lived as
+    // top-level functions in `skillbill.scaffold.ScaffoldService.kt` must live on the
+    // capability-aligned adapter classes in `runtime-infra-fs` under
+    // `skillbill.infrastructure.fs`. The FQN-based lookup avoids short-name collisions
+    // (subtask-1 pitfall) by binding each validator to the absolute file path of its
+    // owning adapter.
+    val repoValidationAdapter = runtimeRoot.resolve(
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemScaffoldRepoValidation.kt",
+    )
+    val sourceLoaderAdapter = runtimeRoot.resolve(
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemScaffoldSourceLoader.kt",
+    )
+    val legacyScaffoldService = runtimeRoot.resolve(
+      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/ScaffoldService.kt",
+    )
+    assertTrue(Files.isRegularFile(repoValidationAdapter), "Repo-validation adapter file must exist.")
+    assertTrue(Files.isRegularFile(sourceLoaderAdapter), "Source-loader adapter file must exist.")
+    assertTrue(Files.isRegularFile(legacyScaffoldService), "Legacy scaffold service file must exist.")
+
+    val repoValidationText = repoValidationAdapter.readText()
+    val sourceLoaderText = sourceLoaderAdapter.readText()
+    val legacyText = legacyScaffoldService.readText()
+
+    // `FileSystemScaffoldRepoValidation` owns `validateBaselineLayerPayloadReferences`,
+    // `validateScaffold`, `plannedAuthoringTarget`. `optionalBaselineLayers` follows the
+    // validator that consumes it. SKILL-52.1 subtask 3 (F-007): anchor each substring with
+    // `(` so KDoc body text and longer-named lookalikes (e.g. a hypothetical
+    // `validateScaffoldExtension`) do not trip the positive ownership match. Spotless can
+    // wrap the parameter list onto the next line, so the assertion uses `contains(...)`
+    // against the literal `fun name(` token which survives the wrap.
+    listOf(
+      "fun validateBaselineLayerPayloadReferences(",
+      "fun validateScaffold(",
+      "fun plannedAuthoringTarget(",
+      "fun optionalBaselineLayers(",
+    ).forEach { signature ->
+      assertTrue(
+        repoValidationText.contains(signature),
+        "FileSystemScaffoldRepoValidation must declare '$signature' (SKILL-52.1 subtask 3 AC1).",
+      )
+    }
+
+    // `FileSystemScaffoldSourceLoader` owns `resolveAddonConsumerSkillDirs`,
+    // `validateAddonConsumerSkillDir`. SKILL-52.1 subtask 3 (F-007): anchor with `(`.
+    listOf(
+      "fun resolveAddonConsumerSkillDirs(",
+      "fun validateAddonConsumerSkillDir(",
+    ).forEach { signature ->
+      assertTrue(
+        sourceLoaderText.contains(signature),
+        "FileSystemScaffoldSourceLoader must declare '$signature' (SKILL-52.1 subtask 3 AC1).",
+      )
+    }
+
+    // The legacy top-level scaffold service file must NOT redeclare these validators —
+    // they belong to the adapter classes above.
+    //
+    // SKILL-52.1 subtask 3 (F-005): the previous guard only matched `private fun X(`. A
+    // future regression could re-introduce these validators under any visibility modifier
+    // (`internal fun`, bare `fun`, `public fun`) or with a ktfmt-wrapped multiline
+    // declaration that puts whitespace between the modifier and `fun`. The modifier-
+    // agnostic regex below catches all of those forms. See the sibling
+    // `legacyScaffoldServiceForbiddenTopLevelDeclarationRegex` fixture test below for
+    // an explicit assertion that this regex catches every variant.
+    val redeclared = LEGACY_FORBIDDEN_TOP_LEVEL_REGEX.findAll(legacyText)
+      .map { match -> match.value.trim() }
+      .toList()
+    assertEquals(
+      emptyList(),
+      redeclared,
+      "Legacy skillbill.scaffold.ScaffoldService.kt must NOT redeclare IO-coupled validators " +
+        "moved to runtime-infra-fs capability adapters in SKILL-52.1 subtask 3 (AC1).",
+    )
+  }
+
+  @Test
+  fun `legacy scaffold service forbidden top-level declaration regex catches all modifier variants`() {
+    // SKILL-52.1 subtask 3 (F-005): the negative guard in
+    // `io-coupled scaffold validators live in capability-aligned adapters` is implemented
+    // with a modifier-agnostic regex. A typo there would silently disable the only check
+    // preventing the IO-coupled validators from sneaking back into the legacy scaffold
+    // service. This fixture-based test exercises the regex against synthetic source lines
+    // (one per modifier variant plus a ktfmt-wrapped multiline declaration) so a regression
+    // in the regex itself loud-fails.
+    val mustMatch = listOf(
+      "private fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {}",
+      "internal fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {}",
+      "fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {}",
+      "public fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {}",
+      "private fun validateBaselineLayerPayloadReferences(\n" +
+        "  layers: List<CodeReviewBaselineLayer>,\n" +
+        "  repoRoot: Path,\n" +
+        "  newPlatform: String,\n" +
+        ") {}",
+      "fun plannedAuthoringTarget(plan: ScaffoldPlan): AuthoringTarget = AuthoringTarget()",
+      "internal fun resolveAddonConsumerSkillDirs(payload: Map<String, Any?>) = emptyList<String>()",
+      "fun validateAddonConsumerSkillDir(pack: PlatformManifest, dir: String) = \"\"",
+      "private fun optionalBaselineLayers(payload: Map<String, Any?>) = emptyList<CodeReviewBaselineLayer>()",
+    )
+    val mustNotMatch = listOf(
+      "private fun unrelatedHelper() {}",
+      "fun validateScaffoldExtension(plan: ScaffoldPlan) {}",
+    )
+
+    val falseNegatives = mustMatch.filterNot { LEGACY_FORBIDDEN_TOP_LEVEL_REGEX.containsMatchIn(it) }
+    val falsePositives = mustNotMatch.filter { LEGACY_FORBIDDEN_TOP_LEVEL_REGEX.containsMatchIn(it) }
+    assertEquals(
+      emptyList(),
+      falseNegatives,
+      "Forbidden-top-level-validator regex must detect every modifier variant (incl. ktfmt-wrapped).",
+    )
+    assertEquals(
+      emptyList(),
+      falsePositives,
+      "Forbidden-top-level-validator regex must not flag unrelated helpers or longer-named functions.",
+    )
+  }
+
+  @Test
+  fun `scaffold gateway raw-map producer regex catches wrapped signatures but not typed-result variants`() {
+    // SKILL-52.1 subtask 3 (F-007): the production regex must catch a multi-line wrapped
+    // signature returning `Map<String, Any?>`. A fixture test parallel to the policy-regex
+    // fixture above exercises that case so a regex regression loud-fails.
+    val rawMapProducerPattern = Regex(
+      """fun\s+(list|show|explain|validate|upgrade|fill|saveExactContent|editWithBodyFile)""" +
+        """\s*\([^)]*\)\s*:\s*Map<\s*String\s*,\s*Any\?\s*>""",
+      setOf(RegexOption.DOT_MATCHES_ALL),
+    )
+
+    val wrappedRawMapSignature = """fun editWithBodyFile(
+      repoRoot: Path,
+      skillName: String,
+      body: String,
+      sectionName: String?,
+    ): Map<String, Any?>
+    """
+    val typedResultVariant = """fun editWithBodyFile(
+      repoRoot: Path,
+      skillName: String,
+      body: String,
+      sectionName: String?,
+    ): ScaffoldEditWithBodyFileResult
+    """
+
+    assertTrue(
+      rawMapProducerPattern.containsMatchIn(wrappedRawMapSignature),
+      "Raw-map producer regex must catch a multi-line wrapped Map<String, Any?> return signature.",
+    )
+    assertTrue(
+      !rawMapProducerPattern.containsMatchIn(typedResultVariant),
+      "Raw-map producer regex must NOT flag a typed-result return signature.",
+    )
+  }
+
+  @Test
+  fun `scaffold gateway no longer exposes raw map producers on the public surface`() {
+    // SKILL-52.1 subtask 3 (AC2): `ScaffoldGateway` must no longer expose
+    // `Map<String, Any?>` return types for the eight raw-map producers
+    // (list / show / explain / validate / upgrade / fill / saveExactContent /
+    // editWithBodyFile). `scaffold(...)` retains its raw-map INPUT (the wire payload)
+    // until subtask 4 introduces a typed payload DTO; that input remains documented
+    // in the allow-list constant in `RuntimeArchitectureTest`.
+    val gatewayFile = runtimeRoot.resolve(
+      "runtime-ports/src/main/kotlin/skillbill/ports/scaffold/ScaffoldGateways.kt",
+    )
+    assertTrue(Files.isRegularFile(gatewayFile), "ScaffoldGateways.kt must exist.")
+    val gatewayText = gatewayFile.readText()
+    val rawMapProducerPattern = Regex(
+      """fun\s+(list|show|explain|validate|upgrade|fill|saveExactContent|editWithBodyFile)""" +
+        """\s*\([^)]*\)\s*:\s*Map<\s*String\s*,\s*Any\?\s*>""",
+      // SKILL-52.1 subtask 3 (F-007): allow `.` to match newlines so a ktfmt-wrapped
+      // multi-line parameter list still gets caught by the raw-map return-type guard.
+      setOf(RegexOption.DOT_MATCHES_ALL),
+    )
+    val violations = rawMapProducerPattern.findAll(gatewayText).map { match -> match.value }.toList()
+    assertEquals(
+      emptyList(),
+      violations,
+      "ScaffoldGateway must NOT return raw Map<String, Any?> for the eight raw-map producers — " +
+        "they were retyped to capability-aligned result models in SKILL-52.1 subtask 3 (AC2).",
+    )
+  }
+
+  @Test
   fun `scaffold policy import regex catches known bad and passes known good`() {
     // SKILL-52.1 subtask 2 (review-fix F-001): the production
     // `scaffold policy packages must not import infra-fs` test only proves the regex is sound
@@ -434,6 +619,18 @@ class ImplementationOwnershipArchitectureTest {
     val scaffoldApplicationServiceFileNames: Set<String> = setOf(
       "ScaffoldService.kt",
       "ScaffoldCatalogService.kt",
+    )
+
+    /**
+     * SKILL-52.1 subtask 3 (F-005): modifier-agnostic regex that catches any redeclaration
+     * of the IO-coupled validators (under `private`, `internal`, bare `fun`, `public`, or
+     * with whitespace between modifier and `fun`) in the legacy scaffold service file.
+     * `DOT_MATCHES_ALL` lets the assertion survive a ktfmt-wrapped multi-line declaration.
+     */
+    val LEGACY_FORBIDDEN_TOP_LEVEL_REGEX = Regex(
+      """\bfun\s+(validateScaffold|validateBaselineLayerPayloadReferences|""" +
+        """plannedAuthoringTarget|resolveAddonConsumerSkillDirs|""" +
+        """validateAddonConsumerSkillDir|optionalBaselineLayers)\s*\(""",
     )
   }
 

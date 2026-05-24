@@ -235,12 +235,52 @@ runtime-ports
       patches with no shared schema until then. Also
       `PlatformManifest.customFields` — schema custom-field
       passthrough for platform packs.
-    - **Subtask 2 will remove:** scaffold service/gateway raw-map
-      surfaces.
     - **Subtask 3 will remove:** system service / install policy
       surfaces.
     - **Subtask 4 will remove:** lifecycle/review/telemetry payload
       surfaces and supporting top-level helpers.
+
+    **Typed-Result-Model Open-Boundary Pattern (SKILL-52.1 subtask 3):**
+    when a producer's wire shape is sealed by golden tests but no
+    stable schema exists for every key in the payload, the result
+    model MAY carry a single `@OpenBoundaryMap`-annotated
+    `payload: Map<String, Any?>` field that holds the legacy
+    `linkedMapOf` contents verbatim. Stable top-level scalars (e.g.
+    `status`, `skillName`, `validatorRan`) are lifted to strongly-typed
+    fields on the same model so callers can branch on them without
+    re-reading the open-boundary map. The adapter-side
+    `ScaffoldCliResultMappers` mappers emit the wire payload by
+    returning the `payload` field directly — adapters own the
+    wire-shape contract, and the typed model preserves byte-equivalence.
+    The MCP adapter currently only exposes the `newSkillScaffold(...)`
+    endpoint (which uses the strongly-typed `ScaffoldResult` directly),
+    so it does not yet need a parallel mapper file; when MCP gains a
+    raw-map scaffold endpoint, an `McpScaffoldResultMappers` file will
+    be reintroduced alongside that wiring.
+
+    **Deferred desktop debt (SKILL-52.1 subtask 3, F-002):** the
+    desktop adapter at
+    `runtime-desktop/core/data/.../RuntimeRepoBrowserService.kt` is
+    currently a third reader of the `@OpenBoundaryMap` `payload` map
+    for `list`, `show`, `validate`, and `saveExactContent`. Lifting
+    the structural list contents to typed fields (e.g.
+    `skills: List<ScaffoldListEntry>`) is intentionally deferred to
+    SKILL-52.1 subtask 4 — subtask 3 retired the gateway raw-map
+    return types but did not migrate the desktop projection mappers,
+    so the desktop service still reaches into `payload` for the
+    nested structural fields. This is documented debt, not silently
+    accepted drift.
+
+    Service/gateway PUBLIC APIs MAY NOT return raw `Map<String, Any?>`.
+    Once a producer is typed (subtask 3 retired the eight
+    `ScaffoldGateway` raw-map producers — `list`, `show`, `explain`,
+    `validate`, `upgrade`, `fill`, `saveExactContent`, `editWithBodyFile`),
+    re-adding a raw-map return type at the service/gateway level
+    requires an explicit allow-list entry AND a documented rationale.
+    The pattern's exemplars are `PlatformManifest.customFields` (open
+    boundary for schema custom fields), `WorkflowSnapshotView.artifacts`
+    (durable workflow artifacts passthrough), and the eight scaffold
+    typed-result-model `payload` fields enumerated below.
 
     <!-- open-boundary-allowlist:start -->
 
@@ -257,23 +297,7 @@ runtime-ports
     - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.WorkflowFamily.sessionSummary`
-    - `skillbill.application.ScaffoldService.list`
-    - `skillbill.application.ScaffoldService.show`
-    - `skillbill.application.ScaffoldService.explain`
-    - `skillbill.application.ScaffoldService.validate`
-    - `skillbill.application.ScaffoldService.upgrade`
-    - `skillbill.application.ScaffoldService.fill`
-    - `skillbill.application.ScaffoldService.saveExactContent`
-    - `skillbill.application.ScaffoldService.editWithBodyFile`
     - `skillbill.application.ScaffoldService.scaffold`
-    - `skillbill.ports.scaffold.ScaffoldGateway.list`
-    - `skillbill.ports.scaffold.ScaffoldGateway.show`
-    - `skillbill.ports.scaffold.ScaffoldGateway.explain`
-    - `skillbill.ports.scaffold.ScaffoldGateway.validate`
-    - `skillbill.ports.scaffold.ScaffoldGateway.upgrade`
-    - `skillbill.ports.scaffold.ScaffoldGateway.fill`
-    - `skillbill.ports.scaffold.ScaffoldGateway.saveExactContent`
-    - `skillbill.ports.scaffold.ScaffoldGateway.editWithBodyFile`
     - `skillbill.ports.scaffold.ScaffoldGateway.scaffold`
     - `skillbill.scaffold.policy.requireString`
     - `skillbill.scaffold.policy.requireStringOrDefault`
@@ -348,6 +372,14 @@ runtime-ports
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
     - `skillbill.install.model.buildInstallPlanWireMap`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
+    - `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
+    - `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
+    - `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
+    - `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload`
+    - `skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload`
+    - `skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload`
+    - `skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload`
+    - `skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload`
     - `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
     - `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
     - `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
