@@ -1,5 +1,7 @@
 package skillbill.telemetry
 
+import skillbill.application.model.TelemetryStatusResult
+import skillbill.application.model.TelemetrySyncStatusResult
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.TelemetryClient
@@ -21,34 +23,35 @@ object TelemetrySyncRuntime {
     syncEnabledTelemetry(settings, outboxRepository, client)
   }
 
-  fun syncResultPayload(result: SyncResult): Map<String, Any?> = buildMap {
-    put("config_path", result.configPath.toString())
-    put("telemetry_enabled", result.telemetryEnabled)
-    put("telemetry_level", result.telemetryLevel)
-    put("sync_target", telemetrySyncTarget(result))
-    put("remote_configured", result.remoteConfigured)
-    put("proxy_configured", result.proxyConfigured)
-    put("proxy_url", result.proxyUrl)
-    put("custom_proxy_url", result.customProxyUrl)
-    put("sync_status", result.status)
-    put("synced_events", result.syncedEvents)
-    put("pending_events", result.pendingEvents)
-    result.message?.let { put("message", it) }
-  }
+  fun syncResult(result: SyncResult): TelemetrySyncStatusResult = TelemetrySyncStatusResult(
+    configPath = result.configPath.toString(),
+    telemetryEnabled = result.telemetryEnabled,
+    telemetryLevel = result.telemetryLevel,
+    syncTarget = telemetrySyncTarget(result),
+    remoteConfigured = result.remoteConfigured,
+    proxyConfigured = result.proxyConfigured,
+    proxyUrl = result.proxyUrl,
+    customProxyUrl = result.customProxyUrl,
+    syncStatus = result.status,
+    syncedEvents = result.syncedEvents,
+    pendingEvents = result.pendingEvents,
+    message = result.message,
+  )
 
   fun telemetryStatusPayload(
     dbPath: Path,
     settings: TelemetrySettings,
     pendingEvents: Int = 0,
     latestError: String? = null,
-  ): Map<String, Any?> {
-    val payload = baseStatusPayload(dbPath, settings)
+  ): TelemetryStatusResult {
+    val result = baseStatusResult(dbPath, settings)
     if (!settings.enabled) {
-      return payload
+      return result
     }
-    payload["pending_events"] = pendingEvents
-    latestError?.let { payload["latest_error"] = it }
-    return payload
+    return result.copy(
+      pendingEvents = pendingEvents,
+      latestError = latestError,
+    )
   }
 
   fun autoSyncTelemetry(

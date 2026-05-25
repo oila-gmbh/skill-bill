@@ -2,6 +2,7 @@ package skillbill.telemetry
 
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Path
 
@@ -10,11 +11,11 @@ object TelemetryConfigRuntime {
 
   fun resolveConfigPath(configStore: TelemetryConfigStore): Path = configStore.configPath()
 
-  fun defaultLocalConfig(): Map<String, Any?> = defaultLocalTelemetryConfig()
+  fun defaultLocalConfig(): TelemetryConfigDocument = defaultLocalTelemetryConfig()
 
-  fun readLocalConfig(configStore: TelemetryConfigStore): Map<String, Any?>? = configStore.read()
+  fun readLocalConfig(configStore: TelemetryConfigStore): TelemetryConfigDocument? = configStore.read()
 
-  fun ensureLocalConfig(configStore: TelemetryConfigStore): Map<String, Any?> = configStore.ensure()
+  fun ensureLocalConfig(configStore: TelemetryConfigStore): TelemetryConfigDocument = configStore.ensure()
 
   fun parseBoolValue(rawValue: String, name: String): Boolean = parseTelemetryBoolValue(rawValue, name)
 

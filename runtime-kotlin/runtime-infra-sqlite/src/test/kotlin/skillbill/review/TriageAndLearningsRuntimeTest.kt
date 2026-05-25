@@ -16,6 +16,7 @@ import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,7 +47,7 @@ class TriageAndLearningsRuntimeTest {
     connection.use {
       val review = importSampleReview(connection)
       val telemetryPayload = rejectFinding(connection, review.reviewRunId, "F-002", "Keep the current prompt wording.")
-      assertEquals("rvs-20260402-001", telemetryPayload?.get("review_session_id"))
+      assertEquals("rvs-20260402-001", telemetryPayload?.reviewSessionId)
 
       val globalId = addLearning(connection, review.reviewRunId, LearningScope.GLOBAL, "", "Prefer explicit wording")
       val repoId = addLearning(connection, review.reviewRunId, LearningScope.REPO, "skill-bill", "Repo phrasing")
@@ -90,7 +91,7 @@ private fun rejectFinding(
   reviewRunId: String,
   findingId: String,
   note: String,
-): Map<String, Any?>? = TriageRuntime.recordFeedback(
+): ReviewFinishedTelemetry? = TriageRuntime.recordFeedback(
   connection = connection,
   request =
   FeedbackRequest(

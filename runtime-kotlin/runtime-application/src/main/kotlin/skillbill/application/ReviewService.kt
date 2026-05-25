@@ -1,19 +1,27 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.FeatureImplementStatsResult
+import skillbill.application.model.FeatureVerifyStatsResult
+import skillbill.application.model.ImportedReviewResult
+import skillbill.application.model.ReviewFeedbackResult
+import skillbill.application.model.ReviewPreviewResult
+import skillbill.application.model.ReviewStatsResult
 import skillbill.application.model.TriageResult
-import skillbill.contracts.review.ReviewFeedbackContract
-import skillbill.contracts.review.TriageListContract
-import skillbill.contracts.review.TriageRecordedContract
+import skillbill.application.model.TriageResultKind
 import skillbill.model.RuntimeContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
 
 @Inject
@@ -23,13 +31,17 @@ class ReviewService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,
 ) {
-  fun previewImport(input: String): Map<String, Any?> {
+  fun previewImport(input: String): ReviewPreviewResult {
     val (text) = reviewInputSource.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text)
-    return review.toReviewPreviewContract().toPayload()
+    return review.toReviewPreviewResult()
   }
 
-  fun importReview(input: String, dbOverride: String?, finishZeroFindingTelemetry: Boolean = true): Map<String, Any?> {
+  fun importReview(
+    input: String,
+    dbOverride: String?,
+    finishZeroFindingTelemetry: Boolean = true,
+  ): ImportedReviewResult {
     val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text)
     return database.transaction(dbOverride) { unitOfWork ->
@@ -42,7 +54,7 @@ class ReviewService(
           level = settings?.level ?: "off",
         )
       }
-      review.toImportedReviewContract(dbPath = unitOfWork.dbPath.toString()).toPayload()
+      review.toImportedReviewResult(dbPath = unitOfWork.dbPath.toString())
     }
   }
 
@@ -52,7 +64,7 @@ class ReviewService(
     }
   }
 
-  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): Map<String, Any?>? =
+  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): ReviewFinishedTelemetry? =
     database.transaction(dbOverride) { unitOfWork ->
       val settings = telemetrySettingsOrNull(settingsProvider)
       unitOfWork.reviews.updateReviewFinishedTelemetryState(
@@ -68,17 +80,17 @@ class ReviewService(
     findings: List<String>,
     note: String,
     dbOverride: String?,
-  ): Map<String, Any?> = database.transaction(dbOverride) { unitOfWork ->
+  ): ReviewFeedbackResult = database.transaction(dbOverride) { unitOfWork ->
     unitOfWork.reviews.recordFeedback(
       FeedbackRequest(runId, findings, event, note),
       feedbackTelemetryOptions(settingsProvider),
     )
-    ReviewFeedbackContract(
+    ReviewFeedbackResult(
       dbPath = unitOfWork.dbPath.toString(),
       reviewRunId = runId,
       outcomeType = event,
       recordedFindings = findings.size,
-    ).toPayload()
+    )
   }
 
   fun triage(
@@ -91,12 +103,9 @@ class ReviewService(
     database.read(dbOverride) { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
       TriageResult(
-        payload =
-        TriageListContract(
-          dbPath = unitOfWork.dbPath.toString(),
-          reviewRunId = runId,
-          findings = numberedFindings.map(NumberedFinding::toNumberedFindingContract),
-        ).toPayload(),
+        kind = TriageResultKind.LIST,
+        dbPath = unitOfWork.dbPath.toString(),
+        reviewRunId = runId,
         findings = numberedFindings,
       )
     }
@@ -105,26 +114,23 @@ class ReviewService(
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
       val applied = applyTriageDecisions(unitOfWork.reviews, runId, numberedFindings, decisions)
       TriageResult(
-        payload =
-        TriageRecordedContract(
-          dbPath = unitOfWork.dbPath.toString(),
-          reviewRunId = runId,
-          recorded = applied.recorded.map(TriageDecision::toTriageDecisionContract),
-        ).toPayload(),
+        kind = TriageResultKind.RECORDED,
+        dbPath = unitOfWork.dbPath.toString(),
+        reviewRunId = runId,
         recorded = applied.recorded,
-        telemetryPayload = applied.telemetryPayload,
+        telemetry = applied.telemetry,
       )
     }
   }
 
-  fun reviewStats(runId: String?, dbOverride: String?): Map<String, Any?> =
-    statsPayload(database, dbOverride) { reviewRepository -> reviewRepository.reviewStatsPayload(runId) }
+  fun reviewStats(runId: String?, dbOverride: String?): ReviewStatsResult =
+    reviewStatsResult(database, dbOverride) { reviewRepository -> reviewRepository.reviewStats(runId) }
 
-  fun featureImplementStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(database, dbOverride, ReviewRepository::featureImplementStatsPayload)
+  fun featureImplementStats(dbOverride: String?): FeatureImplementStatsResult =
+    featureImplementStatsResult(database, dbOverride, ReviewRepository::featureImplementStats)
 
-  fun featureVerifyStats(dbOverride: String?): Map<String, Any?> =
-    statsPayload(database, dbOverride, ReviewRepository::featureVerifyStatsPayload)
+  fun featureVerifyStats(dbOverride: String?): FeatureVerifyStatsResult =
+    featureVerifyStatsResult(database, dbOverride, ReviewRepository::featureVerifyStats)
 
   private fun applyTriageDecisions(
     reviewRepository: ReviewRepository,
@@ -133,15 +139,15 @@ class ReviewService(
     decisions: List<String>,
   ): AppliedTriageDecisions {
     val parsedDecisions = TriageDecisionParser.parseTriageDecisions(decisions, numberedFindings)
-    var telemetryPayload: Map<String, Any?>? = null
+    var telemetry: ReviewFinishedTelemetry? = null
     parsedDecisions.forEach { decision ->
-      val returnedPayload =
+      val returnedTelemetry =
         reviewRepository.recordFeedback(
           FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
           feedbackTelemetryOptions(settingsProvider),
         )
-      if (returnedPayload != null) {
-        telemetryPayload = returnedPayload
+      if (returnedTelemetry != null) {
+        telemetry = returnedTelemetry
       }
     }
     return AppliedTriageDecisions(
@@ -154,23 +160,47 @@ class ReviewService(
           note = decision.note,
         )
       },
-      telemetryPayload = telemetryPayload,
+      telemetry = telemetry,
     )
   }
 }
 
-private fun statsPayload(
+private fun reviewStatsResult(
   database: DatabaseSessionFactory,
   dbOverride: String?,
-  payloadBuilder: (ReviewRepository) -> Map<String, Any?>,
-): Map<String, Any?> = database.read(dbOverride) { unitOfWork ->
-  linkedMapOf<String, Any?>().apply {
-    putAll(payloadBuilder(unitOfWork.reviews))
-    put("db_path", unitOfWork.dbPath.toString())
-  }
+  statsBuilder: (ReviewRepository) -> ReviewRepositoryStatsSnapshot,
+): ReviewStatsResult = database.read(dbOverride) { unitOfWork ->
+  val snapshot = statsBuilder(unitOfWork.reviews)
+  ReviewStatsResult(
+    dbPath = unitOfWork.dbPath.toString(),
+    reviewRunId = snapshot.reviewRunId,
+    stats = snapshot.stats,
+  )
+}
+
+private fun featureImplementStatsResult(
+  database: DatabaseSessionFactory,
+  dbOverride: String?,
+  statsBuilder: (ReviewRepository) -> FeatureImplementWorkflowStats,
+): FeatureImplementStatsResult = database.read(dbOverride) { unitOfWork ->
+  FeatureImplementStatsResult(
+    dbPath = unitOfWork.dbPath.toString(),
+    stats = statsBuilder(unitOfWork.reviews),
+  )
+}
+
+private fun featureVerifyStatsResult(
+  database: DatabaseSessionFactory,
+  dbOverride: String?,
+  statsBuilder: (ReviewRepository) -> FeatureVerifyWorkflowStats,
+): FeatureVerifyStatsResult = database.read(dbOverride) { unitOfWork ->
+  FeatureVerifyStatsResult(
+    dbPath = unitOfWork.dbPath.toString(),
+    stats = statsBuilder(unitOfWork.reviews),
+  )
 }
 
 private data class AppliedTriageDecisions(
   val recorded: List<TriageDecision>,
-  val telemetryPayload: Map<String, Any?>?,
+  val telemetry: ReviewFinishedTelemetry?,
 )

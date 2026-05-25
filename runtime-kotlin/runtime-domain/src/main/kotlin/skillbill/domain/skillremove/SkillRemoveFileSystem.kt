@@ -11,7 +11,9 @@ import skillbill.domain.skillremove.model.SkillRemovalRequest
  * Port interface that abstracts every filesystem and install-side primitive the
  * [SkillRemove] domain service needs. The runtime-domain module keeps zero direct dependency on
  * `java.nio` or the runtime-core install primitives — the JVM implementation lives in
- * `runtime-core` (`SkillRemoveJvmFileSystem`) and is bound via DI.
+ * `runtime-infra-fs`
+ * (`runtime-infra-fs/src/main/kotlin/skillbill/skillremove/SkillRemoveJvmFileSystem.kt`) and is
+ * bound via DI.
  *
  * Every method that returns a [List] must return a stable, deterministic order so two consecutive
  * calls to [SkillRemove.previewRemoval] yield identical dossiers.

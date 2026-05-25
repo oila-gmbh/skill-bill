@@ -7,6 +7,7 @@ import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY
 import skillbill.telemetry.defaultLocalTelemetryConfig
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.parseTelemetryBoolValue
 import java.nio.file.Files
 import java.nio.file.Path
@@ -21,11 +22,11 @@ class FileTelemetryConfigStore(
 
   override fun configPath(): Path = resolveTelemetryConfigPath(resolvedContext.environment, resolvedContext.userHome)
 
-  override fun read(): Map<String, Any?>? = readTelemetryConfigFile(configPath())
+  override fun read(): TelemetryConfigDocument? = readTelemetryConfigFile(configPath())
 
-  override fun ensure(): Map<String, Any?> = ensureTelemetryConfigFile(configPath())
+  override fun ensure(): TelemetryConfigDocument = ensureTelemetryConfigFile(configPath())
 
-  override fun write(payload: Map<String, Any?>) = writeTelemetryConfigFile(configPath(), payload)
+  override fun write(document: TelemetryConfigDocument) = writeTelemetryConfigFile(configPath(), document)
 
   override fun delete(): Boolean = Files.deleteIfExists(configPath())
 }
@@ -54,33 +55,35 @@ private fun expandAndNormalizeTelemetryPath(rawPath: String, userHome: Path): Pa
   return Path.of(normalized).toAbsolutePath().normalize()
 }
 
-internal fun readTelemetryConfigFile(path: Path): Map<String, Any?>? {
+internal fun readTelemetryConfigFile(path: Path): TelemetryConfigDocument? {
   if (!Files.exists(path)) {
     return null
   }
   val rawPayload = JsonSupport.parseObjectOrNull(Files.readString(path))
     ?: throw IllegalArgumentException("Telemetry config at '$path' is not valid JSON.")
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(rawPayload))
+  val payload = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(rawPayload))
     ?: throw IllegalArgumentException("Telemetry config at '$path' must contain a JSON object.")
+  return TelemetryConfigDocument(payload)
 }
 
-internal fun ensureTelemetryConfigFile(path: Path): Map<String, Any?> {
+internal fun ensureTelemetryConfigFile(path: Path): TelemetryConfigDocument {
   path.parent?.let(Files::createDirectories)
   val existing = readTelemetryConfigFile(path)
-  val payload = (existing?.toMutableMap() ?: mutableMapOf())
-  val defaults = defaultLocalTelemetryConfig()
+  val payload = (existing?.payload?.toMutableMap() ?: mutableMapOf())
+  val defaults = defaultLocalTelemetryConfig().payload
   val telemetry = normalizedTelemetryMap(payload, defaults)
   payload["install_id"] = normalizedInstallId(payload, defaults)
   payload["telemetry"] = telemetry
-  if (!Files.exists(path) || existing != payload) {
-    writeTelemetryConfigFile(path, payload)
+  val document = TelemetryConfigDocument(payload)
+  if (!Files.exists(path) || existing != document) {
+    writeTelemetryConfigFile(path, document)
   }
-  return payload
+  return document
 }
 
-internal fun writeTelemetryConfigFile(path: Path, payload: Map<String, Any?>) {
+internal fun writeTelemetryConfigFile(path: Path, document: TelemetryConfigDocument) {
   path.parent?.let(Files::createDirectories)
-  Files.writeString(path, JsonSupport.mapToJsonString(payload) + "\n")
+  Files.writeString(path, JsonSupport.mapToJsonString(document.payload) + "\n")
 }
 
 private fun normalizedInstallId(payload: MutableMap<String, Any?>, defaults: Map<String, Any?>): String =

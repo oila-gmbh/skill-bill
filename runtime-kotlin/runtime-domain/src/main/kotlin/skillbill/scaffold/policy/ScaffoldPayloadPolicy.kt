@@ -1,8 +1,6 @@
 package skillbill.scaffold.policy
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.error.ScaffoldPayloadVersionMismatchError
-import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
@@ -20,41 +18,14 @@ import skillbill.scaffold.model.CodeReviewCompositionScope
  * subtask 3.
  */
 
-/**
- * Asserts the payload declares the expected wire-version. Throws [InvalidScaffoldPayloadError]
- * when the field is missing or [ScaffoldPayloadVersionMismatchError] when it disagrees with
- * [SCAFFOLD_PAYLOAD_VERSION].
- */
-fun validatePayloadVersion(payload: Map<String, Any?>) {
-  val version = payload["scaffold_payload_version"] as? String
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload is missing required field 'scaffold_payload_version'.",
-    )
-  if (version != SCAFFOLD_PAYLOAD_VERSION) {
-    throw ScaffoldPayloadVersionMismatchError(
-      "Scaffold payload declares 'scaffold_payload_version' '$version' " +
-        "but the scaffolder expects '$SCAFFOLD_PAYLOAD_VERSION'.",
-    )
-  }
-}
-
-/**
- * Returns the canonical `kind` discriminator from [payload]. Throws on missing/blank kinds and
- * loud-fails with [UnknownSkillKindError] when the value is outside [SUPPORTED_SKILL_KINDS].
- */
-fun detectKind(payload: Map<String, Any?>): String {
-  val kind = payload["kind"] as? String
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'kind' must be a non-empty string.",
-    )
-  if (kind !in SUPPORTED_SKILL_KINDS) {
-    throw UnknownSkillKindError(
-      "Scaffold payload declares unsupported kind '$kind'. " +
-        "Supported kinds: $SUPPORTED_SKILL_KINDS.",
-    )
-  }
-  return kind
-}
+// SKILL-52.2 subtask 2 (Task 11): `validatePayloadVersion` and `detectKind` were retired from this
+// file. Both functions exposed a raw `Map<String, Any?>` on a public domain surface, contributing
+// two of the 11 scaffold input raw-map allow-list entries. CLI / MCP adapters now perform these
+// checks at the adapter boundary using the typed parsers
+// (`runtime-cli/.../ScaffoldCommandRequestParser`,
+// `runtime-mcp/.../McpScaffoldCommandRequestParser`); the legacy filesystem orchestrator inside
+// `runtime-infra-fs` keeps private internal copies for the deprecated raw-map orchestrator path
+// (see `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`).
 
 /**
  * Parses a single `baseline_layers[index]` payload entry into a typed [CodeReviewBaselineLayer].

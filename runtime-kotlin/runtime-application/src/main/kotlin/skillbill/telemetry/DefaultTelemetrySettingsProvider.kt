@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
@@ -51,7 +52,10 @@ private data class MutableTelemetrySettings(
   val installId: String,
 )
 
-private fun configBackedSettings(configPath: java.nio.file.Path, config: Map<String, Any?>?): MutableTelemetrySettings {
+private fun configBackedSettings(
+  configPath: java.nio.file.Path,
+  config: TelemetryConfigDocument?,
+): MutableTelemetrySettings {
   if (config == null) {
     return MutableTelemetrySettings(
       level = "off",
@@ -60,7 +64,8 @@ private fun configBackedSettings(configPath: java.nio.file.Path, config: Map<Str
       installId = "",
     )
   }
-  val telemetryRaw = config["telemetry"]
+  val payload = config.payload
+  val telemetryRaw = payload["telemetry"]
   val telemetry =
     when (telemetryRaw) {
       null -> emptyMap()
@@ -71,7 +76,7 @@ private fun configBackedSettings(configPath: java.nio.file.Path, config: Map<Str
     level = telemetryLevelFromConfig(telemetry),
     customProxyUrl = telemetry["proxy_url"]?.toString()?.trim().orEmpty(),
     batchSize = telemetryBatchSize(telemetry),
-    installId = config["install_id"]?.toString()?.trim().orEmpty(),
+    installId = payload["install_id"]?.toString()?.trim().orEmpty(),
   )
 }
 

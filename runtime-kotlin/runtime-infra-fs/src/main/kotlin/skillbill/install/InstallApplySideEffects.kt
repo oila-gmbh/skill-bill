@@ -13,6 +13,7 @@ import skillbill.launcher.McpRegistrationOperations
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.parsePositiveTelemetryInt
 import skillbill.telemetry.parseTelemetryLevelValue
 import skillbill.telemetry.telemetryLevels
@@ -75,7 +76,7 @@ private fun applyInstallTelemetryLevel(
     configStore.delete()
     0
   } else {
-    val payload = configStore.ensure().toMutableMap()
+    val payload = configStore.ensure().payload.toMutableMap()
     val telemetry =
       (
         (payload["telemetry"] as? Map<*, *>)
@@ -90,14 +91,14 @@ private fun applyInstallTelemetryLevel(
     telemetry["level"] = level
     telemetry.remove("enabled")
     payload["telemetry"] = telemetry
-    configStore.write(payload)
+    configStore.write(TelemetryConfigDocument(payload))
     validateInstallTelemetryConfig(configStore)
     0
   }
 }
 
 private fun validateInstallTelemetryConfig(configStore: FileTelemetryConfigStore) {
-  val payload = configStore.read()
+  val payload = configStore.read()?.payload
     ?: throw IllegalArgumentException("Telemetry config at '${configStore.configPath()}' is missing.")
   val telemetry =
     (payload["telemetry"] as? Map<*, *>)

@@ -1,95 +1,19 @@
 package skillbill.scaffold.policy
 
-import skillbill.error.InvalidScaffoldPayloadError
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+/**
+ * SKILL-52.2 subtask 2 (Task 11): coverage for `resolvePlatformPackSelection` and
+ * `resolvePlatformPackDefaults` moved to
+ * `runtime-infra-fs/src/test/kotlin/skillbill/scaffold/ScaffoldPayloadMapPolicyTest.kt` because
+ * those entry points now live as `internal` raw-map helpers inside `runtime-infra-fs`. The
+ * helpers that remain in this file (`buildPlatformPackInstallPaths`, `platformPackNotes`) take
+ * typed inputs and continue to be tested here.
+ */
 class PlatformPackPolicyTest {
-  @Test
-  fun `resolvePlatformPackSelection returns all approved areas when full skeleton is chosen`() {
-    val selection = resolvePlatformPackSelection(mapOf("skeleton_mode" to "full"))
-
-    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), selection.selectedAreas)
-  }
-
-  @Test
-  fun `resolvePlatformPackSelection returns empty selection for starter skeleton`() {
-    val selection = resolvePlatformPackSelection(mapOf("skeleton_mode" to "starter"))
-
-    assertEquals(emptyList(), selection.selectedAreas)
-  }
-
-  @Test
-  fun `resolvePlatformPackSelection filters specialist_areas to approved subset`() {
-    val selection = resolvePlatformPackSelection(
-      mapOf("specialist_areas" to listOf("ui", "security")),
-    )
-
-    assertEquals(listOf("security", "ui"), selection.selectedAreas)
-  }
-
-  @Test
-  fun `resolvePlatformPackSelection rejects out-of-range skeleton_mode`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackSelection(mapOf("skeleton_mode" to "starter-full"))
-    }
-  }
-
-  @Test
-  fun `resolvePlatformPackSelection rejects payloads providing both skeleton_mode and specialist_areas`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackSelection(
-        mapOf(
-          "skeleton_mode" to "full",
-          "specialist_areas" to listOf("ui"),
-        ),
-      )
-    }
-  }
-
-  @Test
-  fun `resolvePlatformPackSelection rejects unknown specialist areas`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackSelection(
-        mapOf("specialist_areas" to listOf("not-an-approved-area")),
-      )
-    }
-  }
-
-  @Test
-  fun `resolvePlatformPackDefaults resolves java preset defaults`() {
-    val defaults = resolvePlatformPackDefaults(emptyMap(), "java")
-
-    assertEquals("Java", defaults.displayName)
-    assertEquals(true, defaults.presetUsed)
-    assertEquals(true, defaults.strongSignals.isNotEmpty())
-  }
-
-  @Test
-  fun `resolvePlatformPackDefaults merges payload routing overrides with preset defaults`() {
-    val defaults = resolvePlatformPackDefaults(
-      mapOf(
-        "routing_signals" to mapOf(
-          "strong" to listOf("custom-marker"),
-        ),
-      ),
-      "java",
-    )
-
-    assertEquals(listOf("custom-marker"), defaults.strongSignals)
-    assertEquals(false, defaults.presetUsed)
-  }
-
-  @Test
-  fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackDefaults(emptyMap(), "no-such-preset")
-    }
-  }
-
   @Test
   fun `buildPlatformPackInstallPaths includes baseline, quality-check, and selected specialists`() {
     val packRoot = Path.of("/repo/platform-packs/java")

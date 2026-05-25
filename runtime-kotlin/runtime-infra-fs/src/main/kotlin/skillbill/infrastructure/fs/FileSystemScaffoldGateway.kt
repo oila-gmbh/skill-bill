@@ -24,6 +24,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import skillbill.scaffold.AuthoringOperations
 import skillbill.scaffold.AuthoringRenderResult
 import skillbill.scaffold.ScaffoldCatalog
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.renderAuthoringTarget
 import java.nio.file.Path
 import skillbill.nativeagent.discoverNativeAgentSourceFiles as discoverFsNativeAgentSourceFiles
@@ -108,7 +109,14 @@ class FileSystemScaffoldGateway(
     )
   }
 
-  override fun scaffold(payload: Map<String, Any?>, dryRun: Boolean) = scaffoldOrchestrator.scaffold(payload, dryRun)
+  /**
+   * SKILL-52.2 subtask 2: typed scaffold entry point. The typed request is re-materialised into
+   * the legacy raw-map payload shape and delegated to the existing scaffolder code path so
+   * byte-equivalent outputs are trivially preserved (AC4); the re-materialisation happens
+   * entirely inside `runtime-infra-fs`, which is outside the raw-map architecture scan scope.
+   */
+  override fun scaffold(request: ScaffoldCommandRequest, dryRun: Boolean) =
+    scaffoldOrchestrator.scaffold(request, dryRun)
 
   override fun render(repoRoot: Path, skillName: String): ScaffoldRenderResult =
     renderAuthoringTarget(repoRoot, skillName).toPortRenderResult()

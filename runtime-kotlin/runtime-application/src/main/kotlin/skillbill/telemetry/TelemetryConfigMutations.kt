@@ -3,6 +3,7 @@ package skillbill.telemetry
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 
 object TelemetryConfigMutations {
@@ -40,7 +41,7 @@ private fun enableTelemetry(
   settingsProvider: TelemetrySettingsProvider,
   level: String,
 ): Pair<TelemetrySettings, Int> {
-  val payload = configStore.ensure().toMutableMap()
+  val payload = configStore.ensure().payload.toMutableMap()
   val telemetry =
     (
       (payload["telemetry"] as? Map<*, *>)
@@ -55,7 +56,7 @@ private fun enableTelemetry(
   telemetry["level"] = level
   telemetry.remove("enabled")
   payload["telemetry"] = telemetry
-  configStore.write(payload)
+  configStore.write(TelemetryConfigDocument(payload))
   return settingsProvider.load(materialize = true) to 0
 }
 

@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.WorkflowEngine
@@ -19,6 +20,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DecompositionManifestWriterTest {
+  private val engine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
+
   @Test
   fun `decomposition planning result writes validated same branch manifest beside parent spec`() {
     val repoRoot = Files.createTempDirectory("skillbill-decomposition-manifest")
@@ -481,8 +484,8 @@ class DecompositionManifestWriterTest {
     assertFalse(Files.exists(parentSpecPath.parent.resolve("decomposition-manifest.yaml")))
 
     val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = WorkflowEngine.openRecord(definition, "fis-compat-001", "session-compat", "plan")
-    val updated = WorkflowEngine.updateRecord(
+    val opened = engine.openRecord(definition, "fis-compat-001", "session-compat", "plan")
+    val updated = engine.updateRecord(
       definition,
       opened,
       WorkflowUpdateInput(
@@ -498,7 +501,7 @@ class DecompositionManifestWriterTest {
       ),
     )
 
-    val snapshot = WorkflowEngine.snapshotView(definition, updated)
+    val snapshot = engine.snapshotView(definition, updated)
     assertEquals(mapOf("mode" to "implement", "task_count" to 1), snapshot.artifacts["plan"])
   }
 

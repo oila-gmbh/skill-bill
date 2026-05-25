@@ -1,19 +1,23 @@
 package skillbill.ports.persistence
 
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 
 interface ReviewRepository {
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 
   fun markOrchestrated(runId: String)
 
-  fun updateReviewFinishedTelemetryState(runId: String, enabled: Boolean, level: String): Map<String, Any?>?
+  fun updateReviewFinishedTelemetryState(runId: String, enabled: Boolean, level: String): ReviewFinishedTelemetry?
 
-  fun recordFeedback(request: FeedbackRequest, telemetryOptions: FeedbackTelemetryOptions): Map<String, Any?>?
+  fun recordFeedback(request: FeedbackRequest, telemetryOptions: FeedbackTelemetryOptions): ReviewFinishedTelemetry?
 
   fun fetchNumberedFindings(runId: String): List<NumberedFinding>
 
@@ -21,9 +25,9 @@ interface ReviewRepository {
 
   fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome?
 
-  fun reviewStatsPayload(runId: String?): Map<String, Any?>
+  fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot
 
-  fun featureImplementStatsPayload(): Map<String, Any?>
+  fun featureImplementStats(): FeatureImplementWorkflowStats
 
-  fun featureVerifyStatsPayload(): Map<String, Any?>
+  fun featureVerifyStats(): FeatureVerifyWorkflowStats
 }

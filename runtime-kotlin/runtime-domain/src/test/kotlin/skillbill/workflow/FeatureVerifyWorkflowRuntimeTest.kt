@@ -1,5 +1,6 @@
 package skillbill.workflow
 
+import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
@@ -8,11 +9,16 @@ import kotlin.test.assertTrue
 
 class FeatureVerifyWorkflowRuntimeTest {
   private val definition = FeatureVerifyWorkflowDefinition.definition
+  private val validator = object : WorkflowSnapshotValidator {
+    private val delegate = CanonicalWorkflowStateSchemaValidator()
+    override fun validate(snapshot: Map<String, Any?>, slug: String) = delegate.validate(snapshot, slug)
+  }
+  private val engine = WorkflowEngine(validator)
 
   @Test
   fun `verify open completes steps before the initial step`() {
-    val record = WorkflowEngine.openRecord(definition, "wfv-001", "fvr-001", "code_review")
-    val steps = WorkflowEngine.snapshotView(definition, record).steps
+    val record = engine.openRecord(definition, "wfv-001", "fvr-001", "code_review")
+    val steps = engine.snapshotView(definition, record).steps
 
     assertEquals("completed", steps.single { it.stepId == "collect_inputs" }.status)
     assertEquals("completed", steps.single { it.stepId == "gather_diff" }.status)
@@ -22,9 +28,9 @@ class FeatureVerifyWorkflowRuntimeTest {
 
   @Test
   fun `verify resume reports done and recover modes`() {
-    val running = WorkflowEngine.openRecord(definition, "wfv-001", "fvr-001", "gather_diff")
+    val running = engine.openRecord(definition, "wfv-001", "fvr-001", "gather_diff")
     val completed =
-      WorkflowEngine.updateRecord(
+      engine.updateRecord(
         definition,
         running,
         WorkflowUpdateInput(
@@ -37,8 +43,8 @@ class FeatureVerifyWorkflowRuntimeTest {
       )
     val failed = completed.copy(workflowStatus = "failed")
 
-    assertEquals("done", WorkflowEngine.resumeView(definition, completed).resumeMode)
-    assertEquals("recover", WorkflowEngine.resumeView(definition, failed).resumeMode)
+    assertEquals("done", engine.resumeView(definition, completed).resumeMode)
+    assertEquals("recover", engine.resumeView(definition, failed).resumeMode)
   }
 
   @Test
@@ -50,9 +56,9 @@ class FeatureVerifyWorkflowRuntimeTest {
     // same way regardless of whether the surrounding workflow is `running`
     // or terminal.
     val record =
-      WorkflowEngine.updateRecord(
+      engine.updateRecord(
         definition,
-        WorkflowEngine.openRecord(definition, "wfv-001", "fvr-001", "code_review"),
+        engine.openRecord(definition, "wfv-001", "fvr-001", "code_review"),
         WorkflowUpdateInput(
           workflowStatus = "running",
           currentStepId = "verdict",
@@ -68,7 +74,7 @@ class FeatureVerifyWorkflowRuntimeTest {
         ),
       )
 
-    val decision = WorkflowEngine.continueDecision(definition, record)
+    val decision = engine.continueDecision(definition, record)
 
     assertEquals("reopened", decision.view.continueStatus)
     assertEquals(
@@ -92,7 +98,7 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     assertEquals(null, WorkflowEngine.validateUpdate(definition, pending))
     assertEquals(null, WorkflowEngine.validateUpdate(definition, abandoned))
-    assertEquals("recover", WorkflowEngine.resumeView(definition, completedAs("abandoned")).resumeMode)
+    assertEquals("recover", engine.resumeView(definition, completedAs("abandoned")).resumeMode)
     assertEquals(
       "Invalid workflow_status 'blocked'. Allowed: pending, running, completed, failed, abandoned",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "blocked")),
@@ -113,9 +119,9 @@ class FeatureVerifyWorkflowRuntimeTest {
     )
   }
 
-  private fun completedAs(status: String) = WorkflowEngine.updateRecord(
+  private fun completedAs(status: String) = engine.updateRecord(
     definition,
-    WorkflowEngine.openRecord(definition, "wfv-terminal", "fvr-001", "gather_diff"),
+    engine.openRecord(definition, "wfv-terminal", "fvr-001", "gather_diff"),
     WorkflowUpdateInput(
       workflowStatus = status,
       currentStepId = "finish",

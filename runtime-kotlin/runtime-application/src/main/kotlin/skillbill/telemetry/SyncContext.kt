@@ -1,5 +1,6 @@
 package skillbill.telemetry
 
+import skillbill.application.model.TelemetryStatusResult
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Path
@@ -47,24 +48,20 @@ internal fun syncResult(
   message = message,
 )
 
-internal fun baseStatusPayload(dbPath: Path, settings: TelemetrySettings): MutableMap<String, Any?> =
-  mutableMapOf<String, Any?>(
-    "config_path" to settings.configPath.toString(),
-    "db_path" to dbPath.toString(),
-    "telemetry_enabled" to settings.enabled,
-    "telemetry_level" to settings.level,
-    "sync_target" to telemetrySyncTarget(settings),
-    "remote_configured" to settings.proxyUrl.isNotBlank(),
-    "proxy_configured" to (settings.customProxyUrl != null),
-    "proxy_url" to settings.proxyUrl,
-    "custom_proxy_url" to settings.customProxyUrl,
-    "pending_events" to 0,
-  ).apply {
-    if (settings.enabled) {
-      this["install_id"] = settings.installId
-      this["batch_size"] = settings.batchSize
-    }
-  }
+internal fun baseStatusResult(dbPath: Path, settings: TelemetrySettings): TelemetryStatusResult = TelemetryStatusResult(
+  configPath = settings.configPath.toString(),
+  dbPath = dbPath.toString(),
+  telemetryEnabled = settings.enabled,
+  telemetryLevel = settings.level,
+  syncTarget = telemetrySyncTarget(settings),
+  remoteConfigured = settings.proxyUrl.isNotBlank(),
+  proxyConfigured = settings.customProxyUrl != null,
+  proxyUrl = settings.proxyUrl,
+  customProxyUrl = settings.customProxyUrl,
+  pendingEvents = 0,
+  installId = settings.installId.takeIf { settings.enabled },
+  batchSize = settings.batchSize.takeIf { settings.enabled },
+)
 
 internal fun disabledSyncResult(settings: TelemetrySettings): SyncResult = syncResult(
   status = "disabled",

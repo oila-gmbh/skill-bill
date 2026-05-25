@@ -15,6 +15,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Path
 
 interface ScaffoldGateway {
@@ -39,7 +40,12 @@ interface ScaffoldGateway {
     sectionName: String?,
   ): ScaffoldEditWithBodyFileResult
 
-  fun scaffold(payload: Map<String, Any?>, dryRun: Boolean): ScaffoldResult
+  /**
+   * SKILL-52.2 subtask 2: typed scaffold entry point. Adapters (CLI/MCP/Desktop) parse their
+   * wire payloads into a [ScaffoldCommandRequest] at the adapter boundary and call this method
+   * directly — the public port surface no longer accepts a raw `Map<String, Any?>`.
+   */
+  fun scaffold(request: ScaffoldCommandRequest, dryRun: Boolean): ScaffoldResult
 
   fun render(repoRoot: Path, skillName: String): ScaffoldRenderResult
 }

@@ -11,6 +11,7 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -23,13 +24,14 @@ import kotlin.test.assertTrue
 class JvmRuntimeScaffoldGatewayTest {
 
   // F-004: Preview/Success is distinguished by the `dryRun` input flag, NOT by scanning notes.
+  // SKILL-52.2 subtask 2: scaffolder seam now receives a typed `ScaffoldCommandRequest`.
   @Test
   fun `dryRun produces Preview when scaffolder is invoked with dryRun true`() = runBlocking {
-    var capturedPayload: Map<String, Any?>? = null
+    var capturedRequest: ScaffoldCommandRequest? = null
     var capturedDryRun: Boolean? = null
     val gateway = JvmRuntimeScaffoldGateway().apply {
-      scaffolder = { payload, dryRun ->
-        capturedPayload = payload
+      scaffolder = { request, dryRun ->
+        capturedRequest = request
         capturedDryRun = dryRun
         ScaffoldResult(
           kind = "horizontal",
@@ -53,10 +55,9 @@ class JvmRuntimeScaffoldGatewayTest {
     assertEquals("bill-foo", preview.planned.skillName)
     assertEquals(1, preview.planned.createdFiles.size)
     assertEquals(true, capturedDryRun)
-    val map = checkNotNull(capturedPayload)
-    assertEquals("1.0", map["scaffold_payload_version"])
-    assertEquals("horizontal", map["kind"])
-    assertEquals("bill-foo", map["name"])
+    val request = checkNotNull(capturedRequest) as ScaffoldCommandRequest.HorizontalSkill
+    assertEquals("1.0", request.scaffoldPayloadVersion)
+    assertEquals("bill-foo", request.name)
   }
 
   // F-004: execute returns Success even when the runtime ALSO emits a "dry run" marker note. The
@@ -89,14 +90,16 @@ class JvmRuntimeScaffoldGatewayTest {
     assertTrue(success.result.createdFiles.any { it.endsWith("platform.yaml") })
   }
 
+  // SKILL-52.2 subtask 2: parity asserts the typed `ScaffoldCommandRequest` (not a raw map) is
+  // identical across dry-run/execute for every kind, preserving the original AC2 intent.
   @Test
   fun `payload parity holds between dry-run and execute for every kind`() = runBlocking {
-    val recorded = mutableListOf<Map<String, Any?>>()
+    val recorded = mutableListOf<ScaffoldCommandRequest>()
     val gateway = JvmRuntimeScaffoldGateway().apply {
-      scaffolder = { payload, _ ->
-        recorded += payload
+      scaffolder = { request, _ ->
+        recorded += request
         ScaffoldResult(
-          kind = payload["kind"] as String,
+          kind = "stub",
           skillName = "bill-x",
           skillPath = Path.of("/tmp/x"),
         )
@@ -115,8 +118,8 @@ class JvmRuntimeScaffoldGatewayTest {
       gateway.execute(payload)
     }
     val pairs = recorded.chunked(2)
-    pairs.forEach { (dryMap, executeMap) ->
-      assertEquals(dryMap, executeMap, "dry-run and execute payloads must be identical (AC2)")
+    pairs.forEach { (dryRequest, executeRequest) ->
+      assertEquals(dryRequest, executeRequest, "dry-run and execute requests must be identical (AC2)")
     }
   }
 

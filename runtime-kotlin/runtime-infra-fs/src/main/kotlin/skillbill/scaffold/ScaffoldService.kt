@@ -29,21 +29,21 @@ import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
-import skillbill.scaffold.policy.requireString
-import skillbill.scaffold.policy.requireStringOrDefault
 import skillbill.scaffold.policy.sharedContractNote
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.scaffold.detectKind as policyDetectKind
+import skillbill.scaffold.optionalSpecialistSubagents as policyOptionalSpecialistSubagents
 import skillbill.scaffold.policy.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
-import skillbill.scaffold.policy.detectKind as policyDetectKind
-import skillbill.scaffold.policy.optionalSpecialistSubagents as policyOptionalSpecialistSubagents
 import skillbill.scaffold.policy.platformPackNotes as policyPlatformPackNotes
-import skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack as policyRejectBaselineLayersForNonPlatformPack
-import skillbill.scaffold.policy.rejectLeafSubagentSpecialists as policyRejectLeafSubagentSpecialists
 import skillbill.scaffold.policy.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
-import skillbill.scaffold.policy.resolvePlatformPackDefaults as policyResolvePlatformPackDefaults
-import skillbill.scaffold.policy.resolvePlatformPackSelection as policyResolvePlatformPackSelection
-import skillbill.scaffold.policy.validatePayloadVersion as policyValidatePayloadVersion
+import skillbill.scaffold.rejectBaselineLayersForNonPlatformPack as policyRejectBaselineLayersForNonPlatformPack
+import skillbill.scaffold.rejectLeafSubagentSpecialists as policyRejectLeafSubagentSpecialists
+import skillbill.scaffold.requireStringMap as requireString
+import skillbill.scaffold.requireStringOrDefaultMap as requireStringOrDefault
+import skillbill.scaffold.resolvePlatformPackDefaults as policyResolvePlatformPackDefaults
+import skillbill.scaffold.resolvePlatformPackSelection as policyResolvePlatformPackSelection
+import skillbill.scaffold.validatePayloadVersion as policyValidatePayloadVersion
 
 // SKILL-52.1 subtask 2: skill-kind discriminators, supported-kinds set, orchestrator-kind set,
 // subagent name pattern, and built-in platform-pack preset descriptors all live in

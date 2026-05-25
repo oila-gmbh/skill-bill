@@ -431,6 +431,32 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `runtime domain workflow source must not import contract schema validators or contract mappers`() {
+    // SKILL-52.2 Subtask 4: workflow schema validators and contract
+    // payload mappers are owned by the application/contracts boundary.
+    // `runtime-domain` workflow source consumes them only through the
+    // domain-owned `WorkflowSnapshotValidator` port wired at
+    // `runtime-application`. Direct imports of any
+    // `skillbill.contracts.workflow.*SchemaValidator*` or
+    // `skillbill.contracts.*Mapper` from under
+    // `runtime-domain/src/main/kotlin/skillbill/workflow` are banned.
+    val workflowDomainFiles =
+      sourceFiles().filter { file ->
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/workflow/")
+      }
+    val violations =
+      workflowDomainFiles.flatMap { file ->
+        file.imports
+          .filter { importedName ->
+            (importedName.startsWith("skillbill.contracts.workflow.") && "SchemaValidator" in importedName) ||
+              (importedName.startsWith("skillbill.contracts.") && importedName.endsWith("Mapper"))
+          }
+          .map { importedName -> "${file.relativePath} imports banned $importedName" }
+      }
+    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+  }
+
+  @Test
   fun `decomposition manifest application projection declares final parse seam ownership`() {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
     val projectionIo = Files.readString(sourcePath("skillbill/application/DecompositionManifestFileWrites.kt"))
@@ -456,6 +482,9 @@ class RuntimeArchitectureTest {
     portFiles.forEach { path ->
       assertTrue(Files.exists(path), "Missing telemetry port: ${runtimeRoot.relativize(path)}")
     }
+    val telemetryClientPort = Files.readString(sourcePath("skillbill/ports/telemetry/TelemetryClient.kt"))
+    assertContains(telemetryClientPort, "skillbill.telemetry.model.TelemetryProxyCapabilities")
+    assertContains(telemetryClientPort, "skillbill.telemetry.model.TelemetryRemoteStatsResult")
 
     assertContains(
       Files.readString(sourcePath("skillbill/infrastructure/http/HttpTelemetryClient.kt")),
@@ -472,6 +501,28 @@ class RuntimeArchitectureTest {
     assertContains(
       Files.readString(sourcePath("skillbill/infrastructure/http/TelemetryProxyPayloadMappers.kt")),
       "TelemetryProxyBatchPayload",
+    )
+  }
+
+  @Test
+  fun `review and telemetry domain models do not own json payload contracts`() {
+    val violations =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/review/") ||
+            file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/telemetry/")
+        }
+        .filter { file ->
+          "JsonPayloadContract" in file.source ||
+            Regex("""fun\s+[A-Za-z0-9_.]+\s*\([^)]*\)\s*:\s*Map<String,\s*Any\?>""").containsMatchIn(file.source)
+        }
+        .map { file -> file.relativePath }
+
+    assertTrue(
+      violations.isEmpty(),
+      "Review and telemetry domain packages must stay typed; JSON payload projection belongs at " +
+        "application, port, or adapter seams.\n" +
+        violations.joinToString(separator = "\n"),
     )
   }
 
@@ -742,6 +793,266 @@ class RuntimeArchitectureTest {
         "act as a silent escape valve.\nUndocumented: $undocumented",
     )
   }
+
+  @Test
+  fun `SKILL-52_2 inventory classifies every public raw-map declaration exactly once`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+    val inventory = parseSkill522Inventory(architecture)
+    assertTrue(
+      inventory.entries.isNotEmpty(),
+      "ARCHITECTURE.md must declare a SKILL-52.2 inventory section parseable by the architecture test.",
+    )
+    assertInventoryCategoriesKnown(inventory)
+    assertInventoryMatchesAllowList(inventory)
+    assertInventoryHasNoDuplicateFqns(inventory)
+    assertAnnotatedDeclarationsAreOpenExtension(inventory)
+    assertSubtaskIdsPresentForGatedCategories(inventory)
+  }
+
+  private fun assertInventoryCategoriesKnown(inventory: Skill522Inventory) {
+    val knownCategories = setOf(
+      "must_type_now",
+      "open_extension",
+      "private_serializer",
+      "postponed_with_reason",
+    )
+    val unknownCategories = inventory.entries.map { it.category }.toSet() - knownCategories
+    assertTrue(
+      unknownCategories.isEmpty(),
+      "SKILL-52.2 inventory contains unknown categories: $unknownCategories. " +
+        "Allowed: $knownCategories.",
+    )
+  }
+
+  // (a) Strict-set equality with the SKILL-52.1 open-boundary allow-list. The
+  // allow-list IS the canonical set of public raw-map declarations in
+  // runtime-application/-domain/-ports (parity with the document is enforced
+  // by the existing `open-boundary allow-list documents required exceptions`
+  // test). Therefore every classified inventory FQN MUST be in the allow-list,
+  // and every allow-list FQN MUST be classified by the inventory.
+  private fun assertInventoryMatchesAllowList(inventory: Skill522Inventory) {
+    val inventoryFqns = inventory.entries.map { it.fqn }.toSet()
+    val allowList = RAW_MAP_OPEN_BOUNDARY_ALLOWLIST.toSet()
+    val missingFromInventory = allowList - inventoryFqns
+    val unknownInInventory = inventoryFqns - allowList
+    assertTrue(
+      missingFromInventory.isEmpty() && unknownInInventory.isEmpty(),
+      "SKILL-52.2 inventory must classify every entry in RAW_MAP_OPEN_BOUNDARY_ALLOWLIST " +
+        "exactly once.\nMissing from inventory: $missingFromInventory\n" +
+        "Inventory entries not in allow-list: $unknownInInventory",
+    )
+  }
+
+  // (b) Each FQN must be classified exactly once.
+  private fun assertInventoryHasNoDuplicateFqns(inventory: Skill522Inventory) {
+    val duplicates = inventory.entries.groupBy { it.fqn }
+      .filterValues { it.size > 1 }
+      .keys
+    assertTrue(
+      duplicates.isEmpty(),
+      "SKILL-52.2 inventory must classify every FQN exactly once. Duplicates: $duplicates",
+    )
+  }
+
+  // (c) Every @OpenBoundaryMap-annotated declaration in
+  // runtime-application/-domain/-ports MUST sit under the `open_extension`
+  // category — the annotation may not be classified as private_serializer,
+  // postponed_with_reason, or must_type_now.
+  private fun assertAnnotatedDeclarationsAreOpenExtension(inventory: Skill522Inventory) {
+    val annotatedFqns = sourceFiles()
+      .filter { file ->
+        file.relativePath.startsWith("runtime-application/src/main/kotlin/") ||
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/") ||
+          file.relativePath.startsWith("runtime-ports/src/main/kotlin/")
+      }
+      .flatMap(::findAnnotatedOpenBoundaryDeclarations)
+      .toSet()
+    val openExtensionFqns = inventory.entries
+      .filter { it.category == "open_extension" }
+      .map { it.fqn }
+      .toSet()
+    val annotatedNotOpenExtension = annotatedFqns - openExtensionFqns
+    assertTrue(
+      annotatedNotOpenExtension.isEmpty(),
+      "Every @OpenBoundaryMap-annotated declaration in runtime-application/-domain/-ports " +
+        "MUST be classified under SKILL-52.2 inventory category `open_extension`.\n" +
+        "Misclassified: $annotatedNotOpenExtension",
+    )
+  }
+
+  // (d) Every must_type_now and postponed_with_reason entry MUST carry a
+  // SKILL-52.2 subtask id in 2..5.
+  private fun assertSubtaskIdsPresentForGatedCategories(inventory: Skill522Inventory) {
+    val needsSubtaskCategories = setOf("must_type_now", "postponed_with_reason")
+    val missingSubtask = inventory.entries
+      .filter { it.category in needsSubtaskCategories }
+      .filter { it.subtaskId == null || it.subtaskId !in 2..5 }
+      .map { "${it.fqn} (category=${it.category}, subtaskId=${it.subtaskId})" }
+    assertTrue(
+      missingSubtask.isEmpty(),
+      "Every SKILL-52.2 inventory entry under $needsSubtaskCategories MUST carry a " +
+        "[subtask N] tag with N in 2..5.\nNon-compliant:\n" +
+        missingSubtask.joinToString(separator = "\n"),
+    )
+  }
+
+  @Test
+  fun `SKILL-52_2 inventory parser fires on synthetic fixture`() {
+    val fixture =
+      """
+      <!-- skill-52-2-inventory:start -->
+
+      ### must_type_now
+
+      - `skillbill.fake.MustTypeOne` [subtask 3] — rationale.
+      - `skillbill.fake.MustTypeTwo`
+        [subtask 5] — wrapped-line rationale.
+
+      ### open_extension (@OpenBoundaryMap)
+
+      - `skillbill.fake.OpenExtensionOne`
+      - `skillbill.fake.OpenExtensionTwo`
+
+      ### private_serializer
+
+      _None — placeholder._
+
+      ### postponed_with_reason
+
+      - `skillbill.fake.PostponedOne` [subtask 4] — reason.
+
+      <!-- skill-52-2-inventory:end -->
+      """.trimIndent()
+    val parsed = parseSkill522Inventory(fixture)
+    assertEquals(
+      setOf(
+        "skillbill.fake.MustTypeOne" to "must_type_now",
+        "skillbill.fake.MustTypeTwo" to "must_type_now",
+        "skillbill.fake.OpenExtensionOne" to "open_extension",
+        "skillbill.fake.OpenExtensionTwo" to "open_extension",
+        "skillbill.fake.PostponedOne" to "postponed_with_reason",
+      ),
+      parsed.entries.map { it.fqn to it.category }.toSet(),
+    )
+    val subtaskById = parsed.entries.associate { it.fqn to it.subtaskId }
+    assertEquals(3, subtaskById["skillbill.fake.MustTypeOne"])
+    assertEquals(5, subtaskById["skillbill.fake.MustTypeTwo"])
+    assertEquals(4, subtaskById["skillbill.fake.PostponedOne"])
+    assertEquals(null, subtaskById["skillbill.fake.OpenExtensionOne"])
+  }
+
+  /**
+   * SKILL-52.2 — parses the inventory bullet section in ARCHITECTURE.md
+   * bracketed by `<!-- skill-52-2-inventory:start -->` /
+   * `<!-- skill-52-2-inventory:end -->`. Recognises four category
+   * subheadings (`### must_type_now`, `### open_extension`,
+   * `### private_serializer`, `### postponed_with_reason`) and walks
+   * the bullets under each heading. Bullets MUST follow the canonical
+   * format `- \`<fqn>\`` and MAY carry a trailing `[subtask N]` tag.
+   */
+  private fun parseSkill522Inventory(architecture: String): Skill522Inventory {
+    val body = extractSkill522InventoryBody(architecture)
+    val rawLines = body.lines()
+    val state = InventoryParseState()
+    while (state.index < rawLines.size) {
+      state.index = advanceInventoryCursor(rawLines, state)
+    }
+    return Skill522Inventory(entries = state.entries)
+  }
+
+  private fun advanceInventoryCursor(rawLines: List<String>, state: InventoryParseState): Int {
+    val index = state.index
+    val trimmed = rawLines[index].trim()
+    val heading = INVENTORY_HEADING_PATTERN.find(trimmed)?.groupValues?.get(1)
+    if (heading != null) {
+      state.currentCategory = heading
+    }
+    val bulletMatch = if (heading == null) INVENTORY_BULLET_PATTERN.find(trimmed) else null
+    val entry = buildInventoryEntry(state.currentCategory, bulletMatch, rawLines, index)
+    if (entry != null) {
+      state.entries += entry.entry
+    }
+    return entry?.nextIndex ?: (index + 1)
+  }
+
+  private class InventoryParseState(
+    var index: Int = 0,
+    var currentCategory: String? = null,
+    val entries: MutableList<Skill522InventoryEntry> = mutableListOf(),
+  )
+
+  private fun extractSkill522InventoryBody(architecture: String): String {
+    val sectionStart = architecture.indexOf("<!-- skill-52-2-inventory:start -->")
+    val sectionEnd = architecture.indexOf("<!-- skill-52-2-inventory:end -->")
+    require(sectionStart >= 0 && sectionEnd > sectionStart) {
+      "ARCHITECTURE.md must declare a SKILL-52.2 inventory section bracketed by " +
+        "'<!-- skill-52-2-inventory:start -->' / '<!-- skill-52-2-inventory:end -->' " +
+        "machine-readable markers."
+    }
+    return architecture.substring(sectionStart, sectionEnd)
+  }
+
+  // Two-pass walk: group continuation lines (non-blank, no bullet leader)
+  // with their preceding bullet so multi-line wrapped bullets carrying a
+  // trailing `[subtask N]` token on the wrapped line are recognised.
+  private fun buildInventoryEntry(
+    category: String?,
+    bulletMatch: MatchResult?,
+    rawLines: List<String>,
+    index: Int,
+  ): InventoryEntryWithCursor? {
+    if (category == null || bulletMatch == null) return null
+    val (lookahead, joinedTail) = consumeContinuationLines(
+      rawLines = rawLines,
+      startIndex = index + 1,
+      head = bulletMatch.groupValues[2],
+    )
+    val subtaskId = INVENTORY_SUBTASK_PATTERN.find(joinedTail)?.groupValues?.get(1)?.toIntOrNull()
+    return InventoryEntryWithCursor(
+      entry = Skill522InventoryEntry(
+        fqn = bulletMatch.groupValues[1],
+        category = category,
+        subtaskId = subtaskId,
+      ),
+      nextIndex = lookahead,
+    )
+  }
+
+  private fun consumeContinuationLines(rawLines: List<String>, startIndex: Int, head: String): Pair<Int, String> {
+    val accumulator = StringBuilder(head)
+    val end = rawLines
+      .asSequence()
+      .drop(startIndex)
+      .takeWhile { line -> isInventoryContinuationLine(line) }
+      .onEach { line -> accumulator.append(' ').append(line.trim()) }
+      .count() + startIndex
+    return end to accumulator.toString()
+  }
+
+  // Stop at blank lines, new bullets, or new headings — anything that is not
+  // a wrapped continuation of the current bullet.
+  private fun isInventoryContinuationLine(line: String): Boolean {
+    val trimmed = line.trim()
+    val isTerminator = trimmed.isEmpty() ||
+      INVENTORY_BULLET_LEADER_PATTERN.containsMatchIn(line) ||
+      INVENTORY_HEADING_PATTERN.containsMatchIn(trimmed)
+    return !isTerminator
+  }
+
+  private data class InventoryEntryWithCursor(
+    val entry: Skill522InventoryEntry,
+    val nextIndex: Int,
+  )
+
+  private data class Skill522InventoryEntry(
+    val fqn: String,
+    val category: String,
+    val subtaskId: Int?,
+  )
+
+  private data class Skill522Inventory(
+    val entries: List<Skill522InventoryEntry>,
+  )
 
   @Test
   fun `raw map violation scanner fires on known violation fixtures`() {
@@ -1169,6 +1480,13 @@ class RuntimeArchitectureTest {
   }
 
   private companion object {
+    val INVENTORY_HEADING_PATTERN: Regex =
+      Regex("""^###\s+(must_type_now|open_extension|private_serializer|postponed_with_reason)\b""")
+    val INVENTORY_BULLET_PATTERN: Regex =
+      Regex("""^\s*-\s+`([A-Za-z0-9_.]+)`(.*)$""")
+    val INVENTORY_SUBTASK_PATTERN: Regex = Regex("""\[subtask\s+(\d+)\]""")
+    val INVENTORY_BULLET_LEADER_PATTERN: Regex = Regex("""^\s*-\s+""")
+
     /**
      * SKILL-52.1 — curated open-boundary allow-list for the raw-map
      * boundary rule. New entries MUST also be documented by FQN in
@@ -1184,6 +1502,11 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.WorkflowEngine.summaryMap",
       "skillbill.workflow.WorkflowEngine.resumeMap",
       "skillbill.workflow.WorkflowEngine.continueMap",
+      // SKILL-52.2 subtask 4: domain-owned workflow-snapshot validator port.
+      // The map is the canonical schema-validated wire snapshot envelope; the
+      // port stays raw-map at the validation seam because the schema itself
+      // validates against the canonical map envelope.
+      "skillbill.workflow.WorkflowSnapshotValidator.validate",
       "skillbill.workflow.DecompositionManifestCodec.decodeMap",
       "skillbill.workflow.toWireMap",
       "skillbill.application.decodeDecompositionManifestMap",
@@ -1192,32 +1515,23 @@ class RuntimeArchitectureTest {
       "skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate",
       "skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
       "skillbill.application.WorkflowFamily.sessionSummary",
-      // SKILL-52.1 subtask 3: the 8 raw-map producer FQNs on `ScaffoldGateway`,
-      // `runtime-infra-fs.ScaffoldService`, and `runtime-application.ScaffoldService` are
-      // RETIRED — each producer now returns a typed result model under
-      // `skillbill.ports.scaffold.{catalog,repo,source}.model`. The remaining typed-DTO
-      // open-boundary `payload` fields are listed near the bottom of this allow-list with
-      // the `@OpenBoundaryMap`-annotated typed-DTO entries. `scaffold(...)` still accepts
-      // a raw-map payload — that entry stays as the documented input-side seam until
-      // subtask 4 introduces a typed scaffold payload DTO.
-      "skillbill.application.ScaffoldService.scaffold",
-      "skillbill.ports.scaffold.ScaffoldGateway.scaffold",
-      // SKILL-52.1 subtask 2 documented seams (pure-policy entrypoints that accept the wire
-      // payload Map<String, Any?>). Retired together with the legacy ScaffoldGateway raw-map
-      // surface above by subtask 4, which introduces a typed scaffold payload DTO.
-      "skillbill.scaffold.policy.requireString",
-      "skillbill.scaffold.policy.requireStringOrDefault",
-      "skillbill.scaffold.policy.validatePayloadVersion",
-      "skillbill.scaffold.policy.detectKind",
-      "skillbill.scaffold.policy.optionalSpecialistSubagents",
-      "skillbill.scaffold.policy.rejectLeafSubagentSpecialists",
-      "skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack",
-      "skillbill.scaffold.policy.resolvePlatformPackSelection",
-      "skillbill.scaffold.policy.resolvePlatformPackDefaults",
+      // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
+      // application + port `scaffold(payload, dryRun)` overloads on
+      // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`
+      // PLUS the 9 raw-map policy helpers under `skillbill.scaffold.policy` (`requireString`,
+      // `requireStringOrDefault`, `validatePayloadVersion`, `detectKind`,
+      // `optionalSpecialistSubagents`, `rejectLeafSubagentSpecialists`,
+      // `rejectBaselineLayersForNonPlatformPack`, `resolvePlatformPackSelection`,
+      // `resolvePlatformPackDefaults`) — are RETIRED. The two public overloads now accept a
+      // typed `ScaffoldCommandRequest`; CLI / MCP / Desktop adapters parse to the typed model
+      // at the adapter boundary. The 9 policy helpers were either inlined into the adapter
+      // parsers (CLI / MCP / Desktop) or relocated as `internal` raw-map helpers inside
+      // `runtime-infra-fs` (see `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`),
+      // which the raw-map architecture scanner does not walk.
       // Subtask 3 will remove (install policy extraction):
       "skillbill.application.SystemService.doctor",
       "skillbill.application.SystemService.version",
-      // Subtask 4 will remove (telemetry/review typed-DTO pass):
+      // Subtask 4 will remove (lifecycle telemetry typed-DTO pass):
       "skillbill.application.lifecycleOkPayload",
       "skillbill.application.lifecycleSkippedPayload",
       "skillbill.application.lifecycleErrorPayload",
@@ -1230,39 +1544,7 @@ class RuntimeArchitectureTest {
       "skillbill.application.LifecycleTelemetryService.featureVerifyStarted",
       "skillbill.application.LifecycleTelemetryService.featureVerifyFinished",
       "skillbill.application.LifecycleTelemetryService.prDescriptionGenerated",
-      "skillbill.application.ReviewService.previewImport",
-      "skillbill.application.ReviewService.importReview",
-      "skillbill.application.ReviewService.reviewFinishedTelemetryPayload",
-      "skillbill.application.ReviewService.recordFeedback",
-      "skillbill.application.ReviewService.telemetryPayload",
-      "skillbill.application.ReviewService.reviewStats",
-      "skillbill.application.ReviewService.featureImplementStats",
-      "skillbill.application.ReviewService.featureVerifyStats",
-      "skillbill.application.telemetryPayload",
-      "skillbill.application.TelemetryService.status",
-      "skillbill.application.TelemetryService.setLevel",
-      "skillbill.application.TelemetryService.capabilities",
-      "skillbill.application.TelemetryService.remoteStats",
-      "skillbill.telemetry.defaultLocalTelemetryConfig",
-      "skillbill.telemetry.validateRemoteStatsCapabilities",
-      "skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig",
-      "skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig",
-      "skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig",
-      "skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities",
-      "skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats",
-      "skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload",
-      "skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload",
       "skillbill.workflow.WorkflowEngine.continueDecision",
-      "skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState",
-      "skillbill.ports.persistence.ReviewRepository.recordFeedback",
-      "skillbill.ports.persistence.ReviewRepository.reviewStatsPayload",
-      "skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload",
-      "skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload",
-      "skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities",
-      "skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats",
-      "skillbill.ports.telemetry.TelemetryConfigStore.read",
-      "skillbill.ports.telemetry.TelemetryConfigStore.ensure",
-      "skillbill.ports.telemetry.TelemetryConfigStore.write",
       "skillbill.learnings.learningPayload",
       "skillbill.learnings.learningSummaryPayload",
       "skillbill.learnings.scopeCounts",
@@ -1273,15 +1555,15 @@ class RuntimeArchitectureTest {
       "skillbill.application.model.WorkflowUpdateRequest.stepUpdates",
       "skillbill.application.model.WorkflowUpdateRequest.artifactsPatch",
       "skillbill.application.model.FeatureImplementFinishedRequest.childSteps",
-      "skillbill.application.model.TelemetrySyncPayload.payload",
-      "skillbill.application.model.TriageResult.payload",
-      "skillbill.application.model.TriageResult.telemetryPayload",
       "skillbill.application.model.DecompositionManifestWriteRequest.planningResult",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
       "skillbill.install.model.buildInstallPlanWireMap",
       "skillbill.scaffold.model.PlatformManifest.customFields",
+      "skillbill.telemetry.model.TelemetryConfigDocument.payload",
+      "skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields",
+      "skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics",
       // SKILL-52.1 subtask 3 — typed scaffold result models that carry the legacy raw-map
       // wire payload through a single `@OpenBoundaryMap`-annotated `payload` field.
       "skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload",

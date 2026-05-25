@@ -27,6 +27,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
+import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.review.ReviewInputSource
@@ -36,10 +37,13 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -48,6 +52,9 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetryConfigDocument
+import skillbill.telemetry.model.TelemetryProxyCapabilities
+import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.nio.file.Path
@@ -163,7 +170,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `telemetry sync uses outbox repository and client ports inside transaction`() {
+  fun `telemetry sync uses short application sessions around outbox repository ports`() {
     val outboxRepository =
       InMemoryTelemetryOutboxRepository(
         mutableListOf(
@@ -189,8 +196,8 @@ class ApplicationPersistencePortTest {
 
     val result = service.sync(dbOverride = null)
 
-    assertEquals(listOf("transaction"), database.calls)
-    assertEquals("synced", result.payload["sync_status"])
+    assertEquals(listOf("read", "read", "transaction", "read", "read"), database.calls)
+    assertEquals("synced", result.result.syncStatus)
     assertEquals(listOf(listOf(1L)), client.sentBatchIds)
     assertEquals(0, outboxRepository.pendingCount())
   }
@@ -839,13 +846,16 @@ private class FakeReviewRepository(
 
   override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
 
-  override fun updateReviewFinishedTelemetryState(runId: String, enabled: Boolean, level: String): Map<String, Any?>? =
-    null
+  override fun updateReviewFinishedTelemetryState(
+    runId: String,
+    enabled: Boolean,
+    level: String,
+  ): ReviewFinishedTelemetry? = null
 
   override fun recordFeedback(
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions,
-  ): Map<String, Any?>? {
+  ): ReviewFinishedTelemetry? {
     feedbackRequests += request
     return null
   }
@@ -860,11 +870,11 @@ private class FakeReviewRepository(
   override fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome? =
     rejectedLearningSourceOutcome
 
-  override fun reviewStatsPayload(runId: String?): Map<String, Any?> = error("Unexpected reviewStatsPayload")
+  override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot = error("Unexpected reviewStats")
 
-  override fun featureImplementStatsPayload(): Map<String, Any?> = error("Unexpected featureImplementStatsPayload")
+  override fun featureImplementStats(): FeatureImplementWorkflowStats = error("Unexpected featureImplementStats")
 
-  override fun featureVerifyStatsPayload(): Map<String, Any?> = error("Unexpected featureVerifyStatsPayload")
+  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
 }
 
 private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {
@@ -947,11 +957,11 @@ private object FakeTelemetryConfigStore : TelemetryConfigStore {
 
   override fun configPath(): Path = Path.of("/fake/config.json")
 
-  override fun read(): Map<String, Any?>? = null
+  override fun read(): TelemetryConfigDocument? = null
 
-  override fun ensure(): Map<String, Any?> = emptyMap()
+  override fun ensure(): TelemetryConfigDocument = TelemetryConfigDocument(emptyMap())
 
-  override fun write(payload: Map<String, Any?>) = Unit
+  override fun write(document: TelemetryConfigDocument) = Unit
 
   override fun delete(): Boolean = true
 }
@@ -963,10 +973,10 @@ private class FakeTelemetryClient : TelemetryClient {
     sentBatchIds += rows.map { it.id }
   }
 
-  override fun fetchProxyCapabilities(settings: TelemetrySettings): Map<String, Any?> =
+  override fun fetchProxyCapabilities(settings: TelemetrySettings): TelemetryProxyCapabilities =
     error("Unexpected fetchProxyCapabilities")
 
-  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): Map<String, Any?> =
+  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): TelemetryRemoteStatsResult =
     error("Unexpected fetchRemoteStats")
 }
 

@@ -11,6 +11,7 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
@@ -36,6 +37,13 @@ class WorkflowService(
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
 ) {
+  // SKILL-52.2 Subtask 4: workflow engine receives its schema-validator
+  // dependency at the application boundary. The application owns this
+  // wiring so `runtime-domain` does not import contract schema
+  // validators directly. The adapter caches the compiled JSON Schema
+  // instance, so a single shared engine amortises schema parse + compile
+  // cost across every call.
+  private val engine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
   fun open(
     kind: WorkflowFamilyKind,
     sessionId: String = "",
@@ -49,13 +57,13 @@ class WorkflowService(
       return WorkflowOpenResult.Error(workflowId, error)
     }
     return database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowEngine.openRecord(family.definition, workflowId, sessionId, stepId)
+      val record = engine.openRecord(family.definition, workflowId, sessionId, stepId)
       family.save(unitOfWork.workflowStates, record)
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
-        snapshot = WorkflowEngine.snapshotView(family.definition, saved),
+        snapshot = engine.snapshotView(family.definition, saved),
       )
     }
   }
@@ -84,17 +92,17 @@ class WorkflowService(
         decompositionManifestFileStore,
       )
       val effectiveInput = runtimeInput.input
-      val updatedRecord = WorkflowEngine.updateRecord(family.definition, existing, effectiveInput)
+      val updatedRecord = engine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
       val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
       if (runtimeInput.updated) {
         projectionArtifactsJson = updated.artifactsJson
-        syncDecompositionParentRuntime(family, updated, request.workflowId, unitOfWork)
+        syncDecompositionParentRuntime(engine, family, updated, request.workflowId, unitOfWork)
       }
       WorkflowUpdateResult.Ok(
         workflowId = updated.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
-        snapshot = WorkflowEngine.snapshotView(family.definition, updated),
+        snapshot = engine.snapshotView(family.definition, updated),
       )
     }
     projectionArtifactsJson?.let { artifactsJson ->
@@ -119,7 +127,7 @@ class WorkflowService(
       WorkflowGetResult.Ok(
         workflowId = record.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
-        snapshot = WorkflowEngine.snapshotView(family.definition, record),
+        snapshot = engine.snapshotView(family.definition, record),
       )
     }
 
@@ -130,7 +138,7 @@ class WorkflowService(
       WorkflowListResult(
         dbPath = unitOfWork.dbPath.toString(),
         workflowCount = rows.size,
-        workflows = rows.map { WorkflowEngine.summaryView(family.definition, it) },
+        workflows = rows.map { engine.summaryView(family.definition, it) },
       )
     }
 
@@ -144,7 +152,7 @@ class WorkflowService(
         )
       WorkflowLatestResult.Ok(
         dbPath = unitOfWork.dbPath.toString(),
-        summary = WorkflowEngine.summaryView(family.definition, record),
+        summary = engine.summaryView(family.definition, record),
       )
     }
 
@@ -160,7 +168,7 @@ class WorkflowService(
       WorkflowResumeResult.Ok(
         workflowId = record.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
-        resume = WorkflowEngine.resumeView(family.definition, record),
+        resume = engine.resumeView(family.definition, record),
       )
     }
 
@@ -176,6 +184,7 @@ class WorkflowService(
       if (record == null && family == WorkflowFamily.IMPLEMENT) {
         val resolved =
           DecompositionWorkflowContinuation(
+            engine,
             gitOperations,
             decompositionManifestFileStore,
           ).continueDecomposedParentByIssueKey(workflowId, unitOfWork)
@@ -186,7 +195,7 @@ class WorkflowService(
         dbPath = unitOfWork.dbPath.toString(),
         workflowId = workflowId,
       )
-      continueExistingWorkflow(
+      engine.continueExistingWorkflow(
         family,
         record,
         workflowId,
@@ -208,6 +217,7 @@ class WorkflowService(
 }
 
 private fun syncDecompositionParentRuntime(
+  engine: WorkflowEngine,
   family: WorkflowFamily,
   updated: WorkflowStateSnapshot,
   workflowId: String,
@@ -218,7 +228,7 @@ private fun syncDecompositionParentRuntime(
     unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest)
       ?.toSnapshot()
       ?.takeUnless { it.workflowId == workflowId }
-      ?.let { parent -> persistParentDecompositionRuntime(parent, manifest, unitOfWork) }
+      ?.let { parent -> engine.persistParentDecompositionRuntime(parent, manifest, unitOfWork) }
   }
 }
 

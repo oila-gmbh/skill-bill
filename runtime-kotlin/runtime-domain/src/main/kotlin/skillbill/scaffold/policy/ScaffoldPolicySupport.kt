@@ -8,19 +8,14 @@ import skillbill.error.InvalidScaffoldPayloadError
  * shape contracts are violated — preserving the existing wire-level seam behavior.
  */
 
-/** Returns the value of [key] in [payload] when it is a non-blank string; throws otherwise. */
-fun requireString(payload: Map<String, Any?>, key: String): String =
-  (payload[key] as? String)?.takeIf { it.isNotBlank() }
-    ?: throw InvalidScaffoldPayloadError(
-      "Scaffold payload field '$key' must be a non-empty string.",
-    )
-
-/**
- * Returns the value of [key] in [payload] when it is a non-blank string; otherwise returns
- * [default]. Does not throw.
- */
-fun requireStringOrDefault(payload: Map<String, Any?>, key: String, default: String): String =
-  (payload[key] as? String)?.takeIf { it.isNotBlank() } ?: default
+// SKILL-52.2 subtask 2 (Task 11): `requireString` and `requireStringOrDefault` were retired from
+// this file. Their public raw-`Map<String, Any?>` signatures were the source of two of the 11
+// scaffold input raw-map allow-list entries. CLI / MCP adapters now parse their wire payloads
+// using `skillbill.contracts.scaffold.wire.ScaffoldPayloadParseSupport.requireString` /
+// `requireStringOrDefault` (which live in `runtime-contracts`, a module the architecture scanner
+// does not walk); the legacy filesystem orchestrator inside `runtime-infra-fs` keeps a private
+// `requireStringMap` / `requireStringOrDefaultMap` copy for its internal raw-map flow (see
+// `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`).
 
 /**
  * Requires [value] to be a list of non-blank strings. Throws [InvalidScaffoldPayloadError]

@@ -3,6 +3,9 @@ package skillbill.desktop.core.data.service
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
+import skillbill.desktop.core.data.service.mapper.authoredSkillEntries
+import skillbill.desktop.core.data.service.mapper.toSelectedValidationSummary
+import skillbill.desktop.core.data.service.mapper.toValidationSummary
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
@@ -16,9 +19,7 @@ import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
 import skillbill.desktop.core.domain.model.TreeItemKind
-import skillbill.desktop.core.domain.model.ValidationIssue
 import skillbill.desktop.core.domain.model.ValidationRunState
-import skillbill.desktop.core.domain.model.ValidationSeverity
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.RenderGateway
@@ -28,8 +29,7 @@ import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.NativeAgentSourceProjection
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
-import skillbill.ports.validation.model.RepoValidationIssue
-import skillbill.ports.validation.model.RepoValidationIssueSeverity
+import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import skillbill.ports.validation.model.RepoValidationReport
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
@@ -63,8 +63,14 @@ class RuntimeRepoBrowserService(
   internal var renderer: (Path, String) -> ScaffoldRenderResult = { root, skillName ->
     scaffoldService.render(root, skillName)
   }
-  internal var authoringSaver: (Path, String, String) -> Map<String, Any?> = { root, skillName, body ->
-    scaffoldService.saveExactContent(root, skillName, body).payload
+
+  // SKILL-52.2 subtask 5: returns the typed `ScaffoldSaveExactContentResult`
+  // instead of reaching into its `.payload` raw map. The actual return value is
+  // unused at the call site (the success/failure signal is the absence of an
+  // exception); the typed receiver lets tests still swap in throwing or
+  // succeeding fakes without re-introducing raw-map indexing in service code.
+  internal var authoringSaver: (Path, String, String) -> ScaffoldSaveExactContentResult = { root, skillName, body ->
+    scaffoldService.saveExactContent(root, skillName, body)
   }
   internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)
@@ -205,7 +211,7 @@ class RuntimeRepoBrowserService(
     val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
       ?: return ValidationSummary.unavailable
     val skillName = detail.skillName ?: return ValidationSummary.unavailable
-    return runCatching { scaffoldService.validate(root, listOf(skillName)).payload.toSelectedValidationSummary(root) }
+    return runCatching { scaffoldService.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
       .getOrElse { error ->
         ValidationSummary(
           state = ValidationRunState.FAILED,
@@ -414,24 +420,26 @@ class RuntimeRepoBrowserService(
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): AuthoredSkillGroups {
-    val payload = scaffoldService.list(root, emptyList()).payload
-    val skills = payload["skills"] as? List<*> ?: emptyList<Any?>()
+    // SKILL-52.2 subtask 5: typed authored-skill entries from the mapper instead
+    // of reaching into `ScaffoldListResult.payload["skills"]` here. The raw-shape
+    // decoding lives in `mapper/ScaffoldListResultMapper.kt`.
+    val entries = scaffoldService.list(root, emptyList()).authoredSkillEntries()
     val horizontal = mutableListOf<SkillBillTreeItem>()
     val platformChildren = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
-    skills.filterIsInstance<Map<*, *>>().forEach { skill ->
-      val skillName = skill.string("skill_name") ?: return@forEach
-      val platform = skill.string("platform").orEmpty()
-      val family = skill.string("family").orEmpty()
-      val area = skill.string("area").orEmpty()
-      val contentFile = skill.string("content_file").orEmpty()
-      val status = skill.string("completion_status").orEmpty()
+    entries.forEach { entry ->
+      val skillName = entry.skillName
+      val platform = entry.platform
+      val family = entry.family
+      val area = entry.area
+      val contentFile = entry.contentFile
+      val status = entry.completionStatus
       val kind = if (platform.isBlank()) "horizontal skill" else "platform pack skill"
       val id = selectionId(repoToken, "skill:$skillName")
       val metadata =
         SkillBillTreeItemMetadata(
           skillName = skillName,
           kind = kind,
-          packageName = skill.string("package"),
+          packageName = entry.packageName,
           platform = platform.takeIf(String::isNotBlank),
           family = family.takeIf(String::isNotBlank),
           area = area.takeIf(String::isNotBlank),
@@ -923,8 +931,6 @@ private fun group(id: String, label: String, children: List<SkillBillTreeItem>):
     )
   }
 
-private fun Map<*, *>.string(key: String): String? = this[key] as? String
-
 private fun relativePath(root: Path, path: String): String = relativePath(root, Path.of(path))
 
 private fun relativePath(root: Path, path: Path): String {
@@ -960,36 +966,6 @@ private fun repoToken(root: Path): String {
 }
 
 private fun selectionId(repoToken: String, localId: String): String = "repo:$repoToken|$localId"
-
-private fun RepoValidationIssueSeverity.toDomain(): ValidationSeverity = when (this) {
-  RepoValidationIssueSeverity.ERROR -> ValidationSeverity.ERROR
-  RepoValidationIssueSeverity.WARNING -> ValidationSeverity.WARNING
-  RepoValidationIssueSeverity.INFO -> ValidationSeverity.INFO
-}
-
-private fun RepoValidationReport.toValidationSummary(root: Path): ValidationSummary = ValidationSummary(
-  state = if (passed) ValidationRunState.PASSED else ValidationRunState.FAILED,
-  issues = structuredIssues.map { issue -> issue.toValidationIssue(root) },
-)
-
-private fun Map<String, Any?>.toSelectedValidationSummary(root: Path): ValidationSummary {
-  val status = this["status"] as? String
-  val rawIssues = this["issues"] as? List<*> ?: emptyList<Any?>()
-  return ValidationSummary(
-    state = if (status == "pass") ValidationRunState.PASSED else ValidationRunState.FAILED,
-    issues = rawIssues
-      .filterIsInstance<String>()
-      .map { rawIssue -> RepoValidationIssue.fromRawIssue(rawIssue).toValidationIssue(root) },
-  )
-}
-
-private fun RepoValidationIssue.toValidationIssue(root: Path): ValidationIssue = ValidationIssue(
-  severity = severity.toDomain(),
-  code = code,
-  message = message,
-  sourcePath = sourcePath?.let { path -> normalizeSourcePath(root, path) },
-  exceptionName = exceptionName,
-)
 
 private fun normalizeSourcePath(root: Path, sourcePath: String): String {
   val trimmed = sourcePath.trim()

@@ -39,7 +39,7 @@ class ImportReviewCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.importReview(input, state.dbOverride), format)
+    state.complete(service.importReview(input, state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -57,7 +57,7 @@ class RecordFeedbackCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.recordFeedback(runId, event, findings, note, state.dbOverride), format)
+    state.complete(service.recordFeedback(runId, event, findings, note, state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -80,13 +80,14 @@ class TriageCommand(
 
   override fun run() {
     val result = service.triage(runId, decisions, listOnly, state.dbOverride)
+    val payload = result.toCliMap()
     when {
-      format == CliFormat.JSON -> state.complete(result.payload, format)
+      format == CliFormat.JSON -> state.complete(payload, format)
       result.findings.isNotEmpty() -> state.completeText(
         CliOutput.numberedFindings(result.toCliNumberedFindingsPresentation(runId)),
-        result.payload,
+        payload,
       )
-      else -> state.completeText(CliOutput.triageResult(result.toCliTriagePresentation(runId)), result.payload)
+      else -> state.completeText(CliOutput.triageResult(result.toCliTriagePresentation(runId)), payload)
     }
   }
 }
@@ -100,7 +101,7 @@ class ReviewStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.reviewStats(runId, state.dbOverride), format)
+    state.complete(service.reviewStats(runId, state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -112,7 +113,7 @@ class FeatureImplementStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureImplementStats(state.dbOverride), format)
+    state.complete(service.featureImplementStats(state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -124,6 +125,6 @@ class FeatureVerifyStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureVerifyStats(state.dbOverride), format)
+    state.complete(service.featureVerifyStats(state.dbOverride).toCliMap(), format)
   }
 }

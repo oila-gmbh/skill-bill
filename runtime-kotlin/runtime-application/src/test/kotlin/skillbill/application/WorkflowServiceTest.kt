@@ -6,6 +6,7 @@ import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
@@ -161,7 +162,7 @@ class WorkflowServiceTest {
     // so the engine reads it via the typed service surface.
     val definition = FeatureImplementWorkflowDefinition.definition
     // unterminated JSON triggers the loud-fail at the engine read seam.
-    val malformed = WorkflowEngine.openRecord(definition, "wfl-loud", "fis-001", "assess").copy(
+    val malformed = testWorkflowEngine.openRecord(definition, "wfl-loud", "fis-001", "assess").copy(
       stepsJson = """[{"step_id":"assess"}""",
     ).toRecord()
     workflows.saveFeatureImplementWorkflow(malformed)
@@ -209,10 +210,12 @@ class WorkflowServiceTest {
   }
 }
 
+private val testWorkflowEngine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
+
 private fun workflowRecord(workflowId: String, artifactsPatch: Map<String, Any?>): WorkflowStateRecord {
   val definition = FeatureImplementWorkflowDefinition.definition
-  val opened = WorkflowEngine.openRecord(definition, workflowId, "fis-001", "assess")
-  return WorkflowEngine.updateRecord(
+  val opened = testWorkflowEngine.openRecord(definition, workflowId, "fis-001", "assess")
+  return testWorkflowEngine.updateRecord(
     definition,
     opened,
     skillbill.workflow.model.WorkflowUpdateInput(

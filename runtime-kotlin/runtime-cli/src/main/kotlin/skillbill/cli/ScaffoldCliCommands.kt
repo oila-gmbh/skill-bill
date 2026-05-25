@@ -17,6 +17,7 @@ import skillbill.application.InstallAgentService
 import skillbill.application.InstallService
 import skillbill.application.ScaffoldService
 import skillbill.application.UnsupportedScaffoldService
+import skillbill.cli.scaffold.parseScaffoldCommandRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
@@ -579,9 +580,15 @@ private fun runNativeScaffoldPayload(
   } else {
     payload
   }
+  // SKILL-52.2 subtask 2: parse the raw map at the CLI adapter boundary and call the typed
+  // overload so the application + port surface no longer accepts a raw `Map<String, Any?>`.
+  // Materialise the inbound `Map<String, *>` into the `Map<String, Any?>` shape the parser
+  // accepts; the keys are already strings — only the value variance widens.
+  val typedPayload: Map<String, Any?> = payloadWithRepoRoot.mapValues { (_, value) -> value }
   val result =
     try {
-      scaffoldService.scaffold(payloadWithRepoRoot, dryRun = dryRun)
+      val request = parseScaffoldCommandRequest(typedPayload)
+      scaffoldService.scaffold(request, dryRun = dryRun)
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), format)
     }

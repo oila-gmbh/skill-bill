@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
 import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 
 /**
  * SKILL-52.1 subtask 3 (F-001): standalone wrapper that preserves the legacy top-level
@@ -29,3 +30,12 @@ fun scaffold(payload: Map<String, Any?>, dryRun: Boolean = false): ScaffoldResul
   )
   return scaffoldWithAdapters(payload, dryRun, seams)
 }
+
+/**
+ * SKILL-52.2 subtask 2: typed standalone scaffolder used by in-tree parity tests. Re-materialises
+ * the typed [request] into the legacy raw payload (interim bridge) and delegates to the existing
+ * top-level [scaffold]. Phase 5 of SKILL-52.2 subtask 2 replaces this with a typed orchestrator
+ * entrypoint and deletes the raw-map overload above.
+ */
+fun scaffold(request: ScaffoldCommandRequest, dryRun: Boolean = false): ScaffoldResult =
+  scaffold(request.toRawScaffoldPayload(), dryRun)

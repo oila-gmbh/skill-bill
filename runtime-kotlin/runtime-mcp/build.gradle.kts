@@ -8,12 +8,15 @@ plugins {
 }
 
 dependencies {
+  // SKILL-52.2 subtask 5: narrowed allow-list pinned by
+  // `runtime-core/src/test/kotlin/skillbill/architecture/RuntimeAdapterDependencyAllowlistTest.kt`.
+  // runtime-infra-fs / runtime-infra-http were dropped — runtime-mcp has no
+  // concrete `skillbill.infrastructure.*` imports outside test sources; the
+  // infrastructure adapters are resolved through `RuntimeComponent` (kotlin-inject).
   implementation(project(":runtime-application"))
   implementation(project(":runtime-contracts"))
   implementation(project(":runtime-core"))
   implementation(project(":runtime-domain"))
-  implementation(project(":runtime-infra-fs"))
-  implementation(project(":runtime-infra-http"))
   implementation(project(":runtime-ports"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.kotlinx.serialization.json)
@@ -27,6 +30,13 @@ dependencies {
   implementation(libs.jackson.databind)
   implementation(libs.jackson.dataformat.yaml)
   ksp(libs.kotlin.inject.compiler)
+  // SKILL-52.2 subtask 5: runtime-infra-fs / runtime-infra-http stay on the
+  // test classpath because `RuntimeModuleSmokeTest` imports concrete runtime
+  // classes (`InstallRuntime`, `LauncherRuntime`, `NativeAgentRuntime`,
+  // `ScaffoldRuntime`, `TelemetryRuntime`). Test code crossing module boundaries
+  // for fixtures is expected; main source must not.
+  testImplementation(project(":runtime-infra-fs"))
+  testImplementation(project(":runtime-infra-http"))
   testImplementation(project(":runtime-cli"))
   testImplementation(project(":runtime-infra-sqlite"))
   // SKILL-48 Subtask 2d: pull in the shared `skillbill.testing.repoRootFromTest()`

@@ -1,55 +1,24 @@
 package skillbill.scaffold.policy
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.error.ScaffoldPayloadVersionMismatchError
-import skillbill.error.UnknownSkillKindError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
+/**
+ * SKILL-52.2 subtask 2 (Task 11): `detectKind` and `validatePayloadVersion` were retired from
+ * `runtime-domain.scaffold.policy` (they exposed raw `Map<String, Any?>` signatures).
+ *
+ *  - CLI / MCP coverage of the same loud-fail semantics lives in the new adapter parser tests
+ *    (`runtime-cli/src/test/.../ScaffoldCommandRequestParserTest`,
+ *    `runtime-mcp/src/test/.../McpScaffoldCommandRequestParserTest`).
+ *  - The legacy filesystem orchestrator path that still consumes raw maps internally is covered
+ *    in `runtime-infra-fs/src/test/kotlin/skillbill/scaffold/ScaffoldPayloadMapPolicyTest.kt`.
+ *
+ * Tests below continue to exercise the typed-input helpers that stayed in this package
+ * (`parseBaselineLayerPayload`).
+ */
 class ScaffoldPayloadPolicyTest {
-  @Test
-  fun `detectKind returns horizontal for a horizontal payload`() {
-    val kind = detectKind(mapOf("kind" to "horizontal"))
-    assertEquals("horizontal", kind)
-  }
-
-  @Test
-  fun `detectKind throws UnknownSkillKindError for an unknown kind`() {
-    val error = assertFailsWith<UnknownSkillKindError> {
-      detectKind(mapOf("kind" to "not-a-kind"))
-    }
-    val message = error.message
-    requireNotNull(message)
-    assertEquals(true, message.contains("not-a-kind"))
-  }
-
-  @Test
-  fun `detectKind throws InvalidScaffoldPayloadError when kind is missing`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      detectKind(mapOf("foo" to "bar"))
-    }
-  }
-
-  @Test
-  fun `validatePayloadVersion accepts the canonical wire version`() {
-    validatePayloadVersion(mapOf("scaffold_payload_version" to SCAFFOLD_PAYLOAD_VERSION))
-  }
-
-  @Test
-  fun `validatePayloadVersion throws when the version disagrees`() {
-    assertFailsWith<ScaffoldPayloadVersionMismatchError> {
-      validatePayloadVersion(mapOf("scaffold_payload_version" to "9.9"))
-    }
-  }
-
-  @Test
-  fun `validatePayloadVersion throws when the version field is missing`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      validatePayloadVersion(mapOf("kind" to "horizontal"))
-    }
-  }
-
   @Test
   fun `parseBaselineLayerPayload accepts a well-formed object`() {
     val raw = mapOf(
@@ -92,8 +61,6 @@ class ScaffoldPayloadPolicyTest {
     val message = error.message
     requireNotNull(message)
     assertEquals(true, message.contains("bogus-scope"))
-    // Protects the stable caller-facing diagnostic contract — the KDoc on
-    // parseBaselineLayerPayload promises a `baseline_layers[N].field` prefix.
     assertEquals(true, message.contains("baseline_layers[0].scope"))
   }
 
@@ -116,8 +83,6 @@ class ScaffoldPayloadPolicyTest {
 
   @Test
   fun `parseBaselineLayerPayload throws when platform or skill is blank`() {
-    // SKILL-52.1 subtask 2 (review-fix F-test-006): blank-string negative paths exercise the
-    // `requireStringInPayloadMap` blank-string branch and assert the stable field-prefix prefix.
     val blankPlatform = mapOf(
       "platform" to "",
       "skill" to "bill-kmp-code-review",

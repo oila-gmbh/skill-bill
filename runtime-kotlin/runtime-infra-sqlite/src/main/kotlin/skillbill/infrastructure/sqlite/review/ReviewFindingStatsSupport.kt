@@ -1,6 +1,8 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.review.model.FindingOutcomeRow
+import skillbill.review.model.ReviewFindingDetail
+import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
@@ -26,8 +28,8 @@ private class FindingSummaryAccumulator {
   private val acceptedSeverityCounts = emptySeverityCounts().toMutableMap()
   private val rejectedSeverityCounts = emptySeverityCounts().toMutableMap()
   private val unresolvedSeverityCounts = emptySeverityCounts().toMutableMap()
-  private val acceptedFindingDetails = mutableListOf<Map<String, Any?>>()
-  private val rejectedFindingDetails = mutableListOf<Map<String, Any?>>()
+  private val acceptedFindingDetails = mutableListOf<ReviewFindingDetail>()
+  private val rejectedFindingDetails = mutableListOf<ReviewFindingDetail>()
   private var acceptedFindings = 0
   private var rejectedFindings = 0
   private var unresolvedFindings = 0
@@ -42,22 +44,22 @@ private class FindingSummaryAccumulator {
     }
   }
 
-  fun toPayload(): Map<String, Any?> {
+  fun toStats(): ReviewFindingStats {
     val totalFindings = acceptedFindings + rejectedFindings + unresolvedFindings
-    return mapOf(
-      "total_findings" to totalFindings,
-      "accepted_findings" to acceptedFindings,
-      "rejected_findings" to rejectedFindings,
-      "unresolved_findings" to unresolvedFindings,
-      "accepted_rate" to rate(acceptedFindings, totalFindings),
-      "rejected_rate" to rate(rejectedFindings, totalFindings),
-      "latest_outcome_counts" to outcomeCounts,
-      "accepted_severity_counts" to acceptedSeverityCounts,
-      "rejected_severity_counts" to rejectedSeverityCounts,
-      "unresolved_severity_counts" to unresolvedSeverityCounts,
-      "accepted_finding_details" to acceptedFindingDetails,
-      "rejected_findings_with_notes" to rejectedFindingsWithNotes,
-      "rejected_finding_details" to rejectedFindingDetails,
+    return ReviewFindingStats(
+      totalFindings = totalFindings,
+      acceptedFindings = acceptedFindings,
+      rejectedFindings = rejectedFindings,
+      unresolvedFindings = unresolvedFindings,
+      acceptedRate = rate(acceptedFindings, totalFindings),
+      rejectedRate = rate(rejectedFindings, totalFindings),
+      latestOutcomeCounts = outcomeCounts.toMap(),
+      acceptedSeverityCounts = acceptedSeverityCounts.toMap(),
+      rejectedSeverityCounts = rejectedSeverityCounts.toMap(),
+      unresolvedSeverityCounts = unresolvedSeverityCounts.toMap(),
+      acceptedFindingDetails = acceptedFindingDetails.toList(),
+      rejectedFindingsWithNotes = rejectedFindingsWithNotes,
+      rejectedFindingDetails = rejectedFindingDetails.toList(),
     )
   }
 
@@ -71,33 +73,32 @@ private class FindingSummaryAccumulator {
     acceptedFindings += 1
     acceptedSeverityCounts[row.severity] = acceptedSeverityCounts.getValue(row.severity) + 1
     acceptedFindingDetails +=
-      mapOf(
-        "finding_id" to row.findingId,
-        "severity" to row.severity,
-        "confidence" to row.confidence,
-        "location" to row.location,
-        "description" to row.description,
-        "outcome_type" to row.outcomeType,
+      ReviewFindingDetail(
+        findingId = row.findingId,
+        severity = row.severity,
+        confidence = row.confidence,
+        location = row.location,
+        description = row.description,
+        outcomeType = row.outcomeType,
       )
   }
 
   private fun applyRejectedFinding(row: FindingOutcomeRow) {
     rejectedFindings += 1
     rejectedSeverityCounts[row.severity] = rejectedSeverityCounts.getValue(row.severity) + 1
-    val rejectedPayload =
-      mutableMapOf<String, Any?>(
-        "finding_id" to row.findingId,
-        "severity" to row.severity,
-        "confidence" to row.confidence,
-        "location" to row.location,
-        "description" to row.description,
-        "outcome_type" to row.outcomeType,
-      )
     if (row.note.isNotEmpty()) {
-      rejectedPayload["note"] = row.note
       rejectedFindingsWithNotes += 1
     }
-    rejectedFindingDetails += rejectedPayload
+    rejectedFindingDetails +=
+      ReviewFindingDetail(
+        findingId = row.findingId,
+        severity = row.severity,
+        confidence = row.confidence,
+        location = row.location,
+        description = row.description,
+        outcomeType = row.outcomeType,
+        note = row.note,
+      )
   }
 
   private fun applyUnresolvedFinding(row: FindingOutcomeRow) {
@@ -133,16 +134,16 @@ fun queryLatestFindingOutcomes(connection: Connection, reviewRunId: String?): Li
   }
 }
 
-fun summarizeFindingRows(findingRows: List<FindingOutcomeRow>): Map<String, Any?> {
+fun summarizeFindingRows(findingRows: List<FindingOutcomeRow>): ReviewFindingStats {
   val summary = FindingSummaryAccumulator()
   findingRows.forEach(summary::apply)
-  return summary.toPayload()
+  return summary.toStats()
 }
 
 fun shouldSkipReviewFinishedTelemetry(findingRows: List<FindingOutcomeRow>, reviewSummary: ReviewSummary): Boolean {
   val summary = summarizeFindingRows(findingRows)
-  val resolvedFindings = summary.intValue("accepted_findings") + summary.intValue("rejected_findings")
-  return summary.intValue("total_findings") > 0 &&
+  val resolvedFindings = summary.acceptedFindings + summary.rejectedFindings
+  return summary.totalFindings > 0 &&
     resolvedFindings == 0 &&
     (!reviewSummary.reviewFinishedAt.isNullOrEmpty() || !reviewSummary.reviewFinishedEventEmittedAt.isNullOrEmpty())
 }

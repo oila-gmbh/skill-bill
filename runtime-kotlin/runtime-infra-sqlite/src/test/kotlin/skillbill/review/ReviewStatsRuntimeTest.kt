@@ -12,26 +12,26 @@ import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ReviewStatsRuntimeTest {
   @Test
-  fun `statsPayload summarizes latest outcomes`() {
+  fun `statsSnapshot summarizes latest outcomes`() {
     val (_, connection) = tempDbConnection("review-stats")
     connection.use {
       val review = importReviewedSample(connection)
 
-      val statsPayload = ReviewStatsRuntime.statsPayload(connection, review.reviewRunId)
-      assertEquals(2, statsPayload["total_findings"])
-      assertEquals(1, statsPayload["accepted_findings"])
-      assertEquals(1, statsPayload["rejected_findings"])
+      val stats = ReviewStatsRuntime.statsSnapshot(connection, review.reviewRunId).stats
+      assertEquals(2, stats.totalFindings)
+      assertEquals(1, stats.acceptedFindings)
+      assertEquals(1, stats.rejectedFindings)
     }
   }
 
@@ -55,18 +55,36 @@ class ReviewStatsRuntimeTest {
           level = "full",
         )
 
-      val anonymousLearnings = anonymousPayload["learnings"] as Map<*, *>
-      assertEquals(1, anonymousLearnings["applied_count"])
-      assertEquals("L-001", anonymousLearnings["applied_summary"])
-      assertEquals("bill-kotlin-code-review", anonymousPayload["routed_skill"])
-      assertEquals("unstaged changes", anonymousPayload["review_scope"])
-      assertEquals(review.reviewRunId, anonymousPayload["review_run_id"])
-      assertEquals(review.reviewRunId, fullPayload["review_run_id"])
-      assertTrue((anonymousPayload["accepted_finding_details"] as List<*>).isNotEmpty())
-      val rejectedFindingDetails =
-        (fullPayload["rejected_finding_details"] as? List<*>)
-          ?.filterIsInstance<Map<String, Any?>>()
-      assertNotNull(rejectedFindingDetails?.first()?.get("description"))
+      assertEquals(1, anonymousPayload.learnings.appliedCount)
+      assertEquals("L-001", anonymousPayload.learnings.appliedSummary)
+      assertEquals("bill-kotlin-code-review", anonymousPayload.routedSkill)
+      assertEquals("unstaged changes", anonymousPayload.reviewScope)
+      assertEquals(review.reviewRunId, anonymousPayload.reviewRunId)
+      assertEquals(review.reviewRunId, fullPayload.reviewRunId)
+      assertTrue(anonymousPayload.findingStats.acceptedFindingDetails.isNotEmpty())
+      val anonymousRejectedFinding = anonymousPayload.findingStats.rejectedFindingDetails.single()
+      val fullRejectedFinding = fullPayload.findingStats.rejectedFindingDetails.single()
+      assertEquals("", anonymousRejectedFinding.description)
+      assertEquals("", anonymousRejectedFinding.note)
+      assertEquals("Installer prompt wording is inconsistent with the new flow.", fullRejectedFinding.description)
+      assertEquals("Intentional wording", fullRejectedFinding.note)
+      val anonymousSerializedPayload = anonymousPayload.toReviewFinishedTelemetryPayload().toPayload()
+      val fullSerializedPayload = fullPayload.toReviewFinishedTelemetryPayload().toPayload()
+      val anonymousSerializedRejectedFinding =
+        (anonymousSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+      val fullSerializedRejectedFinding =
+        (fullSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+      assertEquals(false, "description" in anonymousSerializedRejectedFinding)
+      assertEquals(false, "note" in anonymousSerializedRejectedFinding)
+      assertEquals(
+        "Installer prompt wording is inconsistent with the new flow.",
+        fullSerializedRejectedFinding["description"],
+      )
+      assertEquals("Intentional wording", fullSerializedRejectedFinding["note"])
+      val serializedLearnings = anonymousSerializedPayload["learnings"] as Map<*, *>
+      assertEquals(1, serializedLearnings["applied_count"])
+      assertEquals(listOf("L-001"), serializedLearnings["applied_references"])
+      assertEquals("L-001", serializedLearnings["applied_summary"])
     }
   }
 
@@ -77,10 +95,10 @@ class ReviewStatsRuntimeTest {
       insertFeatureImplementSession(connection)
       insertFeatureVerifySession(connection)
 
-      val implementPayload = ReviewStatsRuntime.featureImplementStatsPayload(connection)
+      val implementStats = ReviewStatsRuntime.featureImplementStats(connection)
 
-      assertEquals(1, implementPayload["total_runs"])
-      assertEquals(1, (implementPayload["feature_size_counts"] as Map<*, *>)["MEDIUM"])
+      assertEquals(1, implementStats.totalRuns)
+      assertEquals(1, implementStats.featureSizeCounts["MEDIUM"])
     }
   }
 
@@ -90,11 +108,11 @@ class ReviewStatsRuntimeTest {
     connection.use {
       insertFeatureVerifySession(connection)
 
-      val verifyPayload = ReviewStatsRuntime.featureVerifyStatsPayload(connection)
+      val verifyStats = ReviewStatsRuntime.featureVerifyStats(connection)
 
-      assertEquals(1, verifyPayload["total_runs"])
-      assertEquals(1, verifyPayload["runs_with_gaps_found"])
-      assertEquals(1, (verifyPayload["history_relevance_counts"] as Map<*, *>)["medium"])
+      assertEquals(1, verifyStats.totalRuns)
+      assertEquals(1, verifyStats.runsWithGapsFound)
+      assertEquals(1, verifyStats.historyRelevanceCounts["medium"])
     }
   }
 }

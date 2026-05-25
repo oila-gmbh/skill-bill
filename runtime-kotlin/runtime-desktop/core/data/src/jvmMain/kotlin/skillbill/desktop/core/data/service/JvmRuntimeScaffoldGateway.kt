@@ -21,6 +21,7 @@ import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillBillRuntimeException
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -56,8 +57,12 @@ class JvmRuntimeScaffoldGateway(
   // umbrella depends on `core:data` via `implementation`, which would otherwise force an
   // `api(:runtime-core)` leak to keep `ScaffoldResult` resolvable to KSP. See
   // RuntimeRepoBrowserService for the same pattern.
-  internal var scaffolder: (Map<String, Any?>, Boolean) -> ScaffoldResult = { payload, dryRun ->
-    runtimeServices.scaffoldService.scaffold(payload, dryRun)
+  // SKILL-52.2 subtask 2: typed sealed → sealed seam. The gateway no longer hands a
+  // `Map<String, Any?>` to the runtime — it materialises a typed [ScaffoldCommandRequest] at the
+  // adapter boundary and calls the typed application overload. Tests substitute the seam to
+  // drive the gateway without touching the on-disk runtime.
+  internal var scaffolder: (ScaffoldCommandRequest, Boolean) -> ScaffoldResult = { request, dryRun ->
+    runtimeServices.scaffoldService.scaffold(request, dryRun)
   }
 
   override suspend fun catalogSnapshot(session: RepoSession?): ScaffoldCatalogSnapshot {
@@ -168,7 +173,7 @@ class JvmRuntimeScaffoldGateway(
   // propagates verbatim. JVM Errors (OOM/StackOverflow/LinkageError) are NOT caught.
   @Suppress("TooGenericExceptionCaught")
   private fun invoke(payload: ScaffoldPayload, dryRun: Boolean): ScaffoldRunResult = try {
-    val result = scaffolder(payload.toContractMap(), dryRun)
+    val result = scaffolder(payload.toCommandRequest(), dryRun)
     if (dryRun) {
       ScaffoldRunResult.Preview(planned = result.toPlan())
     } else {

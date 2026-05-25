@@ -263,14 +263,22 @@ class ImplementationOwnershipArchitectureTest {
 
   @Test
   fun `cli mcp and desktop data declare direct runtime dependencies beside runtime core`() {
+    // SKILL-52.2 subtask 5: narrowed allow-list. The infrastructure modules
+    // (`:runtime-infra-fs`, `:runtime-infra-http`) were dropped because none
+    // of these adapters concretely import `skillbill.infrastructure.*` outside
+    // test sources — infrastructure adapters are resolved through
+    // `RuntimeComponent` (kotlin-inject) instead. `runtime-desktop:core:data`
+    // gains an explicit `:runtime-contracts` edge so its direct
+    // `skillbill.error.*` imports do not depend on transitive runtime-application
+    // API. The exact allow-list per adapter is pinned by
+    // `RuntimeAdapterDependencyAllowlistTest`; this test asserts only that the
+    // declared dependencies are present (it does not enforce the exact set).
     val adapterDependencies = mapOf(
       "runtime-cli/build.gradle.kts" to listOf(
         ":runtime-application",
         ":runtime-contracts",
         ":runtime-core",
         ":runtime-domain",
-        ":runtime-infra-fs",
-        ":runtime-infra-http",
         ":runtime-ports",
       ),
       "runtime-mcp/build.gradle.kts" to listOf(
@@ -278,15 +286,13 @@ class ImplementationOwnershipArchitectureTest {
         ":runtime-contracts",
         ":runtime-core",
         ":runtime-domain",
-        ":runtime-infra-fs",
-        ":runtime-infra-http",
         ":runtime-ports",
       ),
       "runtime-desktop/core/data/build.gradle.kts" to listOf(
         ":runtime-application",
+        ":runtime-contracts",
         ":runtime-core",
         ":runtime-domain",
-        ":runtime-infra-fs",
         ":runtime-ports",
       ),
     )

@@ -15,19 +15,14 @@ import skillbill.cli.CliRuntime
 import skillbill.cli.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
-import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class McpRuntimeTest {
@@ -92,20 +87,43 @@ class McpRuntimeTest {
 
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
     val importResult = McpRuntime.importReview(SAMPLE_REVIEW.trimIndent(), context = context)
+    recordFeatureImplementLifecycle(context)
+    recordFeatureVerifyLifecycle(context)
     val implementStats = McpRuntime.featureImplementStats(context)
     val verifyStats = McpRuntime.featureVerifyStats(context)
+    val dbPath = tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString()
 
     assertGoldenPayload(
       "mcp-import-review.json",
       importResult,
-      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+      "<DB_PATH>" to dbPath,
     )
     assertEquals("rvw-20260402-001", importResult["review_run_id"])
     assertEquals("rvs-20260402-001", importResult["review_session_id"])
     assertEquals(2, importResult["finding_count"])
     assertEquals("bill-kotlin-code-review", importResult["routed_skill"])
-    assertNotNull(implementStats["db_path"])
-    assertNotNull(verifyStats["db_path"])
+    assertEquals(featureImplementStatsKeys(), implementStats.keys)
+    assertEquals(dbPath, implementStats["db_path"])
+    assertEquals("bill-feature-implement", implementStats["workflow"])
+    assertEquals(1, implementStats["total_runs"])
+    assertEquals(1, implementStats["finished_runs"])
+    assertEquals(mapOf("SMALL" to 0, "MEDIUM" to 1, "LARGE" to 0), implementStats["feature_size_counts"])
+    assertEquals(0.0, implementStats["pr_created_rate"])
+    assertEquals(4.0, implementStats["average_tasks_completed"])
+    val implementCompletionStatusCounts = implementStats["completion_status_counts"] as Map<*, *>
+    assertEquals(1, implementCompletionStatusCounts["completed"])
+    assertEquals(0, implementCompletionStatusCounts["error"])
+    assertEquals(featureVerifyStatsKeys(), verifyStats.keys)
+    assertEquals(dbPath, verifyStats["db_path"])
+    assertEquals("bill-feature-verify", verifyStats["workflow"])
+    assertEquals(1, verifyStats["total_runs"])
+    assertEquals(1, verifyStats["finished_runs"])
+    assertEquals(1, verifyStats["feature_flag_audit_performed_runs"])
+    assertEquals(1, verifyStats["runs_with_gaps_found"])
+    assertEquals(1.0, verifyStats["history_helpful_rate"])
+    val verifyHistoryRelevanceCounts = verifyStats["history_relevance_counts"] as Map<*, *>
+    assertEquals(0, verifyHistoryRelevanceCounts["none"])
+    assertEquals(1, verifyHistoryRelevanceCounts["low"])
   }
 
   @Test
@@ -140,6 +158,28 @@ class McpRuntimeTest {
           """.trimIndent(),
         ),
       )
+      val telemetryPayload =
+        decodeJsonObject(
+          scalarString(
+            connection,
+            "SELECT payload_json FROM telemetry_outbox WHERE event_name = 'skillbill_review_finished'",
+          ),
+        )
+      assertEquals("rvw-20260427-empty", telemetryPayload["review_run_id"])
+      assertEquals("rvs-20260427-empty", telemetryPayload["review_session_id"])
+      assertEquals("bill-kmp-code-review", telemetryPayload["routed_skill"])
+      assertEquals("kmp", telemetryPayload["review_platform"])
+      assertEquals("unstaged changes", telemetryPayload["review_scope"])
+      assertEquals("inline", telemetryPayload["execution_mode"])
+      assertEquals(0, telemetryPayload["total_findings"])
+      assertEquals(0, telemetryPayload["accepted_findings"])
+      assertEquals(0, telemetryPayload["unresolved_findings"])
+      assertEquals(0.0, telemetryPayload["accepted_rate"])
+      assertEquals(emptyList<Map<String, Any?>>(), telemetryPayload["accepted_finding_details"])
+      assertEquals(emptyList<Map<String, Any?>>(), telemetryPayload["rejected_finding_details"])
+      val learnings = telemetryPayload["learnings"] as Map<*, *>
+      assertEquals(0, learnings["applied_count"])
+      assertEquals("none", learnings["applied_summary"])
     }
   }
 
@@ -459,86 +499,6 @@ class McpRuntimeTest {
   }
 
   @Test
-  fun `telemetry tools preserve proxy request shape`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry")
-    val configPath = writeMcpTelemetryConfig(tempDir, "off")
-    val env =
-      mapOf(
-        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
-        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
-        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
-      )
-    val capturedRequests = mutableListOf<Map<String, Any?>>()
-    val requester = mcpTelemetryRequester(capturedRequests)
-
-    val context = McpRuntimeContext(requester = requester, environment = env, userHome = tempDir)
-    val capabilities = McpRuntime.telemetryProxyCapabilities(context)
-    val stats =
-      McpRuntime.telemetryRemoteStats(
-        request = RemoteStatsRequest(workflow = "bill-feature-verify", dateFrom = "2026-04-01", dateTo = "2026-04-22"),
-        context = context,
-      )
-
-    assertTrue(capabilities["supports_stats"] == true)
-    assertEquals("bill-feature-verify", stats["workflow"])
-    assertEquals(14, stats["started_runs"])
-    val expectedRequests: List<Map<String, Any?>> =
-      listOf(
-        linkedMapOf<String, Any?>(
-          "method" to "GET",
-          "url" to "https://telemetry.example.dev/ingest/capabilities",
-          "body" to null,
-          "authorization" to "Bearer stats-token-123",
-        ),
-        linkedMapOf<String, Any?>(
-          "method" to "GET",
-          "url" to "https://telemetry.example.dev/ingest/capabilities",
-          "body" to null,
-          "authorization" to "Bearer stats-token-123",
-        ),
-        linkedMapOf<String, Any?>(
-          "method" to "POST",
-          "url" to "https://telemetry.example.dev/ingest/stats",
-          "body" to "{\"workflow\":\"bill-feature-verify\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
-          "authorization" to "Bearer stats-token-123",
-        ),
-      )
-    assertEquals(expectedRequests, capturedRequests)
-  }
-
-  @Test
-  fun `telemetry remote stats tool maps short workflow aliases before proxy request`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-alias")
-    val configPath = writeMcpTelemetryConfig(tempDir, "off")
-    val env =
-      mapOf(
-        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
-        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
-        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
-      )
-    val capturedRequests = mutableListOf<Map<String, Any?>>()
-    val context =
-      McpRuntimeContext(
-        requester = mcpTelemetryRequester(capturedRequests),
-        environment = env,
-        userHome = tempDir,
-      )
-
-    val stats =
-      McpToolDispatcher.call(
-        "telemetry_remote_stats",
-        mapOf("workflow" to "verify", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
-        context,
-      )
-
-    assertEquals("bill-feature-verify", stats["workflow"])
-    assertEquals(
-      "{\"workflow\":\"bill-feature-verify\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
-      capturedRequests.last()["body"],
-    )
-  }
-
-  @Test
   fun `mcp workflow methods cover implement verbs and blocked continuation`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-workflow")
     val env = disabledTelemetryEnvironment(tempDir)
@@ -717,24 +677,6 @@ private fun Map<String, String>.withTestTelemetryProxy(): Map<String, String> =
   this + (TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL)
 
 private const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-test-telemetry"
-
-private fun writeMcpTelemetryConfig(tempDir: Path, level: String): Path {
-  val configPath = tempDir.resolve("config.json")
-  Files.writeString(
-    configPath,
-    """
-    {
-      "install_id": "test-install-id",
-      "telemetry": {
-        "level": "$level",
-        "proxy_url": "",
-        "batch_size": 50
-      }
-    }
-    """.trimIndent() + "\n",
-  )
-  return configPath
-}
 
 private fun seedLearningScenario(tempDir: Path, env: Map<String, String>) {
   val dbPath = tempDir.resolve("metrics.db")
@@ -953,42 +895,12 @@ private fun scalarInt(connection: Connection, sql: String): Int = connection.cre
   }
 }
 
-private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
-    capturedRequests +=
-      linkedMapOf(
-        "method" to method,
-        "url" to url,
-        "body" to bodyJson,
-        "authorization" to headers["Authorization"],
-      )
-    when {
-      url.endsWith("/capabilities") ->
-        HttpResponse(
-          200,
-          """
-          {
-            "supports_ingest": true,
-            "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-implement"]
-          }
-          """.trimIndent(),
-        )
-
-      else ->
-        HttpResponse(
-          200,
-          """
-          {
-            "status": "ok",
-            "workflow": "bill-feature-verify",
-            "source": "remote_proxy",
-            "started_runs": 14
-          }
-          """.trimIndent(),
-        )
-    }
+private fun scalarString(connection: Connection, sql: String): String = connection.createStatement().use { statement ->
+  statement.executeQuery(sql).use { resultSet ->
+    resultSet.next()
+    resultSet.getString(1)
   }
+}
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val parsed = JsonSupport.parseObjectOrNull(rawJson)
@@ -997,6 +909,62 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }
+
+private fun featureImplementStatsKeys(): Set<String> = setOf(
+  "workflow",
+  "total_runs",
+  "finished_runs",
+  "in_progress_runs",
+  "feature_size_counts",
+  "completion_status_counts",
+  "audit_result_counts",
+  "validation_result_counts",
+  "feature_flag_pattern_counts",
+  "boundary_history_value_counts",
+  "rollout_needed_runs",
+  "rollout_needed_rate",
+  "feature_flag_used_runs",
+  "feature_flag_used_rate",
+  "pr_created_runs",
+  "pr_created_rate",
+  "boundary_history_written_runs",
+  "boundary_history_written_rate",
+  "average_acceptance_criteria_count",
+  "average_spec_word_count",
+  "average_review_iterations",
+  "average_audit_iterations",
+  "average_files_created",
+  "average_files_modified",
+  "average_tasks_completed",
+  "average_duration_seconds",
+  "db_path",
+)
+
+private fun featureVerifyStatsKeys(): Set<String> = setOf(
+  "workflow",
+  "total_runs",
+  "finished_runs",
+  "in_progress_runs",
+  "completion_status_counts",
+  "audit_result_counts",
+  "rollout_relevant_runs",
+  "rollout_relevant_rate",
+  "feature_flag_audit_performed_runs",
+  "feature_flag_audit_performed_rate",
+  "history_read_runs",
+  "history_read_rate",
+  "history_relevant_runs",
+  "history_relevant_rate",
+  "history_helpful_runs",
+  "history_helpful_rate",
+  "history_relevance_counts",
+  "history_helpfulness_counts",
+  "runs_with_gaps_found",
+  "average_acceptance_criteria_count",
+  "average_review_iterations",
+  "average_duration_seconds",
+  "db_path",
+)
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
   var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName))

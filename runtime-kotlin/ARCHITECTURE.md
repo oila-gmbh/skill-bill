@@ -13,7 +13,7 @@ runtime-cli / runtime-mcp / runtime-desktop data gateways
   -> runtime-application use cases
     -> runtime-ports
       -> runtime-domain models and rules
-        -> runtime-contracts helpers where domain wire-map code requires them
+      -> runtime-contracts helpers for port-owned boundary payload contracts
 
 runtime-infra-fs / runtime-infra-http / runtime-infra-sqlite
   -> runtime-ports + runtime-domain + runtime-contracts
@@ -32,8 +32,9 @@ runtime-core
   area-owned `model` packages.
 - `runtime-ports`: `skillbill.model.RuntimeContext`, persistence sessions,
   repositories, gateway interfaces, telemetry port interfaces, workflow git
-  operations, decomposition-manifest file-store ports, and port-owned model
-  types.
+  operations, decomposition-manifest file-store ports, port-owned model types,
+  and shared payload projection for boundary events that must be consumed by
+  both application and infrastructure adapters.
 - `runtime-application`: CLI/MCP/shared use cases, workflow orchestration,
   telemetry lifecycle orchestration, presenter-to-contract mapping, and
   validated decomposition-manifest file/artifact projection through workflow
@@ -63,15 +64,49 @@ runtime-core
   directly instead of treating `runtime-core` as a broad dependency umbrella.
   If Kotlin-Inject ever requires another generated ABI edge to be public, the
   exact edge and generated type must be documented here and mirrored by an
-  architecture test.
+  architecture test. SKILL-52.2 subtask 5 adds
+  `RuntimeCoreCompositionOnlyTest` as a no-regression guard: the exact
+  `api(project(...))` and `implementation(project(...))` edge sets on
+  `runtime-core/build.gradle.kts` are pinned, and the test fails if any
+  infrastructure (`runtime-infra-*`) or entrypoint (`runtime-cli`, `runtime-mcp`,
+  `runtime-desktop`) module ever appears as `api(...)`.
 - `runtime-cli`: Clikt command tree, option validation, terminal rendering,
   JSON output, help, completion surfaces, and CLI runtime context creation.
+  SKILL-52.2 subtask 5 narrows the main-source project dependency allow-list to
+  `runtime-application`, `runtime-contracts`, `runtime-core`, `runtime-domain`,
+  and `runtime-ports`. `runtime-infra-fs` and `runtime-infra-http` are dropped
+  — runtime-cli has no concrete `skillbill.infrastructure.*` imports outside
+  test sources; the infrastructure adapters are resolved through
+  `RuntimeComponent` (kotlin-inject). The allow-list is enforced by
+  `RuntimeAdapterDependencyAllowlistTest`.
 - `runtime-desktop`: optional Compose Multiplatform JVM desktop app. It owns
   the desktop app-shell, navigation, Room/datastore state, design system,
   desktop feature screens, and desktop data gateways. Shared governed behavior
-  stays in runtime services and ports.
+  stays in runtime services and ports. SKILL-52.2 subtask 5 narrows
+  `runtime-desktop:core:data` jvmMain to `runtime-application`,
+  `runtime-contracts`, `runtime-core`, `runtime-domain`, and `runtime-ports`
+  (plus the desktop-internal `core:common`/`core:database`/`core:domain`
+  modules already declared on commonMain). `runtime-infra-fs` is dropped from
+  jvmMain — the desktop data gateways have no concrete
+  `skillbill.infrastructure.fs.*` imports outside jvmTest; filesystem adapters
+  resolve through `RuntimeComponent`. `runtime-contracts` is now explicit so
+  the gateways' direct `skillbill.error.*` imports
+  (`SkillBillRuntimeException`, `InvalidScaffoldPayloadError`,
+  `MissingInstallSelectionRecordError`, `ScaffoldRollbackError`) do not depend
+  on transitive runtime-application API. `runtime-desktop:feature:skillbill`
+  declares no upstream runtime-application / runtime-domain / runtime-ports /
+  runtime-contracts dependencies — the data gateway crosses the runtime
+  boundary, and the feature module talks to gateways through desktop-domain
+  port types. Allow-lists are enforced by `RuntimeAdapterDependencyAllowlistTest`.
 - `runtime-mcp`: MCP adapter surface, MCP-specific payload shaping, stdio
   server, MCP telemetry schema validation, and MCP runtime context creation.
+  SKILL-52.2 subtask 5 narrows the main-source project dependency allow-list to
+  `runtime-application`, `runtime-contracts`, `runtime-core`, `runtime-domain`,
+  and `runtime-ports`. `runtime-infra-fs` and `runtime-infra-http` are dropped
+  — runtime-mcp has no concrete `skillbill.infrastructure.*` imports outside
+  test sources; the infrastructure adapters are resolved through
+  `RuntimeComponent`. The allow-list is enforced by
+  `RuntimeAdapterDependencyAllowlistTest`.
 
 The Gradle module set is:
 
@@ -120,7 +155,9 @@ runtime-ports
 - `skillbill.ports.*`: port contracts for persistence, install, scaffold,
   validation, telemetry, workflow git operations, and decomposition-manifest
   file storage. Public port DTOs and results live in
-  `skillbill.ports.*.model`.
+  `skillbill.ports.*.model`; shared adapter-facing payload projection may live
+  there when both application and infrastructure need the same boundary
+  contract.
 - `skillbill.contracts.*`: contract DTOs, JSON helpers, runtime surface
   contracts, and schema validators. Mapping from application/domain/port models
   into contract DTOs belongs in application or adapter-owned packages.
@@ -197,8 +234,9 @@ runtime-ports
     `TelemetryConfigStore`, `TelemetryClient`, and
     `TelemetryOutboxRepository`. HTTP request mechanics belong in
     `skillbill.infrastructure.http`; config file IO belongs in
-    `skillbill.infrastructure.fs`; telemetry proxy DTOs belong in
-    `skillbill.contracts.telemetry`; telemetry proxy payload mapping belongs
+    `skillbill.infrastructure.fs`; telemetry ports expose typed domain result
+    models from `skillbill.telemetry.model`; telemetry proxy wire DTOs belong
+    in `skillbill.contracts.telemetry`; telemetry proxy payload mapping belongs
     with the HTTP adapter.
 11. JSON maps, YAML maps, MCP payloads, CLI JSON payloads, and terminal strings
     are boundary concerns. Internal use cases expose typed models.
@@ -251,8 +289,9 @@ runtime-ports
       passthrough for platform packs.
     - **Subtask 3 will remove:** system service / install policy
       surfaces.
-    - **Subtask 4 will remove:** lifecycle/review/telemetry payload
-      surfaces and supporting top-level helpers.
+    - **Subtask 4 will remove:** lifecycle telemetry payload surfaces and
+      supporting top-level helpers. Review service, review repository, and
+      `TelemetryService` typed-boundary work closed in subtask 3.
 
     **Typed-Result-Model Open-Boundary Pattern (SKILL-52.1 subtask 3):**
     when a producer's wire shape is sealed by golden tests but no
@@ -272,18 +311,23 @@ runtime-ports
     raw-map scaffold endpoint, an `McpScaffoldResultMappers` file will
     be reintroduced alongside that wiring.
 
-    **Deferred desktop debt (SKILL-52.1 subtask 3, F-002):** the
-    desktop adapter at
-    `runtime-desktop/core/data/.../RuntimeRepoBrowserService.kt` is
-    currently a third reader of the `@OpenBoundaryMap` `payload` map
-    for `list`, `show`, `validate`, and `saveExactContent`. Lifting
-    the structural list contents to typed fields (e.g.
-    `skills: List<ScaffoldListEntry>`) is intentionally deferred to
-    SKILL-52.1 subtask 4 — subtask 3 retired the gateway raw-map
-    return types but did not migrate the desktop projection mappers,
-    so the desktop service still reaches into `payload` for the
-    nested structural fields. This is documented debt, not silently
-    accepted drift.
+    **Closed desktop debt (SKILL-52.2 subtask 5):** the desktop adapter
+    at `runtime-desktop/core/data/.../RuntimeRepoBrowserService.kt` was
+    historically a third reader of the `@OpenBoundaryMap` `payload` map
+    for `list`, `validate`, and `saveExactContent`. SKILL-52.2 subtask
+    5 lifts the three remaining service-level reads:
+    `saveExactContent` returns the typed `ScaffoldSaveExactContentResult`
+    (the return value is unused beyond signalling success), `validate`
+    consumes the typed `ScaffoldValidateResult.status` field for the
+    pass/fail decision, and `list` consumes a typed
+    `List<AuthoredSkillEntry>` projected by a dedicated mapper. Any
+    remaining raw-shape decoding (issue strings on `ScaffoldValidateResult.payload`,
+    structural list entries on `ScaffoldListResult.payload`) is contained
+    in `runtime-desktop:core:data/.../service/mapper/` files that take
+    the typed result as the receiver. The
+    `RuntimeDesktopGatewayPolicyTest` architecture test scans
+    `RuntimeRepoBrowserService.kt` for raw-map `.payload[`/
+    `.payload.toSelected` patterns and fails on any regression.
 
     Service/gateway PUBLIC APIs MAY NOT return raw `Map<String, Any?>`.
     Once a producer is typed (subtask 3 retired the eight
@@ -303,6 +347,7 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.resumeMap`
     - `skillbill.workflow.WorkflowEngine.continueMap`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
+    - `skillbill.workflow.WorkflowSnapshotValidator.validate`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
     - `skillbill.application.decodeDecompositionManifestMap`
@@ -311,17 +356,6 @@ runtime-ports
     - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.WorkflowFamily.sessionSummary`
-    - `skillbill.application.ScaffoldService.scaffold`
-    - `skillbill.ports.scaffold.ScaffoldGateway.scaffold`
-    - `skillbill.scaffold.policy.requireString`
-    - `skillbill.scaffold.policy.requireStringOrDefault`
-    - `skillbill.scaffold.policy.validatePayloadVersion`
-    - `skillbill.scaffold.policy.detectKind`
-    - `skillbill.scaffold.policy.optionalSpecialistSubagents`
-    - `skillbill.scaffold.policy.rejectLeafSubagentSpecialists`
-    - `skillbill.scaffold.policy.rejectBaselineLayersForNonPlatformPack`
-    - `skillbill.scaffold.policy.resolvePlatformPackSelection`
-    - `skillbill.scaffold.policy.resolvePlatformPackDefaults`
     - `skillbill.application.SystemService.doctor`
     - `skillbill.application.SystemService.version`
     - `skillbill.application.lifecycleOkPayload`
@@ -336,38 +370,6 @@ runtime-ports
     - `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
     - `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
     - `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-    - `skillbill.application.ReviewService.previewImport`
-    - `skillbill.application.ReviewService.importReview`
-    - `skillbill.application.ReviewService.reviewFinishedTelemetryPayload`
-    - `skillbill.application.ReviewService.recordFeedback`
-    - `skillbill.application.ReviewService.telemetryPayload`
-    - `skillbill.application.ReviewService.reviewStats`
-    - `skillbill.application.ReviewService.featureImplementStats`
-    - `skillbill.application.ReviewService.featureVerifyStats`
-    - `skillbill.application.telemetryPayload`
-    - `skillbill.application.TelemetryService.status`
-    - `skillbill.application.TelemetryService.setLevel`
-    - `skillbill.application.TelemetryService.capabilities`
-    - `skillbill.application.TelemetryService.remoteStats`
-    - `skillbill.telemetry.defaultLocalTelemetryConfig`
-    - `skillbill.telemetry.validateRemoteStatsCapabilities`
-    - `skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig`
-    - `skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig`
-    - `skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig`
-    - `skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities`
-    - `skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats`
-    - `skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload`
-    - `skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload`
-    - `skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState`
-    - `skillbill.ports.persistence.ReviewRepository.recordFeedback`
-    - `skillbill.ports.persistence.ReviewRepository.reviewStatsPayload`
-    - `skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload`
-    - `skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload`
-    - `skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities`
-    - `skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.read`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.ensure`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.write`
     - `skillbill.learnings.learningPayload`
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
@@ -377,15 +379,15 @@ runtime-ports
     - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
     - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
     - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
-    - `skillbill.application.model.TelemetrySyncPayload.payload`
-    - `skillbill.application.model.TriageResult.payload`
-    - `skillbill.application.model.TriageResult.telemetryPayload`
     - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
     - `skillbill.install.model.buildInstallPlanWireMap`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
+    - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
+    - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
+    - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
@@ -460,9 +462,21 @@ skillbill.workflow.verify
   tasks live in `runtime-contracts` unless a schema is owned by a single
   adapter surface.
 - Workflow-state schema validation is owned by
-  `skillbill.contracts.workflow.WorkflowStateSchemaValidator`. The owning read
-  seam is `skillbill.workflow.WorkflowEngine`; durable record mapping stays
-  pure and the next engine read rejects drift.
+  `skillbill.contracts.workflow.WorkflowStateSchemaValidator` (its default
+  implementation `CanonicalWorkflowStateSchemaValidator`). The runtime-domain
+  workflow engine MUST NOT import that validator directly — instead it depends
+  on the domain-owned port `skillbill.workflow.WorkflowSnapshotValidator`,
+  which the application boundary wires via
+  `skillbill.application.workflow.WorkflowSnapshotValidatorAdapter`. The
+  owning read seam is still `skillbill.workflow.WorkflowEngine`; durable record
+  mapping stays pure and the next engine read rejects drift. Architecture
+  tests forbid any `skillbill.contracts.workflow.*SchemaValidator*` or
+  `skillbill.contracts.*Mapper` import under `runtime-domain` workflow
+  source. (SKILL-52.2 Subtask 4 narrowed the
+  `runtime-domain -> runtime-contracts` module-graph edge to non-validator
+  helpers only: `JsonSupport`, `WorkflowContracts` ordering helper, the
+  `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` constant, and the typed
+  `InvalidWorkflowStateSchemaError`.)
 - Install-plan schema validation is owned by
   `skillbill.contracts.install.InstallPlanSchemaValidator`. The owning seams
   are install-plan building and CLI/MCP emission through the install
@@ -618,3 +632,177 @@ The architecture tests enforce the following rules:
   exceptions` (the latter asserts ARCHITECTURE.md and the curated
   allow-list constant stay in sync). New exceptions MUST be added to both
   the allow-list constant and ARCHITECTURE.md in the same change.
+
+## SKILL-52.2 — Runtime boundary closure inventory
+
+This section classifies every current public raw-map declaration in
+`runtime-application`, `runtime-domain`, and `runtime-ports` into one of
+four SKILL-52.2 retirement categories. It is the planning ledger for the
+remaining SKILL-52.2 subtasks (2–5).
+
+The FQNs below are sourced from, and stay in strict-set parity with, the
+canonical SKILL-52.1 Open-Boundary Allow-List declared above between the
+`<!-- open-boundary-allowlist:start -->` / `<!-- open-boundary-allowlist:end -->`
+markers and the `RAW_MAP_OPEN_BOUNDARY_ALLOWLIST` companion constant in
+`runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt`.
+The architecture test
+`SKILL-52.2 inventory classifies every public raw-map declaration exactly once`
+parses this section and asserts that union(inventory FQNs) ==
+union(findRawMapViolations ∪ findAnnotatedOpenBoundaryDeclarations) across
+`runtime-application`, `runtime-domain`, and `runtime-ports`.
+
+The subtask ids tagged below (subtask 2, subtask 3, subtask 4, subtask 5) refer
+to SKILL-52.2 subtasks — they intentionally do NOT match the SKILL-52.1 subtask
+numbering used inside the allow-list comments above.
+
+Categories:
+
+- `must_type_now` — public raw-map producer that MUST be replaced with a typed
+  DTO during SKILL-52.2. Every entry carries its owning SKILL-52.2 subtask id.
+- `open_extension` (`@OpenBoundaryMap`) — typed-DTO field/function intentionally
+  modelled as an open boundary. The raw-map shape is the documented extension
+  point and is guarded by the `@OpenBoundaryMap` annotation parity check.
+- `private_serializer` — private/internal raw-map declaration that already
+  lives behind a typed seam (serialization scratch space). These are NOT
+  present in the SKILL-52.1 allow-list (which tracks only public surfaces) and
+  therefore contribute no FQNs to this inventory; the category is retained as
+  a planning slot so future audits can attach private serializer FQNs without
+  reshaping the markers.
+- `postponed_with_reason` — public raw-map surface whose retirement is
+  deliberately deferred beyond SKILL-52.2 (workflow-engine snapshot codec,
+  decomposition manifest codec/writer entrypoints, scaffold-policy
+  pure-policy entrypoints). Every entry carries its owning SKILL-52.2 subtask
+  id; the "reason" is the postponement note in the bullet.
+
+<!-- skill-52-2-inventory:start -->
+
+### must_type_now
+
+- `skillbill.application.SystemService.doctor` [subtask 3] — typed doctor
+  result DTO.
+- `skillbill.application.SystemService.version` [subtask 3] — typed version
+  result DTO.
+- `skillbill.learnings.learningPayload` [subtask 5] — typed learnings
+  payload DTO.
+- `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed
+  learnings summary DTO.
+- `skillbill.learnings.scopeCounts` [subtask 5] — typed learnings scope
+  counts DTO.
+- `skillbill.learnings.learningSessionJson` [subtask 5] — typed learnings
+  session DTO.
+- `skillbill.learnings.summarizeLearningReferences` [subtask 5] — typed
+  learnings reference summary DTO.
+- `skillbill.learnings.learningEntryPayload` [subtask 5] — typed learnings
+  entry DTO.
+
+### open_extension (@OpenBoundaryMap)
+
+- `skillbill.workflow.WorkflowEngine.snapshotMap`
+- `skillbill.workflow.WorkflowEngine.summaryMap`
+- `skillbill.workflow.WorkflowEngine.resumeMap`
+- `skillbill.workflow.WorkflowEngine.continueMap`
+- `skillbill.workflow.WorkflowSnapshotValidator.validate`
+- `skillbill.application.WorkflowFamily.sessionSummary`
+- `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
+- `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
+- `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
+- `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
+- `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
+- `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
+- `skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
+- `skillbill.install.model.buildInstallPlanWireMap`
+- `skillbill.scaffold.model.PlatformManifest.customFields`
+- `skillbill.telemetry.model.TelemetryConfigDocument.payload`
+- `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
+- `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
+- `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
+- `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
+- `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
+- `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload`
+- `skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload`
+- `skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload`
+- `skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload`
+- `skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload`
+- `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
+- `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
+- `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
+- `skillbill.workflow.model.WorkflowContinueView.extraFields`
+- `skillbill.workflow.model.WorkflowContinueView.sessionSummary`
+- `skillbill.workflow.model.WorkflowUpdateInput.stepUpdates`
+- `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
+- `skillbill.ports.validation.model.RepoValidationReport.toPayload`
+- `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+
+### private_serializer
+
+_None — the SKILL-52.1 allow-list tracks only public open-boundary surfaces.
+Private/internal serializer scratch space (e.g. `WorkflowEngine.validatedSnapshotMap`,
+`DecompositionManifestCodec` private extensions, `DecompositionManifestWriterSupport`
+internals, `baseStatusPayload`, `telemetryMutationPayload`, internal helpers in
+`TelemetryHttpRuntime` and `DefaultTelemetrySettingsProvider`) is intentionally
+out-of-scope for the public-surface architecture scanner and therefore not
+enumerated here. Future audits MAY attach private serializer FQNs to this
+category without reshaping the marker block._
+
+### postponed_with_reason
+
+- `skillbill.workflow.WorkflowEngine.continueDecision` [subtask 4] —
+  workflow-engine continue-decision raw-map `sessionSummary` parameter
+  stays a wire-shape seam until the workflow-snapshot typed-DTO pass.
+- `skillbill.workflow.DecompositionManifestCodec.decodeMap` [subtask 4] —
+  decomposition manifest codec entrypoint; retired together with the
+  workflow-snapshot typed-DTO pass.
+- `skillbill.workflow.toWireMap` [subtask 4] — workflow wire-map encoder;
+  retired together with the workflow-snapshot typed-DTO pass.
+- `skillbill.application.decodeDecompositionManifestMap` [subtask 4] —
+  decomposition manifest decode entrypoint; postponed with the workflow
+  family.
+- `skillbill.application.encodeDecompositionManifestMap` [subtask 4] —
+  decomposition manifest encode entrypoint; postponed with the workflow
+  family.
+- `skillbill.application.DecompositionManifestWriter.writeFromWorkflowUpdate`
+  [subtask 4] — decomposition manifest writer entrypoint; postponed with
+  the workflow family.
+- `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+  [subtask 4] — decomposition manifest writer entrypoint; postponed with
+  the workflow family.
+- `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+  [subtask 4] — decomposition manifest writer entrypoint; postponed with
+  the workflow family.
+- `skillbill.application.lifecycleOkPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.lifecycleSkippedPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.lifecycleErrorPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.orchestratedStartedSkippedPayload` [subtask 4] —
+  orchestrated lifecycle start remains a stable payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.orchestratedPayload` [subtask 4] — orchestrated
+  lifecycle finish remains a stable payload map until lifecycle telemetry
+  gains typed result DTOs.
+- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+<!-- skill-52-2-inventory:end -->
