@@ -17,4 +17,16 @@ class FirstRunSetupModelsTest {
     assertFalse(FirstRunSetupState(selectedAgentIds = emptySet()).canContinue)
     assertTrue(FirstRunSetupState(selectedAgentIds = setOf("codex")).canContinue)
   }
+
+  @Test
+  fun `setup request preserves explicit platform selection mode`() {
+    val request = FirstRunSetupState(
+      selectedAgentIds = setOf("codex"),
+      selectedPlatformSlugs = setOf("kotlin", "kmp"),
+      platformSelectionMode = FirstRunPlatformSelectionMode.ALL,
+    ).request()
+
+    assertEquals(FirstRunPlatformSelectionMode.ALL, request.platformSelectionMode)
+    assertEquals(setOf("kotlin", "kmp"), request.selectedPlatformSlugs)
+  }
 }

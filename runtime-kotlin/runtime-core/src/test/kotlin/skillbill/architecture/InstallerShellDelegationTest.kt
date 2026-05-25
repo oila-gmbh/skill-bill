@@ -45,6 +45,8 @@ class InstallerShellDelegationTest {
     assertFalse(installScript.contains("install link-opencode-agents"))
     assertFalse(installScript.contains("install link-junie-agents"))
     assertFalse(installScript.contains("telemetry set-level"))
+    assertFalse(installScript.contains("install-selection.json"))
+    assertFalse(installScript.contains("firstRun."))
   }
 
   @Test

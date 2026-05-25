@@ -37,6 +37,7 @@ import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
 import skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
+import skillbill.desktop.core.domain.model.FirstRunPlatformSelectionMode
 import skillbill.desktop.core.domain.model.FirstRunSetupState
 import skillbill.desktop.core.domain.model.FirstRunSetupStep
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
@@ -182,7 +183,7 @@ fun PostPublishReinstallDialog(state: PostPublishReinstallState, callbacks: Post
         SummaryLine(label = "Agents", value = state.selectedAgentIds.sorted().joinToString(", "))
         SummaryLine(
           label = "Platform packs",
-          value = state.selectedPlatformSlugs.sorted().joinToString(", ").ifBlank { "none" },
+          value = state.platformSelectionLabel(),
         )
         SummaryLine(label = "Telemetry", value = state.telemetryLevel.id)
         SummaryLine(label = "MCP", value = if (state.registerMcp) "register" else "skip")
@@ -221,6 +222,12 @@ fun PostPublishReinstallDialog(state: PostPublishReinstallState, callbacks: Post
       }
     }
   }
+}
+
+private fun PostPublishReinstallState.platformSelectionLabel(): String = when (platformSelectionMode) {
+  FirstRunPlatformSelectionMode.ALL -> "all"
+  FirstRunPlatformSelectionMode.SELECTED -> selectedPlatformSlugs.sorted().joinToString(", ")
+  FirstRunPlatformSelectionMode.NONE -> "none"
 }
 
 @Composable

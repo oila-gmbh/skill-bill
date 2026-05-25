@@ -48,6 +48,42 @@ class DecompositionManifestCommitProjectionTest {
     assertEquals(null, subtask.commitSha)
   }
 
+  @Test
+  fun `workflow-state projection keeps runtime commit sha out of git-tracked manifest`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-commit-sha-file-projection")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
+    Files.createDirectories(parentSpecPath.parent)
+    Files.writeString(parentSpecPath, "# Parent spec\n")
+    val initial = writeIfDecomposed(
+      DecompositionManifestWriteRequest(
+        repoRoot = repoRoot,
+        parentSpecPath = parentSpecPath,
+        planningResult = decompositionPlan(parentSpecPath, subtaskSpec),
+        baseBranch = "main",
+        featureBranch = "feature/SKILL-51-decomposition",
+      ),
+    )
+    assertNotNull(initial)
+    val runtimeManifest = initial.manifest.copy(
+      subtasks = initial.manifest.subtasks.map { subtask ->
+        subtask.copy(status = "complete", commitSha = "commit-subtask-1", workflowId = "wfl-subtask-1")
+      },
+    )
+
+    val result = writeProjectionFromWorkflowState(
+      repoRoot = repoRoot,
+      artifactsJson = durableRuntimeArtifactsJson(runtimeManifest, subtaskSpec),
+    )
+
+    assertNotNull(result)
+    val projected = result.manifest.subtasks.single { it.id == 1 }
+    assertEquals("complete", projected.status)
+    assertEquals(null, projected.commitSha)
+    val loaded = loadDecompositionManifest(result.manifestPath)
+    assertEquals(null, loaded.subtasks.single { it.id == 1 }.commitSha)
+  }
+
   private fun decompositionPlan(parentSpecPath: Path, subtaskSpec: Path): Map<String, Any?> = mapOf(
     "mode" to "decompose",
     "issue_key" to "SKILL-51",

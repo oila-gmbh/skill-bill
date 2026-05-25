@@ -111,6 +111,31 @@ class InvalidTelemetryEventSchemaError(
   cause,
 )
 
+class MissingInstallSelectionRecordError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record is missing at '${path.ifBlank { "<unknown>" }}'.",
+  cause,
+)
+
+class UnreadableInstallSelectionRecordError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record at '${path.ifBlank { "<unknown>" }}' cannot be read.",
+  cause,
+)
+
+class MalformedInstallSelectionRecordError(
+  val path: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record at '${path.ifBlank { "<unknown>" }}' is malformed: $reason",
+  cause,
+)
+
 class ContractVersionMismatchError(
   message: String,
   cause: Throwable? = null,

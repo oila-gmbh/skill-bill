@@ -1,3 +1,37 @@
+## [2026-05-24] SKILL-53 validation-contract-lock
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop, runtime-kotlin/runtime-core architecture tests
+- Final SKILL-53 coverage locks CLI install persistence, detected/manual agent replay, MCP opt-out, desktop legacy preference migration, and install.sh runtime delegation without adding desktop dependencies. reusable
+- `FileSystemInstallSelectionPersistence` now validates write payloads through the same parser and UTF-8 size guard as reads, preserving the prior durable record on invalid or oversized writes. reusable
+- Desktop replay preserves `PlatformSelectionMode.ALL`; completed desktop preferences normalize live and durable state back to desktop-owned fields only.
+- Decomposition manifests must not carry review/audit/validation payloads; workflow artifacts own those results while git-tracked manifests keep runtime projection fields only.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-05-24] SKILL-53 desktop-adapter-migration
+Areas: runtime-kotlin/runtime-desktop/core/domain, runtime-kotlin/runtime-desktop/core/data, runtime-kotlin/runtime-desktop/core/datastore, runtime-kotlin/runtime-desktop/feature/skillbill
+- Desktop first-run and post-publish reinstall replay now flow through `DesktopFirstRunGateway.latestReusableSetupRequest`, backed by the shared `InstallSelectionPersistencePort`; no CLI or shell dependency was added. reusable
+- `LocalDesktopPreferenceStore` keeps desktop-owned completion/recent-repo state, removes reusable install-choice keys on new writes, and still loads legacy `firstRun.*` keys as a migration fallback. reusable
+- Desktop request models now preserve platform pack selection mode (`NONE`, `SELECTED`, `ALL`) so shared install-selection replay can round-trip all-pack installs.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-05-24] SKILL-53 cli-shell-persistence
+Areas: runtime-kotlin/runtime-application install service, runtime-kotlin/runtime-cli install apply, install.sh runtime delegation
+- `InstallService.applyInstall` now persists `SharedInstallSelection` through `InstallSelectionPersistencePort` only after non-failure typed apply results, keeping CLI/shell writes outside desktop modules. reusable
+- Persisted agents prefer `InstallApplyResult.resolvedInstalledAgents` and fall back to planned agents only when the apply result has no stronger evidence. reusable
+- CLI coverage now asserts manual/detected selections, platform mode, telemetry level, MCP opt-out, and failure non-persistence through the canonical `install-selection.json` record.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-05-24] SKILL-53 shared-install-selection-foundation
+Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-ports install selection port, runtime-kotlin/runtime-infra-fs install-selection persistence, runtime-kotlin/runtime-contracts errors, runtime-kotlin/runtime-core DI
+- Shared install selection now lives outside desktop as `SharedInstallSelection` plus `InstallSelectionPersistencePort`; requests carry explicit `installHome` so CLI/Desktop callers can persist the intended runtime install state. reusable
+- `FileSystemInstallSelectionPersistence` stores canonical v1 JSON at `<installHome>/.skill-bill/install-selection.json` with atomic temp-file replacement, a 64 KiB read guard, and typed missing/unreadable/malformed errors. reusable
+- Parser locks install-selection invariants: selected platform slugs must match mode, slugs and MCP bin paths cannot be blank, and canonical JSON shape has fixture coverage.
+- `InstallApplyResult.resolvedInstalledAgents` is computed from status+skill links only: empty on failure, CREATED/SKIPPED agents on success/warning, keeping future persistence from storing stale requested agents. reusable
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-24] SKILL-52.1 final-validation-and-contract-lock
 Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop/core/data
 - SKILL-52.1 closes with architecture documentation and tests aligned on raw-map open-boundary parity, inert `Path` handling outside adapters/composition, install-policy ownership with dual install-plan validation, and the narrowed runtime-core public ABI edge. reusable
@@ -112,6 +146,13 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtim
 - Architecture coverage now bans domain workflow schema/YAML seams and raw application `decomposition_runtime` wire emission; the remaining application `Files` projection is documented as a temporary SKILL-52 blocker for later storage-port work.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
+
+## [2026-05-24] SKILL-53 decomposition-manifest-commit-projection
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, skills/bill-feature-implement
+- Same-branch subtask commits now include staged `decomposition-manifest.yaml` status/current-intent projections; the previous infra Git adapter behavior that unstaged manifest projections before committing was removed. reusable
+- Git-tracked decomposition manifests intentionally project `commit_sha: null`; subtask commit SHAs remain durable workflow runtime state because a commit cannot contain its own final SHA without changing that SHA. reusable
+Feature flag: N/A
+Acceptance criteria: internal defect fix
 
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
 Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement

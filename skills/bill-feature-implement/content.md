@@ -577,6 +577,10 @@ Decomposition rules:
 - Same-branch decompositions advance one subtask at a time on the parent feature
   branch. Each completed subtask gets an individual commit before the next
   pending dependency-complete subtask starts.
+- The Git-tracked decomposition manifest is a human recovery ledger: commit
+  subtask status/current-intent projections with the subtask, but keep the
+  resulting commit SHA in durable workflow runtime state rather than trying to
+  write it into the same commit's manifest projection.
 - Stacked decompositions are opt-in only. Every subtask must declare its branch
   and expected base in stack order so continuation can check out the right branch
   and reject advancement onto the wrong base.

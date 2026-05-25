@@ -496,7 +496,7 @@ class ApplicationPersistencePortTest {
 
     val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals(2, continued.decompositionSubtaskId)
-    assertEquals("abc123", manifest.subtasks.first { it.id == 1 }.commitSha)
+    assertEquals(null, manifest.subtasks.first { it.id == 1 }.commitSha)
     assertEquals(listOf("SKILL-51 subtask 1: foundation"), git.commits)
   }
 
@@ -525,7 +525,7 @@ class ApplicationPersistencePortTest {
     assertEquals("complete", done.decompositionStatus)
     assertEquals("complete", manifest.status)
     assertTrue(manifest.subtasks.all { it.status == "complete" })
-    assertTrue(manifest.subtasks.all { it.commitSha == "abc123" })
+    assertTrue(manifest.subtasks.all { it.commitSha == null })
     assertEquals(listOf("SKILL-51 subtask 1: foundation", "SKILL-51 subtask 2: runtime"), git.commits)
     assertEquals("Complete", statusLine(parentSpec))
     assertEquals("Complete", statusSection(parentSpec))

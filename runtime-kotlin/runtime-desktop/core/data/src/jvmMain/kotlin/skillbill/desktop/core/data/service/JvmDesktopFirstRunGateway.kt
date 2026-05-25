@@ -15,11 +15,13 @@ import skillbill.desktop.core.domain.model.FirstRunInstallPlanHandle
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
 import skillbill.desktop.core.domain.model.FirstRunPlanResult
 import skillbill.desktop.core.domain.model.FirstRunPlatformPackOption
+import skillbill.desktop.core.domain.model.FirstRunPlatformSelectionMode
 import skillbill.desktop.core.domain.model.FirstRunSetupAgent
 import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
 import skillbill.desktop.core.domain.model.FirstRunSetupRequest
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
+import skillbill.error.MissingInstallSelectionRecordError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -35,9 +37,12 @@ import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.RuntimeDistributionInputs
+import skillbill.install.model.SharedInstallSelection
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
+import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -61,6 +66,9 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
   ) -> List<skillbill.install.model.AgentTarget> = { home ->
     DesktopRuntimeInstallServices.forHome(home).installAgentService.detectAgentTargets(home)
   }
+  internal var latestReusableSetupRequest: (Path, FirstRunSetupRequest?) -> FirstRunSetupRequest? = { home, legacy ->
+    latestSharedSetupRequest(home, legacy)
+  }
 
   override fun hasExistingInstall(): Boolean = runCatching {
     val stagingRoot = homeProvider()
@@ -79,6 +87,9 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
       }
     }
   }.getOrDefault(false)
+
+  override fun latestReusableSetupRequest(legacyFallback: FirstRunSetupRequest?): FirstRunSetupRequest? =
+    latestReusableSetupRequest(homeProvider().toAbsolutePath().normalize(), legacyFallback)
 
   override suspend fun discoverSetup(): FirstRunDiscoveryResult = try {
     val home = homeProvider().toAbsolutePath().normalize()
@@ -192,12 +203,12 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
         manualAgents = selectedAgents,
       ),
       platformPackSelection = PlatformPackSelection(
-        mode = if (request.selectedPlatformSlugs.isEmpty()) {
-          PlatformPackSelectionMode.NONE
+        mode = request.platformSelectionMode.toPlatformPackSelectionMode(),
+        selectedSlugs = if (request.platformSelectionMode == FirstRunPlatformSelectionMode.SELECTED) {
+          request.selectedPlatformSlugs
         } else {
-          PlatformPackSelectionMode.SELECTED
+          emptySet()
         },
-        selectedSlugs = request.selectedPlatformSlugs,
       ),
       telemetryLevel = request.telemetryLevel.toInstallTelemetryLevel(),
       mcpRegistrationChoice = McpRegistrationChoice(
@@ -221,6 +232,25 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
   }
 }
 
+private fun latestSharedSetupRequest(home: Path, legacyFallback: FirstRunSetupRequest?): FirstRunSetupRequest? {
+  val services = DesktopRuntimeInstallServices.forHome(home)
+  return try {
+    services.installSelectionPersistencePort
+      .readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(home))
+      .selection
+      .toFirstRunSetupRequest()
+  } catch (_: MissingInstallSelectionRecordError) {
+    legacyFallback?.takeIf { fallback -> fallback.selectedAgentIds.isNotEmpty() }?.also { fallback ->
+      services.installSelectionPersistencePort.writeLatestSuccessfulSelection(
+        WriteLatestSuccessfulInstallSelectionRequest(
+          installHome = home,
+          selection = fallback.toSharedInstallSelection(),
+        ),
+      )
+    }
+  }
+}
+
 private data class RuntimeInstallPlanHandle(val plan: InstallPlan) : FirstRunInstallPlanHandle
 
 private fun FirstRunTelemetryLevel.toInstallTelemetryLevel(): InstallTelemetryLevel = when (this) {
@@ -228,6 +258,46 @@ private fun FirstRunTelemetryLevel.toInstallTelemetryLevel(): InstallTelemetryLe
   FirstRunTelemetryLevel.FULL -> InstallTelemetryLevel.FULL
   FirstRunTelemetryLevel.OFF -> InstallTelemetryLevel.OFF
 }
+
+private fun InstallTelemetryLevel.toFirstRunTelemetryLevel(): FirstRunTelemetryLevel = when (this) {
+  InstallTelemetryLevel.ANONYMOUS -> FirstRunTelemetryLevel.ANONYMOUS
+  InstallTelemetryLevel.FULL -> FirstRunTelemetryLevel.FULL
+  InstallTelemetryLevel.OFF -> FirstRunTelemetryLevel.OFF
+}
+
+private fun FirstRunPlatformSelectionMode.toPlatformPackSelectionMode(): PlatformPackSelectionMode = when (this) {
+  FirstRunPlatformSelectionMode.NONE -> PlatformPackSelectionMode.NONE
+  FirstRunPlatformSelectionMode.SELECTED -> PlatformPackSelectionMode.SELECTED
+  FirstRunPlatformSelectionMode.ALL -> PlatformPackSelectionMode.ALL
+}
+
+private fun PlatformPackSelectionMode.toFirstRunPlatformSelectionMode(): FirstRunPlatformSelectionMode = when (this) {
+  PlatformPackSelectionMode.NONE -> FirstRunPlatformSelectionMode.NONE
+  PlatformPackSelectionMode.SELECTED -> FirstRunPlatformSelectionMode.SELECTED
+  PlatformPackSelectionMode.ALL -> FirstRunPlatformSelectionMode.ALL
+}
+
+private fun SharedInstallSelection.toFirstRunSetupRequest(): FirstRunSetupRequest = FirstRunSetupRequest(
+  selectedAgentIds = selectedAgents.mapTo(mutableSetOf(), InstallAgent::id),
+  selectedPlatformSlugs = platformPackSelection.selectedSlugs,
+  telemetryLevel = telemetryLevel.toFirstRunTelemetryLevel(),
+  registerMcp = mcpRegistrationChoice.register,
+  platformSelectionMode = platformPackSelection.mode.toFirstRunPlatformSelectionMode(),
+)
+
+private fun FirstRunSetupRequest.toSharedInstallSelection(): SharedInstallSelection = SharedInstallSelection(
+  selectedAgents = selectedAgentIds.mapTo(mutableSetOf(), InstallAgent::fromId),
+  platformPackSelection = PlatformPackSelection(
+    mode = platformSelectionMode.toPlatformPackSelectionMode(),
+    selectedSlugs = if (platformSelectionMode == FirstRunPlatformSelectionMode.SELECTED) {
+      selectedPlatformSlugs
+    } else {
+      emptySet()
+    },
+  ),
+  telemetryLevel = telemetryLevel.toInstallTelemetryLevel(),
+  mcpRegistrationChoice = McpRegistrationChoice(register = registerMcp),
+)
 
 private fun InstallPlan.toFirstRunPlan(): FirstRunInstallPlan = FirstRunInstallPlan(
   handle = RuntimeInstallPlanHandle(this),

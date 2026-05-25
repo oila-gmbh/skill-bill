@@ -15,6 +15,7 @@ import skillbill.desktop.core.domain.model.FirstRunInstallStatus
 import skillbill.desktop.core.domain.model.FirstRunPlanResult
 import skillbill.desktop.core.domain.model.FirstRunPlatformPackOption
 import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
+import skillbill.desktop.core.domain.model.FirstRunSetupRequest
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.model.GitAheadBehind
 import skillbill.desktop.core.domain.model.GitOperationResult
@@ -1370,22 +1371,29 @@ class SkillBillViewModelGitTest {
   }
 
   @Test
-  fun `successful publish prompts reinstall when completed install preferences exist`() {
+  fun `successful publish prompts reinstall when shared install selection exists`() {
     val gitGateway = FakeGitGateway(
       scriptedPublishingStatus = GitPublishingStatus(
         pushTarget = GitPushTarget(remoteName = "origin", branchName = "feature"),
         aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
       ),
     )
-    val preferenceStore = FakeDesktopPreferenceStore(
-      initialFirstRunPreferences = DesktopFirstRunPreferences(
-        completed = true,
+    val firstRunGateway = FakeDesktopFirstRunGateway(
+      discoveryResult = FirstRunDiscoveryResult.Success(
+        FirstRunSetupDiscovery(agents = emptyList(), platformPacks = emptyList()),
+      ),
+      planResult = FirstRunPlanResult.Planned(reinstallPlan()),
+      applyResult = FirstRunApplyResult.Applied(
+        FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+      ),
+      latestReusableSetupRequest = FirstRunSetupRequest(
         selectedAgentIds = setOf("codex"),
         selectedPlatformSlugs = setOf("kotlin"),
-        telemetryLevelId = FirstRunTelemetryLevel.FULL.id,
+        telemetryLevel = FirstRunTelemetryLevel.FULL,
+        registerMcp = true,
       ),
     )
-    val viewModel = newViewModel(gitGateway = gitGateway, desktopPreferenceStore = preferenceStore)
+    val viewModel = newViewModel(gitGateway = gitGateway, firstRunGateway = firstRunGateway)
     viewModel.selectRepoPath("/repo")
     viewModel.refreshGit()
 
@@ -1484,14 +1492,14 @@ class SkillBillViewModelGitTest {
         aheadBehind = GitAheadBehind(ahead = 1, behind = 0),
       ),
     )
-    val preferenceStore = FakeDesktopPreferenceStore(
-      initialFirstRunPreferences = DesktopFirstRunPreferences(
-        completed = true,
-        selectedAgentIds = setOf("codex", "claude"),
-        selectedPlatformSlugs = setOf("kotlin"),
-        telemetryLevelId = FirstRunTelemetryLevel.OFF.id,
-      ),
+    gateway.latestReusableSetupRequest = FirstRunSetupRequest(
+      selectedAgentIds = setOf("codex", "claude"),
+      selectedPlatformSlugs = setOf("kotlin"),
+      telemetryLevel = FirstRunTelemetryLevel.OFF,
+      registerMcp = true,
     )
+    val preferenceStore =
+      FakeDesktopPreferenceStore(initialFirstRunPreferences = DesktopFirstRunPreferences(completed = true))
     val viewModel = newViewModel(
       gitGateway = gitGateway,
       firstRunGateway = gateway,

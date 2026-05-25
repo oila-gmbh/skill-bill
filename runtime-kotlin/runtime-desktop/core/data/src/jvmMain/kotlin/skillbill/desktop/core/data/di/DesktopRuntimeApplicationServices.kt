@@ -12,6 +12,7 @@ import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
+import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Path
@@ -54,6 +55,7 @@ class DesktopRuntimeApplicationServices {
 internal data class DesktopRuntimeInstallServices(
   val installService: InstallService,
   val installAgentService: InstallAgentService,
+  val installSelectionPersistencePort: InstallSelectionPersistencePort,
   val telemetryLevelMutator: TelemetryLevelMutator,
 ) {
   companion object {
@@ -62,6 +64,7 @@ internal data class DesktopRuntimeInstallServices(
       return DesktopRuntimeInstallServices(
         installService = component.installService,
         installAgentService = component.installAgentService,
+        installSelectionPersistencePort = component.installSelectionPersistencePort,
         telemetryLevelMutator = component.telemetryLevelMutator,
       )
     }

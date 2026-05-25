@@ -5,12 +5,11 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GitWorkflowGitOperationsTest {
   @Test
-  fun `create commit leaves decomposition manifest uncommitted`() {
+  fun `create commit includes staged decomposition manifest projection`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-workflow")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -26,8 +25,8 @@ class GitWorkflowGitOperationsTest {
     assertTrue(result.ok, result.error)
     val committedFiles = git(repoRoot, "show", "--name-only", "--format=", "HEAD")
     assertContains(committedFiles, "runtime.txt")
-    assertFalse("decomposition-manifest.yaml" in committedFiles)
-    assertEquals("?? .feature-specs/", git(repoRoot, "status", "--short").lineSequence().first())
+    assertContains(committedFiles, ".feature-specs/SKILL-52-demo/decomposition-manifest.yaml")
+    assertEquals("", git(repoRoot, "status", "--short"))
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {
