@@ -4,6 +4,7 @@ import skillbill.review.TriageDecisionParser
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
 import java.sql.Connection
 
@@ -25,7 +26,7 @@ object TriageRuntime {
     connection: Connection,
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions = FeedbackTelemetryOptions(),
-  ): Map<String, Any?>? = connection.inTransaction {
+  ): ReviewFinishedTelemetry? = connection.inTransaction {
     recordFeedbackWithoutTransaction(connection, request, telemetryOptions)
   }
 
@@ -33,7 +34,7 @@ object TriageRuntime {
     connection: Connection,
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions = FeedbackTelemetryOptions(),
-  ): Map<String, Any?>? {
+  ): ReviewFinishedTelemetry? {
     validateFeedbackRequest(connection, request)
     request.findingIds.forEach { findingId ->
       insertFeedbackEvent(connection, request.reviewRunId, findingId, request.eventType, request.note)

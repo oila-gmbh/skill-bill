@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+  api(project(":runtime-contracts"))
   api(project(":runtime-domain"))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)

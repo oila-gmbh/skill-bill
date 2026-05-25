@@ -23,10 +23,14 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.LearningResolution
+import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
 import java.nio.file.Path
 import java.sql.Connection
 
@@ -70,18 +74,21 @@ class SQLiteReviewRepository(
     }
   }
 
-  override fun updateReviewFinishedTelemetryState(runId: String, enabled: Boolean, level: String): Map<String, Any?>? =
-    ReviewStatsRuntime.updateReviewFinishedTelemetryState(
-      connection = connection,
-      reviewRunId = runId,
-      enabled = enabled,
-      level = level,
-    )
+  override fun updateReviewFinishedTelemetryState(
+    runId: String,
+    enabled: Boolean,
+    level: String,
+  ): ReviewFinishedTelemetry? = ReviewStatsRuntime.updateReviewFinishedTelemetryState(
+    connection = connection,
+    reviewRunId = runId,
+    enabled = enabled,
+    level = level,
+  )
 
   override fun recordFeedback(
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions,
-  ): Map<String, Any?>? = TriageRuntime.recordFeedbackWithoutTransaction(connection, request, telemetryOptions)
+  ): ReviewFinishedTelemetry? = TriageRuntime.recordFeedbackWithoutTransaction(connection, request, telemetryOptions)
 
   override fun fetchNumberedFindings(runId: String): List<NumberedFinding> =
     ReviewRuntime.fetchNumberedFindings(connection, runId)
@@ -118,13 +125,13 @@ class SQLiteReviewRepository(
     }
   }
 
-  override fun reviewStatsPayload(runId: String?): Map<String, Any?> =
-    ReviewStatsRuntime.statsPayload(connection, runId)
+  override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot =
+    ReviewStatsRuntime.statsSnapshot(connection, runId)
 
-  override fun featureImplementStatsPayload(): Map<String, Any?> =
-    ReviewStatsRuntime.featureImplementStatsPayload(connection)
+  override fun featureImplementStats(): FeatureImplementWorkflowStats =
+    ReviewStatsRuntime.featureImplementStats(connection)
 
-  override fun featureVerifyStatsPayload(): Map<String, Any?> = ReviewStatsRuntime.featureVerifyStatsPayload(connection)
+  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = ReviewStatsRuntime.featureVerifyStats(connection)
 }
 
 class SQLiteLearningRepository(

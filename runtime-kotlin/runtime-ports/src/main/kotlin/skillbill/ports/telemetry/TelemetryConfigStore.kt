@@ -1,5 +1,6 @@
 package skillbill.ports.telemetry
 
+import skillbill.telemetry.model.TelemetryConfigDocument
 import java.nio.file.Path
 
 interface TelemetryConfigStore {
@@ -7,11 +8,11 @@ interface TelemetryConfigStore {
 
   fun configPath(): Path
 
-  fun read(): Map<String, Any?>?
+  fun read(): TelemetryConfigDocument?
 
-  fun ensure(): Map<String, Any?>
+  fun ensure(): TelemetryConfigDocument
 
-  fun write(payload: Map<String, Any?>)
+  fun write(document: TelemetryConfigDocument)
 
   fun delete(): Boolean
 }

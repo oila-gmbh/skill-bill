@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.model.TelemetryMutationResult
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.telemetry.model.TelemetrySettings
@@ -19,18 +20,19 @@ internal fun feedbackTelemetryOptions(settingsProvider: TelemetrySettingsProvide
   )
 }
 
-internal fun telemetryMutationPayload(settings: TelemetrySettings, clearedEvents: Int): Map<String, Any?> = linkedMapOf(
-  "config_path" to settings.configPath.toString(),
-  "telemetry_enabled" to settings.enabled,
-  "telemetry_level" to settings.level,
-  "sync_target" to telemetrySyncTarget(settings),
-  "remote_configured" to settings.proxyUrl.isNotBlank(),
-  "proxy_configured" to (settings.customProxyUrl != null),
-  "proxy_url" to settings.proxyUrl,
-  "custom_proxy_url" to settings.customProxyUrl,
-  "install_id" to settings.installId,
-  "cleared_events" to clearedEvents,
-)
+internal fun telemetryMutationResult(settings: TelemetrySettings, clearedEvents: Int): TelemetryMutationResult =
+  TelemetryMutationResult(
+    configPath = settings.configPath.toString(),
+    telemetryEnabled = settings.enabled,
+    telemetryLevel = settings.level,
+    syncTarget = telemetrySyncTarget(settings),
+    remoteConfigured = settings.proxyUrl.isNotBlank(),
+    proxyConfigured = settings.customProxyUrl != null,
+    proxyUrl = settings.proxyUrl,
+    customProxyUrl = settings.customProxyUrl,
+    installId = settings.installId,
+    clearedEvents = clearedEvents,
+  )
 
 internal fun mapWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"

@@ -1,3 +1,14 @@
+## [2026-05-25] SKILL-52.2 review-telemetry-typed-boundaries
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-{sqlite,http,fs}, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
+- ReviewService and ReviewRepository now expose typed review/stat/triage models; CLI/MCP map payloads are rebuilt only in adapter mapper files. reusable
+- TelemetryClient, TelemetryConfigStore, and TelemetryService now expose typed capability/status/sync/stats models, with `TelemetryConfigDocument` as the explicit open config document type. reusable
+- Review-finished JSON projection lives at the port telemetry boundary and `runtime-ports` publishes `runtime-contracts` as an API dependency because `JsonPayloadContract` is in the public port ABI.
+- Remote `/stats` responses preserve explicit `capabilities: null`; default proxy capabilities are inserted only when the key is absent, with CLI/MCP regression coverage.
+- Telemetry sync uses short database sessions around outbox reads/writes instead of holding a transaction across remote I/O.
+- ARCHITECTURE.md inventory and architecture tests remove retired review/telemetry raw-map public APIs and keep lifecycle telemetry raw-map cleanup postponed to subtask 4.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-25] SKILL-52.2 scaffold-typed-command-boundary
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop/core/data, runtime-kotlin/runtime-core architecture tests
 - `ScaffoldGateway.scaffold` and `ScaffoldService.scaffold` are typed-only now: `scaffold(request: ScaffoldCommandRequest, dryRun: Boolean)`. Sealed model lives at `runtime-domain/skillbill.scaffold.model.command` (the `.model.*` package keeps it adapter-importable under `RuntimeImplementationImportRules`). reusable

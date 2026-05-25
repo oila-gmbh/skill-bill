@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import java.sql.Connection
 
 private val featureVerifyCompletionStatuses =
@@ -18,7 +20,7 @@ private val completionStatuses =
 private val validationResults = listOf("pass", "fail", "skipped")
 private val featureFlagPatterns = listOf("simple_conditional", "di_switch", "legacy", "none")
 
-fun buildFeatureVerifyStatsPayload(rows: List<Map<String, Any?>>): Map<String, Any?> {
+fun buildFeatureVerifyStats(rows: List<Map<String, Any?>>): FeatureVerifyWorkflowStats {
   val finishedRows = finishedRows(rows)
   val rolloutRelevantRuns = rows.count { it.booleanValue("rollout_relevant") }
   val auditPerformedRuns = finishedRows.count { it.booleanValue("feature_flag_audit_performed") }
@@ -29,33 +31,32 @@ fun buildFeatureVerifyStatsPayload(rows: List<Map<String, Any?>>): Map<String, A
   val reviewIterations = finishedRows.mapNotNull { it.intValue("review_iterations") }
   val durations = finishedRows.map(::durationSeconds).filter { it > 0 }
   val acceptanceCriteriaCounts = rows.mapNotNull { it.intValue("acceptance_criteria_count") }
-  return mapOf(
-    "workflow" to "bill-feature-verify",
-    "total_runs" to rows.size,
-    "finished_runs" to finishedRows.size,
-    "in_progress_runs" to rows.size - finishedRows.size,
-    "completion_status_counts" to countValues(finishedRows, "completion_status", featureVerifyCompletionStatuses),
-    "audit_result_counts" to countValues(finishedRows, "audit_result", auditResults),
-    "rollout_relevant_runs" to rolloutRelevantRuns,
-    "rollout_relevant_rate" to rate(rolloutRelevantRuns, rows.size),
-    "feature_flag_audit_performed_runs" to auditPerformedRuns,
-    "feature_flag_audit_performed_rate" to rate(auditPerformedRuns, finishedRows.size),
-    "history_read_runs" to historyReadRuns,
-    "history_read_rate" to rate(historyReadRuns, finishedRows.size),
-    "history_relevant_runs" to historyRelevantRuns,
-    "history_relevant_rate" to rate(historyRelevantRuns, finishedRows.size),
-    "history_helpful_runs" to historyHelpfulRuns,
-    "history_helpful_rate" to rate(historyHelpfulRuns, finishedRows.size),
-    "history_relevance_counts" to countValues(finishedRows, "history_relevance", historySignalValues),
-    "history_helpfulness_counts" to countValues(finishedRows, "history_helpfulness", historySignalValues),
-    "runs_with_gaps_found" to runsWithGapsFound,
-    "average_acceptance_criteria_count" to average(acceptanceCriteriaCounts),
-    "average_review_iterations" to average(reviewIterations),
-    "average_duration_seconds" to average(durations),
+  return FeatureVerifyWorkflowStats(
+    totalRuns = rows.size,
+    finishedRuns = finishedRows.size,
+    inProgressRuns = rows.size - finishedRows.size,
+    completionStatusCounts = countValues(finishedRows, "completion_status", featureVerifyCompletionStatuses),
+    auditResultCounts = countValues(finishedRows, "audit_result", auditResults),
+    rolloutRelevantRuns = rolloutRelevantRuns,
+    rolloutRelevantRate = rate(rolloutRelevantRuns, rows.size),
+    featureFlagAuditPerformedRuns = auditPerformedRuns,
+    featureFlagAuditPerformedRate = rate(auditPerformedRuns, finishedRows.size),
+    historyReadRuns = historyReadRuns,
+    historyReadRate = rate(historyReadRuns, finishedRows.size),
+    historyRelevantRuns = historyRelevantRuns,
+    historyRelevantRate = rate(historyRelevantRuns, finishedRows.size),
+    historyHelpfulRuns = historyHelpfulRuns,
+    historyHelpfulRate = rate(historyHelpfulRuns, finishedRows.size),
+    historyRelevanceCounts = countValues(finishedRows, "history_relevance", historySignalValues),
+    historyHelpfulnessCounts = countValues(finishedRows, "history_helpfulness", historySignalValues),
+    runsWithGapsFound = runsWithGapsFound,
+    averageAcceptanceCriteriaCount = average(acceptanceCriteriaCounts),
+    averageReviewIterations = average(reviewIterations),
+    averageDurationSeconds = average(durations),
   )
 }
 
-fun buildFeatureImplementStatsPayload(rows: List<Map<String, Any?>>): Map<String, Any?> {
+fun buildFeatureImplementStats(rows: List<Map<String, Any?>>): FeatureImplementWorkflowStats {
   val finishedRows = finishedRows(rows)
   val rolloutNeededRuns = rows.count { it.booleanValue("rollout_needed") }
   val featureFlagUsedRuns = finishedRows.count { it.booleanValue("feature_flag_used") }
@@ -69,33 +70,32 @@ fun buildFeatureImplementStatsPayload(rows: List<Map<String, Any?>>): Map<String
   val filesModified = finishedRows.mapNotNull { it.intValue("files_modified") }
   val tasksCompleted = finishedRows.mapNotNull { it.intValue("tasks_completed") }
   val durations = finishedRows.map(::durationSeconds).filter { it > 0 }
-  return mapOf(
-    "workflow" to "bill-feature-implement",
-    "total_runs" to rows.size,
-    "finished_runs" to finishedRows.size,
-    "in_progress_runs" to rows.size - finishedRows.size,
-    "feature_size_counts" to countValues(rows, "feature_size", featureSizes),
-    "completion_status_counts" to countValues(finishedRows, "completion_status", completionStatuses),
-    "audit_result_counts" to countValues(finishedRows, "audit_result", auditResults),
-    "validation_result_counts" to countValues(finishedRows, "validation_result", validationResults),
-    "feature_flag_pattern_counts" to countValues(finishedRows, "feature_flag_pattern", featureFlagPatterns),
-    "boundary_history_value_counts" to countValues(finishedRows, "boundary_history_value", historySignalValues),
-    "rollout_needed_runs" to rolloutNeededRuns,
-    "rollout_needed_rate" to rate(rolloutNeededRuns, rows.size),
-    "feature_flag_used_runs" to featureFlagUsedRuns,
-    "feature_flag_used_rate" to rate(featureFlagUsedRuns, finishedRows.size),
-    "pr_created_runs" to prCreatedRuns,
-    "pr_created_rate" to rate(prCreatedRuns, finishedRows.size),
-    "boundary_history_written_runs" to boundaryHistoryWrittenRuns,
-    "boundary_history_written_rate" to rate(boundaryHistoryWrittenRuns, finishedRows.size),
-    "average_acceptance_criteria_count" to average(acceptanceCriteriaCounts),
-    "average_spec_word_count" to average(specWordCounts),
-    "average_review_iterations" to average(reviewIterations),
-    "average_audit_iterations" to average(auditIterations),
-    "average_files_created" to average(filesCreated),
-    "average_files_modified" to average(filesModified),
-    "average_tasks_completed" to average(tasksCompleted),
-    "average_duration_seconds" to average(durations),
+  return FeatureImplementWorkflowStats(
+    totalRuns = rows.size,
+    finishedRuns = finishedRows.size,
+    inProgressRuns = rows.size - finishedRows.size,
+    featureSizeCounts = countValues(rows, "feature_size", featureSizes),
+    completionStatusCounts = countValues(finishedRows, "completion_status", completionStatuses),
+    auditResultCounts = countValues(finishedRows, "audit_result", auditResults),
+    validationResultCounts = countValues(finishedRows, "validation_result", validationResults),
+    featureFlagPatternCounts = countValues(finishedRows, "feature_flag_pattern", featureFlagPatterns),
+    boundaryHistoryValueCounts = countValues(finishedRows, "boundary_history_value", historySignalValues),
+    rolloutNeededRuns = rolloutNeededRuns,
+    rolloutNeededRate = rate(rolloutNeededRuns, rows.size),
+    featureFlagUsedRuns = featureFlagUsedRuns,
+    featureFlagUsedRate = rate(featureFlagUsedRuns, finishedRows.size),
+    prCreatedRuns = prCreatedRuns,
+    prCreatedRate = rate(prCreatedRuns, finishedRows.size),
+    boundaryHistoryWrittenRuns = boundaryHistoryWrittenRuns,
+    boundaryHistoryWrittenRate = rate(boundaryHistoryWrittenRuns, finishedRows.size),
+    averageAcceptanceCriteriaCount = average(acceptanceCriteriaCounts),
+    averageSpecWordCount = average(specWordCounts),
+    averageReviewIterations = average(reviewIterations),
+    averageAuditIterations = average(auditIterations),
+    averageFilesCreated = average(filesCreated),
+    averageFilesModified = average(filesModified),
+    averageTasksCompleted = average(tasksCompleted),
+    averageDurationSeconds = average(durations),
   )
 }
 

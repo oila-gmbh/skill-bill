@@ -45,7 +45,7 @@ class TelemetryStatusCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.status(state.dbOverride), format)
+    state.complete(service.status(state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -58,7 +58,7 @@ class TelemetrySyncCommand(
 
   override fun run() {
     val result = service.sync(state.dbOverride)
-    state.complete(result.payload, format, result.exitCode)
+    state.complete(result.result.toCliMap(), format, result.exitCode)
   }
 }
 
@@ -70,7 +70,7 @@ class TelemetryCapabilitiesCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.capabilities(), format)
+    state.complete(service.capabilities().toCliMap(), format)
   }
 }
 
@@ -87,7 +87,7 @@ class TelemetryStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.remoteStats(workflow, since, dateFrom, dateTo, groupBy), format)
+    state.complete(service.remoteStats(workflow, since, dateFrom, dateTo, groupBy).toCliMap(), format)
   }
 }
 
@@ -102,7 +102,7 @@ class TelemetryEnableCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel(level, state.dbOverride), format)
+    state.complete(service.setLevel(level, state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -114,7 +114,7 @@ class TelemetryDisableCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel("off", state.dbOverride), format)
+    state.complete(service.setLevel("off", state.dbOverride).toCliMap(), format)
   }
 }
 
@@ -127,6 +127,6 @@ class TelemetrySetLevelCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel(level, state.dbOverride), format)
+    state.complete(service.setLevel(level, state.dbOverride).toCliMap(), format)
   }
 }

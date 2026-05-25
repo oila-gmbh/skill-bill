@@ -1,25 +1,31 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FindingOutcomeRow
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 object ReviewStatsRuntime {
-  fun statsPayload(connection: Connection, reviewRunId: String?): Map<String, Any?> {
+  fun statsSnapshot(connection: Connection, reviewRunId: String?): ReviewRepositoryStatsSnapshot {
     if (reviewRunId != null) {
       require(ReviewRuntime.reviewExists(connection, reviewRunId)) {
         "Unknown review run id '$reviewRunId'."
       }
     }
-    return summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)) +
-      mapOf("review_run_id" to reviewRunId)
+    return ReviewRepositoryStatsSnapshot(
+      reviewRunId = reviewRunId,
+      stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)),
+    )
   }
 
-  fun featureVerifyStatsPayload(connection: Connection): Map<String, Any?> =
-    buildFeatureVerifyStatsPayload(loadRows(connection, "feature_verify_sessions"))
+  fun featureVerifyStats(connection: Connection): FeatureVerifyWorkflowStats =
+    buildFeatureVerifyStats(loadRows(connection, "feature_verify_sessions"))
 
-  fun featureImplementStatsPayload(connection: Connection): Map<String, Any?> =
-    buildFeatureImplementStatsPayload(loadRows(connection, "feature_implement_sessions"))
+  fun featureImplementStats(connection: Connection): FeatureImplementWorkflowStats =
+    buildFeatureImplementStats(loadRows(connection, "feature_implement_sessions"))
 
   fun clearReviewFinishedTelemetryState(connection: Connection, reviewRunId: String) {
     connection.prepareStatement(
@@ -41,7 +47,7 @@ object ReviewStatsRuntime {
     reviewSummary: ReviewSummary? = null,
     findingRows: List<FindingOutcomeRow>? = null,
     level: String = "anonymous",
-  ): Map<String, Any?> = reviewFinishedPayload(
+  ): ReviewFinishedTelemetry = reviewFinishedPayload(
     connection = connection,
     reviewSummary = reviewSummary ?: ReviewRuntime.fetchReviewSummary(connection, reviewRunId),
     findingRows = findingRows ?: queryLatestFindingOutcomes(connection, reviewRunId),
@@ -53,7 +59,7 @@ object ReviewStatsRuntime {
     reviewRunId: String,
     enabled: Boolean? = null,
     level: String? = null,
-  ): Map<String, Any?>? {
+  ): ReviewFinishedTelemetry? {
     val telemetryState = resolveTelemetryState(enabled, level)
     var reviewSummary = ReviewRuntime.fetchReviewSummary(connection, reviewRunId)
     val findingRows = queryLatestFindingOutcomes(connection, reviewRunId)

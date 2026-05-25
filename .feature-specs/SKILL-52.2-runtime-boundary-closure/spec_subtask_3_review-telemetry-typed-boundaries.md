@@ -62,8 +62,5 @@ Out of scope:
 
 ```bash
 (cd runtime-kotlin && ./gradlew :runtime-core:test --tests 'skillbill.architecture.*')
-(cd runtime-kotlin && ./gradlew :runtime-application:test --tests '*Review*' --tests '*Telemetry*')
-(cd runtime-kotlin && ./gradlew :runtime-cli:test --tests '*Review*' --tests '*Telemetry*')
-(cd runtime-kotlin && ./gradlew :runtime-mcp:test --tests '*Telemetry*' --tests '*McpRuntime*')
+(cd runtime-kotlin && ./gradlew :runtime-cli:test :runtime-mcp:test --tests '*McpRuntime*' :runtime-infra-sqlite:test --tests '*Review*' :runtime-core:test --tests 'skillbill.telemetry.*' --tests 'skillbill.application.*Telemetry*')
 ```
-

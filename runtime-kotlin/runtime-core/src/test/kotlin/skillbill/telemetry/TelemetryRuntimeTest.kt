@@ -9,12 +9,15 @@ import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.telemetry.model.TelemetryProxyCapabilities
+import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class TelemetryRuntimeTest {
   @Test
@@ -37,12 +40,12 @@ class TelemetryRuntimeTest {
         ),
       )
 
-    assertEquals("bill-feature-verify", payload["workflow"])
-    assertEquals(14, payload["started_runs"])
+    assertEquals("bill-feature-verify", payload.workflow)
+    assertEquals(14, payload.metrics["started_runs"])
     assertEquals(2, requests.size)
     assertEquals("GET", requests[0].first)
     assertEquals("POST", requests[1].first)
-    assertNotNull(payload["capabilities"])
+    assertNotNull(payload.capabilities)
   }
 
   @Test
@@ -52,8 +55,35 @@ class TelemetryRuntimeTest {
 
     val payload = HttpTelemetryClient(requester).fetchProxyCapabilities(settings)
 
-    assertEquals("0", payload["contract_version"])
-    assertEquals(false, payload["supports_stats"])
+    assertEquals("0", payload.contractVersion)
+    assertEquals(false, payload.supportsStats)
+  }
+
+  @Test
+  fun `fetchRemoteStats preserves explicit null stats capabilities`() {
+    val requester =
+      HttpRequester { _, url, _, _ ->
+        if (url.endsWith("/capabilities")) {
+          capabilitiesResponse()
+        } else {
+          remoteStatsResponseWithNullCapabilities()
+        }
+      }
+    val settings = telemetrySettings(Files.createTempFile("telemetry-null-capabilities", ".json"))
+
+    val payload =
+      HttpTelemetryClient(requester).fetchRemoteStats(
+        settings = settings,
+        request =
+        RemoteStatsRequest(
+          workflow = "bill-feature-verify",
+          dateFrom = "2026-04-01",
+          dateTo = "2026-04-22",
+        ),
+      )
+
+    assertEquals(true, payload.metrics.containsKey("capabilities"))
+    assertNull(payload.metrics["capabilities"])
   }
 
   @Test
@@ -118,7 +148,7 @@ class TelemetryRuntimeTest {
       assertEquals("disabled", result?.status)
       assertEquals(
         false,
-        TelemetrySyncRuntime.telemetryStatusPayload(dbPath, disabledSettings)["telemetry_enabled"],
+        TelemetrySyncRuntime.telemetryStatusPayload(dbPath, disabledSettings).telemetryEnabled,
       )
     }
 
@@ -164,10 +194,10 @@ private class RecordingTelemetryClient(
     sentBatchIds += rows.map { it.id }
   }
 
-  override fun fetchProxyCapabilities(settings: TelemetrySettings): Map<String, Any?> =
+  override fun fetchProxyCapabilities(settings: TelemetrySettings): TelemetryProxyCapabilities =
     error("Unexpected fetchProxyCapabilities")
 
-  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): Map<String, Any?> =
+  override fun fetchRemoteStats(settings: TelemetrySettings, request: RemoteStatsRequest): TelemetryRemoteStatsResult =
     error("Unexpected fetchRemoteStats")
 }
 
@@ -205,6 +235,20 @@ private fun remoteStatsResponse(): HttpResponse = HttpResponse(
         "started_runs": 14,
         "finished_runs": 12,
         "in_progress_runs": 2
+      }
+  """.trimIndent(),
+)
+
+private fun remoteStatsResponseWithNullCapabilities(): HttpResponse = HttpResponse(
+  statusCode = 200,
+  body =
+  """
+      {
+        "status": "ok",
+        "workflow": "bill-feature-verify",
+        "source": "remote_proxy",
+        "started_runs": 14,
+        "capabilities": null
       }
   """.trimIndent(),
 )

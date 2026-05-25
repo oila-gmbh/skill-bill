@@ -2,6 +2,8 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.TelemetryOutboxStore
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
@@ -60,9 +62,9 @@ fun finalizeReviewFinishedTelemetry(
   connection: Connection,
   reviewRunId: String,
   reviewSummary: ReviewSummary,
-  payload: Map<String, Any?>,
+  payload: ReviewFinishedTelemetry,
   telemetryEnabled: Boolean,
-): Map<String, Any?>? = when {
+): ReviewFinishedTelemetry? = when {
   reviewSummary.orchestratedRun -> payload
   !reviewSummary.reviewFinishedEventEmittedAt.isNullOrEmpty() -> {
     if (telemetryEnabled) {
@@ -79,13 +81,25 @@ fun finalizeReviewFinishedTelemetry(
   }
 }
 
-fun enqueueTelemetryEvent(connection: Connection, eventName: String, payload: Map<String, Any?>, enabled: Boolean) {
+fun enqueueTelemetryEvent(
+  connection: Connection,
+  eventName: String,
+  payload: ReviewFinishedTelemetry,
+  enabled: Boolean,
+) {
   if (enabled) {
-    TelemetryOutboxStore(connection).enqueue(eventName, JsonSupport.mapToJsonString(payload))
+    TelemetryOutboxStore(connection).enqueue(
+      eventName,
+      JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()),
+    )
   }
 }
 
-fun updatePendingReviewFinishedEvent(connection: Connection, reviewSessionId: String, payload: Map<String, Any?>) {
+fun updatePendingReviewFinishedEvent(
+  connection: Connection,
+  reviewSessionId: String,
+  payload: ReviewFinishedTelemetry,
+) {
   connection.prepareStatement(
     """
     UPDATE telemetry_outbox
@@ -95,7 +109,7 @@ fun updatePendingReviewFinishedEvent(connection: Connection, reviewSessionId: St
       AND json_extract(payload_json, '$.review_session_id') = ?
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload))
+    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()))
     statement.setString(PARAM_TWO, reviewSessionId)
     statement.executeUpdate()
   }

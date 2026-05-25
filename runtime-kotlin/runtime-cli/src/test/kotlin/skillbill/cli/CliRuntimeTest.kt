@@ -274,9 +274,7 @@ class CliRuntimeTest {
     val configPath = writeTelemetryConfig(tempDir, "off")
     telemetryStatusPayload(dbPath, configPath)
     val (statsPayload, capturedRequests) = remoteStatsScenario(configPath)
-    assertEquals("bill-feature-verify", statsPayload["workflow"])
-    assertEquals(14, statsPayload["started_runs"])
-    assertTrue((statsPayload["capabilities"] as Map<*, *>)["supports_stats"] == true)
+    assertEquals(expectedRemoteStatsPayload(), statsPayload)
     assertEquals(expectedCliRemoteStatsRequests(), capturedRequests)
   }
 
@@ -326,6 +324,7 @@ class CliRuntimeTest {
 
     val payload = runJson(listOf("telemetry", "capabilities", "--format", "json"), context)
 
+    assertEquals(expectedCapabilitiesPayload(), payload)
     assertEquals(true, payload["supports_ingest"])
     assertEquals(true, payload["supports_stats"])
     assertEquals(listOf(expectedCliRemoteStatsRequests().first()), capturedRequests)
@@ -787,9 +786,11 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
           """
           {
             "contract_version": "1",
+            "source": "custom_capabilities",
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-implement"]
+            "supported_workflows": ["bill-feature-verify", "bill-feature-implement"],
+            "region": "eu"
           }
           """.trimIndent(),
         )
@@ -804,7 +805,12 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
             "source": "remote_proxy",
             "started_runs": 14,
             "finished_runs": 12,
-            "in_progress_runs": 2
+            "in_progress_runs": 2,
+            "capabilities": {
+              "source": "stats_inline",
+              "supports_stats": true,
+              "inline_only": true
+            }
           }
           """.trimIndent(),
         )
@@ -855,6 +861,35 @@ private fun remoteStatsScenario(configPath: Path): Pair<Map<String, Any?>, List<
     )
   return decodeJsonObject(statsResult.stdout) to capturedRequests
 }
+
+private fun expectedRemoteStatsPayload(): Map<String, Any?> = linkedMapOf(
+  "status" to "ok",
+  "started_runs" to 14,
+  "finished_runs" to 12,
+  "in_progress_runs" to 2,
+  "capabilities" to
+    linkedMapOf<String, Any?>(
+      "source" to "stats_inline",
+      "supports_stats" to true,
+      "inline_only" to true,
+    ),
+  "workflow" to "bill-feature-verify",
+  "date_from" to "2026-04-01",
+  "date_to" to "2026-04-22",
+  "source" to "remote_proxy",
+  "stats_url" to "https://telemetry.example.dev/ingest/stats",
+)
+
+private fun expectedCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
+  "contract_version" to "1",
+  "source" to "custom_capabilities",
+  "proxy_url" to "https://telemetry.example.dev/ingest",
+  "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
+  "supports_ingest" to true,
+  "supports_stats" to true,
+  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-implement"),
+  "region" to "eu",
+)
 
 private fun expectedCliRemoteStatsRequests(): List<Map<String, Any?>> = listOf(
   linkedMapOf<String, Any?>(

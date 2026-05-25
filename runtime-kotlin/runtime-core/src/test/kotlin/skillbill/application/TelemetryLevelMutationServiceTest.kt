@@ -10,6 +10,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Path
 import kotlin.test.Test
@@ -123,11 +124,11 @@ private object FakeMutationTelemetryConfigStore : TelemetryConfigStore {
 
   override fun configPath(): Path = Path.of("/fake/config.json")
 
-  override fun read(): Map<String, Any?>? = null
+  override fun read(): TelemetryConfigDocument? = null
 
-  override fun ensure(): Map<String, Any?> = emptyMap()
+  override fun ensure(): TelemetryConfigDocument = TelemetryConfigDocument(emptyMap())
 
-  override fun write(payload: Map<String, Any?>) = Unit
+  override fun write(document: TelemetryConfigDocument) = Unit
 
   override fun delete(): Boolean = true
 }

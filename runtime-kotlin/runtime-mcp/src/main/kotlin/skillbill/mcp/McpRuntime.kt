@@ -11,6 +11,7 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.toReviewFinishedTelemetryPayload
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract
@@ -51,20 +52,22 @@ object McpRuntime {
       val preview = services.reviewService.previewImport("-")
       return McpReviewImportSkippedContract(
         reason = "telemetry is disabled",
-        reviewRunId = preview["review_run_id"] as? String,
-        findingCount = preview["finding_count"],
+        reviewRunId = preview.reviewRunId,
+        findingCount = preview.findingCount,
       ).toPayload()
     }
-    val payload =
+    val importResult =
       services.reviewService
         .importReview("-", dbOverride = null, finishZeroFindingTelemetry = !orchestrated)
-        .toMutableMap()
+    val payload = importResult.toMcpMap().toMutableMap()
     val result = if (orchestrated) {
-      val reviewRunId = payload["review_run_id"] as String
+      val reviewRunId = importResult.preview.reviewRunId
       services.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
       val telemetryPayload =
-        if (payload["finding_count"] == 0) {
+        if (importResult.preview.findingCount == 0) {
           services.reviewService.reviewFinishedTelemetryPayload(reviewRunId, dbOverride = null)
+            ?.toReviewFinishedTelemetryPayload()
+            ?.toPayload()
         } else {
           null
         }
@@ -99,11 +102,11 @@ object McpRuntime {
       )
     val payload = if (orchestrated) {
       McpOrchestratedPayloadContract(
-        basePayload = result.payload,
-        telemetryPayload = result.telemetryPayload,
+        basePayload = result.toMcpMap(),
+        telemetryPayload = result.telemetry?.toReviewFinishedTelemetryPayload()?.toPayload(),
       ).toPayload()
     } else {
-      result.payload
+      result.toMcpMap()
     }
     services.telemetryService.autoSync()
     return payload
@@ -123,13 +126,13 @@ object McpRuntime {
   }
 
   fun reviewStats(reviewRunId: String? = null, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.reviewStats(reviewRunId, dbOverride = null)
+    services(context).reviewService.reviewStats(reviewRunId, dbOverride = null).toMcpMap()
 
   fun featureImplementStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.featureImplementStats(dbOverride = null)
+    services(context).reviewService.featureImplementStats(dbOverride = null).toMcpMap()
 
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.featureVerifyStats(dbOverride = null)
+    services(context).reviewService.featureVerifyStats(dbOverride = null).toMcpMap()
 
   fun featureImplementStarted(
     request: FeatureImplementStartedRequest,
@@ -179,10 +182,10 @@ object McpRuntime {
   fun telemetryRemoteStats(
     request: RemoteStatsRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).telemetryService.remoteStats(request)
+  ): Map<String, Any?> = services(context).telemetryService.remoteStats(request).toMcpMap()
 
   fun telemetryProxyCapabilities(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).telemetryService.capabilities()
+    services(context).telemetryService.capabilities().toMcpMap()
 
   fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.version()

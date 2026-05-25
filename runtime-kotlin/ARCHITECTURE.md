@@ -13,7 +13,7 @@ runtime-cli / runtime-mcp / runtime-desktop data gateways
   -> runtime-application use cases
     -> runtime-ports
       -> runtime-domain models and rules
-        -> runtime-contracts helpers where domain wire-map code requires them
+      -> runtime-contracts helpers for port-owned boundary payload contracts
 
 runtime-infra-fs / runtime-infra-http / runtime-infra-sqlite
   -> runtime-ports + runtime-domain + runtime-contracts
@@ -32,8 +32,9 @@ runtime-core
   area-owned `model` packages.
 - `runtime-ports`: `skillbill.model.RuntimeContext`, persistence sessions,
   repositories, gateway interfaces, telemetry port interfaces, workflow git
-  operations, decomposition-manifest file-store ports, and port-owned model
-  types.
+  operations, decomposition-manifest file-store ports, port-owned model types,
+  and shared payload projection for boundary events that must be consumed by
+  both application and infrastructure adapters.
 - `runtime-application`: CLI/MCP/shared use cases, workflow orchestration,
   telemetry lifecycle orchestration, presenter-to-contract mapping, and
   validated decomposition-manifest file/artifact projection through workflow
@@ -120,7 +121,9 @@ runtime-ports
 - `skillbill.ports.*`: port contracts for persistence, install, scaffold,
   validation, telemetry, workflow git operations, and decomposition-manifest
   file storage. Public port DTOs and results live in
-  `skillbill.ports.*.model`.
+  `skillbill.ports.*.model`; shared adapter-facing payload projection may live
+  there when both application and infrastructure need the same boundary
+  contract.
 - `skillbill.contracts.*`: contract DTOs, JSON helpers, runtime surface
   contracts, and schema validators. Mapping from application/domain/port models
   into contract DTOs belongs in application or adapter-owned packages.
@@ -197,8 +200,9 @@ runtime-ports
     `TelemetryConfigStore`, `TelemetryClient`, and
     `TelemetryOutboxRepository`. HTTP request mechanics belong in
     `skillbill.infrastructure.http`; config file IO belongs in
-    `skillbill.infrastructure.fs`; telemetry proxy DTOs belong in
-    `skillbill.contracts.telemetry`; telemetry proxy payload mapping belongs
+    `skillbill.infrastructure.fs`; telemetry ports expose typed domain result
+    models from `skillbill.telemetry.model`; telemetry proxy wire DTOs belong
+    in `skillbill.contracts.telemetry`; telemetry proxy payload mapping belongs
     with the HTTP adapter.
 11. JSON maps, YAML maps, MCP payloads, CLI JSON payloads, and terminal strings
     are boundary concerns. Internal use cases expose typed models.
@@ -251,8 +255,9 @@ runtime-ports
       passthrough for platform packs.
     - **Subtask 3 will remove:** system service / install policy
       surfaces.
-    - **Subtask 4 will remove:** lifecycle/review/telemetry payload
-      surfaces and supporting top-level helpers.
+    - **Subtask 4 will remove:** lifecycle telemetry payload surfaces and
+      supporting top-level helpers. Review service, review repository, and
+      `TelemetryService` typed-boundary work closed in subtask 3.
 
     **Typed-Result-Model Open-Boundary Pattern (SKILL-52.1 subtask 3):**
     when a producer's wire shape is sealed by golden tests but no
@@ -325,38 +330,6 @@ runtime-ports
     - `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
     - `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
     - `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-    - `skillbill.application.ReviewService.previewImport`
-    - `skillbill.application.ReviewService.importReview`
-    - `skillbill.application.ReviewService.reviewFinishedTelemetryPayload`
-    - `skillbill.application.ReviewService.recordFeedback`
-    - `skillbill.application.ReviewService.telemetryPayload`
-    - `skillbill.application.ReviewService.reviewStats`
-    - `skillbill.application.ReviewService.featureImplementStats`
-    - `skillbill.application.ReviewService.featureVerifyStats`
-    - `skillbill.application.telemetryPayload`
-    - `skillbill.application.TelemetryService.status`
-    - `skillbill.application.TelemetryService.setLevel`
-    - `skillbill.application.TelemetryService.capabilities`
-    - `skillbill.application.TelemetryService.remoteStats`
-    - `skillbill.telemetry.defaultLocalTelemetryConfig`
-    - `skillbill.telemetry.validateRemoteStatsCapabilities`
-    - `skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig`
-    - `skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig`
-    - `skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig`
-    - `skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities`
-    - `skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats`
-    - `skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload`
-    - `skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload`
-    - `skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState`
-    - `skillbill.ports.persistence.ReviewRepository.recordFeedback`
-    - `skillbill.ports.persistence.ReviewRepository.reviewStatsPayload`
-    - `skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload`
-    - `skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload`
-    - `skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities`
-    - `skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.read`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.ensure`
-    - `skillbill.ports.telemetry.TelemetryConfigStore.write`
     - `skillbill.learnings.learningPayload`
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
@@ -366,15 +339,15 @@ runtime-ports
     - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
     - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
     - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
-    - `skillbill.application.model.TelemetrySyncPayload.payload`
-    - `skillbill.application.model.TriageResult.payload`
-    - `skillbill.application.model.TriageResult.telemetryPayload`
     - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
     - `skillbill.install.model.buildInstallPlanWireMap`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
+    - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
+    - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
+    - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
     - `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
@@ -657,94 +630,6 @@ Categories:
   result DTO.
 - `skillbill.application.SystemService.version` [subtask 3] — typed version
   result DTO.
-- `skillbill.application.lifecycleOkPayload` [subtask 3] — typed lifecycle
-  payload DTO.
-- `skillbill.application.lifecycleSkippedPayload` [subtask 3] — typed
-  lifecycle payload DTO.
-- `skillbill.application.lifecycleErrorPayload` [subtask 3] — typed
-  lifecycle payload DTO.
-- `skillbill.application.orchestratedStartedSkippedPayload` [subtask 3] —
-  typed orchestrated payload DTO.
-- `skillbill.application.orchestratedPayload` [subtask 3] — typed
-  orchestrated payload DTO.
-- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-  [subtask 3] — typed telemetry event DTO.
-- `skillbill.application.ReviewService.previewImport` [subtask 3] — typed
-  review result DTO.
-- `skillbill.application.ReviewService.importReview` [subtask 3] — typed
-  review result DTO.
-- `skillbill.application.ReviewService.reviewFinishedTelemetryPayload`
-  [subtask 3] — typed review-telemetry payload DTO.
-- `skillbill.application.ReviewService.recordFeedback` [subtask 3] — typed
-  feedback result DTO.
-- `skillbill.application.ReviewService.telemetryPayload` [subtask 3] —
-  typed review-telemetry payload DTO.
-- `skillbill.application.ReviewService.reviewStats` [subtask 3] — typed
-  review stats DTO.
-- `skillbill.application.ReviewService.featureImplementStats` [subtask 3] —
-  typed feature-implement stats DTO.
-- `skillbill.application.ReviewService.featureVerifyStats` [subtask 3] —
-  typed feature-verify stats DTO.
-- `skillbill.application.telemetryPayload` [subtask 3] — typed telemetry
-  payload DTO.
-- `skillbill.application.TelemetryService.status` [subtask 3] — typed
-  telemetry status DTO.
-- `skillbill.application.TelemetryService.setLevel` [subtask 3] — typed
-  telemetry status DTO.
-- `skillbill.application.TelemetryService.capabilities` [subtask 3] —
-  typed telemetry capabilities DTO.
-- `skillbill.application.TelemetryService.remoteStats` [subtask 3] —
-  typed telemetry remote-stats DTO.
-- `skillbill.telemetry.defaultLocalTelemetryConfig` [subtask 3] — typed
-  telemetry config DTO.
-- `skillbill.telemetry.validateRemoteStatsCapabilities` [subtask 3] —
-  typed telemetry capabilities validation result.
-- `skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig`
-  [subtask 3] — typed telemetry config DTO.
-- `skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig` [subtask 3]
-  — typed telemetry config DTO.
-- `skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig`
-  [subtask 3] — typed telemetry config DTO.
-- `skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities`
-  [subtask 3] — typed telemetry capabilities DTO.
-- `skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats` [subtask 3]
-  — typed telemetry remote-stats DTO.
-- `skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload` [subtask 3]
-  — typed telemetry sync result DTO.
-- `skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload`
-  [subtask 3] — typed telemetry status DTO.
-- `skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState`
-  [subtask 3] — typed review-telemetry persistence DTO.
-- `skillbill.ports.persistence.ReviewRepository.recordFeedback` [subtask 3]
-  — typed feedback persistence DTO.
-- `skillbill.ports.persistence.ReviewRepository.reviewStatsPayload`
-  [subtask 3] — typed review stats persistence DTO.
-- `skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload`
-  [subtask 3] — typed feature-implement stats persistence DTO.
-- `skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload`
-  [subtask 3] — typed feature-verify stats persistence DTO.
-- `skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities`
-  [subtask 3] — typed telemetry capabilities port.
-- `skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats` [subtask 3]
-  — typed telemetry remote-stats port.
-- `skillbill.ports.telemetry.TelemetryConfigStore.read` [subtask 3] —
-  typed telemetry config port.
-- `skillbill.ports.telemetry.TelemetryConfigStore.ensure` [subtask 3] —
-  typed telemetry config port.
-- `skillbill.ports.telemetry.TelemetryConfigStore.write` [subtask 3] —
-  typed telemetry config port.
 - `skillbill.learnings.learningPayload` [subtask 5] — typed learnings
   payload DTO.
 - `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed
@@ -768,15 +653,15 @@ Categories:
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
-- `skillbill.application.model.TelemetrySyncPayload.payload`
-- `skillbill.application.model.TriageResult.payload`
-- `skillbill.application.model.TriageResult.telemetryPayload`
 - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
 - `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
 - `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
 - `skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
 - `skillbill.install.model.buildInstallPlanWireMap`
 - `skillbill.scaffold.model.PlatformManifest.customFields`
+- `skillbill.telemetry.model.TelemetryConfigDocument.payload`
+- `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
+- `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
 - `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
 - `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
 - `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
@@ -831,4 +716,40 @@ category without reshaping the marker block._
 - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
+- `skillbill.application.lifecycleOkPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.lifecycleSkippedPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.lifecycleErrorPayload` [subtask 4] — lifecycle
+  telemetry still returns the stable MCP/CLI payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.orchestratedStartedSkippedPayload` [subtask 4] —
+  orchestrated lifecycle start remains a stable payload map until lifecycle
+  telemetry gains typed result DTOs.
+- `skillbill.application.orchestratedPayload` [subtask 4] — orchestrated
+  lifecycle finish remains a stable payload map until lifecycle telemetry
+  gains typed result DTOs.
+- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
+- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
+  [subtask 4] — lifecycle telemetry service method; postponed separately from
+  `TelemetryService` typed-boundary work.
 <!-- skill-52-2-inventory:end -->

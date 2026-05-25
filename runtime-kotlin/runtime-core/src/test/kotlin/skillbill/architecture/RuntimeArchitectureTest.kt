@@ -456,6 +456,9 @@ class RuntimeArchitectureTest {
     portFiles.forEach { path ->
       assertTrue(Files.exists(path), "Missing telemetry port: ${runtimeRoot.relativize(path)}")
     }
+    val telemetryClientPort = Files.readString(sourcePath("skillbill/ports/telemetry/TelemetryClient.kt"))
+    assertContains(telemetryClientPort, "skillbill.telemetry.model.TelemetryProxyCapabilities")
+    assertContains(telemetryClientPort, "skillbill.telemetry.model.TelemetryRemoteStatsResult")
 
     assertContains(
       Files.readString(sourcePath("skillbill/infrastructure/http/HttpTelemetryClient.kt")),
@@ -472,6 +475,28 @@ class RuntimeArchitectureTest {
     assertContains(
       Files.readString(sourcePath("skillbill/infrastructure/http/TelemetryProxyPayloadMappers.kt")),
       "TelemetryProxyBatchPayload",
+    )
+  }
+
+  @Test
+  fun `review and telemetry domain models do not own json payload contracts`() {
+    val violations =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/review/") ||
+            file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/telemetry/")
+        }
+        .filter { file ->
+          "JsonPayloadContract" in file.source ||
+            Regex("""fun\s+[A-Za-z0-9_.]+\s*\([^)]*\)\s*:\s*Map<String,\s*Any\?>""").containsMatchIn(file.source)
+        }
+        .map { file -> file.relativePath }
+
+    assertTrue(
+      violations.isEmpty(),
+      "Review and telemetry domain packages must stay typed; JSON payload projection belongs at " +
+        "application, port, or adapter seams.\n" +
+        violations.joinToString(separator = "\n"),
     )
   }
 
@@ -1475,7 +1500,7 @@ class RuntimeArchitectureTest {
       // Subtask 3 will remove (install policy extraction):
       "skillbill.application.SystemService.doctor",
       "skillbill.application.SystemService.version",
-      // Subtask 4 will remove (telemetry/review typed-DTO pass):
+      // Subtask 4 will remove (lifecycle telemetry typed-DTO pass):
       "skillbill.application.lifecycleOkPayload",
       "skillbill.application.lifecycleSkippedPayload",
       "skillbill.application.lifecycleErrorPayload",
@@ -1488,39 +1513,7 @@ class RuntimeArchitectureTest {
       "skillbill.application.LifecycleTelemetryService.featureVerifyStarted",
       "skillbill.application.LifecycleTelemetryService.featureVerifyFinished",
       "skillbill.application.LifecycleTelemetryService.prDescriptionGenerated",
-      "skillbill.application.ReviewService.previewImport",
-      "skillbill.application.ReviewService.importReview",
-      "skillbill.application.ReviewService.reviewFinishedTelemetryPayload",
-      "skillbill.application.ReviewService.recordFeedback",
-      "skillbill.application.ReviewService.telemetryPayload",
-      "skillbill.application.ReviewService.reviewStats",
-      "skillbill.application.ReviewService.featureImplementStats",
-      "skillbill.application.ReviewService.featureVerifyStats",
-      "skillbill.application.telemetryPayload",
-      "skillbill.application.TelemetryService.status",
-      "skillbill.application.TelemetryService.setLevel",
-      "skillbill.application.TelemetryService.capabilities",
-      "skillbill.application.TelemetryService.remoteStats",
-      "skillbill.telemetry.defaultLocalTelemetryConfig",
-      "skillbill.telemetry.validateRemoteStatsCapabilities",
-      "skillbill.telemetry.TelemetryConfigRuntime.defaultLocalConfig",
-      "skillbill.telemetry.TelemetryConfigRuntime.readLocalConfig",
-      "skillbill.telemetry.TelemetryConfigRuntime.ensureLocalConfig",
-      "skillbill.telemetry.TelemetryHttpRuntime.fetchProxyCapabilities",
-      "skillbill.telemetry.TelemetryHttpRuntime.fetchRemoteStats",
-      "skillbill.telemetry.TelemetrySyncRuntime.syncResultPayload",
-      "skillbill.telemetry.TelemetrySyncRuntime.telemetryStatusPayload",
       "skillbill.workflow.WorkflowEngine.continueDecision",
-      "skillbill.ports.persistence.ReviewRepository.updateReviewFinishedTelemetryState",
-      "skillbill.ports.persistence.ReviewRepository.recordFeedback",
-      "skillbill.ports.persistence.ReviewRepository.reviewStatsPayload",
-      "skillbill.ports.persistence.ReviewRepository.featureImplementStatsPayload",
-      "skillbill.ports.persistence.ReviewRepository.featureVerifyStatsPayload",
-      "skillbill.ports.telemetry.TelemetryClient.fetchProxyCapabilities",
-      "skillbill.ports.telemetry.TelemetryClient.fetchRemoteStats",
-      "skillbill.ports.telemetry.TelemetryConfigStore.read",
-      "skillbill.ports.telemetry.TelemetryConfigStore.ensure",
-      "skillbill.ports.telemetry.TelemetryConfigStore.write",
       "skillbill.learnings.learningPayload",
       "skillbill.learnings.learningSummaryPayload",
       "skillbill.learnings.scopeCounts",
@@ -1531,15 +1524,15 @@ class RuntimeArchitectureTest {
       "skillbill.application.model.WorkflowUpdateRequest.stepUpdates",
       "skillbill.application.model.WorkflowUpdateRequest.artifactsPatch",
       "skillbill.application.model.FeatureImplementFinishedRequest.childSteps",
-      "skillbill.application.model.TelemetrySyncPayload.payload",
-      "skillbill.application.model.TriageResult.payload",
-      "skillbill.application.model.TriageResult.telemetryPayload",
       "skillbill.application.model.DecompositionManifestWriteRequest.planningResult",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
       "skillbill.install.model.buildInstallPlanWireMap",
       "skillbill.scaffold.model.PlatformManifest.customFields",
+      "skillbill.telemetry.model.TelemetryConfigDocument.payload",
+      "skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields",
+      "skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics",
       // SKILL-52.1 subtask 3 — typed scaffold result models that carry the legacy raw-map
       // wire payload through a single `@OpenBoundaryMap`-annotated `payload` field.
       "skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload",
