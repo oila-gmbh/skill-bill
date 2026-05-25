@@ -1,3 +1,13 @@
+## [2026-05-25] SKILL-52.2 workflow-schema-ownership
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
+- `WorkflowEngine` no longer imports `skillbill.contracts.workflow.*SchemaValidator`; schema validation goes through a domain-owned `WorkflowSnapshotValidator` port and an application-side `WorkflowSnapshotValidatorAdapter` that wraps `CanonicalWorkflowStateSchemaValidator`. The port carries `@OpenBoundaryMap` because it gates the canonical map envelope. reusable
+- `WorkflowEngine` moved from `object` to `class WorkflowEngine(schemaValidator)`; the stateless helpers (`validateOpen`, `validateUpdate`, `snapshotMap`, `summaryMap`, `resumeMap`, `continueMap`) stay on the companion object so `WorkflowEngine::summaryMap` method references in `runtime-cli`/`runtime-mcp` workflow result mappers keep working unchanged. Pattern: when refactoring a runtime singleton to inject a port, keep stateless wire-shape helpers on the companion to preserve adapter-side method references and CLI/MCP byte-equivalence. reusable
+- All 8 loud-fail `InvalidWorkflowStateSchemaError` throw sites are byte-identical (openRecord/updateRecord via validatedSnapshotMap; snapshotView/summaryView/resumeView; decodeSteps/decodeObject/parseDurableJson; snapshotViewFromMap attempt_count exactness). The SKILL-48 2a invariant ("`toSnapshot` deliberately does not validate; the next read seam loud-fails") is preserved verbatim.
+- Internal helpers (`continueExistingWorkflow`, `alignSubtaskResumeStep`, `persistParentDecompositionRuntime`, `blockedBranchStartResult`) became extension functions on `WorkflowEngine` to keep `detekt` `LongParameterList=6` honored without suppressions when the engine had to be threaded through.
+- `ARCHITECTURE.md` narrows the `runtime-domain -> runtime-contracts` edge to non-validator helpers/constants/errors and adds `WorkflowSnapshotValidator.validate` to the open-boundary allowlist. New architecture test forbids `skillbill.contracts.workflow.*SchemaValidator*` and `skillbill.contracts.*Mapper` imports under `runtime-domain/.../skillbill/workflow/` source.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-05-25] SKILL-52.2 review-telemetry-typed-boundaries
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-{sqlite,http,fs}, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
 - ReviewService and ReviewRepository now expose typed review/stat/triage models; CLI/MCP map payloads are rebuilt only in adapter mapper files. reusable

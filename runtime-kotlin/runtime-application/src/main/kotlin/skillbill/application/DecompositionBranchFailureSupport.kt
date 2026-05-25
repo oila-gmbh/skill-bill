@@ -2,10 +2,11 @@ package skillbill.application
 
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 
-internal fun blockedBranchStartResult(
+internal fun WorkflowEngine.blockedBranchStartResult(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   subtaskId: Int,

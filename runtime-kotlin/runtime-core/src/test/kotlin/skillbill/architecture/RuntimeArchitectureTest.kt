@@ -431,6 +431,32 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `runtime domain workflow source must not import contract schema validators or contract mappers`() {
+    // SKILL-52.2 Subtask 4: workflow schema validators and contract
+    // payload mappers are owned by the application/contracts boundary.
+    // `runtime-domain` workflow source consumes them only through the
+    // domain-owned `WorkflowSnapshotValidator` port wired at
+    // `runtime-application`. Direct imports of any
+    // `skillbill.contracts.workflow.*SchemaValidator*` or
+    // `skillbill.contracts.*Mapper` from under
+    // `runtime-domain/src/main/kotlin/skillbill/workflow` are banned.
+    val workflowDomainFiles =
+      sourceFiles().filter { file ->
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/workflow/")
+      }
+    val violations =
+      workflowDomainFiles.flatMap { file ->
+        file.imports
+          .filter { importedName ->
+            (importedName.startsWith("skillbill.contracts.workflow.") && "SchemaValidator" in importedName) ||
+              (importedName.startsWith("skillbill.contracts.") && importedName.endsWith("Mapper"))
+          }
+          .map { importedName -> "${file.relativePath} imports banned $importedName" }
+      }
+    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+  }
+
+  @Test
   fun `decomposition manifest application projection declares final parse seam ownership`() {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
     val projectionIo = Files.readString(sourcePath("skillbill/application/DecompositionManifestFileWrites.kt"))
@@ -1476,6 +1502,11 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.WorkflowEngine.summaryMap",
       "skillbill.workflow.WorkflowEngine.resumeMap",
       "skillbill.workflow.WorkflowEngine.continueMap",
+      // SKILL-52.2 subtask 4: domain-owned workflow-snapshot validator port.
+      // The map is the canonical schema-validated wire snapshot envelope; the
+      // port stays raw-map at the validation seam because the schema itself
+      // validates against the canonical map envelope.
+      "skillbill.workflow.WorkflowSnapshotValidator.validate",
       "skillbill.workflow.DecompositionManifestCodec.decodeMap",
       "skillbill.workflow.toWireMap",
       "skillbill.application.decodeDecompositionManifestMap",

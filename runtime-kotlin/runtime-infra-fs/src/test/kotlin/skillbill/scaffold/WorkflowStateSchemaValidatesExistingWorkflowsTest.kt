@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -18,8 +19,8 @@ import kotlin.test.Test
  * For every shipped `WorkflowDefinition` we:
  *
  *  - Walk every `stepId` (12 for FeatureImplement, 8 for FeatureVerify):
- *    open a record with `WorkflowEngine.openRecord`, advance it through
- *    `WorkflowEngine.updateRecord` so the targeted step is marked
+ *    open a record with `engine.openRecord`, advance it through
+ *    `engine.updateRecord` so the targeted step is marked
  *    running, then validate the engine's `fullPayload(...)`,
  *    `summaryPayload(...)`, and `resumePayload(...)` against the schema.
  *    All three derived snapshot envelopes are pinned to live engine
@@ -39,6 +40,11 @@ import kotlin.test.Test
 class WorkflowStateSchemaValidatesExistingWorkflowsTest {
 
   private val validator: WorkflowStateSchemaValidator = CanonicalWorkflowStateSchemaValidator()
+  private val engine: WorkflowEngine = WorkflowEngine(
+    object : WorkflowSnapshotValidator {
+      override fun validate(snapshot: Map<String, Any?>, slug: String) = validator.validate(snapshot, slug)
+    },
+  )
 
   @Test
   fun `every feature-implement step snapshot from the engine validates clean`() {
@@ -75,7 +81,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
   // envelope survives the resume derivation unchanged.
   private fun validateEverySnapshotPerStep(definition: WorkflowDefinition) {
     definition.stepIds.forEach { activeStepId ->
-      val record = WorkflowEngine.openRecord(
+      val record = engine.openRecord(
         definition = definition,
         workflowId = "wfl-19700101-000000-aaaa",
         sessionId = "",
@@ -84,19 +90,19 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       // fullPayload: validates internally, and the emitted map is the
       // canonical snapshot envelope. Re-validate externally to pin the
       // schema 1:1 against engine output.
-      val snapshotView = WorkflowEngine.snapshotView(definition, record)
+      val snapshotView = engine.snapshotView(definition, record)
       val full = WorkflowEngine.snapshotMap(snapshotView)
       validator.validate(full, definition.workflowName)
       // summaryView: validates internally (calls validatedSnapshotMap
       // before stripping steps/artifacts). Invoking it without an
       // exception is the pin; the emitted shape itself is a derivative
       // that cannot be validated against the snapshot schema.
-      WorkflowEngine.summaryView(definition, record)
+      engine.summaryView(definition, record)
       // resumeView: validates internally (via snapshotView), then
       // extends the envelope with non-snapshot derivative fields. The
       // snapshot-shape subset must still satisfy the schema, so
       // re-validate that subset.
-      val resumed = WorkflowEngine.resumeMap(WorkflowEngine.resumeView(definition, record))
+      val resumed = WorkflowEngine.resumeMap(engine.resumeView(definition, record))
       validator.validate(resumed.filterKeys { it in SNAPSHOT_KEYS }, definition.workflowName)
     }
   }
@@ -108,7 +114,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
   // shape a finished workflow takes on disk.
   private fun validateEveryWorkflowStatus(definition: WorkflowDefinition) {
     definition.workflowStatuses.forEach { status ->
-      val opened = WorkflowEngine.openRecord(
+      val opened = engine.openRecord(
         definition = definition,
         workflowId = "wfl-19700101-000000-aaaa",
         sessionId = "",
@@ -129,7 +135,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       } else {
         null
       }
-      val updated = WorkflowEngine.updateRecord(
+      val updated = engine.updateRecord(
         definition = definition,
         existing = opened,
         input = WorkflowUpdateInput(
@@ -145,7 +151,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       } else {
         updated
       }
-      val payload = WorkflowEngine.snapshotMap(WorkflowEngine.snapshotView(definition, withFinishedAt))
+      val payload = WorkflowEngine.snapshotMap(engine.snapshotView(definition, withFinishedAt))
       validator.validate(payload, definition.workflowName)
     }
   }

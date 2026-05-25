@@ -308,6 +308,7 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.resumeMap`
     - `skillbill.workflow.WorkflowEngine.continueMap`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
+    - `skillbill.workflow.WorkflowSnapshotValidator.validate`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
     - `skillbill.application.decodeDecompositionManifestMap`
@@ -422,9 +423,21 @@ skillbill.workflow.verify
   tasks live in `runtime-contracts` unless a schema is owned by a single
   adapter surface.
 - Workflow-state schema validation is owned by
-  `skillbill.contracts.workflow.WorkflowStateSchemaValidator`. The owning read
-  seam is `skillbill.workflow.WorkflowEngine`; durable record mapping stays
-  pure and the next engine read rejects drift.
+  `skillbill.contracts.workflow.WorkflowStateSchemaValidator` (its default
+  implementation `CanonicalWorkflowStateSchemaValidator`). The runtime-domain
+  workflow engine MUST NOT import that validator directly — instead it depends
+  on the domain-owned port `skillbill.workflow.WorkflowSnapshotValidator`,
+  which the application boundary wires via
+  `skillbill.application.workflow.WorkflowSnapshotValidatorAdapter`. The
+  owning read seam is still `skillbill.workflow.WorkflowEngine`; durable record
+  mapping stays pure and the next engine read rejects drift. Architecture
+  tests forbid any `skillbill.contracts.workflow.*SchemaValidator*` or
+  `skillbill.contracts.*Mapper` import under `runtime-domain` workflow
+  source. (SKILL-52.2 Subtask 4 narrowed the
+  `runtime-domain -> runtime-contracts` module-graph edge to non-validator
+  helpers only: `JsonSupport`, `WorkflowContracts` ordering helper, the
+  `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` constant, and the typed
+  `InvalidWorkflowStateSchemaError`.)
 - Install-plan schema validation is owned by
   `skillbill.contracts.install.InstallPlanSchemaValidator`. The owning seams
   are install-plan building and CLI/MCP emission through the install
@@ -649,6 +662,7 @@ Categories:
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`
 - `skillbill.workflow.WorkflowEngine.continueMap`
+- `skillbill.workflow.WorkflowSnapshotValidator.validate`
 - `skillbill.application.WorkflowFamily.sessionSummary`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`

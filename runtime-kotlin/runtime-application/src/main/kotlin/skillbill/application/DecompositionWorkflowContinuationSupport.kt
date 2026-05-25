@@ -12,7 +12,7 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import java.nio.file.Path
 
-internal fun continueExistingWorkflow(
+internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
   initialRecord: WorkflowStateSnapshot,
   workflowId: String,
@@ -21,7 +21,7 @@ internal fun continueExistingWorkflow(
 ): ContinuationStepResult {
   var record = initialRecord
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
-  var decision = WorkflowEngine.continueDecision(family.definition, record, sessionSummary)
+  var decision = continueDecision(family.definition, record, sessionSummary)
   var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
     val originalContinueStatus = decision.view.continueStatus
@@ -31,11 +31,11 @@ internal fun continueExistingWorkflow(
       workflowId,
       fileStore,
     )
-    val reopened = WorkflowEngine.updateRecord(family.definition, record, runtimeInput.input)
+    val reopened = updateRecord(family.definition, record, runtimeInput.input)
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
     if (runtimeInput.updated) projectionArtifactsJson = record.artifactsJson
-    val refreshed = WorkflowEngine.continueDecision(family.definition, record, sessionSummary)
+    val refreshed = continueDecision(family.definition, record, sessionSummary)
     // Preserve the pre-reopen continue_status so the wire shape matches
     // the historical "reopened" status even though the underlying record
     // is now running again.
@@ -50,13 +50,13 @@ internal fun continueExistingWorkflow(
   )
 }
 
-internal fun alignSubtaskResumeStep(
+internal fun WorkflowEngine.alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
   resumeStepId: String,
   unitOfWork: UnitOfWork,
 ): WorkflowStateSnapshot {
   if (resumeStepId.isBlank() || record.currentStepId == resumeStepId) return record
-  val updated = WorkflowEngine.updateRecord(
+  val updated = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
     record,
     WorkflowUpdateInput(
@@ -71,12 +71,12 @@ internal fun alignSubtaskResumeStep(
   return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, record.workflowId) ?: updated
 }
 
-internal fun persistParentDecompositionRuntime(
+internal fun WorkflowEngine.persistParentDecompositionRuntime(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   unitOfWork: UnitOfWork,
 ) {
-  val updatedParent = WorkflowEngine.updateRecord(
+  val updatedParent = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
     parentRecord,
     WorkflowUpdateInput(

@@ -13,6 +13,7 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 
 internal class DecompositionWorkflowContinuation(
+  private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ) {
@@ -76,9 +77,14 @@ internal class DecompositionWorkflowContinuation(
     return if (record == null) {
       missingSubtaskWorkflowResult(selection, unitOfWork)
     } else {
-      val alignedRecord = alignSubtaskResumeStep(record, selection.resumeStepId, unitOfWork)
-      continueExistingWorkflow(WorkflowFamily.IMPLEMENT, alignedRecord, selection.workflowId, unitOfWork, fileStore)
-        .withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
+      val alignedRecord = engine.alignSubtaskResumeStep(record, selection.resumeStepId, unitOfWork)
+      engine.continueExistingWorkflow(
+        WorkflowFamily.IMPLEMENT,
+        alignedRecord,
+        selection.workflowId,
+        unitOfWork,
+        fileStore,
+      ).withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
     }
   }
 
@@ -107,11 +113,11 @@ internal class DecompositionWorkflowContinuation(
     if (branchPlan.branch.isNotBlank()) {
       val checkout = gitOperations.checkoutBranch(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
       errorResult = checkout.takeUnless { it.ok }
-        ?.let { blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+        ?.let { engine.blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
       if (errorResult == null && branchPlan.validateBase) {
         errorResult = gitOperations.validateBranchBase(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
           .takeUnless { it.ok }
-          ?.let { blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+          ?.let { engine.blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
       }
     }
     return errorResult
@@ -125,13 +131,13 @@ internal class DecompositionWorkflowContinuation(
   ): ContinuationStepResult {
     val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
     val updatedManifest = manifest.withStartedSubtask(selection.subtask.id, workflowId, selection.branchPlan.branch)
-    val opened = WorkflowEngine.openRecord(
+    val opened = engine.openRecord(
       WorkflowFamily.IMPLEMENT.definition,
       workflowId,
       parentRecord.sessionId.orEmpty(),
       WorkflowFamily.IMPLEMENT.definition.defaultInitialStepId,
     )
-    val started = WorkflowEngine.updateRecord(
+    val started = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       opened,
       WorkflowUpdateInput(
@@ -143,9 +149,9 @@ internal class DecompositionWorkflowContinuation(
       ),
     )
     WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, started)
-    persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork)
+    engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork)
     val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started
-    return continueExistingWorkflow(WorkflowFamily.IMPLEMENT, saved, workflowId, unitOfWork, fileStore)
+    return engine.continueExistingWorkflow(WorkflowFamily.IMPLEMENT, saved, workflowId, unitOfWork, fileStore)
       .withProjection(updatedManifest)
       .withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
   }
@@ -174,13 +180,13 @@ internal class DecompositionWorkflowContinuation(
         val advanced = commitCompletedSubtask(updated, subtask.id, subtask.name)
         if (advanced.error != null) {
           updated = updated.withBlockedSubtask(subtask.id, advanced.error, "commit_push")
-          persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
+          engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
           return AdvancementResult(updated, advanced.error, decompositionRuntimeArtifactsJson(updated))
         }
         updated = advanced.manifest
       }
     if (updated != manifest) {
-      persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
+      engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
     }
     return AdvancementResult(updated)
   }
