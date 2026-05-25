@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-52.2-runtime-boundary-closure"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "start"
 subtasks:
 - id: 1
@@ -25,10 +25,10 @@ subtasks:
 - id: 2
   name: "scaffold-typed-command-boundary"
   spec_path: ".feature-specs/SKILL-52.2-runtime-boundary-closure/spec_subtask_2_scaffold-typed-command-boundary.md"
-  status: "pending"
+  status: "completed"
   branch: "feat/SKILL-52.2-runtime-boundary-closure"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260525-065823-nczp"
   blocked_reason: null
   last_resumable_step: null
   dependencies:
