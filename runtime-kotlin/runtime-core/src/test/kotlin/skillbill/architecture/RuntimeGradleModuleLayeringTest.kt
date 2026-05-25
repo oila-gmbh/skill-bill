@@ -81,6 +81,35 @@ class RuntimeGradleModuleLayeringTest {
   }
 
   @Test
+  fun `non desktop runtime modules do not import desktop packages`() {
+    val violations = declaredSettingsModules()
+      .filter { moduleName -> moduleName.startsWith("runtime-") && !moduleName.startsWith("runtime-desktop") }
+      .flatMap { moduleName ->
+        val sourceRoot = runtimeRoot.resolve("${moduleName.replace(':', '/')}/src/main/kotlin")
+        if (!Files.isDirectory(sourceRoot)) {
+          emptyList()
+        } else {
+          Files.walk(sourceRoot).use { paths ->
+            paths
+              .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+              .flatMap { path ->
+                val text = Files.readString(path)
+                importPattern.findAll(text)
+                  .map { match -> match.groupValues[1].substringBefore(" as ") }
+                  .filter { importedName -> importedName.startsWith("skillbill.desktop") }
+                  .map { importedName -> "${runtimeRoot.relativize(path)} imports $importedName" }
+                  .toList()
+                  .stream()
+              }
+              .toList()
+          }
+        }
+      }
+
+    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+  }
+
+  @Test
   fun `desktop starter modules keep app core and feature dependency direction`() {
     assertNoProjectDependencies(
       "runtime-desktop",
@@ -166,5 +195,9 @@ class RuntimeGradleModuleLayeringTest {
       violations.isEmpty(),
       "$moduleName has banned project dependencies: ${violations.joinToString()}",
     )
+  }
+
+  private companion object {
+    val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)
   }
 }

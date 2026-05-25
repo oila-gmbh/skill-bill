@@ -42,6 +42,12 @@ enum class FirstRunTelemetryLevel(
   }
 }
 
+enum class FirstRunPlatformSelectionMode {
+  NONE,
+  SELECTED,
+  ALL,
+}
+
 data class FirstRunDetectedAgent(
   val agentId: String,
   val path: String,
@@ -74,6 +80,11 @@ data class FirstRunSetupRequest(
   val selectedPlatformSlugs: Set<String>,
   val telemetryLevel: FirstRunTelemetryLevel,
   val registerMcp: Boolean,
+  val platformSelectionMode: FirstRunPlatformSelectionMode = if (selectedPlatformSlugs.isEmpty()) {
+    FirstRunPlatformSelectionMode.NONE
+  } else {
+    FirstRunPlatformSelectionMode.SELECTED
+  },
 )
 
 interface FirstRunInstallPlanHandle
@@ -140,6 +151,11 @@ data class FirstRunSetupState(
     .map { option -> option.agentId }
     .toSet(),
   val selectedPlatformSlugs: Set<String> = emptySet(),
+  val platformSelectionMode: FirstRunPlatformSelectionMode = if (selectedPlatformSlugs.isEmpty()) {
+    FirstRunPlatformSelectionMode.NONE
+  } else {
+    FirstRunPlatformSelectionMode.SELECTED
+  },
   val telemetryLevel: FirstRunTelemetryLevel = FirstRunTelemetryLevel.default,
   val registerMcp: Boolean = true,
   val discoveryLoaded: Boolean = false,
@@ -163,6 +179,7 @@ data class FirstRunSetupState(
     selectedPlatformSlugs = selectedPlatformSlugs,
     telemetryLevel = telemetryLevel,
     registerMcp = registerMcp,
+    platformSelectionMode = platformSelectionMode,
   )
 }
 
@@ -171,6 +188,11 @@ data class PostPublishReinstallState(
   val selectedPlatformSlugs: Set<String>,
   val telemetryLevel: FirstRunTelemetryLevel,
   val registerMcp: Boolean,
+  val platformSelectionMode: FirstRunPlatformSelectionMode = if (selectedPlatformSlugs.isEmpty()) {
+    FirstRunPlatformSelectionMode.NONE
+  } else {
+    FirstRunPlatformSelectionMode.SELECTED
+  },
   val busy: Boolean = false,
   val outcome: FirstRunInstallOutcome? = null,
 ) {

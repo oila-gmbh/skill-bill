@@ -13,7 +13,9 @@ import skillbill.desktop.core.domain.model.FirstRunInstallPlanHandle
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
 import skillbill.desktop.core.domain.model.FirstRunPlanResult
 import skillbill.desktop.core.domain.model.FirstRunPlatformPackOption
+import skillbill.desktop.core.domain.model.FirstRunPlatformSelectionMode
 import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
+import skillbill.desktop.core.domain.model.FirstRunSetupRequest
 import skillbill.desktop.core.domain.model.FirstRunSetupStep
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -104,7 +106,7 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(1, gateway.applyCallCount)
     assertEquals(FirstRunInstallStatus.WARNING, applied.firstRunSetup?.outcome?.status)
     assertTrue(preferences.firstRunPreferences.value.completed)
-    assertEquals(setOf("claude", "codex"), preferences.firstRunPreferences.value.selectedAgentIds)
+    assertEquals(emptySet(), preferences.firstRunPreferences.value.selectedAgentIds)
 
     val finished = viewModel.finishFirstRunSetup()
     assertNull(finished.firstRunSetup)
@@ -185,6 +187,44 @@ class SkillBillViewModelFirstRunTest {
     assertEquals(setOf("kotlin"), discovered.firstRunSetup?.selectedPlatformSlugs)
     assertEquals(FirstRunTelemetryLevel.FULL, discovered.firstRunSetup?.telemetryLevel)
     assertFalse(discovered.firstRunSetup?.registerMcp ?: true)
+  }
+
+  @Test
+  fun `reusable all platform selection survives discovery and apply`() = runBlocking {
+    val gateway = FakeDesktopFirstRunGateway(
+      discoveryResult = FirstRunDiscoveryResult.Success(
+        discovery().copy(
+          platformPacks = listOf(
+            FirstRunPlatformPackOption(slug = "kmp", packRoot = "/repo/platform-packs/kmp"),
+            FirstRunPlatformPackOption(slug = "kotlin", packRoot = "/repo/platform-packs/kotlin"),
+          ),
+        ),
+      ),
+      planResult = FirstRunPlanResult.Planned(plan()),
+      applyResult = FirstRunApplyResult.Applied(
+        FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+      ),
+      latestReusableSetupRequest = FirstRunSetupRequest(
+        selectedAgentIds = setOf("codex"),
+        selectedPlatformSlugs = emptySet(),
+        telemetryLevel = FirstRunTelemetryLevel.ANONYMOUS,
+        registerMcp = true,
+        platformSelectionMode = FirstRunPlatformSelectionMode.ALL,
+      ),
+    )
+    val viewModel = newViewModel(gateway, FakeDesktopPreferenceStore())
+
+    val discoveryRequest = assertNotNull(viewModel.beginFirstRunDiscovery())
+    val discovered = viewModel.finishFirstRunDiscovery(viewModel.runFirstRunDiscovery(discoveryRequest))
+    viewModel.advanceFirstRunStep()
+    viewModel.advanceFirstRunStep()
+    viewModel.advanceFirstRunStep()
+    val applyRequest = assertNotNull(viewModel.beginFirstRunApply())
+    viewModel.finishFirstRunApply(viewModel.runFirstRunApply(applyRequest))
+
+    assertEquals(setOf("kmp", "kotlin"), discovered.firstRunSetup?.selectedPlatformSlugs)
+    assertEquals(FirstRunPlatformSelectionMode.ALL, gateway.planRequests.single().platformSelectionMode)
+    assertEquals(setOf("kmp", "kotlin"), gateway.planRequests.single().selectedPlatformSlugs)
   }
 
   @Test

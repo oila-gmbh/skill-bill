@@ -27,6 +27,7 @@ import skillbill.infrastructure.fs.FileSystemInstallMcpRegistration
 import skillbill.infrastructure.fs.FileSystemInstallNativeAgentLinks
 import skillbill.infrastructure.fs.FileSystemInstallPlanningFacts
 import skillbill.infrastructure.fs.FileSystemInstallPlatformSkillMaterialization
+import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
@@ -55,6 +56,7 @@ import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.install.plan.InstallPlanningFactsPort
 import skillbill.ports.install.plan.InstallPlatformSkillMaterializationPort
 import skillbill.ports.install.plan.InstallStagingIntentPort
+import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
@@ -169,6 +171,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun installSelectionPersistencePort(
+    adapter: FileSystemInstallSelectionPersistence,
+  ): InstallSelectionPersistencePort = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun scaffoldGateway(gateway: FileSystemScaffoldGateway): ScaffoldGateway = gateway
 
   // SKILL-52.1 subtask 2: typed capability ports for the scaffold pipeline. These are wired
@@ -239,6 +247,7 @@ abstract class RuntimeComponent(
 
   abstract val installService: InstallService
   abstract val installAgentService: InstallAgentService
+  abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
   abstract val learningService: LearningService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val mcpRegistrationService: McpRegistrationService

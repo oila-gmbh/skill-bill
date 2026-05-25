@@ -4,10 +4,14 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.toPolicyInput
 import skillbill.application.install.validatedInstallPlan
 import skillbill.install.model.InstallApplyResult
+import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
+import skillbill.install.model.PlatformPackSelection
+import skillbill.install.model.PlatformPackSelectionMode
+import skillbill.install.model.SharedInstallSelection
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
@@ -19,6 +23,8 @@ import skillbill.ports.install.plan.InstallStagingIntentPort
 import skillbill.ports.install.plan.model.InstallPlanningFactsRequest
 import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPortRequest
 import skillbill.ports.install.plan.model.InstallStagingIntentRequest
+import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
 
@@ -29,6 +35,7 @@ class InstallService(
   private val stagingIntentPort: InstallStagingIntentPort,
   private val applyExecutionPort: InstallApplyExecutionPort,
   private val skillLinkPort: InstallSkillLinkPort,
+  private val installSelectionPersistencePort: InstallSelectionPersistencePort,
 ) {
   fun planInstall(request: InstallPlanRequest): InstallPlan {
     val facts = planningFactsPort.collectPlanningFacts(InstallPlanningFactsRequest(request)).facts
@@ -61,13 +68,16 @@ class InstallService(
     return validatedInstallPlan(draft, staging)
   }
 
-  fun applyInstall(plan: InstallPlan, telemetryLevelMutator: TelemetryLevelMutator? = null): InstallApplyResult =
-    applyExecutionPort.applyInstall(
+  fun applyInstall(plan: InstallPlan, telemetryLevelMutator: TelemetryLevelMutator? = null): InstallApplyResult {
+    val result = applyExecutionPort.applyInstall(
       InstallApplyExecutionRequest(
         plan = plan,
         telemetryLevelMutator = telemetryLevelMutator,
       ),
     ).result
+    persistSuccessfulInstallSelection(plan, result)
+    return result
+  }
 
   fun linkSkill(source: Path, targetDir: Path, agent: String, repoRoot: Path? = null, home: Path? = null): List<Path> =
     skillLinkPort.linkSkill(
@@ -79,4 +89,32 @@ class InstallService(
         home = home,
       ),
     ).linkedPaths
+
+  private fun persistSuccessfulInstallSelection(plan: InstallPlan, result: InstallApplyResult) {
+    if (result.status == InstallApplyStatus.FAILURE) {
+      return
+    }
+    installSelectionPersistencePort.writeLatestSuccessfulSelection(
+      WriteLatestSuccessfulInstallSelectionRequest(
+        installHome = plan.request.home,
+        selection = SharedInstallSelection(
+          selectedAgents = result.resolvedInstalledAgents.agents.ifEmpty {
+            plan.agents.mapTo(mutableSetOf()) { target -> target.agent }
+          },
+          platformPackSelection = persistedPlatformPackSelection(plan),
+          telemetryLevel = plan.telemetryLevel,
+          mcpRegistrationChoice = plan.request.mcpRegistrationChoice,
+        ),
+      ),
+    )
+  }
+
+  private fun persistedPlatformPackSelection(plan: InstallPlan): PlatformPackSelection = PlatformPackSelection(
+    mode = plan.request.platformPackSelection.mode,
+    selectedSlugs = if (plan.request.platformPackSelection.mode == PlatformPackSelectionMode.SELECTED) {
+      plan.selectedPlatformSlugs.toSet()
+    } else {
+      emptySet()
+    },
+  )
 }

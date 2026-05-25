@@ -23,6 +23,7 @@ import skillbill.desktop.core.domain.model.FirstRunDiscoveryResult
 import skillbill.desktop.core.domain.model.FirstRunInstallOutcome
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
 import skillbill.desktop.core.domain.model.FirstRunPlanResult
+import skillbill.desktop.core.domain.model.FirstRunPlatformSelectionMode
 import skillbill.desktop.core.domain.model.FirstRunSetupDiscovery
 import skillbill.desktop.core.domain.model.FirstRunSetupRequest
 import skillbill.desktop.core.domain.model.FirstRunSetupState
@@ -172,7 +173,7 @@ class SkillBillViewModel(
     if (desktopPreferenceStore.firstRunPreferences.value.completed || firstRunGateway.hasExistingInstall()) {
       null
     } else {
-      desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
+      latestInstallSetupRequest()?.toFirstRunSetupState() ?: FirstRunSetupState()
     }
   private var activeFirstRunToken: Long = 0L
   private var postPublishReinstall: PostPublishReinstallState? = null
@@ -678,7 +679,7 @@ class SkillBillViewModel(
     if (busyOperation != null || scaffoldWizard != null || firstRunSetup != null || postPublishReinstall != null) {
       return currentState
     }
-    firstRunSetup = desktopPreferenceStore.firstRunPreferences.value.toFirstRunSetupState()
+    firstRunSetup = latestInstallSetupRequest()?.toFirstRunSetupState() ?: FirstRunSetupState()
     currentState = createState()
     return currentState
   }
@@ -697,7 +698,7 @@ class SkillBillViewModel(
     firstRunSetup = when (val result = response.result) {
       is FirstRunDiscoveryResult.Success -> setup.applyDiscovery(
         discovery = result.discovery,
-        preferences = desktopPreferenceStore.firstRunPreferences.value,
+        preferredRequest = latestInstallSetupRequest(),
       )
       is FirstRunDiscoveryResult.Failed -> setup.copy(
         busy = false,
@@ -736,12 +737,14 @@ class SkillBillViewModel(
     if (setup.busy) {
       return currentState
     }
+    val selectedPlatformSlugs = if (selected) {
+      setup.selectedPlatformSlugs + slug
+    } else {
+      setup.selectedPlatformSlugs - slug
+    }
     firstRunSetup = setup.copy(
-      selectedPlatformSlugs = if (selected) {
-        setup.selectedPlatformSlugs + slug
-      } else {
-        setup.selectedPlatformSlugs - slug
-      },
+      selectedPlatformSlugs = selectedPlatformSlugs,
+      platformSelectionMode = selectedPlatformSlugs.toFirstRunPlatformSelectionMode(),
       platformPacks = setup.platformPacks.map { pack ->
         if (pack.slug == slug) pack.copy(selected = selected) else pack
       },
@@ -848,11 +851,10 @@ class SkillBillViewModel(
       }
     }
     firstRunSetup = nextSetup
-    val preferences = nextSetup.toPreferences()
     if (nextSetup.outcome?.status == FirstRunInstallStatus.FAILURE) {
-      desktopPreferenceStore.saveFirstRunPreferences(preferences)
+      desktopPreferenceStore.saveFirstRunPreferences(DesktopFirstRunPreferences(completed = false))
     } else {
-      desktopPreferenceStore.markFirstRunCompleted(preferences)
+      desktopPreferenceStore.markFirstRunCompleted(DesktopFirstRunPreferences())
     }
     currentState = createState()
     return currentState
@@ -1706,7 +1708,7 @@ class SkillBillViewModel(
     }
     postPublishReinstall = prompt.copy(busy = false, outcome = outcome)
     if (outcome.status != FirstRunInstallStatus.FAILURE) {
-      desktopPreferenceStore.markFirstRunCompleted(response.request.setupRequest.toPreferences())
+      desktopPreferenceStore.markFirstRunCompleted(DesktopFirstRunPreferences())
     }
     currentState = createState()
     return currentState
@@ -2251,20 +2253,13 @@ class SkillBillViewModel(
       selectedPlatformSlugs = request.selectedPlatformSlugs,
       telemetryLevel = request.telemetryLevel,
       registerMcp = request.registerMcp,
+      platformSelectionMode = request.platformSelectionMode,
     )
   }
 
   private fun latestInstallSetupRequest(): FirstRunSetupRequest? {
-    val preferences = desktopPreferenceStore.firstRunPreferences.value
-    if (!preferences.completed || preferences.selectedAgentIds.isEmpty()) {
-      return null
-    }
-    return FirstRunSetupRequest(
-      selectedAgentIds = preferences.selectedAgentIds,
-      selectedPlatformSlugs = preferences.selectedPlatformSlugs,
-      telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
-      registerMcp = preferences.registerMcp,
-    )
+    val legacyFallback = desktopPreferenceStore.firstRunPreferences.value.toLegacySetupRequestOrNull()
+    return firstRunGateway.latestReusableSetupRequest(legacyFallback)
   }
 
   private fun containsTreeItem(itemId: String): Boolean = treeItems.flatten().any { item -> item.id == itemId }
@@ -3418,22 +3413,28 @@ data class PostPublishReinstallResponse(
   val applyResult: FirstRunApplyResult?,
 )
 
-private fun DesktopFirstRunPreferences.toFirstRunSetupState(): FirstRunSetupState = FirstRunSetupState(
+private fun FirstRunSetupRequest.toFirstRunSetupState(): FirstRunSetupState = FirstRunSetupState(
   selectedAgentIds = selectedAgentIds,
   selectedPlatformSlugs = selectedPlatformSlugs,
-  telemetryLevel = FirstRunTelemetryLevel.fromId(telemetryLevelId),
+  platformSelectionMode = platformSelectionMode,
+  telemetryLevel = telemetryLevel,
   registerMcp = registerMcp,
 )
 
 private fun FirstRunSetupState.applyDiscovery(
   discovery: FirstRunSetupDiscovery,
-  preferences: DesktopFirstRunPreferences,
+  preferredRequest: FirstRunSetupRequest?,
 ): FirstRunSetupState {
-  val preferredAgents = preferences.selectedAgentIds.takeIf(Set<String>::isNotEmpty)
+  val preferredAgents = preferredRequest?.selectedAgentIds?.takeIf(Set<String>::isNotEmpty)
   val selectedAgents = preferredAgents ?: discovery.agents
     .filter { option -> option.selected }
     .mapTo(mutableSetOf()) { option -> option.agentId }
-  val selectedPlatforms = preferences.selectedPlatformSlugs.ifEmpty { discovery.selectedPlatformSlugs }
+  val selectedPlatforms = when (preferredRequest?.platformSelectionMode) {
+    FirstRunPlatformSelectionMode.ALL -> discovery.platformPacks.mapTo(mutableSetOf()) { pack -> pack.slug }
+    FirstRunPlatformSelectionMode.SELECTED -> preferredRequest.selectedPlatformSlugs
+    FirstRunPlatformSelectionMode.NONE -> emptySet()
+    null -> discovery.selectedPlatformSlugs
+  }
   return copy(
     busy = false,
     discoveryLoaded = true,
@@ -3446,26 +3447,30 @@ private fun FirstRunSetupState.applyDiscovery(
     },
     selectedAgentIds = selectedAgents,
     selectedPlatformSlugs = selectedPlatforms,
-    telemetryLevel = FirstRunTelemetryLevel.fromId(preferences.telemetryLevelId),
-    registerMcp = preferences.registerMcp,
+    platformSelectionMode = preferredRequest?.platformSelectionMode
+      ?: selectedPlatforms.toFirstRunPlatformSelectionMode(),
+    telemetryLevel = preferredRequest?.telemetryLevel ?: FirstRunTelemetryLevel.default,
+    registerMcp = preferredRequest?.registerMcp ?: true,
   )
 }
 
-private fun FirstRunSetupState.toPreferences(): DesktopFirstRunPreferences = DesktopFirstRunPreferences(
-  completed = false,
-  selectedAgentIds = selectedAgentIds,
-  selectedPlatformSlugs = selectedPlatformSlugs,
-  telemetryLevelId = telemetryLevel.id,
-  registerMcp = registerMcp,
-)
+private fun Set<String>.toFirstRunPlatformSelectionMode(): FirstRunPlatformSelectionMode = if (isEmpty()) {
+  FirstRunPlatformSelectionMode.NONE
+} else {
+  FirstRunPlatformSelectionMode.SELECTED
+}
 
-private fun FirstRunSetupRequest.toPreferences(): DesktopFirstRunPreferences = DesktopFirstRunPreferences(
-  completed = false,
-  selectedAgentIds = selectedAgentIds,
-  selectedPlatformSlugs = selectedPlatformSlugs,
-  telemetryLevelId = telemetryLevel.id,
-  registerMcp = registerMcp,
-)
+private fun DesktopFirstRunPreferences.toLegacySetupRequestOrNull(): FirstRunSetupRequest? {
+  if (!completed || selectedAgentIds.isEmpty()) {
+    return null
+  }
+  return FirstRunSetupRequest(
+    selectedAgentIds = selectedAgentIds,
+    selectedPlatformSlugs = selectedPlatformSlugs,
+    telemetryLevel = FirstRunTelemetryLevel.fromId(telemetryLevelId),
+    registerMcp = registerMcp,
+  )
+}
 
 private fun FirstRunSetupStep.next(): FirstRunSetupStep = when (this) {
   FirstRunSetupStep.AGENTS -> FirstRunSetupStep.PLATFORM_PACKS

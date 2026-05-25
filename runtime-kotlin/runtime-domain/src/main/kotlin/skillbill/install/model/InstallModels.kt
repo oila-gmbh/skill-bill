@@ -268,6 +268,32 @@ data class InstallAgentSkillLinkOutcome(
   val issue: InstallApplyIssue? = null,
 )
 
+data class ResolvedInstalledAgents(
+  val agents: Set<InstallAgent>,
+) {
+  companion object {
+    val EMPTY: ResolvedInstalledAgents = ResolvedInstalledAgents(emptySet())
+
+    fun fromApplyResult(status: InstallApplyStatus, skills: List<InstallAppliedSkill>): ResolvedInstalledAgents {
+      if (status == InstallApplyStatus.FAILURE) {
+        return EMPTY
+      }
+      return fromSuccessfulApplyOutcomes(skills)
+    }
+
+    fun fromSuccessfulApplyOutcomes(skills: List<InstallAppliedSkill>): ResolvedInstalledAgents {
+      val resolvedAgents =
+        skills
+          .flatMap(InstallAppliedSkill::links)
+          .filter { link ->
+            link.status == InstallAgentLinkStatus.CREATED || link.status == InstallAgentLinkStatus.SKIPPED
+          }
+          .mapTo(mutableSetOf(), InstallAgentSkillLinkOutcome::agent)
+      return ResolvedInstalledAgents(resolvedAgents)
+    }
+  }
+}
+
 data class InstallAppliedSkill(
   val skillName: String,
   val kind: InstallPlanSkillKind,
@@ -343,4 +369,7 @@ data class InstallApplyResult(
   val windowsSymlinkOutcome: WindowsSymlinkApplyOutcome,
   val telemetryLevel: InstallTelemetryLevel,
   val mcpRegistrationIntent: McpRegistrationIntent,
-)
+) {
+  val resolvedInstalledAgents: ResolvedInstalledAgents
+    get() = ResolvedInstalledAgents.fromApplyResult(status, skills)
+}

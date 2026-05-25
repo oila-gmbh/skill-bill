@@ -171,7 +171,7 @@ class DecompositionManifestWriterTest {
     assertNotNull(result)
     val subtask = result.manifest.subtasks.single { it.id == 1 }
     assertEquals("complete", subtask.status)
-    assertEquals("commit-subtask-1", subtask.commitSha)
+    assertEquals(null, subtask.commitSha)
     assertContains(Files.readString(subtaskSpec), "status: Complete")
   }
 
@@ -320,7 +320,7 @@ class DecompositionManifestWriterTest {
 
     assertNotNull(result)
     val subtask = result.manifest.subtasks.first()
-    assertEquals("abc123", subtask.commitSha)
+    assertEquals(null, subtask.commitSha)
     assertEquals("wfl-subtask-1", subtask.workflowId)
   }
 
