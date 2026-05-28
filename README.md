@@ -292,6 +292,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-grill-plan` | Stress-test a plan or design by walking the decision tree |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
+| `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-quality-check` | Stable quality-check entry point that routes to the matching checker |
 | `/bill-skill-remove` | Remove an existing skill or platform skill set and clean up installs |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |
