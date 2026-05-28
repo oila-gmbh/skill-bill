@@ -637,6 +637,16 @@ private fun snapshotManifest(txn: ScaffoldTransaction, manifestPath: Path) {
 
 private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): List<Path> {
   return when (plan.kind) {
+    SKILL_KIND_HORIZONTAL -> {
+      val readmePath = repoRoot.resolve("README.md")
+      if (!Files.exists(readmePath)) {
+        emptyList()
+      } else {
+        snapshotManifest(txn, readmePath)
+        appendReadmeCatalogRow(readmePath, plan.skillName, effectiveDescription(plan))
+        listOf(readmePath)
+      }
+    }
     SKILL_KIND_CODE_REVIEW_AREA -> {
       val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
       snapshotManifest(txn, manifestPath)
@@ -696,6 +706,10 @@ private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path>
   }
   SKILL_KIND_CODE_REVIEW_AREA, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED ->
     listOf(platformPackManifestPath(repoRoot, plan.platform))
+  SKILL_KIND_HORIZONTAL -> {
+    val readmePath = repoRoot.resolve("README.md")
+    if (Files.exists(readmePath)) listOf(readmePath) else emptyList()
+  }
   else -> emptyList()
 }
 
@@ -720,6 +734,20 @@ private fun previewManifestPreviews(plan: ScaffoldPlan, repoRoot: Path): Map<Pat
           addonSlug = plan.skillName,
         ),
       )
+    }
+  }
+  SKILL_KIND_HORIZONTAL -> {
+    val readmePath = repoRoot.resolve("README.md")
+    if (Files.exists(readmePath)) {
+      mapOf(
+        readmePath to renderReadmeCatalogRow(
+          text = Files.readString(readmePath),
+          skillName = plan.skillName,
+          description = effectiveDescription(plan),
+        ),
+      )
+    } else {
+      emptyMap()
     }
   }
   else -> emptyMap()
