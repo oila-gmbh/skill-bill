@@ -231,6 +231,52 @@ private fun detectListIndent(listBody: String): String =
 
 private fun yamlScalar(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
+private val README_CATALOG_ROW_PATTERN =
+  Regex("""^\| `/(bill-[a-z0-9-]+)` \|[^\n]*$""", RegexOption.MULTILINE)
+
+/**
+ * Inserts a row into the README's slash-command catalog table for [skillName], placed in
+ * alphabetical order against the other `bill-*` rows. Idempotent — if [skillName] already has a
+ * row, the file is left untouched. Throws [InvalidScaffoldPayloadError] when no catalog table is
+ * present (the README is malformed enough that scaffolding should not silently proceed).
+ */
+internal fun appendReadmeCatalogRow(readmePath: Path, skillName: String, description: String) {
+  val original = readmePath.toFile().readText()
+  val updated = renderReadmeCatalogRow(original, skillName, description)
+  if (updated != original) {
+    readmePath.toFile().writeText(updated)
+  }
+}
+
+internal fun renderReadmeCatalogRow(text: String, skillName: String, description: String): String {
+  val rows = README_CATALOG_ROW_PATTERN.findAll(text).toList()
+  if (rows.isEmpty()) {
+    throw InvalidScaffoldPayloadError(
+      "README.md does not contain a `/bill-*` catalog table; refusing to append a row for $skillName.",
+    )
+  }
+  if (rows.any { match -> match.groupValues[1] == skillName }) {
+    return text
+  }
+  val safeDescription = sanitizeCatalogDescription(description)
+  val newRow = "| `/$skillName` | $safeDescription |"
+  val insertAfter = rows
+    .lastOrNull { match -> match.groupValues[1].compareTo(skillName) < 0 }
+  return if (insertAfter != null) {
+    val anchor = insertAfter.range.last + 1
+    text.substring(0, anchor) + "\n" + newRow + text.substring(anchor)
+  } else {
+    val anchor = rows.first().range.first
+    text.substring(0, anchor) + newRow + "\n" + text.substring(anchor)
+  }
+}
+
+private fun sanitizeCatalogDescription(description: String): String {
+  val collapsed = description.replace(Regex("\\s+"), " ").trim()
+  val escaped = collapsed.replace("|", "\\|")
+  return escaped.ifBlank { "TODO: describe this skill." }
+}
+
 /**
  * Inverse of [appendCodeReviewArea]. Removes the area entry from `declared_code_review_areas`,
  * `declared_files.areas`, and the matching `area_metadata.<area>` block. Idempotent — if the
