@@ -5,6 +5,7 @@ package skillbill.desktop.feature.skillbill.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -115,7 +117,10 @@ fun ScaffoldWizardDialog(
       .fillMaxSize()
       .background(semanticTones.scrim)
       .semantics { contentDescription = "Scaffold wizard" }
-      .clickable(role = Role.Button, onClick = callbacks.onDismiss),
+      // Pointer-only outside-tap dismiss. Do NOT use clickable + Role.Button here: that makes the
+      // scrim keyboard-focusable, and pressing Enter/Space while focus has drifted to it fires
+      // onDismiss mid-typing.
+      .pointerInput(Unit) { detectTapGestures { callbacks.onDismiss() } },
   ) {
     Column(
       modifier = Modifier
@@ -125,8 +130,8 @@ fun ScaffoldWizardDialog(
         .clip(RoundedCornerShape(8.dp))
         .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
         .background(semanticTones.dialog.container)
-        // Block dismiss-on-outside-tap when the user interacts inside the panel.
-        .clickable(enabled = false, onClick = {}),
+        // Block dismiss-on-outside-tap when the user clicks inside the panel.
+        .pointerInput(Unit) { detectTapGestures { /* consume */ } },
     ) {
       WizardHeader(kind = state.kind, onDismiss = callbacks.onDismiss)
       HorizontalDivider(color = semanticTones.dialog.border)
