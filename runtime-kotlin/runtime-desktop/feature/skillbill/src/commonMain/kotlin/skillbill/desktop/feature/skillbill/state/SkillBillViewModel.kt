@@ -3085,9 +3085,11 @@ class SkillBillViewModel(
       ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) {
         null
       } else {
+        val trimmed = fields.name.trim()
+        val normalized = if (trimmed.startsWith("bill-")) trimmed else "bill-$trimmed"
         ScaffoldPayload.HorizontalSkill(
           repoRoot = repoRoot,
-          name = fields.name.trim(),
+          name = normalized,
           description = fields.description.trim(),
           contentBody = fields.contentBody.takeIf { it.isNotBlank() },
           subagentSpecialists = fields.subagentSpecialists.filter(String::isNotBlank),

@@ -163,6 +163,90 @@ class SkillBillViewModelScaffoldTest {
   }
 
   @Test
+  fun `horizontal-skill payload prepends bill- when form holds bare suffix`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.HORIZONTAL_SKILL,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "horizontal",
+            skillName = "bill-pr-review-fix",
+            skillPath = "/repo/skills/bill-pr-review-fix",
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
+    viewModel.updateScaffoldForm { it.copy(name = "pr-review-fix") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    val captured = assertNotNull(gateway.lastDryRunPayload) as ScaffoldPayload.HorizontalSkill
+    assertEquals("bill-pr-review-fix", captured.name)
+  }
+
+  @Test
+  fun `horizontal-skill payload normalization is idempotent when form already includes bill-`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.HORIZONTAL_SKILL,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(kind = "horizontal", skillName = "bill-foo", skillPath = "/repo/skills/bill-foo"),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
+    viewModel.updateScaffoldForm { it.copy(name = "bill-foo") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    val captured = assertNotNull(gateway.lastDryRunPayload) as ScaffoldPayload.HorizontalSkill
+    assertEquals("bill-foo", captured.name)
+  }
+
+  @Test
+  fun `horizontal-skill payload trims whitespace before applying bill- prefix`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.HORIZONTAL_SKILL,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "horizontal",
+            skillName = "bill-pr-review-fix",
+            skillPath = "/repo/skills/bill-pr-review-fix",
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
+    viewModel.updateScaffoldForm { it.copy(name = "  pr-review-fix  ") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    val captured = assertNotNull(gateway.lastDryRunPayload) as ScaffoldPayload.HorizontalSkill
+    assertEquals("bill-pr-review-fix", captured.name)
+  }
+
+  @Test
+  fun `horizontal-skill dry-run is gated when form name is blank`() = runBlocking {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
+    viewModel.updateScaffoldForm { it.copy(name = "") }
+
+    assertNull(viewModel.beginScaffoldDryRun())
+  }
+
+  @Test
   fun `dry-run Failed surfaces banner and clears stale plan`() = runBlocking {
     val gateway = FakeScaffoldGateway().apply {
       scriptDryRun(

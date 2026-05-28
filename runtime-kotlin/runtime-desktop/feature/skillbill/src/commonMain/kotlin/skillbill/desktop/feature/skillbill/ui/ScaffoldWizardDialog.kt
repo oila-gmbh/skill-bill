@@ -35,10 +35,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +79,9 @@ private object ScaffoldWizardStrings {
   const val MANIFEST_EDIT_PREVIEWS = "Manifest edit previews"
   const val SHOW_MANIFEST_YAML = "Show manifest YAML"
   const val HIDE_MANIFEST_YAML = "Hide manifest YAML"
+  const val SKILL_NAME_LABEL = "Skill name"
+  const val SKILL_NAME_PREFIX = "bill-"
+  const val SKILL_NAME_HELPER = "Skill name will be prefixed with bill-."
 }
 
 /**
@@ -275,13 +283,20 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
   val fields = state.formFields
   when (state.kind) {
     ScaffoldKind.HORIZONTAL_SKILL -> {
-      TextFieldRow(
-        label = "Skill name",
+      PrefixedTextFieldRow(
+        label = ScaffoldWizardStrings.SKILL_NAME_LABEL,
+        prefix = ScaffoldWizardStrings.SKILL_NAME_PREFIX,
         value = fields.name,
         enabled = !state.busy,
         onValueChanged = { value ->
           callbacks.onFormChanged { it.copy(name = value) }
         },
+      )
+      Text(
+        text = ScaffoldWizardStrings.SKILL_NAME_HELPER,
+        color = SkillBillTheme.colors.onSurfaceVariant,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
       )
       TextFieldRow(
         label = "Description",
@@ -642,6 +657,73 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
         cursorBrush = SolidColor(textFieldTokens.cursor),
         interactionSource = interactionSource,
         modifier = Modifier.fillMaxWidth(),
+      )
+    }
+  }
+}
+
+@Composable
+private fun PrefixedTextFieldRow(
+  label: String,
+  prefix: String,
+  value: String,
+  enabled: Boolean,
+  onValueChanged: (String) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val textFieldTokens = SkillBillTheme.textFieldTokens
+  val interactionSource = remember { MutableInteractionSource() }
+  val focused by interactionSource.collectIsFocusedAsState()
+  val borderColor = when {
+    !enabled -> textFieldTokens.disabledBorder
+    focused -> textFieldTokens.focusedBorder
+    else -> textFieldTokens.border
+  }
+  val textColor = if (enabled) textFieldTokens.text else textFieldTokens.disabledText
+  val containerColor = if (enabled) textFieldTokens.container else textFieldTokens.disabledContainer
+  val focusRequester = remember { FocusRequester() }
+  val rowClickInteractionSource = remember { MutableInteractionSource() }
+  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    SectionLabel(label)
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(30.dp)
+        .clip(RoundedCornerShape(6.dp))
+        .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+        .background(containerColor)
+        .clickable(
+          interactionSource = rowClickInteractionSource,
+          indication = null,
+        ) { focusRequester.requestFocus() }
+        .padding(horizontal = 8.dp, vertical = 6.dp)
+        .semantics(mergeDescendants = true) { contentDescription = "$label, prefix $prefix" },
+    ) {
+      Text(
+        text = prefix,
+        color = SkillBillTheme.colors.onSurfaceVariant,
+        fontSize = 12.sp,
+        fontFamily = FontFamily.Monospace,
+      )
+      BasicTextField(
+        value = value,
+        onValueChange = { raw -> onValueChanged(raw.removePrefix(prefix)) },
+        enabled = enabled,
+        singleLine = true,
+        textStyle = TextStyle(
+          color = textColor,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+        ),
+        cursorBrush = SolidColor(textFieldTokens.cursor),
+        interactionSource = interactionSource,
+        modifier = Modifier
+          .weight(1f)
+          .focusRequester(focusRequester)
+          .testTag("scaffold.skillName.field")
+          .semantics { editableText = AnnotatedString("$prefix$value") },
       )
     }
   }
