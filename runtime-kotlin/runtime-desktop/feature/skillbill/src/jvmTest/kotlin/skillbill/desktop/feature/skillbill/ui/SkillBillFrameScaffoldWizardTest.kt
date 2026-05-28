@@ -8,8 +8,10 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
 import skillbill.desktop.core.domain.model.BaselineReviewPackOption
@@ -301,6 +303,60 @@ class SkillBillFrameScaffoldWizardTest {
 
     onNodeWithText("No baseline review packs available").assertIsDisplayed()
     onNodeWithText("Add layer").assertIsNotEnabled()
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `horizontal-skill name field exposes merged bill- prefix semantics`() = runComposeUiTest {
+    setContent {
+      ScaffoldWizardDialog(
+        state = ScaffoldWizardState(
+          kind = ScaffoldKind.HORIZONTAL_SKILL,
+          optionCatalog = ScaffoldCatalogSnapshot.empty,
+        ),
+        canStartScaffoldAction = true,
+        callbacks = noOpScaffoldCallbacks(),
+      )
+    }
+
+    onNodeWithContentDescription("Skill name, prefix bill-").assertIsDisplayed()
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `horizontal-skill name field strips bill- prefix from typed input`() = runComposeUiTest {
+    var capturedFields = ScaffoldWizardFormFields()
+    setContent {
+      var dialogState by remember {
+        mutableStateOf(
+          ScaffoldWizardState(kind = ScaffoldKind.HORIZONTAL_SKILL, optionCatalog = ScaffoldCatalogSnapshot.empty),
+        )
+      }
+      ScaffoldWizardDialog(
+        state = dialogState,
+        canStartScaffoldAction = true,
+        callbacks = ScaffoldWizardCallbacks(
+          onSelectKind = {},
+          onFormChanged = { transform ->
+            val nextFields = transform(dialogState.formFields)
+            capturedFields = nextFields
+            dialogState = dialogState.copy(formFields = nextFields)
+          },
+          onAddBaselineLayer = {},
+          onAddSuggestedBaselineLayer = {},
+          onEditBaselineLayer = { _, _ -> },
+          onRemoveBaselineLayer = {},
+          onDirtyOverrideChanged = {},
+          onPlan = {},
+          onRun = {},
+          onAcknowledgeFailure = {},
+          onDismiss = {},
+        ),
+      )
+    }
+
+    onNodeWithTag("scaffold.skillName.field").performTextInput("bill-foo")
+    assertEquals("foo", capturedFields.name)
   }
 
   @Test
