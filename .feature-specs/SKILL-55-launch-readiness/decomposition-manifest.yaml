@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-55-launch-readiness"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 3
+  subtask_id: 4
   action: "start"
 subtasks:
 - id: 1
@@ -35,12 +35,12 @@ subtasks:
 - id: 3
   name: "ci-release-pipeline"
   spec_path: ".feature-specs/SKILL-55-launch-readiness/spec_subtask_3_ci-release-pipeline.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-55-launch-readiness"
   commit_sha: null
   workflow_id: "wfl-20260529-150509-yn0o"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false
