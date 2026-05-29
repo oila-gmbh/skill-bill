@@ -1,0 +1,66 @@
+---
+contract_version: "0.2"
+issue_key: "SKILL-56"
+feature_name: "agent-independent-goal-runner"
+parent_spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec.md"
+status: "pending"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-56-agent-independent-goal-runner"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "start"
+subtasks:
+- id: 1
+  name: "headless-continuation-contract"
+  spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec_subtask_1_headless-continuation-contract.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies: []
+- id: 2
+  name: "agent-agnostic-launcher"
+  spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec_subtask_2_agent-agnostic-launcher.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+- id: 3
+  name: "goal-runner-service"
+  spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec_subtask_3_goal-runner-service.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+  - subtask_id: 2
+    optional: false
+    skipped: false
+- id: 4
+  name: "cli-and-bill-goal-skill"
+  spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec_subtask_4_cli-and-bill-goal-skill.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 3
+    optional: false
+    skipped: false
