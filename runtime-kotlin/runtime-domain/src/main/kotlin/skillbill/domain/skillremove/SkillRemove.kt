@@ -9,7 +9,6 @@ import skillbill.domain.skillremove.model.SkillRemovalResult
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import skillbill.error.SkillBillRuntimeException
 import java.nio.file.Paths
-import java.util.logging.Logger
 
 /**
  * Domain service that orchestrates skill removal (SKILL-46).
@@ -67,27 +66,10 @@ class SkillRemove(
       skillDirRoot = skillDirRootFor(request.target),
       cascadedSkillNames = cascadedSkillNames,
     )
-    // F-004-RELIABILITY-LOG: structured info at start of execute. Strip absolute paths via
-    // [SkillRemoveErrorSanitizer] so we never leak filesystem layout into the log stream.
-    log.info(
-      "skill-bill remove begin: target=${describeTargetForLog(request.target)} " +
-        "cascadedSkills=${cascadedSkillNames.size} " +
-        "filesystemPaths=${preview.filesystemPaths.size}",
-    )
-    val applied = try {
-      fileSystem.applyCascade(request, preview)
-    } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
-      throw cancellation
-    } catch (error: Throwable) {
-      // Re-throw; failure logging happens in tryExecute below where we have the exception class.
-      log.info("skill-bill remove failed: exceptionName=${error::class.simpleName.orEmpty()}")
-      throw error
-    }
-    log.info(
-      "skill-bill remove success: removedPaths=${applied.removedPaths.size} " +
-        "editedManifests=${applied.editedManifests.size} " +
-        "unlinkedSymlinks=${applied.unlinkedSymlinks.size}",
-    )
+    // F-004-RELIABILITY-LOG: structured begin/failure/success logging is emitted by the
+    // [SkillRemoveFileSystem] adapter (SKILL-52.3) so the pure domain stays effect-free; the
+    // adapter strips absolute paths so we never leak filesystem layout into the log stream.
+    val applied = fileSystem.applyCascade(request, preview)
     SkillRemovalResult.Success(
       preview = preview,
       removedPaths = applied.removedPaths,
@@ -194,20 +176,9 @@ class SkillRemove(
     )
   }
 
-  /**
-   * F-004-RELIABILITY-LOG helper: returns a stable, log-safe identifier for the target. The
-   * identifiers here never contain absolute repo paths so logs are safe to ship.
-   */
-  private fun describeTargetForLog(target: SkillRemovalTarget): String = when (target) {
-    is SkillRemovalTarget.HorizontalSkill -> "skill:${target.skillName}"
-    is SkillRemovalTarget.PlatformPack -> "platform:${target.platform}"
-    is SkillRemovalTarget.AddOn -> "addon:${target.relativePath}"
-  }
-
   companion object {
     const val BILL_SHARED_NAME: String = ".bill-shared"
     val SHIPPED_HORIZONTAL_SKILLS: Set<String> = setOf("kotlin", "kmp")
     val SHIPPED_PLATFORMS: Set<String> = setOf("kotlin", "kmp")
-    private val log: Logger = Logger.getLogger("skillbill.domain.skillremove.SkillRemove")
   }
 }

@@ -1,12 +1,11 @@
 package skillbill.telemetry
 
 import skillbill.telemetry.model.TelemetryConfigDocument
-import java.util.UUID
 
-fun defaultLocalTelemetryConfig(): TelemetryConfigDocument = TelemetryConfigDocument(
+fun defaultLocalTelemetryConfig(installId: String): TelemetryConfigDocument = TelemetryConfigDocument(
   payload =
   mapOf(
-    "install_id" to UUID.randomUUID().toString(),
+    "install_id" to installId,
     "telemetry" to
       mapOf(
         "level" to "anonymous",

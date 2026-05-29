@@ -163,6 +163,14 @@ class SkillRemoveJvmFileSystem(
     val editedManifests = mutableListOf<String>()
     val unlinkedSymlinks = mutableListOf<String>()
     val readmeWarnings = mutableListOf<ReadmeCatalogWarning>()
+    // F-004-RELIABILITY-LOG (SKILL-52.3): begin/failure/success info logging lives in this adapter
+    // so the pure domain ([SkillRemove]) stays effect-free. Identifiers are sanitized via
+    // [describeTargetForLog] so absolute repo paths never leak into the log stream.
+    log.info(
+      "skill-bill remove begin: target=${describeTargetForLog(request.target)} " +
+        "cascadedSkills=${preview.cascadedSkillNames.size} " +
+        "filesystemPaths=${preview.filesystemPaths.size}",
+    )
     try {
       // F-ROLLBACK-INCOMPLETE: order is now manifest/README first, file-tree second, symlinks
       // LAST so any throw before the symlink step leaves agent homes untouched. Rollback restores
@@ -247,6 +255,11 @@ class SkillRemoveJvmFileSystem(
       val symlinks = unlinkProviderAgents(request)
       unlinkedSymlinks += symlinks.map { it.toString().replace('\\', '/') }
 
+      log.info(
+        "skill-bill remove success: removedPaths=${removedPaths.size} " +
+          "editedManifests=${editedManifests.size} " +
+          "unlinkedSymlinks=${unlinkedSymlinks.size}",
+      )
       return AppliedCascade(
         removedPaths = removedPaths,
         editedManifests = editedManifests,
@@ -255,11 +268,13 @@ class SkillRemoveJvmFileSystem(
       )
     } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
       // F-CANCEL-ROLLBACK: best-effort rollback before re-throwing; cancellation still propagates.
+      log.info("skill-bill remove failed: exceptionName=${cancellation::class.simpleName.orEmpty()}")
       attemptRollback(rollbackStash)
       throw cancellation
     } catch (error: Exception) {
       // F-ERROR-PROPAGATE: narrowed from Throwable -> Exception so JVM Error propagates to the
       // supervisor and is never wrapped in a SkillBillRollbackException.
+      log.info("skill-bill remove failed: exceptionName=${error::class.simpleName.orEmpty()}")
       val rollbackOk = attemptRollback(rollbackStash)
       if (!rollbackOk) {
         throw SkillBillRollbackException(
@@ -272,6 +287,17 @@ class SkillRemoveJvmFileSystem(
   }
 
   // --- private helpers ----------------------------------------------------------------
+
+  /**
+   * F-004-RELIABILITY-LOG helper (SKILL-52.3): returns a stable, log-safe identifier for the
+   * target. Mirrors the prior domain `describeTargetForLog`; the identifiers here never contain
+   * absolute repo paths (only the `skill:`/`platform:`/`addon:` slug) so logs are safe to ship.
+   */
+  private fun describeTargetForLog(target: SkillRemovalTarget): String = when (target) {
+    is SkillRemovalTarget.HorizontalSkill -> "skill:${target.skillName}"
+    is SkillRemovalTarget.PlatformPack -> "platform:${target.platform}"
+    is SkillRemovalTarget.AddOn -> "addon:${target.relativePath}"
+  }
 
   private fun repoRoot(request: SkillRemovalRequest): Path =
     Path.of(request.repoRootAbsolutePath).toAbsolutePath().normalize()

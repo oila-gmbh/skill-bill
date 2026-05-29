@@ -150,6 +150,21 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `domain avoids random ids clock reads and java util logging`() {
+    val domainFiles =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/")
+        }
+
+    assertNoBannedSourceReferences(
+      files = domainFiles,
+      bannedReferences = domainEffectPuritySourceReferences,
+      description = "runtime-domain effect-purity violation",
+    )
+  }
+
+  @Test
   fun `application domain and ports use Path only as an inert value type`() {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
     assertContains(architecture, "`java.nio.file.Path` is allowed")
@@ -1704,6 +1719,21 @@ class RuntimeArchitectureTest {
         "== \"~\"",
         ".startsWith(\"~/\")",
         ".removePrefix(\"~/\")",
+      )
+
+    // SKILL-52.3: the pure runtime-domain layer must not embed nondeterministic effects. Random
+    // id minting, clock reads, and java.util.logging are all effects that belong in adapters
+    // (infra-fs/infra-http) or are supplied by callers. runtime-ports / infra modules legitimately
+    // use these, so this ban is scoped to runtime-domain main source only.
+    val domainEffectPuritySourceReferences: List<String> =
+      listOf(
+        "UUID.randomUUID",
+        "LocalDate.now",
+        "Instant.now",
+        "System.currentTimeMillis",
+        "System.nanoTime",
+        "Clock.system",
+        "java.util.logging",
       )
     val packagePattern: Regex = Regex("^package\\s+([A-Za-z0-9_.]+)", RegexOption.MULTILINE)
     val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)

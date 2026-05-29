@@ -11,7 +11,7 @@ object TelemetryConfigRuntime {
 
   fun resolveConfigPath(configStore: TelemetryConfigStore): Path = configStore.configPath()
 
-  fun defaultLocalConfig(): TelemetryConfigDocument = defaultLocalTelemetryConfig()
+  fun defaultLocalConfig(installId: String): TelemetryConfigDocument = defaultLocalTelemetryConfig(installId)
 
   fun readLocalConfig(configStore: TelemetryConfigStore): TelemetryConfigDocument? = configStore.read()
 

@@ -9,13 +9,13 @@ base_branch: "main"
 feature_branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "start"
 subtasks:
 - id: 1
   name: "schema-validator-extraction"
   spec_path: ".feature-specs/SKILL-52.3-runtime-hexagon-leak-closure/spec_subtask_1_schema-validator-extraction.md"
-  status: "completed"
+  status: "complete"
   branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
   commit_sha: null
   workflow_id: "wfl-20260528-194419-ca6y"
@@ -25,12 +25,12 @@ subtasks:
 - id: 2
   name: "domain-effect-purity"
   spec_path: ".feature-specs/SKILL-52.3-runtime-hexagon-leak-closure/spec_subtask_2_domain-effect-purity.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260529-054534-g84c"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies: []
 - id: 3
   name: "scaffold-typed-result-closure"

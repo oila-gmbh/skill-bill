@@ -24,6 +24,8 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse.BodyHandlers
 import java.nio.file.Path
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 object JdkHttpRequester : HttpRequester {
   override fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse {
@@ -106,7 +108,7 @@ class HttpTelemetryClient(
       "Telemetry relay URL is not configured."
     }
     val (resolvedDateFrom, resolvedDateTo) =
-      parseRemoteStatsWindow(request.since, request.dateFrom, request.dateTo)
+      parseRemoteStatsWindow(request.since, request.dateFrom, request.dateTo, LocalDate.now(ZoneOffset.UTC))
     val capabilities = fetchProxyCapabilities(settings)
     validateRemoteStatsCapabilities(
       request = request,
