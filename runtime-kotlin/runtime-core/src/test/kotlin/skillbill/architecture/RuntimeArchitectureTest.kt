@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
@@ -33,6 +34,14 @@ class RuntimeArchitectureTest {
       runtimeRoot.resolve("runtime-desktop/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/common/src/commonMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/data/src/commonMain/kotlin"),
+      // SKILL-52.3 subtask 5 (AC2): the desktop data gateway jvmMain source set
+      // is where the desktop adapter's runtime `skillbill.*` imports actually
+      // live. Adding it puts the central import/raw-map scanners over the
+      // gateway source instead of relying solely on the Gradle allow-list test.
+      // Verified clean: jvmMain imports only skillbill.*.model[.command],
+      // application services, ports, error, di, and model types.
+      runtimeRoot.resolve("runtime-desktop/core/data/src/jvmMain/kotlin"),
+      runtimeRoot.resolve("runtime-desktop/feature/skillbill/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/database/src/commonMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/database/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/datastore/src/commonMain/kotlin"),
@@ -472,6 +481,126 @@ class RuntimeArchitectureTest {
       "runtime-domain must not own runtime contract schema copy tasks.",
     )
   }
+
+  @Test
+  fun `runtime contracts main source is free of networknt jackson and nio files`() {
+    // SKILL-52.3 subtask 5 (AC4): after the subtask-1 validator relocation,
+    // `runtime-contracts` is a pure DTO/constants/exceptions leaf. This test
+    // LOCKS that purity: the module's main source must contain neither
+    // `com.networknt.*` nor `com.fasterxml.jackson.*` nor `java.nio.file.Files`,
+    // scanned over BOTH parsed imports and raw source text so an inline FQN or
+    // a `Files.` call with no import is also caught. The source already passes;
+    // the fixture-driven positive control below proves the scanner fires.
+    val contractsFiles =
+      sourceFiles().filter { file -> file.relativePath.startsWith("runtime-contracts/src/main/kotlin/") }
+    assertTrue(
+      contractsFiles.isNotEmpty(),
+      "runtime-contracts main source must exist for the purity lock to be meaningful.",
+    )
+    assertNoBannedImports(
+      files = contractsFiles,
+      bannedImports = contractsForbiddenImports,
+    )
+    assertNoBannedSourceReferences(
+      files = contractsFiles,
+      bannedReferences = contractsForbiddenSourceReferences,
+      description = "runtime-contracts infrastructure-coupling violation",
+    )
+  }
+
+  @Test
+  fun `runtime contracts purity scanner fires on synthetic fixtures`() {
+    // SKILL-52.3 subtask 5 (AC4) positive control: each banned reference
+    // (networknt, Jackson, java.nio.file.Files) must be reported by the
+    // source-text scanner on a synthetic fixture so a regression in the ban
+    // list or the `Files.` regex loud-fails.
+    val fixtureSource =
+      """
+      package skillbill.contracts
+
+      import com.networknt.schema.JsonSchemaFactory
+      import com.fasterxml.jackson.databind.ObjectMapper
+      import java.nio.file.Files
+
+      object ContractsLeak {
+        fun read() {
+          Files.readString(somePath)
+        }
+      }
+      """.trimIndent()
+    val fixture = syntheticSourceFile("test-fixture/ContractsLeak.kt", fixtureSource)
+    // F-006: imports are parsed from the fixture source via the production
+    // importPattern (no hand-written second copy), and F-002: the fixture is
+    // driven through the REAL `assertNoBannedImports` so a regression in the
+    // import extraction or the assertion itself loud-fails.
+    assertEquals(
+      listOf(
+        "com.networknt.schema.JsonSchemaFactory",
+        "com.fasterxml.jackson.databind.ObjectMapper",
+        "java.nio.file.Files",
+      ),
+      fixture.imports,
+      "Production importPattern must parse the fixture's three forbidden imports from source.",
+    )
+    assertFailsWith<AssertionError>(
+      "assertNoBannedImports must THROW on the contracts fixture; otherwise the runtime-contracts " +
+        "import purity lock is not actually exercised.",
+    ) {
+      assertNoBannedImports(files = listOf(fixture), bannedImports = contractsForbiddenImports)
+    }
+    // Source-text positive control: the `Files.` call site (no import) must be
+    // caught by the production source scanner.
+    val sourceViolations = contractsForbiddenSourceReferences
+      .filter { reference -> fixture.source.lines().any { line -> line.containsBannedReference(reference) } }
+    assertEquals(
+      contractsForbiddenSourceReferences,
+      sourceViolations,
+      "Contracts purity source scanner must report each banned reference (incl. the `Files.` call site).",
+    )
+  }
+
+  @Test
+  fun `runtime contracts purity scanner does not flag benign Files-like tokens`() {
+    // F-004: clean/negative control for the load-bearing `\bFiles\.` regex and
+    // the import ban — benign source that mentions `Files`-like tokens which are
+    // NOT java.nio.file.Files must produce ZERO violations (no false positive).
+    val cleanFixture = syntheticSourceFile(
+      "test-fixture/ContractsClean.kt",
+      """
+      package skillbill.contracts
+
+      data class ProfileFiles(val names: List<String>)
+
+      object ContractsClean {
+        fun count(): Int {
+          val profileFiles = listOf<String>()
+          return profileFiles.size
+        }
+      }
+      """.trimIndent(),
+    )
+    assertEquals(
+      emptyList(),
+      cleanFixture.imports.filter { importedName -> contractsForbiddenImports.any(importedName::startsWith) },
+      "Clean fixture must declare no forbidden imports.",
+    )
+    val cleanSourceViolations = cleanFixture.source.lines().flatMap { line ->
+      contractsForbiddenSourceReferences.filter { reference -> line.containsBannedReference(reference) }
+    }
+    assertEquals(
+      emptyList(),
+      cleanSourceViolations,
+      "Source scanner must NOT flag benign `Files`-like identifiers (`profileFiles`, `ProfileFiles`) that " +
+        "are not the banned `java.nio.file.Files` / `Files.` call site.",
+    )
+  }
+
+  private fun syntheticSourceFile(relativePath: String, source: String): SourceFile = SourceFile(
+    relativePath = relativePath,
+    packageName = packagePattern.find(source)?.groupValues?.get(1).orEmpty(),
+    imports = importPattern.findAll(source).map { it.groupValues[1].substringBefore(" as ") }.toList(),
+    source = source,
+  )
 
   @Test
   fun `runtime domain workflow source must not import contract schema validators or contract mappers`() {
@@ -1638,6 +1767,24 @@ class RuntimeArchitectureTest {
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
     )
 
+    // SKILL-52.3 subtask 5 (AC4): runtime-contracts is a pure DTO/constants/
+    // exceptions leaf. The schema validators that owned these dependencies
+    // moved to runtime-infra-fs in subtask 1, so the contract leaf must carry
+    // no JSON-Schema (networknt), no Jackson, and no filesystem (`Files`)
+    // coupling. This is an explicit lock, not a migration.
+    val contractsForbiddenImports: List<String> =
+      listOf(
+        "com.networknt.",
+        "com.fasterxml.jackson.",
+        "java.nio.file.Files",
+      )
+    val contractsForbiddenSourceReferences: List<String> =
+      listOf(
+        "com.networknt.",
+        "com.fasterxml.jackson.",
+        "java.nio.file.Files",
+        "Files.",
+      )
     val directFileIoImports: List<String> =
       listOf(
         "java.io.File",

@@ -29,6 +29,24 @@ internal fun isRuntimeImplementationImport(importedName: String): Boolean {
     importsTelemetryImplementation || importsLearningsImplementation || importsReviewImplementation
 }
 
+/**
+ * SKILL-52.3 subtask 5 (AC3): predicate identifying a direct import of a
+ * concrete schema/coherence validator. The three relocated JSON-Schema
+ * validators (`InstallPlanSchemaValidator`, `WorkflowStateSchemaValidator` /
+ * `CanonicalWorkflowStateSchemaValidator`, `DecompositionManifestSchemaValidator`)
+ * and the `DecompositionManifestCoherenceValidator` are owned by
+ * `runtime-infra-fs` and reached only through domain-owned ports. Pure-layer
+ * code (runtime-domain install/workflow source, runtime-application main
+ * source) must never import any concrete `*SchemaValidator` /
+ * `*CoherenceValidator` regardless of its owning module. This is the natural
+ * home for the ban logic (alongside [isRuntimeImplementationImport]); the
+ * `RuntimeImplementationImportRulesTest` self-test pins the positive controls.
+ */
+internal fun isSchemaOrCoherenceValidatorImport(importedName: String): Boolean {
+  val simpleName = importedName.substringAfterLast('.')
+  return simpleName.endsWith("SchemaValidator") || simpleName.endsWith("CoherenceValidator")
+}
+
 internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreBuild: String) {
   val runtimeCoreApiDependencies = Regex("""api\(project\("(:runtime-[^"]+)"\)\)""")
     .findAll(runtimeCoreBuild)

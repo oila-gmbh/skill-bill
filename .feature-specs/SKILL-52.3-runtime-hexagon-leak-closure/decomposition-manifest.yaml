@@ -3,14 +3,14 @@ contract_version: "0.2"
 issue_key: "SKILL-52.3"
 feature_name: "runtime-hexagon-leak-closure"
 parent_spec_path: ".feature-specs/SKILL-52.3-runtime-hexagon-leak-closure/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "schema-validator-extraction"
@@ -58,12 +58,12 @@ subtasks:
 - id: 5
   name: "enforcement-hardening-and-final-lock"
   spec_path: ".feature-specs/SKILL-52.3-runtime-hexagon-leak-closure/spec_subtask_5_enforcement-hardening-and-final-lock.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260529-093408-rqd2"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false

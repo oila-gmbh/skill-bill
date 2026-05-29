@@ -122,6 +122,16 @@ pattern is intentional for install-plan.
   single in-process consumer; revisit (lift to an interface + canonical impl)
   when a second consumer needs to substitute a fake.
 
+**Superseded by 2026-05-28 (SKILL-52.3).** The dual-seam INTENT (validate at
+both the builder seam and the CLI emission seam) still holds, but the mechanics
+described above are stale: neither seam may import `InstallPlanSchemaValidator`
+directly, the validator no longer lives in `runtime-core`/`runtime-domain`
+(it moved to `runtime-infra-fs`), and both seams now validate through the
+injected domain-owned `InstallPlanWireValidator` port (the CLI seam routes via
+the thin application method `InstallService.validateInstallPlanWire`). See the
+2026-05-28 entry for the relocation and the 2026-05-29 external-schema entry for
+the source-of-truth and parity guarantee.
+
 ## 2026-05-28 — Schema validators move from runtime-contracts to runtime-infra-fs, reached through domain ports
 
 **Context.** SKILL-52.3 closes the runtime hexagon leak: the foundational
@@ -168,9 +178,46 @@ no longer pulls networknt/Jackson transitively.
 without inverting the hexagon. The former `runtime-application`
 `WorkflowSnapshotValidatorAdapter` is superseded by
 `WorkflowSnapshotValidatorInfraAdapter`. Final source-of-truth wording for the
-schema files themselves is deferred to subtask 5.
+schema files themselves is recorded in the 2026-05-29 external-schema entry
+below (subtask 5).
 
 ---
+
+## 2026-05-29 — External schemas are the source of truth, copied into the runtime at build time (SKILL-52.3 subtask 5)
+
+Context: Each runtime contract schema (`install-plan`, `workflow-state`,
+`decomposition-manifest`, `platform-pack`, `native-agent-composition`,
+`telemetry-event`) is authored once as Draft 2020-12 YAML under
+`../orchestration/contracts/`, OUTSIDE the Gradle project, and consumed at
+runtime as a classpath resource by the JVM validators.
+
+Decision: Keep `orchestration/contracts/*.yaml` as the single canonical source
+of truth. `runtime-infra-fs` copies the five schema files
+(`copyInstallPlanSchema`, `copyWorkflowStateSchema`,
+`copyDecompositionManifestSchema`, `copyPlatformPackSchema`,
+`copyNativeAgentCompositionSchema`) and `runtime-mcp` copies the sixth
+(`copyTelemetryEventSchema`) into their generated resources at build time. Each
+`Copy` task is config-cache-safe: the canonical source path is captured as a
+plain `String` `val` at configuration time and fed to `from(...)` /
+`inputs.file(...)` (no `Project`/`Task` reference is captured), while only the
+`require(File(path).exists())` existence check runs inside a `doFirst {}`
+guard, loud-failing with a named message if the canonical file is missing. Parity is mechanical: every
+`*_CONTRACT_VERSION` constant in `runtime-contracts` (or the domain/mcp
+equivalents) is pinned to its schema's `properties.contract_version.const` by a
+dedicated `*SchemaContractVersionTest`, so bumping one without the other is a
+build break.
+
+Reason: The schemas are shared with the orchestration layer (CLI/MCP tooling),
+so they cannot live inside one Gradle module without forking the contract.
+Copying at build time keeps the runtime self-contained (validators load a
+classpath resource, not a repo-relative path) while preserving the external
+file as the one place a contract change is made. The loud-fail guard turns a
+missing-schema misconfiguration into an immediate, named build failure instead
+of a runtime `null` resource stream.
+
+Revisit when: a schema needs to diverge between the runtime and the
+orchestration tooling, or when the runtime is published as a standalone
+artifact without access to `../orchestration/contracts/`.
 
 ## 2026-05-29 — SKILL-52.3 subtask 4: application wire seam + open-boundary reconciliation
 

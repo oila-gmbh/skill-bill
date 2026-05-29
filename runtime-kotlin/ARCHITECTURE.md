@@ -230,7 +230,15 @@ runtime-ports
 4. Port packages must not depend on application, infrastructure, entry
    adapters, or composition roots.
 5. Contracts packages must not depend on application, domain area packages,
-   ports, infrastructure, entry adapters, or composition roots.
+   ports, infrastructure, entry adapters, or composition roots. `runtime-contracts`
+   main source is a pure DTO/constants/exceptions leaf: it MUST NOT contain any
+   JSON-Schema validator, any `com.networknt.*` or `com.fasterxml.jackson.*`
+   reference, or any `java.nio.file.Files` filesystem call. The concrete schema
+   validators and their schema-resource copy tasks live in `runtime-infra-fs`,
+   and `runtime-domain` / `runtime-application` reach schema validation only
+   through the domain-owned ports `InstallPlanWireValidator`,
+   `DecompositionManifestValidator`, and `WorkflowSnapshotValidator` — never by
+   importing a concrete `*SchemaValidator` / `*CoherenceValidator`.
 6. Infrastructure packages implement ports and may depend on domain,
    contracts, ports, and JVM APIs. They must not depend on runtime-core or
    entry adapters.
