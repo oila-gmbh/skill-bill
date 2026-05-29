@@ -1,14 +1,11 @@
 package skillbill.application
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.toWireMap
 import java.nio.file.Path
-
-private val decompositionManifestYamlMapper: YAMLMapper by lazy { YAMLMapper() }
 
 /**
  * Decomposition manifest parse/emission seam. This is where workflow artifact maps and
@@ -47,10 +44,11 @@ fun encodeDecompositionManifestMap(
 fun encodeDecompositionManifestYaml(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
   sourceLabel: String = "<in-memory>",
 ): String {
   val wireMap = encodeDecompositionManifestMap(manifest, validator, sourceLabel)
-  val yamlText = decompositionManifestYamlMapper.writeValueAsString(wireMap)
+  val yamlText = fileStore.encodeManifestYaml(wireMap)
   validator.validateYamlText(yamlText, sourceLabel)
   return yamlText
 }

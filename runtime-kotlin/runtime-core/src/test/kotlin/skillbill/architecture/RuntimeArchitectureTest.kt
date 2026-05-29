@@ -1565,6 +1565,11 @@ class RuntimeArchitectureTest {
       "skillbill.install.model.InstallPlanWireValidator.validate",
       "skillbill.workflow.DecompositionManifestValidator.validate",
       "skillbill.workflow.DecompositionManifestValidator.validateYamlText",
+      // SKILL-52.3 subtask 4: domain-owned manifest file-store port. The YAML
+      // serialization seam accepts the canonical schema-validated wire map and
+      // delegates the concrete `YAMLMapper` mechanics to the infra-fs adapter,
+      // mirroring the decode-side validator port above.
+      "skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml",
       "skillbill.workflow.DecompositionManifestCodec.decodeMap",
       "skillbill.workflow.toWireMap",
       "skillbill.application.decodeDecompositionManifestMap",
@@ -1586,10 +1591,10 @@ class RuntimeArchitectureTest {
       // parsers (CLI / MCP / Desktop) or relocated as `internal` raw-map helpers inside
       // `runtime-infra-fs` (see `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`),
       // which the raw-map architecture scanner does not walk.
-      // Subtask 3 will remove (install policy extraction):
-      "skillbill.application.SystemService.doctor",
-      "skillbill.application.SystemService.version",
-      // Subtask 4 will remove (lifecycle telemetry typed-DTO pass):
+      // SKILL-52.3 subtask 4: lifecycle telemetry payload helpers and the
+      // LifecycleTelemetryService emit methods are accepted permanent open
+      // boundaries (forward-compatible MCP/CLI event bags) — now annotated with
+      // @OpenBoundaryMap rather than gated for removal.
       "skillbill.application.lifecycleOkPayload",
       "skillbill.application.lifecycleSkippedPayload",
       "skillbill.application.lifecycleErrorPayload",

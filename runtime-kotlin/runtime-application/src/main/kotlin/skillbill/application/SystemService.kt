@@ -12,9 +12,9 @@ class SystemService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
 ) {
-  fun version(): Map<String, Any?> = VersionContract(version = SkillBillVersion.VALUE).toPayload()
+  fun version(): VersionContract = VersionContract(version = SkillBillVersion.VALUE)
 
-  fun doctor(dbOverride: String?): Map<String, Any?> {
+  fun doctor(dbOverride: String?): DoctorContract {
     val dbPath = database.resolveDbPath(dbOverride)
     val settings = telemetrySettingsOrNull(settingsProvider)
     return DoctorContract(
@@ -23,6 +23,6 @@ class SystemService(
       dbExists = database.databaseExists(dbOverride),
       telemetryEnabled = settings?.enabled ?: false,
       telemetryLevel = settings?.level ?: "off",
-    ).toPayload()
+    )
   }
 }

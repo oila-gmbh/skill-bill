@@ -169,3 +169,42 @@ without inverting the hexagon. The former `runtime-application`
 `WorkflowSnapshotValidatorAdapter` is superseded by
 `WorkflowSnapshotValidatorInfraAdapter`. Final source-of-truth wording for the
 schema files themselves is deferred to subtask 5.
+
+---
+
+## 2026-05-29 — SKILL-52.3 subtask 4: application wire seam + open-boundary reconciliation
+
+**Decisions.**
+
+1. **Type `SystemService.doctor` / `version`.** Both now return
+   `DoctorContract` / `VersionContract`; the CLI (`SystemCliCommands`) and MCP
+   (`McpRuntime`) adapters own the `.toPayload()` call. Output stays
+   byte-equivalent. The two FQNs were removed from the raw-map allow-list, the
+   ARCHITECTURE.md open-boundary block, and the SKILL-52.2 `must_type_now`
+   inventory group.
+
+2. **Relabel lifecycle payloads + `LifecycleTelemetryService` as permanent open
+   boundaries.** The 5 `LifecycleTelemetryPayloads` helpers and the 7
+   `LifecycleTelemetryService` emit methods are forward-compatible MCP/CLI event
+   bags with no stable per-key schema, so they are now annotated
+   `@OpenBoundaryMap` and moved from the SKILL-52.2 `postponed_with_reason`
+   group (gated, `[subtask 4]`) into `open_extension` (no subtask tag) rather
+   than typed away. No event names, keys, shapes, or persisted payloads changed.
+   All "will remove" / future-tense removal wording was deleted from
+   ARCHITECTURE.md and `RuntimeArchitectureTest`.
+
+**Encode-seam relocation rationale.** YAML serialization for the decomposition
+manifest moved out of `runtime-application` (`DecompositionManifestFileWrites`)
+behind a new `DecompositionManifestFileStore.encodeManifestYaml(wireMap)` port
+method, implemented by the infra-fs `FileSystemDecompositionManifestFileStore`
+with the same `YAMLMapper()` construction (byte-identical output). This mirrors
+the subtask-1 decode seam (`DecompositionManifestValidator`): the application
+layer keeps `encodeDecompositionManifestMap` (the validated-map builder) and
+still calls `validator.validateYamlText` AFTER serialization, so the write path
+keeps throwing `InvalidDecompositionManifestSchemaError` on invalid input.
+`runtime-application` main no longer imports Jackson and its build no longer
+carries the production `jackson.dataformat.yaml` dependency (relocated to
+`testImplementation` for the pre-existing + new test doubles). The new port
+method is `@OpenBoundaryMap`-annotated and documented in the allow-list +
+`open_extension` inventory because the raw-map architecture scanner walks
+`runtime-ports`.

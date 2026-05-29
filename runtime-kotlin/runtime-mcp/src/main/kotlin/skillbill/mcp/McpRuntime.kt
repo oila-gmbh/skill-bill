@@ -188,10 +188,10 @@ object McpRuntime {
     services(context).telemetryService.capabilities().toMcpMap()
 
   fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).systemService.version()
+    services(context).systemService.version().toPayload()
 
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).systemService.doctor(dbOverride = null)
+    services(context).systemService.doctor(dbOverride = null).toPayload()
 
   fun newSkillScaffold(
     payload: Map<String, Any?>,

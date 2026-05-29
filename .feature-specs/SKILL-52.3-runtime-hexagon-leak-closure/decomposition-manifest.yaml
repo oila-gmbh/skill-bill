@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 5
   action: "start"
 subtasks:
 - id: 1
@@ -45,12 +45,12 @@ subtasks:
 - id: 4
   name: "application-wire-seam-and-open-boundary-reconciliation"
   spec_path: ".feature-specs/SKILL-52.3-runtime-hexagon-leak-closure/spec_subtask_4_application-wire-seam-and-open-boundary-reconciliation.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-52.3-runtime-hexagon-leak-closure"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260529-080725-4mqz"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false

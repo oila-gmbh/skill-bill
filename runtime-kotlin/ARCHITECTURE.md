@@ -300,10 +300,16 @@ runtime-ports
       patches with no shared schema until then. Also
       `PlatformManifest.customFields` — schema custom-field
       passthrough for platform packs.
-    - **Subtask 3 will remove:** system service / install policy
-      surfaces.
-    - **Subtask 4 will remove:** lifecycle telemetry payload surfaces and
-      supporting top-level helpers. Review service, review repository, and
+    - **Accepted permanent open boundaries (SKILL-52.3 subtask 4):**
+      the lifecycle telemetry payload helpers
+      (`lifecycleOkPayload`, `lifecycleSkippedPayload`,
+      `lifecycleErrorPayload`, `orchestratedStartedSkippedPayload`,
+      `orchestratedPayload`) and the `LifecycleTelemetryService` emit
+      methods stay raw-map by design: they are forward-compatible
+      MCP/CLI event bags, now annotated `@OpenBoundaryMap`. The
+      `SystemService.doctor` / `SystemService.version` surfaces were
+      typed to `DoctorContract` / `VersionContract` and the adapters
+      now own `.toPayload()`. Review service, review repository, and
       `TelemetryService` typed-boundary work closed in subtask 3.
 
     **Typed-Result-Model Open-Boundary Pattern (SKILL-52.1 subtask 3):**
@@ -370,6 +376,7 @@ runtime-ports
     - `skillbill.install.model.InstallPlanWireValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+    - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
     - `skillbill.application.decodeDecompositionManifestMap`
@@ -378,8 +385,6 @@ runtime-ports
     - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.WorkflowFamily.sessionSummary`
-    - `skillbill.application.SystemService.doctor`
-    - `skillbill.application.SystemService.version`
     - `skillbill.application.lifecycleOkPayload`
     - `skillbill.application.lifecycleSkippedPayload`
     - `skillbill.application.lifecycleErrorPayload`
@@ -700,10 +705,6 @@ Categories:
 
 ### must_type_now
 
-- `skillbill.application.SystemService.doctor` [subtask 3] — typed doctor
-  result DTO.
-- `skillbill.application.SystemService.version` [subtask 3] — typed version
-  result DTO.
 - `skillbill.learnings.learningPayload` [subtask 5] — typed learnings
   payload DTO.
 - `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed
@@ -727,6 +728,7 @@ Categories:
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+- `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.WorkflowFamily.sessionSummary`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
@@ -749,6 +751,18 @@ Categories:
 - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+- `skillbill.application.lifecycleOkPayload`
+- `skillbill.application.lifecycleSkippedPayload`
+- `skillbill.application.lifecycleErrorPayload`
+- `skillbill.application.orchestratedStartedSkippedPayload`
+- `skillbill.application.orchestratedPayload`
+- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
+- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
+- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
+- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
+- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
+- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
 
 ### private_serializer
 
@@ -786,40 +800,4 @@ category without reshaping the marker block._
 - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
-- `skillbill.application.lifecycleOkPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.lifecycleSkippedPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.lifecycleErrorPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.orchestratedStartedSkippedPayload` [subtask 4] —
-  orchestrated lifecycle start remains a stable payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.orchestratedPayload` [subtask 4] — orchestrated
-  lifecycle finish remains a stable payload map until lifecycle telemetry
-  gains typed result DTOs.
-- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
 <!-- skill-52-2-inventory:end -->

@@ -4,6 +4,7 @@ import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidInstallPlanSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.workflow.DecompositionManifestValidator
@@ -37,6 +38,7 @@ import kotlin.test.assertFailsWith
 class SchemaValidatorPortLoudFailTest {
   private val installValidator: InstallPlanWireValidator = InstallPlanWireValidatorAdapter()
   private val decompositionValidator: DecompositionManifestValidator = DecompositionManifestValidatorAdapter()
+  private val fileStore = FileSystemDecompositionManifestFileStore()
 
   @Test
   fun `malformed install-plan wire map loud-fails through the injected port`() {
@@ -91,7 +93,7 @@ class SchemaValidatorPortLoudFailTest {
       ),
     )
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest, decompositionValidator)
+      encodeDecompositionManifestYaml(manifest, decompositionValidator, fileStore)
     }
     assertContains(error.reason, "Duplicate subtask id '1'")
   }
@@ -105,7 +107,7 @@ class SchemaValidatorPortLoudFailTest {
       ),
     )
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest, decompositionValidator)
+      encodeDecompositionManifestYaml(manifest, decompositionValidator, fileStore)
     }
     assertContains(error.reason, "earlier declared subtask")
   }
@@ -114,7 +116,7 @@ class SchemaValidatorPortLoudFailTest {
   fun `same-branch manifest without feature branch loud-fails through the injected port`() {
     val manifest = validSameBranchManifest().copy(featureBranch = null)
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest, decompositionValidator)
+      encodeDecompositionManifestYaml(manifest, decompositionValidator, fileStore)
     }
     assertContains(error.reason, "feature_branch")
   }
@@ -133,7 +135,7 @@ class SchemaValidatorPortLoudFailTest {
       ),
     )
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest, decompositionValidator)
+      encodeDecompositionManifestYaml(manifest, decompositionValidator, fileStore)
     }
     assertContains(error.reason, "one branch per subtask in subtask order")
   }

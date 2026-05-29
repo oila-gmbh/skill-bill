@@ -3,27 +3,35 @@ package skillbill.application
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
+import skillbill.boundary.OpenBoundaryMap
 
 private const val STATUS_OK = "ok"
 private const val STATUS_SKIPPED = "skipped"
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun lifecycleOkPayload(sessionId: String): Map<String, Any?> = mapOf("status" to STATUS_OK, "session_id" to sessionId)
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun lifecycleSkippedPayload(sessionId: String): Map<String, Any?> =
   mapOf("status" to STATUS_SKIPPED, "session_id" to sessionId)
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun lifecycleErrorPayload(sessionId: String, error: String): Map<String, Any?> =
   mapOf("status" to "error", "session_id" to sessionId, "error" to error)
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun orchestratedStartedSkippedPayload(): Map<String, Any?> =
   mapOf("mode" to "orchestrated", "status" to "skipped_in_orchestrated_mode")
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun QualityCheckFinishedRequest.orchestratedPayload(level: String): Map<String, Any?> =
   mapOf("mode" to "orchestrated", "telemetry_payload" to qualityCheckPayload(level))
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun FeatureVerifyFinishedRequest.orchestratedPayload(level: String): Map<String, Any?> =
   mapOf("mode" to "orchestrated", "telemetry_payload" to featureVerifyPayload(level))
 
+@OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun PrDescriptionGeneratedRequest.orchestratedPayload(level: String): Map<String, Any?> =
   mapOf("mode" to "orchestrated", "telemetry_payload" to prDescriptionPayload(level))
 

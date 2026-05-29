@@ -28,6 +28,9 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
       Files.move(temp, target, REPLACE_EXISTING)
     }
   }
+
+  override fun encodeManifestYaml(wireMap: Map<String, Any?>): String =
+    com.fasterxml.jackson.dataformat.yaml.YAMLMapper().writeValueAsString(wireMap)
 }
 
 /**

@@ -129,7 +129,7 @@ object DecompositionManifestWriter {
         runtimeUpdate?.let { candidate.withRuntimeUpdate(request.repoRoot, it) } ?: candidate
       }
     val projectedManifest = manifest.gitTrackedProjection()
-    val yaml = encodeDecompositionManifestYaml(projectedManifest, validator)
+    val yaml = encodeDecompositionManifestYaml(projectedManifest, validator, fileStore)
     writeDecompositionManifestText(manifestPath, yaml, fileStore)
     val loaded = loadDecompositionManifest(manifestPath, fileStore, validator)
     projectCurrentSubtaskStatus(request.repoRoot, loaded, fileStore)
@@ -244,7 +244,7 @@ private fun writeProjection(
   manifestPath: Path = manifest.manifestPath(repoRoot),
   fileStore: DecompositionManifestFileStore,
 ): DecompositionManifestWriteResult? = try {
-  val yaml = encodeDecompositionManifestYaml(manifest.gitTrackedProjection(), validator)
+  val yaml = encodeDecompositionManifestYaml(manifest.gitTrackedProjection(), validator, fileStore)
   writeDecompositionManifestText(manifestPath, yaml, fileStore)
   val loaded = loadDecompositionManifest(manifestPath, fileStore, validator)
   projectCurrentSubtaskStatus(repoRoot, loaded, fileStore)

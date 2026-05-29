@@ -16,7 +16,7 @@ class VersionCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.version(), format)
+    state.complete(service.version().toPayload(), format)
   }
 }
 
@@ -36,7 +36,7 @@ class DoctorCliCommand(
 
   override fun run() {
     if (subject == null) {
-      state.complete(service.doctor(state.dbOverride), format)
+      state.complete(service.doctor(state.dbOverride).toPayload(), format)
     } else {
       state.result = retiredSubjectResult(subject.orEmpty(), skillName.orEmpty(), repoRoot, content)
     }
