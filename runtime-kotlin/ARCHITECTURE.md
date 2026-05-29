@@ -24,9 +24,11 @@ runtime-core
 
 ## Gradle Modules
 
-- `runtime-contracts`: contract DTOs, JSON helpers, runtime surface contracts,
-  contract-version constants, runtime/schema parse-seam validators, schema
-  resource copy tasks, and runtime exception types.
+- `runtime-contracts`: contract DTOs, JSON/ordered-map helpers, runtime surface
+  contracts, `*SchemaPaths` constants, `*_CONTRACT_VERSION` constants, and the
+  `skillbill.error` runtime exception taxonomy. It no longer owns the JSON-Schema
+  validators or their schema-resource copy tasks; those moved to
+  `runtime-infra-fs` (see below).
 - `runtime-domain`: pure learning, review, telemetry, workflow, install-plan,
   scaffold, and skill-remove models/rules. Public domain data types live in
   area-owned `model` packages.
@@ -48,7 +50,12 @@ runtime-core
   install plan/apply, install staging, governed scaffold/load/render,
   repo validation, native-agent rendering/linking, launcher MCP registration,
   git workflow operations, decomposition-manifest file storage, and
-  skill-remove filesystem cascades.
+  skill-remove filesystem cascades. It also owns the concrete JSON-Schema
+  validators (`InstallPlanSchemaValidator`, `WorkflowStateSchemaValidator` /
+  `CanonicalWorkflowStateSchemaValidator`, `DecompositionManifestSchemaValidator`,
+  and the `DecompositionManifestCoherenceValidator`) plus their schema-resource
+  copy tasks (`copyInstallPlanSchema`, `copyWorkflowStateSchema`,
+  `copyDecompositionManifestSchema`), reached only through domain-neutral ports.
 - `runtime-core`: `RuntimeModule`, Kotlin-Inject component definitions, and DI
   providers. It may know concrete adapters only inside composition code.
   `runtime-core` publishes only the generated Kotlin-Inject ABI edges that its
@@ -159,8 +166,14 @@ runtime-ports
   there when both application and infrastructure need the same boundary
   contract.
 - `skillbill.contracts.*`: contract DTOs, JSON helpers, runtime surface
-  contracts, and schema validators. Mapping from application/domain/port models
-  into contract DTOs belongs in application or adapter-owned packages.
+  contracts, `*SchemaPaths` constants, and `*_CONTRACT_VERSION` constants.
+  Mapping from application/domain/port models into contract DTOs belongs in
+  application or adapter-owned packages. This package now spans two modules: the
+  DTOs, helpers, and constants compile in `runtime-contracts`, and the schema
+  validator classes under `skillbill.contracts.install` and
+  `skillbill.contracts.workflow` compile into `runtime-infra-fs`. The package
+  name is retained on the moved validators to preserve their classpath resource
+  paths and import compatibility (recorded in `agent/decisions.md` 2026-05-28).
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.workflow` and `skillbill.workflow.model`: pure workflow engine,
   workflow definitions, decomposition manifest codec, wire-map conversion, and
@@ -217,7 +230,15 @@ runtime-ports
 4. Port packages must not depend on application, infrastructure, entry
    adapters, or composition roots.
 5. Contracts packages must not depend on application, domain area packages,
-   ports, infrastructure, entry adapters, or composition roots.
+   ports, infrastructure, entry adapters, or composition roots. `runtime-contracts`
+   main source is a pure DTO/constants/exceptions leaf: it MUST NOT contain any
+   JSON-Schema validator, any `com.networknt.*` or `com.fasterxml.jackson.*`
+   reference, or any `java.nio.file.Files` filesystem call. The concrete schema
+   validators and their schema-resource copy tasks live in `runtime-infra-fs`,
+   and `runtime-domain` / `runtime-application` reach schema validation only
+   through the domain-owned ports `InstallPlanWireValidator`,
+   `DecompositionManifestValidator`, and `WorkflowSnapshotValidator` — never by
+   importing a concrete `*SchemaValidator` / `*CoherenceValidator`.
 6. Infrastructure packages implement ports and may depend on domain,
    contracts, ports, and JVM APIs. They must not depend on runtime-core or
    entry adapters.
@@ -287,10 +308,16 @@ runtime-ports
       patches with no shared schema until then. Also
       `PlatformManifest.customFields` — schema custom-field
       passthrough for platform packs.
-    - **Subtask 3 will remove:** system service / install policy
-      surfaces.
-    - **Subtask 4 will remove:** lifecycle telemetry payload surfaces and
-      supporting top-level helpers. Review service, review repository, and
+    - **Accepted permanent open boundaries (SKILL-52.3 subtask 4):**
+      the lifecycle telemetry payload helpers
+      (`lifecycleOkPayload`, `lifecycleSkippedPayload`,
+      `lifecycleErrorPayload`, `orchestratedStartedSkippedPayload`,
+      `orchestratedPayload`) and the `LifecycleTelemetryService` emit
+      methods stay raw-map by design: they are forward-compatible
+      MCP/CLI event bags, now annotated `@OpenBoundaryMap`. The
+      `SystemService.doctor` / `SystemService.version` surfaces were
+      typed to `DoctorContract` / `VersionContract` and the adapters
+      now own `.toPayload()`. Review service, review repository, and
       `TelemetryService` typed-boundary work closed in subtask 3.
 
     **Typed-Result-Model Open-Boundary Pattern (SKILL-52.1 subtask 3):**
@@ -320,14 +347,16 @@ runtime-ports
     (the return value is unused beyond signalling success), `validate`
     consumes the typed `ScaffoldValidateResult.status` field for the
     pass/fail decision, and `list` consumes a typed
-    `List<AuthoredSkillEntry>` projected by a dedicated mapper. Any
-    remaining raw-shape decoding (issue strings on `ScaffoldValidateResult.payload`,
-    structural list entries on `ScaffoldListResult.payload`) is contained
-    in `runtime-desktop:core:data/.../service/mapper/` files that take
-    the typed result as the receiver. The
-    `RuntimeDesktopGatewayPolicyTest` architecture test scans
-    `RuntimeRepoBrowserService.kt` for raw-map `.payload[`/
-    `.payload.toSelected` patterns and fails on any regression.
+    `List<AuthoredSkillEntry>` projected by a dedicated mapper. SKILL-52.3
+    subtask 3 then retired the `@OpenBoundaryMap` `payload` fields on the
+    scaffold result DTOs entirely, so the desktop
+    `runtime-desktop:core:data/.../service/mapper/` files
+    (`ScaffoldListResultMapper`, `ValidationSummaryMapper`) now consume the
+    typed `ScaffoldListResult.skills` / `ScaffoldValidateResult.status` +
+    `issues` fields directly with no raw-map indexing. The
+    `RuntimeDesktopGatewayPolicyTest` architecture test forbids raw-map
+    `.payload[` reads in the desktop service/mapper sources outright and
+    fails on any regression.
 
     Service/gateway PUBLIC APIs MAY NOT return raw `Map<String, Any?>`.
     Once a producer is typed (subtask 3 retired the eight
@@ -336,9 +365,13 @@ runtime-ports
     re-adding a raw-map return type at the service/gateway level
     requires an explicit allow-list entry AND a documented rationale.
     The pattern's exemplars are `PlatformManifest.customFields` (open
-    boundary for schema custom fields), `WorkflowSnapshotView.artifacts`
-    (durable workflow artifacts passthrough), and the eight scaffold
-    typed-result-model `payload` fields enumerated below.
+    boundary for schema custom fields) and `WorkflowSnapshotView.artifacts`
+    (durable workflow artifacts passthrough). The eight scaffold
+    typed-result-model `payload` fields that SKILL-52.1 subtask 3 left as
+    exemplars were retired in SKILL-52.3 subtask 3: each `Scaffold*Result`
+    DTO is now fully typed and the wire map is rebuilt in the adapter
+    mappers (`runtime-cli` `ScaffoldCliResultMappers`, desktop
+    `ScaffoldListResultMapper` / `ValidationSummaryMapper`).
 
     <!-- open-boundary-allowlist:start -->
 
@@ -348,6 +381,10 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.continueMap`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+    - `skillbill.install.model.InstallPlanWireValidator.validate`
+    - `skillbill.workflow.DecompositionManifestValidator.validate`
+    - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+    - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
     - `skillbill.application.decodeDecompositionManifestMap`
@@ -356,8 +393,6 @@ runtime-ports
     - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.WorkflowFamily.sessionSummary`
-    - `skillbill.application.SystemService.doctor`
-    - `skillbill.application.SystemService.version`
     - `skillbill.application.lifecycleOkPayload`
     - `skillbill.application.lifecycleSkippedPayload`
     - `skillbill.application.lifecycleErrorPayload`
@@ -388,14 +423,6 @@ runtime-ports
     - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
     - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
     - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-    - `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
-    - `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
-    - `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
-    - `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload`
-    - `skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload`
-    - `skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload`
-    - `skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload`
-    - `skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload`
     - `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
     - `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
     - `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
@@ -457,17 +484,20 @@ skillbill.workflow.verify
 
 ## Runtime Contract And Schema Seams
 
-- Runtime contract schemas live in `orchestration/contracts/`. JVM validators,
-  contract-version constants, typed schema errors, and classpath resource copy
-  tasks live in `runtime-contracts` unless a schema is owned by a single
-  adapter surface.
+- Runtime contract schemas live in `orchestration/contracts/`. The
+  `*SchemaPaths` constants and `*_CONTRACT_VERSION` constants stay in
+  `runtime-contracts`. The JVM JSON-Schema validators, their typed schema
+  errors, and their classpath-resource copy tasks live in `runtime-infra-fs`,
+  reached only through the domain-neutral ports `InstallPlanWireValidator`,
+  `DecompositionManifestValidator`, and `WorkflowSnapshotValidator`.
 - Workflow-state schema validation is owned by
   `skillbill.contracts.workflow.WorkflowStateSchemaValidator` (its default
-  implementation `CanonicalWorkflowStateSchemaValidator`). The runtime-domain
-  workflow engine MUST NOT import that validator directly — instead it depends
-  on the domain-owned port `skillbill.workflow.WorkflowSnapshotValidator`,
-  which the application boundary wires via
-  `skillbill.application.workflow.WorkflowSnapshotValidatorAdapter`. The
+  implementation `CanonicalWorkflowStateSchemaValidator`), compiled into
+  `runtime-infra-fs`. The runtime-domain workflow engine MUST NOT import that
+  validator directly — instead it depends on the domain-owned port
+  `skillbill.workflow.WorkflowSnapshotValidator`, which the composition root
+  wires to the infra adapter
+  `skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter`. The
   owning read seam is still `skillbill.workflow.WorkflowEngine`; durable record
   mapping stays pure and the next engine read rejects drift. Architecture
   tests forbid any `skillbill.contracts.workflow.*SchemaValidator*` or
@@ -478,15 +508,20 @@ skillbill.workflow.verify
   `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` constant, and the typed
   `InvalidWorkflowStateSchemaError`.)
 - Install-plan schema validation is owned by
-  `skillbill.contracts.install.InstallPlanSchemaValidator`. The owning seams
-  are install-plan building and CLI/MCP emission through the install
-  application and filesystem adapter path.
+  `skillbill.contracts.install.InstallPlanSchemaValidator`, compiled into
+  `runtime-infra-fs` and reached through the domain-owned port
+  `skillbill.install.model.InstallPlanWireValidator`. The owning seams are
+  install-plan building and CLI/MCP emission, both of which validate through the
+  injected port rather than importing the validator directly.
 - Decomposition-manifest schema validation is owned by
-  `skillbill.contracts.workflow.DecompositionManifestSchemaValidator`. The
-  owning parse/emission seam is
-  `skillbill.application.DecompositionManifestFileWrites`, which validates
-  YAML text and in-memory maps before workflow artifacts are persisted or
-  returned. Repo-local manifest text persistence is owned by
+  `skillbill.contracts.workflow.DecompositionManifestSchemaValidator` (paired
+  with `DecompositionManifestCoherenceValidator`), compiled into
+  `runtime-infra-fs` and reached through the domain-owned port
+  `skillbill.workflow.DecompositionManifestValidator`. The owning parse/emission
+  seam is `skillbill.application.DecompositionManifestFileWrites`, which
+  validates YAML text and in-memory maps through that port before workflow
+  artifacts are persisted or returned. Repo-local manifest text persistence is
+  owned by
   `skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore`
   behind `skillbill.ports.workflow.DecompositionManifestFileStore`.
 - Platform-pack manifest schema validation is owned by
@@ -678,10 +713,6 @@ Categories:
 
 ### must_type_now
 
-- `skillbill.application.SystemService.doctor` [subtask 3] — typed doctor
-  result DTO.
-- `skillbill.application.SystemService.version` [subtask 3] — typed version
-  result DTO.
 - `skillbill.learnings.learningPayload` [subtask 5] — typed learnings
   payload DTO.
 - `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed
@@ -702,6 +733,10 @@ Categories:
 - `skillbill.workflow.WorkflowEngine.resumeMap`
 - `skillbill.workflow.WorkflowEngine.continueMap`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+- `skillbill.install.model.InstallPlanWireValidator.validate`
+- `skillbill.workflow.DecompositionManifestValidator.validate`
+- `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+- `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.WorkflowFamily.sessionSummary`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
@@ -715,14 +750,6 @@ Categories:
 - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
 - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
 - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-- `skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload`
-- `skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload`
-- `skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload`
-- `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload`
-- `skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload`
-- `skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload`
-- `skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload`
-- `skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload`
 - `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
 - `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
 - `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
@@ -732,6 +759,18 @@ Categories:
 - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+- `skillbill.application.lifecycleOkPayload`
+- `skillbill.application.lifecycleSkippedPayload`
+- `skillbill.application.lifecycleErrorPayload`
+- `skillbill.application.orchestratedStartedSkippedPayload`
+- `skillbill.application.orchestratedPayload`
+- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
+- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
+- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
+- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
+- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
+- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
 
 ### private_serializer
 
@@ -769,40 +808,4 @@ category without reshaping the marker block._
 - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
-- `skillbill.application.lifecycleOkPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.lifecycleSkippedPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.lifecycleErrorPayload` [subtask 4] — lifecycle
-  telemetry still returns the stable MCP/CLI payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.orchestratedStartedSkippedPayload` [subtask 4] —
-  orchestrated lifecycle start remains a stable payload map until lifecycle
-  telemetry gains typed result DTOs.
-- `skillbill.application.orchestratedPayload` [subtask 4] — orchestrated
-  lifecycle finish remains a stable payload map until lifecycle telemetry
-  gains typed result DTOs.
-- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
-- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-  [subtask 4] — lifecycle telemetry service method; postponed separately from
-  `TelemetryService` typed-boundary work.
 <!-- skill-52-2-inventory:end -->

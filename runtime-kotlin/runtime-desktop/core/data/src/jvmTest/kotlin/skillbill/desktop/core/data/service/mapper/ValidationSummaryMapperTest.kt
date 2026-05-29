@@ -9,12 +9,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * SKILL-52.2 subtask 5 (review-fix F-003) — unit coverage for
- * [toSelectedValidationSummary]. This mapper encodes the pass/fail business
- * policy (anything other than `"pass"` ⇒ FAILED) and tolerates malformed
- * `issues` payload entries by filtering to strings. The behavior is the
- * source of truth for the dock-bar validation state of a selected skill, so
- * each branch is pinned here.
+ * SKILL-52.3 subtask 3 — unit coverage for [toSelectedValidationSummary]. This mapper
+ * encodes the pass/fail business policy (anything other than `"pass"` ⇒ FAILED) and
+ * decodes each typed `issues: List<String>` entry through `RepoValidationIssue`. The
+ * behavior is the source of truth for the dock-bar validation state of a selected
+ * skill, so each branch is pinned here.
+ *
+ * SKILL-52.3 subtask 3 retired the `@OpenBoundaryMap` `payload` field; `issues` is now a
+ * typed `List<String>`, so the historical mixed-type filtering branch is structurally
+ * impossible and was removed.
  */
 class ValidationSummaryMapperTest {
   private val root: Path = Path.of("/repo")
@@ -51,18 +54,11 @@ class ValidationSummaryMapperTest {
   }
 
   @Test
-  fun `mixed-type issues entries are filtered to strings without throwing`() {
-    // `RepoValidationIssue.fromRawIssue` only handles strings. The mapper must
-    // not throw on a payload whose issue list contains non-string entries
-    // (numbers, nested maps, nulls). Those entries are dropped; surviving
-    // strings are decoded.
+  fun `each typed issue string is decoded in order`() {
     val summary = scaffoldValidateResult(
       status = "fail",
       issues = listOf(
         "skills/alpha/SKILL.md: missing frontmatter `description`",
-        42,
-        mapOf("code" to "X"),
-        null,
         "skills/beta/SKILL.md: unbalanced fenced block",
       ),
     ).toSelectedValidationSummary(root)
@@ -75,19 +71,8 @@ class ValidationSummaryMapperTest {
 
   @Test
   fun `empty issues list yields no issues`() {
-    val summary = scaffoldValidateResult(status = "fail", issues = emptyList<Any?>())
+    val summary = scaffoldValidateResult(status = "fail", issues = emptyList())
       .toSelectedValidationSummary(root)
-
-    assertEquals(ValidationRunState.FAILED, summary.state)
-    assertEquals(emptyList(), summary.issues)
-  }
-
-  @Test
-  fun `missing issues key yields no issues`() {
-    val summary = ScaffoldValidateResult(
-      status = "fail",
-      payload = mapOf("status" to "fail"),
-    ).toSelectedValidationSummary(root)
 
     assertEquals(ValidationRunState.FAILED, summary.state)
     assertEquals(emptyList(), summary.issues)
@@ -119,12 +104,13 @@ class ValidationSummaryMapperTest {
     )
   }
 
-  private fun scaffoldValidateResult(status: String, issues: List<Any?>? = null): ScaffoldValidateResult {
-    val payload: Map<String, Any?> = if (issues == null) {
-      mapOf("status" to status)
-    } else {
-      mapOf("status" to status, "issues" to issues)
-    }
-    return ScaffoldValidateResult(status = status, payload = payload)
-  }
+  private fun scaffoldValidateResult(status: String, issues: List<String> = emptyList()): ScaffoldValidateResult =
+    ScaffoldValidateResult(
+      repoRoot = "/repo",
+      mode = "selected",
+      status = status,
+      issues = issues,
+      skillNames = listOf("alpha"),
+      suggestedCommands = emptyList(),
+    )
 }

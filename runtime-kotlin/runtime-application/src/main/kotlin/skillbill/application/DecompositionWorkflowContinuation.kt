@@ -6,6 +6,7 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.DecompositionContinuationSelector
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.DecompositionContinuationSelection
 import skillbill.workflow.model.DecompositionManifest
@@ -15,13 +16,14 @@ import skillbill.workflow.model.WorkflowUpdateInput
 internal class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
+  private val validator: DecompositionManifestValidator,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ) {
   fun continueDecomposedParentByIssueKey(issueKey: String, unitOfWork: UnitOfWork): ContinuationStepResult {
     val parentRecord = unitOfWork.workflowStates
-      .findDecomposedParentWorkflow(issueKey)
+      .findDecomposedParentWorkflow(issueKey, validator)
       ?.toSnapshot()
-    val manifest = parentRecord?.decompositionRuntime()
+    val manifest = parentRecord?.decompositionRuntime(validator)
     val result = if (parentRecord == null || manifest == null) {
       ContinuationStepResult(
         WorkflowContinueResult.UnknownWorkflow(
@@ -49,7 +51,7 @@ internal class DecompositionWorkflowContinuation(
     }
     val advancedManifest = advancement.manifest
     val projectionArtifactsJson =
-      if (advancedManifest != manifest) decompositionRuntimeArtifactsJson(advancedManifest) else null
+      if (advancedManifest != manifest) decompositionRuntimeArtifactsJson(advancedManifest, validator) else null
     return selectedContinuation(parentRecord, advancedManifest, unitOfWork)
       .withProjectionArtifactsIfMissing(projectionArtifactsJson)
   }
@@ -81,8 +83,8 @@ internal class DecompositionWorkflowContinuation(
       engine.continueExistingWorkflow(
         WorkflowFamily.IMPLEMENT,
         alignedRecord,
-        selection.workflowId,
         unitOfWork,
+        validator,
         fileStore,
       ).withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
     }
@@ -109,15 +111,24 @@ internal class DecompositionWorkflowContinuation(
     unitOfWork: UnitOfWork,
   ): WorkflowContinueResult? {
     val branchPlan = selection.branchPlan
+    fun blockedBranchStartResult(reason: String): WorkflowContinueResult {
+      val blockedManifest = manifest.withBlockedSubtask(selection.subtask.id, reason, "create_branch")
+      engine.persistParentDecompositionRuntime(parentRecord, blockedManifest, unitOfWork, validator)
+      return WorkflowContinueResult.DecompositionBlockedBranchStart(
+        dbPath = unitOfWork.dbPath.toString(),
+        workflowId = parentRecord.workflowId,
+        issueKey = manifest.issueKey,
+        blockedReason = reason.ifBlank { "Git operation failed." },
+      )
+    }
     var errorResult: WorkflowContinueResult? = null
     if (branchPlan.branch.isNotBlank()) {
       val checkout = gitOperations.checkoutBranch(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
-      errorResult = checkout.takeUnless { it.ok }
-        ?.let { engine.blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+      errorResult = checkout.takeUnless { it.ok }?.let { blockedBranchStartResult(it.error) }
       if (errorResult == null && branchPlan.validateBase) {
         errorResult = gitOperations.validateBranchBase(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
           .takeUnless { it.ok }
-          ?.let { engine.blockedBranchStartResult(parentRecord, manifest, selection.subtask.id, it.error, unitOfWork) }
+          ?.let { blockedBranchStartResult(it.error) }
       }
     }
     return errorResult
@@ -149,10 +160,16 @@ internal class DecompositionWorkflowContinuation(
       ),
     )
     WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, started)
-    engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork)
+    engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork, validator)
     val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started
-    return engine.continueExistingWorkflow(WorkflowFamily.IMPLEMENT, saved, workflowId, unitOfWork, fileStore)
-      .withProjection(updatedManifest)
+    return engine.continueExistingWorkflow(
+      WorkflowFamily.IMPLEMENT,
+      saved,
+      unitOfWork,
+      validator,
+      fileStore,
+    )
+      .withProjection(updatedManifest, validator)
       .withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
   }
 
@@ -164,6 +181,7 @@ internal class DecompositionWorkflowContinuation(
     "branch" to mapOf("branch_name" to selection.branchPlan.branch),
     DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
       manifest,
+      validator,
       DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
     ),
   )
@@ -180,13 +198,13 @@ internal class DecompositionWorkflowContinuation(
         val advanced = commitCompletedSubtask(updated, subtask.id, subtask.name)
         if (advanced.error != null) {
           updated = updated.withBlockedSubtask(subtask.id, advanced.error, "commit_push")
-          engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
-          return AdvancementResult(updated, advanced.error, decompositionRuntimeArtifactsJson(updated))
+          engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork, validator)
+          return AdvancementResult(updated, advanced.error, decompositionRuntimeArtifactsJson(updated, validator))
         }
         updated = advanced.manifest
       }
     if (updated != manifest) {
-      engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork)
+      engine.persistParentDecompositionRuntime(parentRecord, updated, unitOfWork, validator)
     }
     return AdvancementResult(updated)
   }

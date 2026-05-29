@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.application.InstallService
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSkillLinkOutcome
 import skillbill.install.model.InstallAppliedSkill
@@ -12,17 +13,20 @@ import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.NativeAgentApplyOutcome
 import skillbill.install.model.WindowsSymlinkApplyOutcome
 
-internal fun installApplyPayload(plan: InstallPlan, result: InstallApplyResult): Map<String, Any?> =
-  installPlanPayload(plan) + mapOf(
-    "status" to result.status.name.lowercase(),
-    "skills" to result.skills.map(::appliedSkillPayload),
-    "native_agents" to result.nativeAgents.map(::nativeAgentPayload),
-    "telemetry" to telemetryPayload(result.telemetryOutcome),
-    "mcp_registration" to applyMcpRegistrationPayload(result),
-    "warnings" to result.warnings.map(::issuePayload),
-    "failures" to result.failures.map(::issuePayload),
-    "windows_symlink_outcome" to windowsOutcomePayload(result.windowsSymlinkOutcome),
-  )
+internal fun installApplyPayload(
+  plan: InstallPlan,
+  result: InstallApplyResult,
+  installService: InstallService,
+): Map<String, Any?> = installPlanPayload(plan, installService) + mapOf(
+  "status" to result.status.name.lowercase(),
+  "skills" to result.skills.map(::appliedSkillPayload),
+  "native_agents" to result.nativeAgents.map(::nativeAgentPayload),
+  "telemetry" to telemetryPayload(result.telemetryOutcome),
+  "mcp_registration" to applyMcpRegistrationPayload(result),
+  "warnings" to result.warnings.map(::issuePayload),
+  "failures" to result.failures.map(::issuePayload),
+  "windows_symlink_outcome" to windowsOutcomePayload(result.windowsSymlinkOutcome),
+)
 
 private fun appliedSkillPayload(skill: InstallAppliedSkill): Map<String, Any?> = mapOf(
   "name" to skill.skillName,

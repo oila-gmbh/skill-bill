@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.install.InstallPlanningPorts
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentDefaultTarget
 import skillbill.install.model.InstallAgentLinkStatus
@@ -73,12 +74,15 @@ class InstallServiceTest {
     val request = request(repoRoot, home)
     val planningFactsPort = FakePlanningFactsPort(repoRoot, home, platformManifests)
     val service = InstallService(
-      planningFactsPort = planningFactsPort,
-      platformSkillMaterializationPort = SnapshotAssertingMaterializationPort(platformManifests),
-      stagingIntentPort = SnapshotAssertingStagingIntentPort(home, platformManifests),
+      planningPorts = InstallPlanningPorts(
+        planningFactsPort = planningFactsPort,
+        platformSkillMaterializationPort = SnapshotAssertingMaterializationPort(platformManifests),
+        stagingIntentPort = SnapshotAssertingStagingIntentPort(home, platformManifests),
+      ),
       applyExecutionPort = UnsupportedApplyExecutionPort,
       skillLinkPort = UnsupportedSkillLinkPort,
       installSelectionPersistencePort = NoopInstallSelectionPersistencePort,
+      installPlanWireValidator = testInstallPlanWireValidator,
     )
 
     service.planInstall(request)
@@ -288,12 +292,15 @@ class InstallServiceTest {
     result: InstallApplyResult,
     selectionPort: InstallSelectionPersistencePort,
   ): InstallService = InstallService(
-    planningFactsPort = UnsupportedPlanningFactsPort,
-    platformSkillMaterializationPort = UnsupportedPlatformSkillMaterializationPort,
-    stagingIntentPort = UnsupportedStagingIntentPort,
+    planningPorts = InstallPlanningPorts(
+      planningFactsPort = UnsupportedPlanningFactsPort,
+      platformSkillMaterializationPort = UnsupportedPlatformSkillMaterializationPort,
+      stagingIntentPort = UnsupportedStagingIntentPort,
+    ),
     applyExecutionPort = StaticApplyExecutionPort(result),
     skillLinkPort = UnsupportedSkillLinkPort,
     installSelectionPersistencePort = selectionPort,
+    installPlanWireValidator = testInstallPlanWireValidator,
   )
 
   private fun successfulApplyResult(

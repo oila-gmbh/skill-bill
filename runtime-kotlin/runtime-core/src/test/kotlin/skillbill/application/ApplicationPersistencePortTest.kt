@@ -9,7 +9,9 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningScope
@@ -1138,10 +1140,16 @@ private fun statusSection(path: Path): String {
 private fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-): WorkflowService = WorkflowService(database, gitOperations, FileSystemDecompositionManifestFileStore())
+): WorkflowService = WorkflowService(
+  database,
+  gitOperations,
+  FileSystemDecompositionManifestFileStore(),
+  WorkflowSnapshotValidatorInfraAdapter(),
+  DecompositionManifestValidatorAdapter(),
+)
 
 private fun loadTestDecompositionManifest(path: Path) =
-  loadDecompositionManifest(path, FileSystemDecompositionManifestFileStore())
+  loadDecompositionManifest(path, FileSystemDecompositionManifestFileStore(), DecompositionManifestValidatorAdapter())
 
 private class InMemoryWorkflowStateRepository(
   private val implementSessionSummary: FeatureImplementSessionSummary? = null,

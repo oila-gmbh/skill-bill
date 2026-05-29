@@ -1,34 +1,25 @@
 package skillbill.ports.scaffold.source.model
 
-import skillbill.boundary.OpenBoundaryMap
+import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 
 /**
- * SKILL-52.1 subtask 3 — Typed result for `ScaffoldGateway.editWithBodyFile(...)`.
+ * SKILL-52.3 subtask 3 — Fully typed result for `ScaffoldGateway.editWithBodyFile(...)`.
  *
- * Edit-via-body-file emits the editor bookkeeping fields (used_editor, guided_sections,
- * updated_section, validator_ran) THEN the post-mutation status payload. Legacy
- * insertion order is preserved verbatim via [payload].
- *
- * SKILL-52.1 subtask 3 (F-011): the producer uses `mapOf(...) + mutateContent(...)`
- * (backed by `LinkedHashMap` on JVM), not `linkedMapOf(...)`; the contract is "ordered map".
+ * Edit-via-body-file emits the editor bookkeeping fields ([usedEditor],
+ * [guidedSections], [updatedSection], [validatorRan]) THEN the post-mutation skill
+ * [status] and `wrapper_regenerated` flag. The legacy open-boundary `payload` map and
+ * its desync `init {}` guard were retired in SKILL-52.3 subtask 3; the adapter-owned
+ * `runtime-cli` mapper rebuilds the byte-equivalent ordered wire map from these typed
+ * fields in producer key order (`used_editor`, `guided_sections`, `updated_section`,
+ * `validator_ran`, then the status keys + `wrapper_regenerated`).
  */
 data class ScaffoldEditWithBodyFileResult(
-  val skillName: String,
   val usedEditor: Boolean,
+  val guidedSections: List<String>,
+  val updatedSection: String?,
   val validatorRan: Boolean,
-  @OpenBoundaryMap("Scaffold editWithBodyFile wire payload (legacy raw-map surface preserved for byte-equivalent JSON)")
-  val payload: Map<String, Any?>,
+  val status: ScaffoldSkillStatus,
+  val wrapperRegenerated: Boolean,
 ) {
-  init {
-    // SKILL-52.1 subtask 3 (F-010): typed/payload desync invariants.
-    require(payload["skill_name"] == skillName) {
-      "ScaffoldEditWithBodyFileResult typed/payload desync: skill_name"
-    }
-    require(payload["used_editor"] == usedEditor) {
-      "ScaffoldEditWithBodyFileResult typed/payload desync: used_editor"
-    }
-    require(payload["validator_ran"] == validatorRan) {
-      "ScaffoldEditWithBodyFileResult typed/payload desync: validator_ran"
-    }
-  }
+  val skillName: String get() = status.skillName
 }

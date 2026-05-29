@@ -9,6 +9,7 @@ import skillbill.install.model.InstallPlanDraft
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationPlan
@@ -72,8 +73,11 @@ object InstallPlanPolicy {
     )
   }
 
-  fun validateInstallPlanSnapshot(plan: InstallPlan): InstallPolicyValidationResult {
-    validateInstallPlanWireSnapshot(plan)
+  fun validateInstallPlanSnapshot(
+    plan: InstallPlan,
+    validator: InstallPlanWireValidator,
+  ): InstallPolicyValidationResult {
+    validateInstallPlanWireSnapshot(plan, validator)
     return InstallPolicyValidationResult(InstallPolicyValidationStatus.VALID)
   }
 

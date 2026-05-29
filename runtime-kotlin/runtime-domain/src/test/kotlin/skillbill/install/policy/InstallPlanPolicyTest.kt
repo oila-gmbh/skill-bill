@@ -9,6 +9,7 @@ import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
@@ -269,12 +270,15 @@ class InstallPlanPolicyTest {
   }
 
   @Test
-  fun `schema validation snapshot returns typed result or loud-fails with typed schema error`() {
-    val draft = InstallPlanPolicy.buildPlanDraft(
-      policyInput(
-        request = request(mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = path(""))),
-      ),
-    )
+  fun `validate install plan snapshot delegates to the injected wire validator port`() {
+    // SKILL-52.3 Subtask 1: the concrete schema validator now lives in
+    // `runtime-infra-fs`; the domain policy reaches it only through the
+    // injected `InstallPlanWireValidator` port. This test pins the seam
+    // contract (the policy builds the wire map and hands it to the port,
+    // surfacing the port's typed error). Real-schema coverage lives in
+    // the infra-fs `InstallPlanSchemaViolationsTest` and the dedicated
+    // dual-seam install validation test.
+    val draft = InstallPlanPolicy.buildPlanDraft(policyInput())
     val plan = draft.toInstallPlan(
       staging = InstallStagingIntent(
         root = path("/home/.skill-bill/installed-skills"),
@@ -290,20 +294,28 @@ class InstallPlanPolicyTest {
       ),
     )
 
-    val error = assertFailsWith<InvalidInstallPlanSchemaError> {
-      InstallPlanPolicy.validateInstallPlanSnapshot(plan)
+    var capturedWireMap: Map<String, Any?>? = null
+    val recordingValidator = object : InstallPlanWireValidator {
+      override fun validate(plan: Map<String, Any?>) {
+        capturedWireMap = plan
+      }
     }
-
-    assertContains(error.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
-
-    val validPlan = plan.copy(
-      request = plan.request.copy(
-        mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = path("/runtime-mcp")),
-      ),
-      mcpRegistrationIntent = plan.mcpRegistrationIntent.copy(runtimeMcpBin = path("/runtime-mcp")),
-    )
-    val result = InstallPlanPolicy.validateInstallPlanSnapshot(validPlan)
+    val result = InstallPlanPolicy.validateInstallPlanSnapshot(plan, recordingValidator)
     assertEquals(InstallPolicyValidationStatus.VALID, result.status)
+    assertEquals("planned", capturedWireMap?.get("status"))
+
+    val loudFailValidator = object : InstallPlanWireValidator {
+      override fun validate(plan: Map<String, Any?>) {
+        throw InvalidInstallPlanSchemaError(
+          fieldPath = "mcp_registration.runtime_mcp_bin",
+          reason = "must be a non-empty string when register is true.",
+        )
+      }
+    }
+    val error = assertFailsWith<InvalidInstallPlanSchemaError> {
+      InstallPlanPolicy.validateInstallPlanSnapshot(plan, loudFailValidator)
+    }
+    assertContains(error.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
   }
 
   private fun policyInput(

@@ -4,14 +4,13 @@ import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetrySettings
 import java.time.LocalDate
-import java.time.ZoneOffset
 
 object TelemetryRemoteStatsRuntime {
   fun parseRemoteStatsWindow(
     since: String = "",
     dateFrom: String = "",
     dateTo: String = "",
-    today: LocalDate = LocalDate.now(ZoneOffset.UTC),
+    today: LocalDate,
   ): Pair<String, String> = skillbill.telemetry.parseRemoteStatsWindow(since, dateFrom, dateTo, today)
 }
 
@@ -19,7 +18,7 @@ fun parseRemoteStatsWindow(
   since: String = "",
   dateFrom: String = "",
   dateTo: String = "",
-  today: LocalDate = LocalDate.now(ZoneOffset.UTC),
+  today: LocalDate,
 ): Pair<String, String> {
   require(dateFrom.isBlank() || since.isBlank()) {
     "Use either since or date_from/date_to, not both."

@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.nativeagent.NativeAgentCompositionDirective
 import skillbill.nativeagent.NativeAgentCompositionKind
 import skillbill.nativeagent.NativeAgentSource
@@ -10,6 +9,7 @@ import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
+import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.NativeAgentSourceProjection
@@ -40,57 +40,77 @@ class FileSystemScaffoldGateway(
   private val scaffoldOrchestrator: FileSystemScaffoldOrchestrator,
 ) : ScaffoldGateway {
   override fun list(repoRoot: Path, skillNames: List<String>): ScaffoldListResult {
-    val payload = AuthoringOperations.list(repoRoot, skillNames)
+    val result = AuthoringOperations.list(repoRoot, skillNames)
     return ScaffoldListResult(
-      repoRoot = payload.requireScalar<String>("list", "repo_root"),
-      skillCount = payload.requireInt("list", "skill_count"),
-      payload = payload,
+      repoRoot = result.repoRoot,
+      skillCount = result.skillCount,
+      skills = result.skills,
     )
   }
 
-  override fun show(repoRoot: Path, skillName: String, contentMode: String): ScaffoldShowResult {
-    val payload = AuthoringOperations.show(repoRoot, skillName, contentMode)
-    return ScaffoldShowResult(
-      skillName = payload.requireScalar<String>("show", "skill_name"),
-      payload = payload,
+  override fun show(repoRoot: Path, skillName: String, contentMode: String): ScaffoldShowResult =
+    ScaffoldShowResult(status = AuthoringOperations.show(repoRoot, skillName, contentMode))
+
+  override fun explain(repoRoot: Path, skillName: String?): ScaffoldExplainResult {
+    val result = AuthoringOperations.explain(repoRoot, skillName)
+    return ScaffoldExplainResult(
+      explanation = result.explanation,
+      editableSurface = result.editableSurface,
+      generatedSurface = result.generatedSurface,
+      governedSidecars = result.governedSidecars,
+      normalWorkflow = result.normalWorkflow,
+      notes = result.notes,
+      skill = result.skill?.let { skill ->
+        ScaffoldExplainSkill(
+          skillName = skill.skillName,
+          contentFile = skill.contentFile,
+          renderCommand = skill.renderCommand,
+          recommendedCommands = skill.recommendedCommands,
+        )
+      },
     )
   }
-
-  override fun explain(repoRoot: Path, skillName: String?): ScaffoldExplainResult =
-    ScaffoldExplainResult(payload = AuthoringOperations.explain(repoRoot, skillName))
 
   override fun validate(repoRoot: Path, skillNames: List<String>): ScaffoldValidateResult {
-    val payload = AuthoringOperations.validate(repoRoot, skillNames)
+    val result = AuthoringOperations.validate(repoRoot, skillNames)
     return ScaffoldValidateResult(
-      status = payload.requireScalar<String>("validate", "status"),
-      payload = payload,
+      repoRoot = result.repoRoot,
+      mode = result.mode,
+      status = result.status,
+      issues = result.issues,
+      skillNames = result.skillNames,
+      suggestedCommands = result.suggestedCommands,
     )
   }
 
   override fun upgrade(repoRoot: Path, skillNames: List<String>, validate: Boolean): ScaffoldUpgradeResult {
-    val payload = AuthoringOperations.upgrade(repoRoot, skillNames, validate)
+    val result = AuthoringOperations.upgrade(repoRoot, skillNames, validate)
     return ScaffoldUpgradeResult(
-      regeneratedCount = payload.requireInt("upgrade", "regenerated_count"),
-      validatorRan = payload.requireScalar<Boolean>("upgrade", "validator_ran"),
-      payload = payload,
+      repoRoot = result.repoRoot,
+      regeneratedCount = result.regeneratedCount,
+      regeneratedFiles = result.regeneratedFiles,
+      contentMdTouched = result.contentMdTouched,
+      shellCeremonyTouched = result.shellCeremonyTouched,
+      validatorRan = result.validatorRan,
     )
   }
 
   override fun fill(repoRoot: Path, skillName: String, body: String, sectionName: String?): ScaffoldFillResult {
-    val payload = AuthoringOperations.fill(repoRoot, skillName, body, sectionName)
+    val result = AuthoringOperations.fill(repoRoot, skillName, body, sectionName)
     return ScaffoldFillResult(
-      skillName = payload.requireScalar<String>("fill", "skill_name"),
-      validatorRan = payload.requireScalar<Boolean>("fill", "validator_ran"),
-      payload = payload,
+      status = result.mutation.status,
+      wrapperRegenerated = result.mutation.wrapperRegenerated,
+      updatedSection = result.updatedSection,
+      validatorRan = result.validatorRan,
     )
   }
 
   override fun saveExactContent(repoRoot: Path, skillName: String, content: String): ScaffoldSaveExactContentResult {
-    val payload = AuthoringOperations.saveExactContent(repoRoot, skillName, content)
+    val result = AuthoringOperations.saveExactContent(repoRoot, skillName, content)
     return ScaffoldSaveExactContentResult(
-      skillName = payload.requireScalar<String>("saveExactContent", "skill_name"),
-      validatorRan = payload.requireScalar<Boolean>("saveExactContent", "validator_ran"),
-      payload = payload,
+      status = result.mutation.status,
+      wrapperRegenerated = result.mutation.wrapperRegenerated,
+      validatorRan = result.validatorRan,
     )
   }
 
@@ -100,12 +120,14 @@ class FileSystemScaffoldGateway(
     body: String,
     sectionName: String?,
   ): ScaffoldEditWithBodyFileResult {
-    val payload = AuthoringOperations.editWithBodyFile(repoRoot, skillName, body, sectionName)
+    val result = AuthoringOperations.editWithBodyFile(repoRoot, skillName, body, sectionName)
     return ScaffoldEditWithBodyFileResult(
-      skillName = payload.requireScalar<String>("editWithBodyFile", "skill_name"),
-      usedEditor = payload.requireScalar<Boolean>("editWithBodyFile", "used_editor"),
-      validatorRan = payload.requireScalar<Boolean>("editWithBodyFile", "validator_ran"),
-      payload = payload,
+      usedEditor = result.usedEditor,
+      guidedSections = result.guidedSections,
+      updatedSection = result.updatedSection,
+      validatorRan = result.validatorRan,
+      status = result.mutation.status,
+      wrapperRegenerated = result.mutation.wrapperRegenerated,
     )
   }
 
@@ -120,46 +142,6 @@ class FileSystemScaffoldGateway(
 
   override fun render(repoRoot: Path, skillName: String): ScaffoldRenderResult =
     renderAuthoringTarget(repoRoot, skillName).toPortRenderResult()
-}
-
-/**
- * SKILL-52.1 subtask 3 (F-003 + F-012): typed lift helper that replaces unchecked
- * `as <Type>` casts when extracting scalars from the legacy raw-map payloads produced by
- * `AuthoringOperations`. A typed mismatch surfaces as [InvalidScaffoldPayloadError] with
- * an actionable message naming the producer operation and the offending key, instead of
- * the opaque `ClassCastException` the bare casts produced.
- */
-private inline fun <reified T : Any> Map<String, Any?>.requireScalar(op: String, key: String): T {
-  val value = this[key]
-    ?: throw InvalidScaffoldPayloadError(
-      "AuthoringOperations.$op payload missing/typed mismatch on '$key' (expected ${T::class.simpleName}).",
-    )
-  if (value !is T) {
-    throw InvalidScaffoldPayloadError(
-      "AuthoringOperations.$op payload missing/typed mismatch on '$key' " +
-        "(expected ${T::class.simpleName}, got ${value::class.simpleName}).",
-    )
-  }
-  return value
-}
-
-/**
- * SKILL-52.1 subtask 3 (F-012): tolerate `Number` widening for `Int` lifts so a
- * JSON round-trip that produced a `Long` (e.g. from the MCP envelope re-encode path) still
- * lifts cleanly into the typed model field.
- */
-private fun Map<String, Any?>.requireInt(op: String, key: String): Int {
-  val value = this[key]
-    ?: throw InvalidScaffoldPayloadError(
-      "AuthoringOperations.$op payload missing/typed mismatch on '$key' (expected Int).",
-    )
-  if (value !is Number) {
-    throw InvalidScaffoldPayloadError(
-      "AuthoringOperations.$op payload missing/typed mismatch on '$key' " +
-        "(expected Number-convertible Int, got ${value::class.simpleName}).",
-    )
-  }
-  return value.toInt()
 }
 
 @Inject

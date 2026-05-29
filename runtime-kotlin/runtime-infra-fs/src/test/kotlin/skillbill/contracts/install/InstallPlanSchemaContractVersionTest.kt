@@ -1,10 +1,7 @@
-package skillbill.install.model
+package skillbill.contracts.install
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
-import skillbill.contracts.install.InstallPlanSchemaPaths
-import skillbill.contracts.install.InstallPlanSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

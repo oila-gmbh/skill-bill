@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
@@ -33,6 +34,14 @@ class RuntimeArchitectureTest {
       runtimeRoot.resolve("runtime-desktop/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/common/src/commonMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/data/src/commonMain/kotlin"),
+      // SKILL-52.3 subtask 5 (AC2): the desktop data gateway jvmMain source set
+      // is where the desktop adapter's runtime `skillbill.*` imports actually
+      // live. Adding it puts the central import/raw-map scanners over the
+      // gateway source instead of relying solely on the Gradle allow-list test.
+      // Verified clean: jvmMain imports only skillbill.*.model[.command],
+      // application services, ports, error, di, and model types.
+      runtimeRoot.resolve("runtime-desktop/core/data/src/jvmMain/kotlin"),
+      runtimeRoot.resolve("runtime-desktop/feature/skillbill/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/database/src/commonMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/database/src/jvmMain/kotlin"),
       runtimeRoot.resolve("runtime-desktop/core/datastore/src/commonMain/kotlin"),
@@ -146,6 +155,21 @@ class RuntimeArchitectureTest {
       files = domainAndPortFiles,
       bannedReferences = boundaryFrameworkSourceReferences,
       description = "JDBC, HTTP, or entrypoint framework dependency",
+    )
+  }
+
+  @Test
+  fun `domain avoids random ids clock reads and java util logging`() {
+    val domainFiles =
+      sourceFiles()
+        .filter { file ->
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/")
+        }
+
+    assertNoBannedSourceReferences(
+      files = domainFiles,
+      bannedReferences = domainEffectPuritySourceReferences,
+      description = "runtime-domain effect-purity violation",
     )
   }
 
@@ -387,21 +411,41 @@ class RuntimeArchitectureTest {
   }
 
   @Test
-  fun `runtime schema validators and schema resources are owned by runtime contracts`() {
-    val contractFiles =
+  fun `runtime schema validators and schema resources are owned by runtime infra-fs`() {
+    // SKILL-52.3 subtask 1: the three schema validators + the coherence
+    // validator moved from `runtime-contracts` to `runtime-infra-fs`
+    // (the module that already owns `PlatformPackSchemaValidator` and
+    // `NativeAgentCompositionSchemaValidator`). Only the pure `*SchemaPaths`
+    // + contract-version constants stay in `runtime-contracts`. Validator
+    // ownership now lives in `runtime-infra-fs`; the validators are reached
+    // only through domain-owned ports.
+    val infraValidatorFiles =
       listOf(
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
+      )
+    infraValidatorFiles.forEach { relative ->
+      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing infra-fs-owned validator: $relative")
+    }
+    val contractsPathFiles =
+      listOf(
         "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt",
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt",
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaPaths.kt",
       )
-    contractFiles.forEach { relative ->
-      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing contract-owned file: $relative")
+    contractsPathFiles.forEach { relative ->
+      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing contract-owned paths file: $relative")
     }
-    val legacyDomainContractFiles =
+    val absentLegacyValidatorFiles =
       listOf(
+        // Legacy contracts-owned validators (now in infra-fs).
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
+        // Legacy domain shims (must stay absent).
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaValidator.kt",
@@ -409,17 +453,25 @@ class RuntimeArchitectureTest {
         "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaPaths.kt",
       )
-    legacyDomainContractFiles.forEach { relative ->
+    absentLegacyValidatorFiles.forEach { relative ->
       assertTrue(
         !Files.exists(runtimeRoot.resolve(relative)),
-        "Legacy domain contract shim must stay absent: $relative",
+        "Legacy contract/domain validator shim must stay absent: $relative",
       )
     }
 
+    val runtimeInfraFsBuild = Files.readString(runtimeRoot.resolve("runtime-infra-fs/build.gradle.kts"))
+    assertContains(runtimeInfraFsBuild, "copyWorkflowStateSchema")
+    assertContains(runtimeInfraFsBuild, "copyInstallPlanSchema")
+    assertContains(runtimeInfraFsBuild, "copyDecompositionManifestSchema")
+
     val runtimeContractsBuild = Files.readString(runtimeRoot.resolve("runtime-contracts/build.gradle.kts"))
-    assertContains(runtimeContractsBuild, "copyWorkflowStateSchema")
-    assertContains(runtimeContractsBuild, "copyInstallPlanSchema")
-    assertContains(runtimeContractsBuild, "copyDecompositionManifestSchema")
+    assertTrue(
+      "copyWorkflowStateSchema" !in runtimeContractsBuild &&
+        "copyInstallPlanSchema" !in runtimeContractsBuild &&
+        "copyDecompositionManifestSchema" !in runtimeContractsBuild,
+      "runtime-contracts must no longer own runtime schema copy tasks.",
+    )
 
     val runtimeDomainBuild = Files.readString(runtimeRoot.resolve("runtime-domain/build.gradle.kts"))
     assertTrue(
@@ -431,24 +483,148 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `runtime contracts main source is free of networknt jackson and nio files`() {
+    // SKILL-52.3 subtask 5 (AC4): after the subtask-1 validator relocation,
+    // `runtime-contracts` is a pure DTO/constants/exceptions leaf. This test
+    // LOCKS that purity: the module's main source must contain neither
+    // `com.networknt.*` nor `com.fasterxml.jackson.*` nor `java.nio.file.Files`,
+    // scanned over BOTH parsed imports and raw source text so an inline FQN or
+    // a `Files.` call with no import is also caught. The source already passes;
+    // the fixture-driven positive control below proves the scanner fires.
+    val contractsFiles =
+      sourceFiles().filter { file -> file.relativePath.startsWith("runtime-contracts/src/main/kotlin/") }
+    assertTrue(
+      contractsFiles.isNotEmpty(),
+      "runtime-contracts main source must exist for the purity lock to be meaningful.",
+    )
+    assertNoBannedImports(
+      files = contractsFiles,
+      bannedImports = contractsForbiddenImports,
+    )
+    assertNoBannedSourceReferences(
+      files = contractsFiles,
+      bannedReferences = contractsForbiddenSourceReferences,
+      description = "runtime-contracts infrastructure-coupling violation",
+    )
+  }
+
+  @Test
+  fun `runtime contracts purity scanner fires on synthetic fixtures`() {
+    // SKILL-52.3 subtask 5 (AC4) positive control: each banned reference
+    // (networknt, Jackson, java.nio.file.Files) must be reported by the
+    // source-text scanner on a synthetic fixture so a regression in the ban
+    // list or the `Files.` regex loud-fails.
+    val fixtureSource =
+      """
+      package skillbill.contracts
+
+      import com.networknt.schema.JsonSchemaFactory
+      import com.fasterxml.jackson.databind.ObjectMapper
+      import java.nio.file.Files
+
+      object ContractsLeak {
+        fun read() {
+          Files.readString(somePath)
+        }
+      }
+      """.trimIndent()
+    val fixture = syntheticSourceFile("test-fixture/ContractsLeak.kt", fixtureSource)
+    // F-006: imports are parsed from the fixture source via the production
+    // importPattern (no hand-written second copy), and F-002: the fixture is
+    // driven through the REAL `assertNoBannedImports` so a regression in the
+    // import extraction or the assertion itself loud-fails.
+    assertEquals(
+      listOf(
+        "com.networknt.schema.JsonSchemaFactory",
+        "com.fasterxml.jackson.databind.ObjectMapper",
+        "java.nio.file.Files",
+      ),
+      fixture.imports,
+      "Production importPattern must parse the fixture's three forbidden imports from source.",
+    )
+    assertFailsWith<AssertionError>(
+      "assertNoBannedImports must THROW on the contracts fixture; otherwise the runtime-contracts " +
+        "import purity lock is not actually exercised.",
+    ) {
+      assertNoBannedImports(files = listOf(fixture), bannedImports = contractsForbiddenImports)
+    }
+    // Source-text positive control: the `Files.` call site (no import) must be
+    // caught by the production source scanner.
+    val sourceViolations = contractsForbiddenSourceReferences
+      .filter { reference -> fixture.source.lines().any { line -> line.containsBannedReference(reference) } }
+    assertEquals(
+      contractsForbiddenSourceReferences,
+      sourceViolations,
+      "Contracts purity source scanner must report each banned reference (incl. the `Files.` call site).",
+    )
+  }
+
+  @Test
+  fun `runtime contracts purity scanner does not flag benign Files-like tokens`() {
+    // F-004: clean/negative control for the load-bearing `\bFiles\.` regex and
+    // the import ban — benign source that mentions `Files`-like tokens which are
+    // NOT java.nio.file.Files must produce ZERO violations (no false positive).
+    val cleanFixture = syntheticSourceFile(
+      "test-fixture/ContractsClean.kt",
+      """
+      package skillbill.contracts
+
+      data class ProfileFiles(val names: List<String>)
+
+      object ContractsClean {
+        fun count(): Int {
+          val profileFiles = listOf<String>()
+          return profileFiles.size
+        }
+      }
+      """.trimIndent(),
+    )
+    assertEquals(
+      emptyList(),
+      cleanFixture.imports.filter { importedName -> contractsForbiddenImports.any(importedName::startsWith) },
+      "Clean fixture must declare no forbidden imports.",
+    )
+    val cleanSourceViolations = cleanFixture.source.lines().flatMap { line ->
+      contractsForbiddenSourceReferences.filter { reference -> line.containsBannedReference(reference) }
+    }
+    assertEquals(
+      emptyList(),
+      cleanSourceViolations,
+      "Source scanner must NOT flag benign `Files`-like identifiers (`profileFiles`, `ProfileFiles`) that " +
+        "are not the banned `java.nio.file.Files` / `Files.` call site.",
+    )
+  }
+
+  private fun syntheticSourceFile(relativePath: String, source: String): SourceFile = SourceFile(
+    relativePath = relativePath,
+    packageName = packagePattern.find(source)?.groupValues?.get(1).orEmpty(),
+    imports = importPattern.findAll(source).map { it.groupValues[1].substringBefore(" as ") }.toList(),
+    source = source,
+  )
+
+  @Test
   fun `runtime domain workflow source must not import contract schema validators or contract mappers`() {
-    // SKILL-52.2 Subtask 4: workflow schema validators and contract
-    // payload mappers are owned by the application/contracts boundary.
-    // `runtime-domain` workflow source consumes them only through the
-    // domain-owned `WorkflowSnapshotValidator` port wired at
-    // `runtime-application`. Direct imports of any
-    // `skillbill.contracts.workflow.*SchemaValidator*` or
-    // `skillbill.contracts.*Mapper` from under
-    // `runtime-domain/src/main/kotlin/skillbill/workflow` are banned.
-    val workflowDomainFiles =
+    // SKILL-52.2 Subtask 4 / SKILL-52.3 subtask 1: schema + coherence
+    // validators (now owned by `runtime-infra-fs`) and contract payload
+    // mappers are reached only through domain-owned ports wired at
+    // `runtime-application` / `runtime-core`. `runtime-domain` workflow
+    // AND install source consume them through the
+    // `WorkflowSnapshotValidator` / `DecompositionManifestValidator` /
+    // `InstallPlanWireValidator` ports. Direct imports of any concrete
+    // `*SchemaValidator` / `*CoherenceValidator` (regardless of owning
+    // module) or any `skillbill.contracts.*Mapper` are banned from the
+    // workflow + install domain source.
+    val guardedDomainFiles =
       sourceFiles().filter { file ->
-        file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/workflow/")
+        file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/workflow/") ||
+          file.relativePath.startsWith("runtime-domain/src/main/kotlin/skillbill/install/")
       }
     val violations =
-      workflowDomainFiles.flatMap { file ->
+      guardedDomainFiles.flatMap { file ->
         file.imports
           .filter { importedName ->
-            (importedName.startsWith("skillbill.contracts.workflow.") && "SchemaValidator" in importedName) ||
+            importedName.endsWith("SchemaValidator") ||
+              importedName.endsWith("CoherenceValidator") ||
               (importedName.startsWith("skillbill.contracts.") && importedName.endsWith("Mapper"))
           }
           .map { importedName -> "${file.relativePath} imports banned $importedName" }
@@ -466,7 +642,11 @@ class RuntimeArchitectureTest {
     assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(projectionIo, "Decomposition manifest parse/emission seam")
-    assertContains(projectionIo, "DecompositionManifestSchemaValidator.validateYamlText")
+    // SKILL-52.3 subtask 1: the concrete schema validator moved to
+    // `runtime-infra-fs`; the application seam now flows through the
+    // injected `DecompositionManifestValidator` port.
+    assertContains(projectionIo, "validator.validateYamlText")
+    assertContains(projectionIo, "DecompositionManifestValidator")
     assertContains(projectionIo, "DecompositionManifestFileStore")
   }
 
@@ -1507,6 +1687,18 @@ class RuntimeArchitectureTest {
       // port stays raw-map at the validation seam because the schema itself
       // validates against the canonical map envelope.
       "skillbill.workflow.WorkflowSnapshotValidator.validate",
+      // SKILL-52.3 subtask 1: domain-owned install-plan + decomposition
+      // validator ports. Each stays raw-map at the validation seam because
+      // the canonical schema validates against the wire-map envelope, the
+      // same rationale as the workflow-snapshot validator port above.
+      "skillbill.install.model.InstallPlanWireValidator.validate",
+      "skillbill.workflow.DecompositionManifestValidator.validate",
+      "skillbill.workflow.DecompositionManifestValidator.validateYamlText",
+      // SKILL-52.3 subtask 4: domain-owned manifest file-store port. The YAML
+      // serialization seam accepts the canonical schema-validated wire map and
+      // delegates the concrete `YAMLMapper` mechanics to the infra-fs adapter,
+      // mirroring the decode-side validator port above.
+      "skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml",
       "skillbill.workflow.DecompositionManifestCodec.decodeMap",
       "skillbill.workflow.toWireMap",
       "skillbill.application.decodeDecompositionManifestMap",
@@ -1528,10 +1720,10 @@ class RuntimeArchitectureTest {
       // parsers (CLI / MCP / Desktop) or relocated as `internal` raw-map helpers inside
       // `runtime-infra-fs` (see `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`),
       // which the raw-map architecture scanner does not walk.
-      // Subtask 3 will remove (install policy extraction):
-      "skillbill.application.SystemService.doctor",
-      "skillbill.application.SystemService.version",
-      // Subtask 4 will remove (lifecycle telemetry typed-DTO pass):
+      // SKILL-52.3 subtask 4: lifecycle telemetry payload helpers and the
+      // LifecycleTelemetryService emit methods are accepted permanent open
+      // boundaries (forward-compatible MCP/CLI event bags) — now annotated with
+      // @OpenBoundaryMap rather than gated for removal.
       "skillbill.application.lifecycleOkPayload",
       "skillbill.application.lifecycleSkippedPayload",
       "skillbill.application.lifecycleErrorPayload",
@@ -1564,16 +1756,6 @@ class RuntimeArchitectureTest {
       "skillbill.telemetry.model.TelemetryConfigDocument.payload",
       "skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields",
       "skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics",
-      // SKILL-52.1 subtask 3 — typed scaffold result models that carry the legacy raw-map
-      // wire payload through a single `@OpenBoundaryMap`-annotated `payload` field.
-      "skillbill.ports.scaffold.catalog.model.ScaffoldListResult.payload",
-      "skillbill.ports.scaffold.catalog.model.ScaffoldShowResult.payload",
-      "skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult.payload",
-      "skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.payload",
-      "skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult.payload",
-      "skillbill.ports.scaffold.source.model.ScaffoldFillResult.payload",
-      "skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult.payload",
-      "skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult.payload",
       "skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps",
       "skillbill.workflow.model.WorkflowSnapshotView.artifacts",
       "skillbill.workflow.model.WorkflowContinueView.stepArtifacts",
@@ -1585,6 +1767,24 @@ class RuntimeArchitectureTest {
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
     )
 
+    // SKILL-52.3 subtask 5 (AC4): runtime-contracts is a pure DTO/constants/
+    // exceptions leaf. The schema validators that owned these dependencies
+    // moved to runtime-infra-fs in subtask 1, so the contract leaf must carry
+    // no JSON-Schema (networknt), no Jackson, and no filesystem (`Files`)
+    // coupling. This is an explicit lock, not a migration.
+    val contractsForbiddenImports: List<String> =
+      listOf(
+        "com.networknt.",
+        "com.fasterxml.jackson.",
+        "java.nio.file.Files",
+      )
+    val contractsForbiddenSourceReferences: List<String> =
+      listOf(
+        "com.networknt.",
+        "com.fasterxml.jackson.",
+        "java.nio.file.Files",
+        "Files.",
+      )
     val directFileIoImports: List<String> =
       listOf(
         "java.io.File",
@@ -1661,6 +1861,21 @@ class RuntimeArchitectureTest {
         "== \"~\"",
         ".startsWith(\"~/\")",
         ".removePrefix(\"~/\")",
+      )
+
+    // SKILL-52.3: the pure runtime-domain layer must not embed nondeterministic effects. Random
+    // id minting, clock reads, and java.util.logging are all effects that belong in adapters
+    // (infra-fs/infra-http) or are supplied by callers. runtime-ports / infra modules legitimately
+    // use these, so this ban is scoped to runtime-domain main source only.
+    val domainEffectPuritySourceReferences: List<String> =
+      listOf(
+        "UUID.randomUUID",
+        "LocalDate.now",
+        "Instant.now",
+        "System.currentTimeMillis",
+        "System.nanoTime",
+        "Clock.system",
+        "java.util.logging",
       )
     val packagePattern: Regex = Regex("^package\\s+([A-Za-z0-9_.]+)", RegexOption.MULTILINE)
     val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)

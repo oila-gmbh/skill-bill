@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionContinuationSelection
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -17,8 +18,10 @@ internal data class ContinuationStepResult(
   val result: WorkflowContinueResult,
   val projectionArtifactsJson: String? = null,
 ) {
-  fun withProjection(manifest: DecompositionManifest): ContinuationStepResult =
-    copy(projectionArtifactsJson = decompositionRuntimeArtifactsJson(manifest))
+  fun withProjection(
+    manifest: DecompositionManifest,
+    validator: DecompositionManifestValidator,
+  ): ContinuationStepResult = copy(projectionArtifactsJson = decompositionRuntimeArtifactsJson(manifest, validator))
 
   fun withProjectionArtifactsIfMissing(artifactsJson: String?): ContinuationStepResult =
     if (projectionArtifactsJson == null && artifactsJson != null) {
@@ -103,10 +106,14 @@ internal fun blockedGitResult(
   blockedReason = reason.ifBlank { "Subtask advancement failed." },
 )
 
-internal fun decompositionRuntimeArtifactsJson(manifest: DecompositionManifest): String = jsonString(
+internal fun decompositionRuntimeArtifactsJson(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+): String = jsonString(
   mapOf(
     DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
       manifest,
+      validator,
       DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
     ),
   ),

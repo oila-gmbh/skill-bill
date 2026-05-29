@@ -41,16 +41,6 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "schema_migrations")
     assertContains(architecture, "versioned database migrations")
     assertContains(architecture, "contract DTOs")
-    assertContains(architecture, "runtime/schema parse-seam validators")
-    assertContains(architecture, "Runtime Contract And Schema Seams")
-    assertContains(architecture, "Workflow-state schema validation is owned by")
-    assertContains(architecture, "Install-plan schema validation is owned by")
-    assertContains(architecture, "Decomposition-manifest schema validation is owned by")
-    assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
-    assertContains(architecture, "FileSystemDecompositionManifestFileStore")
-    assertContains(architecture, "Platform-pack manifest schema validation is owned by")
-    assertContains(architecture, "Native-agent composition schema validation is owned by")
-    assertContains(architecture, "Telemetry-event schema validation is owned by")
     assertContains(architecture, "typed CLI presenter models")
     assertContains(architecture, "RuntimeSurfaceContract")
     assertContains(architecture, "RuntimeContext")
@@ -67,6 +57,27 @@ class RuntimeArchitectureDocumentationTest {
     assertFalse(architecture.contains("while the"))
     assertFalse(architecture.contains("should converge"))
     assertFalse(architecture.contains("Near-Term Refactor Order"))
+  }
+
+  @Test
+  fun `architecture document declares the runtime contract and schema seams`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+
+    assertContains(architecture, CONTRACTS_NO_LONGER_OWNS_VALIDATORS)
+    assertContains(architecture, INFRA_FS_OWNS_VALIDATORS)
+    assertContains(architecture, "Runtime Contract And Schema Seams")
+    assertContains(architecture, SCHEMA_SEAMS_PORT_SUMMARY)
+    assertContains(architecture, "Workflow-state schema validation is owned by")
+    assertContains(architecture, "compiled into\n  `runtime-infra-fs`")
+    assertContains(architecture, "Install-plan schema validation is owned by")
+    assertContains(architecture, INSTALL_PLAN_WIRE_VALIDATOR_PORT)
+    assertContains(architecture, "Decomposition-manifest schema validation is owned by")
+    assertContains(architecture, DECOMPOSITION_MANIFEST_VALIDATOR_PORT)
+    assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
+    assertContains(architecture, "FileSystemDecompositionManifestFileStore")
+    assertContains(architecture, "Platform-pack manifest schema validation is owned by")
+    assertContains(architecture, "Native-agent composition schema validation is owned by")
+    assertContains(architecture, "Telemetry-event schema validation is owned by")
   }
 
   @Test
@@ -137,6 +148,26 @@ class RuntimeArchitectureDocumentationTest {
       .map(String::trim)
       .filter(String::isNotBlank)
       .toList()
+  }
+
+  private companion object {
+    const val CONTRACTS_NO_LONGER_OWNS_VALIDATORS =
+      "It no longer owns the JSON-Schema\n  validators or their schema-resource copy tasks; " +
+        "those moved to\n  `runtime-infra-fs`"
+
+    const val INFRA_FS_OWNS_VALIDATORS =
+      "It also owns the concrete JSON-Schema\n  validators"
+
+    const val SCHEMA_SEAMS_PORT_SUMMARY =
+      "The JVM JSON-Schema validators, their typed schema\n  errors, and their classpath-resource " +
+        "copy tasks live in `runtime-infra-fs`,\n  reached only through the domain-neutral ports " +
+        "`InstallPlanWireValidator`,\n  `DecompositionManifestValidator`, and `WorkflowSnapshotValidator`."
+
+    const val INSTALL_PLAN_WIRE_VALIDATOR_PORT =
+      "reached through the domain-owned port\n  `skillbill.install.model.InstallPlanWireValidator`"
+
+    const val DECOMPOSITION_MANIFEST_VALIDATOR_PORT =
+      "reached through the domain-owned port\n  `skillbill.workflow.DecompositionManifestValidator`"
   }
 
   private fun String.includedGradleModules(): List<String> {

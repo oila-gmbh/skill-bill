@@ -2,7 +2,6 @@ package skillbill.application
 
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.WorkflowEngine
@@ -20,7 +19,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DecompositionManifestWriterTest {
-  private val engine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
+  private val engine: WorkflowEngine = WorkflowEngine(testWorkflowSnapshotValidator)
 
   @Test
   fun `decomposition planning result writes validated same branch manifest beside parent spec`() {
@@ -327,64 +326,12 @@ class DecompositionManifestWriterTest {
     assertEquals("wfl-subtask-1", subtask.workflowId)
   }
 
-  @Test
-  fun `workflow update rejects schema invalid durable decomposition runtime`() {
-    val repoRoot = Files.createTempDirectory("skillbill-invalid-runtime-update")
-    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
-    Files.createDirectories(parentSpecPath.parent)
-    Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = writeIfDecomposed(
-      DecompositionManifestWriteRequest(
-        repoRoot = repoRoot,
-        parentSpecPath = parentSpecPath,
-        planningResult = decompositionPlan(parentSpecPath),
-        baseBranch = "main",
-        featureBranch = "feature/SKILL-51-decomposition",
-      ),
-    )
-    assertNotNull(initial)
-
-    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      writeFromWorkflowUpdate(
-        repoRoot = repoRoot,
-        existingArtifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
-        artifactsPatch = null,
-      )
-    }
-
-    assertEquals(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, error.sourceLabel)
-    assertContains(error.reason, "contract_version")
-    assertContains(error.reason, "offending value: invalid-contract")
-  }
-
-  @Test
-  fun `workflow projection rejects schema invalid durable decomposition runtime`() {
-    val repoRoot = Files.createTempDirectory("skillbill-invalid-runtime-projection")
-    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
-    Files.createDirectories(parentSpecPath.parent)
-    Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = writeIfDecomposed(
-      DecompositionManifestWriteRequest(
-        repoRoot = repoRoot,
-        parentSpecPath = parentSpecPath,
-        planningResult = decompositionPlan(parentSpecPath),
-        baseBranch = "main",
-        featureBranch = "feature/SKILL-51-decomposition",
-      ),
-    )
-    assertNotNull(initial)
-
-    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      writeProjectionFromWorkflowState(
-        repoRoot = repoRoot,
-        artifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
-      )
-    }
-
-    assertEquals(DECOMPOSITION_RUNTIME_ARTIFACT_KEY, error.sourceLabel)
-    assertContains(error.reason, "contract_version")
-    assertContains(error.reason, "offending value: invalid-contract")
-  }
+  // SKILL-52.3 subtask 1: the two "rejects schema invalid durable
+  // decomposition runtime" tests moved to runtime-core's
+  // `DecompositionManifestWriterValidationTest`, which exercises the real
+  // infra-fs validator adapter. `runtime-application` must not depend on
+  // `runtime-infra-fs`, so the pass-through validator fake used here cannot
+  // assert real schema loud-fails.
 
   @Test
   fun `execution model can change before any subtask starts`() {
@@ -629,15 +576,4 @@ class DecompositionManifestWriterTest {
       "branch" to mapOf("branch" to "feature/SKILL-51-decomposition"),
     ),
   )
-
-  private fun invalidDurableRuntimeArtifactsJson(manifest: skillbill.workflow.model.DecompositionManifest): String {
-    val invalidManifest = LinkedHashMap(manifest.toWireMap()).apply {
-      put("contract_version", "invalid-contract")
-    }
-    return JsonSupport.mapToJsonString(
-      mapOf(
-        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to invalidManifest,
-      ),
-    )
-  }
 }

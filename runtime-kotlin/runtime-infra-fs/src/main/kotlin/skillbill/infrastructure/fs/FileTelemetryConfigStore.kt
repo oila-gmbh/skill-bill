@@ -5,12 +5,14 @@ import skillbill.contracts.JsonSupport
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY
 import skillbill.telemetry.defaultLocalTelemetryConfig
 import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.parseTelemetryBoolValue
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 
 @Inject
 class FileTelemetryConfigStore(
@@ -24,7 +26,7 @@ class FileTelemetryConfigStore(
 
   override fun read(): TelemetryConfigDocument? = readTelemetryConfigFile(configPath())
 
-  override fun ensure(): TelemetryConfigDocument = ensureTelemetryConfigFile(configPath())
+  override fun ensure(): TelemetryConfigDocument = ensureTelemetryConfigFile(configPath(), resolvedContext.environment)
 
   override fun write(document: TelemetryConfigDocument) = writeTelemetryConfigFile(configPath(), document)
 
@@ -66,11 +68,25 @@ internal fun readTelemetryConfigFile(path: Path): TelemetryConfigDocument? {
   return TelemetryConfigDocument(payload)
 }
 
-internal fun ensureTelemetryConfigFile(path: Path): TelemetryConfigDocument {
+/**
+ * SKILL-52.3: the random install-id seed is an effect, so it is resolved here in infra-fs rather
+ * than inside the pure [defaultLocalTelemetryConfig]. We prefer an explicitly injected
+ * [INSTALL_ID_ENVIRONMENT_KEY] env value (keeps deterministic test/CI installs stable) and only
+ * mint a fresh [UUID] when none is supplied. The minted/injected id is a FALLBACK only:
+ * [normalizedInstallId] still prefers an existing persisted `install_id`, so a fresh id is written
+ * only on first install.
+ */
+internal fun ensureTelemetryConfigFile(
+  path: Path,
+  environment: Map<String, String> = System.getenv(),
+): TelemetryConfigDocument {
   path.parent?.let(Files::createDirectories)
   val existing = readTelemetryConfigFile(path)
   val payload = (existing?.payload?.toMutableMap() ?: mutableMapOf())
-  val defaults = defaultLocalTelemetryConfig().payload
+  val fallbackInstallId =
+    environment[INSTALL_ID_ENVIRONMENT_KEY]?.trim()?.takeIf(String::isNotBlank)
+      ?: UUID.randomUUID().toString()
+  val defaults = defaultLocalTelemetryConfig(fallbackInstallId).payload
   val telemetry = normalizedTelemetryMap(payload, defaults)
   payload["install_id"] = normalizedInstallId(payload, defaults)
   payload["telemetry"] = telemetry

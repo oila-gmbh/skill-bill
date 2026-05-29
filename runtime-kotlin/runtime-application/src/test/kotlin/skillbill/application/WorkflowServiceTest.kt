@@ -6,7 +6,6 @@ import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
-import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
@@ -20,6 +19,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -157,18 +157,30 @@ class WorkflowServiceTest {
 
   @Test
   fun `InvalidWorkflowStateSchemaError loud-fails through WorkflowService get`() {
+    // SKILL-52.3 subtask 1: the concrete workflow-state schema validator now
+    // lives in `runtime-infra-fs` and is reached through the injected
+    // `WorkflowSnapshotValidator` port. This test pins the seam contract: the
+    // engine read path invokes the injected validator and surfaces its typed
+    // `InvalidWorkflowStateSchemaError` through the service. Real-schema
+    // coverage (which inputs trigger the error) lives in the infra-fs
+    // `WorkflowStateSchemaViolationsTest`.
     val workflows = InMemoryWorkflowStates()
-    // Persist a malformed durable record directly through the repository
-    // so the engine reads it via the typed service surface.
-    val definition = FeatureImplementWorkflowDefinition.definition
-    // unterminated JSON triggers the loud-fail at the engine read seam.
-    val malformed = testWorkflowEngine.openRecord(definition, "wfl-loud", "fis-001", "assess").copy(
-      stepsJson = """[{"step_id":"assess"}""",
+    val record = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      "wfl-loud",
+      "fis-001",
+      "assess",
     ).toRecord()
-    workflows.saveFeatureImplementWorkflow(malformed)
+    workflows.saveFeatureImplementWorkflow(record)
+    val loudFailValidator = object : WorkflowSnapshotValidator {
+      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+        throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
+    }
     val service = WorkflowService(
       database = FakeDatabaseSessionFactory(workflows),
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = loudFailValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
     )
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       service.get(WorkflowFamilyKind.IMPLEMENT, "wfl-loud")
@@ -183,7 +195,10 @@ class WorkflowServiceTest {
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
         workflowId = "wfl-child",
-        artifactsPatch = mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(childRuntime)),
+        artifactsPatch = mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(childRuntime, testDecompositionManifestValidator),
+        ),
       ),
     )
     workflows.saveFeatureImplementWorkflow(
@@ -191,12 +206,13 @@ class WorkflowServiceTest {
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
-          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(parentRuntime),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(parentRuntime, testDecompositionManifestValidator),
         ),
       ),
     )
 
-    val selected = workflows.findDecomposedParentWorkflow("SKILL-52.1")
+    val selected = workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
 
     assertEquals("wfl-parent", selected?.workflowId)
   }
@@ -206,11 +222,13 @@ class WorkflowServiceTest {
     return WorkflowService(
       database = FakeDatabaseSessionFactory(workflows),
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
     )
   }
 }
 
-private val testWorkflowEngine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
+private val testWorkflowEngine: WorkflowEngine = WorkflowEngine(testWorkflowSnapshotValidator)
 
 private fun workflowRecord(workflowId: String, artifactsPatch: Map<String, Any?>): WorkflowStateRecord {
   val definition = FeatureImplementWorkflowDefinition.definition

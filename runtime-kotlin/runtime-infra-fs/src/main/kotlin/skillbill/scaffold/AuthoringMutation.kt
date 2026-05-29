@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 
-internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementText: String): Map<String, Any?> {
+internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementText: String): AuthoringMutationResult {
   val contentBefore = Files.readAllBytes(target.contentFile)
   return runWithContentRollback(target, contentBefore) {
     Files.writeString(target.contentFile, replacementText)
@@ -16,8 +16,9 @@ internal fun mutateContent(repoRoot: Path, target: AuthoringTarget, replacementT
       throw SkillBillRuntimeException("Validator failed after content update:\n${issues.joinToString("\n")}")
     }
     renderAuthoringTarget(repoRoot, target)
-    statusPayload(repoRoot, target, "none") + mapOf(
-      "wrapper_regenerated" to false,
+    AuthoringMutationResult(
+      status = skillStatus(repoRoot, target, "none"),
+      wrapperRegenerated = false,
     )
   }
 }

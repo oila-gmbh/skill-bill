@@ -1,47 +1,55 @@
 package skillbill.application
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.workflow.DecompositionManifestSchemaValidator
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestCodec
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.toWireMap
 import java.nio.file.Path
-
-private val decompositionManifestYamlMapper: YAMLMapper by lazy { YAMLMapper() }
 
 /**
  * Decomposition manifest parse/emission seam. This is where workflow artifact maps and
  * repo-local YAML text from the workflow file-store port are schema-validated before
  * callers persist or return them.
  */
-fun loadDecompositionManifest(path: Path, fileStore: DecompositionManifestFileStore): DecompositionManifest {
+fun loadDecompositionManifest(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+): DecompositionManifest {
   val yamlText = fileStore.readText(path)
-  val wireMap = DecompositionManifestSchemaValidator.validateYamlText(yamlText, path.toString())
+  val wireMap = validator.validateYamlText(yamlText, path.toString())
   return DecompositionManifestCodec.decodeMap(wireMap, path.toString())
 }
 
 fun decodeDecompositionManifestMap(
   wireMap: Map<String, Any?>,
+  validator: DecompositionManifestValidator,
   sourceLabel: String = "<in-memory>",
 ): DecompositionManifest {
-  DecompositionManifestSchemaValidator.validate(wireMap, sourceLabel)
+  validator.validate(wireMap, sourceLabel)
   return DecompositionManifestCodec.decodeMap(wireMap, sourceLabel)
 }
 
 fun encodeDecompositionManifestMap(
   manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
   sourceLabel: String = "<in-memory>",
 ): Map<String, Any?> {
   val wireMap = manifest.toWireMap()
-  DecompositionManifestSchemaValidator.validate(wireMap, sourceLabel)
+  validator.validate(wireMap, sourceLabel)
   return wireMap
 }
 
-fun encodeDecompositionManifestYaml(manifest: DecompositionManifest, sourceLabel: String = "<in-memory>"): String {
-  val wireMap = encodeDecompositionManifestMap(manifest, sourceLabel)
-  val yamlText = decompositionManifestYamlMapper.writeValueAsString(wireMap)
-  DecompositionManifestSchemaValidator.validateYamlText(yamlText, sourceLabel)
+fun encodeDecompositionManifestYaml(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+  sourceLabel: String = "<in-memory>",
+): String {
+  val wireMap = encodeDecompositionManifestMap(manifest, validator, sourceLabel)
+  val yamlText = fileStore.encodeManifestYaml(wireMap)
+  validator.validateYamlText(yamlText, sourceLabel)
   return yamlText
 }
 

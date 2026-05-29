@@ -13,16 +13,20 @@ import kotlin.test.assertTrue
  * consume **typed** runtime-application result types
  * (`skillbill.ports.scaffold.*.model.*`, `skillbill.ports.validation.model.*`,
  * etc.). Reaching into a typed result's `payload: Map<String, Any?>` from inside
- * a desktop service implementation re-introduces raw-map policy leakage at the
- * adapter boundary that SKILL-52.1 closed. Mappers in dedicated files (e.g.
- * `ValidationSummaryMapper.kt`) are the one allowed exception: they encapsulate
- * the raw-shape translation in a single seam and are explicitly named so the
- * boundary inventory can find them.
+ * any desktop service implementation OR mapper re-introduces raw-map policy
+ * leakage at the adapter boundary that SKILL-52.1 closed.
+ *
+ * SKILL-52.3 subtask 3 retired the last `@OpenBoundaryMap` `payload` fields on
+ * the scaffold result DTOs (`ScaffoldListResult`, `ScaffoldValidateResult`,
+ * etc.). The desktop mappers (`ScaffoldListResultMapper`,
+ * `ValidationSummaryMapper`) now consume the typed fields directly, so the
+ * historical mapper-file exemption for `.payload[` reads is gone: the scan
+ * forbids raw-map `payload` access across the ENTIRE jvmMain service tree,
+ * mappers included.
  *
  * Detection strategy:
- *  - Walk the jvmMain service source tree.
- *  - Flag any `.payload[`, `.payload.toSelected`, or `.payload as? Map` access
- *    in files that are not whitelisted mapper files.
+ *  - Walk the jvmMain service source tree (no file exemptions).
+ *  - Flag any `.payload[`, `.payload.toSelected`, or `.payload as? Map` access.
  *  - Flag any non-private extension on `Map<String, Any?>` declared inside a
  *    mapper file (the historical raw-map mapper signature SKILL-52.2 retires).
  */
@@ -40,24 +44,24 @@ class RuntimeDesktopGatewayPolicyTest {
     runtimeRoot.resolve("runtime-desktop/core/data/src/jvmMain/kotlin")
 
   /**
-   * The single directory in jvmMain that is allowed to hold raw-shape mapping
-   * logic. Mappers still receive the **typed** runtime-application result type
-   * and may read the documented `@OpenBoundaryMap` `payload` field on that
-   * type. Service implementations and gateway entry-points must not.
+   * The single directory in jvmMain that holds adapter-side mapping logic.
+   * Mappers receive the **typed** runtime-application result type. After
+   * SKILL-52.3 subtask 3 they no longer read any `payload` map — the scaffold
+   * result DTOs are fully typed — so this directory is used only to locate the
+   * mapper files for the receiver-shape guard, not to exempt them from the
+   * raw-map `payload` scan.
    *
-   * SKILL-52.2 subtask 5 (review-fix F-007): the whitelist is anchored to this
-   * directory by **relative path**, not by file name. A future regression that
-   * happens to name an unrelated file `ValidationSummaryMapper.kt` outside
-   * `service/mapper/` therefore does not inherit the exemption.
+   * SKILL-52.2 subtask 5 (review-fix F-007): the directory is anchored by
+   * **relative path**, not by file name.
    */
   private val mapperDirectory: Path =
     serviceRoot.resolve("skillbill/desktop/core/data/service/mapper")
 
   /**
-   * Mapper files (anchored under [mapperDirectory]) that are allowed to read
-   * the documented `@OpenBoundaryMap` `payload` field on typed
-   * runtime-application result types. Listed by file name only — they are
-   * always resolved relative to [mapperDirectory] before any check runs.
+   * Mapper files (anchored under [mapperDirectory]) checked by the
+   * receiver-shape guard to ensure they take a typed runtime-application result
+   * as the receiver. Listed by file name only — they are always resolved
+   * relative to [mapperDirectory] before any check runs.
    */
   private val mapperFileNames: Set<String> =
     setOf(
@@ -67,20 +71,18 @@ class RuntimeDesktopGatewayPolicyTest {
 
   @Test
   fun `desktop runtime services do not read raw-map payload off typed results`() {
-    val mapperPaths = mapperFileNames.map { name -> mapperDirectory.resolve(name).normalize() }.toSet()
     val serviceFiles = Files.walk(serviceRoot).use { stream ->
       stream
         .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
-        .filter { path -> path.normalize() !in mapperPaths }
         .toList()
     }
     val violations = serviceFiles.flatMap { path -> findRawMapPayloadAccesses(path) }
     assertTrue(
       violations.isEmpty(),
-      "Desktop data services must consume typed runtime-application results " +
-        "instead of indexing the open-boundary `payload` map. Move raw-shape " +
-        "translation into a dedicated mapper file (see ValidationSummaryMapper.kt) " +
-        "that takes the typed result as its receiver.\n" +
+      "Desktop data services and mappers must consume typed runtime-application " +
+        "results instead of indexing an open-boundary `payload` map. The scaffold " +
+        "result DTOs are fully typed (SKILL-52.3 subtask 3); read their typed " +
+        "fields directly.\n" +
         violations.joinToString(separator = "\n"),
     )
   }

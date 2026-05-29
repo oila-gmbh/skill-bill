@@ -3,6 +3,7 @@ package skillbill.application.install
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanDraft
 import skillbill.install.model.InstallPlanRequest
+import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPolicyInput
 import skillbill.install.model.InstallStagingIntent
@@ -20,8 +21,12 @@ internal fun InstallPlanningFacts.toPolicyInput(
   defaultAgentTargets = defaultAgentTargets,
 )
 
-internal fun validatedInstallPlan(draft: InstallPlanDraft, staging: InstallStagingIntent): InstallPlan {
+internal fun validatedInstallPlan(
+  draft: InstallPlanDraft,
+  staging: InstallStagingIntent,
+  validator: InstallPlanWireValidator,
+): InstallPlan {
   val plan = draft.toInstallPlan(staging)
-  InstallPlanPolicy.validateInstallPlanSnapshot(plan)
+  InstallPlanPolicy.validateInstallPlanSnapshot(plan, validator)
   return plan
 }

@@ -1,49 +1,53 @@
 package skillbill.scaffold
 
+import skillbill.ports.scaffold.model.ScaffoldBaselineLayer
+import skillbill.ports.scaffold.model.ScaffoldReviewComposition
+import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Files
 import java.nio.file.Path
 
 private const val CONTENT_PREVIEW_LIMIT = 400
 
-internal fun statusPayload(
+/**
+ * SKILL-52.3 subtask 3 — Builds the typed [ScaffoldSkillStatus] for a content-managed
+ * skill. The previous `linkedMapOf` open-boundary payload was retired; adapter-owned
+ * wire mappers rebuild the byte-equivalent ordered wire map from these typed fields.
+ */
+internal fun skillStatus(
   repoRoot: Path,
   target: AuthoringTarget,
   contentMode: String,
   issues: List<String> = emptyList(),
-): Map<String, Any?> {
+): ScaffoldSkillStatus {
   val contentText = Files.readString(target.contentFile)
   val completionStatus = contentCompletionStatus(contentText)
-  val payload =
-    linkedMapOf<String, Any?>(
-      "skill_name" to target.skillName,
-      "package" to target.packageName,
-      "platform" to target.platform,
-      "family" to target.family,
-      "area" to target.area,
-      "content_file" to target.contentFile.toString(),
-      "render_command" to "skill-bill render ${target.skillName} --repo-root $repoRoot",
-      "completion_status" to completionStatus,
-      "section_count" to parseContentSections(contentText).second.size,
-      "sections" to sectionPayloads(contentText),
-      "recommended_commands" to recommendedCommands(repoRoot, target, completionStatus, issues),
-    )
-  target.codeReviewComposition?.baselineLayers?.takeIf { it.isNotEmpty() }?.let { baselineLayers ->
-    payload["review_composition"] =
-      mapOf(
-        "source" to "platform.yaml",
-        "summary" to baselineLayerSummary(baselineLayers),
-        "baseline_layers" to baselineLayers.map(::baselineLayerPayload),
-      )
-  }
-  when (contentMode) {
-    "preview" -> payload["content_preview"] = previewText(contentText, CONTENT_PREVIEW_LIMIT)
-    "full" -> payload["content"] = contentText
-  }
-  if (issues.isNotEmpty()) {
-    payload["issues"] = issues
-  }
-  return payload
+  return ScaffoldSkillStatus(
+    skillName = target.skillName,
+    packageName = target.packageName,
+    platform = target.platform,
+    family = target.family,
+    area = target.area,
+    contentFile = target.contentFile.toString(),
+    renderCommand = "skill-bill render ${target.skillName} --repo-root $repoRoot",
+    completionStatus = completionStatus,
+    sectionCount = parseContentSections(contentText).second.size,
+    sections = sectionStatuses(contentText),
+    recommendedCommands = recommendedCommands(repoRoot, target, completionStatus, issues),
+    reviewComposition = target.codeReviewComposition
+      ?.baselineLayers
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { baselineLayers ->
+        ScaffoldReviewComposition(
+          source = "platform.yaml",
+          summary = baselineLayerSummary(baselineLayers),
+          baselineLayers = baselineLayers.map(::baselineLayer),
+        )
+      },
+    contentPreview = if (contentMode == "preview") previewText(contentText, CONTENT_PREVIEW_LIMIT) else null,
+    content = if (contentMode == "full") contentText else null,
+    issues = issues.takeIf { it.isNotEmpty() },
+  )
 }
 
 private fun baselineLayerSummary(baselineLayers: List<CodeReviewBaselineLayer>): String {
@@ -56,12 +60,12 @@ private fun baselineLayerSummary(baselineLayers: List<CodeReviewBaselineLayer>):
   return "Run $layerText baseline layer(s) before pack-local specialists."
 }
 
-private fun baselineLayerPayload(layer: CodeReviewBaselineLayer): Map<String, Any?> = mapOf(
-  "platform" to layer.platform,
-  "skill" to layer.skill,
-  "scope" to layer.scope.wireValue,
-  "required" to layer.required,
-  "mode" to layer.mode.wireValue,
+private fun baselineLayer(layer: CodeReviewBaselineLayer): ScaffoldBaselineLayer = ScaffoldBaselineLayer(
+  platform = layer.platform,
+  skill = layer.skill,
+  scope = layer.scope.wireValue,
+  required = layer.required,
+  mode = layer.mode.wireValue,
 )
 
 internal fun recommendedCommands(

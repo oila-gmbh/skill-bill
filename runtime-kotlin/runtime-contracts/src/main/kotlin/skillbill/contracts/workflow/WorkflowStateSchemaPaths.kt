@@ -22,11 +22,11 @@ const val WORKFLOW_STATE_CONTRACT_VERSION: String = "0.1"
  * exactly once in the codebase.
  *
  * The Gradle Kotlin DSL cannot import runtime constants directly. The
- * copy task in `runtime-contracts/build.gradle.kts` MUST mirror these
- * values; if the paths ever drift,
- * `WorkflowStateSchemaValidator.loadSchema` will fail loudly at
- * runtime (the classpath resource will not be found at
- * [CLASSPATH_RESOURCE]) and any test that resolves
+ * copy task in `runtime-infra-fs/build.gradle.kts` (SKILL-52.3: the
+ * schema validators now live in `runtime-infra-fs`) MUST mirror these
+ * values; if the paths ever drift, the canonical workflow-state schema
+ * load will fail loudly at runtime (the classpath resource will not be
+ * found at [CLASSPATH_RESOURCE]) and any test that resolves
  * [REPO_RELATIVE_PATH] will report the missing file.
  */
 object WorkflowStateSchemaPaths {

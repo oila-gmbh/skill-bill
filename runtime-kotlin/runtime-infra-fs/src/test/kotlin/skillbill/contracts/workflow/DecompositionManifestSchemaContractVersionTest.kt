@@ -1,10 +1,7 @@
-package skillbill.workflow
+package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
-import skillbill.contracts.workflow.DecompositionManifestSchemaPaths
-import skillbill.contracts.workflow.DecompositionManifestSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -150,11 +150,21 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.skillremove",
       "skillbill.workflow",
     )
+    // SKILL-52.3 subtask 1: the composition root must reference the three
+    // domain-owned validator PORTS by type to declare its `@Provides`
+    // bindings (port -> infra-fs adapter). These are domain port interfaces,
+    // not implementation packages, so they are explicitly allowed.
+    val allowedDomainPortImports = setOf(
+      "skillbill.install.model.InstallPlanWireValidator",
+      "skillbill.workflow.DecompositionManifestValidator",
+      "skillbill.workflow.WorkflowSnapshotValidator",
+    )
     val violations = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))
       .flatMap { sourceFile ->
         sourceFile.readText().lineSequence()
           .mapNotNull { line -> line.trim().removePrefix("import ").takeIf { line.trim().startsWith("import ") } }
           .filter { importedName -> bannedImplementationImports.any(importedName::startsWith) }
+          .filterNot { importedName -> importedName in allowedDomainPortImports }
           .map { importedName -> "${runtimeRoot.relativize(sourceFile)} imports $importedName" }
       }
       .sorted()

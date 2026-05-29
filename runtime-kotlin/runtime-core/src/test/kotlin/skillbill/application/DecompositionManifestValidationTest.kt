@@ -1,6 +1,10 @@
 package skillbill.application
 
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -12,19 +16,63 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class DecompositionManifestValidationTest {
+  private val realDecompositionManifestValidator: DecompositionManifestValidator =
+    DecompositionManifestValidatorAdapter()
+  private val fileStore = FileSystemDecompositionManifestFileStore()
+
   @Test
   fun `valid same branch manifest passes with default execution model`() {
     val manifest = validSameBranchManifest()
 
-    val yaml = encodeDecompositionManifestYaml(manifest)
+    val yaml = encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
 
     val wireMap = manifest.toWireMap()
     assertContains(yaml, "execution_model")
     assertEquals("same_branch_commit_per_subtask", wireMap["execution_model"])
     assertEquals("feature/SKILL-51-decomposition", wireMap["feature_branch"])
     assertEquals(emptyList<Any?>(), wireMap["stack_branches"])
+  }
+
+  @Test
+  fun `application emission delegates YAML serialization to the file store encode seam`() {
+    val manifest = validSameBranchManifest()
+    val spyFileStore = RecordingEncodeFileStore(delegate = fileStore)
+
+    val yaml = encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, spyFileStore)
+
+    assertEquals(1, spyFileStore.encodeCalls, "encodeManifestYaml must be the single YAML serialize owner.")
+    assertContains(yaml, "execution_model")
+  }
+
+  @Test
+  fun `relocated encode seam still loud-fails on invalid manifest input`() {
+    val invalidManifest = validSameBranchManifest().copy(featureBranch = null)
+    val spyFileStore = RecordingEncodeFileStore(delegate = fileStore)
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      encodeDecompositionManifestYaml(invalidManifest, realDecompositionManifestValidator, spyFileStore)
+    }
+
+    assertContains(error.reason, "feature_branch")
+    assertTrue(
+      spyFileStore.encodeCalls == 0,
+      "Invalid input must loud-fail at the validated map seam before reaching the YAML serializer.",
+    )
+  }
+
+  private class RecordingEncodeFileStore(
+    private val delegate: DecompositionManifestFileStore,
+  ) : DecompositionManifestFileStore by delegate {
+    var encodeCalls: Int = 0
+      private set
+
+    override fun encodeManifestYaml(wireMap: Map<String, Any?>): String {
+      encodeCalls += 1
+      return delegate.encodeManifestYaml(wireMap)
+    }
   }
 
   @Test
@@ -43,7 +91,7 @@ class DecompositionManifestValidationTest {
       ),
     )
 
-    encodeDecompositionManifestYaml(manifest)
+    encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
 
     assertEquals("stacked_branches", manifest.toWireMap()["execution_model"])
   }
@@ -54,7 +102,7 @@ class DecompositionManifestValidationTest {
     wireMap.remove("contract_version")
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "missing-contract")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "missing-contract")
     }
     assertContains(error.reason, "contract_version")
   }
@@ -65,7 +113,7 @@ class DecompositionManifestValidationTest {
     wireMap.mutableSubtasks()[0]["review_result"] = mapOf("finding_count" to 0)
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "result-payload-noise")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "result-payload-noise")
     }
     assertContains(error.reason, "review_result")
   }
@@ -76,7 +124,7 @@ class DecompositionManifestValidationTest {
     wireMap.mutableSubtasks()[0]["id"] = Int.MAX_VALUE.toLong() + 1L
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "oversized-subtask-id")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "oversized-subtask-id")
     }
     assertContains(error.reason, "subtasks[0].id")
     assertContains(error.reason, Int.MAX_VALUE.toString())
@@ -88,7 +136,7 @@ class DecompositionManifestValidationTest {
     wireMap.mutableSubtasks()[1]["id"] = 1
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "duplicate-subtask-id")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "duplicate-subtask-id")
     }
     assertContains(error.reason, "subtasks[1].id")
     assertContains(error.reason, "Duplicate subtask id '1'")
@@ -100,7 +148,7 @@ class DecompositionManifestValidationTest {
     wireMap.mutableCurrentSubtaskIntent()["subtask_id"] = 99
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "missing-current-subtask")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "missing-current-subtask")
     }
     assertContains(error.reason, "current_subtask_intent.subtask_id")
     assertContains(error.reason, "Current subtask intent must reference a declared subtask")
@@ -114,7 +162,7 @@ class DecompositionManifestValidationTest {
     intent["action"] = "none"
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "invalid-none-current-subtask")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "invalid-none-current-subtask")
     }
     assertContains(error.reason, "current_subtask_intent.subtask_id")
     assertContains(error.reason, "Intent action none must use subtask_id 0")
@@ -126,7 +174,7 @@ class DecompositionManifestValidationTest {
     wireMap.mutableCurrentSubtaskIntent()["subtask_id"] = 1.5
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      decodeDecompositionManifestMap(wireMap, "fractional-current-subtask")
+      decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "fractional-current-subtask")
     }
     assertContains(error.reason, "current_subtask_intent.subtask_id")
   }
@@ -136,7 +184,7 @@ class DecompositionManifestValidationTest {
     val manifest = validSameBranchManifest().copy(featureBranch = null)
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest)
+      encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
     }
     assertContains(error.reason, "feature_branch")
   }
@@ -154,7 +202,7 @@ class DecompositionManifestValidationTest {
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest)
+      encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
     }
     assertContains(error.reason, "one branch per subtask in subtask order")
   }
@@ -180,7 +228,7 @@ class DecompositionManifestValidationTest {
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest)
+      encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
     }
     assertContains(error.reason, "earlier declared subtask")
   }
@@ -206,7 +254,7 @@ class DecompositionManifestValidationTest {
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      encodeDecompositionManifestYaml(manifest)
+      encodeDecompositionManifestYaml(manifest, realDecompositionManifestValidator, fileStore)
     }
     assertContains(error.reason, "spec_path")
     assertContains(error.reason, "Duplicate")

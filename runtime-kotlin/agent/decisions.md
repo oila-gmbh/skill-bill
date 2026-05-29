@@ -121,3 +121,137 @@ pattern is intentional for install-plan.
   `interface + Canonical*` shape. This is acceptable while the validator has a
   single in-process consumer; revisit (lift to an interface + canonical impl)
   when a second consumer needs to substitute a fake.
+
+**Superseded by 2026-05-28 (SKILL-52.3).** The dual-seam INTENT (validate at
+both the builder seam and the CLI emission seam) still holds, but the mechanics
+described above are stale: neither seam may import `InstallPlanSchemaValidator`
+directly, the validator no longer lives in `runtime-core`/`runtime-domain`
+(it moved to `runtime-infra-fs`), and both seams now validate through the
+injected domain-owned `InstallPlanWireValidator` port (the CLI seam routes via
+the thin application method `InstallService.validateInstallPlanWire`). See the
+2026-05-28 entry for the relocation and the 2026-05-29 external-schema entry for
+the source-of-truth and parity guarantee.
+
+## 2026-05-28 — Schema validators move from runtime-contracts to runtime-infra-fs, reached through domain ports
+
+**Context.** SKILL-52.3 closes the runtime hexagon leak: the foundational
+`runtime-contracts` leaf owned three networknt + Jackson + filesystem schema
+validators (`InstallPlanSchemaValidator`, `WorkflowStateSchemaValidator` /
+`CanonicalWorkflowStateSchemaValidator`, `DecompositionManifestSchemaValidator`)
+plus the `DecompositionManifestCoherenceValidator`, and `runtime-domain` install
+policy invoked the concrete install-plan validator at runtime. A contract leaf
+and the domain should not own infrastructure-grade schema loading.
+
+**Decision.** Move all three schema validators and the coherence validator into
+`runtime-infra-fs` — the module that already owns `PlatformPackSchemaValidator`
+and `NativeAgentCompositionSchemaValidator`. Reach them only through
+domain-owned ports that generalize the existing `WorkflowSnapshotValidator`
+pattern: `InstallPlanWireValidator` (runtime-domain `skillbill.install.model`)
+and `DecompositionManifestValidator` (runtime-domain `skillbill.workflow`).
+Wire each port to an infra-fs adapter through `RuntimeComponent` with
+`@Provides @JvmSynthetic internal`, exactly like every other infra adapter.
+The pure `*SchemaPaths` and `*_CONTRACT_VERSION` constants stay in
+`runtime-contracts`; the networknt + Jackson dependencies and the three schema
+`Copy` tasks move with the validators to `runtime-infra-fs`. The library choice
+is unchanged.
+
+**Reason.** Keeping `Path`-free constants in contracts preserves the single
+source of truth for schema locations while removing infrastructure ownership
+from the contract leaf and the domain. Routing every validator through a
+domain-owned port keeps the three validators reached uniformly and lets the
+composition root own the concrete wiring, so `runtime-domain`'s runtime closure
+no longer pulls networknt/Jackson transitively.
+
+**Supersedes.**
+
+- 2026-05-24 "Preserve dual install-plan validation after policy extraction" —
+  dual-seam coverage (builder + CLI emission) is preserved, but neither seam may
+  live inside `runtime-domain`; both now validate through the injected
+  `InstallPlanWireValidator` port.
+- 2026-05-18 "Platform-pack manifest validation moves to a canonical JSON
+  Schema" added the validator dependencies to `runtime-core`; they later moved
+  to `runtime-contracts`. This subtask moves all schema validators to
+  `runtime-infra-fs`, the module that already owns the platform-pack validator.
+
+**Note.** The infra-side adapters live in `runtime-infra-fs`, not
+`runtime-application`, because the application layer cannot depend on infra
+without inverting the hexagon. The former `runtime-application`
+`WorkflowSnapshotValidatorAdapter` is superseded by
+`WorkflowSnapshotValidatorInfraAdapter`. Final source-of-truth wording for the
+schema files themselves is recorded in the 2026-05-29 external-schema entry
+below (subtask 5).
+
+---
+
+## 2026-05-29 — External schemas are the source of truth, copied into the runtime at build time (SKILL-52.3 subtask 5)
+
+Context: Each runtime contract schema (`install-plan`, `workflow-state`,
+`decomposition-manifest`, `platform-pack`, `native-agent-composition`,
+`telemetry-event`) is authored once as Draft 2020-12 YAML under
+`../orchestration/contracts/`, OUTSIDE the Gradle project, and consumed at
+runtime as a classpath resource by the JVM validators.
+
+Decision: Keep `orchestration/contracts/*.yaml` as the single canonical source
+of truth. `runtime-infra-fs` copies the five schema files
+(`copyInstallPlanSchema`, `copyWorkflowStateSchema`,
+`copyDecompositionManifestSchema`, `copyPlatformPackSchema`,
+`copyNativeAgentCompositionSchema`) and `runtime-mcp` copies the sixth
+(`copyTelemetryEventSchema`) into their generated resources at build time. Each
+`Copy` task is config-cache-safe: the canonical source path is captured as a
+plain `String` `val` at configuration time and fed to `from(...)` /
+`inputs.file(...)` (no `Project`/`Task` reference is captured), while only the
+`require(File(path).exists())` existence check runs inside a `doFirst {}`
+guard, loud-failing with a named message if the canonical file is missing. Parity is mechanical: every
+`*_CONTRACT_VERSION` constant in `runtime-contracts` (or the domain/mcp
+equivalents) is pinned to its schema's `properties.contract_version.const` by a
+dedicated `*SchemaContractVersionTest`, so bumping one without the other is a
+build break.
+
+Reason: The schemas are shared with the orchestration layer (CLI/MCP tooling),
+so they cannot live inside one Gradle module without forking the contract.
+Copying at build time keeps the runtime self-contained (validators load a
+classpath resource, not a repo-relative path) while preserving the external
+file as the one place a contract change is made. The loud-fail guard turns a
+missing-schema misconfiguration into an immediate, named build failure instead
+of a runtime `null` resource stream.
+
+Revisit when: a schema needs to diverge between the runtime and the
+orchestration tooling, or when the runtime is published as a standalone
+artifact without access to `../orchestration/contracts/`.
+
+## 2026-05-29 — SKILL-52.3 subtask 4: application wire seam + open-boundary reconciliation
+
+**Decisions.**
+
+1. **Type `SystemService.doctor` / `version`.** Both now return
+   `DoctorContract` / `VersionContract`; the CLI (`SystemCliCommands`) and MCP
+   (`McpRuntime`) adapters own the `.toPayload()` call. Output stays
+   byte-equivalent. The two FQNs were removed from the raw-map allow-list, the
+   ARCHITECTURE.md open-boundary block, and the SKILL-52.2 `must_type_now`
+   inventory group.
+
+2. **Relabel lifecycle payloads + `LifecycleTelemetryService` as permanent open
+   boundaries.** The 5 `LifecycleTelemetryPayloads` helpers and the 7
+   `LifecycleTelemetryService` emit methods are forward-compatible MCP/CLI event
+   bags with no stable per-key schema, so they are now annotated
+   `@OpenBoundaryMap` and moved from the SKILL-52.2 `postponed_with_reason`
+   group (gated, `[subtask 4]`) into `open_extension` (no subtask tag) rather
+   than typed away. No event names, keys, shapes, or persisted payloads changed.
+   All "will remove" / future-tense removal wording was deleted from
+   ARCHITECTURE.md and `RuntimeArchitectureTest`.
+
+**Encode-seam relocation rationale.** YAML serialization for the decomposition
+manifest moved out of `runtime-application` (`DecompositionManifestFileWrites`)
+behind a new `DecompositionManifestFileStore.encodeManifestYaml(wireMap)` port
+method, implemented by the infra-fs `FileSystemDecompositionManifestFileStore`
+with the same `YAMLMapper()` construction (byte-identical output). This mirrors
+the subtask-1 decode seam (`DecompositionManifestValidator`): the application
+layer keeps `encodeDecompositionManifestMap` (the validated-map builder) and
+still calls `validator.validateYamlText` AFTER serialization, so the write path
+keeps throwing `InvalidDecompositionManifestSchemaError` on invalid input.
+`runtime-application` main no longer imports Jackson and its build no longer
+carries the production `jackson.dataformat.yaml` dependency (relocated to
+`testImplementation` for the pre-existing + new test doubles). The new port
+method is `@OpenBoundaryMap`-annotated and documented in the allow-list +
+`open_extension` inventory because the raw-map architecture scanner walks
+`runtime-ports`.

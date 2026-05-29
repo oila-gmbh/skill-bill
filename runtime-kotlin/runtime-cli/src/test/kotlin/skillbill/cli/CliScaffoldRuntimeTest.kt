@@ -245,15 +245,46 @@ private fun assertNewSkillScaffoldGolden(result: CliExecutionResult) {
   assertMatchesPattern(Regex("""^nss-\d{8}-[0-9a-f]{4}$"""), sessionId, "session_id")
   assertTrue(Path.of(skillPath).isAbsolute, "Expected absolute skill_path but got $skillPath")
   assertTrue(skillPath.endsWith("/skills/bill-horizontal-kotlin"))
+
+  // Lock the exact top-level payload contract so new fields cannot slip in unnoticed.
   assertEquals(
-    goldenJson(
-      "cli-new-skill-scaffold-dry-run.json",
-      "<SESSION_ID>" to sessionId,
-      "<SKILL_PATH>" to skillPath,
+    setOf(
+      "created_files",
+      "dry_run",
+      "manifest_edit_previews",
+      "manifest_edits",
+      "notes",
+      "session_id",
+      "skill_path",
+      "status",
     ),
-    result.stdout,
+    payload.keys,
   )
   assertEquals("ok", payload.stringValue("status"))
+  assertEquals("true", payload["dry_run"]?.jsonPrimitive?.contentOrNull)
+  assertEquals(
+    listOf("$skillPath/content.md"),
+    payload["created_files"]?.jsonArray?.map { it.jsonPrimitive.content },
+  )
+  assertEquals(
+    listOf("Dry run - no filesystem changes applied."),
+    payload["notes"]?.jsonArray?.map { it.jsonPrimitive.content },
+  )
+
+  // Horizontal-skill scaffolds plan an alphabetical README catalog-row insert
+  // (see ScaffoldManifestEdits / ScaffoldService). Assert that manifest edit
+  // structurally rather than pinning the volatile full-README preview in a
+  // golden fixture; the catalog-insertion semantics are covered by
+  // ReadmeCatalogAppendTest.
+  val manifestEdits = payload["manifest_edits"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+  assertEquals(1, manifestEdits.size, "Expected a single README.md manifest edit but got $manifestEdits")
+  val readmePath = manifestEdits.single()
+  assertTrue(readmePath.endsWith("/README.md"), "Expected a README.md manifest edit but got $readmePath")
+
+  val previews = payload["manifest_edit_previews"]?.jsonObject ?: emptyMap()
+  assertEquals(setOf(readmePath), previews.keys, "manifest_edit_previews must key exactly the planned README edit")
+  val readmePreview = previews[readmePath]?.jsonPrimitive?.contentOrNull.orEmpty()
+  assertContains(readmePreview, "/bill-horizontal-kotlin")
 }
 
 private fun assertCreateAndFillNativePayloads(context: CliRuntimeContext, bodyFile: Path) {
@@ -371,16 +402,6 @@ private fun decodeJsonObject(rawJson: String): JsonObject {
 }
 
 private fun JsonObject.stringValue(key: String): String = this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
-
-private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
-  var expected = Files.readString(Path.of("src/test/resources/golden").resolve(fileName))
-    .replace("\r\n", "\n")
-    .trim()
-  replacements.forEach { (placeholder, value) ->
-    expected = expected.replace(placeholder, value)
-  }
-  return expected
-}
 
 private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
   assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern}, got $value")

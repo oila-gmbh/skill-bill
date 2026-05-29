@@ -1,5 +1,6 @@
 package skillbill.install
 
+import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentDefaultTarget
 import skillbill.install.model.InstallAgentTarget
@@ -35,7 +36,7 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   // unknown agent id slipping through a future builder change)
   // loud-fails with `InvalidInstallPlanSchemaError` before the plan is
   // handed to the apply pipeline.
-  validateInstallPlanWireSnapshot(plan)
+  validateInstallPlanWireSnapshot(plan, InstallPlanWireValidatorAdapter())
   return plan
 }
 

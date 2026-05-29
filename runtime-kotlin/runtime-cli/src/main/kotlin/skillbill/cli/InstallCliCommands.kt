@@ -60,7 +60,7 @@ class InstallPlanCommand(
 ) : InstallRequestCommand("plan", "Plan a governed Skill Bill install without mutating user files.") {
   override fun run() {
     val plan = installService.planInstall(toRequest(state))
-    state.complete(installPlanPayload(plan), format)
+    state.complete(installPlanPayload(plan, installService), format)
   }
 }
 
@@ -73,7 +73,11 @@ class InstallApplyCommand(
   override fun run() {
     val plan = installService.planInstall(toRequest(state))
     val result = installService.applyInstall(plan, telemetryLevelMutator(plan))
-    state.complete(installApplyPayload(plan, result), format, exitCode = if (result.failures.isEmpty()) 0 else 1)
+    state.complete(
+      installApplyPayload(plan, result, installService),
+      format,
+      exitCode = if (result.failures.isEmpty()) 0 else 1,
+    )
   }
 
   private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {

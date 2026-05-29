@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.NoSuchFileException
@@ -14,8 +15,12 @@ internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
-internal fun loadManifestOrNull(path: Path, fileStore: DecompositionManifestFileStore): DecompositionManifest? = try {
-  loadDecompositionManifest(path, fileStore)
+internal fun loadManifestOrNull(
+  path: Path,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+): DecompositionManifest? = try {
+  loadDecompositionManifest(path, fileStore, validator)
 } catch (_: NoSuchFileException) {
   null
 }

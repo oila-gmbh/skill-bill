@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import skillbill.ports.scaffold.model.ScaffoldSectionStatus
+
 private const val SECTION_PREVIEW_LIMIT = 200
 
 internal fun parseContentSections(text: String): Pair<String, List<Pair<String, String>>> {
@@ -46,13 +48,13 @@ internal fun renderContentSections(prefix: String, sections: List<Pair<String, S
   return blocks.joinToString("\n\n").trimEnd() + "\n"
 }
 
-internal fun sectionPayloads(text: String): List<Map<String, Any?>> =
+internal fun sectionStatuses(text: String): List<ScaffoldSectionStatus> =
   parseContentSections(text).second.map { (heading, body) ->
-    mapOf(
-      "heading" to heading.removePrefix("## ").trim(),
-      "status" to sectionCompletionStatus(body),
-      "line_count" to body.lines().count { line -> line.isNotBlank() },
-      "preview" to previewText(body, SECTION_PREVIEW_LIMIT),
+    ScaffoldSectionStatus(
+      heading = heading.removePrefix("## ").trim(),
+      status = sectionCompletionStatus(body),
+      lineCount = body.lines().count { line -> line.isNotBlank() },
+      preview = previewText(body, SECTION_PREVIEW_LIMIT),
     )
   }
 

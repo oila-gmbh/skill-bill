@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.SkillBillRuntimeException
 import skillbill.nativeagent.NativeAgentOperations
+import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.GovernedAddonSelection
 import java.nio.file.Files
@@ -27,72 +28,72 @@ data class AuthoringTarget(
 )
 
 object AuthoringOperations {
-  fun list(repoRoot: Path, skillNames: List<String>): Map<String, Any?> {
+  internal fun list(repoRoot: Path, skillNames: List<String>): AuthoringListResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val targets = selectedTargets(resolvedRoot, skillNames)
-    return mapOf(
-      "repo_root" to resolvedRoot.toString(),
-      "skill_count" to targets.size,
-      "skills" to targets.map { target -> statusPayload(resolvedRoot, target, "none") },
+    return AuthoringListResult(
+      repoRoot = resolvedRoot.toString(),
+      skillCount = targets.size,
+      skills = targets.map { target -> skillStatus(resolvedRoot, target, "none") },
     )
   }
 
-  fun show(repoRoot: Path, skillName: String, contentMode: String): Map<String, Any?> {
+  internal fun show(repoRoot: Path, skillName: String, contentMode: String): ScaffoldSkillStatus {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val target = resolveTarget(resolvedRoot, skillName)
-    return statusPayload(resolvedRoot, target, contentMode)
+    return skillStatus(resolvedRoot, target, contentMode)
   }
 
-  fun explain(repoRoot: Path, skillName: String?): Map<String, Any?> {
-    val payload =
-      mutableMapOf<String, Any?>(
-        "explanation" to AUTHORING_EXPLANATION,
-        "editable_surface" to listOf("content.md"),
-        "generated_surface" to listOf("SKILL.md", "platform.yaml pointer files"),
-        "governed_sidecars" to emptyList<String>(),
-        "normal_workflow" to listOf(
-          "skill-bill new --payload <file>",
-          "skill-bill fill <skill-name>",
-          "skill-bill validate --skill-name <skill-name>",
-          "skill-bill render <skill-name>",
-        ),
-        "notes" to listOf(
-          "Author behavior changes in content.md.",
-          "Preview generated wrappers with render instead of hand-editing SKILL.md.",
-          "Use show to inspect completion and next commands.",
+  internal fun explain(repoRoot: Path, skillName: String?): AuthoringExplain {
+    val skill = skillName?.let { name ->
+      val resolvedRoot = repoRoot.toAbsolutePath().normalize()
+      val target = resolveTarget(resolvedRoot, name)
+      AuthoringExplainSkill(
+        skillName = target.skillName,
+        contentFile = target.contentFile.toString(),
+        renderCommand = "skill-bill render ${target.skillName} --repo-root $resolvedRoot",
+        recommendedCommands = recommendedCommands(
+          resolvedRoot,
+          target,
+          completionStatus = contentCompletionStatus(Files.readString(target.contentFile)),
+          issues = emptyList(),
         ),
       )
-    if (skillName != null) {
-      val resolvedRoot = repoRoot.toAbsolutePath().normalize()
-      val target = resolveTarget(resolvedRoot, skillName)
-      payload["skill"] =
-        mapOf(
-          "skill_name" to target.skillName,
-          "content_file" to target.contentFile.toString(),
-          "render_command" to "skill-bill render ${target.skillName} --repo-root $resolvedRoot",
-          "recommended_commands" to recommendedCommands(
-            resolvedRoot,
-            target,
-            completionStatus = contentCompletionStatus(Files.readString(target.contentFile)),
-            issues = emptyList(),
-          ),
-        )
     }
-    return payload
+    return AuthoringExplain(
+      explanation = AUTHORING_EXPLANATION,
+      editableSurface = listOf("content.md"),
+      generatedSurface = listOf("SKILL.md", "platform.yaml pointer files"),
+      governedSidecars = emptyList(),
+      normalWorkflow = listOf(
+        "skill-bill new --payload <file>",
+        "skill-bill fill <skill-name>",
+        "skill-bill validate --skill-name <skill-name>",
+        "skill-bill render <skill-name>",
+      ),
+      notes = listOf(
+        "Author behavior changes in content.md.",
+        "Preview generated wrappers with render instead of hand-editing SKILL.md.",
+        "Use show to inspect completion and next commands.",
+      ),
+      skill = skill,
+    )
   }
 
-  fun validate(repoRoot: Path, skillNames: List<String>): Map<String, Any?> {
+  internal fun validate(repoRoot: Path, skillNames: List<String>): AuthoringValidateResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     if (skillNames.isEmpty()) {
       val issues =
         discoverTargets(resolvedRoot).values.flatMap { target ->
           validateTarget(target, resolvedRoot)
         }
-      return mapOf(
-        "repo_root" to resolvedRoot.toString(),
-        "mode" to "repo",
-        "status" to if (issues.isEmpty()) "pass" else "fail",
-        "issues" to issues,
+      return AuthoringValidateResult(
+        repoRoot = resolvedRoot.toString(),
+        mode = "repo",
+        skillNames = null,
+        status = if (issues.isEmpty()) "pass" else "fail",
+        issues = issues,
+        suggestedCommands = null,
       )
     }
     val issues = selectedTargets(resolvedRoot, skillNames).flatMap { target -> validateTarget(target, resolvedRoot) }
@@ -106,17 +107,17 @@ object AuthoringOperations {
           issues = issues,
         )
       }.distinct()
-    return mapOf(
-      "repo_root" to resolvedRoot.toString(),
-      "mode" to "selected",
-      "skill_names" to skillNames,
-      "status" to if (issues.isEmpty()) "pass" else "fail",
-      "issues" to issues,
-      "suggested_commands" to suggestedCommands,
+    return AuthoringValidateResult(
+      repoRoot = resolvedRoot.toString(),
+      mode = "selected",
+      skillNames = skillNames,
+      status = if (issues.isEmpty()) "pass" else "fail",
+      issues = issues,
+      suggestedCommands = suggestedCommands,
     )
   }
 
-  fun upgrade(repoRoot: Path, skillNames: List<String>, validate: Boolean): Map<String, Any?> {
+  internal fun upgrade(repoRoot: Path, skillNames: List<String>, validate: Boolean): AuthoringUpgradeResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val targets = selectedTargets(resolvedRoot, skillNames)
     val originalBytes = mutableMapOf<Path, ByteArray>()
@@ -139,18 +140,18 @@ object AuthoringOperations {
           throw SkillBillRuntimeException("Validator failed after upgrade:\n${issues.joinToString("\n")}")
         }
       }
-      mapOf(
-        "repo_root" to resolvedRoot.toString(),
-        "regenerated_count" to regenerated.size,
-        "regenerated_files" to regenerated.map { path -> path.toString() },
-        "content_md_touched" to false,
-        "shell_ceremony_touched" to false,
-        "validator_ran" to validate,
+      AuthoringUpgradeResult(
+        repoRoot = resolvedRoot.toString(),
+        regeneratedCount = regenerated.size,
+        regeneratedFiles = regenerated.map { path -> path.toString() },
+        contentMdTouched = false,
+        shellCeremonyTouched = false,
+        validatorRan = validate,
       )
     }
   }
 
-  fun fill(repoRoot: Path, skillName: String, body: String, sectionName: String?): Map<String, Any?> {
+  internal fun fill(repoRoot: Path, skillName: String, body: String, sectionName: String?): AuthoringFillResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val target = resolveTarget(resolvedRoot, skillName)
     val replacement =
@@ -159,22 +160,30 @@ object AuthoringOperations {
       } else {
         replaceSectionBody(Files.readString(target.contentFile), sectionName, body)
       }
-    return mutateContent(resolvedRoot, target, replacement) + mapOf(
-      "updated_section" to sectionName?.let(::sectionHeadingLabel),
-      "validator_ran" to true,
+    val mutation = mutateContent(resolvedRoot, target, replacement)
+    return AuthoringFillResult(
+      mutation = mutation,
+      updatedSection = sectionName?.let(::sectionHeadingLabel),
+      validatorRan = true,
     )
   }
 
-  fun saveExactContent(repoRoot: Path, skillName: String, content: String): Map<String, Any?> {
+  internal fun saveExactContent(repoRoot: Path, skillName: String, content: String): AuthoringSaveExactContentResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val target = resolveTarget(resolvedRoot, skillName)
-    return mutateContent(resolvedRoot, target, content) + mapOf(
-      "updated_section" to null,
-      "validator_ran" to true,
+    val mutation = mutateContent(resolvedRoot, target, content)
+    return AuthoringSaveExactContentResult(
+      mutation = mutation,
+      validatorRan = true,
     )
   }
 
-  fun editWithBodyFile(repoRoot: Path, skillName: String, body: String, sectionName: String?): Map<String, Any?> {
+  internal fun editWithBodyFile(
+    repoRoot: Path,
+    skillName: String,
+    body: String,
+    sectionName: String?,
+  ): AuthoringEditWithBodyFileResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val target = resolveTarget(resolvedRoot, skillName)
     val replacement =
@@ -183,12 +192,14 @@ object AuthoringOperations {
       } else {
         replaceSectionBody(Files.readString(target.contentFile), sectionName, body)
       }
-    return mapOf(
-      "used_editor" to false,
-      "guided_sections" to emptyList<String>(),
-      "updated_section" to sectionName?.let(::sectionHeadingLabel),
-      "validator_ran" to true,
-    ) + mutateContent(resolvedRoot, target, replacement)
+    val mutation = mutateContent(resolvedRoot, target, replacement)
+    return AuthoringEditWithBodyFileResult(
+      usedEditor = false,
+      guidedSections = emptyList(),
+      updatedSection = sectionName?.let(::sectionHeadingLabel),
+      validatorRan = true,
+      mutation = mutation,
+    )
   }
 
   fun retiredInteractiveMessage(command: String, replacement: String): String =

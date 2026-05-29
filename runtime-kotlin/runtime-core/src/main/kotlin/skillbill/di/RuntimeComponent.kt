@@ -20,6 +20,7 @@ import skillbill.application.TelemetryService
 import skillbill.application.UnsupportedScaffoldService
 import skillbill.application.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
+import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -44,9 +45,12 @@ import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
+import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
+import skillbill.install.model.InstallPlanWireValidator
 import skillbill.model.RuntimeContext
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.apply.InstallApplyExecutionPort
@@ -78,6 +82,8 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
+import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 
 @Component
@@ -244,6 +250,26 @@ abstract class RuntimeComponent(
   internal fun decompositionManifestFileStore(
     store: FileSystemDecompositionManifestFileStore,
   ): DecompositionManifestFileStore = store
+
+  // SKILL-52.3 Subtask 1: validator ports now bind to infra-fs adapters
+  // (the module that owns the concrete networknt + Jackson schema
+  // validators). `runtime-domain` install policy and the application
+  // decomposition + workflow seams reach the validators only through
+  // these ports, wired exactly like every other infra adapter above.
+  @Provides
+  @JvmSynthetic
+  internal fun installPlanWireValidator(adapter: InstallPlanWireValidatorAdapter): InstallPlanWireValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun decompositionManifestValidator(
+    adapter: DecompositionManifestValidatorAdapter,
+  ): DecompositionManifestValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun workflowSnapshotValidator(adapter: WorkflowSnapshotValidatorInfraAdapter): WorkflowSnapshotValidator =
+    adapter
 
   abstract val installService: InstallService
   abstract val installAgentService: InstallAgentService

@@ -21,9 +21,25 @@ class InstallPolicyOwnershipArchitectureTest {
   private val approvedPolicyCallers = setOf(
     "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt",
   )
-  private val approvedValidationSeams = setOf(
-    "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt",
-    "runtime-cli/src/main/kotlin/skillbill/cli/InstallCliPayloads.kt",
+
+  // SKILL-52.3 subtask 1: each approved install-plan validation seam and the
+  // token proving it routes validation through the inverted port path. The
+  // builder seam calls the shared `validateInstallPlanWireSnapshot` helper with
+  // the injected port; the CLI emission seam re-validates through
+  // `InstallService.validateInstallPlanWire` (which delegates to the port),
+  // keeping the validator off the CLI compile graph.
+  private val approvedValidationSeams = mapOf(
+    "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt" to "validateInstallPlanWireSnapshot",
+    "runtime-cli/src/main/kotlin/skillbill/cli/InstallCliPayloads.kt" to "installService.validateInstallPlanWire",
+  )
+
+  // SKILL-52.3 subtask 1: the concrete `InstallPlanSchemaValidator` moved to
+  // `runtime-infra-fs`. Exactly one infra-fs adapter is allowed to import and
+  // delegate to it — it implements the domain-owned `InstallPlanWireValidator`
+  // port that every other seam now consumes. All other adapter source must
+  // still reach validation only through the port / shared wire-snapshot helper.
+  private val approvedValidatorAdapters = setOf(
+    "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/InstallPlanWireValidatorAdapter.kt",
   )
 
   @Test
@@ -80,19 +96,60 @@ class InstallPolicyOwnershipArchitectureTest {
   }
 
   @Test
+  fun `install policy delegates schema validation to the injected wire validator port`() {
+    // SKILL-52.3 subtask 1: the domain policy must reach schema validation
+    // through the injected `InstallPlanWireValidator` port, never the
+    // concrete validator. The policy threads the port into the shared
+    // wire-snapshot helper rather than constructing a validator.
+    val policyText = runtimeRoot
+      .resolve("runtime-domain/src/main/kotlin/skillbill/install/policy/InstallPlanPolicy.kt")
+      .readText()
+    assertTrue(
+      policyText.contains("InstallPlanWireValidator") &&
+        policyText.contains("validateInstallPlanWireSnapshot(plan, validator)"),
+      "InstallPlanPolicy must delegate schema validation to the injected InstallPlanWireValidator port.",
+    )
+    assertTrue(
+      !policyText.contains("InstallPlanSchemaValidator"),
+      "InstallPlanPolicy must not reference the concrete InstallPlanSchemaValidator.",
+    )
+
+    val wireMapText = runtimeRoot
+      .resolve("runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanWireMap.kt")
+      .readText()
+    assertTrue(
+      wireMapText.contains("validator: InstallPlanWireValidator") &&
+        wireMapText.contains("validator.validate(buildInstallPlanWireMap(plan))"),
+      "validateInstallPlanWireSnapshot must delegate to the injected InstallPlanWireValidator port.",
+    )
+  }
+
+  @Test
   fun `adapter install seams do not own planner or validator policy`() {
-    approvedValidationSeams.forEach { relativePath ->
+    approvedValidationSeams.forEach { (relativePath, expectedToken) ->
       val text = runtimeRoot.resolve(relativePath).readText()
       assertTrue(
-        text.contains("validateInstallPlanWireSnapshot"),
-        "Approved install-plan validation seam $relativePath must call the shared wire-snapshot validator.",
+        text.contains(expectedToken),
+        "Approved install-plan validation seam $relativePath must call '$expectedToken' to route validation " +
+          "through the injected InstallPlanWireValidator port.",
       )
     }
 
+    // SKILL-52.3 subtask 1: the concrete `InstallPlanSchemaValidator` now lives
+    // in `runtime-infra-fs` (the owning module) and is reached through the
+    // `InstallPlanWireValidatorAdapter` port adapter. Those two files legitimately
+    // own / construct the validator, so they are exempt from the adapter-policy
+    // ownership scan; every other adapter file must still stay clean.
+    val validatorOwnerFiles = setOf(
+      "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/InstallPlanWireValidatorAdapter.kt",
+    )
     val adapterFiles = adapterKotlinFiles()
-    val violations = adapterFiles.flatMap { sourceFile ->
-      adapterPolicyOwnershipViolations(runtimeRoot.relativize(sourceFile).toSlashPath(), sourceFile.readText())
-    }
+    val violations = adapterFiles
+      .filterNot { sourceFile -> runtimeRoot.relativize(sourceFile).toSlashPath() in validatorOwnerFiles }
+      .flatMap { sourceFile ->
+        adapterPolicyOwnershipViolations(runtimeRoot.relativize(sourceFile).toSlashPath(), sourceFile.readText())
+      }
 
     assertEquals(
       emptyList(),
@@ -160,7 +217,8 @@ class InstallPolicyOwnershipArchitectureTest {
     val code = trimmed.takeUnless { it.startsWith("//") || it.startsWith("*") } ?: return null
     val disallowedPolicyReference = installPolicyReferencePattern().containsMatchIn(code) &&
       relativePath !in approvedPolicyCallers
-    val disallowedSchemaValidatorReference = installSchemaValidatorReferencePattern().containsMatchIn(code)
+    val disallowedSchemaValidatorReference = installSchemaValidatorReferencePattern().containsMatchIn(code) &&
+      relativePath !in approvedValidatorAdapters
     val disallowedValidationUse = installWireSnapshotValidationReferencePattern().containsMatchIn(code) &&
       relativePath !in approvedValidationSeams
     val disallowedPolicyDeclaration = installPolicyDeclarationPattern().containsMatchIn(code)

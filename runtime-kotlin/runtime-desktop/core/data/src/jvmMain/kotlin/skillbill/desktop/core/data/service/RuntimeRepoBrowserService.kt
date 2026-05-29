@@ -420,9 +420,10 @@ class RuntimeRepoBrowserService(
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
   ): AuthoredSkillGroups {
-    // SKILL-52.2 subtask 5: typed authored-skill entries from the mapper instead
-    // of reaching into `ScaffoldListResult.payload["skills"]` here. The raw-shape
-    // decoding lives in `mapper/ScaffoldListResultMapper.kt`.
+    // SKILL-52.3 subtask 3: typed authored-skill entries from the mapper. The
+    // `ScaffoldListResult.payload` open boundary was retired; the result now carries a
+    // typed `List<ScaffoldSkillStatus>` and `mapper/ScaffoldListResultMapper.kt` is a
+    // 1:1 typed projection with no raw-map indexing.
     val entries = scaffoldService.list(root, emptyList()).authoredSkillEntries()
     val horizontal = mutableListOf<SkillBillTreeItem>()
     val platformChildren = linkedMapOf<String, MutableList<SkillBillTreeItem>>()

@@ -44,69 +44,56 @@ class AuthoringOperationsTest {
   }
 
   // -------------------------------------------------------------------------------------------
-  // F-T3 (testing): pin the public statusPayload key contract so the SKILL-40 removal of
-  // `generation_drift` (and the camelCase `hasGenerationDrift` variant) cannot silently
-  // regress — and so any future addition or removal trips this test and forces an explicit
-  // decision.
+  // F-T3 (testing): pin the typed authoring-status contract. SKILL-52.3 subtask 3 retired the
+  // raw `statusPayload` map for the typed `ScaffoldSkillStatus` record, so the SKILL-40 removal
+  // of `generation_drift` (and the camelCase `hasGenerationDrift` variant) is now structurally
+  // enforced by the type system; these tests pin the stable typed scalars instead.
   // -------------------------------------------------------------------------------------------
 
   @Test
-  fun `show payload pins exact key set and excludes generation_drift`() {
+  fun `show status pins the typed authoring contract`() {
     val repo = seedFillFixtureRepo("show-keyset")
     val skillName = "bill-fill-fixture"
 
-    val payload = AuthoringOperations.show(repo, skillName, contentMode = "none")
+    // SKILL-52.3 subtask 3: show returns the fully typed ScaffoldSkillStatus. The historical
+    // `generation_drift` / `hasGenerationDrift` leakage is now structurally impossible — the
+    // typed record has no such field. Pin the stable typed scalars so the typed-lift cannot
+    // silently drop a documented field (the byte-equivalent wire key set is locked by
+    // CliScaffoldRuntimeTest in runtime-cli).
+    val status = AuthoringOperations.show(repo, skillName, contentMode = "none")
 
-    val expectedKeys = setOf(
-      "skill_name",
-      "package",
-      "platform",
-      "family",
-      "area",
-      "content_file",
-      "render_command",
-      "completion_status",
-      "section_count",
-      "sections",
-      "recommended_commands",
-    )
-    assertEquals(expectedKeys, payload.keys, "show payload key set drifted; update F-T3 contract intentionally")
-
-    // Defense in depth: even if the strict equality is loosened in the future, these specific
-    // keys must never come back without an explicit decision.
-    listOf("generation_drift", "hasGenerationDrift").forEach { key ->
-      assertEquals(false, payload.containsKey(key), "Forbidden payload key '$key' is present")
-    }
+    assertEquals(skillName, status.skillName)
+    assertEquals("complete", status.completionStatus)
+    assertEquals(null, status.contentPreview, "content=none must not surface a content preview")
+    assertEquals(null, status.content, "content=none must not surface full content")
+    assertEquals(null, status.issues, "show without issues must not surface an issues list")
   }
 
   @Test
-  fun `list payload skill entries exclude generation_drift`() {
+  fun `list returns a single typed status entry`() {
     val repo = seedFillFixtureRepo("list-keyset")
     val skillName = "bill-fill-fixture"
 
-    val payload = AuthoringOperations.list(repo, listOf(skillName))
+    val result = AuthoringOperations.list(repo, listOf(skillName))
 
-    @Suppress("UNCHECKED_CAST")
-    val skills = payload["skills"] as List<Map<String, Any?>>
-
-    assertEquals(1, skills.size)
-    listOf("generation_drift", "hasGenerationDrift").forEach { key ->
-      assertEquals(false, skills.first().containsKey(key), "Forbidden payload key '$key' is present in list output")
-    }
+    assertEquals(1, result.skillCount)
+    assertEquals(1, result.skills.size)
+    assertEquals(skillName, result.skills.first().skillName)
   }
 
   @Test
-  fun `validate payload excludes generation_drift in repo and selected modes`() {
+  fun `validate reports typed repo and selected modes`() {
     val repo = seedFillFixtureRepo("validate-keyset")
     val skillName = "bill-fill-fixture"
 
-    val repoPayload = AuthoringOperations.validate(repo, emptyList())
-    val selectedPayload = AuthoringOperations.validate(repo, listOf(skillName))
+    val repoResult = AuthoringOperations.validate(repo, emptyList())
+    val selectedResult = AuthoringOperations.validate(repo, listOf(skillName))
 
-    listOf("generation_drift", "hasGenerationDrift").forEach { key ->
-      assertEquals(false, repoPayload.containsKey(key), "Forbidden key '$key' present in validate(repo)")
-      assertEquals(false, selectedPayload.containsKey(key), "Forbidden key '$key' present in validate(selected)")
-    }
+    assertEquals("repo", repoResult.mode)
+    assertEquals(null, repoResult.skillNames, "repo mode must not carry skill_names")
+    assertEquals(null, repoResult.suggestedCommands, "repo mode must not carry suggested_commands")
+    assertEquals("selected", selectedResult.mode)
+    assertEquals(listOf(skillName), selectedResult.skillNames)
   }
 
   /**
@@ -159,7 +146,7 @@ class AuthoringOperationsTest {
     val skillName = "bill-fill-fixture"
     val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
 
-    val payload =
+    val result =
       AuthoringOperations.fill(
         repoRoot = repo,
         skillName = skillName,
@@ -168,7 +155,7 @@ class AuthoringOperationsTest {
       )
     val content = Files.readString(contentFile)
 
-    assertEquals("complete", payload["completion_status"])
+    assertEquals("complete", result.mutation.status.completionStatus)
     assertContains(content, "# Fixture Content\n\nClean authored guidance without wrapper headings.")
     assertEquals(false, "## Descriptor" in content)
     assertEquals(false, "## Execution" in content)
@@ -201,7 +188,7 @@ class AuthoringOperationsTest {
     val skillName = "bill-section-fixture"
     val contentFile = repo.resolve("skills").resolve(skillName).resolve("content.md")
 
-    val payload =
+    val result =
       AuthoringOperations.editWithBodyFile(
         repoRoot = repo,
         skillName = skillName,
@@ -210,7 +197,7 @@ class AuthoringOperationsTest {
       )
     val content = Files.readString(contentFile)
 
-    assertEquals("Review Guidance", payload["updated_section"])
+    assertEquals("Review Guidance", result.updatedSection)
     assertContains(content, "## Review Guidance\n\nUpdated guidance body.")
     assertContains(content, "## Review Focus")
     assertContains(content, "Initial focus.")

@@ -11,7 +11,6 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
-import skillbill.application.workflow.WorkflowSnapshotValidatorAdapter
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
@@ -20,7 +19,9 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -36,14 +37,18 @@ class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
 ) {
-  // SKILL-52.2 Subtask 4: workflow engine receives its schema-validator
-  // dependency at the application boundary. The application owns this
-  // wiring so `runtime-domain` does not import contract schema
-  // validators directly. The adapter caches the compiled JSON Schema
+  // SKILL-52.3 Subtask 1: the workflow engine and the decomposition
+  // manifest seams receive their schema-validator dependencies at the
+  // application boundary as injected domain-owned ports. The application
+  // owns this wiring so `runtime-domain` and `runtime-application` never
+  // import the concrete schema validators (now owned by
+  // `runtime-infra-fs`). The validator caches the compiled JSON Schema
   // instance, so a single shared engine amortises schema parse + compile
   // cost across every call.
-  private val engine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorAdapter())
+  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   fun open(
     kind: WorkflowFamilyKind,
     sessionId: String = "",
@@ -89,6 +94,7 @@ class WorkflowService(
         existing,
         input,
         request.workflowId,
+        decompositionManifestValidator,
         decompositionManifestFileStore,
       )
       val effectiveInput = runtimeInput.input
@@ -97,7 +103,13 @@ class WorkflowService(
       val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
       if (runtimeInput.updated) {
         projectionArtifactsJson = updated.artifactsJson
-        syncDecompositionParentRuntime(engine, family, updated, request.workflowId, unitOfWork)
+        engine.syncDecompositionParentRuntime(
+          family,
+          updated,
+          request.workflowId,
+          unitOfWork,
+          decompositionManifestValidator,
+        )
       }
       WorkflowUpdateResult.Ok(
         workflowId = updated.workflowId,
@@ -109,6 +121,7 @@ class WorkflowService(
       DecompositionManifestWriter.writeProjectionFromWorkflowState(
         Path.of("").toAbsolutePath(),
         artifactsJson,
+        decompositionManifestValidator,
         decompositionManifestFileStore,
       )
     }
@@ -186,6 +199,7 @@ class WorkflowService(
           DecompositionWorkflowContinuation(
             engine,
             gitOperations,
+            decompositionManifestValidator,
             decompositionManifestFileStore,
           ).continueDecomposedParentByIssueKey(workflowId, unitOfWork)
         projectionArtifactsJson = resolved.projectionArtifactsJson ?: projectionArtifactsJson
@@ -198,8 +212,8 @@ class WorkflowService(
       engine.continueExistingWorkflow(
         family,
         record,
-        workflowId,
         unitOfWork,
+        decompositionManifestValidator,
         decompositionManifestFileStore,
       ).also { continuation ->
         projectionArtifactsJson = continuation.projectionArtifactsJson ?: projectionArtifactsJson
@@ -209,6 +223,7 @@ class WorkflowService(
       DecompositionManifestWriter.writeProjectionFromWorkflowState(
         Path.of("").toAbsolutePath(),
         artifactsJson,
+        decompositionManifestValidator,
         decompositionManifestFileStore,
       )
     }
@@ -216,19 +231,19 @@ class WorkflowService(
   }
 }
 
-private fun syncDecompositionParentRuntime(
-  engine: WorkflowEngine,
+private fun WorkflowEngine.syncDecompositionParentRuntime(
   family: WorkflowFamily,
   updated: WorkflowStateSnapshot,
   workflowId: String,
   unitOfWork: UnitOfWork,
+  validator: DecompositionManifestValidator,
 ) {
-  val manifest = updated.decompositionRuntime()
+  val manifest = updated.decompositionRuntime(validator)
   if (family == WorkflowFamily.IMPLEMENT && manifest != null) {
-    unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest)
+    unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
       ?.toSnapshot()
       ?.takeUnless { it.workflowId == workflowId }
-      ?.let { parent -> engine.persistParentDecompositionRuntime(parent, manifest, unitOfWork) }
+      ?.let { parent -> persistParentDecompositionRuntime(parent, manifest, unitOfWork, validator) }
   }
 }
 
@@ -264,6 +279,7 @@ internal fun WorkflowFamily.withDecompositionRuntime(
   existing: WorkflowStateSnapshot,
   input: WorkflowUpdateInput,
   workflowId: String,
+  validator: DecompositionManifestValidator,
   fileStore: DecompositionManifestFileStore,
 ): DecompositionRuntimeInput = if (this != WorkflowFamily.IMPLEMENT) {
   DecompositionRuntimeInput(input = input, updated = false)
@@ -272,6 +288,7 @@ internal fun WorkflowFamily.withDecompositionRuntime(
     repoRoot = Path.of("").toAbsolutePath(),
     existingArtifactsJson = existing.artifactsJson,
     artifactsPatch = input.artifactsPatch,
+    validator = validator,
     runtimeUpdate = DecompositionManifestRuntimeUpdate(
       workflowId = workflowId,
       workflowStatus = input.workflowStatus,
@@ -285,7 +302,7 @@ internal fun WorkflowFamily.withDecompositionRuntime(
         artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
           put(
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            encodeDecompositionManifestMap(manifest, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+            encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
           )
         },
       ),

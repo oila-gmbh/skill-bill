@@ -4,6 +4,7 @@ import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -15,11 +16,12 @@ import java.nio.file.Path
 internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
   initialRecord: WorkflowStateSnapshot,
-  workflowId: String,
   unitOfWork: UnitOfWork,
+  validator: DecompositionManifestValidator,
   fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ): ContinuationStepResult {
   var record = initialRecord
+  val workflowId = initialRecord.workflowId
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
   var decision = continueDecision(family.definition, record, sessionSummary)
   var projectionArtifactsJson: String? = null
@@ -29,6 +31,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
       record,
       decision.toReopenInput(record.sessionId),
       workflowId,
+      validator,
       fileStore,
     )
     val reopened = updateRecord(family.definition, record, runtimeInput.input)
@@ -75,6 +78,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   unitOfWork: UnitOfWork,
+  validator: DecompositionManifestValidator,
 ) {
   val updatedParent = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
@@ -86,6 +90,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
       artifactsPatch = mapOf(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
           manifest,
+          validator,
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
         ),
       ),

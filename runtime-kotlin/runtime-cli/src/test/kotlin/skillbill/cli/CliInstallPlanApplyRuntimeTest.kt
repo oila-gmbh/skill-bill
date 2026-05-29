@@ -4,6 +4,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.DatabaseRuntime
 import skillbill.db.DbConstants
 import skillbill.db.TelemetryOutboxStore
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import skillbill.error.InvalidInstallPlanSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -357,13 +359,21 @@ class CliInstallPlanApplyRuntimeTest {
     val fixture = installPlanApplyFixture()
     val invalidPlan = invalidCliInstallPlan(fixture)
 
+    // SKILL-52.3 subtask 1: the CLI emission seam re-validates through the
+    // real `InstallService` resolved from the runtime DI graph, which
+    // delegates to the injected `InstallPlanWireValidator` port (wired to the
+    // infra-fs adapter). This proves the CLI seam still loud-fails through the
+    // inverted port path, not a default-constructed concrete validator.
+    val installService = RuntimeComponent::class
+      .create(CliRuntimeContext(userHome = fixture.home).toRuntimeContext())
+      .installService
     val planError = assertFailsWith<InvalidInstallPlanSchemaError> {
-      installPlanPayload(invalidPlan)
+      installPlanPayload(invalidPlan, installService)
     }
     assertContains(planError.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
 
     val applyError = assertFailsWith<InvalidInstallPlanSchemaError> {
-      installApplyPayload(invalidPlan, minimalApplyResult(invalidPlan))
+      installApplyPayload(invalidPlan, minimalApplyResult(invalidPlan), installService)
     }
     assertContains(applyError.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
   }

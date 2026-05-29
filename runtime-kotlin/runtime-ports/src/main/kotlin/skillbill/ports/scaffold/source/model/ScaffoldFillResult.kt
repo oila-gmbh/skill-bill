@@ -1,32 +1,23 @@
 package skillbill.ports.scaffold.source.model
 
-import skillbill.boundary.OpenBoundaryMap
+import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 
 /**
- * SKILL-52.1 subtask 3 — Typed result for `ScaffoldGateway.fill(...)`.
+ * SKILL-52.3 subtask 3 — Fully typed result for `ScaffoldGateway.fill(...)`.
  *
- * Reports the post-mutation status payload (skill_name, package, platform, family,
- * area, content_file, render_command, completion_status, section_count, sections,
- * recommended_commands, wrapper_regenerated) merged with the fill bookkeeping fields
- * (updated_section, validator_ran). Legacy insertion order is preserved verbatim
- * via [payload].
- *
- * SKILL-52.1 subtask 3 (F-011): the producer uses `mutateContent(...) + mapOf(...)`
- * (backed by `LinkedHashMap` on JVM), not `linkedMapOf(...)`; the contract is "ordered map".
+ * Reports the post-mutation skill [status] (the shared [ScaffoldSkillStatus] record),
+ * the `wrapper_regenerated` bookkeeping flag, and the fill-specific [updatedSection] /
+ * [validatorRan] fields. The legacy open-boundary `payload: Map<String, Any?>` and its
+ * desync `init {}` guard were retired in SKILL-52.3 subtask 3; the adapter-owned
+ * `runtime-cli` mapper rebuilds the byte-equivalent ordered wire map from these typed
+ * fields in producer key order (status keys, `wrapper_regenerated`, `updated_section`,
+ * `validator_ran`).
  */
 data class ScaffoldFillResult(
-  val skillName: String,
+  val status: ScaffoldSkillStatus,
+  val wrapperRegenerated: Boolean,
+  val updatedSection: String?,
   val validatorRan: Boolean,
-  @OpenBoundaryMap("Scaffold fill wire payload (legacy raw-map surface preserved for byte-equivalent JSON)")
-  val payload: Map<String, Any?>,
 ) {
-  init {
-    // SKILL-52.1 subtask 3 (F-010): typed/payload desync invariants.
-    require(payload["skill_name"] == skillName) {
-      "ScaffoldFillResult typed/payload desync: skill_name"
-    }
-    require(payload["validator_ran"] == validatorRan) {
-      "ScaffoldFillResult typed/payload desync: validator_ran"
-    }
-  }
+  val skillName: String get() = status.skillName
 }
