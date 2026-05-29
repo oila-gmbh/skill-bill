@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">Skill Bill demo — capture pending</title>
+  <desc id="desc">Static placeholder standing in for the not-yet-captured Skill Bill motion demo. The recorded GIF/MP4 will replace this image once produced out-of-band.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#070709"/>
+      <stop offset="0.58" stop-color="#111116"/>
+      <stop offset="1" stop-color="#070708"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f4c430"/>
+      <stop offset="1" stop-color="#8f6d05"/>
+    </linearGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" fill="none" stroke="#ffffff" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <rect width="1200" height="600" fill="url(#grid)"/>
+
+  <!-- Mock terminal window -->
+  <g transform="translate(140 96)">
+    <rect x="0" y="0" width="920" height="408" rx="14" fill="#0c0c0f" stroke="#f4c430" stroke-opacity="0.45" stroke-width="1.5"/>
+    <rect x="0" y="0" width="920" height="44" rx="14" fill="#16161c"/>
+    <rect x="0" y="30" width="920" height="14" fill="#16161c"/>
+    <circle cx="26" cy="22" r="6" fill="#ff5f56"/>
+    <circle cx="48" cy="22" r="6" fill="#ffbd2e"/>
+    <circle cx="70" cy="22" r="6" fill="#27c93f"/>
+    <text x="460" y="27" fill="#8a8a94" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="middle">skill-bill — demo</text>
+
+    <g font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="18">
+      <text x="34" y="96" fill="#60d394">$</text>
+      <text x="58" y="96" fill="#f6f3e7">/bill-feature-implement spec.md</text>
+      <text x="34" y="138" fill="#8a8a94">▸ assess → branch → pre-plan → plan</text>
+      <text x="34" y="170" fill="#8a8a94">▸ implement → review → audit → check</text>
+      <text x="34" y="202" fill="#f4c430">✓ durable workflow state persisted</text>
+      <text x="34" y="234" fill="#f4c430">✓ telemetry recorded (parent/child tree)</text>
+      <text x="34" y="266" fill="#60d394">$</text>
+      <text x="58" y="266" fill="#f6f3e7">PR ready — spec → merged-ready in one run</text>
+    </g>
+
+    <rect x="34" y="320" width="852" height="56" rx="10" fill="url(#gold)" opacity="0.14"/>
+    <text x="460" y="348" fill="#f5e8ae" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" text-anchor="middle" dominant-baseline="middle">DEMO CAPTURE PENDING</text>
+  </g>
+
+  <text x="600" y="548" fill="#f7efd3" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="600" text-anchor="middle">
+    Motion demo produced out-of-band — this static frame is a placeholder.
+  </text>
+  <text x="600" y="576" fill="#8a8a94" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500" text-anchor="middle">
+    See skill-bill-demo-storyboard.md and skill-bill-demo-capture-instructions.md
+  </text>
+</svg>

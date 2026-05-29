@@ -4,16 +4,133 @@ on:
   push:
     tags:
       - "v*.*.*"
+  # AC6: a maintainer can stage a real, downloadable asset set for subtask 4
+  # testing without cutting a tag. The staging_version input names the assets and
+  # the (pre)release; see RELEASING.md "Staging a release for downstream testing".
+  workflow_dispatch:
+    inputs:
+      staging_version:
+        description: >-
+          Staging version label for a manual run (e.g. v0.4.0-rc.1). Produces a
+          downloadable prerelease asset set without requiring a pushed tag.
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  # On a tag push GITHUB_REF_NAME is the tag; on workflow_dispatch it is the
+  # branch. Either way the group is unique per release attempt.
+  group: release-${{ github.ref_name }}-${{ inputs.staging_version }}
   cancel-in-progress: false
 
 jobs:
+  # Phase 1: per-OS artifact producers. Each matrix leg runs on a host whose
+  # native toolchain can build that OS/arch's runtime images + desktop installer
+  # (jlink/jpackage cannot cross-compile). fail-fast:false so one host failing
+  # does not abort the others. The canonical <os>-<arch> token (host_token) is the
+  # SAME contract subtasks 1-2 bake into the artifact filenames and subtask 4
+  # resolves by host (resolveHostRuntimeToken).
+  build:
+    name: Build ${{ matrix.host_token }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS arm64 (Apple Silicon hosted runner).
+          - runner: macos-14
+            host_token: macos-arm64
+            installer_tasks: ":runtime-desktop:canonicalRenameDmgInstaller"
+          # macOS x64 (Intel hosted runner). GitHub retired the bare macos-13
+          # Intel image; the current Intel hosted label is macos-15-intel. If
+          # GitHub later retires the -intel images too, drop this leg (fail-fast is
+          # off, so the other hosts still publish) and note the gap in the release.
+          - runner: macos-15-intel
+            host_token: macos-x64
+            installer_tasks: ":runtime-desktop:canonicalRenameDmgInstaller"
+          # Windows x64.
+          - runner: windows-latest
+            host_token: windows-x64
+            installer_tasks: ":runtime-desktop:canonicalRenameMsiInstaller"
+          # Linux x64 (produces both .deb and .rpm).
+          - runner: ubuntu-latest
+            host_token: linux-x64
+            installer_tasks: >-
+              :runtime-desktop:canonicalRenameDebInstaller
+              :runtime-desktop:canonicalRenameRpmInstaller
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # AC7: pin the build toolchain to JDK 17 (temurin) on every runner so the
+      # jlink image + jpackage installer are produced with a consistent JDK.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Linux desktop installers shell out to native packaging tools: .deb needs
+      # dpkg-deb (+ fakeroot), .rpm needs rpmbuild. Without them jpackage fails
+      # with "Invalid or unsupported type". Hosted ubuntu has dpkg-deb already;
+      # install the rest so packageDeb/packageRpm succeed.
+      - name: Install Linux packaging tooling
+        if: matrix.host_token == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot rpm
+
+      # AC1/AC5: self-contained per-OS runtime images for CLI + MCP. runtimeZip is
+      # finalizedBy its .sha256 task, so each produces archive + .sha256. Badass
+      # Runtime tasks are not configuration-cache compatible, so do NOT pass
+      # --configuration-cache here. bash + the Unix-style ./gradlew launcher works
+      # on every hosted runner (Git Bash on Windows runs the POSIX wrapper).
+      - name: Build runtime images
+        shell: bash
+        run: |
+          cd runtime-kotlin
+          ./gradlew :runtime-cli:runtimeZip :runtime-mcp:runtimeZip
+
+      # AC1/AC5: desktop installer(s) for this host only. The packageDesktopInstallers
+      # aggregate depends on ALL four formats (deb/rpm/dmg/msi) and would pull in
+      # non-host package tasks that jpackage cannot build on this OS, so we invoke
+      # only the host-native canonicalRename<Format>Installer task(s). Each rename
+      # task depends on its package<Format> task and writes the canonical
+      # SkillBill-<version>-<os>-<arch>.<ext> + .sha256.
+      - name: Build desktop installer
+        shell: bash
+        run: |
+          cd runtime-kotlin
+          ./gradlew ${{ matrix.installer_tasks }}
+
+      # AC2/AC5: upload every produced archive + its .sha256 under an artifact
+      # named with the canonical host token so the publish job can collect them.
+      # The runtime-image zips live under <module>/build/runtime-image/ and the
+      # installers under runtime-desktop/build/compose/binaries/main/<format>/.
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.host_token }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            runtime-kotlin/runtime-cli/build/runtime-image/*.zip
+            runtime-kotlin/runtime-cli/build/runtime-image/*.zip.sha256
+            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
+            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip.sha256
+            runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*
+
+  # Phase 2: validation gate + GitHub Release publish. needs: build so the release
+  # only happens once every host's artifacts exist. The maintainer validation gate
+  # is preserved EXACTLY and runs fail-closed BEFORE any download/attach step.
   publish:
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
@@ -26,6 +143,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      # validate_release_ref delegates to ./gradlew :runtime-cli:run, and `gradlew
+      # check` runs here too, so this job needs the same pinned JDK 17 (AC7).
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
       - name: Run Kotlin runtime checks
         run: (cd runtime-kotlin && ./gradlew check)
@@ -45,29 +171,94 @@ jobs:
       - name: Run repo-native validation
         run: scripts/validate_agent_configs
 
+      # AC3/AC4: derive release metadata. On a tag push we validate the ref and
+      # let validate_release_ref decide prerelease vs stable. On a manual staging
+      # run there is no tag, so we derive metadata from the staging_version input
+      # and ALWAYS publish a prerelease (staging is never a stable release).
       - name: Validate release tag
         id: release_meta
+        if: github.event_name != 'workflow_dispatch'
         run: scripts/validate_release_ref "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
 
+      - name: Resolve staging release metadata
+        id: staging_meta
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          STAGING_VERSION: ${{ inputs.staging_version }}
+        run: |
+          # AC6: a manual staging run produces a real downloadable prerelease asset
+          # set without relying on validate_release_ref's tag parsing.
+          {
+            echo "tag=${STAGING_VERSION}"
+            echo "prerelease=true"
+          } >>"$GITHUB_OUTPUT"
+
+      # AC2/AC5: collect every host's archives + .sha256 into one flat directory.
+      # merge-multiple flattens the per-host artifact dirs so every asset lands
+      # directly under dist/ for the attach step.
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          merge-multiple: true
+          path: dist
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Collected release assets:"
+          ls -la dist
+          echo "Total asset count: $(find dist -type f | wc -l)"
+
+      # AC2/AC3/AC6: publish (or update) the GitHub Release and attach every asset.
+      # Idempotent: if the release already exists we attach assets via `gh release
+      # upload --clobber` instead of failing. Prerelease flag honours release_meta
+      # (tag push) or the always-prerelease staging path (workflow_dispatch).
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.tag || steps.staging_meta.outputs.tag }}
+          RELEASE_PRERELEASE: ${{ steps.release_meta.outputs.prerelease || steps.staging_meta.outputs.prerelease }}
+          IS_STAGING: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          if gh release view "${{ steps.release_meta.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${{ steps.release_meta.outputs.tag }} already exists; skipping publish."
+          set -euo pipefail
+
+          if [[ -z "${RELEASE_TAG}" ]]; then
+            echo "No release tag resolved; refusing to publish." >&2
+            exit 1
+          fi
+
+          mapfile -t assets < <(find dist -type f | sort)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "No assets found under dist/; refusing to publish an empty release." >&2
+            exit 1
+          fi
+
+          echo "Publishing ${RELEASE_TAG} with ${#assets[@]} assets (prerelease=${RELEASE_PRERELEASE})."
+
+          if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; uploading/updating assets."
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" \
+              --repo "${{ github.repository }}" \
+              --clobber
             exit 0
           fi
 
           args=(
-            "${{ steps.release_meta.outputs.tag }}"
+            "${RELEASE_TAG}"
             --repo "${{ github.repository }}"
-            --title "${{ steps.release_meta.outputs.tag }}"
+            --title "${RELEASE_TAG}"
             --generate-notes
-            --verify-tag
           )
 
-          if [[ "${{ steps.release_meta.outputs.prerelease }}" == "true" ]]; then
+          # A pushed tag exists in the repo, so --verify-tag guards against typos.
+          # A staging (workflow_dispatch) run has no pushed tag, so gh creates one
+          # from the current ref; --verify-tag would fail, so omit it there.
+          if [[ "${IS_STAGING}" != "true" ]]; then
+            args+=(--verify-tag)
+          fi
+
+          if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
             args+=(--prerelease)
           fi
 
-          gh release create "${args[@]}"
+          gh release create "${args[@]}" "${assets[@]}"

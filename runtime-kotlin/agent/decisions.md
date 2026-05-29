@@ -4,6 +4,105 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-05-29 — Ship desktop installers UNSIGNED for v1
+
+**Context.** SKILL-55 subtask 2 produces native desktop installers (`.dmg`,
+`.msi`, `.deb`, `.rpm`) via Compose's jpackage integration, each bundling its own
+JRE. macOS Gatekeeper and Windows SmartScreen both warn on, or block, software
+that is not signed with an Apple Developer ID (notarized) certificate or a
+Windows Authenticode code-signing certificate respectively. We do not hold either
+certificate for v1.
+
+**Decision.** **SHIP UNSIGNED FOR V1.** We ship the installers unsigned and defer
+code signing + Apple notarization to a later release. End users open the app
+through the OS "open anyway" escape hatch; the exact steps below are recorded
+verbatim so subtask 4 (post-install hint) and subtask 6 (launch FAQ) reuse the
+same wording without re-deriving it.
+
+**End-user open-anyway steps (verbatim, reuse these).**
+
+- **macOS (Gatekeeper).** Right-click (or Control-click) the app in Finder ->
+  **Open** -> **Open** in the confirmation dialog. Alternatively: **System
+  Settings -> Privacy & Security -> Open Anyway**.
+- **Windows (SmartScreen).** On the "Windows protected your PC" dialog, click
+  **More info** -> **Run anyway**.
+
+**Reason.** Acquiring and provisioning an Apple Developer ID certificate (+
+notarization pipeline) and a Windows Authenticode certificate is cost and
+process overhead not justified for a v1 launch. Unsigned distribution with
+documented open-anyway steps unblocks shipping now; signing/notarization is a
+tracked follow-up. The `.deb` / `.rpm` Linux packages have no equivalent
+OS-level signing gate for local installs, so this trade-off is macOS/Windows
+specific.
+
+**Consumers.** Subtask 4 surfaces a post-install hint pointing at these steps;
+subtask 6 embeds them in the launch FAQ. Keep the wording above as the single
+source of truth.
+
+## 2026-05-29 — Artifact FILENAME, not embedded version, is the source of truth (macOS diverges)
+
+**Context.** SKILL-55 subtask 2 derives the embedded jpackage `--app-version` from
+`project.version` (`0.1.0-SNAPSHOT`). jpackage requires a strict numeric
+`MAJOR.MINOR.PATCH`, and macOS jpackage + the Compose Dmg validator additionally
+require `MAJOR >= 1`. So `toMacAppVersion` bumps a zero major (`0.1.0` -> `1.1.0`)
+for the macOS `.dmg` embedded version ONLY; Linux `.deb`/`.rpm` and Windows `.msi`
+keep the honest `toJpackageVersion` (`0.1.0`). The embedded version therefore
+deliberately DIVERGES across operating systems for the same build. Separately, the
+canonical artifact FILENAME (`SkillBill-<project.version>-<os>-<arch>.<ext>`) uses
+the full, un-stripped `project.version` uniformly across all operating systems.
+
+**Decision.** The artifact **FILENAME** is the single source of truth for an
+installer's version and for artifact resolution in subtask 3/4. Verifiers and
+release tooling MUST resolve on the filename, never on the embedded installer
+metadata — the embedded `--app-version` deliberately diverges on macOS
+(`1.1.0` vs the filename's `0.1.0-SNAPSHOT`) and must not be treated as
+authoritative.
+
+**Reason.** macOS's `MAJOR >= 1` constraint forces a per-OS embedded-version
+bump that the honest project version cannot satisfy, so embedded metadata is not
+a stable cross-OS key. The full `project.version` in the filename is identical
+across operating systems and carries the un-stripped qualifier (`-SNAPSHOT`),
+making it the only consistent, honest resolution key.
+
+**Consumers.** Subtask 3/4 artifact resolution/verification keys on the filename
+token (`SkillBill-<project.version>-<os>-<arch>.<ext>`); do NOT parse the embedded
+installer version.
+
+## 2026-05-29 — Non-modular jlink images via Badass Runtime, not Badass JLink
+
+**Context.** SKILL-55 subtask 1 needs self-contained, per-OS runtime images of
+`runtime-cli` / `runtime-mcp` that run with no system JDK. The runtime modules are
+plain non-modular Kotlin apps (no `module-info.java`), pulling in automatic
+modules (kotlin-inject, kotlinx.serialization, jackson, networknt, sqlite-jdbc).
+
+**Decision.** Use the Badass **Runtime** plugin (`org.beryx.runtime` 2.0.1), not
+Badass **JLink** (`org.beryx.jlink`). Badass JLink requires a modular app and a
+`module-info.java` — it has no non-modular path and loud-fails with "Cannot find
+module-info.java". Badass Runtime is the Beryx plugin built for non-modular apps:
+it links a trimmed JDK runtime with `jlink` and wraps the existing `application`
+distribution, keeping the `bin/runtime-cli` / `bin/runtime-mcp` launchers. We pin
+the link toolchain to Java 17 (matching `build-logic` `Jvm.kt` `JDK_VERSION`), set
+an explicit `additive` module set (java.base/logging/management/naming/net.http/
+sql/xml/desktop, jdk.crypto.ec, jdk.unsupported) instead of relying on jdeps (which
+cannot resolve the automatic modules cleanly), and trim with `--strip-debug
+--no-header-files --no-man-pages --compress 2`. `java.net.http` is required by the
+telemetry HTTP client (`runtime-infra-http`), which the version/stdio smoke test
+does not exercise. Image name/zip derive from `project.version` + a canonical
+`<os>-<arch>` host token defined once, as a typed contract, in the
+`skillbill.runtime-image` convention plugin
+(`build-logic/convention/.../buildlogic/RuntimeTargets.kt`). The Badass Runtime tasks are not
+configuration-cache compatible, so they opt out per-task via
+`notCompatibleWithConfigurationCache`; the global config cache stays warm for
+`check` / `installDist`.
+
+**Reason.** GraalVM `native-image` was rejected: the reflection/serialization
+surface of kotlin-inject + kotlinx.serialization + jackson + sqlite-jdbc would
+require extensive reachability metadata and per-OS native toolchains for little
+payoff over a trimmed jlink image. A hand-rolled `jlink`+`jpackage` script was
+rejected to avoid re-implementing module resolution, launcher generation, and
+per-OS zipping that Badass Runtime already provides. Badass JLink (the plan's
+first choice) was rejected because it fundamentally cannot link a non-modular app.
+
 ## 2026-05-24 — Runtime paths stay inert outside adapters and composition
 
 **Context.** SKILL-52.1 tightened hexagonal boundaries while several public

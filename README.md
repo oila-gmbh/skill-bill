@@ -2,9 +2,47 @@
 
 # Skill Bill
 
-Skill Bill is the runtime, governance, and operations layer for AI-agent skills. You bring your own prompts; Skill Bill handles install across every coding agent your team uses, routing per platform, durable workflow state, decomposition of oversized work, structured telemetry through a self-hostable proxy, drift protection, project-level customization, and a desktop UI to manage all of it.
+One source of truth for your AI coding skills — authored once, synced across Claude Code, Copilot, Codex, OpenCode, and Junie, with the validation and durable workflow state to keep them from rotting.
 
-**The product is the framework, not the prompts.** Skill Bill does not ship "the right way to do code review." It ships everything *around* the prompt that turns one author's prompt into something a 200-person engineering org can rely on. A working Kotlin/KMP reference pack is included so you can see a fully-wired example end-to-end — use it as-is, fork it, delete it, or replace it entirely. You are expected to author your own packs for your own stack, conventions, and review style.
+![Skill Bill demo — capture pending](docs/assets/skill-bill-demo-placeholder.svg)
+
+> The image above is a **static placeholder**. The motion demo (a real `/bill-feature-implement` spec→PR run) is produced **out-of-band** and is **not yet committed** — the recorded binary is intentionally missing for now. See the [demo storyboard](docs/assets/skill-bill-demo-storyboard.md) for the shot list and the [capture instructions](docs/assets/skill-bill-demo-capture-instructions.md) for how it gets recorded and swapped in.
+
+## Quickstart (≈60 seconds)
+
+The default `./install.sh` path is **prebuilt**: it downloads and checksum-verifies the release runtime artifacts for your OS. No JDK, no Gradle build.
+
+```bash
+git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
+cd ~/Development/skill-bill
+./install.sh
+```
+
+Then confirm it works and try a starter command:
+
+```bash
+skill-bill version
+skill-bill doctor
+```
+
+That is the whole happy path. Everything below is optional depth.
+
+## Prerequisites
+
+Two install paths, two sets of prerequisites:
+
+- **Prebuilt (default `./install.sh`)** — needs only `curl`, `tar`, `unzip`, and either `shasum` or `sha256sum`, plus a supported OS/arch: `macos-arm64`, `macos-x64`, `windows-x64`, or `linux-x64`. **No JDK required.** Any other host automatically falls back to the from-source path.
+- **From source (`./install.sh --from-source`)** — builds the runtime with Gradle and **requires a JDK**. Use this when you want to build from your checkout, or when your host is not one of the four prebuilt targets (the installer also falls back here automatically).
+
+## Deep under the hood, trivial to use
+
+Skill Bill looks like a lot of machinery, and it is — but the path you actually run is one command: `./install.sh`. Everything documented below the fold (the capability deep-dive, architecture, contracts) is optional reading, not setup you have to perform.
+
+**The product is the framework, not the prompts.** Skill Bill does not ship "the right way to do code review." It ships everything *around* the prompt that turns one author's prompt into something a 200-person engineering org can rely on. A working Kotlin/KMP reference pack is included so you can see a fully-wired example end-to-end — use it as-is, fork it, delete it, or replace it entirely. The reference packs are replaceable; you are expected to author your own packs for your own stack, conventions, and review style.
+
+---
+
+Skill Bill is the runtime, governance, and operations layer for AI-agent skills. You bring your own prompts; Skill Bill handles install across every coding agent your team uses, routing per platform, durable workflow state, decomposition of oversized work, structured telemetry through a self-hostable proxy, drift protection, project-level customization, and a desktop UI to manage all of it.
 
 What Skill Bill gives you:
 
@@ -147,7 +185,9 @@ Every platform pack is anchored by a `platform.yaml` that declares: contract ver
 
 This is the governance layer that keeps the other ten features from rotting — once you have seen what they enable, you also see why this one exists.
 
-## Quick install
+## Install details
+
+The default `./install.sh` is the **prebuilt** path: it downloads and checksum-verifies the runtime images from the matching GitHub release, so no JDK and no Gradle build are needed. Pass `--from-source` to build from your checkout with Gradle instead (requires a JDK).
 
 ```bash
 git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
@@ -173,12 +213,21 @@ The installer:
 - installs selected platform packs
 - registers the local Skill Bill MCP server for agents that support MCP config
 
+On the default prebuilt path the runtime images come from the matching GitHub release and are checksum-verified before they are installed — the installer does **not** build the Kotlin CLI/MCP distributions locally. On `--from-source` the installer instead builds the Kotlin CLI and MCP distributions with Gradle (JDK required). Either way it then copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs the launchers, renders selected skills into staging, and links those staged skills into detected agent directories.
+
 `./install.sh` is the terminal installer. It prompts for manual or detected
 agents, optional platform packs, telemetry level (`anonymous`, `full`, or
 `off`), and optional desktop app installation, then delegates the actual install to
 `skill-bill install apply`. The reusable runtime path owns staging, symlinks,
 native-agent output, telemetry configuration, MCP registration, and Windows
 symlink preflight outcomes.
+
+Install source and release flags:
+
+- `--from-source` — build the runtime (and desktop app) from source with Gradle instead of fetching prebuilt artifacts. Requires a JDK. Ignores `--release` and is the automatic fallback when no prebuilt asset matches your host.
+- `--release TAG` — install a specific release tag instead of the latest stable release (also settable via the `SKILL_BILL_RELEASE_TAG` environment variable). Ignored under `--from-source`.
+
+Supported prebuilt host tokens are `macos-arm64`, `macos-x64`, `windows-x64`, and `linux-x64`; any other host auto-falls back to `--from-source`.
 
 Supported install targets today:
 
@@ -199,7 +248,29 @@ Skill Bill also ships an optional Compose Desktop app from
 runtime services as the CLI for authoring, validation, scaffold, install, and
 pack discovery.
 
-Developer run:
+The terminal installer can also install the prebuilt desktop app for the current user:
+
+```bash
+./install.sh --with-desktop-app
+```
+
+This downloads + checksum-verifies the published desktop installer for your host and installs the app into a per-user location: `~/Applications` on macOS,
+`${XDG_DATA_HOME:-~/.local/share}/skillbill/desktop` on Linux, and
+`%LOCALAPPDATA%/SkillBill/Desktop` on Windows shells. It also adds a
+`skillbill-desktop` launcher beside the normal `skill-bill` and
+`skill-bill-mcp` launchers. Use `--no-desktop-app` to keep the install CLI-only,
+or `--desktop-app-dir <path>` to choose a different desktop app install root.
+To add the desktop app later without re-running the full install, use:
+
+```bash
+./install.sh --desktop-app-only
+```
+
+`./uninstall.sh` removes the same per-user desktop app, desktop launcher, and
+Linux desktop entry; pass the same `--desktop-app-dir <path>` when uninstalling a
+custom app root.
+
+Developer run (from source):
 
 ```bash
 cd runtime-kotlin
@@ -225,23 +296,6 @@ The package build stages a loose `skill-bill-runtime` app-resource bundle with
 toolchain can produce it; otherwise use `prepareDesktopAppDistributable` or
 `packageDistributionForCurrentOS` as the installable fallback. Packaged binary
 outputs are release artifacts and are not committed.
-
-The terminal installer can also install the desktop app for the current user:
-
-```bash
-./install.sh --with-desktop-app
-```
-
-This builds `:runtime-desktop:prepareDesktopAppDistributable` for the current host and
-copies the app into a per-user location: `~/Applications` on macOS,
-`${XDG_DATA_HOME:-~/.local/share}/skillbill/desktop` on Linux, and
-`%LOCALAPPDATA%/SkillBill/Desktop` on Windows shells. It also adds a
-`skillbill-desktop` launcher beside the normal `skill-bill` and
-`skill-bill-mcp` launchers. Use `--no-desktop-app` to keep the install CLI-only,
-or `--desktop-app-dir <path>` to choose a different desktop app install root.
-`./uninstall.sh` removes the same per-user desktop app, desktop launcher, and
-Linux desktop entry; pass the same `--desktop-app-dir <path>` when uninstalling a
-custom app root.
 
 On first launch, the desktop wizard asks for the same install choices as the
 terminal installer: supported agents, optional platform packs, and telemetry

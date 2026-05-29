@@ -32,16 +32,19 @@ cd ~/Development/skill-bill
 ./install.sh
 ```
 
-For a pinned install:
+The default `./install.sh` is the **prebuilt** path: it downloads and checksum-verifies the prebuilt release runtime images for your host, so it needs no JDK and no Gradle build. Supported prebuilt hosts are `macos-arm64`, `macos-x64`, `windows-x64`, and `linux-x64`; any other host auto-falls back to a from-source build.
+
+For a pinned install, use the `--release TAG` mechanism (or the `SKILL_BILL_RELEASE_TAG` environment variable) instead of cloning a specific branch:
 
 ```bash
-TAG=v0.x.y
-git clone --branch "$TAG" --depth 1 https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
-cd ~/Development/skill-bill
-./install.sh
+./install.sh --release v0.x.y
+# or, equivalently:
+SKILL_BILL_RELEASE_TAG=v0.x.y ./install.sh
 ```
 
-The installer builds the Kotlin CLI and MCP distributions, copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
+`--release` pins the prebuilt artifacts to a specific release tag. It is ignored under `--from-source`, where the runtime is built from your current checkout.
+
+On the default prebuilt path the installer fetches and checksum-verifies the Kotlin CLI and MCP distribution images from the matching GitHub release — it does **not** build them locally. With `--from-source` the installer instead builds the Kotlin CLI and MCP distributions with Gradle (JDK required). Either way it then copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
 
 `./install.sh` collects install choices and delegates the durable work to the
 packaged runtime command `skill-bill install apply`. The shell script still owns
@@ -102,7 +105,7 @@ Normal use is Kotlin-only:
 - `skill-bill` launches the packaged Kotlin CLI distribution.
 - `skill-bill-mcp` launches the packaged Kotlin stdio MCP distribution.
 - The installer registers MCP shims to the packaged Kotlin server.
-- Gradle is only used by maintainers to build and validate the runtime, not by installed commands during normal use.
+- Gradle is not used by the default prebuilt install or by installed commands during normal use; it is needed only by maintainers building/validating the runtime and by the opt-in `./install.sh --from-source` install path.
 - Repo validation commands are Kotlin-backed. The legacy maintainer stack is no longer required for current install, validation, or maintainer workflows.
 
 If a packaged Kotlin distribution is missing, launcher behavior fails closed with install/build guidance. It does not silently run Gradle and does not fall back to a legacy runtime.
