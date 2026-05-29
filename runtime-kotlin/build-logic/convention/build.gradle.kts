@@ -24,6 +24,12 @@ dependencies {
   compileOnly(libs.kotlin.gradle.plugin)
   compileOnly(libs.spotless.gradle.plugin)
   compileOnly(libs.detekt.gradle.plugin)
+  // SKILL-55 subtask 1 (F-004/F-005): the skillbill.runtime-image convention plugin
+  // references org.beryx.runtime.* types (RuntimePluginExtension) AND applies the
+  // `org.beryx.runtime` plugin to consumers. `implementation` (not compileOnly) puts the
+  // Badass Runtime artifact on the plugin classpath of every project that applies the
+  // convention plugin, so `pluginManager.apply("org.beryx.runtime")` resolves.
+  implementation(libs.beryx.runtime.gradle.plugin)
 }
 
 spotless {
@@ -96,6 +102,10 @@ gradlePlugin {
     register("quality") {
       id = "skillbill.quality"
       implementationClass = "QualityConventionPlugin"
+    }
+    register("runtimeImage") {
+      id = "skillbill.runtime-image"
+      implementationClass = "RuntimeImageConventionPlugin"
     }
   }
 }

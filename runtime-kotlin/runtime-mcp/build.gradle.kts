@@ -5,6 +5,12 @@ plugins {
   application
   id("skillbill.jvm-library")
   id("skillbill.quality")
+  // SKILL-55 subtask 1 (F-004/F-005): self-contained jlink image wiring is hoisted into
+  // the skillbill.runtime-image convention plugin. It applies org.beryx.runtime, the
+  // shared module set (incl. java.net.http), the lazy Java 17 link toolchain, the
+  // versioned imageZip name, the sha256 sidecar, and the CC opt-out. We only declare the
+  // varying input below: the launcher / archive base name.
+  id("skillbill.runtime-image")
 }
 
 dependencies {
@@ -105,4 +111,22 @@ tasks.named("processResources") {
 
 tasks.named("processTestResources") {
   dependsOn(copyTelemetryEventSchema)
+}
+
+// SKILL-55 subtask 1: self-contained runtime image via the skillbill.runtime-image
+// convention plugin (Badass Runtime / jlink). Mirrors runtime-cli; the plugin wraps the
+// existing `application` installDist distribution, so the image keeps the `bin/runtime-mcp`
+// launcher (= applicationName) that subtask 4 will symlink to `skill-bill-mcp` (AC3).
+// `application` + installDist stay intact.
+//
+// F-003: the generated telemetry-event JSON Schema reaches the image through the NORMAL
+// distribution pipeline — `copyTelemetryEventSchema` (wired into processResources + main
+// resources above) -> `jar` -> `installDist` -> Badass `runtime` (which dependsOn
+// installDist) -> `runtimeZip`. The Badass `jre` task only links the trimmed JDK (no app
+// code), so a `jre.dependsOn(processResources)` hook is a no-op for bundling the resource
+// and is intentionally NOT used. installDist already bundles the resource into the
+// runtime-mcp jar at skillbill/contracts/telemetry-event-schema.yaml, so no extra wiring
+// is needed here.
+runtimeImage {
+  imageBaseName.set("runtime-mcp")
 }

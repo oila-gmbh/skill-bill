@@ -3,6 +3,12 @@ plugins {
   application
   id("skillbill.jvm-library")
   id("skillbill.quality")
+  // SKILL-55 subtask 1 (F-004/F-005): self-contained jlink image wiring is hoisted into
+  // the skillbill.runtime-image convention plugin. It applies org.beryx.runtime, the
+  // shared module set (incl. java.net.http), the lazy Java 17 link toolchain, the
+  // versioned imageZip name, the sha256 sidecar, and the CC opt-out. We only declare the
+  // varying input below: the launcher / archive base name.
+  id("skillbill.runtime-image")
 }
 
 dependencies {
@@ -51,4 +57,13 @@ val validateAgentConfigs by tasks.registering(JavaExec::class) {
 
 tasks.named("check") {
   dependsOn(validateAgentConfigs)
+}
+
+// SKILL-55 subtask 1: self-contained runtime image via the skillbill.runtime-image
+// convention plugin (Badass Runtime / jlink). The Kotlin app is non-modular; the plugin
+// wraps the existing `application` installDist distribution, so the image keeps the
+// `bin/runtime-cli` launcher (= applicationName) that subtask 4 will symlink to
+// `skill-bill` (AC3). `application` + installDist stay intact; desktop bundling untouched.
+runtimeImage {
+  imageBaseName.set("runtime-cli")
 }

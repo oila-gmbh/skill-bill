@@ -4,6 +4,41 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-05-29 — Non-modular jlink images via Badass Runtime, not Badass JLink
+
+**Context.** SKILL-55 subtask 1 needs self-contained, per-OS runtime images of
+`runtime-cli` / `runtime-mcp` that run with no system JDK. The runtime modules are
+plain non-modular Kotlin apps (no `module-info.java`), pulling in automatic
+modules (kotlin-inject, kotlinx.serialization, jackson, networknt, sqlite-jdbc).
+
+**Decision.** Use the Badass **Runtime** plugin (`org.beryx.runtime` 2.0.1), not
+Badass **JLink** (`org.beryx.jlink`). Badass JLink requires a modular app and a
+`module-info.java` — it has no non-modular path and loud-fails with "Cannot find
+module-info.java". Badass Runtime is the Beryx plugin built for non-modular apps:
+it links a trimmed JDK runtime with `jlink` and wraps the existing `application`
+distribution, keeping the `bin/runtime-cli` / `bin/runtime-mcp` launchers. We pin
+the link toolchain to Java 17 (matching `build-logic` `Jvm.kt` `JDK_VERSION`), set
+an explicit `additive` module set (java.base/logging/management/naming/net.http/
+sql/xml/desktop, jdk.crypto.ec, jdk.unsupported) instead of relying on jdeps (which
+cannot resolve the automatic modules cleanly), and trim with `--strip-debug
+--no-header-files --no-man-pages --compress 2`. `java.net.http` is required by the
+telemetry HTTP client (`runtime-infra-http`), which the version/stdio smoke test
+does not exercise. Image name/zip derive from `project.version` + a canonical
+`<os>-<arch>` host token defined once, as a typed contract, in the
+`skillbill.runtime-image` convention plugin
+(`build-logic/convention/.../buildlogic/RuntimeTargets.kt`). The Badass Runtime tasks are not
+configuration-cache compatible, so they opt out per-task via
+`notCompatibleWithConfigurationCache`; the global config cache stays warm for
+`check` / `installDist`.
+
+**Reason.** GraalVM `native-image` was rejected: the reflection/serialization
+surface of kotlin-inject + kotlinx.serialization + jackson + sqlite-jdbc would
+require extensive reachability metadata and per-OS native toolchains for little
+payoff over a trimmed jlink image. A hand-rolled `jlink`+`jpackage` script was
+rejected to avoid re-implementing module resolution, launcher generation, and
+per-OS zipping that Badass Runtime already provides. Badass JLink (the plan's
+first choice) was rejected because it fundamentally cannot link a non-modular app.
+
 ## 2026-05-24 — Runtime paths stay inert outside adapters and composition
 
 **Context.** SKILL-52.1 tightened hexagonal boundaries while several public
