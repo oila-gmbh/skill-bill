@@ -1,3 +1,32 @@
+# SKILL-57 agent-compatibility-policy
+
+Status: In Progress
+Issue key: SKILL-57
+Feature: agent-compatibility-policy
+Feature size: MEDIUM
+Rollout needed: false
+Workflow id: wfl-20260530-185813-hwp5
+Step id: preplan
+Attempt count: 2
+
+## Sources
+
+- `.feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_4_agent-compatibility-policy.md`
+- User briefing acceptance criteria and non-goals in preplan prompt
+
+## Acceptance Criteria
+
+1. `skill-bill goal --agent <agent>` can report whether the selected agent has the required headless goal-runner capabilities.
+2. Unsupported capabilities produce actionable errors naming the missing capability and agent.
+3. Subagent-spawn failure cannot silently degrade to inline work in `bill-goal` mode.
+4. Explicit degraded inline fallback, if implemented, is opt-in and records durable `degraded_mode` progress plus terminal outcome metadata.
+5. Tests cover each supported adapter's command shape and capability-report mapping.
+6. Manual smoke documentation records real-agent evidence for Claude, Codex, Opencode, and Junie on a decomposed test manifest.
+7. Existing installs and interactive skills remain unaffected.
+8. A parent-forced inline continuation after subagent failure is never silent: status, progress history, terminal outcome metadata, and final report all include degraded-mode context.
+
+## Consolidated Spec Content
+
 # SKILL-57 Subtask 4 - Headless Agent Compatibility and Fallback Policy
 
 Status: Draft

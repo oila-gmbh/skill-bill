@@ -95,6 +95,8 @@ class FeatureImplementWorkflowRuntimeTest {
     assertEquals("reopened", reopened.view.continueStatus)
     assertTrue(reopened.shouldReopen)
     assertEquals(2, reopened.nextAttemptCount)
+    assertContains(reopened.view.continuationEntryPrompt, "Durable Progress Write Contract")
+    assertContains(reopened.view.continueStepDirective, "Require durable progress writes")
     assertContains(reopened.view.continuationEntryPrompt, "step_id, status, and integer attempt_count")
     assertContains(reopened.view.continuationEntryPrompt, "use attempt_count 2 for `implement`")
   }
@@ -268,7 +270,8 @@ class FeatureImplementWorkflowRuntimeTest {
     assertEquals(
       "Skip the discovery steps. Reuse the saved assessment and preplan_digest artifacts, then spawn the planning " +
         "subagent from that recovered context. If it returns mode: \"decompose\", persist the subtask specs and " +
-        "close the workflow at planning instead of proceeding to implementation.",
+        "close the workflow at planning instead of proceeding to implementation. Require durable progress writes " +
+        "using workflow_id, step_id=plan, and the resumed attempt_count.",
       definition.continuationDirectives["plan"],
     )
   }

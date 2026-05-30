@@ -37,7 +37,7 @@ class CliGoalRuntimeTest {
     val launcher = GoalFixtureAgentRunLauncher(fixture)
 
     val result = CliRuntime.run(
-      fixture.goalCommand(),
+      fixture.goalCommand(extra = listOf("--debug-child-output")),
       fixture.context(
         launcher = launcher,
         liveStdout = { liveStdout.append(it) },
@@ -433,4 +433,7 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 }

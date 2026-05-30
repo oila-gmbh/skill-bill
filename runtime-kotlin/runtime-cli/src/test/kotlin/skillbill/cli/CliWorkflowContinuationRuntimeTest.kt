@@ -157,4 +157,7 @@ private object TestWorkflowGitOperations : WorkflowGitOperations {
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 }

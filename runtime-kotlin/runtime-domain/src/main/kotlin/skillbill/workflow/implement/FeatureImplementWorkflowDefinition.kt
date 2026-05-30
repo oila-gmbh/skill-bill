@@ -93,16 +93,19 @@ object FeatureImplementWorkflowDefinition {
       ),
       "preplan" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 2: Pre-Planning (subagent)",
         "content.md :: Pre-planning subagent briefing",
       ),
       "plan" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 3: Create Implementation Plan (subagent)",
         "content.md :: Planning subagent briefing",
       ),
       "implement" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 4: Execute Plan (subagent)",
         "content.md :: Implementation subagent briefing",
       ),
@@ -113,11 +116,13 @@ object FeatureImplementWorkflowDefinition {
       ),
       "audit" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 6: Completeness Audit (subagent)",
         "content.md :: Completeness audit subagent briefing",
       ),
       "validate" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 6b: Final Validation Gate (subagent)",
         "content.md :: Quality-check subagent briefing",
       ),
@@ -131,6 +136,7 @@ object FeatureImplementWorkflowDefinition {
       ),
       "pr_description" to listOf(
         "content.md :: Continuation Mode",
+        "content.md :: Durable Progress Write Contract",
         "content.md :: Step 9: Generate PR Description (subagent)",
         "content.md :: PR-description subagent briefing",
       ),
@@ -149,23 +155,28 @@ object FeatureImplementWorkflowDefinition {
         "persist the branch artifact, then continue into preplan.",
       "preplan" to
         "Skip Steps 1 and 1b. Reuse the saved assessment and branch artifacts as the contract and branch context, " +
-        "then spawn the pre-planning subagent with those recovered inputs.",
+        "then spawn the pre-planning subagent with those recovered inputs. Require durable progress writes " +
+        "during execution using workflow_id, step_id=preplan, and the resumed attempt_count.",
       "plan" to
         "Skip the discovery steps. Reuse the saved assessment and preplan_digest artifacts, then spawn the planning " +
         "subagent from that recovered context. If it returns mode: \"decompose\", persist the subtask specs and " +
-        "close the workflow at planning instead of proceeding to implementation.",
+        "close the workflow at planning instead of proceeding to implementation. Require durable progress writes " +
+        "using workflow_id, step_id=plan, and the resumed attempt_count.",
       "implement" to
         "Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan and preplan_digest artifacts, " +
-        "then resume the implementation subagent from Step 4.",
+        "then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and " +
+        "heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.",
       "review" to
         "Do not re-run implementation first unless the review loop sends work back. Start from the latest " +
         "implementation_summary artifact and run Step 5 inline in the orchestrator.",
       "audit" to
         "Resume at the completeness audit using the latest implementation_summary and review_result artifacts. Only " +
-        "loop back to planning if the audit actually finds gaps.",
+        "loop back to planning if the audit actually finds gaps. Require durable progress writes using workflow_id, " +
+        "step_id=audit, and the resumed attempt_count.",
       "validate" to
         "Resume the final validation gate from the latest audit_report artifact, then continue the normal " +
-        "finalization sequence without pausing unless validation fails.",
+        "finalization sequence without pausing unless validation fails. Require durable progress writes using " +
+        "workflow_id, step_id=validate, and the resumed attempt_count.",
       "write_history" to
         "Skip directly to boundary history writing using the persisted implementation_summary and validation_result " +
         "artifacts, then continue with commit and PR creation.",
@@ -174,7 +185,8 @@ object FeatureImplementWorkflowDefinition {
         "history_result artifacts are still current, then run commit/push.",
       "pr_description" to
         "Resume directly at PR creation using the saved branch and implementation_summary artifacts, then finish the " +
-        "workflow and telemetry sequence.",
+        "workflow and telemetry sequence. Require durable progress writes using workflow_id, " +
+        "step_id=pr_description, and the resumed attempt_count.",
       "finish" to
         "Do not re-execute work. Close the workflow cleanly by inspecting pr_result and final telemetry state, then " +
         "emit only the terminal summary if anything is still missing.",

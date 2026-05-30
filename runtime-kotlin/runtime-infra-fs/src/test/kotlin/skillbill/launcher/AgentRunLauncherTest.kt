@@ -33,7 +33,7 @@ class AgentRunLauncherTest {
     assertContains(request.command.last(), "bill-feature-implement")
     assertContains(
       request.command.last(),
-      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2",
+      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
     )
     assertTrue(request.inheritEnvironment)
     assertEquals(emptyMap(), request.environment)
@@ -53,6 +53,10 @@ class AgentRunLauncherTest {
     assertFalse(request.command.any { value -> "First execute this exact command" in value })
     assertContains(requireNotNull(request.stdinText), "First execute this exact command")
     assertContains(requireNotNull(request.stdinText), "Return exactly the `RESULT:` block")
+    assertContains(
+      requireNotNull(request.stdinText),
+      "Never call `skill-bill workflow update` just to mark blocked.",
+    )
     assertTrue(request.inheritEnvironment)
   }
 
@@ -86,7 +90,7 @@ class AgentRunLauncherTest {
     assertContains(request.command.last(), "First execute this exact command")
     assertContains(
       request.command.last(),
-      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2",
+      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
     )
     assertTrue(request.inheritEnvironment)
   }
@@ -170,8 +174,12 @@ class AgentRunLauncherTest {
     assertEquals(0, result.exitStatus)
     assertEquals("stdout-line", result.stdout)
     assertEquals("stderr-line", result.stderr)
-    assertTrue(events.any { it.first == AgentRunOutputStream.STDOUT && it.second == "stdout-line" })
-    assertTrue(events.any { it.first == AgentRunOutputStream.STDERR && it.second == "stderr-line" })
+    assertTrue(
+      events.any { it.first == AgentRunOutputStream.STDOUT && it.second.contains("stdout-line") },
+    )
+    assertTrue(
+      events.any { it.first == AgentRunOutputStream.STDERR && it.second.contains("stderr-line") },
+    )
   }
 
   @Test
@@ -272,6 +280,34 @@ class AgentRunLauncherTest {
       events.any { event ->
         event.first == AgentRunOutputStream.STDERR &&
           "skill-bill: file activity observed; durable workflow progress is still pending" in event.second
+      },
+    )
+  }
+
+  @Test
+  fun `jvm process runner emits periodic status heartbeat during long active runs`() {
+    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 0.35"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 3.seconds,
+        statusHeartbeatInterval = 100.milliseconds,
+        progressProbe = object : AgentRunProgressProbe {
+          override fun progressToken(): String = "workflow-token"
+          override fun progressLabel(): String = "subtask 4 workflow wfl-child step preplan"
+        },
+        outputSink = { stream, text -> events += stream to text },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertFalse(result.timedOut)
+    assertTrue(
+      events.any { event ->
+        event.first == AgentRunOutputStream.STDERR &&
+          "skill-bill: status heartbeat (100ms): child run still active;" in event.second &&
+          "workflow: subtask 4 workflow wfl-child step preplan" in event.second
       },
     )
   }

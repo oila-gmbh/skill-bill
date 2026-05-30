@@ -1413,6 +1413,9 @@ private class FakeWorkflowGitOperations(
     baseValidations += "$branch@$expectedBaseBranch"
     return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
   }
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 }
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(

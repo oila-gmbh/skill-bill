@@ -64,6 +64,16 @@ ZERO-85 runs exposed the remaining production-hardening gap:
   phase-level context isolation.
 - The status/reporting surface does not yet tell the operator which signal is
   fresh: durable workflow progress, file activity, child output, or no signal.
+- Parent projection and child workflow state can temporarily disagree. Operators
+  saw terminal child state while `goal status` still showed stale pending/current
+  step data.
+- Workflow step reporting can regress in confusing ways. A live run showed
+  `commit_push -> finish -> audit -> finish`; loop-backs must be explicit rather
+  than accidental stale writes.
+- Final projection cleanup is part of completion. A run that exits "complete"
+  must not leave the checked-in decomposition manifest dirty.
+- Default output is too noisy for supervision when huge diffs, prompt bodies, or
+  full skill content are printed inline.
 - Agent support is still behavioral, not contract-tested. Codex, Claude, Junie,
   and Opencode can have different headless skill and subagent capabilities.
 
@@ -85,6 +95,14 @@ the driver depends on.
    subagent spawning, workflow progress writes, and terminal outcome writes.
 5. Define a strict fallback policy: inline work after subagent-spawn failure is
    either explicitly allowed and reported, or fail-fast with a blocked workflow.
+6. Make workflow transitions monotonic by default, with explicit persisted
+   loop-back metadata for any intentional return to an earlier step.
+7. Make completion atomic from an operator point of view: durable terminal
+   outcome, parent projection, final manifest write, commit/push state, and
+   worktree cleanliness must agree before the runner exits complete.
+8. Reduce default output to structured progress events and summaries, with full
+   prompts, diffs, and skill bodies only available through explicit debug mode
+   or artifact paths.
 
 ## Non-Goals
 
@@ -136,6 +154,23 @@ the driver depends on.
     - `(cd runtime-kotlin && ./gradlew check)`
     - `npx --yes agnix --strict .`
     - `scripts/validate_agent_configs`
+11. Workflow step updates are monotonic unless the update explicitly declares a
+    loop-back reason. Regressive updates without loop-back metadata are rejected
+    or ignored with a durable diagnostic.
+12. Parent goal status is reconciled from the authoritative child terminal
+    outcome before falling back to the manifest projection, so terminal child
+    completion cannot appear as pending/in-progress in status.
+13. `workflow get <workflow_id>` remains reliable for active child workflows
+    throughout a parent run; if the workflow is missing, diagnostics include the
+    db path, known parent issue key, known subtask id, and nearest matching
+    workflow rows.
+14. `bill-goal` completion is not reported until the final generated
+    decomposition projection is written and either included in the subtask/final
+    commit path or the runner stops with a finalization error.
+15. Default foreground output is quiet and structured. It prints bounded event
+    lines for phase start/end, heartbeat, persisted artifact, validation
+    start/end, stop, commit, and final status. Full prompts, full skill content,
+    and large diffs require explicit debug output or artifact links.
 
 ## Open Questions
 

@@ -56,6 +56,8 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     }
   }
 
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "status", "--porcelain")
+
   private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult = runGit(repoRoot, args.toList())
 
   private fun runGit(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {

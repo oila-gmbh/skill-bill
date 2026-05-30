@@ -464,6 +464,10 @@ Re-entry rules:
   backwards.
 - After the resumed step completes, continue the standard `bill-feature-implement`
   sequence from that point onward.
+- For heavy phases (`preplan`, `plan`, `implement`, `audit`, `validate`,
+  `pr_description`), continuation prompts and spawned subagent briefings must
+  carry durable progress-write instructions that include `workflow_id`,
+  `step_id`, and next `attempt_count`.
 - For decomposed parent features, `continue <issue-key>` resumes the
   in-progress subtask at its last durable workflow step. If none is in
   progress, it starts the first pending subtask whose dependencies are complete.
@@ -476,6 +480,41 @@ Re-entry rules:
 - `stacked_branches` is an explicit parent manifest opt-in. In stacked mode the
   runtime uses the declared subtask branch and base relationship, and must stop
   instead of advancing when the current branch/base does not match the manifest.
+
+## Durable Progress Write Contract
+
+Heavy phases (`preplan`, `plan`, `implement`, `audit`, `validate`,
+`pr_description`) must write durable progress through
+`feature_implement_workflow_update` while work is in flight.
+
+Progress-write rules:
+
+- Inputs for each write:
+  - `workflow_id` from continuation/open payload
+  - `current_step_id` set to the active heavy-phase step id
+  - `step_updates` containing the active step with `status: "running"` and the
+    active `attempt_count`
+  - `workflow_status: "running"`
+- Emit progress writes at:
+  - phase start (`kind: "phase_started"`)
+  - each task start (`kind: "task_started"`)
+  - each task completion (`kind: "task_completed"`)
+  - bounded heartbeat interval during work that exceeds the interval (`kind: "heartbeat"`)
+  - phase completion before returning the final `RESULT:` block (`kind: "phase_completed"`)
+- Persist each event through `artifacts_patch.progress_event` with this shape:
+  - `workflow_id`
+  - `step_id`
+  - `attempt_count`
+  - `source` (`phase_subagent`)
+  - `kind`
+  - `message`
+  - `sequence` (phase-local monotonic integer)
+  - `timestamp` (ISO-8601 UTC string)
+- Progress writes are best-effort, but failures are never silent:
+  - collect write failures locally during the phase
+  - report them in the phase `RESULT:` payload under `progress_write_failures`
+  - when writes cannot be performed reliably, stop and let the orchestrator
+    persist a blocked workflow outcome instead of silently continuing
 
 ## Pre-planning subagent briefing
 
@@ -491,6 +530,9 @@ Issue key: {issue_key}
 Feature size: {feature_size}  # SMALL | MEDIUM | LARGE
 Rollout needed: {rollout_needed}  # true | false
 Spec (for SMALL — inline; for MEDIUM/LARGE — save to disk and return path): {spec_content_or_path}
+Workflow id: {workflow_id}
+Step id: {step_id}  # preplan
+Attempt count: {attempt_count}
 
 Acceptance criteria (contract — do not restate, plan against these):
 {numbered_list_of_acceptance_criteria}
@@ -517,6 +559,10 @@ Instructions:
 6. Confirm `bill-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
 7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
+9. Follow the Durable Progress Write Contract in this skill:
+   - write progress at phase start, task boundaries, heartbeat interval, and phase completion before `RESULT:`
+   - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+   - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block explicitly.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
 
@@ -537,6 +583,7 @@ RESULT:
     "switch_point": "<where the switch lives, or empty>"
   },
   "standards_notes": "<anything from CLAUDE.md/AGENTS.md/skill-overrides.md the planner must honor>",
+  "progress_write_failures": ["<message>", ...],
   "override_action_mandates": {
     "must_call_tools": ["<mcp_tool_name>", ...],
     "must_read_files": ["<path>", ...],
@@ -558,6 +605,12 @@ Feature: {feature_name}
 Issue key: {issue_key}
 Feature size: {feature_size}
 Spec path (MEDIUM/LARGE): {spec_path}
+Workflow id: {workflow_id}
+Step id: {step_id}  # implement
+Attempt count: {attempt_count}
+Workflow id: {workflow_id}
+Step id: {step_id}  # plan
+Attempt count: {attempt_count}
 
 Acceptance criteria (contract):
 {numbered_list}
@@ -579,6 +632,10 @@ Planning rules:
 - Reference design artifacts (mockups, screenshots, wireframes, API examples) by filename where relevant.
 - Do NOT implement anything.
 - Do NOT expose a separate "codebase patterns" section; fold those findings into task descriptions.
+- Follow the Durable Progress Write Contract in this skill:
+  - write progress at phase start, task boundaries, heartbeat interval, and phase completion before `RESULT:`
+  - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+  - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block/retry explicitly.
 
 Decomposition rules:
 - Once decomposition mode is selected, do not implement anything and do not return an implementation task list.
@@ -626,7 +683,8 @@ RESULT:
   ],
   "task_count": <int>,
   "phase_count": <int>,
-  "has_dedicated_test_task": <bool>
+  "has_dedicated_test_task": <bool>,
+  "progress_write_failures": ["<message>", ...]
 }
 
 For decomposition mode, return this shape instead:
@@ -651,7 +709,8 @@ RESULT:
       "handoff_prompt": "Run bill-feature-implement on <spec_path>."
     }
   ],
-  "presentation_summary": "I split this into N subtasks. We should work on subtask <id> first because <dependency reason>."
+  "presentation_summary": "I split this into N subtasks. We should work on subtask <id> first because <dependency reason>.",
+  "progress_write_failures": ["<message>", ...]
 }
 ```
 
@@ -678,6 +737,10 @@ Pre-planning digest (from Step 2):
 
 Execution rules:
 - After each task, print progress: "✅ [<n>/<total>] <task description>".
+- Follow the Durable Progress Write Contract in this skill:
+  - write progress at phase start, each task start/completion, heartbeat interval, and phase completion before `RESULT:`
+  - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+  - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block/retry explicitly.
 - Follow standards in `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` section.
 - Write production-grade code. Do not introduce deprecated components, APIs, or patterns when a supported alternative exists.
 - Write tests exactly as specified in each task's `tests` field.
@@ -701,6 +764,7 @@ RESULT:
   "plan_deviation_notes": "<empty if no deviations>",
   "criteria_to_file_map": {"1": ["path"], "2": ["path"]},
   "notes_for_review": "<anything reviewers should focus on>",
+  "progress_write_failures": ["<message>", ...],
   "stopped_early": <bool>,
   "stopped_reason": "<empty if stopped_early is false>"
 }
@@ -736,6 +800,9 @@ Goal: verify every acceptance criterion is actually satisfied by the implementat
 Feature: {feature_name}
 Feature size: {feature_size}
 Spec path (MEDIUM/LARGE): {spec_path}
+Workflow id: {workflow_id}
+Step id: {step_id}  # audit
+Attempt count: {attempt_count}
 
 Acceptance criteria (contract):
 {numbered_list}
@@ -750,6 +817,10 @@ Instructions:
 - MEDIUM/LARGE: produce a full per-criterion report with evidence paths. Verify against actual code, not the summary.
 - Do NOT implement fixes. Do NOT edit files.
 - If a criterion is partially satisfied, record it as a gap with `suggested_fix`.
+- Follow the Durable Progress Write Contract in this skill:
+  - write progress at phase start, per-criterion start/completion, heartbeat interval, and phase completion before `RESULT:`
+  - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+  - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block explicitly.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
 
@@ -770,7 +841,8 @@ RESULT:
       "missing": "<what is missing>",
       "suggested_fix": "<concrete suggestion>"
     }
-  ]
+  ],
+  "progress_write_failures": ["<message>", ...]
 }
 ```
 
@@ -782,6 +854,9 @@ You are the quality-check subagent. Your job is to run the final validation gate
 Feature: {feature_name}
 Validation strategy: {validation_strategy}  # 'bill-quality-check' or a repo-native command
 Scope: branch diff since main for MEDIUM/LARGE, current unit of work for SMALL.
+Workflow id: {workflow_id}
+Step id: {step_id}  # validate
+Attempt count: {attempt_count}
 
 Instructions:
 1. If validation_strategy is `bill-quality-check`, invoke the `bill-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
@@ -789,6 +864,10 @@ Instructions:
 3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.
 5. Capture the `telemetry_payload` returned by `quality_check_finished` verbatim.
+6. Follow the Durable Progress Write Contract in this skill:
+   - write progress at phase start, command/check start-completion boundaries, heartbeat interval, and phase completion before `RESULT:`
+   - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+   - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block explicitly.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
 
@@ -800,6 +879,7 @@ RESULT:
   "initial_failure_count": <int>,
   "final_failure_count": <int>,
   "fixes_applied": "<brief summary>",
+  "progress_write_failures": ["<message>", ...],
   "telemetry_payload": { ... verbatim from quality_check_finished ... }
 }
 ```
@@ -813,6 +893,9 @@ Feature: {feature_name}
 Issue key: {issue_key}
 Branch: feat/{issue_key}-{feature_name}
 Base branch: main (or the repo's main branch if different)
+Workflow id: {workflow_id}
+Step id: {step_id}  # pr_description
+Attempt count: {attempt_count}
 
 Acceptance criteria (for reference when drafting the PR body):
 {numbered_list}
@@ -825,6 +908,10 @@ Instructions:
 2. Create the PR with `gh pr create` using a HEREDOC for the body.
 3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
 4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.
+5. Follow the Durable Progress Write Contract in this skill:
+   - write progress at phase start, draft/create/report boundaries, heartbeat interval, and phase completion before `RESULT:`
+   - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
+   - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block explicitly.
 
 Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
 
@@ -835,6 +922,7 @@ RESULT:
   "pr_title": "<title>",
   "used_repo_template": <bool>,
   "template_path": "<path or empty>",
+  "progress_write_failures": ["<message>", ...],
   "telemetry_payload": { ... verbatim from pr_description_generated ... }
 }
 ```

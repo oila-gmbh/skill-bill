@@ -1,12 +1,16 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -215,6 +219,7 @@ class WorkflowGoalRunnerOutcomeStore(
     workflowId: String,
     blockedReason: String,
     lastResumableStep: String,
+    supervisionEvent: GoalRunnerSupervisionEvent?,
     dbPathOverride: String?,
   ): String? = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
@@ -230,7 +235,12 @@ class WorkflowGoalRunnerOutcomeStore(
         stepUpdates = listOf(
           mapOf("step_id" to stepId, "status" to "blocked", "attempt_count" to attemptCount),
         ),
-        artifactsPatch = mapOf("blocked_reason" to blockedReason),
+        artifactsPatch = buildMap {
+          put("blocked_reason", blockedReason)
+          supervisionEvent?.let { event ->
+            put("supervision_event", event.toArtifactsMap())
+          }
+        },
         sessionId = record.sessionId.orEmpty(),
       ),
     )
@@ -243,11 +253,19 @@ class WorkflowGoalRunnerOutcomeStore(
       val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, record)
       val steps = decodeWorkflowSteps(record.stepsJson)
+      val artifacts = decodeArtifacts(record.artifactsJson)
       val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
+      val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId
+      val progressEvent = progressEventFrom(artifacts)
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
-        currentStepId = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId,
+        workflowStatus = record.workflowStatus,
+        currentStepId = currentStep,
         progressToken = record.progressToken(),
+        latestDurableProgressEvent = progressEvent,
+        latestLivenessSignal = progressEvent?.summary()
+          ?: "workflow_status=${record.workflowStatus}; step=$currentStep",
+        lastSnapshotUpdatedAt = record.updatedAt,
       )
     }
 }
@@ -311,6 +329,58 @@ private fun blockedReasonFrom(
 
 private fun commitShaFrom(artifacts: Map<String, Any?>): String? =
   (artifacts["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
+
+private fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressEvent? =
+  (artifacts["progress_event"] as? Map<*, *>)
+    ?.toGoalRunnerProgressEventOrNull()
+
+private fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
+  val stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank)
+  val kind = this["kind"]?.toString()?.takeIf(String::isNotBlank)
+  val timestamp = this["timestamp"]?.toString()?.takeIf(String::isNotBlank)
+  return if (stepId != null && kind != null && timestamp != null) {
+    GoalRunnerProgressEvent(
+      stepId = stepId,
+      attemptCount = this["attempt_count"].asGoalRunnerIntOrNull() ?: 0,
+      kind = kind,
+      message = this["message"]?.toString().orEmpty(),
+      sequence = this["sequence"].asGoalRunnerIntOrNull() ?: 0,
+      timestamp = timestamp,
+    )
+  } else {
+    null
+  }
+}
+
+private fun GoalRunnerProgressEvent.summary(): String = buildString {
+  append("durable_progress step=")
+  append(stepId)
+  append(" attempt=")
+  append(attemptCount)
+  append(" kind=")
+  append(kind)
+  append(" sequence=")
+  append(sequence)
+  append(" at=")
+  append(timestamp)
+  if (message.isNotBlank()) {
+    append(" message=")
+    append(message)
+  }
+}
+
+private fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
+  "phase" to phase,
+  "reason" to reason,
+  "continuation_mode" to continuationMode,
+  "process_state" to processState,
+  "workflow_id" to workflowId,
+  "step_id" to stepId,
+  "last_durable_progress" to lastDurableProgress,
+  "last_workflow_snapshot_at" to lastWorkflowSnapshotAt,
+  "last_file_activity_at" to lastFileActivityAt,
+  "last_output_at" to lastOutputAt,
+)
 
 private fun WorkflowStateSnapshot.progressToken(): String = listOf(
   workflowId,

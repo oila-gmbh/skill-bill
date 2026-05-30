@@ -5,6 +5,7 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -105,7 +106,7 @@ class GoalRunnerTest {
     assertEquals(listOf(1, 2), stopped.attemptedSubtasks)
     assertEquals(2, stopped.stop.subtaskId)
     assertEquals(GoalRunnerStopReason.FAILED, stopped.stop.reason)
-    assertEquals("review failed", stopped.stop.blockedReason)
+    assertContains(stopped.stop.blockedReason, "review failed")
     assertEquals(CurrentSubtaskIntent(subtaskId = 2, action = "blocked"), store.manifest.currentSubtaskIntent)
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 2 }.status)
     assertEquals("pending", store.manifest.subtasks.single { it.id == 3 }.status)
@@ -162,6 +163,7 @@ class GoalRunnerTest {
     assertContains(requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()), "wfl-1")
     outcomes.progresses["wfl-1"] = GoalRunnerWorkflowProgress(
       workflowId = "wfl-1",
+      workflowStatus = "running",
       currentStepId = "implement",
       progressToken = "child-progress-token",
     )
@@ -204,6 +206,7 @@ class GoalRunnerTest {
     val outcomes = RecordingOutcomeStore()
     outcomes.progresses["wfl-2"] = GoalRunnerWorkflowProgress(
       workflowId = "wfl-2",
+      workflowStatus = "running",
       currentStepId = "implement",
       progressToken = "child-progress-token",
     )
@@ -306,9 +309,10 @@ private class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     workflowId: String,
     blockedReason: String,
     lastResumableStep: String,
+    supervisionEvent: GoalRunnerSupervisionEvent?,
     dbPathOverride: String?,
   ): String {
-    blockedWorkflows += BlockedWorkflow(workflowId, blockedReason, lastResumableStep)
+    blockedWorkflows += BlockedWorkflow(workflowId, blockedReason, lastResumableStep, supervisionEvent)
     return "implement"
   }
 
@@ -320,6 +324,7 @@ private data class BlockedWorkflow(
   val workflowId: String,
   val blockedReason: String,
   val lastResumableStep: String,
+  val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
 private class RecordingSubtaskLauncher(

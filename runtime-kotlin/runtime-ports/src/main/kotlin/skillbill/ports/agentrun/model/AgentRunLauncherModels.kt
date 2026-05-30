@@ -62,6 +62,20 @@ sealed interface AgentRunLaunchOutcome {
   val agent: InstallAgent
 }
 
+data class AgentRunLivenessSnapshot(
+  val phase: String,
+  val reason: String,
+  val processState: String,
+  val workflowId: String? = null,
+  val workflowStep: String? = null,
+  val lastDurableProgressAt: String? = null,
+  val lastDurableProgressLabel: String? = null,
+  val lastWorkflowSnapshotAt: String? = null,
+  val lastFileActivityAt: String? = null,
+  val lastFileActivityLabel: String? = null,
+  val lastOutputAt: String? = null,
+)
+
 data class AgentRunLaunchFacts(
   override val agent: InstallAgent,
   val exitStatus: Int?,
@@ -69,6 +83,7 @@ data class AgentRunLaunchFacts(
   val stderr: String,
   val timedOut: Boolean,
   val spawnFailed: Boolean,
+  val liveness: AgentRunLivenessSnapshot? = null,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }

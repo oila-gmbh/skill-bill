@@ -1,6 +1,7 @@
 package skillbill.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -67,11 +68,13 @@ object GoalRunnerOutcomeReconciler {
       reason = GoalRunnerStopReason.TIMEOUT,
       blockedReason = "Subtask $subtaskId timed out before reaching a terminal workflow-store outcome.",
       storedOutcome = storedOutcome,
+      liveness = launchFacts.liveness,
     )
     launchFacts.spawnFailed -> stop(
       reason = GoalRunnerStopReason.BLOCKED,
       blockedReason = "Subtask $subtaskId could not start a fresh agent process.",
       storedOutcome = storedOutcome,
+      liveness = launchFacts.liveness,
     )
     storedOutcome == null -> GoalRunnerReconciledOutcome.Stop(
       reason = GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
@@ -79,41 +82,48 @@ object GoalRunnerOutcomeReconciler {
       workflowId = null,
       commitSha = null,
       lastResumableStep = "preplan",
+      liveness = launchFacts.liveness,
     )
     !storedOutcome.suppressPr -> stop(
       reason = GoalRunnerStopReason.BLOCKED,
       blockedReason = "Subtask $subtaskId did not suppress per-subtask PR creation.",
       storedOutcome = storedOutcome,
+      liveness = launchFacts.liveness,
     )
-    else -> reconcileStoredOutcome(subtaskId, storedOutcome)
+    else -> reconcileStoredOutcome(subtaskId, storedOutcome, launchFacts.liveness)
   }
 
   private fun reconcileStoredOutcome(
     subtaskId: Int,
     storedOutcome: GoalRunnerStoredOutcome,
+    liveness: GoalRunnerLivenessSnapshot?,
   ): GoalRunnerReconciledOutcome = when (storedOutcome.status) {
     GoalRunnerTerminalStatus.COMPLETE -> completeOutcome(subtaskId, storedOutcome)
     GoalRunnerTerminalStatus.FAILED -> stop(
       reason = GoalRunnerStopReason.FAILED,
       blockedReason = storedOutcome.blockedReason.orEmpty().ifBlank { "Subtask $subtaskId failed." },
       storedOutcome = storedOutcome,
+      liveness = liveness,
     )
     GoalRunnerTerminalStatus.BLOCKED -> stop(
       reason = GoalRunnerStopReason.BLOCKED,
       blockedReason = storedOutcome.blockedReason.orEmpty().ifBlank { "Subtask $subtaskId is blocked." },
       storedOutcome = storedOutcome,
+      liveness = liveness,
     )
     GoalRunnerTerminalStatus.TIMEOUT -> stop(
       reason = GoalRunnerStopReason.TIMEOUT,
       blockedReason = storedOutcome.blockedReason.orEmpty()
         .ifBlank { "Subtask $subtaskId timed out before completion." },
       storedOutcome = storedOutcome,
+      liveness = liveness,
     )
     GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> stop(
       reason = GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
       blockedReason = storedOutcome.blockedReason.orEmpty()
         .ifBlank { "Subtask $subtaskId has no terminal workflow-store outcome." },
       storedOutcome = storedOutcome,
+      liveness = liveness,
     )
   }
 
@@ -138,11 +148,13 @@ object GoalRunnerOutcomeReconciler {
     reason: GoalRunnerStopReason,
     blockedReason: String,
     storedOutcome: GoalRunnerStoredOutcome?,
+    liveness: GoalRunnerLivenessSnapshot? = null,
   ): GoalRunnerReconciledOutcome.Stop = GoalRunnerReconciledOutcome.Stop(
     reason = reason,
     blockedReason = blockedReason,
     workflowId = storedOutcome?.workflowId,
     commitSha = storedOutcome?.commitSha,
     lastResumableStep = storedOutcome?.lastResumableStep.orEmpty().ifBlank { "preplan" },
+    liveness = liveness,
   )
 }

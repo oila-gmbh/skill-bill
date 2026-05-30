@@ -1,3 +1,20 @@
+## [2026-05-30] SKILL-57 subtask 2 feature-implement-phase-heartbeats
+Areas: skills/bill-feature-implement authored workflow contract, runtime-kotlin/runtime-domain continuation definitions, runtime-kotlin/runtime-mcp golden continuation payloads, runtime-kotlin/runtime-infra-fs workflow/launcher tests
+- Added a governed `Durable Progress Write Contract` to `bill-feature-implement` and threaded it through heavy phase (`preplan`, `plan`, `implement`, `audit`, `validate`, `pr_description`) subagent briefings with required phase/task/heartbeat/phase-complete write points and explicit `workflow_id`/`step_id`/`attempt_count` context. reusable
+- Progress writes are now explicitly best-effort-but-visible in authored contracts: each heavy phase result includes `progress_write_failures`, and briefings require stopping for orchestrator-level blocking when reliable writes cannot continue. reusable
+- Continuation payload guidance now includes durable progress instructions for heavy phases by adding `content.md :: Durable Progress Write Contract` reference sections and step directives that call out resumed-attempt progress writes per step. reusable
+- Updated continuation golden payload and runtime tests to lock the new progress-guidance wording; tightened launcher live-output assertion to tolerate chunked stream writes without weakening behavior coverage. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
+## [2026-05-30] SKILL-57 subtask 1 continuation-prompt-and-parent-lineage-hardening
+Areas: runtime-kotlin/runtime-application (decomposition workflow lookup), runtime-kotlin/runtime-infra-fs launcher prompt contract, related runtime tests
+- Goal-continuation child workflows now opt out of decomposed-parent lookup even when their artifacts still include `plan.mode=decompose`; parent issue-key continuation selects true parent lineage instead of accidentally reselecting a child workflow record. reusable
+- The launcher continuation prompt contract now hard-requires JSON workflow continuation (`skill-bill ... workflow continue ... --format json`) and explicitly forbids using workflow-update as a synthetic blocked marker; durable `continue_status=blocked|done` is authoritative and must terminate the run. reusable
+- Regression tests lock both behaviors: workflow-service coverage for child-vs-parent lineage selection and launcher command/prompt assertions for `--format json` plus the non-forced-blocking instruction text.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented (subtask continuation fix scope)
+
 ## [2026-05-30] SKILL-56 subtask 4 cli-and-bill-goal-skill
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core, skills/bill-goal
 - Added the foreground `skill-bill goal` command and read-only `goal status` surface over the subtask-3 `GoalRunner`/status projection; CLI remains a thin adapter with text/payload mapping only. reusable

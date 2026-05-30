@@ -220,6 +220,47 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `decomposed parent lookup ignores goal-continuation child workflows even when child plan is decompose`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-child",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          "goal_continuation" to mapOf(
+            "enabled" to true,
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "in_progress"),
+              testDecompositionManifestValidator,
+            ),
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "in_progress"),
+              testDecompositionManifestValidator,
+            ),
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
+
+    assertEquals("wfl-parent", selected?.workflowId)
+  }
+
+  @Test
   fun `decomposed parent lookup prefers active runtime over completed lineage for same issue key`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(

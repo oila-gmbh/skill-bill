@@ -13,6 +13,8 @@ interface WorkflowGitOperations {
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
   fun validateBranchBase(repoRoot: Path, branch: String, expectedBaseBranch: String): WorkflowGitOperationResult
+
+  fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult
 }
 
 object NoopWorkflowGitOperations : WorkflowGitOperations {
@@ -32,4 +34,7 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 }

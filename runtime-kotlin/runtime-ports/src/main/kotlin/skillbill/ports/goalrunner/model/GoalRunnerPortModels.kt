@@ -18,8 +18,21 @@ data class GoalRunnerSubtaskLaunchRequest(
 
 data class GoalRunnerWorkflowProgress(
   val workflowId: String,
+  val workflowStatus: String,
   val currentStepId: String,
   val progressToken: String,
+  val latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
+  val latestLivenessSignal: String? = null,
+  val lastSnapshotUpdatedAt: String? = null,
+)
+
+data class GoalRunnerProgressEvent(
+  val stepId: String,
+  val attemptCount: Int,
+  val kind: String,
+  val message: String,
+  val sequence: Int,
+  val timestamp: String,
 )
 
 data class GoalPullRequestRequest(

@@ -108,10 +108,11 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
     suppress_pr: true.
 
     First execute this exact command from the repository root:
-    `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption`
+    `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption --format json`
 
     Then continue the returned `continuation_entry_prompt` until the workflow store reaches a terminal goal-continuation outcome.
-    If you cannot advance the workflow, update the current workflow as blocked with a `blocked_reason`.
+    Do not force workflow state manually. Never call `skill-bill workflow update` just to mark blocked.
+    If the continuation command reports `continue_status=blocked` or `continue_status=done`, treat that durable state as authoritative and stop.
     Treat durable workflow state as authoritative. Do not infer subtask success from stdout.
     Return exactly the `RESULT:` block required by the bill-feature-implement implementation subagent contract.
   """.trimIndent()

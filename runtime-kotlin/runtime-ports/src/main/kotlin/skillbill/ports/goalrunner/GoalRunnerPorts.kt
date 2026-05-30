@@ -1,6 +1,7 @@
 package skillbill.ports.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
@@ -31,6 +32,7 @@ interface GoalRunnerWorkflowOutcomeStore {
     workflowId: String,
     blockedReason: String,
     lastResumableStep: String,
+    supervisionEvent: GoalRunnerSupervisionEvent? = null,
     dbPathOverride: String? = null,
   ): String?
 

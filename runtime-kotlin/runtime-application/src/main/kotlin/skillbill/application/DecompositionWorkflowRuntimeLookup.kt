@@ -21,6 +21,7 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
   val normalizedIssueKey = issueKey.trim()
   val candidates = listFeatureImplementWorkflows(Int.MAX_VALUE).mapNotNull { row ->
     val snapshot = row.toSnapshot()
+    if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
     if (snapshot.hasDecompositionPlan() && manifest.issueKey == normalizedIssueKey) {
       DecomposedParentCandidate(row, manifest)
@@ -60,3 +61,10 @@ private data class DecomposedParentCandidate(
 
 internal fun DecompositionManifest.isActiveGoalRuntime(): Boolean = status !in setOf("complete", "skipped") &&
   subtasks.any { subtask -> subtask.status !in setOf("complete", "skipped") }
+
+private fun WorkflowStateSnapshot.isGoalContinuationChildWorkflow(): Boolean {
+  val goalContinuation = decodeArtifacts(artifactsJson)["goal_continuation"].asStringAnyMapOrNull() ?: return false
+  return goalContinuation["enabled"] == true ||
+    goalContinuation.containsKey("issue_key") ||
+    goalContinuation.containsKey("subtask_id")
+}
