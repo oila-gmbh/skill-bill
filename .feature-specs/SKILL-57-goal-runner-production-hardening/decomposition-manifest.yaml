@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-57-goal-runner-production-hardening"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 3
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "durable-progress-contract"
@@ -38,7 +38,7 @@ subtasks:
 - id: 3
   name: "goal-runner-supervision"
   spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_3_goal-runner-supervision.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-57-goal-runner-production-hardening"
   commit_sha: null
   workflow_id: "wfl-20260530-185040-ex3p"
