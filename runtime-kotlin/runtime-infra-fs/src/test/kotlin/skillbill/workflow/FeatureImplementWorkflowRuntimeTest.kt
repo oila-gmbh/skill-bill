@@ -95,6 +95,8 @@ class FeatureImplementWorkflowRuntimeTest {
     assertEquals("reopened", reopened.view.continueStatus)
     assertTrue(reopened.shouldReopen)
     assertEquals(2, reopened.nextAttemptCount)
+    assertContains(reopened.view.continuationEntryPrompt, "step_id, status, and integer attempt_count")
+    assertContains(reopened.view.continuationEntryPrompt, "use attempt_count 2 for `implement`")
   }
 
   @Test

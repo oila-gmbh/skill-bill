@@ -193,6 +193,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val snapshot = resume.snapshot
     val currentStep = snapshot.steps.firstOrNull { it.stepId == resume.resumeStepId }
     val attemptCount = currentStep?.attemptCount ?: 0
+    val nextAttemptCount = maxOf(attemptCount + 1, 1)
     val alreadyRunning =
       snapshot.workflowStatus == "running" &&
         snapshot.currentStepId == resume.resumeStepId &&
@@ -230,6 +231,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       nextAction = resume.nextAction,
       sessionSummary = sessionSummary,
       extraFields = extraFields,
+      nextAttemptCount = nextAttemptCount,
     )
     val view = WorkflowContinueView(
       resume = resume,
@@ -252,7 +254,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       view = view,
       shouldReopen = continueStatus == "reopened",
       resumeStepId = resume.resumeStepId,
-      nextAttemptCount = maxOf(attemptCount + 1, 1),
+      nextAttemptCount = nextAttemptCount,
     )
   }
 
@@ -489,6 +491,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       nextAction: String,
       sessionSummary: Map<String, Any?>,
       extraFields: Map<String, Any?>,
+      nextAttemptCount: Int,
     ): String {
       val references = definition.continuationReferenceSections[resumeStepId].orEmpty().joinToString("; ")
       val directive =
@@ -522,6 +525,9 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       commonLines +=
         "Rules: do not rerun completed steps unless the workflow sends work backwards; treat artifacts " +
         "as authoritative."
+      commonLines +=
+        "Workflow update rule: every step_updates item must include step_id, status, and integer " +
+        "attempt_count; use attempt_count $nextAttemptCount for `$resumeStepId` unless a later retry increments it."
       commonLines += "Keep the same workflow_id and session_id, then continue `${definition.skillName}`."
       commonLines += "Step directive: $directive"
       commonLines += "Immediate next action: $nextAction"

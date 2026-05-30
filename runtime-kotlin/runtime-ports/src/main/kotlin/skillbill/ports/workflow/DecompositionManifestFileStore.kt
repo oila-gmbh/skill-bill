@@ -6,6 +6,7 @@ import java.nio.file.Path
 interface DecompositionManifestFileStore {
   fun readText(path: Path): String
   fun isRegularFile(path: Path): Boolean
+  fun findDecompositionManifestFiles(repoRoot: Path): List<Path>
   fun writeTextAtomically(target: Path, content: String)
 
   /**
@@ -23,6 +24,8 @@ object UnavailableDecompositionManifestFileStore : DecompositionManifestFileStor
   override fun readText(path: Path): String = unavailable()
 
   override fun isRegularFile(path: Path): Boolean = unavailable()
+
+  override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = unavailable()
 
   override fun writeTextAtomically(target: Path, content: String): Unit = unavailable()
 

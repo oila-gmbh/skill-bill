@@ -21,6 +21,10 @@ class ProcessAgentRunAdapter(
         command = command.command,
         workingDirectory = command.workingDirectory,
         timeout = command.timeout,
+        stdinText = command.stdinText,
+        progressIdleTimeout = request.progressIdleTimeout,
+        progressProbe = request.progressProbe,
+        activityProbe = WorktreeActivityProbe(command.workingDirectory),
         environment = command.environment,
         inheritEnvironment = command.inheritEnvironment,
         outputSink = request.outputSink,
@@ -41,6 +45,7 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
   ClaudeAgentRunCommandBuilder(),
   CodexAgentRunCommandBuilder(),
   OpencodeAgentRunCommandBuilder(),
+  JunieAgentRunCommandBuilder(),
 ).associate { builder ->
   builder.agent to ProcessAgentRunAdapter(
     agent = builder.agent,

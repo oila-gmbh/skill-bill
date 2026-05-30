@@ -17,6 +17,16 @@ class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore 
 
   override fun isRegularFile(path: Path): Boolean = Files.isRegularFile(path)
 
+  override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> {
+    val featureSpecsRoot = repoRoot.resolve(".feature-specs")
+    if (!Files.isDirectory(featureSpecsRoot)) return emptyList()
+    return Files.walk(featureSpecsRoot).use { paths ->
+      paths
+        .filter { path -> Files.isRegularFile(path) && path.fileName.toString() == "decomposition-manifest.yaml" }
+        .toList()
+    }
+  }
+
   override fun encodeManifestYaml(wireMap: Map<String, Any?>): String = yamlMapper.writeValueAsString(wireMap)
 
   override fun writeTextAtomically(target: Path, content: String) {

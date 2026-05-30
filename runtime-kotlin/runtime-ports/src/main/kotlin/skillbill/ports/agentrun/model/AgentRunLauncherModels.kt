@@ -11,12 +11,27 @@ data class SkillRunRequest(
   val subtaskId: Int? = null,
   val dbPathOverride: String? = null,
   val timeout: Duration = DEFAULT_AGENT_RUN_TIMEOUT,
+  val progressIdleTimeout: Duration? = null,
+  val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
     require(timeout.isPositive()) { "timeout must be positive." }
+    progressIdleTimeout?.let { idleTimeout ->
+      require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
+    }
+  }
+}
+
+fun interface AgentRunProgressProbe {
+  fun progressToken(): String?
+
+  fun progressLabel(): String? = null
+
+  companion object {
+    val NONE: AgentRunProgressProbe = AgentRunProgressProbe { null }
   }
 }
 

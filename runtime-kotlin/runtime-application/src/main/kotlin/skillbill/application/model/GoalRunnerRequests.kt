@@ -12,6 +12,7 @@ data class GoalRunnerRunRequest(
   val configuredAgentOverrideId: String? = null,
   val dbPathOverride: String? = null,
   val timeout: Duration = 60.minutes,
+  val progressIdleTimeout: Duration = DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
 ) {
@@ -20,6 +21,7 @@ data class GoalRunnerRunRequest(
     require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
     require(timeout.isPositive()) { "timeout must be positive." }
+    require(progressIdleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
   }
 }
 
@@ -53,6 +55,8 @@ sealed interface GoalRunnerRunEvent {
   ) : GoalRunnerRunEvent
 }
 
+val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT: Duration = 5.minutes
+
 fun interface GoalRunnerEventSink {
   fun emit(event: GoalRunnerRunEvent)
 
@@ -66,6 +70,7 @@ data class GoalRunnerStatusRequest(
   val invokedAgentId: String,
   val configuredAgentOverrideId: String? = null,
   val dbPathOverride: String? = null,
+  val repoRoot: Path? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }

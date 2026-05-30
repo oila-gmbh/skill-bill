@@ -10,6 +10,7 @@ import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import java.nio.file.Path
 
@@ -58,14 +59,22 @@ internal fun WorkflowEngine.alignSubtaskResumeStep(
   resumeStepId: String,
   unitOfWork: UnitOfWork,
 ): WorkflowStateSnapshot {
-  if (resumeStepId.isBlank() || record.currentStepId == resumeStepId) return record
+  val alignment = resumeAlignment(record, resumeStepId)
+  if (
+    alignment.targetStepId.isBlank() ||
+    (record.currentStepId == alignment.targetStepId && alignment.staleBlockedStep == null)
+  ) {
+    return record
+  }
   val updated = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
     record,
     WorkflowUpdateInput(
       workflowStatus = record.workflowStatus,
-      currentStepId = resumeStepId,
-      stepUpdates = null,
+      currentStepId = alignment.targetStepId,
+      stepUpdates = alignment.staleBlockedStep?.let { step ->
+        listOf(mapOf("step_id" to step.stepId, "status" to "completed", "attempt_count" to step.attemptCount))
+      },
       artifactsPatch = null,
       sessionId = record.sessionId.orEmpty(),
     ),
@@ -73,6 +82,23 @@ internal fun WorkflowEngine.alignSubtaskResumeStep(
   WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
   return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, record.workflowId) ?: updated
 }
+
+private fun WorkflowEngine.resumeAlignment(record: WorkflowStateSnapshot, requestedStepId: String): ResumeAlignment {
+  val steps = snapshotView(WorkflowFamily.IMPLEMENT.definition, record).steps
+  val requestedStep = steps.firstOrNull { step -> step.stepId == requestedStepId }
+  val targetStepId = requestedStepId.takeIf { stepId ->
+    stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status == "running"
+  }
+    ?: steps.firstOrNull { step -> step.status == "running" }?.stepId
+    ?: requestedStepId
+  val staleBlockedStep = requestedStep?.takeIf { step -> step.stepId != targetStepId && step.status == "blocked" }
+  return ResumeAlignment(targetStepId = targetStepId, staleBlockedStep = staleBlockedStep)
+}
+
+private data class ResumeAlignment(
+  val targetStepId: String,
+  val staleBlockedStep: WorkflowStepState?,
+)
 
 internal fun WorkflowEngine.persistParentDecompositionRuntime(
   parentRecord: WorkflowStateSnapshot,

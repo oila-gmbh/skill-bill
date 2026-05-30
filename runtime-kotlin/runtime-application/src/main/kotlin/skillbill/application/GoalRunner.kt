@@ -14,6 +14,7 @@ import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStopReport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalPullRequestPort
@@ -24,8 +25,10 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 
 @Inject
 class GoalRunner(
@@ -35,7 +38,7 @@ class GoalRunner(
   private val pullRequestPort: GoalPullRequestPort,
 ) {
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
-    var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride)
+    var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
     var terminalReport: GoalRunnerRunReport? = null
@@ -108,7 +111,8 @@ class GoalRunner(
     val launchOutcome = subtaskLauncher.launch(
       subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
     )
-    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride) ?: attemptedState
+    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      ?: attemptedState
     val reconciled = GoalRunnerOutcomeReconciler.reconcile(
       subtaskId = subtaskId,
       launchFacts = launchOutcome.toGoalRunnerLaunchFacts(),
@@ -140,6 +144,8 @@ class GoalRunner(
       subtaskId = subtaskId,
       dbPathOverride = request.dbPathOverride,
       timeout = request.timeout,
+      progressIdleTimeout = request.progressIdleTimeout,
+      progressProbe = progressProbe(manifestStore, outcomeStore, issueKey, subtaskId, request),
       outputSink = request.outputSink,
     ),
   )
@@ -163,14 +169,32 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
   ): GoalRunnerIterationResult {
-    val blocked = state.manifest.withStoppedSubtask(subtaskId, reconciled)
+    val knownWorkflowId = reconciled.workflowId
+      ?: state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
+    val stoppedOutcome = if (
+      reconciled.reason in setOf(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, GoalRunnerStopReason.TIMEOUT) &&
+      knownWorkflowId != null
+    ) {
+      val blockedStepId = outcomeStore.markBlocked(
+        workflowId = knownWorkflowId,
+        blockedReason = reconciled.blockedReason,
+        lastResumableStep = reconciled.lastResumableStep,
+        dbPathOverride = request.dbPathOverride,
+      )
+      blockedStepId?.takeIf(String::isNotBlank)?.let { stepId ->
+        reconciled.copy(lastResumableStep = stepId)
+      } ?: reconciled
+    } else {
+      reconciled
+    }
+    val blocked = state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskStopped(
         issueKey = saved.manifest.issueKey,
         subtaskId = subtaskId,
-        reason = reconciled.reason.name.lowercase(),
-        blockedReason = reconciled.blockedReason,
+        reason = stoppedOutcome.reason.name.lowercase(),
+        blockedReason = stoppedOutcome.blockedReason,
       ),
     )
     return GoalRunnerIterationResult(
@@ -179,10 +203,10 @@ class GoalRunner(
         issueKey = saved.manifest.issueKey,
         attempted = attempted,
         subtaskId = subtaskId,
-        reason = reconciled.reason,
-        blockedReason = reconciled.blockedReason,
-        workflowId = reconciled.workflowId,
-        lastResumableStep = reconciled.lastResumableStep,
+        reason = stoppedOutcome.reason,
+        blockedReason = stoppedOutcome.blockedReason,
+        workflowId = knownWorkflowId,
+        lastResumableStep = stoppedOutcome.lastResumableStep,
       ),
     )
   }
@@ -252,6 +276,67 @@ class GoalRunner(
   )
 }
 
+private fun skillbill.workflow.model.DecompositionSubtask.progressToken(): String = listOf(
+  status,
+  workflowId.orEmpty(),
+  branch.orEmpty(),
+  commitSha.orEmpty(),
+  blockedReason.orEmpty(),
+  lastResumableStep.orEmpty(),
+).joinToString("|")
+
+private data class GoalRunnerProgressState(
+  val subtask: DecompositionSubtask,
+  val childProgress: GoalRunnerWorkflowProgress?,
+)
+
+private fun progressProbe(
+  manifestStore: GoalRunnerManifestStore,
+  outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  issueKey: String,
+  subtaskId: Int,
+  request: GoalRunnerRunRequest,
+): AgentRunProgressProbe = GoalRunnerWorkflowProgressProbe(
+  manifestStore = manifestStore,
+  outcomeStore = outcomeStore,
+  issueKey = issueKey,
+  subtaskId = subtaskId,
+  request = request,
+)
+
+private class GoalRunnerWorkflowProgressProbe(
+  private val manifestStore: GoalRunnerManifestStore,
+  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val issueKey: String,
+  private val subtaskId: Int,
+  private val request: GoalRunnerRunRequest,
+) : AgentRunProgressProbe {
+  override fun progressToken(): String? = progressState()
+    ?.let { progress ->
+      listOfNotNull(progress.subtask.progressToken(), progress.childProgress?.progressToken)
+    }
+    ?.joinToString("\n")
+    ?.takeIf(String::isNotBlank)
+
+  override fun progressLabel(): String? = progressState()?.let { progress ->
+    progress.childProgress?.let { child ->
+      "subtask $subtaskId workflow ${child.workflowId} step ${child.currentStepId}"
+    } ?: "subtask $subtaskId manifest updated"
+  }
+
+  private fun progressState(): GoalRunnerProgressState? {
+    val subtask = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot)
+      ?.manifest
+      ?.subtasks
+      ?.firstOrNull { subtask -> subtask.id == subtaskId }
+      ?: return null
+    val childProgress = subtask.workflowId
+      ?.takeIf(String::isNotBlank)
+      ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
+    return GoalRunnerProgressState(subtask, childProgress)
+  }
+}
+
 private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts =
   when (this) {
     is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
@@ -304,6 +389,7 @@ private fun DecompositionManifest.withCompletedSubtask(
 private fun DecompositionManifest.withStoppedSubtask(
   subtaskId: Int,
   outcome: GoalRunnerReconciledOutcome.Stop,
+  knownWorkflowId: String? = outcome.workflowId,
 ): DecompositionManifest = copy(
   status = "blocked",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked"),
@@ -311,7 +397,7 @@ private fun DecompositionManifest.withStoppedSubtask(
     if (subtask.id == subtaskId) {
       subtask.copy(
         status = "blocked",
-        workflowId = outcome.workflowId ?: subtask.workflowId,
+        workflowId = knownWorkflowId ?: subtask.workflowId,
         commitSha = outcome.commitSha ?: subtask.commitSha,
         blockedReason = outcome.blockedReason,
         lastResumableStep = outcome.lastResumableStep,

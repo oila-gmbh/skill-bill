@@ -111,7 +111,11 @@ data class GoalRunnerStatusProjection(
 )
 
 object GoalRunnerStatusProjector {
-  fun project(manifest: DecompositionManifest, activeAgent: String? = null): GoalRunnerStatusProjection {
+  fun project(
+    manifest: DecompositionManifest,
+    activeAgent: String? = null,
+    currentStepOverride: String? = null,
+  ): GoalRunnerStatusProjection {
     val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
     return GoalRunnerStatusProjection(
       issueKey = manifest.issueKey,
@@ -119,7 +123,7 @@ object GoalRunnerStatusProjector {
       pendingCount = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
       blockedCount = manifest.subtasks.count { it.status == "blocked" },
       currentSubtaskId = currentSubtask?.id,
-      currentStep = currentSubtask?.lastResumableStep,
+      currentStep = currentStepOverride?.takeIf(String::isNotBlank) ?: currentSubtask?.lastResumableStep,
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
     )
   }

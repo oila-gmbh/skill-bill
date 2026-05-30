@@ -3,11 +3,13 @@ package skillbill.launcher
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
+import kotlin.time.DurationUnit
 
 data class AgentRunCommand(
   val command: List<String>,
   val workingDirectory: Path,
   val timeout: kotlin.time.Duration,
+  val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
 )
@@ -45,16 +47,13 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       "exec",
       "--cd",
       request.repoRoot.toString(),
-      "--sandbox",
-      "danger-full-access",
-      "--ask-for-approval",
-      "never",
+      "--dangerously-bypass-approvals-and-sandbox",
       "--config",
-      "shell_environment_policy.inherit=\"all\"",
-      continuationPrompt(request),
+      "shell_environment_policy.inherit=all",
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
+    stdinText = continuationPrompt(request),
   )
 }
 
@@ -75,6 +74,26 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
   )
 }
 
+class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
+  override val agent: InstallAgent = InstallAgent.JUNIE
+
+  override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
+    command = listOf(
+      "junie",
+      "--project",
+      request.repoRoot.toString(),
+      "--output-format",
+      "text",
+      "--skip-update-check",
+      "--timeout",
+      request.timeout.toLong(DurationUnit.MILLISECONDS).toString(),
+      continuationPrompt(request),
+    ),
+    workingDirectory = request.repoRoot,
+    timeout = request.timeout,
+  )
+}
+
 internal fun continuationPrompt(request: SkillRunRequest): String {
   val dbOption = request.dbPathOverride?.let { db -> " --db ${shellDisplay(db)}" }.orEmpty()
   val subtaskOption = request.subtaskId?.let { id -> " --subtask-id $id" }.orEmpty()
@@ -86,9 +105,11 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
     Goal-continuation: enabled.
     suppress_pr: true.
 
-    Recover the durable workflow state with:
+    First execute this exact command from the repository root:
     `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption`
 
+    Then continue the returned `continuation_entry_prompt` until the workflow store reaches a terminal goal-continuation outcome.
+    If you cannot advance the workflow, update the current workflow as blocked with a `blocked_reason`.
     Treat durable workflow state as authoritative. Do not infer subtask success from stdout.
     Return exactly the `RESULT:` block required by the bill-feature-implement implementation subagent contract.
   """.trimIndent()
