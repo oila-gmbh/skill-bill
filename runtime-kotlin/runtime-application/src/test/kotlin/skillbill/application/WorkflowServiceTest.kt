@@ -7,6 +7,7 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -25,6 +26,7 @@ import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -217,6 +219,258 @@ class WorkflowServiceTest {
     assertEquals("wfl-parent", selected?.workflowId)
   }
 
+  @Test
+  fun `decomposed parent lookup prefers active runtime over completed lineage for same issue key`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-completed-discovery",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "complete"),
+              testDecompositionManifestValidator,
+            ),
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-active-implementation",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "blocked"),
+              testDecompositionManifestValidator,
+            ),
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
+
+    assertEquals("wfl-active-implementation", selected?.workflowId)
+  }
+
+  @Test
+  fun `decomposed parent lookup rejects multiple active runtimes for same issue key`() {
+    val workflows = InMemoryWorkflowStates()
+    listOf("wfl-active-a", "wfl-active-b").forEach { workflowId ->
+      workflows.saveFeatureImplementWorkflow(
+        workflowRecord(
+          workflowId = workflowId,
+          artifactsPatch = mapOf(
+            "plan" to mapOf("mode" to "decompose"),
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+              encodeDecompositionManifestMap(
+                decompositionRuntime(status = "blocked"),
+                testDecompositionManifestValidator,
+              ),
+          ),
+        ),
+      )
+    }
+
+    val error = assertFailsWith<IllegalStateException> {
+      workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
+    }
+
+    assertEquals(
+      "Ambiguous decomposed parent workflows for 'SKILL-52.1': wfl-active-a, wfl-active-b. " +
+        "Pass an explicit workflow or manifest selector before continuing.",
+      error.message,
+    )
+  }
+
+  @Test
+  fun `goal manifest store imports active checked-in projection over completed lineage`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-import")
+    val completedPath = repoRoot.resolve(".feature-specs/SKILL-52.1-a-discovery/decomposition-manifest.yaml")
+    val activePath = repoRoot.resolve(".feature-specs/SKILL-52.1-z-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(completedPath.parent)
+    Files.createDirectories(activePath.parent)
+    Files.writeString(
+      completedPath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "complete"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    Files.writeString(
+      activePath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "blocked"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+    )
+
+    val state = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
+
+    assertEquals("blocked", state?.manifest?.status)
+    assertEquals("wfl-child", state?.manifest?.subtasks?.single()?.workflowId)
+  }
+
+  @Test
+  fun `goal manifest store rejects multiple active checked-in projections`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-ambiguous")
+    val firstPath = repoRoot.resolve(".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml")
+    val secondPath = repoRoot.resolve(".feature-specs/SKILL-52.1-b-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(firstPath.parent)
+    Files.createDirectories(secondPath.parent)
+    listOf(firstPath, secondPath).forEach { path ->
+      Files.writeString(
+        path,
+        encodeDecompositionManifestYaml(
+          decompositionRuntime(status = "blocked"),
+          testDecompositionManifestValidator,
+          TestDecompositionManifestFileStore,
+        ),
+      )
+    }
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+    )
+
+    val error = assertFailsWith<IllegalStateException> {
+      store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
+    }
+
+    assertEquals(
+      "Ambiguous checked-in decomposition manifests for 'SKILL-52.1': " +
+        ".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml, " +
+        ".feature-specs/SKILL-52.1-b-implementation/decomposition-manifest.yaml. " +
+        "Pass an explicit workflow or manifest selector before continuing.",
+      error.message,
+    )
+  }
+
+  @Test
+  fun `goal runner outcome store reads durable blocked continuation outcome`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-child",
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "status" to "blocked",
+            "workflow_id" to "wfl-child",
+            "blocked_reason" to "preplan could not progress",
+            "last_resumable_step" to "preplan",
+          ),
+        ),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals("preplan could not progress", outcome.blockedReason)
+    assertEquals("preplan", outcome.lastResumableStep)
+  }
+
+  @Test
+  fun `goal runner outcome store blocks active running step instead of stale requested step`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val running = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val blockedStep = store.markBlocked("wfl-child", "timeout", "preplan")
+
+    assertEquals("implement", blockedStep)
+    val saved = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot()
+    assertEquals("blocked", saved.workflowStatus)
+    assertEquals("implement", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("completed", steps.getValue("preplan"))
+    assertEquals("blocked", steps.getValue("implement"))
+  }
+
+  @Test
+  fun `subtask resume alignment keeps later running step over stale manifest step`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val running = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "blocked", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = null,
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+    val database = FakeDatabaseSessionFactory(workflows)
+
+    val aligned = database.transaction(null) { unitOfWork ->
+      testWorkflowEngine.alignSubtaskResumeStep(running, "preplan", unitOfWork)
+    }
+
+    assertEquals("implement", aligned.currentStepId)
+    val saved = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child"))
+    assertEquals("implement", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("completed", steps.getValue("preplan"))
+    assertEquals("running", steps.getValue("implement"))
+  }
+
   private fun newService(): WorkflowService {
     val workflows = InMemoryWorkflowStates()
     return WorkflowService(
@@ -225,6 +479,15 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
+  }
+}
+
+private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
+  val element = skillbill.contracts.JsonSupport.json.parseToJsonElement(stepsJson)
+  val value = skillbill.contracts.JsonSupport.jsonElementToValue(element) as List<*>
+  return value.associate { raw ->
+    val item = raw as Map<*, *>
+    item["step_id"].toString() to item["status"].toString()
   }
 }
 

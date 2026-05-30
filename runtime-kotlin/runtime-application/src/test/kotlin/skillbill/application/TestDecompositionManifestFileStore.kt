@@ -18,6 +18,16 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
 
   override fun isRegularFile(path: Path): Boolean = Files.isRegularFile(path)
 
+  override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> {
+    val featureSpecsRoot = repoRoot.resolve(".feature-specs")
+    if (!Files.isDirectory(featureSpecsRoot)) return emptyList()
+    return Files.walk(featureSpecsRoot).use { paths ->
+      paths
+        .filter { path -> Files.isRegularFile(path) && path.fileName.toString() == DECOMPOSITION_MANIFEST_FILENAME }
+        .toList()
+    }
+  }
+
   override fun writeTextAtomically(target: Path, content: String) {
     Files.createDirectories(target.parent)
     val temp = Files.createTempFile(target.parent, "${target.fileName}.", ".tmp")

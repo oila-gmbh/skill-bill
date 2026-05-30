@@ -11,6 +11,7 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
+import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
@@ -39,6 +40,11 @@ class GoalRunCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
   private val timeoutMinutes by option("--timeout-minutes", help = "Per-subtask timeout in minutes.").int()
     .default(DEFAULT_GOAL_TIMEOUT_MINUTES)
+  private val progressIdleTimeoutMinutes by option(
+    "--progress-idle-timeout-minutes",
+    help = "Per-subtask workflow-progress idle timeout in minutes.",
+  ).int()
+    .default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT.inWholeMinutes.toInt())
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout and stderr to this terminal.",
@@ -64,6 +70,7 @@ class GoalRunCommand(
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
         timeout = timeoutMinutes.minutes,
+        progressIdleTimeout = progressIdleTimeoutMinutes.minutes,
         outputSink = presenter.outputSink(),
         eventSink = presenter.eventSink(),
       ),
@@ -87,6 +94,7 @@ class GoalStatusCommand(
     "--agent-override",
     help = "Optional agent override whose id should be shown as active.",
   )
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
 
   override fun run() {
     val projection = goalRunnerStatusService.status(
@@ -95,6 +103,7 @@ class GoalStatusCommand(
         invokedAgentId = agent ?: state.environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
       ),
     )
     val payload = projection.toGoalStatusCliMap(issueKey)

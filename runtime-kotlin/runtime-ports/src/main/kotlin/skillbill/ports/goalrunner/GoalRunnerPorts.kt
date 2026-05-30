@@ -6,9 +6,15 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import java.nio.file.Path
 
 interface GoalRunnerManifestStore {
-  fun loadByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState?
+  fun loadByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerManifestState?
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 }
@@ -20,6 +26,15 @@ interface GoalRunnerWorkflowOutcomeStore {
     subtaskId: Int,
     dbPathOverride: String? = null,
   ): GoalRunnerStoredOutcome?
+
+  fun markBlocked(
+    workflowId: String,
+    blockedReason: String,
+    lastResumableStep: String,
+    dbPathOverride: String? = null,
+  ): String?
+
+  fun progress(workflowId: String, dbPathOverride: String? = null): GoalRunnerWorkflowProgress?
 }
 
 fun interface GoalRunnerSubtaskLauncher {

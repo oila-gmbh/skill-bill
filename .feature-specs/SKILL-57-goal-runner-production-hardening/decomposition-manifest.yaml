@@ -1,0 +1,72 @@
+---
+contract_version: "0.2"
+issue_key: "SKILL-57"
+feature_name: "goal-runner-production-hardening"
+parent_spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec.md"
+status: "pending"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-57-goal-runner-production-hardening"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "start"
+subtasks:
+- id: 1
+  name: "durable-progress-contract"
+  spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_1_durable-progress-contract.md"
+  status: "pending"
+  branch: "feat/SKILL-57-goal-runner-production-hardening"
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies: []
+- id: 2
+  name: "feature-implement-heartbeats"
+  spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_2_feature-implement-heartbeats.md"
+  status: "pending"
+  branch: "feat/SKILL-57-goal-runner-production-hardening"
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+- id: 3
+  name: "goal-runner-supervision"
+  spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_3_goal-runner-supervision.md"
+  status: "pending"
+  branch: "feat/SKILL-57-goal-runner-production-hardening"
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+  - subtask_id: 2
+    optional: false
+    skipped: false
+- id: 4
+  name: "agent-compatibility-policy"
+  spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_4_agent-compatibility-policy.md"
+  status: "pending"
+  branch: "feat/SKILL-57-goal-runner-production-hardening"
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+  - subtask_id: 2
+    optional: false
+    skipped: false
+  - subtask_id: 3
+    optional: false
+    skipped: false

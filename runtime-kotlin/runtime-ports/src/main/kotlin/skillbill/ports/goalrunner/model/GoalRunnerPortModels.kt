@@ -16,6 +16,12 @@ data class GoalRunnerSubtaskLaunchRequest(
   val skillRunRequest: SkillRunRequest,
 )
 
+data class GoalRunnerWorkflowProgress(
+  val workflowId: String,
+  val currentStepId: String,
+  val progressToken: String,
+)
+
 data class GoalPullRequestRequest(
   val repoRoot: Path,
   val issueKey: String,

@@ -104,6 +104,76 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "current_step: review")
     assertContains(status.stdout, "active_agent: codex")
   }
+
+  @Test
+  fun `goal no terminal outcome marks child workflow blocked`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, noTerminalSubtask = 1)
+
+    val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "reason: no_terminal_store_outcome")
+    assertContains(result.stdout, "workflow_id: ")
+    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    val child = runGoalJson(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "workflow",
+        "get",
+        workflowId,
+        "--format",
+        "json",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals("blocked", child["workflow_status"])
+    assertEquals("preplan", child["current_step_id"])
+  }
+
+  @Test
+  fun `goal imports checked-in decomposition manifest when workflow store is missing`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val recoveredDb = fixture.tempDir.resolve("recovered.db")
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(dbPath = recoveredDb),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertEquals(recoveredDb.toString(), launcher.requests.single().skillRunRequest.dbPathOverride)
+  }
+
+  @Test
+  fun `goal status imports checked-in decomposition manifest when workflow store is missing`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val recoveredDb = fixture.tempDir.resolve("status-recovered.db")
+
+    val status = CliRuntime.run(
+      listOf(
+        "--db",
+        recoveredDb.toString(),
+        "goal",
+        "status",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "status: ok")
+    assertContains(status.stdout, "current_subtask: 1")
+    assertContains(status.stdout, "active_agent: codex")
+  }
 }
 
 private data class GoalCliFixture(
@@ -126,22 +196,24 @@ private data class GoalCliFixture(
     liveStderr = liveStderr,
   )
 
-  fun goalCommand(extra: List<String> = emptyList()): List<String> = buildList {
-    add("--db")
-    add(dbPath.toString())
-    add("goal")
-    add("SKILL-901")
-    add("--agent")
-    add("codex")
-    add("--repo-root")
-    add(tempDir.toString())
-    addAll(extra)
-  }
+  fun goalCommand(dbPath: Path = this@GoalCliFixture.dbPath, extra: List<String> = emptyList()): List<String> =
+    buildList {
+      add("--db")
+      add(dbPath.toString())
+      add("goal")
+      add("SKILL-901")
+      add("--agent")
+      add("codex")
+      add("--repo-root")
+      add(tempDir.toString())
+      addAll(extra)
+    }
 }
 
 private class GoalFixtureAgentRunLauncher(
   private val fixture: GoalCliFixture,
   private val failSubtask: Int? = null,
+  private val noTerminalSubtask: Int? = null,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
 
@@ -150,11 +222,14 @@ private class GoalFixtureAgentRunLauncher(
     val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
     request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDOUT, "child-$subtaskId-stdout\n")
     request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDERR, "child-$subtaskId-stderr\n")
-    val workflowId = startSubtaskWorkflow(subtaskId)
+    val dbPath = requireNotNull(request.skillRunRequest.dbPathOverride)
+    val workflowId = startSubtaskWorkflow(subtaskId, dbPath)
     if (subtaskId == failSubtask) {
-      failSubtaskWorkflow(workflowId)
+      failSubtaskWorkflow(workflowId, Path.of(dbPath))
+    } else if (subtaskId == noTerminalSubtask) {
+      // Leave the child workflow running so goal reconciliation must close it.
     } else {
-      completeSubtaskWorkflow(workflowId, subtaskId)
+      completeSubtaskWorkflow(workflowId, subtaskId, Path.of(dbPath))
     }
     return AgentRunLaunchFacts(
       agent = InstallAgent.CODEX,
@@ -166,11 +241,11 @@ private class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun startSubtaskWorkflow(subtaskId: Int): String {
+  private fun startSubtaskWorkflow(subtaskId: Int, dbPath: String): String {
     val payload = runGoalJson(
       listOf(
         "--db",
-        fixture.dbPath.toString(),
+        dbPath,
         "workflow",
         "continue",
         "SKILL-901",
@@ -184,11 +259,11 @@ private class GoalFixtureAgentRunLauncher(
     return payload["workflow_id"] as String
   }
 
-  private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int) {
+  private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int, dbPath: Path) {
     runGoalJson(
       workflowUpdateCommand(
         WorkflowUpdateFixture(
-          dbPath = fixture.dbPath,
+          dbPath = dbPath,
           workflowId = workflowId,
           currentStep = "commit_push",
           stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
@@ -199,11 +274,11 @@ private class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun failSubtaskWorkflow(workflowId: String) {
+  private fun failSubtaskWorkflow(workflowId: String, dbPath: Path) {
     runGoalJson(
       workflowUpdateCommand(
         WorkflowUpdateFixture(
-          dbPath = fixture.dbPath,
+          dbPath = dbPath,
           workflowId = workflowId,
           workflowStatus = "failed",
           currentStep = "review",

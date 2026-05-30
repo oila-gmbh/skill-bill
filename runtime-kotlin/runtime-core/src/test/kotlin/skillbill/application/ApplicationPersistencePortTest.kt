@@ -541,6 +541,34 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
+  fun `workflow service does not auto commit earlier completed subtasks when explicit subtask requested`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-explicit-no-advance")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val git = FakeWorkflowGitOperations(commitSha = "abc123")
+    val service = testWorkflowService(
+      FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository()),
+      git,
+    )
+    createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+    val first = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionStandard
+    markDecompositionSubtaskComplete(service, first.view.resume.snapshot.workflowId, subtaskOne)
+
+    val continued = service.continueWorkflow(
+      WorkflowFamilyKind.IMPLEMENT,
+      "SKILL-51",
+      subtaskId = 2,
+      dbOverride = null,
+    ) as WorkflowContinueResult.DecompositionStandard
+
+    assertEquals(2, continued.decompositionSubtaskId)
+    assertEquals(emptyList(), git.commits)
+  }
+
+  @Test
   fun `workflow service records pr suppressed commit completion as durable subtask outcome`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition-headless-complete")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")

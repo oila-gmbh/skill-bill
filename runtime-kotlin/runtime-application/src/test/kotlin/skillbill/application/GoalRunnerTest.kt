@@ -17,14 +17,17 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.minutes
 
 class GoalRunnerTest {
   @Test
@@ -122,7 +125,8 @@ class GoalRunnerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort())
+    val outcomes = RecordingOutcomeStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
 
     val report = runner.run(runRequest())
 
@@ -130,8 +134,43 @@ class GoalRunnerTest {
     assertEquals(listOf(1), stopped.attemptedSubtasks)
     assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
     assertEquals(1, stopped.stop.subtaskId)
+    assertEquals("wfl-1", stopped.stop.workflowId)
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
+    assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
+    assertEquals(5.minutes, launcher.requests.single().skillRunRequest.progressIdleTimeout)
+    assertContains(requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()), "wfl-1")
+    outcomes.progresses["wfl-1"] = GoalRunnerWorkflowProgress(
+      workflowId = "wfl-1",
+      currentStepId = "implement",
+      progressToken = "child-progress-token",
+    )
+    assertContains(
+      requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()),
+      "child-progress-token",
+    )
     assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `timed out child workflow is marked blocked`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(timedOut = true)
+    }
+    val outcomes = RecordingOutcomeStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
+    assertEquals("wfl-1", stopped.stop.workflowId)
+    assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+    assertEquals("implement", store.manifest.subtasks.single().lastResumableStep)
+    assertEquals("implement", stopped.stop.lastResumableStep)
   }
 
   @Test
@@ -141,7 +180,13 @@ class GoalRunnerTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .withBlockedSubtask(2, workflowId = "wfl-2", reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store)
+    val outcomes = RecordingOutcomeStore()
+    outcomes.progresses["wfl-2"] = GoalRunnerWorkflowProgress(
+      workflowId = "wfl-2",
+      currentStepId = "implement",
+      progressToken = "child-progress-token",
+    )
+    val service = GoalRunnerStatusService(store, outcomes)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -156,7 +201,7 @@ class GoalRunnerTest {
     assertEquals(1, status.pendingCount)
     assertEquals(1, status.blockedCount)
     assertEquals(2, status.currentSubtaskId)
-    assertEquals("validate", status.currentStep)
+    assertEquals("implement", status.currentStep)
     assertEquals("codex", status.activeAgent)
   }
 
@@ -174,7 +219,7 @@ private class InMemoryGoalManifestStore(
   var manifest: DecompositionManifest = manifest
     private set
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
       dbPath = dbPathOverride.orEmpty().ifBlank { "/tmp/skillbill-goal-runner/metrics.db" },
@@ -193,6 +238,8 @@ private class InMemoryGoalManifestStore(
 
 private class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   private val outcomes: MutableMap<String, GoalRunnerStoredOutcome> = mutableMapOf()
+  val progresses: MutableMap<String, GoalRunnerWorkflowProgress> = mutableMapOf()
+  val blockedWorkflows: MutableList<BlockedWorkflow> = mutableListOf()
 
   operator fun set(workflowId: String, outcome: GoalRunnerStoredOutcome) {
     outcomes[workflowId] = outcome
@@ -204,7 +251,26 @@ private class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     subtaskId: Int,
     dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = outcomes[workflowId]
+
+  override fun markBlocked(
+    workflowId: String,
+    blockedReason: String,
+    lastResumableStep: String,
+    dbPathOverride: String?,
+  ): String {
+    blockedWorkflows += BlockedWorkflow(workflowId, blockedReason, lastResumableStep)
+    return "implement"
+  }
+
+  override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
+    progresses[workflowId]
 }
+
+private data class BlockedWorkflow(
+  val workflowId: String,
+  val blockedReason: String,
+  val lastResumableStep: String,
+)
 
 private class RecordingSubtaskLauncher(
   private val result: (GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
@@ -251,12 +317,12 @@ private fun completeOutcome(subtaskId: Int): GoalRunnerStoredOutcome = GoalRunne
   suppressPr = true,
 )
 
-private fun launchFacts(): AgentRunLaunchFacts = AgentRunLaunchFacts(
+private fun launchFacts(timedOut: Boolean = false): AgentRunLaunchFacts = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
-  exitStatus = 0,
+  exitStatus = if (timedOut) null else 0,
   stdout = "diagnostic only",
   stderr = "",
-  timedOut = false,
+  timedOut = timedOut,
   spawnFailed = false,
 )
 

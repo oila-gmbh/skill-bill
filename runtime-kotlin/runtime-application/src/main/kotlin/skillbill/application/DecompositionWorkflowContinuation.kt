@@ -48,7 +48,11 @@ internal class DecompositionWorkflowContinuation(
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int?,
   ): ContinuationStepResult {
-    val advancement = advanceCompletedSubtasks(parentRecord, manifest, unitOfWork)
+    val advancement = if (requestedSubtaskId == null) {
+      advanceCompletedSubtasks(parentRecord, manifest, unitOfWork)
+    } else {
+      AdvancementResult(manifest)
+    }
     if (advancement.error != null) {
       return ContinuationStepResult(
         blockedGitResult(parentRecord.workflowId, manifest.issueKey, unitOfWork.dbPath.toString(), advancement.error),
