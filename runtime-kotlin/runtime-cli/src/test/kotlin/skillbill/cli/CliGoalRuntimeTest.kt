@@ -293,6 +293,80 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "current_subtask: 1")
     assertContains(status.stdout, "active_agent: codex")
   }
+
+  @Test
+  fun `goal status prefers authoritative complete child and closes stale running child workflow`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val staleChild = startRunningGoalChild(fixture)
+    seedAuthoritativeCompleteChild(fixture)
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    val staleWorkflow = runGoalJson(
+      listOf("--db", fixture.dbPath.toString(), "workflow", "get", staleChild, "--format", "json"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "pending: 0")
+    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "current_subtask: none")
+    assertEquals("blocked", staleWorkflow["workflow_status"])
+    assertContains(staleWorkflow["artifacts"]?.toString().orEmpty(), "stale running child")
+  }
+}
+
+private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(
+  listOf(
+    "--db",
+    fixture.dbPath.toString(),
+    "workflow",
+    "continue",
+    "SKILL-901",
+    "--subtask-id",
+    "1",
+    "--format",
+    "json",
+  ),
+  fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+)["workflow_id"] as String
+
+private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
+  val authoritativeChild = runGoalJson(
+    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )["workflow_id"] as String
+  runGoalJson(
+    workflowUpdateCommand(
+      WorkflowUpdateFixture(
+        dbPath = fixture.dbPath,
+        workflowId = authoritativeChild,
+        currentStep = "commit_push",
+        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+        artifactsPatch = jsonString(
+          mapOf(
+            "goal_continuation" to mapOf(
+              "issue_key" to "SKILL-901",
+              "subtask_id" to 1,
+              "suppress_pr" to true,
+            ),
+            "goal_continuation_outcome" to mapOf(
+              "issue_key" to "SKILL-901",
+              "subtask_id" to 1,
+              "status" to "complete",
+              "workflow_id" to authoritativeChild,
+              "commit_sha" to "sha-1",
+              "last_resumable_step" to "commit_push",
+            ),
+          ),
+        ),
+      ),
+    ),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
 }
 
 private data class GoalCliFixture(

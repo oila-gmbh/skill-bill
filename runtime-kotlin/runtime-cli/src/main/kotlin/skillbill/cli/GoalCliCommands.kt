@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.cli
 
 import com.github.ajalt.clikt.core.UsageError
@@ -12,9 +14,9 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
-import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
+import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -281,24 +283,23 @@ private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boo
   "mode" to if (hard) "hard" else "soft",
 )
 
-private fun resetSnapshotMap(
-  snapshot: skillbill.application.model.GoalRunnerResetSnapshot,
-): Map<String, Any?> = linkedMapOf(
-  "status" to snapshot.status,
-  "current_subtask" to snapshot.currentSubtaskId,
-  "current_action" to snapshot.currentAction,
-  "subtasks" to snapshot.subtasks.map { subtask ->
-    linkedMapOf(
-      "id" to subtask.id,
-      "status" to subtask.status,
-      "branch" to subtask.branch,
-      "workflow_id" to subtask.workflowId,
-      "commit_sha" to subtask.commitSha,
-      "blocked_reason" to subtask.blockedReason,
-      "last_resumable_step" to subtask.lastResumableStep,
-    )
-  },
-)
+private fun resetSnapshotMap(snapshot: skillbill.application.model.GoalRunnerResetSnapshot): Map<String, Any?> =
+  linkedMapOf(
+    "status" to snapshot.status,
+    "current_subtask" to snapshot.currentSubtaskId,
+    "current_action" to snapshot.currentAction,
+    "subtasks" to snapshot.subtasks.map { subtask ->
+      linkedMapOf(
+        "id" to subtask.id,
+        "status" to subtask.status,
+        "branch" to subtask.branch,
+        "workflow_id" to subtask.workflowId,
+        "commit_sha" to subtask.commitSha,
+        "blocked_reason" to subtask.blockedReason,
+        "last_resumable_step" to subtask.lastResumableStep,
+      )
+    },
+  )
 
 private fun goalResetText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")

@@ -232,6 +232,11 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
   ): GoalRunnerRunReport {
+    outcomeStore.reconcileAuthoritativeOutcomes(
+      issueKey = state.manifest.issueKey,
+      activeWorkflowIds = emptySet(),
+      dbPathOverride = request.dbPathOverride,
+    )
     val finalState = manifestStore.save(state, request.dbPathOverride)
     finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
       return stopped(

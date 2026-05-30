@@ -21,6 +21,13 @@ interface GoalRunnerManifestStore {
 }
 
 interface GoalRunnerWorkflowOutcomeStore {
+  fun reconcileAuthoritativeOutcomes(
+    issueKey: String,
+    activeWorkflowIds: Set<String> = emptySet(),
+    allowInactiveReconciliation: Boolean = true,
+    dbPathOverride: String? = null,
+  ): Map<Int, GoalRunnerStoredOutcome>
+
   fun terminalOutcome(
     workflowId: String,
     issueKey: String,
