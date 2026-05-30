@@ -45,11 +45,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     return AgentRunProcessResult(
       exitStatus = if (finished) process.exitValue() else null,
       stdout = stdout.text(),
-      stderr = if (wait.progressIdleTimedOut) {
-        stderr.text().withProgressTimeoutMessage(request, wait.fileActivityGraceExhausted)
-      } else {
-        stderr.text()
-      },
+      stderr = stderr.text().withTimeoutMessage(wait, request),
       timedOut = !finished,
       spawnFailed = false,
     )
@@ -99,13 +95,16 @@ private data class ProcessWait(
   val finished: Boolean,
   val progressIdleTimedOut: Boolean,
   val fileActivityGraceExhausted: Boolean,
+  val wallClockTimedOut: Boolean,
 )
 
 private class ProcessWaitLoop(
   private val process: Process,
   private val request: AgentRunProcessRequest,
 ) {
-  private val timeoutMillis = request.timeout.toLong(DurationUnit.MILLISECONDS).coerceAtLeast(MIN_TIMEOUT_MILLIS)
+  private val timeoutMillis = request.timeout
+    ?.toLong(DurationUnit.MILLISECONDS)
+    ?.coerceAtLeast(MIN_TIMEOUT_MILLIS)
   private val idleTimeoutNanos = request.progressIdleTimeout
     ?.toLong(DurationUnit.NANOSECONDS)
     ?.coerceAtLeast(MIN_TIMEOUT_NANOS)
@@ -127,20 +126,31 @@ private class ProcessWaitLoop(
   }
 
   private fun nextWait(): ProcessWait? {
-    val remainingMillis = timeoutMillis - elapsedMillis()
+    val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
+      finished = false,
+      progressIdleTimedOut = false,
+      fileActivityGraceExhausted = false,
+      wallClockTimedOut = true,
+    )
     return when {
-      remainingMillis <= 0 -> ProcessWait(
-        finished = false,
-        progressIdleTimedOut = false,
-        fileActivityGraceExhausted = false,
-      )
-      process.waitFor(min(PROGRESS_POLL_INTERVAL_MILLIS, remainingMillis), TimeUnit.MILLISECONDS) ->
+      process.waitFor(waitMillis, TimeUnit.MILLISECONDS) ->
         ProcessWait(
           finished = true,
           progressIdleTimedOut = false,
           fileActivityGraceExhausted = false,
+          wallClockTimedOut = false,
         )
       else -> pollProgress()
+    }
+  }
+
+  private fun waitMillisBeforeNextPoll(): Long? {
+    val configuredTimeoutMillis = timeoutMillis ?: return PROGRESS_POLL_INTERVAL_MILLIS
+    val remainingMillis = configuredTimeoutMillis - elapsedMillis()
+    return if (remainingMillis <= 0) {
+      null
+    } else {
+      min(PROGRESS_POLL_INTERVAL_MILLIS, remainingMillis)
     }
   }
 
@@ -159,6 +169,7 @@ private class ProcessWaitLoop(
           finished = false,
           progressIdleTimedOut = true,
           fileActivityGraceExhausted = fileActivityWindowStartNanos != null,
+          wallClockTimedOut = false,
         )
       }
     } else {
@@ -221,6 +232,12 @@ private fun AgentRunActivityProbe.safeActivityToken(): String? = runCatching { a
 
 private fun AgentRunActivityProbe.safeActivityLabel(): String? = runCatching { activityLabel() }.getOrNull()
 
+private fun String.withTimeoutMessage(wait: ProcessWait, request: AgentRunProcessRequest): String = when {
+  wait.progressIdleTimedOut -> withProgressTimeoutMessage(request, wait.fileActivityGraceExhausted)
+  wait.wallClockTimedOut -> withWallClockTimeoutMessage(request)
+  else -> this
+}
+
 private fun String.withProgressTimeoutMessage(
   request: AgentRunProcessRequest,
   fileActivityGraceExhausted: Boolean,
@@ -232,6 +249,11 @@ private fun String.withProgressTimeoutMessage(
   }
   val message = "Agent run stopped after ${request.progressIdleTimeout} " +
     "without durable workflow progress.$fileActivityDetail"
+  return if (isBlank()) message else "$this\n$message"
+}
+
+private fun String.withWallClockTimeoutMessage(request: AgentRunProcessRequest): String {
+  val message = "Agent run stopped after optional wall-clock cap ${request.timeout}."
   return if (isBlank()) message else "$this\n$message"
 }
 

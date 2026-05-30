@@ -17,6 +17,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.minutes
 
 class CliGoalRuntimeTest {
   @Test
@@ -53,7 +54,22 @@ class CliGoalRuntimeTest {
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStdout.toString(), "goal SKILL-901: complete")
     assertContains(liveStderr.toString(), "child-1-stderr")
+    assertEquals(listOf(null, null), launcher.requests.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
+  }
+
+  @Test
+  fun `goal max wall clock flag passes optional cap to child run`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--max-wall-clock-minutes", "180")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(180.minutes, launcher.requests.single().skillRunRequest.timeout)
   }
 
   @Test

@@ -137,7 +137,8 @@ class GoalRunnerTest {
     assertEquals("wfl-1", stopped.stop.workflowId)
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
     assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
-    assertEquals(5.minutes, launcher.requests.single().skillRunRequest.progressIdleTimeout)
+    assertEquals(null, launcher.requests.single().skillRunRequest.timeout)
+    assertEquals(30.minutes, launcher.requests.single().skillRunRequest.progressIdleTimeout)
     assertContains(requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()), "wfl-1")
     outcomes.progresses["wfl-1"] = GoalRunnerWorkflowProgress(
       workflowId = "wfl-1",

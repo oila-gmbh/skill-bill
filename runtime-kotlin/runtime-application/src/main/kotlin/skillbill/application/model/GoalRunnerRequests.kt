@@ -11,7 +11,7 @@ data class GoalRunnerRunRequest(
   val invokedAgentId: String,
   val configuredAgentOverrideId: String? = null,
   val dbPathOverride: String? = null,
-  val timeout: Duration = 60.minutes,
+  val timeout: Duration? = null,
   val progressIdleTimeout: Duration = DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
@@ -20,7 +20,9 @@ data class GoalRunnerRunRequest(
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
-    require(timeout.isPositive()) { "timeout must be positive." }
+    timeout?.let { maxWallClockTimeout ->
+      require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
+    }
     require(progressIdleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
   }
 }
@@ -55,7 +57,7 @@ sealed interface GoalRunnerRunEvent {
   ) : GoalRunnerRunEvent
 }
 
-val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT: Duration = 5.minutes
+val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT: Duration = 30.minutes
 
 fun interface GoalRunnerEventSink {
   fun emit(event: GoalRunnerRunEvent)

@@ -204,12 +204,11 @@ class AgentRunLauncherTest {
   }
 
   @Test
-  fun `jvm process runner stops a live process after workflow progress stays idle`() {
+  fun `jvm process runner stops a live process after workflow progress stays idle without wall clock cap`() {
     val result = JvmAgentRunProcessRunner().run(
       AgentRunProcessRequest(
         command = listOf("sh", "-c", "sleep 5"),
         workingDirectory = Path.of(".").toAbsolutePath().normalize(),
-        timeout = 5.seconds,
         progressIdleTimeout = 100.milliseconds,
         progressProbe = AgentRunProgressProbe { null },
       ),
