@@ -216,15 +216,16 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
   ): GoalRunnerRunReport {
-    val result = pullRequestPort.open(state.manifest.toPullRequestRequest(request.repoRoot))
+    val finalState = manifestStore.save(state, request.dbPathOverride)
+    val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
-      is GoalPullRequestResult.Opened -> completed(state.manifest, attempted, result.url)
-      is GoalPullRequestResult.Existing -> completed(state.manifest, attempted, result.url)
+      is GoalPullRequestResult.Opened -> completed(finalState.manifest, attempted, result.url)
+      is GoalPullRequestResult.Existing -> completed(finalState.manifest, attempted, result.url)
       is GoalPullRequestResult.Failed -> stopped(
-        issueKey = state.manifest.issueKey,
+        issueKey = finalState.manifest.issueKey,
         attempted = attempted,
-        subtaskId = state.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
-          ?: state.manifest.subtasks.last().id,
+        subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
+          ?: finalState.manifest.subtasks.last().id,
         reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
         blockedReason = result.reason,
         workflowId = null,
