@@ -242,9 +242,11 @@ class WorkflowGoalRunnerOutcomeStore(
     database.read(dbPathOverride) { unitOfWork ->
       val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, record)
+      val steps = decodeWorkflowSteps(record.stepsJson)
+      val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
-        currentStepId = record.currentStepId,
+        currentStepId = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId,
         progressToken = record.progressToken(),
       )
     }

@@ -57,6 +57,26 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `done path saves final manifest projection before opening pr`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+    )
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(1, store.saveCount)
+    assertEquals("complete", store.manifest.status)
+  }
+
+  @Test
   fun `forced failure stops on current subtask and does not run later subtasks`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 3))
     val outcomes = RecordingOutcomeStore()
@@ -206,6 +226,32 @@ class GoalRunnerTest {
     assertEquals("codex", status.activeAgent)
   }
 
+  @Test
+  fun `status projection reflects terminal child outcome before parent projection catches up`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
+        .withWorkflowId(1, "wfl-1"),
+    )
+    val outcomes = RecordingOutcomeStore()
+    outcomes["wfl-1"] = completeOutcome(1)
+    val service = GoalRunnerStatusService(store, outcomes)
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(1, status.completeCount)
+    assertEquals(0, status.pendingCount)
+    assertEquals(0, status.blockedCount)
+    assertEquals(null, status.currentSubtaskId)
+    assertEquals(null, status.currentStep)
+  }
+
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
@@ -219,6 +265,8 @@ private class InMemoryGoalManifestStore(
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
     private set
+  var saveCount: Int = 0
+    private set
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     GoalRunnerManifestState(
@@ -228,6 +276,7 @@ private class InMemoryGoalManifestStore(
     ).takeIf { manifest.issueKey == issueKey }
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    saveCount += 1
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }

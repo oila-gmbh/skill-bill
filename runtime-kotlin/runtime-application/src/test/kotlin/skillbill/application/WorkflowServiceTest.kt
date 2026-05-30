@@ -451,6 +451,37 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `goal runner progress reports finish after terminal step completes despite stale current step`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val finished = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "audit",
+        stepUpdates = listOf(
+          mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "finish", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = null,
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(finished.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val progress = store.progress("wfl-child")
+
+    requireNotNull(progress)
+    assertEquals("finish", progress.currentStepId)
+  }
+
+  @Test
   fun `subtask resume alignment keeps later running step over stale manifest step`() {
     val workflows = InMemoryWorkflowStates()
     val definition = FeatureImplementWorkflowDefinition.definition
