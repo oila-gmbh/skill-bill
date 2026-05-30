@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.UnitOfWork
@@ -30,23 +31,33 @@ internal data class ContinuationStepResult(
       this
     }
 
-  fun withDecompositionFields(subtaskId: Int, specPath: String): ContinuationStepResult {
+  fun withDecompositionFields(
+    issueKey: String,
+    subtaskId: Int,
+    specPath: String,
+    outcome: GoalContinuationOutcome,
+  ): ContinuationStepResult {
     val decorated: WorkflowContinueResult = when (val current = result) {
       is WorkflowContinueResult.Standard -> WorkflowContinueResult.DecompositionStandard(
         dbPath = current.dbPath,
         view = current.view,
         decompositionSubtaskId = subtaskId,
         decompositionSubtaskSpecPath = specPath,
+        issueKey = issueKey,
+        outcome = outcome,
       )
       is WorkflowContinueResult.DecompositionStandard -> current.copy(
         decompositionSubtaskId = subtaskId,
         decompositionSubtaskSpecPath = specPath,
+        issueKey = issueKey,
+        outcome = outcome,
       )
       is WorkflowContinueResult.UnknownWorkflow,
       is WorkflowContinueResult.DecompositionMissingSubtaskWorkflow,
       is WorkflowContinueResult.DecompositionBlockedSubtask,
       is WorkflowContinueResult.DecompositionBlockedBranchStart,
       is WorkflowContinueResult.DecompositionDone,
+      is WorkflowContinueResult.DecompositionSubtaskOutcome,
       is WorkflowContinueResult.DecompositionBlockedGit,
       is WorkflowContinueResult.Error,
       -> error(

@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -19,7 +20,11 @@ internal class DecompositionWorkflowContinuation(
   private val validator: DecompositionManifestValidator,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ) {
-  fun continueDecomposedParentByIssueKey(issueKey: String, unitOfWork: UnitOfWork): ContinuationStepResult {
+  fun continueDecomposedParentByIssueKey(
+    issueKey: String,
+    unitOfWork: UnitOfWork,
+    requestedSubtaskId: Int? = null,
+  ): ContinuationStepResult {
     val parentRecord = unitOfWork.workflowStates
       .findDecomposedParentWorkflow(issueKey, validator)
       ?.toSnapshot()
@@ -32,7 +37,7 @@ internal class DecompositionWorkflowContinuation(
         ),
       )
     } else {
-      continueManifest(parentRecord, manifest, unitOfWork)
+      continueManifest(parentRecord, manifest, unitOfWork, requestedSubtaskId)
     }
     return result
   }
@@ -41,6 +46,7 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
+    requestedSubtaskId: Int?,
   ): ContinuationStepResult {
     val advancement = advanceCompletedSubtasks(parentRecord, manifest, unitOfWork)
     if (advancement.error != null) {
@@ -52,7 +58,7 @@ internal class DecompositionWorkflowContinuation(
     val advancedManifest = advancement.manifest
     val projectionArtifactsJson =
       if (advancedManifest != manifest) decompositionRuntimeArtifactsJson(advancedManifest, validator) else null
-    return selectedContinuation(parentRecord, advancedManifest, unitOfWork)
+    return selectedContinuation(parentRecord, advancedManifest, unitOfWork, requestedSubtaskId)
       .withProjectionArtifactsIfMissing(projectionArtifactsJson)
   }
 
@@ -60,16 +66,22 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
-  ): ContinuationStepResult = when (val selection = DecompositionContinuationSelector.select(manifest)) {
-    is DecompositionContinuationSelection.Resume -> continueSelectedSubtask(selection, unitOfWork)
+    requestedSubtaskId: Int?,
+  ): ContinuationStepResult = when (
+    val selection = DecompositionContinuationSelector.select(manifest, requestedSubtaskId)
+  ) {
+    is DecompositionContinuationSelection.Resume -> continueSelectedSubtask(manifest, selection, unitOfWork)
     is DecompositionContinuationSelection.Start -> startSelectedSubtask(parentRecord, manifest, selection, unitOfWork)
     is DecompositionContinuationSelection.Blocked ->
       ContinuationStepResult(blockedSubtaskResult(parentRecord, manifest, selection, unitOfWork.dbPath.toString()))
+    is DecompositionContinuationSelection.TerminalSubtask ->
+      ContinuationStepResult(terminalSubtaskResult(parentRecord, manifest, selection, unitOfWork.dbPath.toString()))
     is DecompositionContinuationSelection.Done ->
       ContinuationStepResult(doneDecompositionResult(parentRecord, selection.manifest, unitOfWork.dbPath.toString()))
   }
 
   private fun continueSelectedSubtask(
+    manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Resume,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
@@ -86,7 +98,12 @@ internal class DecompositionWorkflowContinuation(
         unitOfWork,
         validator,
         fileStore,
-      ).withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
+      ).withDecompositionFields(
+        issueKey = manifest.issueKey,
+        subtaskId = selection.subtask.id,
+        specPath = selection.subtask.specPath,
+        outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
+      )
     }
   }
 
@@ -146,15 +163,19 @@ internal class DecompositionWorkflowContinuation(
       WorkflowFamily.IMPLEMENT.definition,
       workflowId,
       parentRecord.sessionId.orEmpty(),
-      WorkflowFamily.IMPLEMENT.definition.defaultInitialStepId,
+      "preplan",
     )
     val started = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       opened,
       WorkflowUpdateInput(
         workflowStatus = "running",
-        currentStepId = "assess",
-        stepUpdates = null,
+        currentStepId = "preplan",
+        stepUpdates = listOf(
+          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1),
+        ),
         artifactsPatch = subtaskStartArtifacts(selection, updatedManifest),
         sessionId = parentRecord.sessionId.orEmpty(),
       ),
@@ -170,15 +191,38 @@ internal class DecompositionWorkflowContinuation(
       fileStore,
     )
       .withProjection(updatedManifest, validator)
-      .withDecompositionFields(selection.subtask.id, selection.subtask.specPath)
+      .withDecompositionFields(
+        issueKey = manifest.issueKey,
+        subtaskId = selection.subtask.id,
+        specPath = selection.subtask.specPath,
+        outcome = updatedManifest.subtasks.single { it.id == selection.subtask.id }
+          .toGoalContinuationOutcome(manifest.issueKey),
+      )
   }
 
   private fun subtaskStartArtifacts(
     selection: DecompositionContinuationSelection.Start,
     manifest: DecompositionManifest,
   ): Map<String, Any?> = mapOf(
-    "assessment" to mapOf("spec_path" to selection.subtask.specPath),
-    "branch" to mapOf("branch_name" to selection.branchPlan.branch),
+    "assessment" to mapOf(
+      "spec_path" to selection.subtask.specPath,
+      "goal_continuation" to true,
+      "issue_key" to manifest.issueKey,
+      "subtask_id" to selection.subtask.id,
+      "accepted_without_user_confirmation" to true,
+    ),
+    "branch" to mapOf(
+      "branch_name" to selection.branchPlan.branch,
+      "branch" to selection.branchPlan.branch,
+      "goal_continuation" to true,
+    ),
+    "goal_continuation" to mapOf(
+      "enabled" to true,
+      "issue_key" to manifest.issueKey,
+      "subtask_id" to selection.subtask.id,
+      "suppress_pr" to true,
+      "outcome_authority" to "workflow_store",
+    ),
     DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
       manifest,
       validator,
@@ -232,6 +276,32 @@ internal class DecompositionWorkflowContinuation(
     }
   }
 }
+
+private fun terminalSubtaskResult(
+  parentRecord: WorkflowStateSnapshot,
+  manifest: DecompositionManifest,
+  selection: DecompositionContinuationSelection.TerminalSubtask,
+  dbPath: String,
+): WorkflowContinueResult = WorkflowContinueResult.DecompositionSubtaskOutcome(
+  dbPath = dbPath,
+  workflowId = parentRecord.workflowId,
+  issueKey = manifest.issueKey,
+  subtaskId = selection.subtask.id,
+  subtaskSpecPath = selection.subtask.specPath,
+  outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
+)
+
+private fun skillbill.workflow.model.DecompositionSubtask.toGoalContinuationOutcome(
+  issueKey: String,
+): GoalContinuationOutcome = GoalContinuationOutcome(
+  issueKey = issueKey,
+  subtaskId = id,
+  status = status,
+  workflowId = workflowId.orEmpty(),
+  commitSha = commitSha,
+  blockedReason = blockedReason,
+  lastResumableStep = lastResumableStep,
+)
 
 private data class AdvancementResult(
   val manifest: DecompositionManifest,

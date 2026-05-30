@@ -42,6 +42,63 @@ class DecompositionContinuationSelectorTest {
   }
 
   @Test
+  fun `select honors explicit runnable subtask constraint`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1, status = "complete"),
+        subtask(2, dependencies = listOf(DecompositionDependency(1))),
+      ),
+      requestedSubtaskId = 2,
+    )
+
+    val started = assertIs<DecompositionContinuationSelection.Start>(selection)
+    assertEquals(2, started.subtask.id)
+  }
+
+  @Test
+  fun `select blocks explicit subtask that is not next runnable`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1),
+        subtask(2, dependencies = listOf(DecompositionDependency(1))),
+      ),
+      requestedSubtaskId = 2,
+    )
+
+    val blocked = assertIs<DecompositionContinuationSelection.Blocked>(selection)
+    assertEquals(2, blocked.subtask.id)
+    assertEquals("Requested subtask 2 is not the next runnable subtask for SKILL-51.", blocked.reason)
+  }
+
+  @Test
+  fun `select reports terminal outcome for explicit complete subtask`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1, status = "complete"),
+        subtask(2, status = "complete", dependencies = listOf(DecompositionDependency(1))),
+      ),
+      requestedSubtaskId = 2,
+    )
+
+    val terminal = assertIs<DecompositionContinuationSelection.TerminalSubtask>(selection)
+    assertEquals(2, terminal.subtask.id)
+  }
+
+  @Test
+  fun `select reports terminal outcome for explicit complete subtask while later work remains`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1, status = "complete"),
+        subtask(2, dependencies = listOf(DecompositionDependency(1))),
+      ),
+      requestedSubtaskId = 1,
+    )
+
+    val terminal = assertIs<DecompositionContinuationSelection.TerminalSubtask>(selection)
+    assertEquals(1, terminal.subtask.id)
+  }
+
+  @Test
   fun `select reports blocked subtask when dependent pending work is not explicitly skippable`() {
     val selection = DecompositionContinuationSelector.select(
       manifest(

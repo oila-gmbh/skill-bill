@@ -113,7 +113,7 @@ internal fun DecompositionManifest.withStartedSubtask(
         status = "in_progress",
         workflowId = workflowId,
         branch = branch.takeIf(String::isNotBlank) ?: subtask.branch,
-        lastResumableStep = "assess",
+        lastResumableStep = "preplan",
       )
     } else {
       subtask

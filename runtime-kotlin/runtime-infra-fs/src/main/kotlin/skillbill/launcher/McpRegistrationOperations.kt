@@ -1,5 +1,6 @@
 package skillbill.launcher
 
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpMutationResult
 import java.nio.file.Path
 
@@ -7,27 +8,37 @@ object McpRegistrationOperations {
   fun register(agent: String, runtimeMcpBin: Path, home: Path? = null): McpMutationResult {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
     val command = runtimeMcpBin.toAbsolutePath().normalize().toString()
-    return when (agent) {
-      "claude" -> McpJsonConfig.register(agent, resolvedHome.resolve(".claude.json"), command)
-      "copilot" -> McpJsonConfig.register(agent, resolvedHome.resolve(".copilot/mcp-config.json"), command)
-      "codex" -> McpTomlConfig.register(agent, resolvedHome.resolve(".codex/config.toml"), command)
-      "opencode" -> McpOpenCodeConfig.register(agent, resolvedHome.resolve(".config/opencode/opencode.json"), command)
-      "junie" -> McpJsonConfig.register(agent, resolvedHome.resolve(".junie/mcp/mcp.json"), command)
-      "glm" -> McpJsonConfig.register(agent, resolvedHome.resolve(".glm/mcp-config.json"), command)
-      else -> throw IllegalArgumentException("Unknown MCP agent '$agent'.")
+    if (agent == "glm") {
+      return McpJsonConfig.register(agent, resolvedHome.resolve(".glm/mcp-config.json"), command)
+    }
+    return when (val installAgent = InstallAgent.fromId(agent)) {
+      InstallAgent.CLAUDE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.COPILOT -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.CODEX -> McpTomlConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.OPENCODE -> McpOpenCodeConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.JUNIE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
     }
   }
 
   fun unregister(agent: String, home: Path? = null): McpMutationResult {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    return when (agent) {
-      "claude" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".claude.json"))
-      "copilot" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".copilot/mcp-config.json"))
-      "codex" -> McpTomlConfig.unregister(agent, resolvedHome.resolve(".codex/config.toml"))
-      "opencode" -> McpOpenCodeConfig.unregister(agent, resolvedHome.resolve(".config/opencode/opencode.json"))
-      "junie" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".junie/mcp/mcp.json"))
-      "glm" -> McpJsonConfig.unregister(agent, resolvedHome.resolve(".glm/mcp-config.json"))
-      else -> throw IllegalArgumentException("Unknown MCP agent '$agent'.")
+    if (agent == "glm") {
+      return McpJsonConfig.unregister(agent, resolvedHome.resolve(".glm/mcp-config.json"))
     }
+    return when (val installAgent = InstallAgent.fromId(agent)) {
+      InstallAgent.CLAUDE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.COPILOT -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.CODEX -> McpTomlConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.OPENCODE -> McpOpenCodeConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.JUNIE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+    }
+  }
+
+  fun configPathFor(agent: InstallAgent, home: Path): Path = when (agent) {
+    InstallAgent.CLAUDE -> home.resolve(".claude.json")
+    InstallAgent.COPILOT -> home.resolve(".copilot/mcp-config.json")
+    InstallAgent.CODEX -> home.resolve(".codex/config.toml")
+    InstallAgent.OPENCODE -> home.resolve(".config/opencode/opencode.json")
+    InstallAgent.JUNIE -> home.resolve(".junie/mcp/mcp.json")
   }
 }

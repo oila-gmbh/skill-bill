@@ -254,9 +254,11 @@ object McpWorkflowRuntime {
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
+    subtaskId: Int? = null,
   ): Map<String, Any?> = services(context).workflowService.continueWorkflow(
     kind,
     workflowId,
+    subtaskId = subtaskId,
     dbOverride = null,
   ).toMcpMap()
 }

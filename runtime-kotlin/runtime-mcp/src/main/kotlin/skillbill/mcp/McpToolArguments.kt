@@ -20,6 +20,25 @@ internal fun Map<String, Any?>.int(name: String, default: Int): Int = when (val 
   else -> default
 }
 
+internal fun Map<String, Any?>.optionalInt(name: String): Int? = when (val value = this[name]) {
+  null -> null
+  is Int -> value
+  is Long -> {
+    require(value >= Int.MIN_VALUE.toLong() && value <= Int.MAX_VALUE.toLong()) {
+      "$name must fit in a 32-bit integer."
+    }
+    value.toInt()
+  }
+  is Double -> {
+    require(value % 1.0 == 0.0 && value >= Int.MIN_VALUE && value <= Int.MAX_VALUE) {
+      "$name must be an integer."
+    }
+    value.toInt()
+  }
+  is String -> value.toIntOrNull() ?: error("$name must be an integer.")
+  else -> error("$name must be an integer.")
+}
+
 internal fun Map<String, Any?>.stringList(name: String): List<String> =
   (this[name] as? List<*>).orEmpty().map { it.toString() }
 

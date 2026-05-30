@@ -22,6 +22,21 @@ class CliWorkflowContinuationRuntimeTest {
     assertEquals(1, continued["decomposition_subtask_id"])
     assertEquals(fixture.subtaskSpec.toString(), continued["decomposition_subtask_spec_path"])
   }
+
+  @Test
+  fun `workflow continue reports blocked when requested decomposed subtask is not runnable`() {
+    val fixture = cliDecompositionFixture()
+    val opened = runJson(fixture.openCommand(), fixture.context)
+    val workflowId = opened["workflow_id"] as String
+
+    runJson(fixture.updateCommand(workflowId), fixture.context)
+    val continued = runJson(fixture.continueCommand(subtaskId = 2), fixture.context, expectedExitCode = 1)
+
+    assertEquals("error", continued["status"])
+    assertEquals("blocked", continued["continue_status"])
+    assertEquals(2, continued["decomposition_subtask_id"])
+    assertEquals("Requested subtask 2 is not the next runnable subtask for SKILL-51.", continued["blocked_reason"])
+  }
 }
 
 private data class CliDecompositionFixture(
@@ -29,6 +44,7 @@ private data class CliDecompositionFixture(
   val context: CliRuntimeContext,
   val parentSpec: Path,
   val subtaskSpec: Path,
+  val secondSubtaskSpec: Path,
 ) {
   fun openCommand(): List<String> = listOf("--db", dbPath.toString(), "workflow", "open", "--format", "json")
 
@@ -50,8 +66,17 @@ private data class CliDecompositionFixture(
     "json",
   )
 
-  fun continueCommand(): List<String> =
-    listOf("--db", dbPath.toString(), "workflow", "continue", "SKILL-51", "--format", "json")
+  fun continueCommand(subtaskId: Int = 1): List<String> = listOf(
+    "--db",
+    dbPath.toString(),
+    "workflow",
+    "continue",
+    "SKILL-51",
+    "--subtask-id",
+    subtaskId.toString(),
+    "--format",
+    "json",
+  )
 
   private fun artifactsPatch(): String = jsonString(
     mapOf(
@@ -67,6 +92,12 @@ private data class CliDecompositionFixture(
             "spec_path" to subtaskSpec.toString(),
             "depends_on" to emptyList<Int>(),
           ),
+          mapOf(
+            "id" to 2,
+            "name" to "runtime",
+            "spec_path" to secondSubtaskSpec.toString(),
+            "depends_on" to listOf(1),
+          ),
         ),
       ),
     ),
@@ -77,20 +108,27 @@ private fun cliDecompositionFixture(): CliDecompositionFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-decomposition-continue")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
   val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+  val secondSubtaskSpec = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
   Files.createDirectories(parentSpec.parent)
   Files.writeString(parentSpec, "# Parent")
   Files.writeString(subtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
+  Files.writeString(secondSubtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
   return CliDecompositionFixture(
     dbPath = tempDir.resolve("metrics.db"),
     context = CliRuntimeContext(userHome = tempDir, workflowGitOperations = TestWorkflowGitOperations),
     parentSpec = parentSpec,
     subtaskSpec = subtaskSpec,
+    secondSubtaskSpec = secondSubtaskSpec,
   )
 }
 
-private fun runJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
+private fun runJson(
+  arguments: List<String>,
+  context: CliRuntimeContext,
+  expectedExitCode: Int = 0,
+): Map<String, Any?> {
   val result = CliRuntime.run(arguments, context)
-  assertEquals(0, result.exitCode, result.stdout)
+  assertEquals(expectedExitCode, result.exitCode, result.stdout)
   return decodeJsonObject(result.stdout)
 }
 

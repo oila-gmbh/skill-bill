@@ -1,5 +1,6 @@
 package skillbill.mcp
 
+import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowLatestResult
@@ -99,8 +100,10 @@ internal fun WorkflowContinueResult.toMcpMap(): Map<String, Any?> = when (this) 
     view = view,
     dbPath = dbPath,
     decompositionExtras = linkedMapOf(
+      "issue_key" to (outcome?.issueKey ?: issueKey),
       "decomposition_subtask_id" to decompositionSubtaskId,
       "decomposition_subtask_spec_path" to decompositionSubtaskSpecPath,
+      "goal_continuation_outcome" to outcome.toWireMap(),
     ),
   )
   is WorkflowContinueResult.UnknownWorkflow -> linkedMapOf(
@@ -143,6 +146,16 @@ internal fun WorkflowContinueResult.toMcpMap(): Map<String, Any?> = when (this) 
     "decomposition_status" to decompositionStatus,
     "db_path" to dbPath,
   )
+  is WorkflowContinueResult.DecompositionSubtaskOutcome -> linkedMapOf(
+    "status" to "ok",
+    "continue_status" to "done",
+    "workflow_id" to workflowId,
+    "issue_key" to issueKey,
+    "decomposition_subtask_id" to subtaskId,
+    "decomposition_subtask_spec_path" to subtaskSpecPath,
+    "goal_continuation_outcome" to outcome.toWireMap(),
+    "db_path" to dbPath,
+  )
   is WorkflowContinueResult.DecompositionBlockedGit -> linkedMapOf(
     "status" to "error",
     "continue_status" to "blocked",
@@ -159,6 +172,18 @@ internal fun WorkflowContinueResult.toMcpMap(): Map<String, Any?> = when (this) 
     "db_path" to dbPath,
   )
 }
+
+private fun GoalContinuationOutcome?.toWireMap(): Map<String, Any?> = this?.let { outcome ->
+  linkedMapOf(
+    "issue_key" to outcome.issueKey,
+    "subtask_id" to outcome.subtaskId,
+    "status" to outcome.status,
+    "commit_sha" to outcome.commitSha,
+    "workflow_id" to outcome.workflowId,
+    "blocked_reason" to outcome.blockedReason,
+    "last_resumable_step" to outcome.lastResumableStep,
+  )
+}.orEmpty()
 
 private fun standardMcpContinueMap(
   view: skillbill.workflow.model.WorkflowContinueView,

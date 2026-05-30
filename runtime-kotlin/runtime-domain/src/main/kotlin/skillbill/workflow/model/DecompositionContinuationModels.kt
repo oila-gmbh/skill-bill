@@ -17,6 +17,8 @@ sealed class DecompositionContinuationSelection {
     val reason: String,
   ) : DecompositionContinuationSelection()
 
+  data class TerminalSubtask(val subtask: DecompositionSubtask) : DecompositionContinuationSelection()
+
   data class Done(val manifest: DecompositionManifest) : DecompositionContinuationSelection()
 }
 

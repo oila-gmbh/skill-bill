@@ -58,5 +58,10 @@ internal fun workflowContinue(
   val workflowIdOrIssueKey = arguments.optionalString("workflow_id")
     ?: arguments.optionalString("issue_key")
     ?: return mapOf("status" to "error", "error" to "Provide workflow_id or issue_key.")
-  return McpWorkflowRuntime.continueWorkflow(kind, workflowIdOrIssueKey, context)
+  return McpWorkflowRuntime.continueWorkflow(
+    kind,
+    workflowIdOrIssueKey,
+    subtaskId = arguments.optionalInt("subtask_id"),
+    context = context,
+  )
 }

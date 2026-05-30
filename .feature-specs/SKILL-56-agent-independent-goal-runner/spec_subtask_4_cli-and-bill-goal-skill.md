@@ -121,3 +121,7 @@ npx --yes agnix --strict .
 - Foreground progress should be honest: show the active agent and the current
   subtask/step; on stop, print exactly which subtask blocked and why, and how to
   resume (`skill-bill goal <issue_key>` again).
+## E2E Evidence
+
+Subtask 4 goal CLI evidence is recorded in
+`.feature-specs/SKILL-56-agent-independent-goal-runner/subtask_4_goal_cli_e2e_evidence.md`.

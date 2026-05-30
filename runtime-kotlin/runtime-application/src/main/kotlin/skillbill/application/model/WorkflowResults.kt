@@ -55,6 +55,16 @@ data class WorkflowListResult(
   val workflows: List<WorkflowSummaryView>,
 )
 
+data class GoalContinuationOutcome(
+  val issueKey: String,
+  val subtaskId: Int,
+  val status: String,
+  val commitSha: String?,
+  val workflowId: String,
+  val blockedReason: String?,
+  val lastResumableStep: String?,
+)
+
 sealed interface WorkflowLatestResult {
   data class Ok(val dbPath: String, val summary: WorkflowSummaryView) : WorkflowLatestResult
   data class Error(val dbPath: String, val error: String) : WorkflowLatestResult
@@ -126,6 +136,15 @@ sealed interface WorkflowContinueResult {
     val decompositionStatus: String,
   ) : WorkflowContinueResult
 
+  data class DecompositionSubtaskOutcome(
+    override val dbPath: String,
+    val workflowId: String,
+    val issueKey: String,
+    val subtaskId: Int,
+    val subtaskSpecPath: String,
+    val outcome: GoalContinuationOutcome,
+  ) : WorkflowContinueResult
+
   data class DecompositionBlockedGit(
     override val dbPath: String,
     val workflowId: String,
@@ -144,6 +163,8 @@ sealed interface WorkflowContinueResult {
     val view: WorkflowContinueView,
     val decompositionSubtaskId: Int,
     val decompositionSubtaskSpecPath: String,
+    val issueKey: String = "",
+    val outcome: GoalContinuationOutcome? = null,
   ) : WorkflowContinueResult
 
   /** Generic error wrapper (unused except for upstream framework errors). */

@@ -49,6 +49,21 @@ Continuation-mode rules:
 - If `continue_status` is `done`, do not rerun the workflow; summarize the terminal state instead.
 - If `continue_status` is `blocked`, stop and restore the missing artifacts named by the workflow payload before continuing.
 
+## Goal-Continuation Entry (non-interactive)
+
+External goal runners may invoke `feature_implement_workflow_continue` / `skill-bill workflow continue` with a decomposed parent `issue_key` and, optionally, `subtask_id`. This is a non-interactive entry for exactly one runnable decomposed subtask.
+
+Goal-continuation rules:
+
+- Reuse the existing decomposition continuation selector: resume the in-progress subtask, otherwise start the first pending subtask whose dependencies are complete, otherwise report blocked or all-complete.
+- If `subtask_id` is provided, treat it as a constraint on the next runnable subtask. Do not skip dependencies or run a later subtask; report blocked when the requested subtask is not the selected runnable subtask.
+- Derive the subtask contract from the selected subtask spec and recovered workflow artifacts. Do not ask the user to reconfirm acceptance criteria for the subtask.
+- Start new subtask workflows at `preplan` with `assessment`, `branch`, and `goal_continuation` artifacts already persisted from the parent manifest.
+- Set `goal_continuation.suppress_pr=true`. Run the normal implementation, review, audit, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
+- Treat a completed `commit_push` step as the terminal success signal for this entry when PR suppression is active. Persist the subtask outcome in durable workflow state; stdout is diagnostic only.
+- The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
+- Interactive `bill-feature-implement` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
+
 ## Orchestrator vs Subagent Split
 
 Step 1 (collect design doc + assess) runs in the orchestrator because it requires user interaction. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 6 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 5 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.

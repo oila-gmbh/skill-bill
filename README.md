@@ -344,6 +344,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
 | `/bill-feature-implement` | End-to-end feature workflow from spec through review and validation |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
+| `/bill-goal` | Interactively decompose larger goals and hand confirmed runs to the foreground goal loop |
 | `/bill-grill-plan` | Stress-test a plan or design by walking the decision tree |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |

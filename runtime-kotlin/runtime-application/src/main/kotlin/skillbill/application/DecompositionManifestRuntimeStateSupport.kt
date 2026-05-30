@@ -20,8 +20,15 @@ internal fun DecompositionSubtask.withRuntimeFields(
   val nextStatus = status ?: this.status
   return copy(
     status = nextStatus,
-    branch = branchName(artifacts["branch"]).ifBlank { manifest.branchFor(id) ?: branch },
+    branch = branchName(artifacts["branch"]).ifBlank {
+      when (manifest.executionModel) {
+        DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> manifest.featureBranch
+        DecompositionExecutionModel.STACKED_BRANCHES ->
+          manifest.stackBranches.firstOrNull { it.subtaskId == id }?.branch
+      } ?: branch
+    },
     workflowId = update.workflowId.ifBlank { workflowId },
+    commitSha = commitShaFrom(artifacts) ?: commitSha,
     blockedReason = blockedReasonFrom(update, nextStatus) ?: blockedReason.takeUnless { nextStatus != "blocked" },
     lastResumableStep = update.currentStepId.takeIf(String::isNotBlank) ?: lastResumableStep,
   )
@@ -45,6 +52,8 @@ internal fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): Strin
   val stepUpdates = update.stepUpdates.orEmpty()
   return when {
     update.workflowStatus == "blocked" || stepUpdates.any { it["status"] == "blocked" } -> "blocked"
+    prSuppressedCommitStatus(update) == "complete" -> "complete"
+    prSuppressedCommitStatus(update) == "blocked" -> "blocked"
     stepUpdates.any { it["status"] == "skipped" && it["step_id"] in terminalSkippedSteps } -> "skipped"
     update.workflowStatus == "completed" ||
       stepUpdates.any { it["status"] == "completed" && it["step_id"] in completionSteps } -> "complete"
@@ -78,11 +87,6 @@ private fun DecompositionManifest.matchingSubtaskId(repoRoot: Path, specPath: St
   }?.id
 }
 
-private fun DecompositionManifest.branchFor(subtaskId: Int): String? = when (executionModel) {
-  DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> featureBranch
-  DecompositionExecutionModel.STACKED_BRANCHES -> stackBranches.firstOrNull { it.subtaskId == subtaskId }?.branch
-}
-
 private fun mergedArtifacts(update: DecompositionManifestRuntimeUpdate): Map<String, Any?> =
   LinkedHashMap(update.existingArtifacts).apply { update.artifactsPatch?.let(::putAll) }
 
@@ -90,7 +94,27 @@ private fun blockedReasonFrom(update: DecompositionManifestRuntimeUpdate, status
   if (status == "blocked") {
     val artifacts = mergedArtifacts(update)
     artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+      ?: "Goal-continuation commit_push completed without commit_push_result.commit_sha."
+        .takeIf { prSuppressedCommitStatus(update) == "blocked" }
       ?: "Workflow step '${update.currentStepId.ifBlank { "unknown" }}' is blocked."
   } else {
     null
   }
+
+private fun prSuppressedCommitStatus(update: DecompositionManifestRuntimeUpdate): String? {
+  val artifacts = mergedArtifacts(update)
+  val goalContinuation = artifacts["goal_continuation"] as? Map<*, *> ?: return null
+  val suppressPr = goalContinuation["suppress_pr"] == true
+  val commitPushCompleted =
+    update.stepUpdates.orEmpty().any { it["step_id"] == "commit_push" && it["status"] == "completed" }
+  return when {
+    !suppressPr || !commitPushCompleted -> null
+    commitShaFrom(artifacts) != null -> "complete"
+    else -> "blocked"
+  }
+}
+
+private fun commitShaFrom(artifacts: Map<String, Any?>): String? = (artifacts["commit_push_result"] as? Map<*, *>)
+  ?.get("commit_sha")
+  ?.toString()
+  ?.takeIf(String::isNotBlank)

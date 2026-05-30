@@ -22,6 +22,12 @@ enum class InstallAgent(
 
     fun fromId(id: String): InstallAgent = entries.firstOrNull { agent -> agent.id == id }
       ?: throw IllegalArgumentException("Unknown agent '$id'. Supported agents: ${supportedIds.joinToString(", ")}.")
+
+    fun fromNormalizedId(id: String, label: String = "agent"): InstallAgent {
+      val normalized = id.trim().lowercase()
+      require(normalized.isNotBlank()) { "$label is required. Supported agents: ${supportedIds.joinToString(", ")}." }
+      return fromId(normalized)
+    }
   }
 }
 

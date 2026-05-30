@@ -1,0 +1,345 @@
+package skillbill.cli
+
+import skillbill.contracts.JsonSupport
+import skillbill.install.model.InstallAgent
+import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.goalrunner.GoalPullRequestPort
+import skillbill.ports.goalrunner.model.GoalPullRequestRequest
+import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+
+class CliGoalRuntimeTest {
+  @Test
+  fun `goal command is registered with status subcommand`() {
+    val result = CliRuntime.run(listOf("goal", "--help"), CliRuntimeContext())
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Run a decomposed goal in the foreground.")
+    assertContains(result.stdout, "status")
+  }
+
+  @Test
+  fun `goal foreground run completes all subtasks and prints live progress`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val liveStdout = StringBuilder()
+    val liveStderr = StringBuilder()
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(),
+      fixture.context(
+        launcher = launcher,
+        liveStdout = { liveStdout.append(it) },
+        liveStderr = { liveStderr.append(it) },
+      ),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertContains(result.stdout, "attempted_subtasks: 1, 2")
+    assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
+    assertContains(liveStdout.toString(), "child-1-stdout")
+    assertContains(liveStdout.toString(), "goal SKILL-901: complete")
+    assertContains(liveStderr.toString(), "child-1-stderr")
+    assertEquals(1, fixture.pullRequests.requests.size)
+  }
+
+  @Test
+  fun `goal no-live-output keeps progress but suppresses child output tee`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val liveStdout = StringBuilder()
+    val liveStderr = StringBuilder()
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--no-live-output")),
+      fixture.context(
+        launcher = GoalFixtureAgentRunLauncher(fixture),
+        liveStdout = { liveStdout.append(it) },
+        liveStderr = { liveStderr.append(it) },
+      ),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
+    assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
+    assertEquals("", liveStderr.toString())
+  }
+
+  @Test
+  fun `goal forced failure exits non-zero and status reports blocked projection`() {
+    val fixture = goalFixture(subtaskCount = 3)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
+
+    val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: stopped")
+    assertContains(result.stdout, "subtask_id: 2")
+    assertContains(result.stdout, "reason: failed")
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(0, fixture.pullRequests.requests.size)
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "pending: 1")
+    assertContains(status.stdout, "blocked: 1")
+    assertContains(status.stdout, "current_subtask: 2")
+    assertContains(status.stdout, "current_step: review")
+    assertContains(status.stdout, "active_agent: codex")
+  }
+}
+
+private data class GoalCliFixture(
+  val tempDir: Path,
+  val dbPath: Path,
+  val parentSpec: Path,
+  val subtaskSpecs: List<Path>,
+  val pullRequests: RecordingGoalPullRequestPort = RecordingGoalPullRequestPort(),
+) {
+  fun context(
+    launcher: AgentRunLauncher,
+    liveStdout: (String) -> Unit = {},
+    liveStderr: (String) -> Unit = {},
+  ): CliRuntimeContext = CliRuntimeContext(
+    userHome = tempDir,
+    workflowGitOperations = GoalTestWorkflowGitOperations,
+    agentRunLauncher = launcher,
+    goalPullRequestPort = pullRequests,
+    liveStdout = liveStdout,
+    liveStderr = liveStderr,
+  )
+
+  fun goalCommand(extra: List<String> = emptyList()): List<String> = buildList {
+    add("--db")
+    add(dbPath.toString())
+    add("goal")
+    add("SKILL-901")
+    add("--agent")
+    add("codex")
+    add("--repo-root")
+    add(tempDir.toString())
+    addAll(extra)
+  }
+}
+
+private class GoalFixtureAgentRunLauncher(
+  private val fixture: GoalCliFixture,
+  private val failSubtask: Int? = null,
+) : AgentRunLauncher {
+  val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
+
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
+    requests += request
+    val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+    request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDOUT, "child-$subtaskId-stdout\n")
+    request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDERR, "child-$subtaskId-stderr\n")
+    val workflowId = startSubtaskWorkflow(subtaskId)
+    if (subtaskId == failSubtask) {
+      failSubtaskWorkflow(workflowId)
+    } else {
+      completeSubtaskWorkflow(workflowId, subtaskId)
+    }
+    return AgentRunLaunchFacts(
+      agent = InstallAgent.CODEX,
+      exitStatus = 0,
+      stdout = "captured child $subtaskId",
+      stderr = "",
+      timedOut = false,
+      spawnFailed = false,
+    )
+  }
+
+  private fun startSubtaskWorkflow(subtaskId: Int): String {
+    val payload = runGoalJson(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "workflow",
+        "continue",
+        "SKILL-901",
+        "--subtask-id",
+        subtaskId.toString(),
+        "--format",
+        "json",
+      ),
+      fixture.context(launcher = this),
+    )
+    return payload["workflow_id"] as String
+  }
+
+  private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int) {
+    runGoalJson(
+      workflowUpdateCommand(
+        WorkflowUpdateFixture(
+          dbPath = fixture.dbPath,
+          workflowId = workflowId,
+          currentStep = "commit_push",
+          stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+          artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),
+        ),
+      ),
+      fixture.context(launcher = this),
+    )
+  }
+
+  private fun failSubtaskWorkflow(workflowId: String) {
+    runGoalJson(
+      workflowUpdateCommand(
+        WorkflowUpdateFixture(
+          dbPath = fixture.dbPath,
+          workflowId = workflowId,
+          workflowStatus = "failed",
+          currentStep = "review",
+          stepUpdates = """[{"step_id":"review","status":"failed","attempt_count":1}]""",
+          artifactsPatch = jsonString(mapOf("blocked_reason" to "forced failure")),
+        ),
+      ),
+      fixture.context(launcher = this),
+    )
+  }
+}
+
+private class RecordingGoalPullRequestPort : GoalPullRequestPort {
+  val requests: MutableList<GoalPullRequestRequest> = mutableListOf()
+
+  override fun open(request: GoalPullRequestRequest): GoalPullRequestResult {
+    requests += request
+    return GoalPullRequestResult.Opened("https://github.com/example/skill-bill/pull/901")
+  }
+}
+
+private fun goalFixture(subtaskCount: Int): GoalCliFixture {
+  val tempDir = Files.createTempDirectory("skillbill-cli-goal")
+  val parentSpec = tempDir.resolve(".feature-specs/SKILL-901-goal/spec.md")
+  Files.createDirectories(parentSpec.parent)
+  Files.writeString(parentSpec, "# Parent")
+  val subtaskSpecs = (1..subtaskCount).map { id ->
+    parentSpec.parent.resolve("spec_subtask_${id}_part.md").also { path ->
+      Files.writeString(path, "---\nstatus: Pending\n---\n\n# Subtask $id")
+    }
+  }
+  val fixture = GoalCliFixture(
+    tempDir = tempDir,
+    dbPath = tempDir.resolve("metrics.db"),
+    parentSpec = parentSpec,
+    subtaskSpecs = subtaskSpecs,
+  )
+  seedParentWorkflow(fixture)
+  return fixture
+}
+
+private fun seedParentWorkflow(fixture: GoalCliFixture) {
+  val opened = runGoalJson(
+    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
+  val workflowId = opened["workflow_id"] as String
+  runGoalJson(
+    workflowUpdateCommand(
+      WorkflowUpdateFixture(
+        dbPath = fixture.dbPath,
+        workflowId = workflowId,
+        currentStep = "plan",
+        stepUpdates = """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+        artifactsPatch = parentArtifactsPatch(fixture),
+      ),
+    ),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
+}
+
+private fun parentArtifactsPatch(fixture: GoalCliFixture): String = jsonString(
+  mapOf(
+    "branch" to mapOf("branch" to "feat/SKILL-901-goal"),
+    "plan" to mapOf(
+      "mode" to "decompose",
+      "parent_spec_path" to fixture.parentSpec.toString(),
+      "recommended_first_subtask_id" to 1,
+      "subtasks" to fixture.subtaskSpecs.mapIndexed { index, path ->
+        mapOf(
+          "id" to index + 1,
+          "name" to "Part ${index + 1}",
+          "spec_path" to path.toString(),
+          "depends_on" to if (index == 0) emptyList<Int>() else listOf(index),
+        )
+      },
+    ),
+  ),
+)
+
+private data class WorkflowUpdateFixture(
+  val dbPath: Path,
+  val workflowId: String,
+  val workflowStatus: String = "running",
+  val currentStep: String,
+  val stepUpdates: String,
+  val artifactsPatch: String,
+)
+
+private fun workflowUpdateCommand(fixture: WorkflowUpdateFixture): List<String> = listOf(
+  "--db",
+  fixture.dbPath.toString(),
+  "workflow",
+  "update",
+  fixture.workflowId,
+  "--workflow-status",
+  fixture.workflowStatus,
+  "--current-step-id",
+  fixture.currentStep,
+  "--step-updates",
+  fixture.stepUpdates,
+  "--artifacts-patch",
+  fixture.artifactsPatch,
+  "--format",
+  "json",
+)
+
+private fun runGoalJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
+  val result = CliRuntime.run(arguments, context)
+  assertEquals(0, result.exitCode, result.stdout)
+  val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
+  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+}
+
+private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonSupport.valueToJsonElement(value),
+)
+
+private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
+}
+
+private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
+  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+}

@@ -331,6 +331,10 @@ open class WorkflowContinueCommand(
   private val workflowId by argument(
     help = "Workflow id to continue, or an issue key for a decomposed feature parent.",
   ).optional()
+  private val subtaskId by option(
+    "--subtask-id",
+    help = "Optional decomposed parent subtask id constraint for issue-key continuation.",
+  ).int()
   private val latest by option("--latest", help = "Resolve the most recently updated workflow.").flag(default = false)
   private val format by formatOption()
 
@@ -340,7 +344,12 @@ open class WorkflowContinueCommand(
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.continueWorkflow(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
+        service.continueWorkflow(
+          kind,
+          requireNotNull(resolution.workflowId),
+          subtaskId = subtaskId,
+          dbOverride = state.dbOverride,
+        ).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }

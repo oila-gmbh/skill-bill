@@ -158,8 +158,12 @@ class McpStdioServerTest {
       tools.schemaFor("feature_implement_workflow_update").properties().enumFor("workflow_status"),
     )
     assertEquals(
-      setOf("workflow_id", "issue_key"),
+      setOf("workflow_id", "issue_key", "subtask_id"),
       tools.schemaFor("feature_implement_workflow_continue").properties().keys,
+    )
+    assertEquals(
+      "integer",
+      tools.schemaFor("feature_implement_workflow_continue").properties().map("subtask_id")["type"],
     )
     tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
     assertEquals(

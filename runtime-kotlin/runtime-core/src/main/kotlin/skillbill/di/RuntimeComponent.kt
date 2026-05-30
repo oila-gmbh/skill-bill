@@ -2,6 +2,10 @@ package skillbill.di
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
+import skillbill.application.AgentRunGoalRunnerSubtaskLauncher
+import skillbill.application.AgentRunService
+import skillbill.application.GoalRunner
+import skillbill.application.GoalRunnerStatusService
 import skillbill.application.InstallAgentService
 import skillbill.application.InstallService
 import skillbill.application.LearningService
@@ -18,6 +22,8 @@ import skillbill.application.SystemService
 import skillbill.application.TelemetryLevelMutationService
 import skillbill.application.TelemetryService
 import skillbill.application.UnsupportedScaffoldService
+import skillbill.application.WorkflowGoalRunnerManifestStore
+import skillbill.application.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -44,6 +50,7 @@ import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.infrastructure.fs.GhGoalPullRequestPort
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
@@ -51,7 +58,13 @@ import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
+import skillbill.launcher.FileSystemAgentRunLauncher
 import skillbill.model.RuntimeContext
+import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.goalrunner.GoalPullRequestPort
+import skillbill.ports.goalrunner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.link.InstallSkillLinkPort
@@ -177,6 +190,31 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun agentRunLauncher(context: RuntimeContext, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
+    context.agentRunLauncher ?: adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalRunnerSubtaskLauncher(adapter: AgentRunGoalRunnerSubtaskLauncher): GoalRunnerSubtaskLauncher =
+    adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore): GoalRunnerManifestStore = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalRunnerWorkflowOutcomeStore(
+    adapter: WorkflowGoalRunnerOutcomeStore,
+  ): GoalRunnerWorkflowOutcomeStore = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPullRequestPort(context: RuntimeContext, adapter: GhGoalPullRequestPort): GoalPullRequestPort =
+    context.goalPullRequestPort ?: adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun installSelectionPersistencePort(
     adapter: FileSystemInstallSelectionPersistence,
   ): InstallSelectionPersistencePort = adapter
@@ -272,6 +310,9 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val installService: InstallService
+  abstract val agentRunService: AgentRunService
+  abstract val goalRunner: GoalRunner
+  abstract val goalRunnerStatusService: GoalRunnerStatusService
   abstract val installAgentService: InstallAgentService
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
   abstract val learningService: LearningService

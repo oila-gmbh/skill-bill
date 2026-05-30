@@ -528,6 +528,8 @@ $defs:
         type: string
       issue_key:
         type: string
+      subtask_id:
+        type: integer
 
   featureImplementWorkflowGetEvent:
     type: object

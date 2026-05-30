@@ -1,3 +1,44 @@
+## [2026-05-30] SKILL-56 subtask 4 cli-and-bill-goal-skill
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core, skills/bill-goal
+- Added the foreground `skill-bill goal` command and read-only `goal status` surface over the subtask-3 `GoalRunner`/status projection; CLI remains a thin adapter with text/payload mapping only. reusable
+- Live child stdout/stderr teeing is a narrow `AgentRunOutputSink` carried through request models into infra-fs `JvmAgentRunProcessRunner`; captured bounded output remains intact and process IO stays outside application/domain. reusable
+- `GoalRunnerRunEvent` gives the CLI readable per-subtask progress without parsing workflow internals or changing loop semantics; stop reports still use workflow-store outcomes as authority.
+- Added canonical `skills/bill-goal/content.md` plus README catalog row; source remains content.md-only and install/render sync produced agent links without committing generated wrappers.
+- E2E evidence uses fake `codex`/`gh` executables to exercise the real foreground driver, fresh process per subtask, manifest advancement, final PR call, and forced-failure stop report; it does not claim hosted-agent/GitHub coverage.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
+## [2026-05-30] SKILL-56 subtask 3 goal-runner-service
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Added `GoalRunner` as the parent loop over decomposed manifests: select dependency-ready subtasks, launch one fresh agent process per subtask, reconcile process facts with workflow-store outcomes, and advance manifest runtime state. reusable
+- Goal-runner success is workflow-store authoritative: completed PR-suppressed subtask workflows must expose `commit_push_result.commit_sha`; stdout remains diagnostic only and missing terminal state blocks the parent.
+- Added typed goal-runner ports for manifest state, workflow outcome reads, subtask launching, and final goal PR creation; domain policy stays pure while application adapts to launcher/workflow/PR ports. reusable
+- Added status projection for complete/pending/blocked counts, current subtask/step, and active agent so the CLI front can render status without re-parsing workflow internals. reusable
+- Known limitation: CLI/bill-goal entrypoint and human progress rendering remain subtask 4; this subtask wires service/composition and the gh-backed PR port only.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
+## [2026-05-30] SKILL-56 subtask 2 agent-agnostic-launcher
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Added `AgentRunLauncher` as a technology-neutral port with typed launch request/outcome models; launcher outcomes are process facts only and never infer subtask success from stdout. reusable
+- Added `AgentRunService` to resolve configured override before invoked `bill-goal` agent via `InstallAgent`; unknown agents fail before launch and supported agents without headless paths return explicit unsupported outcomes.
+- Infra-fs owns fresh-process spawning, command construction, environment inheritance, bounded UTF-8 stdout/stderr capture, timeout destroy+wait, and spawn-failure mapping; keep all process/env work out of application/domain/ports. reusable
+- Headless adapters currently cover Claude, Codex, and OpenCode; Copilot and Junie are deliberately unsupported until a proven headless skill-run path exists.
+- RuntimeComponent exposes the service and architecture/surface tests lock the composition-only binding plus launcher operation surface.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented (subtask scope)
+
+## [2026-05-29] SKILL-56 subtask 1 headless-continuation-contract
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-implement
+- Added issue-key goal continuation for decomposed feature-implement parents with optional `subtask_id` constraint; domain selector now has a terminal-subtask outcome so retrying a completed requested subtask is idempotent while later work remains. reusable
+- New subtask workflows start at `preplan` with `assessment`/`branch`/`goal_continuation` artifacts already persisted; interactive feature-implement still owns confirmation and PR creation.
+- Goal-continuation outcomes are typed in application results and mapped to stable CLI/MCP wire fields: `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, `last_resumable_step`. reusable
+- PR-suppressed completion treats completed `commit_push` plus nonblank `commit_push_result.commit_sha` as terminal success; missing commit SHA blocks loudly instead of duplicating later commit advancement.
+- MCP `feature_implement_workflow_continue` now accepts strict integer `subtask_id`; telemetry event schema mirrors the registry input schema to keep parity tests green.
+- Headless exercise recorded in the subtask spec: installed runtime must be refreshed before launcher adapters depend on new options; durable workflow state is authoritative, not stdout or git-tracked manifest projections.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented (subtask scope)
+
 ## [2026-05-29] SKILL-55 subtask 2 desktop-app-installers
 Areas: runtime-kotlin/runtime-desktop, runtime-kotlin/build-logic/convention, runtime-kotlin/agent/decisions.md, runtime-kotlin/README.md
 - Turned the existing Compose `nativeDistributions` (`packageDmg/Msi/Deb/Rpm`) into canonically-named, checksummed per-OS installers. jpackage AND the Compose Dmg validator (eager at config time) reject qualified/non-numeric versions, and macOS requires MAJOR>=1: derive a jpackage-legal `MAJOR.MINOR.PATCH` from `project.version` via the new pure `dev.skillbill.runtime.buildlogic.toJpackageVersion` (strips `-SNAPSHOT`/qualifier, pads, leading-digit run per component), plus a macOS-only `toMacAppVersion` that bumps a zero major to 1 (`0.1.0`->`1.1.0`). reusable

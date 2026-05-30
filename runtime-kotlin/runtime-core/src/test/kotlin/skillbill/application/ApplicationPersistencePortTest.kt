@@ -263,7 +263,7 @@ class ApplicationPersistencePortTest {
     val opened = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
-    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null)
       as WorkflowContinueResult.Standard
     val sessionSummary = continued.view.sessionSummary
 
@@ -481,8 +481,39 @@ class ApplicationPersistencePortTest {
 
     val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals(1, continued.decompositionSubtaskId)
+    assertEquals("SKILL-51", continued.issueKey)
+    assertEquals("SKILL-51", continued.outcome?.issueKey)
+    assertEquals(1, continued.outcome?.subtaskId)
+    assertEquals("in_progress", continued.outcome?.status)
+    assertEquals("preplan", continued.outcome?.lastResumableStep)
+    assertEquals("preplan", continued.view.continueStepId)
     assertEquals("in_progress", manifest.subtasks.first { it.id == 1 }.status)
+    assertEquals("preplan", manifest.subtasks.first { it.id == 1 }.lastResumableStep)
     assertEquals(listOf("feat/SKILL-51-demo@main"), git.checkouts)
+  }
+
+  @Test
+  fun `workflow service constrains decomposed issue key continuation to requested subtask`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-subtask-constraint")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val service = testWorkflowService(
+      FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository()),
+      FakeWorkflowGitOperations(),
+    )
+    createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+
+    val blocked = service.continueWorkflow(
+      WorkflowFamilyKind.IMPLEMENT,
+      "SKILL-51",
+      subtaskId = 2,
+      dbOverride = null,
+    ) as WorkflowContinueResult.DecompositionBlockedSubtask
+
+    assertEquals(2, blocked.subtaskId)
+    assertEquals("Requested subtask 2 is not the next runnable subtask for SKILL-51.", blocked.blockedReason)
   }
 
   @Test
@@ -507,6 +538,136 @@ class ApplicationPersistencePortTest {
     assertEquals(2, continued.decompositionSubtaskId)
     assertEquals(null, manifest.subtasks.first { it.id == 1 }.commitSha)
     assertEquals(listOf("SKILL-51 subtask 1: foundation"), git.commits)
+  }
+
+  @Test
+  fun `workflow service records pr suppressed commit completion as durable subtask outcome`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-headless-complete")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val service = testWorkflowService(
+      FakeDatabaseSessionFactory(workflows = workflowRepository),
+      FakeWorkflowGitOperations(),
+    )
+    val parentWorkflowId = createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+    val first = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionStandard
+
+    service.update(
+      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowUpdateRequest(
+        workflowId = first.view.resume.snapshot.workflowId,
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "assessment" to mapOf("spec_path" to subtaskOne.toString()),
+          "goal_continuation" to mapOf("enabled" to true, "suppress_pr" to true),
+          "commit_push_result" to mapOf("commit_sha" to "abc123"),
+        ),
+      ),
+      dbOverride = null,
+    )
+
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionStandard
+    val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val parent = service.get(WorkflowFamilyKind.IMPLEMENT, parentWorkflowId, dbOverride = null) as WorkflowGetResult.Ok
+    val runtime = parent.snapshot.artifacts["decomposition_runtime"] as Map<*, *>
+    val firstRuntimeSubtask = (runtime["subtasks"] as List<*>)
+      .filterIsInstance<Map<*, *>>()
+      .single { it["id"] == 1 }
+
+    assertEquals(2, continued.decompositionSubtaskId)
+    assertEquals(null, manifest.subtasks.first { it.id == 1 }.commitSha)
+    assertEquals("complete", firstRuntimeSubtask["status"])
+    assertEquals("abc123", firstRuntimeSubtask["commit_sha"])
+    assertEquals(first.view.resume.snapshot.workflowId, firstRuntimeSubtask["workflow_id"])
+    assertEquals(null, firstRuntimeSubtask["blocked_reason"])
+    assertEquals("commit_push", firstRuntimeSubtask["last_resumable_step"])
+    assertEquals("SKILL-51", continued.outcome?.issueKey)
+    assertEquals(2, continued.outcome?.subtaskId)
+    assertEquals("in_progress", continued.outcome?.status)
+    assertEquals(null, continued.outcome?.blockedReason)
+    assertEquals("preplan", continued.outcome?.lastResumableStep)
+  }
+
+  @Test
+  fun `workflow service blocks pr suppressed commit completion without durable commit sha`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-headless-missing-sha")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val service = testWorkflowService(
+      FakeDatabaseSessionFactory(workflows = workflowRepository),
+      FakeWorkflowGitOperations(),
+    )
+    createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+    val first = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionStandard
+
+    service.update(
+      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowUpdateRequest(
+        workflowId = first.view.resume.snapshot.workflowId,
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "assessment" to mapOf("spec_path" to subtaskOne.toString()),
+          "goal_continuation" to mapOf("enabled" to true, "suppress_pr" to true),
+        ),
+      ),
+      dbOverride = null,
+    )
+
+    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionBlockedSubtask
+    val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+    val blockedSubtask = manifest.subtasks.first { it.id == 1 }
+
+    assertEquals(1, continued.subtaskId)
+    assertEquals("blocked", blockedSubtask.status)
+    assertEquals(null, blockedSubtask.commitSha)
+    assertEquals(
+      "Goal-continuation commit_push completed without commit_push_result.commit_sha.",
+      blockedSubtask.blockedReason,
+    )
+  }
+
+  @Test
+  fun `workflow service returns requested terminal subtask outcome without advancing later subtasks`() {
+    val tempDir = Files.createTempDirectory("skillbill-app-decomposition-terminal-subtask")
+    val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+    val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+    val subtaskTwo = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
+    writeSpecs(parentSpec, subtaskOne, subtaskTwo)
+    val service = testWorkflowService(
+      FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository()),
+      FakeWorkflowGitOperations(),
+    )
+    createDecompositionWorkflow(service, parentSpec, subtaskOne, subtaskTwo)
+    val first = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", dbOverride = null)
+      as WorkflowContinueResult.DecompositionStandard
+    markDecompositionSubtaskComplete(service, first.view.resume.snapshot.workflowId, subtaskOne)
+
+    val continued = service.continueWorkflow(
+      WorkflowFamilyKind.IMPLEMENT,
+      "SKILL-51",
+      subtaskId = 1,
+      dbOverride = null,
+    ) as WorkflowContinueResult.DecompositionSubtaskOutcome
+    val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
+
+    assertEquals(1, continued.subtaskId)
+    assertEquals("complete", continued.outcome.status)
+    assertEquals("pr_description", continued.outcome.lastResumableStep)
+    assertEquals("pending", manifest.subtasks.first { it.id == 2 }.status)
   }
 
   @Test
@@ -723,7 +884,7 @@ class ApplicationPersistencePortTest {
     val opened = service.open(WorkflowFamilyKind.VERIFY, sessionId = "fvr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
-    val continued = service.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, null)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, dbOverride = null)
       as WorkflowContinueResult.Standard
     val sessionSummary = continued.view.sessionSummary
 

@@ -188,6 +188,7 @@ class WorkflowService(
   fun continueWorkflow(
     kind: WorkflowFamilyKind,
     workflowId: String,
+    subtaskId: Int? = null,
     dbOverride: String? = null,
   ): WorkflowContinueResult {
     var projectionArtifactsJson: String? = null
@@ -201,7 +202,7 @@ class WorkflowService(
             gitOperations,
             decompositionManifestValidator,
             decompositionManifestFileStore,
-          ).continueDecomposedParentByIssueKey(workflowId, unitOfWork)
+          ).continueDecomposedParentByIssueKey(workflowId, unitOfWork, subtaskId)
         projectionArtifactsJson = resolved.projectionArtifactsJson ?: projectionArtifactsJson
         return@transaction resolved.result
       }

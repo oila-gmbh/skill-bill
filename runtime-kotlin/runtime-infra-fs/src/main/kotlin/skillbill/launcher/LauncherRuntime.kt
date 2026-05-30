@@ -17,6 +17,7 @@ object LauncherRuntime {
       "select-mcp-runtime",
       "register-mcp",
       "unregister-mcp",
+      "launch-agent-run",
     ),
   )
 }

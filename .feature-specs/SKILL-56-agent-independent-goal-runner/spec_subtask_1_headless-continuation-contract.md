@@ -1,5 +1,7 @@
 # SKILL-56 Subtask 1 - Headless Continuation Contract for feature-implement
 
+Status: Complete
+Sources: Parent spec `.feature-specs/SKILL-56-agent-independent-goal-runner/spec.md`; decomposition manifest `.feature-specs/SKILL-56-agent-independent-goal-runner/decomposition-manifest.yaml`; accepted subtask briefing for workflow `wfl-20260529-194727-0h8b`.
 Parent spec: [.feature-specs/SKILL-56-agent-independent-goal-runner/spec.md](./spec.md)
 Issue key: SKILL-56
 Subtask order: 1 of 4
@@ -123,6 +125,17 @@ npx --yes agnix --strict .
 #     on stdout parsing.
 # Record which agents passed and any context that had to be injected.
 ```
+
+## Headless Availability Exercise
+
+Recorded during SKILL-56 subtask 1 implementation against the real
+`.feature-specs/SKILL-56-agent-independent-goal-runner/decomposition-manifest.yaml`
+manifest.
+
+- Agent binaries present on this host: Codex (`/home/sermilion/.local/bin/codex`), Claude (`/home/sermilion/.local/bin/claude`), and Opencode (`/home/sermilion/.opencode/bin/opencode`).
+- Installed Skill Bill MCP runtime is present for active agents, but it reflects the last installed runtime under `~/.skill-bill/runtime`; source-only changes are not visible there until `./install.sh` refreshes the local install.
+- The source runtime accepts the new constrained entry (`skill-bill workflow continue <issue-key> --subtask-id <id>`) in tests. The previously installed `skill-bill` binary did not yet expose `--subtask-id`, confirming that subtask 2 launch adapters must either run after install refresh or inject the built source/runtime path deliberately.
+- The current durable workflow database does not contain a terminal decomposed parent workflow row for `SKILL-56`; it contains this in-progress subtask run and the git-tracked manifest projection. Goal runners must read outcomes from durable workflow state created by the goal-continuation entry, not by scanning stdout or assuming `.feature-specs` files alone are sufficient.
 
 ## Implementation Notes
 

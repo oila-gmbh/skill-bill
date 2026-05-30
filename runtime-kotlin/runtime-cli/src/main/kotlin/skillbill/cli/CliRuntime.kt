@@ -13,6 +13,8 @@ object CliRuntime {
         stdinText = context.stdinText
         environment = context.environment
         userHome = context.userHome
+        liveStdout = context.liveStdout
+        liveStderr = context.liveStderr
       }
     val cliComponent = CliComponent::class.create(runtimeComponent, runState)
     val rootCommand = cliComponent.rootCommand

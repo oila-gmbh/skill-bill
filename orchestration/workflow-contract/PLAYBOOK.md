@@ -193,9 +193,22 @@ The CLI exposes the same recovery surface through:
 - `skill-bill workflow show <workflow-id>`
 - `skill-bill workflow resume <workflow-id>`
 - `skill-bill workflow continue <workflow-id>`
+- `skill-bill workflow continue <issue-key> [--subtask-id <id>]`
 - `skill-bill verify-workflow show <workflow-id>`
 - `skill-bill verify-workflow resume <workflow-id>`
 - `skill-bill verify-workflow continue <workflow-id>`
+
+For decomposed feature parents, `feature_implement_workflow_continue` also
+accepts a parent `issue_key` and optional `subtask_id`. The issue-key path is a
+goal-continuation entry for one subtask: it starts or resumes only the selected
+runnable subtask, derives the subtask contract from persisted artifacts and the
+subtask spec, suppresses PR creation, and records the machine-readable outcome
+in durable workflow state. The optional `subtask_id` is a constraint, not a
+skip-ahead flag; a later subtask blocks until dependencies are complete.
+Outcome fields are `issue_key`, `subtask_id`, terminal `status`, `commit_sha`,
+`workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is the
+authoritative channel; stdout and git-tracked manifest projections are
+diagnostic/recovery views.
 
 ## Pilot: `bill-feature-implement`
 

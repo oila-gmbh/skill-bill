@@ -22,11 +22,39 @@ class McpWorkflowContinuationRuntimeTest {
     val workflowId = opened["workflow_id"] as String
 
     McpWorkflowRuntime.update(WorkflowFamilyKind.IMPLEMENT, fixture.updateRequest(workflowId), fixture.context)
-    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "SKILL-51", fixture.context)
+    val continued = McpWorkflowRuntime.continueWorkflow(
+      WorkflowFamilyKind.IMPLEMENT,
+      "SKILL-51",
+      fixture.context,
+      subtaskId = 1,
+    )
 
     assertEquals("ok", continued["status"])
     assertEquals(1, continued["decomposition_subtask_id"])
     assertEquals(fixture.subtaskSpec.toString(), continued["decomposition_subtask_spec_path"])
+  }
+
+  @Test
+  fun `mcp workflow continue handler forwards requested decomposed subtask constraint`() {
+    val fixture = mcpDecompositionFixture()
+    val opened = McpWorkflowRuntime.open(
+      WorkflowFamilyKind.IMPLEMENT,
+      sessionId = "fis-mcp-decomp",
+      context = fixture.context,
+    )
+    val workflowId = opened["workflow_id"] as String
+
+    McpWorkflowRuntime.update(WorkflowFamilyKind.IMPLEMENT, fixture.updateRequest(workflowId), fixture.context)
+    val continued = workflowContinue(
+      WorkflowFamilyKind.IMPLEMENT,
+      mapOf("issue_key" to "SKILL-51", "subtask_id" to 2),
+      fixture.context,
+    )
+
+    assertEquals("error", continued["status"])
+    assertEquals("blocked", continued["continue_status"])
+    assertEquals(2, continued["decomposition_subtask_id"])
+    assertEquals("Requested subtask 2 is not the next runnable subtask for SKILL-51.", continued["blocked_reason"])
   }
 }
 
@@ -34,6 +62,7 @@ private data class McpDecompositionFixture(
   val context: McpRuntimeContext,
   val parentSpec: Path,
   val subtaskSpec: Path,
+  val secondSubtaskSpec: Path,
 ) {
   fun updateRequest(workflowId: String): WorkflowUpdateRequest = WorkflowUpdateRequest(
     workflowId = workflowId,
@@ -53,6 +82,12 @@ private data class McpDecompositionFixture(
             "spec_path" to subtaskSpec.toString(),
             "depends_on" to emptyList<Int>(),
           ),
+          mapOf(
+            "id" to 2,
+            "name" to "runtime",
+            "spec_path" to secondSubtaskSpec.toString(),
+            "depends_on" to listOf(1),
+          ),
         ),
       ),
     ),
@@ -65,9 +100,11 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
   Files.writeString(configPath, """{"install_id":"test","telemetry":{"level":"off"}}""")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
   val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+  val secondSubtaskSpec = parentSpec.parent.resolve("spec_subtask_2_runtime.md")
   Files.createDirectories(parentSpec.parent)
   Files.writeString(parentSpec, "# Parent")
   Files.writeString(subtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
+  Files.writeString(secondSubtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
   return McpDecompositionFixture(
     context = McpRuntimeContext(
       environment = mapOf(
@@ -79,6 +116,7 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
     ),
     parentSpec = parentSpec,
     subtaskSpec = subtaskSpec,
+    secondSubtaskSpec = secondSubtaskSpec,
   )
 }
 

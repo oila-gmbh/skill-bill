@@ -195,6 +195,7 @@ object McpToolRegistry {
         properties = mapOf(
           "workflow_id" to stringSchema(),
           "issue_key" to stringSchema(),
+          "subtask_id" to integerSchema,
         ),
       ),
       "feature_implement_workflow_get" to workflowIdSchema(),
