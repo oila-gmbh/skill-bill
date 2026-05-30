@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 ---
 
 # SKILL-58 Subtask 2 - Durable-State Reconciliation + Stale-Row Hygiene

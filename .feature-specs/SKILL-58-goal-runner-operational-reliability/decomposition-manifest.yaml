@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "main"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "goal-reset-recovery"
@@ -25,12 +25,12 @@ subtasks:
 - id: 2
   name: "durable-reconciliation"
   spec_path: ".feature-specs/SKILL-58-goal-runner-operational-reliability/spec_subtask_2_durable-reconciliation.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-58-goal-runner-operational-reliability"
   commit_sha: null
   workflow_id: "wfl-20260530-195116-pqtp"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false
