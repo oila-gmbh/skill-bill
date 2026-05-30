@@ -52,6 +52,10 @@ class GoalRunCommand(
     "--no-live-output",
     help = "Do not tee child stdout and stderr to this terminal.",
   ).flag(default = false)
+  private val debugChildOutput by option(
+    "--debug-child-output",
+    help = "Show full child stdout/stderr instead of only structured skill-bill lines.",
+  ).flag(default = false)
 
   override val invokeWithoutSubcommand: Boolean = true
 
@@ -74,7 +78,7 @@ class GoalRunCommand(
         dbPathOverride = state.dbOverride,
         timeout = maxWallClockMinutes?.minutes,
         progressIdleTimeout = progressIdleTimeoutMinutes.minutes,
-        outputSink = presenter.outputSink(),
+        outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
       ),
     )
@@ -123,10 +127,13 @@ private class GoalRunPresenter(
       state.liveStdout(event.progressLine())
     }
 
-  fun outputSink(): AgentRunOutputSink = if (!liveOutput) {
+  fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE
   } else {
     AgentRunOutputSink { stream, text ->
+      if (!includeRawChildOutput && "skill-bill:" !in text) {
+        return@AgentRunOutputSink
+      }
       when (stream) {
         AgentRunOutputStream.STDOUT -> state.liveStdout(text)
         AgentRunOutputStream.STDERR -> state.liveStderr(text)
@@ -193,6 +200,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "current_subtask" to it.currentSubtaskId,
     "current_step" to it.currentStep,
     "active_agent" to it.activeAgent,
+    "latest_liveness_signal" to it.latestLivenessSignal,
   )
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -203,6 +211,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "current_subtask" to null,
   "current_step" to null,
   "active_agent" to null,
+  "latest_liveness_signal" to null,
 )
 
 private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
@@ -214,6 +223,7 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
+  appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1

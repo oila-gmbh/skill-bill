@@ -28,14 +28,15 @@ class GoalRunnerStatusService(
         val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
           subtask.id == manifest.currentSubtaskIntent.subtaskId
         }
-        val currentStep = currentSubtask
+        val progress = currentSubtask
           ?.workflowId
           ?.takeIf(String::isNotBlank)
-          ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride)?.currentStepId }
+          ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
         GoalRunnerStatusProjector.project(
           manifest = manifest,
           activeAgent = effectiveAgent.id,
-          currentStepOverride = currentStep,
+          currentStepOverride = progress?.currentStepId,
+          latestLivenessSignal = progress?.latestLivenessSignal,
         )
       }
   }

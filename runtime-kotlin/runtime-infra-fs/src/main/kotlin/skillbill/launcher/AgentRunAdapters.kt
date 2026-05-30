@@ -37,6 +37,7 @@ class ProcessAgentRunAdapter(
       stderr = result.stderr,
       timedOut = result.timedOut,
       spawnFailed = result.spawnFailed,
+      liveness = result.liveness,
     )
   }
 }

@@ -3,7 +3,7 @@ contract_version: "0.2"
 issue_key: "SKILL-57"
 feature_name: "goal-runner-production-hardening"
 parent_spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-57-goal-runner-production-hardening"
@@ -54,12 +54,12 @@ subtasks:
 - id: 4
   name: "agent-compatibility-policy"
   spec_path: ".feature-specs/SKILL-57-goal-runner-production-hardening/spec_subtask_4_agent-compatibility-policy.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-57-goal-runner-production-hardening"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260530-185813-hwp5"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 1
     optional: false

@@ -1,4 +1,4 @@
-@file:Suppress("LongParameterList")
+@file:Suppress("LongParameterList", "TooManyFunctions")
 
 package skillbill.application
 
@@ -8,11 +8,13 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStopReport
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -26,6 +28,8 @@ import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -36,6 +40,7 @@ class GoalRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val pullRequestPort: GoalPullRequestPort,
+  private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -175,10 +180,17 @@ class GoalRunner(
       reconciled.reason in setOf(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, GoalRunnerStopReason.TIMEOUT) &&
       knownWorkflowId != null
     ) {
+      val progress = outcomeStore.progress(knownWorkflowId, request.dbPathOverride)
       val blockedStepId = outcomeStore.markBlocked(
         workflowId = knownWorkflowId,
-        blockedReason = reconciled.blockedReason,
+        blockedReason = reconciled.blockedReason.withStopDiagnostics(knownWorkflowId, progress, reconciled.liveness),
         lastResumableStep = reconciled.lastResumableStep,
+        supervisionEvent = supervisionEvent(
+          reason = reconciled.reason,
+          knownWorkflowId = knownWorkflowId,
+          progress = progress,
+          liveness = reconciled.liveness,
+        ),
         dbPathOverride = request.dbPathOverride,
       )
       blockedStepId?.takeIf(String::isNotBlank)?.let { stepId ->
@@ -204,7 +216,11 @@ class GoalRunner(
         attempted = attempted,
         subtaskId = subtaskId,
         reason = stoppedOutcome.reason,
-        blockedReason = stoppedOutcome.blockedReason,
+        blockedReason = stoppedOutcome.blockedReason.withStopDiagnostics(
+          knownWorkflowId = knownWorkflowId,
+          progress = knownWorkflowId?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) },
+          liveness = stoppedOutcome.liveness,
+        ),
         workflowId = knownWorkflowId,
         lastResumableStep = stoppedOutcome.lastResumableStep,
       ),
@@ -217,6 +233,17 @@ class GoalRunner(
     attempted: List<Int>,
   ): GoalRunnerRunReport {
     val finalState = manifestStore.save(state, request.dbPathOverride)
+    finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
+      return stopped(
+        issueKey = finalState.manifest.issueKey,
+        attempted = attempted,
+        subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: 0,
+        reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
+        blockedReason = reason,
+        workflowId = null,
+        lastResumableStep = "commit_push",
+      )
+    }
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
       is GoalPullRequestResult.Opened -> completed(finalState.manifest, attempted, result.url)
@@ -231,6 +258,21 @@ class GoalRunner(
         workflowId = null,
         lastResumableStep = "pr_description",
       )
+    }
+  }
+
+  private fun finalizationError(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? {
+    val worktreeStatus = gitOperations.worktreeStatus(repoRoot)
+    if (!worktreeStatus.ok) {
+      return "Goal finalization could not verify worktree cleanliness: ${worktreeStatus.error}"
+    }
+    val dirtyPaths = parseGitPorcelainPaths(worktreeStatus.value.orEmpty())
+    val manifestPath = manifest.parentSpecPath.substringBeforeLast("/") + "/decomposition-manifest.yaml"
+    return if (dirtyPaths.any { path -> path == manifestPath }) {
+      "Goal finalization detected an uncommitted decomposition projection delta at '$manifestPath'. " +
+        "Commit/push the projection or resolve the write before opening the final PR."
+    } else {
+      null
     }
   }
 
@@ -277,6 +319,55 @@ class GoalRunner(
   )
 }
 
+private const val GIT_PORCELAIN_MIN_LENGTH = 4
+private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
+
+private fun parseGitPorcelainPaths(output: String): List<String> = output
+  .lineSequence()
+  .map(String::trimEnd)
+  .filter { line -> line.length >= GIT_PORCELAIN_MIN_LENGTH }
+  .map { line -> line.substring(GIT_PORCELAIN_STATUS_PREFIX_LENGTH).substringAfterLast(" -> ").trim() }
+  .filter(String::isNotBlank)
+  .toList()
+
+private fun String.withStopDiagnostics(
+  knownWorkflowId: String?,
+  progress: GoalRunnerWorkflowProgress?,
+  liveness: GoalRunnerLivenessSnapshot?,
+): String {
+  val details = listOfNotNull(
+    knownWorkflowId?.let { workflowId -> "workflow_id=$workflowId" },
+    progress?.currentStepId?.takeIf(String::isNotBlank)?.let { step -> "current_step=$step" },
+    progress?.latestLivenessSignal?.takeIf(String::isNotBlank)?.let { signal -> "latest_liveness=$signal" },
+    progress?.lastSnapshotUpdatedAt?.takeIf(String::isNotBlank)?.let { at -> "last_snapshot_at=$at" },
+    liveness?.lastFileActivityAt?.takeIf(String::isNotBlank)?.let { at -> "last_file_activity_at=$at" },
+    liveness?.lastOutputAt?.takeIf(String::isNotBlank)?.let { at -> "last_output_at=$at" },
+  ).joinToString(", ")
+  return if (details.isBlank()) this else "$this [$details]"
+}
+
+private fun supervisionEvent(
+  reason: GoalRunnerStopReason,
+  knownWorkflowId: String,
+  progress: GoalRunnerWorkflowProgress?,
+  liveness: GoalRunnerLivenessSnapshot?,
+): GoalRunnerSupervisionEvent = GoalRunnerSupervisionEvent(
+  phase = "goal_runner_supervision",
+  reason = reason.name.lowercase(),
+  continuationMode = when (reason) {
+    GoalRunnerStopReason.TIMEOUT -> "killed_unresponsive_child"
+    GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "continue_inline"
+    else -> "none"
+  },
+  processState = liveness?.processState.orEmpty().ifBlank { "unknown" },
+  workflowId = knownWorkflowId,
+  stepId = progress?.currentStepId ?: liveness?.workflowStep,
+  lastDurableProgress = progress?.latestLivenessSignal ?: liveness?.lastDurableProgressLabel,
+  lastWorkflowSnapshotAt = progress?.lastSnapshotUpdatedAt ?: liveness?.lastWorkflowSnapshotAt,
+  lastFileActivityAt = liveness?.lastFileActivityAt,
+  lastOutputAt = liveness?.lastOutputAt,
+)
+
 private fun skillbill.workflow.model.DecompositionSubtask.progressToken(): String = listOf(
   status,
   workflowId.orEmpty(),
@@ -321,7 +412,12 @@ private class GoalRunnerWorkflowProgressProbe(
 
   override fun progressLabel(): String? = progressState()?.let { progress ->
     progress.childProgress?.let { child ->
-      "subtask $subtaskId workflow ${child.workflowId} step ${child.currentStepId}"
+      listOfNotNull(
+        "subtask $subtaskId",
+        "workflow ${child.workflowId}",
+        "step ${child.currentStepId}",
+        child.latestLivenessSignal,
+      ).joinToString(" ")
     } ?: "subtask $subtaskId manifest updated"
   }
 
@@ -344,6 +440,21 @@ private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLau
       timedOut = timedOut,
       spawnFailed = spawnFailed,
       exitStatus = exitStatus,
+      liveness = liveness?.let { snapshot ->
+        GoalRunnerLivenessSnapshot(
+          phase = snapshot.phase,
+          reason = snapshot.reason,
+          processState = snapshot.processState,
+          workflowId = snapshot.workflowId,
+          workflowStep = snapshot.workflowStep,
+          lastDurableProgressAt = snapshot.lastDurableProgressAt,
+          lastDurableProgressLabel = snapshot.lastDurableProgressLabel,
+          lastWorkflowSnapshotAt = snapshot.lastWorkflowSnapshotAt,
+          lastFileActivityAt = snapshot.lastFileActivityAt,
+          lastFileActivityLabel = snapshot.lastFileActivityLabel,
+          lastOutputAt = snapshot.lastOutputAt,
+        )
+      },
     )
     is UnsupportedAgentRunLaunch -> GoalRunnerLaunchFacts(spawnFailed = true)
   }

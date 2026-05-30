@@ -285,6 +285,34 @@ class AgentRunLauncherTest {
   }
 
   @Test
+  fun `jvm process runner emits periodic status heartbeat during long active runs`() {
+    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 0.35"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 3.seconds,
+        statusHeartbeatInterval = 100.milliseconds,
+        progressProbe = object : AgentRunProgressProbe {
+          override fun progressToken(): String = "workflow-token"
+          override fun progressLabel(): String = "subtask 4 workflow wfl-child step preplan"
+        },
+        outputSink = { stream, text -> events += stream to text },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertFalse(result.timedOut)
+    assertTrue(
+      events.any { event ->
+        event.first == AgentRunOutputStream.STDERR &&
+          "skill-bill: status heartbeat (100ms): child run still active;" in event.second &&
+          "workflow: subtask 4 workflow wfl-child step preplan" in event.second
+      },
+    )
+  }
+
+  @Test
   fun `jvm process runner stops after bounded file activity grace without durable workflow progress`() {
     var activityProbeCount = 0
     val result = JvmAgentRunProcessRunner().run(

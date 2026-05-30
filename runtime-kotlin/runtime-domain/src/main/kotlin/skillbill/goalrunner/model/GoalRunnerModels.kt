@@ -24,6 +24,34 @@ data class GoalRunnerLaunchFacts(
   val timedOut: Boolean = false,
   val spawnFailed: Boolean = false,
   val exitStatus: Int? = null,
+  val liveness: GoalRunnerLivenessSnapshot? = null,
+)
+
+data class GoalRunnerLivenessSnapshot(
+  val phase: String,
+  val reason: String,
+  val processState: String,
+  val workflowId: String? = null,
+  val workflowStep: String? = null,
+  val lastDurableProgressAt: String? = null,
+  val lastDurableProgressLabel: String? = null,
+  val lastWorkflowSnapshotAt: String? = null,
+  val lastFileActivityAt: String? = null,
+  val lastFileActivityLabel: String? = null,
+  val lastOutputAt: String? = null,
+)
+
+data class GoalRunnerSupervisionEvent(
+  val phase: String,
+  val reason: String,
+  val continuationMode: String,
+  val processState: String,
+  val workflowId: String?,
+  val stepId: String?,
+  val lastDurableProgress: String?,
+  val lastWorkflowSnapshotAt: String?,
+  val lastFileActivityAt: String?,
+  val lastOutputAt: String?,
 )
 
 data class GoalRunnerStoredOutcome(
@@ -48,6 +76,7 @@ sealed interface GoalRunnerReconciledOutcome {
     val workflowId: String?,
     val commitSha: String?,
     val lastResumableStep: String,
+    val liveness: GoalRunnerLivenessSnapshot? = null,
   ) : GoalRunnerReconciledOutcome
 }
 
@@ -108,6 +137,7 @@ data class GoalRunnerStatusProjection(
   val currentSubtaskId: Int?,
   val currentStep: String?,
   val activeAgent: String?,
+  val latestLivenessSignal: String? = null,
 )
 
 object GoalRunnerStatusProjector {
@@ -115,6 +145,7 @@ object GoalRunnerStatusProjector {
     manifest: DecompositionManifest,
     activeAgent: String? = null,
     currentStepOverride: String? = null,
+    latestLivenessSignal: String? = null,
   ): GoalRunnerStatusProjection {
     val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
     return GoalRunnerStatusProjection(
@@ -125,6 +156,7 @@ object GoalRunnerStatusProjector {
       currentSubtaskId = currentSubtask?.id,
       currentStep = currentStepOverride?.takeIf(String::isNotBlank) ?: currentSubtask?.lastResumableStep,
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
+      latestLivenessSignal = latestLivenessSignal?.takeIf(String::isNotBlank),
     )
   }
 }
