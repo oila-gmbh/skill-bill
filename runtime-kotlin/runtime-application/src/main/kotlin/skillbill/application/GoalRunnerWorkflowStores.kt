@@ -144,6 +144,7 @@ class WorkflowGoalRunnerManifestStore(
     decompositionManifestFileStore.findDecompositionManifestFiles(repoRoot)
       .asSequence()
       .sortedBy { path -> path.toString() }
+      .filter { path -> path.mayContainIssueKey(repoRoot, issueKey) }
       .mapNotNull { path ->
         loadManifestOrNull(path, decompositionManifestValidator, decompositionManifestFileStore)
           ?.let { manifest -> ProjectedManifestCandidate(path, manifest) }
@@ -167,6 +168,11 @@ private data class ProjectedManifestCandidate(
   val path: Path,
   val manifest: DecompositionManifest,
 )
+
+private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
+  runCatching { repoRoot.relativize(this).toString() }
+    .getOrElse { toString() }
+    .contains(issueKey)
 
 @Inject
 class WorkflowGoalRunnerOutcomeStore(

@@ -289,8 +289,10 @@ class WorkflowServiceTest {
     val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-import")
     val completedPath = repoRoot.resolve(".feature-specs/SKILL-52.1-a-discovery/decomposition-manifest.yaml")
     val activePath = repoRoot.resolve(".feature-specs/SKILL-52.1-z-implementation/decomposition-manifest.yaml")
+    val unrelatedInvalidPath = repoRoot.resolve(".feature-specs/SKILL-55-launch-readiness/decomposition-manifest.yaml")
     Files.createDirectories(completedPath.parent)
     Files.createDirectories(activePath.parent)
+    Files.createDirectories(unrelatedInvalidPath.parent)
     Files.writeString(
       completedPath,
       encodeDecompositionManifestYaml(
@@ -306,6 +308,18 @@ class WorkflowServiceTest {
         testDecompositionManifestValidator,
         TestDecompositionManifestFileStore,
       ),
+    )
+    Files.writeString(
+      unrelatedInvalidPath,
+      """
+      ---
+      contract_version: "0.2"
+      issue_key: "SKILL-55"
+      current_subtask_intent:
+        subtask_id: 1
+        action: "complete"
+      ---
+      """.trimIndent(),
     )
     val store = WorkflowGoalRunnerManifestStore(
       database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
