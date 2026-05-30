@@ -39,11 +39,13 @@ Do not start `skill-bill goal` while the decomposition is unconfirmed. If the us
 
 ## Confirmed Handoff
 
-After confirmation, ensure the decomposed parent workflow and runtime manifest have been created by the normal feature-implementation decomposition path. Then hand off to the foreground driver:
+After confirmation, ensure the decomposed parent workflow and runtime manifest have been created by the normal feature-implementation decomposition path. Then execute the foreground driver directly in the current agent session:
 
 ```bash
 skill-bill goal <issue_key>
 ```
+
+Do not ask the user to run this command manually. The confirmation gate is the only user interaction required before execution starts.
 
 Use `--agent` when the invoking agent id is known and `--agent-override` only when the user explicitly selected a different child agent. Keep live output enabled unless the user asks for quieter output.
 
