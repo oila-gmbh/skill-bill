@@ -1,6 +1,8 @@
 package skillbill.launcher
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.agentrun.model.AgentRunOutputSink
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -18,8 +20,18 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     }
     val process = (processStart as ProcessStart.Started).process
 
-    val stdout = CappedUtf8Drain(process.inputStream, AGENT_RUN_OUTPUT_LIMIT_BYTES).also { it.start() }
-    val stderr = CappedUtf8Drain(process.errorStream, AGENT_RUN_OUTPUT_LIMIT_BYTES).also { it.start() }
+    val stdout = CappedUtf8Drain(
+      input = process.inputStream,
+      limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
+      outputStream = AgentRunOutputStream.STDOUT,
+      outputSink = request.outputSink,
+    ).also { it.start() }
+    val stderr = CappedUtf8Drain(
+      input = process.errorStream,
+      limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
+      outputStream = AgentRunOutputStream.STDERR,
+      outputSink = request.outputSink,
+    ).also { it.start() }
     val timeoutMillis = request.timeout.toLong(DurationUnit.MILLISECONDS).coerceAtLeast(MIN_TIMEOUT_MILLIS)
     val finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
     if (!finished) {
@@ -72,6 +84,8 @@ private sealed interface ProcessStart {
 private class CappedUtf8Drain(
   private val input: InputStream,
   private val limitBytes: Int,
+  private val outputStream: AgentRunOutputStream,
+  private val outputSink: AgentRunOutputSink,
 ) {
   private val output = ByteArrayOutputStream(limitBytes.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES))
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
@@ -84,6 +98,7 @@ private class CappedUtf8Drain(
           break
         }
         output.write(buffer, 0, read)
+        outputSink.write(outputStream, String(buffer, 0, read, StandardCharsets.UTF_8))
         remaining -= read
       }
       while (stream.read(buffer) != -1) {

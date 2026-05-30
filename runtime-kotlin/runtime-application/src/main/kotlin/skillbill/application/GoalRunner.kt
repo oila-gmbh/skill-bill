@@ -3,6 +3,7 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
@@ -38,6 +39,7 @@ class GoalRunner(
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
     var terminalReport: GoalRunnerRunReport? = null
+    request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
       when (selection) {
@@ -56,6 +58,14 @@ class GoalRunner(
             workflowId = selection.subtask.workflowId,
             lastResumableStep = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
           )
+          request.eventSink.emit(
+            GoalRunnerRunEvent.SubtaskStopped(
+              issueKey = state.manifest.issueKey,
+              subtaskId = selection.subtask.id,
+              reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED.name.lowercase(),
+              blockedReason = selection.reason,
+            ),
+          )
         }
         is GoalRunnerSelection.Run -> {
           val result = runSelectedSubtask(state, selection, request, attempted)
@@ -63,6 +73,15 @@ class GoalRunner(
           terminalReport = result.report
         }
       }
+    }
+    if (terminalReport is GoalRunnerRunReport.Completed) {
+      request.eventSink.emit(
+        GoalRunnerRunEvent.Completed(
+          issueKey = terminalReport.issueKey,
+          completedCount = terminalReport.subtasksCompleted,
+          pullRequestUrl = terminalReport.pullRequestUrl,
+        ),
+      )
     }
     return terminalReport
   }
@@ -79,6 +98,13 @@ class GoalRunner(
       request.dbPathOverride,
     )
     attempted += subtaskId
+    request.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStarted(
+        issueKey = attemptedState.manifest.issueKey,
+        subtaskId = subtaskId,
+        action = selection.decision.action.name.lowercase(),
+      ),
+    )
     val launchOutcome = subtaskLauncher.launch(
       subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
     )
@@ -89,12 +115,14 @@ class GoalRunner(
       storedOutcome = storedOutcome(refreshed, subtaskId, request),
     )
     return when (reconciled) {
-      is GoalRunnerReconciledOutcome.Complete -> GoalRunnerIterationResult(
-        state = manifestStore.save(
+      is GoalRunnerReconciledOutcome.Complete -> {
+        val completed = manifestStore.save(
           refreshed.copy(manifest = refreshed.manifest.withCompletedSubtask(subtaskId, reconciled)),
           request.dbPathOverride,
-        ),
-      )
+        )
+        request.eventSink.emit(GoalRunnerRunEvent.SubtaskCompleted(completed.manifest.issueKey, subtaskId))
+        GoalRunnerIterationResult(state = completed)
+      }
       is GoalRunnerReconciledOutcome.Stop -> stoppedIteration(refreshed, subtaskId, reconciled, request, attempted)
     }
   }
@@ -112,6 +140,7 @@ class GoalRunner(
       subtaskId = subtaskId,
       dbPathOverride = request.dbPathOverride,
       timeout = request.timeout,
+      outputSink = request.outputSink,
     ),
   )
 
@@ -136,6 +165,14 @@ class GoalRunner(
   ): GoalRunnerIterationResult {
     val blocked = state.manifest.withStoppedSubtask(subtaskId, reconciled)
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    request.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = saved.manifest.issueKey,
+        subtaskId = subtaskId,
+        reason = reconciled.reason.name.lowercase(),
+        blockedReason = reconciled.blockedReason,
+      ),
+    )
     return GoalRunnerIterationResult(
       state = saved,
       report = stopped(

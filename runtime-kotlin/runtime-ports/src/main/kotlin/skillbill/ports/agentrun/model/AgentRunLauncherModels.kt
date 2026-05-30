@@ -11,11 +11,25 @@ data class SkillRunRequest(
   val subtaskId: Int? = null,
   val dbPathOverride: String? = null,
   val timeout: Duration = DEFAULT_AGENT_RUN_TIMEOUT,
+  val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
     require(timeout.isPositive()) { "timeout must be positive." }
+  }
+}
+
+enum class AgentRunOutputStream {
+  STDOUT,
+  STDERR,
+}
+
+fun interface AgentRunOutputSink {
+  fun write(stream: AgentRunOutputStream, text: String)
+
+  companion object {
+    val NONE: AgentRunOutputSink = AgentRunOutputSink { _, _ -> }
   }
 }
 

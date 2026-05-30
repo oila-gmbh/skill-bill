@@ -1,3 +1,13 @@
+## [2026-05-30] SKILL-56 subtask 4 cli-and-bill-goal-skill
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core, skills/bill-goal
+- Added the foreground `skill-bill goal` command and read-only `goal status` surface over the subtask-3 `GoalRunner`/status projection; CLI remains a thin adapter with text/payload mapping only. reusable
+- Live child stdout/stderr teeing is a narrow `AgentRunOutputSink` carried through request models into infra-fs `JvmAgentRunProcessRunner`; captured bounded output remains intact and process IO stays outside application/domain. reusable
+- `GoalRunnerRunEvent` gives the CLI readable per-subtask progress without parsing workflow internals or changing loop semantics; stop reports still use workflow-store outcomes as authority.
+- Added canonical `skills/bill-goal/content.md` plus README catalog row; source remains content.md-only and install/render sync produced agent links without committing generated wrappers.
+- E2E evidence uses fake `codex`/`gh` executables to exercise the real foreground driver, fresh process per subtask, manifest advancement, final PR call, and forced-failure stop report; it does not claim hosted-agent/GitHub coverage.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
 ## [2026-05-30] SKILL-56 subtask 3 goal-runner-service
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
 - Added `GoalRunner` as the parent loop over decomposed manifests: select dependency-ready subtasks, launch one fresh agent process per subtask, reconcile process facts with workflow-store outcomes, and advance manifest runtime state. reusable

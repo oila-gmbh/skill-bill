@@ -3,7 +3,7 @@ contract_version: "0.2"
 issue_key: "SKILL-56"
 feature_name: "agent-independent-goal-runner"
 parent_spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-56-agent-independent-goal-runner"
@@ -54,12 +54,12 @@ subtasks:
 - id: 4
   name: "cli-and-bill-goal-skill"
   spec_path: ".feature-specs/SKILL-56-agent-independent-goal-runner/spec_subtask_4_cli-and-bill-goal-skill.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-56-agent-independent-goal-runner"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260530-095108-337u"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 3
     optional: false

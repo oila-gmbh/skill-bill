@@ -190,7 +190,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun agentRunLauncher(adapter: FileSystemAgentRunLauncher): AgentRunLauncher = adapter
+  internal fun agentRunLauncher(context: RuntimeContext, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
+    context.agentRunLauncher ?: adapter
 
   @Provides
   @JvmSynthetic
@@ -209,7 +210,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun goalPullRequestPort(adapter: GhGoalPullRequestPort): GoalPullRequestPort = adapter
+  internal fun goalPullRequestPort(context: RuntimeContext, adapter: GhGoalPullRequestPort): GoalPullRequestPort =
+    context.goalPullRequestPort ?: adapter
 
   @Provides
   @JvmSynthetic

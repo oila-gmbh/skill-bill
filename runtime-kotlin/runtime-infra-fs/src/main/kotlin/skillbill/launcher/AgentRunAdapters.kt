@@ -23,6 +23,7 @@ class ProcessAgentRunAdapter(
         timeout = command.timeout,
         environment = command.environment,
         inheritEnvironment = command.inheritEnvironment,
+        outputSink = request.outputSink,
       ),
     )
     return AgentRunLaunchFacts(

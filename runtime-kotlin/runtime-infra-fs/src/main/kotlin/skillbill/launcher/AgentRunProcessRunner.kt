@@ -1,5 +1,6 @@
 package skillbill.launcher
 
+import skillbill.ports.agentrun.model.AgentRunOutputSink
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -11,6 +12,7 @@ data class AgentRunProcessRequest(
   val timeout: Duration,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
+  val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }

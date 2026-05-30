@@ -1,6 +1,8 @@
 package skillbill.cli.models
 
 import skillbill.model.RuntimeContext
+import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -14,6 +16,10 @@ data class CliRuntimeContext(
   val userHome: Path = Path.of(System.getProperty("user.home")),
   val requester: HttpRequester = UnconfiguredHttpRequester,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val agentRunLauncher: AgentRunLauncher? = null,
+  val goalPullRequestPort: GoalPullRequestPort? = null,
+  val liveStdout: (String) -> Unit = {},
+  val liveStderr: (String) -> Unit = {},
 ) {
   fun toRuntimeContext(): RuntimeContext = RuntimeContext(
     dbPathOverride = dbPathOverride,
@@ -22,5 +28,7 @@ data class CliRuntimeContext(
     userHome = userHome,
     requester = requester,
     workflowGitOperations = workflowGitOperations,
+    agentRunLauncher = agentRunLauncher,
+    goalPullRequestPort = goalPullRequestPort,
   )
 }

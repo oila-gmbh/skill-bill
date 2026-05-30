@@ -2,6 +2,7 @@ package skillbill.launcher
 
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import java.nio.file.Path
@@ -126,6 +127,25 @@ class AgentRunLauncherTest {
     assertEquals(2, runner.requests.size)
     assertContains(runner.requests[0].command.last(), "SKILL-56")
     assertContains(runner.requests[1].command.last(), "SKILL-57")
+  }
+
+  @Test
+  fun `jvm process runner tees live output while preserving captured output`() {
+    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf stdout-line; printf stderr-line >&2"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 3.seconds,
+        outputSink = { stream, text -> events += stream to text },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertEquals("stdout-line", result.stdout)
+    assertEquals("stderr-line", result.stderr)
+    assertTrue(events.any { it.first == AgentRunOutputStream.STDOUT && it.second == "stdout-line" })
+    assertTrue(events.any { it.first == AgentRunOutputStream.STDERR && it.second == "stderr-line" })
   }
 
   private fun skillRunRequest(issueKey: String = "SKILL-56"): SkillRunRequest = SkillRunRequest(

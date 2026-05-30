@@ -7,7 +7,14 @@ fun main(args: Array<String>) {
     } else {
       null
     }
-  val result = CliRuntime.run(args.toList(), CliRuntimeContext(stdinText = stdinText))
+  val result = CliRuntime.run(
+    args.toList(),
+    CliRuntimeContext(
+      stdinText = stdinText,
+      liveStdout = { print(it) },
+      liveStderr = { System.err.print(it) },
+    ),
+  )
   print(result.stdout)
   if (result.stdout.isNotEmpty() && !result.stdout.endsWith("\n")) {
     println()

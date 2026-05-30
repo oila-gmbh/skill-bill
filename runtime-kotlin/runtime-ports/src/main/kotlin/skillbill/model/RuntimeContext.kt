@@ -1,5 +1,7 @@
 package skillbill.model
 
+import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -13,6 +15,8 @@ data class RuntimeContext(
   val userHome: Path = UnspecifiedUserHome,
   val requester: HttpRequester = UnconfiguredHttpRequester,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val agentRunLauncher: AgentRunLauncher? = null,
+  val goalPullRequestPort: GoalPullRequestPort? = null,
 ) {
   companion object {
     val UnspecifiedEnvironment: Map<String, String> = object : AbstractMap<String, String>() {
