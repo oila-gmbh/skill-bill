@@ -27,6 +27,109 @@ class CliGoalRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "Run a decomposed goal in the foreground.")
     assertContains(result.stdout, "status")
+    assertContains(result.stdout, "reset")
+  }
+
+  @Test
+  fun `goal reset soft preserves completed subtasks and clears blocked runtime pointers`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
+    val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    assertEquals(1, run.exitCode, run.stdout)
+
+    val reset = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "reset",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, reset.exitCode, reset.stdout)
+    assertContains(reset.stdout, "status: ok")
+    assertContains(reset.stdout, "mode: soft")
+    assertContains(reset.stdout, "before: status=blocked")
+    assertContains(reset.stdout, "after: status=in_progress")
+    assertContains(reset.stdout, "id=1; status=complete")
+    assertContains(reset.stdout, "id=2; status=pending")
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "pending: 1")
+    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "current_subtask: 2")
+  }
+
+  @Test
+  fun `goal reset hard requires confirmation or force`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val denied = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "reset", "SKILL-901", "--hard"),
+      fixture.context(launcher = launcher),
+    )
+    assertEquals(1, denied.exitCode, denied.stdout)
+    assertContains(denied.stdout, "Hard reset requires explicit confirmation")
+
+    val confirmed = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "reset",
+        "SKILL-901",
+        "--hard",
+        "--confirm-issue-key",
+        "SKILL-901",
+      ),
+      fixture.context(launcher = launcher),
+    )
+    assertEquals(0, confirmed.exitCode, confirmed.stdout)
+    assertContains(confirmed.stdout, "mode: hard")
+    assertContains(confirmed.stdout, "after: status=pending")
+  }
+
+  @Test
+  fun `goal reset hard clears completed outcomes and child workflow linkage`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
+    val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    assertEquals(1, run.exitCode, run.stdout)
+
+    val reset = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "reset",
+        "SKILL-901",
+        "--hard",
+        "--force",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, reset.exitCode, reset.stdout)
+    assertContains(reset.stdout, "status: ok")
+    assertContains(reset.stdout, "mode: hard")
+    assertContains(reset.stdout, "id=1; status=pending")
+    assertContains(reset.stdout, "id=2; status=pending")
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+    assertContains(status.stdout, "complete: 0")
+    assertContains(status.stdout, "pending: 2")
+    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "current_subtask: 1")
   }
 
   @Test

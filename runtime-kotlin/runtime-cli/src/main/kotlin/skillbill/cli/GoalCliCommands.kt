@@ -13,6 +13,8 @@ import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
 import skillbill.application.model.GoalRunnerRunEvent
+import skillbill.application.model.GoalRunnerResetRequest
+import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -26,6 +28,7 @@ import kotlin.time.Duration.Companion.minutes
 class GoalRunCommand(
   private val goalRunner: GoalRunner,
   goalStatusCommand: GoalStatusCommand,
+  goalResetCommand: GoalResetCommand,
   private val state: CliRunState,
 ) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
@@ -60,7 +63,7 @@ class GoalRunCommand(
   override val invokeWithoutSubcommand: Boolean = true
 
   init {
-    subcommands(goalStatusCommand)
+    subcommands(goalStatusCommand, goalResetCommand)
   }
 
   override fun run() {
@@ -115,6 +118,41 @@ class GoalStatusCommand(
     )
     val payload = projection.toGoalStatusCliMap(issueKey)
     state.completeText(goalStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
+  }
+}
+
+@Inject
+class GoalResetCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("reset", "Reset decomposed goal runtime state.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val hard by option("--hard", help = "Reset all subtask runtime fields, including completed subtasks.")
+    .flag(default = false)
+  private val force by option("--force", help = "Bypass hard-reset confirmation gate.")
+    .flag(default = false)
+  private val confirmIssueKey by option(
+    "--confirm-issue-key",
+    help = "Confirmation gate for --hard. Must match the issue key.",
+  )
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+
+  override fun run() {
+    if (hard && !force && confirmIssueKey != issueKey) {
+      throw UsageError(
+        "Hard reset requires explicit confirmation. Pass --confirm-issue-key $issueKey or --force.",
+      )
+    }
+    val result = goalRunnerStatusService.reset(
+      GoalRunnerResetRequest(
+        issueKey = issueKey,
+        hard = hard,
+        dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    val payload = result.toGoalResetCliMap(issueKey, hard)
+    state.completeText(goalResetText(payload), payload, exitCode = payload.goalResetExitCode())
   }
 }
 
@@ -227,5 +265,78 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+
+private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boolean): Map<String, Any?> = this?.let {
+  linkedMapOf(
+    "status" to "ok",
+    "issue_key" to it.issueKey,
+    "mode" to it.mode,
+    "parent_workflow_id" to it.parentWorkflowId,
+    "before" to resetSnapshotMap(it.before),
+    "after" to resetSnapshotMap(it.after),
+  )
+} ?: linkedMapOf(
+  "status" to "not_found",
+  "issue_key" to issueKey,
+  "mode" to if (hard) "hard" else "soft",
+)
+
+private fun resetSnapshotMap(
+  snapshot: skillbill.application.model.GoalRunnerResetSnapshot,
+): Map<String, Any?> = linkedMapOf(
+  "status" to snapshot.status,
+  "current_subtask" to snapshot.currentSubtaskId,
+  "current_action" to snapshot.currentAction,
+  "subtasks" to snapshot.subtasks.map { subtask ->
+    linkedMapOf(
+      "id" to subtask.id,
+      "status" to subtask.status,
+      "branch" to subtask.branch,
+      "workflow_id" to subtask.workflowId,
+      "commit_sha" to subtask.commitSha,
+      "blocked_reason" to subtask.blockedReason,
+      "last_resumable_step" to subtask.lastResumableStep,
+    )
+  },
+)
+
+private fun goalResetText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  appendLine("mode: ${payload["mode"]}")
+  payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
+  val before = payload["before"] as? Map<*, *>
+  val after = payload["after"] as? Map<*, *>
+  if (before != null && after != null) {
+    appendLine("before: status=${before["status"]}; current_subtask=${before["current_subtask"] ?: "none"}")
+    appendLine("after: status=${after["status"]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine("before_subtasks:")
+    appendSubtaskLines(this, before["subtasks"] as? List<*>)
+    appendLine("after_subtasks:")
+    appendSubtaskLines(this, after["subtasks"] as? List<*>)
+  }
+}
+
+private fun appendSubtaskLines(builder: StringBuilder, subtasks: List<*>?) {
+  subtasks.orEmpty().forEach { raw ->
+    val subtask = raw as? Map<*, *> ?: return@forEach
+    builder.append("  - ")
+    builder.append("id=")
+    builder.append(subtask["id"])
+    builder.append("; status=")
+    builder.append(subtask["status"])
+    builder.append("; workflow_id=")
+    builder.append(subtask["workflow_id"] ?: "none")
+    builder.append("; commit_sha=")
+    builder.append(subtask["commit_sha"] ?: "none")
+    builder.append("; blocked_reason=")
+    builder.append(subtask["blocked_reason"] ?: "none")
+    builder.append("; last_resumable_step=")
+    builder.append(subtask["last_resumable_step"] ?: "none")
+    builder.append('\n')
+  }
+}
+
+private fun Map<String, Any?>.goalResetExitCode(): Int = if (this["status"] == "ok") 0 else 1
 
 private const val DEFAULT_GOAL_AGENT = "codex"

@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: In Progress
 ---
 
 # SKILL-58 Subtask 1 - Goal Reset + Recovery Contract

@@ -2,6 +2,10 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.application.model.GoalRunnerResetRequest
+import skillbill.application.model.GoalRunnerResetResult
+import skillbill.application.model.GoalRunnerResetSnapshot
+import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -11,6 +15,7 @@ import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 
 @Inject
 class GoalRunnerStatusService(
@@ -39,6 +44,21 @@ class GoalRunnerStatusService(
           latestLivenessSignal = progress?.latestLivenessSignal,
         )
       }
+  }
+
+  fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      ?: return null
+    val before = loaded.manifest.toResetSnapshot()
+    val resetManifest = loaded.manifest.resetManifest(request.hard)
+    val saved = manifestStore.save(loaded.copy(manifest = resetManifest), request.dbPathOverride)
+    return GoalRunnerResetResult(
+      issueKey = saved.manifest.issueKey,
+      mode = if (request.hard) "hard" else "soft",
+      parentWorkflowId = saved.parentWorkflowId,
+      before = before,
+      after = saved.manifest.toResetSnapshot(),
+    )
   }
 
   private fun DecompositionManifest.withTerminalCurrentSubtask(
@@ -101,3 +121,62 @@ class GoalRunnerStatusService(
     return copy(status = parentStatus, currentSubtaskIntent = intent, subtasks = updatedSubtasks)
   }
 }
+
+private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
+  val resetSubtasks = subtasks.map { subtask ->
+    val preserveOutcome = !hard && subtask.status in setOf("complete", "skipped")
+    if (preserveOutcome) {
+      subtask.copy(
+        blockedReason = null,
+        lastResumableStep = null,
+      )
+    } else {
+      subtask.copy(
+        status = "pending",
+        branch = null,
+        commitSha = null,
+        workflowId = null,
+        blockedReason = null,
+        lastResumableStep = null,
+      )
+    }
+  }
+  return copy(
+    currentSubtaskIntent = restartIntent(resetSubtasks),
+    subtasks = resetSubtasks,
+  ).withParentStatus()
+}
+
+private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
+  if (subtasks.all { it.status in setOf("complete", "skipped") }) {
+    return CurrentSubtaskIntent(subtaskId = 0, action = "none")
+  }
+  val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
+  val nextRunnable = subtasks.firstOrNull { subtask ->
+    subtask.status == "pending" && subtask.dependencies.all { dependency ->
+      val dependencySubtask = subtasksById[dependency.subtaskId]
+      dependencySubtask?.status in setOf("complete", "skipped") || (dependency.optional && dependency.skipped)
+    }
+  } ?: subtasks.firstOrNull { it.status == "pending" }
+  return CurrentSubtaskIntent(
+    subtaskId = nextRunnable?.id ?: 0,
+    action = if (nextRunnable == null) "none" else "start",
+  )
+}
+
+private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = GoalRunnerResetSnapshot(
+  status = status,
+  currentSubtaskId = currentSubtaskIntent.subtaskId.takeIf { it > 0 },
+  currentAction = currentSubtaskIntent.action,
+  subtasks = subtasks.map { subtask ->
+    GoalRunnerResetSubtaskSnapshot(
+      id = subtask.id,
+      status = subtask.status,
+      branch = subtask.branch,
+      workflowId = subtask.workflowId,
+      commitSha = subtask.commitSha,
+      blockedReason = subtask.blockedReason,
+      lastResumableStep = subtask.lastResumableStep,
+    )
+  },
+)

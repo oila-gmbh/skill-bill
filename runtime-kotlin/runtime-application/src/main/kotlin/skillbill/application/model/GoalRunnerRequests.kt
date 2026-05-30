@@ -80,3 +80,39 @@ data class GoalRunnerStatusRequest(
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
   }
 }
+
+data class GoalRunnerResetRequest(
+  val issueKey: String,
+  val hard: Boolean,
+  val dbPathOverride: String? = null,
+  val repoRoot: Path? = null,
+) {
+  init {
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+  }
+}
+
+data class GoalRunnerResetResult(
+  val issueKey: String,
+  val mode: String,
+  val parentWorkflowId: String,
+  val before: GoalRunnerResetSnapshot,
+  val after: GoalRunnerResetSnapshot,
+)
+
+data class GoalRunnerResetSnapshot(
+  val status: String,
+  val currentSubtaskId: Int?,
+  val currentAction: String,
+  val subtasks: List<GoalRunnerResetSubtaskSnapshot>,
+)
+
+data class GoalRunnerResetSubtaskSnapshot(
+  val id: Int,
+  val status: String,
+  val branch: String?,
+  val workflowId: String?,
+  val commitSha: String?,
+  val blockedReason: String?,
+  val lastResumableStep: String?,
+)
