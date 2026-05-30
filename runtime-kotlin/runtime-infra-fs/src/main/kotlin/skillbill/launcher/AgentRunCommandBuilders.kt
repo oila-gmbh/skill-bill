@@ -8,7 +8,7 @@ import kotlin.time.DurationUnit
 data class AgentRunCommand(
   val command: List<String>,
   val workingDirectory: Path,
-  val timeout: kotlin.time.Duration,
+  val timeout: kotlin.time.Duration?,
   val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
@@ -78,17 +78,19 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
 
   override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-    command = listOf(
-      "junie",
-      "--project",
-      request.repoRoot.toString(),
-      "--output-format",
-      "text",
-      "--skip-update-check",
-      "--timeout",
-      request.timeout.toLong(DurationUnit.MILLISECONDS).toString(),
-      continuationPrompt(request),
-    ),
+    command = buildList {
+      add("junie")
+      add("--project")
+      add(request.repoRoot.toString())
+      add("--output-format")
+      add("text")
+      add("--skip-update-check")
+      request.timeout?.let { timeout ->
+        add("--timeout")
+        add(timeout.toLong(DurationUnit.MILLISECONDS).toString())
+      }
+      add(continuationPrompt(request))
+    },
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
   )

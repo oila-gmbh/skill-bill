@@ -3,14 +3,13 @@ package skillbill.ports.agentrun.model
 import skillbill.install.model.InstallAgent
 import java.nio.file.Path
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 data class SkillRunRequest(
   val issueKey: String,
   val repoRoot: Path,
   val subtaskId: Int? = null,
   val dbPathOverride: String? = null,
-  val timeout: Duration = DEFAULT_AGENT_RUN_TIMEOUT,
+  val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
@@ -18,7 +17,9 @@ data class SkillRunRequest(
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
-    require(timeout.isPositive()) { "timeout must be positive." }
+    timeout?.let { maxWallClockTimeout ->
+      require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
+    }
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
     }
@@ -83,5 +84,3 @@ data class UnsupportedAgentRunLaunch(
     require(reason.isNotBlank()) { "Unsupported-agent reason is required." }
   }
 }
-
-val DEFAULT_AGENT_RUN_TIMEOUT: Duration = 60.minutes

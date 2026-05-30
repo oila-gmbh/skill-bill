@@ -11,7 +11,7 @@ internal const val AGENT_RUN_OUTPUT_LIMIT_BYTES: Int = 1024 * 1024
 data class AgentRunProcessRequest(
   val command: List<String>,
   val workingDirectory: Path,
-  val timeout: Duration,
+  val timeout: Duration? = null,
   val stdinText: String? = null,
   val progressIdleTimeout: Duration? = null,
   val fileActivityGraceTimeout: Duration = DEFAULT_FILE_ACTIVITY_GRACE_TIMEOUT,
@@ -24,7 +24,9 @@ data class AgentRunProcessRequest(
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
     require(command.first().isNotBlank()) { "Agent run executable is required." }
-    require(timeout.isPositive()) { "Agent run timeout must be positive." }
+    timeout?.let { maxWallClockTimeout ->
+      require(maxWallClockTimeout.isPositive()) { "Agent run timeout must be positive when provided." }
+    }
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "Agent run progress idle timeout must be positive." }
     }

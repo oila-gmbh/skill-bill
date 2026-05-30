@@ -38,11 +38,14 @@ class GoalRunCommand(
     help = "Optional agent to use for child subtask runs instead of the invoking agent.",
   )
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
-  private val timeoutMinutes by option("--timeout-minutes", help = "Per-subtask timeout in minutes.").int()
-    .default(DEFAULT_GOAL_TIMEOUT_MINUTES)
+  private val maxWallClockMinutes by option(
+    "--max-wall-clock-minutes",
+    "--timeout-minutes",
+    help = "Optional per-subtask wall-clock cap in minutes. Default is no wall-clock cap.",
+  ).int()
   private val progressIdleTimeoutMinutes by option(
     "--progress-idle-timeout-minutes",
-    help = "Per-subtask workflow-progress idle timeout in minutes.",
+    help = "Per-subtask durable workflow-progress idle timeout in minutes.",
   ).int()
     .default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT.inWholeMinutes.toInt())
   private val noLiveOutput by option(
@@ -69,7 +72,7 @@ class GoalRunCommand(
         invokedAgentId = agent ?: state.environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
-        timeout = timeoutMinutes.minutes,
+        timeout = maxWallClockMinutes?.minutes,
         progressIdleTimeout = progressIdleTimeoutMinutes.minutes,
         outputSink = presenter.outputSink(),
         eventSink = presenter.eventSink(),
@@ -215,5 +218,4 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
 
-private const val DEFAULT_GOAL_TIMEOUT_MINUTES = 60
 private const val DEFAULT_GOAL_AGENT = "codex"

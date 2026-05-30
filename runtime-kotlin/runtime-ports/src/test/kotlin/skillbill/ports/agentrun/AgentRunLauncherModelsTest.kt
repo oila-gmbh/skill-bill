@@ -10,7 +10,9 @@ import kotlin.time.Duration.Companion.seconds
 
 class AgentRunLauncherModelsTest {
   @Test
-  fun `skill run request requires positive timeout and subtask id`() {
+  fun `skill run request allows no wall-clock cap and validates positive caps and subtask id`() {
+    SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."))
+
     assertFailsWith<IllegalArgumentException> {
       SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), timeout = 0.seconds)
     }
