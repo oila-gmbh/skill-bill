@@ -105,10 +105,18 @@ private fun prSuppressedCommitStatus(update: DecompositionManifestRuntimeUpdate)
   val artifacts = mergedArtifacts(update)
   val goalContinuation = artifacts["goal_continuation"] as? Map<*, *> ?: return null
   val suppressPr = goalContinuation["suppress_pr"] == true
+  val commitPushResult = artifacts["commit_push_result"] as? Map<*, *>
+  val commitPushActive = update.currentStepId == "commit_push" ||
+    update.stepUpdates.orEmpty().any { it["step_id"] == "commit_push" }
+  val preCommitProjection = commitPushActive &&
+    commitPushResult?.get("pre_commit_projection") == true &&
+    commitShaFrom(artifacts) == null
   val commitPushCompleted =
     update.stepUpdates.orEmpty().any { it["step_id"] == "commit_push" && it["status"] == "completed" }
   return when {
-    !suppressPr || !commitPushCompleted -> null
+    !suppressPr -> null
+    preCommitProjection -> "complete"
+    !commitPushCompleted -> null
     commitShaFrom(artifacts) != null -> "complete"
     else -> "blocked"
   }

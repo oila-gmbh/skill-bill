@@ -32,7 +32,7 @@ Workflow-state rules:
 
 Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
 
-Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result` (reserved shell-owned artifact name; runtime behavior unchanged unless the workflow runtime already persists it); Step 9 -> `pr_result`.
+Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`.
 
 ## Continuation Mode
 
@@ -247,11 +247,11 @@ Step id: `commit_push`
 
 Reserved artifact name: `commit_push_result`
 
-1. Stage all new and modified files from this feature (do not use `git add -A`).
-2. Commit with message format `feat: <concise description>` (omit the issue key — the branch name already carries it).
-3. Push the branch to the remote with `-u` to set upstream tracking.
-
-Keep workflow runtime behavior unchanged unless Step 8 already persists a structured artifact.
+1. If this run is a goal-continuation subtask with `goal_continuation.suppress_pr=true`, persist a pre-commit projection before staging: update workflow state with `current_step_id=commit_push`, a running `commit_push` step update, and `artifacts_patch.commit_push_result.pre_commit_projection=true`. This writes the git-tracked decomposition manifest and subtask status files as complete before the commit, while leaving the runtime-only commit SHA unset.
+2. Stage all new and modified files from this feature, including any updated `decomposition-manifest.yaml` and subtask spec status files (do not use `git add -A`).
+3. Commit with message format `feat: <concise description>` (omit the issue key — the branch name already carries it).
+4. Persist the terminal Step 8 artifact after the commit: update workflow state with a completed `commit_push` step and `artifacts_patch.commit_push_result.commit_sha=<HEAD sha>`. The commit SHA is runtime-only and must not create another git-tracked manifest delta.
+5. Push the branch to the remote with `-u` to set upstream tracking.
 
 ## Step 9: Generate PR Description (subagent)
 
@@ -372,7 +372,7 @@ Persist these named artifacts through `artifacts_patch` when the workflow runtim
 - `audit_report`
 - `validation_result`
 - `history_result`
-- `commit_push_result` (reserved shell-owned name; Step 8 currently does not persist it)
+- `commit_push_result`
 - `pr_result`
 
 ### Phase-to-artifact mapping
@@ -389,7 +389,7 @@ has in hand:
 - Step 6 → `audit_report`
 - Step 6b → `validation_result`
 - Step 7 → `history_result`
-- Step 8 → no persisted artifact today; `commit_push_result` remains a shell-documented reserved name until runtime support exists
+- Step 8 → `commit_push_result`
 - Step 9 → `pr_result`
 
 ### Open sequence
