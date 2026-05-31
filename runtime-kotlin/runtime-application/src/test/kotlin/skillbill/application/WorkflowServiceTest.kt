@@ -747,6 +747,7 @@ class WorkflowGoalRunnerOutcomeStoreTest {
 
     requireNotNull(progress)
     assertEquals("finish", progress.currentStepId)
+    assertEquals("workflow_status=running; step=finish", progress.latestLivenessSignal)
   }
 
   @Test

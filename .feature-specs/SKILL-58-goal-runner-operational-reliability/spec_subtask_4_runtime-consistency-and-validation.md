@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: In Progress
 ---
 
 # SKILL-58 Subtask 4 - Runtime/Binary Consistency + Contract Validation

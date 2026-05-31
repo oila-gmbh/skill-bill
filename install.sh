@@ -767,7 +767,7 @@ build_kotlin_runtime_distributions() {
 }
 
 run_runtime_cli() {
-  "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+  SKILL_BILL_RUNTIME_EXECUTABLE="$RUNTIME_CLI_BIN" "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
 }
 
 path_contains_dir() {

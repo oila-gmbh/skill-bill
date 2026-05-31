@@ -157,6 +157,8 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
     assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStdout.toString(), "goal SKILL-901: completion confirmed")
     assertContains(liveStderr.toString(), "child-1-stderr")
@@ -184,6 +186,8 @@ class CliGoalRuntimeTest {
       liveStdout.toString(),
       "goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress",
     )
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals(false, liveStderr.toString().contains("child-1-stderr"), liveStderr.toString())
   }
@@ -218,6 +222,8 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals("", liveStderr.toString())

@@ -215,6 +215,7 @@ class GoalRunnerTest {
       workflowStatus = "running",
       currentStepId = "implement",
       progressToken = "child-progress-token",
+      latestLivenessSignal = "durable_progress step=implement attempt=1",
     )
     val service = GoalRunnerStatusService(store, outcomes)
 
@@ -233,6 +234,7 @@ class GoalRunnerTest {
     assertEquals(2, status.currentSubtaskId)
     assertEquals("implement", status.currentStep)
     assertEquals("codex", status.activeAgent)
+    assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
   }
 
   @Test
@@ -424,6 +426,38 @@ class GoalRunnerTest {
     assertEquals("blocked", subtask.status)
     assertEquals("review failed", subtask.blockedReason)
     assertEquals("review", subtask.lastResumableStep)
+  }
+
+  @Test
+  fun `status projection marks blocked terminal child outcome from workflow store when parent is stale`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
+        .withWorkflowId(1, "wfl-1"),
+    )
+    val outcomes = RecordingOutcomeStore()
+    outcomes["wfl-1"] = GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.BLOCKED,
+      workflowId = "wfl-1",
+      blockedReason = "preplan blocked",
+      lastResumableStep = "preplan",
+      suppressPr = true,
+    )
+    val service = GoalRunnerStatusService(store, outcomes)
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(0, status.completeCount)
+    assertEquals(0, status.pendingCount)
+    assertEquals(1, status.blockedCount)
+    assertEquals(1, status.currentSubtaskId)
+    assertEquals("preplan", status.currentStep)
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(

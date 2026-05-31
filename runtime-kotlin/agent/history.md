@@ -1,3 +1,12 @@
+## [2026-05-31] SKILL-58 subtask 4 runtime-consistency-and-contract-validation
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-core, install.sh
+- Goal startup now emits runtime provenance (`executable`, `version`, `build_id`) through a dedicated `RuntimeProvenanceService` and `RuntimeProvenanceContract`, keeping path/system probing out of presenter code. reusable
+- Installer delegation now exports `SKILL_BILL_RUNTIME_EXECUTABLE` when invoking runtime-cli, so installed-path runs report explicit provenance without changing goal heartbeat/completion semantics. reusable
+- Added dual-path parity guard (`GoalRuntimeDelegationParityTest`) that normalizes path variance and fails loudly if repo-local vs installed runtime diverge on goal status/progress semantics. reusable
+- Extended regression coverage for status/progress reconciliation and provenance output (`GoalRunnerTest`, `WorkflowServiceTest`, `CliGoalRuntimeTest`, runtime-contract tests).
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask scope)
+
 ## [2026-05-31] SKILL-58 subtask 3 operator-progress-ux-and-completion-confirmation
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli tests, runtime-kotlin/runtime-application tests
 - Goal foreground default output now emits structured heartbeat lines (`issue_key`, `subtask`, `step`, `liveness`) while hiding raw child stdout/stderr unless `--debug-child-output` is explicitly enabled. reusable

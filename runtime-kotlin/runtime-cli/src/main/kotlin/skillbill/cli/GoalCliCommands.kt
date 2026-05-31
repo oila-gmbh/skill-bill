@@ -13,12 +13,14 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
+import skillbill.application.RuntimeProvenanceService
 import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
@@ -29,6 +31,7 @@ import kotlin.time.Duration.Companion.minutes
 @Inject
 class GoalRunCommand(
   private val goalRunner: GoalRunner,
+  private val runtimeProvenanceService: RuntimeProvenanceService,
   goalStatusCommand: GoalStatusCommand,
   goalResetCommand: GoalResetCommand,
   private val state: CliRunState,
@@ -77,7 +80,14 @@ class GoalRunCommand(
       issueKey = runIssueKey,
       state = state,
       liveOutput = !noLiveOutput,
+      runtimeProvenance = runtimeProvenanceService.current(
+        executablePathHint = state.environment[RUNTIME_EXECUTABLE_ENV],
+        classPath = state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
+        javaCommand = ProcessHandle.current().info().command().orElse(null),
+        pathSeparator = state.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: System.getProperty("path.separator", ":"),
+      ),
     )
+    presenter.emitStartupProvenance()
     val report = goalRunner.run(
       GoalRunnerRunRequest(
         issueKey = runIssueKey,
@@ -166,11 +176,19 @@ private class GoalRunPresenter(
   private val issueKey: String,
   private val state: CliRunState,
   private val liveOutput: Boolean,
+  private val runtimeProvenance: RuntimeProvenanceContract,
 ) {
   private var activeSubtaskId: Int? = null
   private var activeStepId: String? = null
   private var lastLivenessClass: String = GOAL_LIVENESS_IDLE
   private var sawRawChildOutputSinceLastHeartbeat: Boolean = false
+
+  fun emitStartupProvenance() {
+    state.liveStdout(
+      "goal $issueKey: runtime executable=${runtimeProvenance.executablePath} " +
+        "version=${runtimeProvenance.version} build_id=${runtimeProvenance.buildId}\n",
+    )
+  }
 
   fun eventSink(): skillbill.application.model.GoalRunnerEventSink =
     skillbill.application.model.GoalRunnerEventSink { event ->
@@ -415,5 +433,8 @@ private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"
 private const val GOAL_LIVENESS_IDLE = "idle"
+private const val RUNTIME_EXECUTABLE_ENV = "SKILL_BILL_RUNTIME_EXECUTABLE"
+private const val RUNTIME_CLASSPATH_ENV = "SKILL_BILL_RUNTIME_CLASSPATH"
+private const val RUNTIME_PATH_SEPARATOR_ENV = "SKILL_BILL_PATH_SEPARATOR"
 private val GOAL_SUBTASK_REGEX = Regex("""\bsubtask\s+(\d+)\b""")
 private val GOAL_STEP_REGEX = Regex("""\bstep\s+([a-zA-Z0-9_-]+)\b""")

@@ -32,6 +32,7 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "--telemetry \"\$TELEMETRY_LEVEL\"")
     assertContains(installScript, "--mcp \"\$MCP_REGISTRATION\"")
     assertContains(installScript, "--runtime-mcp-bin \"\$RUNTIME_MCP_BIN\"")
+    assertContains(installScript, "SKILL_BILL_RUNTIME_EXECUTABLE=\"\$RUNTIME_CLI_BIN\"")
     // The Gradle desktop build is now gated behind --from-source: the helper and the
     // Gradle task must still exist (from-source coverage), but only run when
     // INSTALL_SOURCE=source. The prebuilt path fetches + extracts instead.
