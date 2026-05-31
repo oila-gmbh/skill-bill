@@ -7,6 +7,10 @@ description: Use when a user asks to complete a larger implementation goal throu
 
 `bill-goal` is the interactive front door for a goal that may need multiple decomposed implementation subtasks. It decides whether decomposition is necessary, asks for exactly one confirmation before starting any automated loop, and hands confirmed decompositions to the local `skill-bill goal` driver.
 
+`bill-goal` does not own spec-writing logic. When decomposition artifacts are
+missing, it must reuse the shared feature-spec preparation path exposed through
+`bill-feature-spec`.
+
 ## Intake
 
 Clarify the user's goal enough to identify:
@@ -25,7 +29,15 @@ Classify the goal before decomposing:
 
 ## Decomposition Proposal
 
-For decomposed goals, present a concise proposal that includes:
+For decomposed goals, first ensure decomposition artifacts exist through the
+shared preparation path:
+
+- If `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`
+  is missing, invoke `bill-feature-spec` in this session to prepare a
+  decomposed parent spec and ordered subtask specs.
+- If decomposition artifacts already exist, reuse them as-is.
+
+Then present a concise proposal that includes:
 
 - the issue key and feature name
 - the parent acceptance criteria
@@ -39,7 +51,9 @@ Do not start `skill-bill goal` while the decomposition is unconfirmed. If the us
 
 ## Confirmed Handoff
 
-After confirmation, ensure the decomposed parent workflow and runtime manifest have been created by the normal feature-implementation decomposition path. Then execute the foreground driver directly in the current agent session:
+After confirmation, ensure the decomposed parent workflow and runtime manifest
+now exist from the shared feature-spec preparation path. Then execute the
+foreground driver directly in the current agent session:
 
 ```bash
 skill-bill goal <issue_key>
@@ -50,6 +64,10 @@ Do not ask the user to run this command manually. The confirmation gate is the o
 Use `--agent` when the invoking agent id is known and `--agent-override` only when the user explicitly selected a different child agent. Keep live output enabled unless the user asks for quieter output.
 
 During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, do not continue the loop manually; summarize the stopped subtask, reason, workflow id when present, and resumable step.
+
+`skill-bill goal <issue_key>` remains consumer-only. It does not synthesize
+decomposition from prose and should loud-fail when the decomposition manifest is
+missing.
 
 ## Status Checks
 

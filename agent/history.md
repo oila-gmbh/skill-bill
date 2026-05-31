@@ -1,3 +1,23 @@
+## [2026-05-31] SKILL-59 subtask 4 regression-and-maintainer-validation
+Areas: runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/FeatureSpecPreparationRuntime.kt, runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/FeatureSpecPreparationWriter.kt, runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/featurespec/FeatureSpecPreparationPolicy.kt, runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationRuntimeTest.kt, runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationWriterTest.kt, runtime-kotlin/runtime-core/src/test/kotlin/skillbill/application/FeatureSpecPreparationWriterValidationTest.kt, runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/FeatureSpecSkillWiringContractTest.kt
+- Added explicit shared-runtime coverage for `bill-feature-spec` alongside `bill-feature-implement` and `bill-goal` so all three wrappers are locked to one preparation core entrypoint with equality assertions. reusable
+- Hardened `single_spec` guardrails in `FeatureSpecPreparationWriter` by rejecting decomposed-only `subtasks` payloads in single-spec mode with a typed loud-fail request error. reusable
+- Expanded decomposition validation coverage to assert runnable subtask specs and goal-runner-compatible manifest intent/projection wiring, not just file existence. reusable
+- Strengthened wiring contract regression checks so `bill-goal` keeps exactly one confirmation gate and the consumer-only `skill-bill goal` boundary remains anchored to shared preparation language.
+- Maintainer validation gate passed in this run: `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs`.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
+## [2026-05-31] SKILL-59 subtask 3 skill-and-workflow-wiring
+Areas: skills/bill-feature-spec/content.md, skills/bill-feature-implement/content.md, skills/bill-goal/content.md, README.md, docs/getting-started.md, docs/getting-started-for-teams.md, runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/FeatureSpecSkillWiringContractTest.kt
+- Added new horizontal `bill-feature-spec` governed source as standalone preparation entry point, with explicit intake contract, `single_spec`/`decomposed` mode guidance, and consumer-only `skill-bill goal` boundary language. reusable
+- Updated `bill-feature-implement` decomposition guidance so planning returns a package and orchestrator persistence routes through the shared feature-spec preparation path instead of bespoke decomposition-write prose. reusable
+- Updated `bill-goal` so missing decomposition artifacts are prepared through `bill-feature-spec` before the single confirmation gate, while preserving `skill-bill goal` as consumer-only runner behavior. reusable
+- Added workflow-content contract regression test (`FeatureSpecSkillWiringContractTest`) to lock shared preparation wiring language across `bill-feature-spec`, `bill-feature-implement`, and `bill-goal`.
+- Updated README and getting-started docs catalogs to include `bill-feature-spec` as standalone preparation.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented (subtask scope)
+
 ## [2026-05-29] SKILL-55 subtask 6 launch-kit
 Areas: .feature-specs/SKILL-55-launch-readiness/launch-kit/ (Reddit drafts, subreddit plan, objection FAQ, Product Hunt kit, go/no-go checklist, sequencing note)
 - Capstone of the SKILL-55 launch-readiness decomposition (subtasks 1-6 now complete): assets-and-plan-only, 7 Markdown files, no code/installer change. Kit lives in-repo so it versions with the product and the go/no-go gate stays honest against what actually shipped. reusable

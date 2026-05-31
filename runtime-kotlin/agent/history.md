@@ -1,3 +1,12 @@
+## [2026-05-31] SKILL-59 subtask 2 spec-writing-runtime
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
+- Added typed feature-spec write models (`FeatureSpecWriteRequest`, `FeatureSpecWriteResult`, `FeatureSpecSubtaskPreparation`) so single-spec/decomposed persistence can be shared by future `bill-feature-spec`, `bill-feature-implement`, and `bill-goal` callers through one runtime contract. reusable
+- Added typed loud-fail `FeatureSpecPreparationModeConflictError`; `single_spec` now fails immediately when a decomposition manifest already exists for the same issue/feature directory instead of silently mixing modes. reusable
+- Added `FeatureSpecPreparationWriter` as the shared file-writing seam: `single_spec` writes/updates `.feature-specs/<issue>-<feature>/spec.md` and returns the `bill-feature-implement` path without creating `decomposition-manifest.yaml`; `decomposed` writes parent + ordered subtask specs and reuses `DecompositionManifestWriter`/`DecompositionManifestValidator` seams for manifest serialization/validation. reusable
+- Regression coverage now locks single-spec write/no-manifest behavior, conflict loud-fail, decomposed subtask spec content contract, schema-valid manifest emission, and goal-status import readability from checked-in decomposition projection (`FeatureSpecPreparationWriterTest`, `FeatureSpecPreparationWriterValidationTest`).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented (subtask scope)
+
 ## [2026-05-31] SKILL-58 subtask 4 runtime-consistency-and-contract-validation
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-core, install.sh
 - Goal startup now emits runtime provenance (`executable`, `version`, `build_id`) through a dedicated `RuntimeProvenanceService` and `RuntimeProvenanceContract`, keeping path/system probing out of presenter code. reusable

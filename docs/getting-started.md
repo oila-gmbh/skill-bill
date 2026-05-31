@@ -214,12 +214,13 @@ skill-bill telemetry status --format json
 
 Then try the stable skill entry points in your agent, in this order:
 
+- `/bill-feature-spec` (optional prep-first path for spec-only sessions)
 - `/bill-feature-implement`
 - `/bill-code-review`
 - `/bill-quality-check`
 - `/bill-feature-verify`
 
-Use `/bill-feature-implement` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-code-review` directly when you only need the review phase.
+Use `/bill-feature-implement` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
 
 ## Runtime Fallback Boundary
 

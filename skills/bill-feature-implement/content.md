@@ -64,6 +64,16 @@ Goal-continuation rules:
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
 - Interactive `bill-feature-implement` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
 
+## Shared Feature-Spec Preparation Path
+
+When planning returns `mode: "decompose"`, `bill-feature-implement` must use
+the shared feature-spec preparation path owned by `bill-feature-spec` and
+reused by `bill-goal`.
+
+Do not bypass this shared path with one-off decomposition writing logic in this
+skill. The shared path owns parent/spec-subtask writing and decomposition
+manifest validation.
+
 ## Orchestrator vs Subagent Split
 
 Step 1 (collect design doc + assess) runs in the orchestrator because it requires user interaction. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 6 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 5 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.
@@ -138,13 +148,13 @@ The subagent returns one of two planning return contracts:
 - `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
 - `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-implement run.
 
-Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent writes subtask specs under `.feature-specs/{ISSUE_KEY}-{feature-name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`. Each subtask spec must contain its own acceptance criteria, non-goals, dependency notes, validation strategy, and a clear instruction to run `bill-feature-implement` on that subtask spec in a later session. The orchestrator then creates or updates `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml` from the decomposition package and validates it against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`, including manifest validation against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
 
 If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
 
 The orchestrator presents the plan, then proceeds to implementation — the plan is not a second approval gate.
 
-If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, write or update `decomposition-manifest.yaml`, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
+If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, invoke the shared feature-spec preparation path to write/update decomposition artifacts, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
 
 Persist `plan` before advancing to `implement` or before closing on decomposition.
 
@@ -639,13 +649,12 @@ Planning rules:
 
 Decomposition rules:
 - Once decomposition mode is selected, do not implement anything and do not return an implementation task list.
-- Read the saved spec path only as needed to create accurate subtask specs.
-- Write subtask specs under `.feature-specs/{issue_key}-{feature_name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`.
-- Keep `spec.md` as the parent overview. Each subtask spec links back to `spec.md`, contains only the scope for that subtask, and includes acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
+- Read the saved spec path only as needed to create accurate decomposition output.
+- Return subtask definitions with enough detail for the orchestrator-owned shared feature-spec preparation path to write `spec.md`, ordered `spec_subtask_*.md` files, and the decomposition manifest.
+- Keep `spec.md` as the parent overview contract. Each returned subtask must include scope, acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
 - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-implement run.
 - Order subtasks by dependency and identify the first subtask to run.
-- The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order.
-- The manifest must declare `contract_version`, `parent_spec_path`, ordered `subtasks`, dependency ids, each subtask `spec_path`, `execution_model`, `base_branch`, either `feature_branch` or ordered `stack_branches`, and `current_subtask_intent` derived from the recommended first/current subtask.
+- The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order. Return enough manifest metadata for the shared path to emit those fields.
 - Same-branch decompositions advance one subtask at a time on the parent feature
   branch. Each completed subtask gets an individual commit before the next
   pending dependency-complete subtask starts.

@@ -320,6 +320,7 @@ Skill Bill ships a complete Kotlin/KMP pack as a working example of how to autho
 **Daily entry points (in the reference pack):**
 
 - `/bill-feature-implement` orchestrates spec-to-PR work and composes the rest of the pack
+- `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack
 - `/bill-quality-check` routes to the matching stack-specific checker
 - `/bill-pr-description` generates PR text and QA steps
@@ -343,6 +344,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
 | `/bill-feature-implement` | End-to-end feature workflow from spec through review and validation |
+| `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-goal` | Interactively decompose larger goals and hand confirmed runs to the foreground goal loop |
 | `/bill-grill-plan` | Stress-test a plan or design by walking the decision tree |
