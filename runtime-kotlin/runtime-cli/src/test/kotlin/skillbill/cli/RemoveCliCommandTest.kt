@@ -161,6 +161,9 @@ class RemoveCliCommandTest {
     assertEquals(1, result.exitCode)
     val payload = decodeJsonObject(result.stdout)
     assertEquals("error", payload["status"].toString().trim('"'))
+    val error = payload["error"].toString()
+    assertTrue("--allow-shipped" in error)
+    assertTrue("allowShipped" !in error)
   }
 
   @Test

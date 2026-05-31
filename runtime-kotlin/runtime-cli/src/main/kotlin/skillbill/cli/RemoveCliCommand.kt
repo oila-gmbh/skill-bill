@@ -60,7 +60,8 @@ class RemoveCliCommand(
     .flag(default = false)
   private val allowShipped by option(
     "--allow-shipped",
-    help = "Allow removal of built-in shipped surfaces (kotlin / kmp). '.bill-shared' is never removable.",
+    help = "Allow removal of shipped product surfaces such as bill-* skills and kotlin / kmp pre-shells. " +
+      "'.bill-shared' is never removable.",
   ).flag(default = false)
   private val format by formatOption()
 

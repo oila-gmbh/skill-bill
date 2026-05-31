@@ -110,7 +110,7 @@ class SkillRemove(
         if (!target.allowShipped && protectedShipped) {
           throw SkillRemovalRefusedException(
             SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
-            "Refusing to remove shipped surface '${target.skillName}' without allowShipped=true.",
+            "Refusing to remove shipped surface '${target.skillName}' without --allow-shipped.",
           )
         }
       }
