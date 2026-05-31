@@ -127,7 +127,9 @@ private fun scaffoldQualityCheckOverride(fixture: ExternalAuthorDryRunFixture) {
     withTemporaryUserHome(fixture.userHome) {
       CliRuntime.run(listOf("new", "--payload", payloadFile.toString(), "--format", "json"), fixture.context)
     }
-  val qualityCheckSkill = fixture.packRoot.resolve("quality-check").resolve("bill-${fixture.platform}-quality-check")
+  val qualityCheckSkill = fixture.packRoot
+    .resolve("quality-check")
+    .resolve("bill-${fixture.platform}-code-quality-check")
 
   assertEquals(0, result.exitCode, result.stdout)
   assertEquals("ok", result.payload?.get("status"), result.stdout)

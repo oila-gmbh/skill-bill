@@ -207,7 +207,7 @@ internal object DatabaseSchema {
       CREATE TABLE IF NOT EXISTS feature_implement_workflows (
         workflow_id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL DEFAULT '',
-        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-implement',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
         contract_version TEXT NOT NULL DEFAULT '${DbConstants.FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION}',
         workflow_status TEXT NOT NULL DEFAULT 'pending',
         current_step_id TEXT NOT NULL DEFAULT '',

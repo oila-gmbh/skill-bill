@@ -23,7 +23,7 @@ class CliAuthoringParityTest {
           "--repo-root",
           repoRoot.toString(),
           "--skill-name",
-          "bill-feature-implement",
+          "bill-feature-task",
           "--format",
           "json",
         ),
@@ -33,7 +33,7 @@ class CliAuthoringParityTest {
       runJson(
         listOf(
           "show",
-          "bill-feature-implement",
+          "bill-feature-task",
           "--repo-root",
           repoRoot.toString(),
           "--content",
@@ -47,7 +47,7 @@ class CliAuthoringParityTest {
       runJson(
         listOf(
           "explain",
-          "bill-feature-implement",
+          "bill-feature-task",
           "--repo-root",
           repoRoot.toString(),
           "--format",
@@ -57,8 +57,8 @@ class CliAuthoringParityTest {
       )
 
     assertEquals(1, listed["skill_count"])
-    assertEquals("bill-feature-implement", shown["skill_name"])
-    assertEquals("bill-feature-implement", (explained["skill"] as Map<*, *>)["skill_name"])
+    assertEquals("bill-feature-task", shown["skill_name"])
+    assertEquals("bill-feature-task", (explained["skill"] as Map<*, *>)["skill_name"])
   }
 
   @Test
@@ -73,7 +73,7 @@ class CliAuthoringParityTest {
           "--repo-root",
           repoRoot.toString(),
           "--skill-name",
-          "bill-feature-implement",
+          "bill-feature-task",
           "--format",
           "json",
         ),
@@ -181,23 +181,21 @@ class CliAuthoringParityTest {
     val context = CliRuntimeContext(userHome = tempDir)
 
     listOf(
-      listOf("new-skill", "--interactive", "--format", "json") to "skill-bill new-skill --payload <file>",
-      listOf("new", "--interactive", "--format", "json") to "skill-bill new --payload <file>",
       listOf("new-addon", "--interactive", "--format", "json") to
         "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
       listOf("create-and-fill", "--interactive", "--format", "json") to
         "skill-bill create-and-fill --payload <file> --body-file <file>",
-      listOf("edit", "bill-feature-implement", "--repo-root", outerRepoRoot().toString(), "--format", "json") to
-        "skill-bill fill bill-feature-implement --body-file <file>",
+      listOf("edit", "bill-feature-task", "--repo-root", outerRepoRoot().toString(), "--format", "json") to
+        "skill-bill fill bill-feature-task --body-file <file>",
       listOf(
         "edit",
-        "bill-feature-implement",
+        "bill-feature-task",
         "--repo-root",
         outerRepoRoot().toString(),
         "--editor",
         "--format",
         "json",
-      ) to "skill-bill fill bill-feature-implement --body-file <file>",
+      ) to "skill-bill fill bill-feature-task --body-file <file>",
     ).forEach { (arguments, replacement) ->
       val result = CliRuntime.run(arguments, context)
       val payload = decodeJsonObject(result.stdout)

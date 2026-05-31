@@ -73,7 +73,7 @@ class FeatureSpecPreparationWriterValidationTest {
     ),
     featureName = "feature-spec-horizontal-skill",
     parentSpecOverview = "Prepare runtime-owned decomposition artifacts.",
-    validationStrategy = "bill-quality-check",
+    validationStrategy = "bill-code-quality-check",
     subtasks = listOf(
       FeatureSpecSubtaskPreparation(
         id = 1,
@@ -82,8 +82,8 @@ class FeatureSpecPreparationWriterValidationTest {
         acceptanceCriteria = listOf("Shared writer models exist."),
         nonGoals = listOf("No skill wiring."),
         dependencyNotes = "No dependencies.",
-        validationStrategy = "bill-quality-check",
-        nextPath = "Run bill-feature-implement on spec_subtask_1_foundation.md.",
+        validationStrategy = "bill-code-quality-check",
+        nextPath = "Run bill-feature-task on spec_subtask_1_foundation.md.",
         dependsOn = emptyList(),
       ),
       FeatureSpecSubtaskPreparation(
@@ -93,8 +93,8 @@ class FeatureSpecPreparationWriterValidationTest {
         acceptanceCriteria = listOf("Manifest loads through goal status import."),
         nonGoals = listOf("No final integration wiring."),
         dependencyNotes = "Depends on subtask 1 contracts.",
-        validationStrategy = "bill-quality-check",
-        nextPath = "Run bill-feature-implement on spec_subtask_2_runtime.md.",
+        validationStrategy = "bill-code-quality-check",
+        nextPath = "Run bill-feature-task on spec_subtask_2_runtime.md.",
         dependsOn = listOf(1),
       ),
     ),
@@ -105,7 +105,7 @@ class FeatureSpecPreparationWriterValidationTest {
     result.subtaskSpecPaths.forEach { subtaskSpecPath ->
       val fullPath = repoRoot.resolve(subtaskSpecPath)
       assertTrue(Files.isRegularFile(fullPath))
-      assertContains(Files.readString(fullPath), "Run bill-feature-implement on")
+      assertContains(Files.readString(fullPath), "Run bill-feature-task on")
     }
   }
 

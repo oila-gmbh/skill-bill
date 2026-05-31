@@ -283,7 +283,7 @@ private fun planHorizontal(payload: Map<String, Any?>, repoRoot: Path): Scaffold
 private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val platform = requireString(payload, "platform")
   val family = requireString(payload, "family")
-  val name = canonicalName(payload, defaultName = "bill-$platform-$family")
+  val name = canonicalName(payload, defaultName = defaultPlatformOverrideName(platform, family))
   val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED)
   val isShelled = family in SHELLED_FAMILIES
   val notes = mutableListOf<String>()
@@ -362,7 +362,7 @@ private fun planPlatformPack(
     )
   }
   val baselineName = canonicalName(payload, defaultName = "bill-$platform-code-review")
-  val qualityCheckName = "bill-$platform-quality-check"
+  val qualityCheckName = "bill-$platform-code-quality-check"
   val baselineLayers = adapters.optionalBaselineLayers(payload, repoRoot, platform)
   val selection = policyResolvePlatformPackSelection(payload)
   val selectedAreas = selection.selectedAreas
@@ -817,6 +817,12 @@ private fun canonicalName(payload: Map<String, Any?>, defaultName: String): Stri
     )
     else -> provided
   }
+}
+
+private fun defaultPlatformOverrideName(platform: String, family: String): String = if (family == "quality-check") {
+  "bill-$platform-code-quality-check"
+} else {
+  "bill-$platform-$family"
 }
 
 // SKILL-52.1 subtask 2: `requireString`, `requireStringOrDefault`, and `requireStringList` now live

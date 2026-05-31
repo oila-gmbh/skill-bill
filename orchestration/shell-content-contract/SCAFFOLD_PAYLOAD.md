@@ -1,15 +1,17 @@
 ---
 name: scaffold-payload
-description: Payload schema for the new-skill scaffolder (SKILL-15). Documents the JSON contract consumed by `skill-bill new-skill --payload`, the `new_skill_scaffold` MCP tool, and the `bill-create-skill` skill.
+description: Payload schema for the new-skill scaffolder (SKILL-15). Documents the JSON contract consumed by `skill-bill new --payload`, the `new_skill_scaffold` MCP tool, and desktop/runtime scaffold callers.
 ---
 
 # Scaffold Payload Contract
 
-This is the canonical payload schema for the new-skill scaffolder. Every
-caller of `skillbill.scaffold.ScaffoldService.scaffold(payload)` (in `runtime-core`) — the `runtime-cli` `new-skill` command, the `runtime-mcp` `new_skill_scaffold` tool,
-and the `bill-create-skill` skill — ships a payload that conforms to
-this schema. Mismatches raise specific named exceptions and abort the run;
-no silent coercion.
+This is the canonical payload schema for scripted scaffold callers. The human
+CLI path is `skill-bill new`, which collects deterministic prompts and then
+builds this same payload internally. Payload callers such as
+`skill-bill new --payload`, the `runtime-mcp` `new_skill_scaffold` tool, and
+desktop/runtime scaffold integrations must ship a payload that conforms to this
+schema. Mismatches raise specific named exceptions and abort the run; no silent
+coercion.
 
 ## Versioning
 
@@ -185,16 +187,16 @@ validation fails if generated provider artifacts are checked into the repo.
 {
   "scaffold_payload_version": "1.0",
   "kind": "platform-override-piloted",
-  "name": "bill-kotlin-quality-check",
+  "name": "bill-kotlin-code-quality-check",
   "platform": "kotlin",
   "family": "quality-check"
 }
 ```
 
 This lands the skill at
-`platform-packs/kotlin/quality-check/bill-kotlin-quality-check/content.md` and edits
+`platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check/content.md` and edits
 the owning pack's `platform.yaml` to register
-`declared_quality_check_file: quality-check/bill-kotlin-quality-check/content.md`.
+`declared_quality_check_file: quality-check/bill-kotlin-code-quality-check/content.md`.
 Generated `SKILL.md` wrappers and pointer files are render/install output only.
 
 ### New platform pack
@@ -211,7 +213,7 @@ Generated `SKILL.md` wrappers and pointer files are render/install output only.
 
 This creates `platform-packs/java/platform.yaml`,
 `platform-packs/java/code-review/bill-java-code-review/content.md`, and
-`platform-packs/java/quality-check/bill-java-quality-check/content.md`, plus
+`platform-packs/java/quality-check/bill-java-code-quality-check/content.md`, plus
 bare specialist content stubs for every approved code-review area. The built-in
 `java` preset supplies the routing signals. Generated wrappers and platform
 pointer files are not staged into source.

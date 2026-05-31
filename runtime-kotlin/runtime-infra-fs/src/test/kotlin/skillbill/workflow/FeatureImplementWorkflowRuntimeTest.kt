@@ -24,7 +24,7 @@ class FeatureImplementWorkflowRuntimeTest {
     val record = engine.openRecord(definition, "wfl-001", "fis-001", "plan")
     val snapshot = engine.snapshotView(definition, record)
 
-    assertEquals("bill-feature-implement", snapshot.workflowName)
+    assertEquals("bill-feature-task", snapshot.workflowName)
     assertEquals("plan", snapshot.currentStepId)
     assertEquals("running", snapshot.steps.single { it.stepId == "plan" }.status)
     assertTrue(snapshot.steps.filterNot { it.stepId == "plan" }.all { it.status == "pending" })

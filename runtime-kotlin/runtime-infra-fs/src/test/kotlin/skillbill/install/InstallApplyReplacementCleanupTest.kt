@@ -6,6 +6,7 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,7 +25,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     InstallOperations.applyInstall(selectedPlatformPlan)
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-quality-check")))
 
     val baseOnlyReplacementPlan = InstallOperations.planInstall(
       fixture.request(
@@ -37,9 +38,9 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
     assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(targetDir.resolve("bill-kotlin-quality-check"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-quality-check"), LinkOption.NOFOLLOW_LINKS))
   }
 
   @Test
@@ -49,7 +50,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     Files.createDirectories(targetDir)
     val legacySourceLink = targetDir.resolve("bill-code-review")
     createSymlinkOrSkip(legacySourceLink, fixture.repoRoot.resolve("skills/bill-code-review"))
-    val legacyManagedDir = targetDir.resolve("bill-quality-check")
+    val legacyManagedDir = targetDir.resolve("bill-code-quality-check")
     Files.createDirectories(legacyManagedDir)
     Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
     Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
@@ -82,29 +83,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     Files.createDirectories(targetDir)
-    val legacySourceLink = targetDir.resolve("bill-backend-kotlin-code-review")
-    createSymlinkOrSkip(
-      legacySourceLink,
-      fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review"),
-    )
-    val legacyManagedDir = targetDir.resolve("mdp-gcheck")
-    Files.createDirectories(legacyManagedDir)
-    Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
-    Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
-    val agenticFeatureImplementLink = targetDir.resolve("bill-feature-implement-agentic")
-    createSymlinkOrSkip(
-      agenticFeatureImplementLink,
-      fixture.repoRoot.resolve("skills/bill-feature-implement"),
-    )
-    val skillScaffoldManagedDir = targetDir.resolve("mdp-skill-scaffold")
-    Files.createDirectories(skillScaffoldManagedDir)
-    Files.writeString(skillScaffoldManagedDir.resolve(".skill-bill-install"), "")
-    Files.writeString(skillScaffoldManagedDir.resolve("SKILL.md"), "old managed install")
-    val newSkillAllAgentsLink = targetDir.resolve("bill-new-skill-all-agents")
-    createSymlinkOrSkip(
-      newSkillAllAgentsLink,
-      fixture.repoRoot.resolve("skills/bill-create-skill"),
-    )
+    val legacyPaths = createLegacyRenamedLinks(fixture, targetDir)
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
@@ -115,13 +94,37 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val result = InstallOperations.applyInstall(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
-    assertFalse(Files.exists(legacySourceLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(legacyManagedDir, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(agenticFeatureImplementLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(skillScaffoldManagedDir, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(newSkillAllAgentsLink, LinkOption.NOFOLLOW_LINKS))
+    legacyPaths.forEach { path ->
+      assertFalse(Files.exists(path, LinkOption.NOFOLLOW_LINKS), "$path should be removed")
+    }
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
+  }
+
+  private fun createLegacyRenamedLinks(fixture: ApplyFixture, targetDir: Path): List<Path> {
+    val links = listOf(
+      "bill-backend-kotlin-code-review" to "platform-packs/kotlin/code-review/bill-kotlin-code-review",
+      "bill-quality-check" to "skills/bill-code-quality-check",
+      "bill-kotlin-quality-check" to "platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check",
+      "bill-feature-implement" to "skills/bill-feature-task",
+      "bill-feature-implement-agentic" to "skills/bill-feature-task",
+      "bill-new-skill-all-agents" to "skills/bill-create-skill",
+      "bill-grill-plan" to "skills/bill-grill-plan",
+      "bill-skill-remove" to "skills/bill-skill-remove",
+    ).map { (linkName, sourcePath) ->
+      targetDir.resolve(linkName).also { link ->
+        createSymlinkOrSkip(link, fixture.repoRoot.resolve(sourcePath))
+      }
+    }
+    val managedDirs = listOf(
+      targetDir.resolve("mdp-gcheck"),
+      targetDir.resolve("mdp-skill-scaffold"),
+    ).onEach { managedDir ->
+      Files.createDirectories(managedDir)
+      Files.writeString(managedDir.resolve(".skill-bill-install"), "")
+      Files.writeString(managedDir.resolve("SKILL.md"), "old managed install")
+    }
+    return links + managedDirs
   }
 
   @Test

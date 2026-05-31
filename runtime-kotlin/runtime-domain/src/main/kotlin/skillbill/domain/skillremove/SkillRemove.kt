@@ -101,7 +101,7 @@ class SkillRemove(
           )
         }
         // SKILL-49: horizontal `bill-*` skills are the product surface (bill-code-review,
-        // bill-feature-implement, etc.) and join the shipped-protection set alongside the
+        // bill-feature-task, etc.) and join the shipped-protection set alongside the
         // `kotlin` / `kmp` pre-shells. Predicate sourced from SkillRemovalTarget so the desktop
         // mirror (`isBuiltInName`) and the domain refusal agree on the line.
         val protectedShipped = candidate.startsWith(kotlinSkillRoot) ||
@@ -110,7 +110,7 @@ class SkillRemove(
         if (!target.allowShipped && protectedShipped) {
           throw SkillRemovalRefusedException(
             SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
-            "Refusing to remove shipped surface '${target.skillName}' without allowShipped=true.",
+            "Refusing to remove shipped surface '${target.skillName}' without --allow-shipped.",
           )
         }
       }

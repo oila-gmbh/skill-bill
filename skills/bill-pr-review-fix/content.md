@@ -111,7 +111,7 @@ Rules:
 
 ### Run quality gate
 
-After all selected fixes land, invoke `bill-quality-check`. It auto-routes to whichever stack-specific quality skill the host repo's platform pack declares. Fix issues at the root cause; never use suppressions. Report initial vs final failure count.
+After all selected fixes land, invoke `bill-code-quality-check`. It auto-routes to whichever stack-specific quality skill the host repo's platform pack declares. Fix issues at the root cause; never use suppressions. Report initial vs final failure count.
 
 If the routed quality skill is unavailable, fall back to the repo-native command (commonly `./gradlew check`, `npm test`, `pytest`, etc.) and say so.
 
@@ -247,4 +247,4 @@ Only when the user explicitly opts in:
 - One thread → one fix mapping in working memory until Phase 2 reports it.
 - Quality gate runs after fixes, before replies are posted, so reply context can cite the final state.
 - If quality gate fails and cannot be fixed, stop. Do not post replies promising fixes that aren't green.
-- If invoked from `bill-feature-implement` or another orchestrator, follow its instructions for telemetry forwarding; standalone runs do not emit telemetry of their own.
+- If invoked from `bill-feature-task` or another orchestrator, follow its instructions for telemetry forwarding; standalone runs do not emit telemetry of their own.

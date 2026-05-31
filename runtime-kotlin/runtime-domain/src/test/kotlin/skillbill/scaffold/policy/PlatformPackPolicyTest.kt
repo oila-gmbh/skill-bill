@@ -24,14 +24,14 @@ class PlatformPackPolicyTest {
     val paths = buildPlatformPackInstallPaths(
       packRoot = packRoot,
       baselineName = "bill-java-code-review",
-      qualityCheckName = "bill-java-quality-check",
+      qualityCheckName = "bill-java-code-quality-check",
       specialistPaths = specialistPaths,
       selectedAreas = listOf("ui"),
     )
 
     assertEquals(3, paths.size)
     assertEquals(packRoot.resolve("code-review").resolve("bill-java-code-review"), paths[0])
-    assertEquals(packRoot.resolve("quality-check").resolve("bill-java-quality-check"), paths[1])
+    assertEquals(packRoot.resolve("quality-check").resolve("bill-java-code-quality-check"), paths[1])
     assertEquals(specialistPaths.getValue("ui"), paths[2])
   }
 

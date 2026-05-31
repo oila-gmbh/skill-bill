@@ -1,19 +1,22 @@
 ---
-name: bill-goal
-description: Use when a user asks to complete a larger implementation goal through interactive decomposition, one confirmation gate, and the foreground `skill-bill goal` runner; complete small non-decomposed goals directly without starting the loop.
+name: bill-feature-goal
+description: Use when a decomposed feature goal is ready to run through one confirmation gate and the foreground `skill-bill goal` runtime.
 ---
 
-# Goal Runner Content
+# Feature Goal Content
 
-`bill-goal` is the interactive front door for a goal that may need multiple decomposed implementation subtasks. It decides whether decomposition is necessary, asks for exactly one confirmation before starting any automated loop, and hands confirmed decompositions to the local `skill-bill goal` driver.
+`bill-feature-goal` is the interactive front door for a feature goal that needs multiple decomposed implementation subtasks. It verifies decomposition readiness, asks for exactly one confirmation before starting any automated loop, and hands confirmed decompositions to the local `skill-bill goal` driver.
 
-`bill-goal` does not own spec-writing logic. When decomposition artifacts are
+`bill-feature-goal` is the trigger surface for runtime workflow behavior with
+durable state; `skill-bill goal` remains the runtime driver.
+
+`bill-feature-goal` does not own spec-writing logic. When decomposition artifacts are
 missing, it must reuse the shared feature-spec preparation path exposed through
 `bill-feature-spec`.
 
 ## Intake
 
-Clarify the user's goal enough to identify:
+Clarify the user's feature goal enough to identify:
 
 - the issue key
 - the intended outcome

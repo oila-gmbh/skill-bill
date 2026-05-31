@@ -4,8 +4,8 @@ import skillbill.workflow.model.WorkflowDefinition
 
 object FeatureImplementWorkflowDefinition {
   val definition: WorkflowDefinition = WorkflowDefinition(
-    skillName = "bill-feature-implement",
-    workflowName = "bill-feature-implement",
+    skillName = "bill-feature-task",
+    workflowName = "bill-feature-task",
     workflowIdPrefix = "wfl",
     defaultSessionPrefix = "fis",
     contractVersion = "0.1",

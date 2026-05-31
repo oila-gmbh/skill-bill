@@ -121,7 +121,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
     val repoRoot = Files.createTempDirectory("skillbill-install-plan-schema-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-plan-schema-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review")
-    seedBaseSkill(repoRoot, "bill-quality-check")
+    seedBaseSkill(repoRoot, "bill-code-quality-check")
     seedPlatformPack(repoRoot, "kotlin", areaNames = listOf("architecture", "testing"))
     seedPlatformPack(repoRoot, "kmp", areaNames = listOf("architecture", "testing"))
     return InstallPlanWireFixture(repoRoot = repoRoot, home = home)
@@ -135,7 +135,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
 
   private fun seedPlatformPack(repoRoot: Path, slug: String, areaNames: List<String>) {
     val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-quality-check"
+    val qualityCheckName = "bill-$slug-code-quality-check"
     val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
     val areaSkillNames = areaNames.associateWith { area -> "bill-$slug-code-review-$area" }
     val declaredAreas = areaNames.joinToString("") { area -> "\n  - $area" }

@@ -50,7 +50,7 @@ class FeatureVerifyWorkflowRuntimeTest {
   @Test
   fun `verify continuation preserves artifact order and directives`() {
     // SKILL-48 Subtask 2a: `bill-feature-verify` does NOT carry a `blocked`
-    // workflow_status (only `bill-feature-implement` does), so this scenario
+    // workflow_status (only `bill-feature-task` does), so this scenario
     // uses workflow_status="running" with a step that has reached the
     // `blocked` step-status. continueDecision reopens the blocked step the
     // same way regardless of whether the surrounding workflow is `running`

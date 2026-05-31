@@ -43,7 +43,7 @@ class WorkflowStateSchemaViolationsTest {
       )
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "bill-feature-implement")
+      validator.validate(snapshot, "bill-feature-task")
     }
     val message = error.message.orEmpty()
     // The offending value `frobnicated` must surface somewhere in the
@@ -58,7 +58,7 @@ class WorkflowStateSchemaViolationsTest {
       remove("current_step_id")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "bill-feature-implement")
+      validator.validate(snapshot, "bill-feature-task")
     }
     // Either the explicit `current_step_id` required-property error
     // or the per-skill `oneOf` branch failure must surface. Both
@@ -72,7 +72,7 @@ class WorkflowStateSchemaViolationsTest {
       put("extra_field", "x")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "bill-feature-implement")
+      validator.validate(snapshot, "bill-feature-task")
     }
     val message = error.message.orEmpty()
     assertContains(message, "extra_field")
@@ -84,7 +84,7 @@ class WorkflowStateSchemaViolationsTest {
       put("contract_version", "999")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "bill-feature-implement")
+      validator.validate(snapshot, "bill-feature-task")
     }
     assertContains(error.message.orEmpty(), "contract_version")
   }
@@ -116,7 +116,7 @@ class WorkflowStateSchemaViolationsTest {
 
   @Test
   fun `per-skill workflow_status enum mismatch loud-fails`() {
-    // `blocked` is valid for `bill-feature-implement` but NOT for
+    // `blocked` is valid for `bill-feature-task` but NOT for
     // `bill-feature-verify` — the per-skill `oneOf` branch must reject
     // it. The schema currently has the verify branch declaring a 5-
     // value enum without `blocked`.
@@ -135,7 +135,7 @@ class WorkflowStateSchemaViolationsTest {
   private fun baseSnapshot(): Map<String, Any?> = linkedMapOf(
     "workflow_id" to "wfl-19700101-000000-aaaa",
     "session_id" to "",
-    "workflow_name" to "bill-feature-implement",
+    "workflow_name" to "bill-feature-task",
     "contract_version" to "0.1",
     "workflow_status" to "running",
     "current_step_id" to "assess",

@@ -90,8 +90,8 @@ function validateStatsRequest(payload) {
   if (typeof payload !== "object" || payload === null) {
     return "Request body must be a JSON object.";
   }
-  if (!["bill-feature-verify", "bill-feature-implement"].includes(payload.workflow)) {
-    return "workflow must be one of: bill-feature-verify, bill-feature-implement.";
+  if (!["bill-feature-verify", "bill-feature-task"].includes(payload.workflow)) {
+    return "workflow must be one of: bill-feature-verify, bill-feature-task.";
   }
   if (!isIsoDate(payload.date_from) || !isIsoDate(payload.date_to)) {
     return "date_from and date_to must use YYYY-MM-DD format.";
@@ -114,7 +114,7 @@ function capabilitiesPayload(env) {
     supports_ingest: supportsIngest,
     supports_stats: supportsStats,
     supported_workflows: supportsStats
-      ? ["bill-feature-verify", "bill-feature-implement"]
+      ? ["bill-feature-verify", "bill-feature-task"]
       : [],
     stats_auth_required: Boolean(env.PROXY_STATS_BEARER_TOKEN),
   };
@@ -466,7 +466,7 @@ export function normalizeImplementStats(row, dateFrom, dateTo) {
   return {
     status: "ok",
     source: "remote_proxy",
-    workflow: "bill-feature-implement",
+    workflow: "bill-feature-task",
     date_from: dateFrom,
     date_to: dateTo,
     started_runs: startedRuns,

@@ -5,19 +5,16 @@ import java.nio.file.Files
 
 private val horizontalSkillFamilies: Map<String, String> =
   mapOf(
-    "bill-feature-implement" to "workflow",
+    "bill-feature-task" to "workflow",
     "bill-feature-verify" to "workflow",
-    "bill-grill-plan" to "advisor",
     "bill-boundary-decisions" to "advisor",
     "bill-boundary-history" to "advisor",
     "bill-pr-description" to "advisor",
-    "bill-create-skill" to "advisor",
-    "bill-skill-remove" to "advisor",
     "bill-feature-guard" to "advisor",
     "bill-feature-guard-cleanup" to "advisor",
     "bill-unit-test-value-check" to "advisor",
     "bill-code-review" to "advisor",
-    "bill-quality-check" to "advisor",
+    "bill-code-quality-check" to "advisor",
   )
 
 internal fun replaceSectionBody(text: String, sectionName: String, newBody: String): String {
@@ -82,7 +79,7 @@ internal fun inferFamily(skillName: String): String {
   return when {
     "-code-review-" in skillName || slug.endsWith("code-review") -> "code-review"
     slug.endsWith("quality-check") -> "quality-check"
-    slug.endsWith("feature-implement") -> "feature-implement"
+    slug.endsWith("feature-task") || slug.endsWith("feature-implement") -> "feature-implement"
     slug.endsWith("feature-verify") -> "feature-verify"
     else -> slug
   }

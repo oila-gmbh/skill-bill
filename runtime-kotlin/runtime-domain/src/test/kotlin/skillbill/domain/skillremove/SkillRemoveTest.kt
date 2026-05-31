@@ -62,6 +62,8 @@ class SkillRemoveTest {
     )
     val refusal = assertFailsWith<SkillRemovalRefusedException> { SkillRemove(fs).previewRemoval(request) }
     assertEquals(SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED, refusal.refusalReason)
+    assertTrue("--allow-shipped" in refusal.message.orEmpty())
+    assertTrue("allowShipped" !in refusal.message.orEmpty())
   }
 
   @Test

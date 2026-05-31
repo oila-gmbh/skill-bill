@@ -244,9 +244,9 @@ The scaffolder is the supported way to create new governed source.
 
 Entrypoints:
 
-- `skill-bill new --payload <file>`
+- `skill-bill new`
 - `skill-bill new --interactive`
-- `/bill-create-skill`
+- `skill-bill new --payload <file>` for scripted automation
 
 Supported scaffold kinds:
 
@@ -265,9 +265,10 @@ Supported scaffold kinds:
 Scaffolding writes source files only. It does not stage generated `SKILL.md`
 wrappers or support pointer files into source.
 
-Use `skill-bill new --payload <file> --dry-run` to inspect planned files and
-manifest edits before mutation. For platform-pack composition payloads, dry-run
-output includes a preview of the generated `platform.yaml` block. After
+Use `skill-bill new --dry-run` for the guided path, or
+`skill-bill new --payload <file> --dry-run` for scripted payloads, to inspect
+planned files and manifest edits before mutation. For platform-pack composition
+payloads, dry-run output includes a preview of the generated `platform.yaml` block. After
 creation, `skill-bill show <baseline-skill>` surfaces any manifest-declared
 review composition so users and agents can understand which baseline review
 layers run. Legacy platform-pack payloads that omit `baseline_layers` remain

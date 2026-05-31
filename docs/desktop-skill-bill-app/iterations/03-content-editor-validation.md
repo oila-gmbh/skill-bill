@@ -86,7 +86,7 @@ cd runtime-kotlin
 Manual smoke:
 
 1. Open a temporary copy of this repo.
-2. Select `bill-quality-check`.
+2. Select `bill-code-quality-check`.
 3. Add a small authored line in `content.md`.
 4. Save.
 5. Confirm Git shows only the expected authored source file changed.

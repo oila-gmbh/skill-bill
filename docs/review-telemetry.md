@@ -143,10 +143,10 @@ Skill Bill uses **parent-owned telemetry** across the whole skill suite. A singl
 Every telemeterable skill must be usable alone. When invoked directly by a user, each skill generates its own session id and emits its own events:
 
 - `bill-code-review` lifecycle — `skillbill_review_finished` once the final review output is imported and all findings resolve
-- `bill-quality-check` lifecycle — `skillbill_quality_check_started` + `_finished`
+- `bill-code-quality-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-implement` — `skillbill_feature_implement_started` + `_finished`
+- `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
 
 ### The `orchestrated` flag
 
@@ -177,8 +177,8 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
       ...
     },
     {
-      "skill": "bill-quality-check",
-      "routed_skill": "bill-kotlin-quality-check",
+      "skill": "bill-code-quality-check",
+      "routed_skill": "bill-kotlin-code-quality-check",
       "result": "pass",
       "iterations": 2,
       ...
@@ -206,14 +206,14 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 ### Router skills never emit
 
-`bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry merely because routing happened. Routing metadata is carried inside the concrete routed skill's telemetry call, and the router passes `orchestrated` through to the routed concrete skill unchanged. The user-facing standalone lifecycle can still produce the events listed below once the routed workflow reaches its telemetry seam.
+`bill-code-review` and `bill-code-quality-check` are thin routers. They do not emit telemetry merely because routing happened. Routing metadata is carried inside the concrete routed skill's telemetry call, and the router passes `orchestrated` through to the routed concrete skill unchanged. The user-facing standalone lifecycle can still produce the events listed below once the routed workflow reaches its telemetry seam.
 
 ### Event catalog
 
 | Event | Emitted by | Orchestrated alternative |
 |-------|------------|--------------------------|
-| `skillbill_feature_implement_started` | `bill-feature-implement` (Step 1 confirm) | — (top-level only) |
-| `skillbill_feature_implement_finished` | `bill-feature-implement` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
+| `skillbill_feature_implement_started` | `bill-feature-task` (Step 1 confirm) | — (top-level only) |
+| `skillbill_feature_implement_finished` | `bill-feature-task` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
 | `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
 | `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
 | `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
@@ -237,7 +237,7 @@ Both `anonymous` and `full`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
-| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-quality-check`; KMP currently falls back to Kotlin quality-check behavior) |
+| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-code-quality-check`; KMP currently falls back to Kotlin quality-check behavior) |
 | `detected_stack` | string | Dominant stack routed for |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |
@@ -518,7 +518,7 @@ Client capability contract:
   "supports_stats": true,
   "supported_workflows": [
     "bill-feature-verify",
-    "bill-feature-implement"
+    "bill-feature-task"
   ]
 }
 ```
@@ -535,7 +535,7 @@ Client request contract:
 ```
 
 The MCP tool accepts either canonical workflow ids
-(`bill-feature-verify`, `bill-feature-implement`) or short aliases
+(`bill-feature-verify`, `bill-feature-task`) or short aliases
 (`verify`, `implement`). The dispatcher maps aliases to canonical ids before
 calling the proxy. The CLI subcommands use the short forms
 `skill-bill telemetry stats verify` and `skill-bill telemetry stats implement`.
@@ -556,7 +556,7 @@ Normalized remote stats payloads now include:
 - optional `group_by`
 - optional `series`
 
-For `bill-feature-implement`, normalized remote stats also include:
+For `bill-feature-task`, normalized remote stats also include:
 
 - `boundary_history_written_runs`
 - `boundary_history_written_rate`

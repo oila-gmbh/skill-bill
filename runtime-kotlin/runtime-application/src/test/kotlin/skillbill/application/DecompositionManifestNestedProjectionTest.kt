@@ -26,7 +26,10 @@ class DecompositionManifestNestedProjectionTest {
     }
 
     assertContains(error.reason, "already a decomposed subtask")
-    assertContains(error.reason, ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_1_install-policy.md")
+    assertContains(
+      error.reason,
+      ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_1_install-policy.md",
+    )
   }
 
   @Test

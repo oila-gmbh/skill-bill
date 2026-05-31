@@ -101,7 +101,7 @@ class CliInstallPlanApplyRuntimeTest {
       assertEquals(setOf("kmp", "kotlin"), (payload["selected_platforms"] as List<*>).toSet())
       assertTrue(payload.listOfMaps("platform_packs").all { pack -> pack["selected"] == true })
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-code-review" })
-      assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-quality-check" })
+      assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-code-quality-check" })
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-kotlin-code-review" })
     }
   }
@@ -132,7 +132,7 @@ class CliInstallPlanApplyRuntimeTest {
       payload.listOfMaps("staging").all { staging -> staging["staging_dir"].toString().startsWith(stagingRoot) },
     )
     val skills = payload.listOfMaps("skills")
-    assertEquals(setOf("bill-code-review", "bill-quality-check"), skills.map { skill -> skill["name"] }.toSet())
+    assertEquals(setOf("bill-code-review", "bill-code-quality-check"), skills.map { skill -> skill["name"] }.toSet())
     assertTrue(skills.all { skill -> skill["kind"] == "base" })
     assertTrue(skills.all { skill -> skill.mapValue("staging")["status"] == "staged" })
     val links = skills.flatMap { skill -> skill.listOfMaps("links") }
@@ -232,9 +232,9 @@ class CliInstallPlanApplyRuntimeTest {
       expectedSelectedPlatforms = setOf("kotlin"),
       expectedSkillNames = setOf(
         "bill-code-review",
-        "bill-quality-check",
+        "bill-code-quality-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-quality-check",
+        "bill-kotlin-code-quality-check",
       ),
       targetDir = selectedFixture.home.resolve("manual-targets/codex"),
     )
@@ -250,11 +250,11 @@ class CliInstallPlanApplyRuntimeTest {
       expectedSelectedPlatforms = setOf("kmp", "kotlin"),
       expectedSkillNames = setOf(
         "bill-code-review",
-        "bill-quality-check",
+        "bill-code-quality-check",
         "bill-kmp-code-review",
-        "bill-kmp-quality-check",
+        "bill-kmp-code-quality-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-quality-check",
+        "bill-kotlin-code-quality-check",
       ),
       targetDir = allFixture.home.resolve("manual-targets/codex"),
     )
@@ -328,7 +328,7 @@ class CliInstallPlanApplyRuntimeTest {
     val payload = decodeInstallPlanApplyJson(result.stdout)
     assertEquals("success", payload["status"])
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
   }
 
   @Test
@@ -397,9 +397,9 @@ class CliInstallPlanApplyRuntimeTest {
   private fun assertPlannedSkillKinds(payload: Map<String, Any?>) {
     val skills = payload.listOfMaps("skills").associateBy { skill -> skill["name"] }
     assertEquals("base", skills.getValue("bill-code-review")["kind"])
-    assertEquals("base", skills.getValue("bill-quality-check")["kind"])
+    assertEquals("base", skills.getValue("bill-code-quality-check")["kind"])
     assertEquals("platform_pack", skills.getValue("bill-kotlin-code-review")["kind"])
-    assertEquals("platform_pack", skills.getValue("bill-kotlin-quality-check")["kind"])
+    assertEquals("platform_pack", skills.getValue("bill-kotlin-code-quality-check")["kind"])
   }
 
   private fun assertApplyPlatformSkills(
@@ -629,7 +629,7 @@ private fun installPlanApplyFixture(): InstallPlanApplyFixture {
   val home = Files.createTempDirectory("skillbill-cli-install-plan-apply-home")
   val repoRoot = Files.createTempDirectory("skillbill-cli-install-plan-apply-repo")
   seedCliBaseSkill(repoRoot, "bill-code-review")
-  seedCliBaseSkill(repoRoot, "bill-quality-check")
+  seedCliBaseSkill(repoRoot, "bill-code-quality-check")
   seedCliPlatformPack(repoRoot, "kmp")
   seedCliPlatformPack(repoRoot, "kotlin")
   return InstallPlanApplyFixture(repoRoot = repoRoot, home = home)
@@ -640,7 +640,7 @@ private fun installByteEquivalenceFixture(): InstallPlanApplyFixture {
   val repoRoot = Files.createTempDirectory("skillbill-cli-install-byte-equivalence-repo")
   Files.createDirectories(repoRoot.resolve("platform-packs"))
   seedCliBaseSkill(repoRoot, "bill-code-review")
-  seedCliBaseSkill(repoRoot, "bill-quality-check")
+  seedCliBaseSkill(repoRoot, "bill-code-quality-check")
   return InstallPlanApplyFixture(repoRoot = repoRoot, home = home)
 }
 
@@ -749,7 +749,7 @@ private fun seedCliBaseSkill(repoRoot: Path, skillName: String) {
 
 private fun seedCliPlatformPack(repoRoot: Path, slug: String) {
   val codeReviewName = "bill-$slug-code-review"
-  val qualityCheckName = "bill-$slug-quality-check"
+  val qualityCheckName = "bill-$slug-code-quality-check"
   val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
   Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
   Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
@@ -848,22 +848,22 @@ private fun singleCodexPlanGoldenPayload(fixture: InstallPlanApplyFixture): Map<
     "platform_packs" to emptyList<Map<String, Any?>>(),
     "selected_platforms" to emptyList<String>(),
     "skills" to listOf(
+      plannedSkillGoldenPayload("bill-code-quality-check", paths.qualityCheckSourceDir),
       plannedSkillGoldenPayload("bill-code-review", paths.codeReviewSourceDir),
-      plannedSkillGoldenPayload("bill-quality-check", paths.qualityCheckSourceDir),
     ),
     "staging_root" to paths.stagingRoot,
     "staging" to listOf(
+      stagingIntentGoldenPayload(
+        skillName = "bill-code-quality-check",
+        sourceDir = paths.qualityCheckSourceDir,
+        stagingDir = paths.qualityCheckStagingDir,
+        contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
+      ),
       stagingIntentGoldenPayload(
         skillName = "bill-code-review",
         sourceDir = paths.codeReviewSourceDir,
         stagingDir = paths.codeReviewStagingDir,
         contentHash = CODE_REVIEW_GOLDEN_CONTENT_HASH,
-      ),
-      stagingIntentGoldenPayload(
-        skillName = "bill-quality-check",
-        sourceDir = paths.qualityCheckSourceDir,
-        stagingDir = paths.qualityCheckStagingDir,
-        contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
       ),
     ),
     "telemetry_level" to "anonymous",
@@ -895,6 +895,17 @@ private fun singleCodexApplyGoldenPayload(fixture: InstallPlanApplyFixture): Map
 private fun appliedSkillsGoldenPayload(paths: SingleCodexGoldenPaths): List<Map<String, Any?>> = listOf(
   appliedSkillGoldenPayload(
     AppliedSkillGoldenValues(
+      skillName = "bill-code-quality-check",
+      sourceDir = paths.qualityCheckSourceDir,
+      stagingDir = paths.qualityCheckStagingDir,
+      renderedSkillFile = paths.qualityCheckRenderedSkillFile,
+      contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
+      targetDir = paths.codexTargetDir,
+      linkPath = paths.qualityCheckLinkPath,
+    ),
+  ),
+  appliedSkillGoldenPayload(
+    AppliedSkillGoldenValues(
       skillName = "bill-code-review",
       sourceDir = paths.codeReviewSourceDir,
       stagingDir = paths.codeReviewStagingDir,
@@ -902,17 +913,6 @@ private fun appliedSkillsGoldenPayload(paths: SingleCodexGoldenPaths): List<Map<
       contentHash = CODE_REVIEW_GOLDEN_CONTENT_HASH,
       targetDir = paths.codexTargetDir,
       linkPath = paths.codeReviewLinkPath,
-    ),
-  ),
-  appliedSkillGoldenPayload(
-    AppliedSkillGoldenValues(
-      skillName = "bill-quality-check",
-      sourceDir = paths.qualityCheckSourceDir,
-      stagingDir = paths.qualityCheckStagingDir,
-      renderedSkillFile = paths.qualityCheckRenderedSkillFile,
-      contentHash = QUALITY_CHECK_GOLDEN_CONTENT_HASH,
-      targetDir = paths.codexTargetDir,
-      linkPath = paths.qualityCheckLinkPath,
     ),
   ),
 )
@@ -1037,20 +1037,20 @@ private data class SingleCodexGoldenPaths(private val fixture: InstallPlanApplyF
   val runtimeInstallRoot: String = fixture.home.resolve(".skill-bill/runtime").toString()
   val telemetryConfigPath: String = fixture.home.resolve(".skill-bill/config.json").toString()
   val codeReviewSourceDir: String = fixture.repoRoot.resolve("skills/bill-code-review").toString()
-  val qualityCheckSourceDir: String = fixture.repoRoot.resolve("skills/bill-quality-check").toString()
+  val qualityCheckSourceDir: String = fixture.repoRoot.resolve("skills/bill-code-quality-check").toString()
   val codeReviewStagingDir: String = stagingDir("bill-code-review", CODE_REVIEW_GOLDEN_CONTENT_HASH)
-  val qualityCheckStagingDir: String = stagingDir("bill-quality-check", QUALITY_CHECK_GOLDEN_CONTENT_HASH)
+  val qualityCheckStagingDir: String = stagingDir("bill-code-quality-check", QUALITY_CHECK_GOLDEN_CONTENT_HASH)
   val codeReviewRenderedSkillFile: String = Path.of(codeReviewStagingDir).resolve("SKILL.md").toString()
   val qualityCheckRenderedSkillFile: String = Path.of(qualityCheckStagingDir).resolve("SKILL.md").toString()
   val codeReviewLinkPath: String = fixture.home.resolve("manual-targets/codex/bill-code-review").toString()
-  val qualityCheckLinkPath: String = fixture.home.resolve("manual-targets/codex/bill-quality-check").toString()
+  val qualityCheckLinkPath: String = fixture.home.resolve("manual-targets/codex/bill-code-quality-check").toString()
 
   private fun stagingDir(skillName: String, contentHash: String): String =
     fixture.home.resolve(".skill-bill/installed-skills").resolve("$skillName-$contentHash").toString()
 }
 
 private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "f8ac2740c5fa2af0"
-private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "24c743bc4dd89750"
+private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "849811577b84c74c"
 private const val WINDOWS_SYMLINK_GUIDANCE =
   "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) or run the install command " +
     "from an elevated shell so the JVM can create symlinks."

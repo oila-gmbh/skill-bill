@@ -41,7 +41,7 @@ Before deleting anything:
 
 ### Step 4: Verify
 
-Run `bill-quality-check` to ensure nothing is broken.
+Run `bill-code-quality-check` to ensure nothing is broken.
 
 ## Patterns
 
@@ -55,7 +55,7 @@ Code examples for each cleanup pattern (conditional, DI/factory, navigation/rout
 - [ ] All Legacy files deleted.
 - [ ] All Legacy tests deleted.
 - [ ] Flag definition removed from registry.
-- [ ] `bill-quality-check` passes.
+- [ ] `bill-code-quality-check` passes.
 - [ ] No orphaned imports or dependencies.
 
 ## When to Ask User

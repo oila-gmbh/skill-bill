@@ -14,8 +14,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -32,7 +32,7 @@ class AgentRunLauncherTest {
     assertContains(request.command, "--print")
     assertContains(request.command, "--dangerously-skip-permissions")
     assertContains(request.command, "--add-dir")
-    assertContains(request.command.last(), "bill-feature-implement")
+    assertContains(request.command.last(), "bill-feature-task")
     assertContains(
       request.command.last(),
       "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",

@@ -55,7 +55,7 @@ Required data:
 ```text
 Horizontal Skills
   bill-code-review
-  bill-quality-check
+  bill-code-quality-check
 Platform Packs
   Kotlin
     code-review
@@ -63,7 +63,7 @@ Platform Packs
       architecture
       security
     quality-check
-      bill-kotlin-quality-check
+      bill-kotlin-code-quality-check
     add-ons
   KMP
     code-review

@@ -1,6 +1,6 @@
 # Skill Overrides
 
-## bill-kotlin-quality-check
+## bill-kotlin-code-quality-check
 - Treat warnings as blocking work.
 - Skip formatting-only rewrites unless the user explicitly asks for them.
 
@@ -8,5 +8,5 @@
 - Always include ticket links when the branch name contains one.
 - Keep QA steps concise unless the user asks for a full matrix.
 
-## bill-feature-implement
+## bill-feature-task
 - do not commit changes until user reviews them and asks, pause an ask the user to review

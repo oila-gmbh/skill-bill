@@ -10,11 +10,16 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 
 internal fun renderWrapper(target: AuthoringTarget): String {
-  // Source frontmatter from content.md — content.md is the authoring surface (since SKILL-40
-  // subtask 1) and SKILL.md must be a faithful render of it. Sourcing from SKILL.md would let
-  // wrapper frontmatter drift from authored description silently.
+  // Source frontmatter from content.md, then render the wrapper frontmatter through the canonical
+  // YAML scalar writer. This preserves the authored values without leaking invalid plain scalars
+  // such as descriptions containing ": " into installed SKILL.md files.
   val contentText = Files.readString(target.contentFile)
-  val frontmatter = authoredContentFrontmatterBlock(contentText, target.contentFile, target.skillName)
+  authoredContentFrontmatterBlock(contentText, target.contentFile, target.skillName)
+  val sourceFrontmatter = parseSkillFrontmatter(contentText)
+  val frontmatter = renderFrontmatter(
+    skillName = sourceFrontmatter["name"].orEmpty(),
+    description = sourceFrontmatter["description"].orEmpty(),
+  )
   val executionBody = renderedAuthoredExecutionBody(contentText, target.contentFile, target.skillName)
   val context =
     TemplateContext(

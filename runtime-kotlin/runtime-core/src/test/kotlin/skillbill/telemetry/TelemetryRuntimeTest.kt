@@ -219,7 +219,7 @@ private fun capabilitiesResponse(): HttpResponse = HttpResponse(
         "contract_version": "1",
         "supports_ingest": true,
         "supports_stats": true,
-        "supported_workflows": ["bill-feature-verify", "bill-feature-implement"]
+        "supported_workflows": ["bill-feature-verify", "bill-feature-task"]
       }
   """.trimIndent(),
 )

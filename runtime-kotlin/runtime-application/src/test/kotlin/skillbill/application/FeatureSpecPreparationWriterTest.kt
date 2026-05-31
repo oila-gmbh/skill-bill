@@ -29,7 +29,7 @@ class FeatureSpecPreparationWriterTest {
         decision = singleSpecDecision(),
         featureName = "Feature Spec Horizontal Skill",
         parentSpecOverview = "Prepare one spec only.",
-        validationStrategy = "bill-quality-check",
+        validationStrategy = "bill-code-quality-check",
       ),
     )
 
@@ -57,7 +57,7 @@ class FeatureSpecPreparationWriterTest {
           decision = singleSpecDecision(),
           featureName = "feature-spec-horizontal-skill",
           parentSpecOverview = "Should fail because manifest exists.",
-          validationStrategy = "bill-quality-check",
+          validationStrategy = "bill-code-quality-check",
         ),
       )
     }
@@ -75,7 +75,7 @@ class FeatureSpecPreparationWriterTest {
           decision = singleSpecDecision(),
           featureName = "feature-spec-horizontal-skill",
           parentSpecOverview = "single_spec should reject decomposed-only payload fields.",
-          validationStrategy = "bill-quality-check",
+          validationStrategy = "bill-code-quality-check",
           subtasks = listOf(
             FeatureSpecSubtaskPreparation(
               id = 1,
@@ -84,8 +84,8 @@ class FeatureSpecPreparationWriterTest {
               acceptanceCriteria = listOf("Rejected."),
               nonGoals = emptyList(),
               dependencyNotes = "",
-              validationStrategy = "bill-quality-check",
-              nextPath = "Run bill-feature-implement on spec_subtask_1_decomposed-only.md.",
+              validationStrategy = "bill-code-quality-check",
+              nextPath = "Run bill-feature-task on spec_subtask_1_decomposed-only.md.",
             ),
           ),
         ),
@@ -104,7 +104,7 @@ class FeatureSpecPreparationWriterTest {
         decision = decomposedDecision(),
         featureName = "feature-spec-horizontal-skill",
         parentSpecOverview = "Prepare decomposition artifacts.",
-        validationStrategy = "bill-quality-check",
+        validationStrategy = "bill-code-quality-check",
         subtasks = listOf(
           FeatureSpecSubtaskPreparation(
             id = 1,
@@ -113,8 +113,8 @@ class FeatureSpecPreparationWriterTest {
             acceptanceCriteria = listOf("Contracts are reusable by implement and goal."),
             nonGoals = listOf("Do not wire skills yet."),
             dependencyNotes = "Runs first and has no dependencies.",
-            validationStrategy = "bill-quality-check",
-            nextPath = "Run bill-feature-implement on spec_subtask_1_foundation.md.",
+            validationStrategy = "bill-code-quality-check",
+            nextPath = "Run bill-feature-task on spec_subtask_1_foundation.md.",
             dependsOn = emptyList(),
           ),
           FeatureSpecSubtaskPreparation(
@@ -124,8 +124,8 @@ class FeatureSpecPreparationWriterTest {
             acceptanceCriteria = listOf("Manifest validates and can be consumed by goal."),
             nonGoals = listOf("Do not add feature-spec skill wiring yet."),
             dependencyNotes = "Depends on the shared preparation contracts from subtask 1.",
-            validationStrategy = "bill-quality-check",
-            nextPath = "Run bill-feature-implement on spec_subtask_2_runtime-writer.md.",
+            validationStrategy = "bill-code-quality-check",
+            nextPath = "Run bill-feature-task on spec_subtask_2_runtime-writer.md.",
             dependsOn = listOf(1),
           ),
         ),
@@ -163,7 +163,7 @@ class FeatureSpecPreparationWriterTest {
           decision = decomposedDecision(),
           featureName = "feature-spec-horizontal-skill",
           parentSpecOverview = "Invalid decomposition request.",
-          validationStrategy = "bill-quality-check",
+          validationStrategy = "bill-code-quality-check",
           subtasks = listOf(
             FeatureSpecSubtaskPreparation(
               id = 1,
@@ -172,8 +172,8 @@ class FeatureSpecPreparationWriterTest {
               acceptanceCriteria = listOf("Too small"),
               nonGoals = emptyList(),
               dependencyNotes = "",
-              validationStrategy = "bill-quality-check",
-              nextPath = "Run bill-feature-implement on spec_subtask_1_only.md.",
+              validationStrategy = "bill-code-quality-check",
+              nextPath = "Run bill-feature-task on spec_subtask_1_only.md.",
             ),
           ),
         ),

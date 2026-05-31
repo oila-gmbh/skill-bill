@@ -98,4 +98,4 @@ and status surface.
     stay token-for-token instead of guessing at unfinished surfaces.
 
 Each subtask file is intended to be small enough to hand directly to
-`bill-feature-implement`.
+`bill-feature-task`.

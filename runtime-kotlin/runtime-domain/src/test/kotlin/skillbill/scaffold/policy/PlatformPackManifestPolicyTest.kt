@@ -12,7 +12,7 @@ class PlatformPackManifestPolicyTest {
   fun `renderPlatformPackManifestContent emits the canonical platform yaml for a starter java pack`() {
     val packRoot = Path.of("/repo/platform-packs/java")
     val baselineSkillPath = packRoot.resolve("code-review").resolve("bill-java-code-review")
-    val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-quality-check")
+    val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-quality-check")
 
     val rendered = renderPlatformPackManifestContent(
       platform = "java",
@@ -47,7 +47,7 @@ class PlatformPackManifestPolicyTest {
       "  areas: {}",
       "area_metadata: {}",
       "",
-      "declared_quality_check_file: \"quality-check/bill-java-quality-check/content.md\"",
+      "declared_quality_check_file: \"quality-check/bill-java-code-quality-check/content.md\"",
     ).joinToString("\n") + "\n"
 
     assertEquals(expected, rendered)
@@ -57,7 +57,7 @@ class PlatformPackManifestPolicyTest {
   fun `renderPlatformPackManifestContent appends baseline layers when provided`() {
     val packRoot = Path.of("/repo/platform-packs/java")
     val baselineSkillPath = packRoot.resolve("code-review").resolve("bill-java-code-review")
-    val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-quality-check")
+    val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-quality-check")
 
     val rendered = renderPlatformPackManifestContent(
       platform = "java",
@@ -111,7 +111,7 @@ class PlatformPackManifestPolicyTest {
     "  areas: {}",
     "area_metadata: {}",
     "",
-    "declared_quality_check_file: \"quality-check/bill-java-quality-check/content.md\"",
+    "declared_quality_check_file: \"quality-check/bill-java-code-quality-check/content.md\"",
     "",
     "code_review_composition:",
     "  baseline_layers:",

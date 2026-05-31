@@ -1,7 +1,7 @@
-# Skill Bill demo storyboard — `/bill-feature-implement` (spec → PR)
+# Skill Bill demo storyboard — `/bill-feature-task` (spec → PR)
 
 This is the shot-by-shot plan for the front-door demo. It captures **one** concrete
-flow: running `/bill-feature-implement` against a small spec and watching it walk
+flow: running `/bill-feature-task` against a small spec and watching it walk
 all the way from a design doc to a merged-ready PR, with durable workflow state and
 telemetry visible along the way.
 
@@ -21,7 +21,7 @@ and swapped in for the static placeholder
 |---|------|-------|------------------|------------------------|
 | 1 | 0:00–0:02 | Clean terminal in the cloned repo | Cursor blinking at an empty prompt; repo name visible in the title bar | `skill-bill` |
 | 2 | 0:02–0:05 | Show the spec | `bat spec.md` (or open it) revealing a short feature spec with acceptance criteria | "Start with a spec." |
-| 3 | 0:05–0:07 | Invoke the workflow | Type and run `/bill-feature-implement spec.md` in the agent | "One command." |
+| 3 | 0:05–0:07 | Invoke the workflow | Type and run `/bill-feature-task spec.md` in the agent | "One command." |
 | 4 | 0:07–0:11 | Phase ladder | Phase lines stream in: assess → branch → pre-plan → plan → implement → review → audit → quality-check (fast-forward the slow gaps) | "Each phase runs in its own subagent." |
 | 5 | 0:11–0:14 | Durable state | A line confirming `feature_implement_workflow_update` at a phase boundary; briefly show `skill-bill workflow latest` | "Durable state — crash anywhere, resume cleanly." |
 | 6 | 0:14–0:17 | Telemetry tree | Show the parent/child telemetry rollup (e.g. `skill-bill implement-stats`) | "Structured telemetry, parent → child." |

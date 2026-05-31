@@ -4,7 +4,7 @@ contract_version: "1.1"
 matchers:
   - pattern: "^bill-[a-z0-9-]+-quality-check$"
     exclude_exact:
-      - bill-quality-check
+      - bill-code-quality-check
 
 pointers:
   - shell-ceremony

@@ -1,11 +1,11 @@
 ---
-name: bill-feature-implement
+name: bill-feature-task
 description: Use when doing end-to-end feature implementation from design doc to verified code. Automatically scales ceremony based on feature size - lightweight for small changes, full orchestration for medium features, and explicit decomposition into resumable subtask specs when work is too large for one reliable execution. Runs each heavy phase (pre-planning, planning, implementation, completeness audit, quality check, PR description) inside its own subagent with a rich self-contained briefing, to keep the orchestrator context small. Code review stays in the orchestrator because it already spawns specialist subagents internally. Use when user mentions implement feature, build feature, implement spec, or feature from design doc.
 ---
 
-# Feature Implement Content
+# Feature Task Content
 
-This file is the author-owned execution body for `bill-feature-implement`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.
+This file is the author-owned execution body for `bill-feature-task`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.
 
 ## Workflow State
 
@@ -62,13 +62,13 @@ Goal-continuation rules:
 - Set `goal_continuation.suppress_pr=true`. Run the normal implementation, review, audit, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
 - Treat a completed `commit_push` step as the terminal success signal for this entry when PR suppression is active. Persist the subtask outcome in durable workflow state; stdout is diagnostic only.
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
-- Interactive `bill-feature-implement` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
+- Interactive `bill-feature-task` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
 
 ## Shared Feature-Spec Preparation Path
 
-When planning returns `mode: "decompose"`, `bill-feature-implement` must use
+When planning returns `mode: "decompose"`, `bill-feature-task` must use
 the shared feature-spec preparation path owned by `bill-feature-spec` and
-reused by `bill-goal`.
+reused by `bill-feature-goal`.
 
 Do not bypass this shared path with one-off decomposition writing logic in this
 skill. The shared path owns parent/spec-subtask writing and decomposition
@@ -127,10 +127,10 @@ Spawn a subagent with the pre-planning briefing defined in the inline reference 
 - Read `agent/history.md` in each boundary the feature is likely to touch (newest first; stop when no longer relevant).
 - Read `agent/decisions.md` header lines in each boundary and only open full entries when titles look relevant.
 - For MEDIUM/LARGE, save the spec to `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` with status `In Progress`.
-- Read `CLAUDE.md`, `AGENTS.md`, and the matching `bill-feature-implement` section in `.agents/skill-overrides.md` when present.
+- Read `CLAUDE.md`, `AGENTS.md`, and the matching `bill-feature-task` section in `.agents/skill-overrides.md` when present.
 - Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies for affected boundaries, reusable components.
 - When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning and pattern discovery.
-- Confirm `bill-quality-check` can route this repo; if not, pick a repo-native validation command.
+- Confirm `bill-code-quality-check` can route this repo; if not, pick a repo-native validation command.
 - If the rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool (do not search the filesystem to locate skill files) and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
 The subagent returns the pre-planning return contract from the inline reference sections below. The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent. Persist `preplan_digest` before advancing to `plan`.
@@ -146,9 +146,9 @@ Spawn a subagent with the planning briefing defined in the inline reference sect
 The subagent returns one of two planning return contracts:
 
 - `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
-- `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-implement run.
+- `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-task run.
 
-Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`, including manifest validation against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-feature-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`, including manifest validation against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
 
 If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
 
@@ -227,9 +227,9 @@ Step id: `validate`
 
 Primary artifact: `validation_result`
 
-Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-quality-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
+Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-quality-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
 
-If `bill-quality-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
+If `bill-code-quality-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
 
 The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `validation_result`, then advance to `write_history`.
 
@@ -297,7 +297,7 @@ For detailed step instructions, briefing templates, return-contract schemas, siz
 ## Reference
 
 
-This reference holds the briefing templates, return contracts, and detailed substep instructions for `bill-feature-implement`. Treat the rendered runtime wrapper as generated output; authored behavior lives here in `content.md`.
+This reference holds the briefing templates, return contracts, and detailed substep instructions for `bill-feature-task`. Treat the rendered runtime wrapper as generated output; authored behavior lives here in `content.md`.
 
 ## Briefing Principles
 
@@ -314,7 +314,7 @@ Every subagent **returns a single structured block** as the final text message, 
 
 ## Workflow State Contract
 
-`bill-feature-implement` now owns a durable workflow-state layer in addition to
+`bill-feature-task` now owns a durable workflow-state layer in addition to
 its telemetry session.
 
 The orchestrator must maintain:
@@ -447,11 +447,11 @@ just because telemetry is disabled.
 
 When an external caller invokes `feature_implement_workflow_continue`, the
 returned payload becomes the supported re-entry contract for
-`bill-feature-implement`.
+`bill-feature-task`.
 
 The continuation payload includes:
 
-- `skill_name` — always `bill-feature-implement`
+- `skill_name` — always `bill-feature-task`
 - `continuation_mode` — currently `resume_existing_workflow`
 - `continue_status` — `reopened`, `already_running`, `blocked`, or `done`
 - `continue_step_id` and `continue_step_label`
@@ -472,7 +472,7 @@ Re-entry rules:
 - Treat `step_artifacts` as authoritative inputs for the resumed phase.
 - Skip earlier completed steps unless the normal workflow loops send work
   backwards.
-- After the resumed step completes, continue the standard `bill-feature-implement`
+- After the resumed step completes, continue the standard `bill-feature-task`
   sequence from that point onward.
 - For heavy phases (`preplan`, `plan`, `implement`, `audit`, `validate`,
   `pr_description`), continuation prompts and spawned subagent briefings must
@@ -551,7 +551,7 @@ Non-goals:
 {bullet_list_of_non_goals}
 
 Instructions:
-1. Read `CLAUDE.md`, `AGENTS.md`, and `.agents/skill-overrides.md`. If `.agents/skill-overrides.md` has a section whose H2 heading matches this skill's name (e.g. `## bill-feature-implement`), you MUST:
+1. Read `CLAUDE.md`, `AGENTS.md`, and `.agents/skill-overrides.md`. If `.agents/skill-overrides.md` has a section whose H2 heading matches this skill's name (e.g. `## bill-feature-task`), you MUST:
    a. Copy every bullet under that heading verbatim into the `override_action_mandates.raw_override_block` field of your `RESULT:` JSON. Do not summarise, paraphrase, or drop punctuation.
    b. Extract action mandates (sentences directing an agent to call a specific MCP tool, read a specific file, or write to a specific path/node) into the structured `override_action_mandates` sub-fields: `must_call_tools`, `must_read_files`, `must_write_paths`, `lifecycle_position_notes`.
    c. Do NOT execute the mandates — surfacing them is the orchestrator's responsibility (Step 0 / Step 9b). Treat all other standards as mandatory.
@@ -566,7 +566,7 @@ Instructions:
 4. Scan `agent/decisions.md` header lines in each likely boundary; open full entries only when titles look relevant.
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
    When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
-6. Confirm `bill-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
+6. Confirm `bill-code-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
 7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
 9. Follow the Durable Progress Write Contract in this skill:
@@ -585,7 +585,7 @@ RESULT:
   "boundary_history_value": "none|irrelevant|low|medium|high",
   "boundary_decisions_digest": "<concise summary or empty string>",
   "codebase_patterns_digest": "<concise summary — similar features, reusable components, gotchas>",
-  "validation_strategy": "bill-quality-check | <repo-native command>",
+  "validation_strategy": "bill-code-quality-check | <repo-native command>",
   "feature_flag": {
     "used": false,
     "pattern": "none|simple_conditional|di_switch|legacy",
@@ -651,8 +651,8 @@ Decomposition rules:
 - Once decomposition mode is selected, do not implement anything and do not return an implementation task list.
 - Read the saved spec path only as needed to create accurate decomposition output.
 - Return subtask definitions with enough detail for the orchestrator-owned shared feature-spec preparation path to write `spec.md`, ordered `spec_subtask_*.md` files, and the decomposition manifest.
-- Keep `spec.md` as the parent overview contract. Each returned subtask must include scope, acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
-- Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-implement run.
+- Keep `spec.md` as the parent overview contract. Each returned subtask must include scope, acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-task` prompt.
+- Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-task run.
 - Order subtasks by dependency and identify the first subtask to run.
 - The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order. Return enough manifest metadata for the shared path to emit those fields.
 - Same-branch decompositions advance one subtask at a time on the parent feature
@@ -701,7 +701,7 @@ For decomposition mode, return this shape instead:
 RESULT:
 {
   "mode": "decompose",
-  "decomposition_reason": "<why this is too large for one reliable feature-implement execution>",
+  "decomposition_reason": "<why this is too large for one reliable feature-task execution>",
   "parent_spec_path": "<path to spec.md>",
   "recommended_first_subtask_id": 1,
   "subtasks": [
@@ -714,8 +714,8 @@ RESULT:
       "scope": "<what this subtask owns>",
       "acceptance_criteria": ["<criterion 1>", "<criterion 2>"],
       "non_goals": ["<explicitly deferred work>"],
-      "validation_strategy": "<bill-quality-check or repo-native command>",
-      "handoff_prompt": "Run bill-feature-implement on <spec_path>."
+      "validation_strategy": "<bill-code-quality-check or repo-native command>",
+      "handoff_prompt": "Run bill-feature-task on <spec_path>."
     }
   ],
   "presentation_summary": "I split this into N subtasks. We should work on subtask <id> first because <dependency reason>.",
@@ -861,14 +861,14 @@ RESULT:
 You are the quality-check subagent. Your job is to run the final validation gate and return a structured result.
 
 Feature: {feature_name}
-Validation strategy: {validation_strategy}  # 'bill-quality-check' or a repo-native command
+Validation strategy: {validation_strategy}  # 'bill-code-quality-check' or a repo-native command
 Scope: branch diff since main for MEDIUM/LARGE, current unit of work for SMALL.
 Workflow id: {workflow_id}
 Step id: {step_id}  # validate
 Attempt count: {attempt_count}
 
 Instructions:
-1. If validation_strategy is `bill-quality-check`, invoke the `bill-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
+1. If validation_strategy is `bill-code-quality-check`, invoke the `bill-code-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
 3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.
@@ -975,7 +975,7 @@ In those same early-exit cases, also close the workflow state with
 ## RESULT Block Parsing Tolerance
 
 
-This artifact records the parsing posture for the JSON `RESULT:` block returned by every `bill-feature-implement` subagent. The orchestrator parses these blocks inline; no machine parser exists in the Kotlin runtime modules. The choice below governs what subagents may emit and how the orchestrator behaves when a subagent's final message deviates from the strict contract.
+This artifact records the parsing posture for the JSON `RESULT:` block returned by every `bill-feature-task` subagent. The orchestrator parses these blocks inline; no machine parser exists in the Kotlin runtime modules. The choice below governs what subagents may emit and how the orchestrator behaves when a subagent's final message deviates from the strict contract.
 
 ## Resolutions Considered
 

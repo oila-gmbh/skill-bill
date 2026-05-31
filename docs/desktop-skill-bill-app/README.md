@@ -139,7 +139,7 @@ Initial runtime operations:
 - replace a section: equivalent to `skill-bill fill <skill> --section <heading> --body-file <file> --format json`
 - validate: equivalent to `skill-bill validate --format json`
 - render preview: equivalent to `skill-bill render <skill>`
-- scaffold: equivalent to `skill-bill new --payload <file> --format json`
+- scaffold: equivalent to `skill-bill new --payload <file> --format json`; the CLI human path is `skill-bill new`
 - install or upgrade, when exposed: equivalent to existing install and upgrade commands
 
 The UI may read the actual `content.md` text for display only after the runtime has identified the authored file as a valid target. It must not discover editable targets by hand-walking arbitrary files and guessing intent.

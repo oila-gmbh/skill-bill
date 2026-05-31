@@ -14,7 +14,7 @@ import kotlin.test.assertFailsWith
 
 class AgentRunServiceTest {
   @Test
-  fun `configured override wins over invoked bill-goal agent`() {
+  fun `configured override wins over invoked bill-feature-goal agent`() {
     val launcher = RecordingAgentRunLauncher()
     val service = AgentRunService(launcher)
 
@@ -33,7 +33,7 @@ class AgentRunServiceTest {
   }
 
   @Test
-  fun `invoked bill-goal agent is the default without hardcoded fallback`() {
+  fun `invoked bill-feature-goal agent is the default without hardcoded fallback`() {
     val launcher = RecordingAgentRunLauncher()
     val service = AgentRunService(launcher)
 

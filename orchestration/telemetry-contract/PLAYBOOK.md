@@ -14,10 +14,10 @@ Do not reference this repo-relative path directly from installable skills — us
 Every telemeterable skill must be usable alone. When invoked directly by a user, each skill generates its own session id and emits its own events:
 
 - `bill-code-review` — `skillbill_review_finished` (once the review lifecycle resolves)
-- `bill-quality-check` — `skillbill_quality_check_started` + `_finished`
+- `bill-code-quality-check` — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-implement` — `skillbill_feature_implement_started` + `_finished`
+- `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
 
 ## The `orchestrated` flag
 
@@ -39,7 +39,7 @@ Review skills (`bill-code-review` and its stack-specific implementations) use th
 
 ### Quality-check skills
 
-Quality-check skills (`bill-quality-check` and its stack-specific implementations) use the `quality_check_started` and `quality_check_finished` MCP tools.
+Quality-check skills (`bill-code-quality-check` and its stack-specific implementations) use the `quality_check_started` and `quality_check_finished` MCP tools.
 
 - **Standalone:** call `quality_check_started` once stack routing is decided, then `quality_check_finished` when the loop finishes.
 - **Orchestrated:** skip `quality_check_started`; call `quality_check_finished` with `orchestrated=true` and all started+finished fields combined.
@@ -60,7 +60,7 @@ PR description skills (`bill-pr-description`) use the `pr_description_generated`
 
 ### Feature-implement skills
 
-Feature-implement skills (`bill-feature-implement`) use the `feature_implement_started` and `feature_implement_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
+Feature-implement skills (`bill-feature-task`) use the `feature_implement_started` and `feature_implement_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
 
 ## child_steps aggregation
 
@@ -73,7 +73,7 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
 
 ## Routers never emit
 
-`bill-code-review` and `bill-quality-check` are thin routers. They do not emit telemetry of their own — routing metadata is carried inside the concrete routed skill's telemetry call. They pass `orchestrated` through to the routed concrete skill unchanged.
+`bill-code-review` and `bill-code-quality-check` are thin routers. They do not emit telemetry of their own — routing metadata is carried inside the concrete routed skill's telemetry call. They pass `orchestrated` through to the routed concrete skill unchanged.
 
 ## Governed add-ons
 

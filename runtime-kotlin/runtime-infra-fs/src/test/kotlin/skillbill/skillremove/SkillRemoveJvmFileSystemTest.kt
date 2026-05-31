@@ -66,13 +66,13 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check", allowShipped = true),
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-quality-check", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
     val discovered = fs.discoverCascadedSkillNames(request).toSet()
 
-    assertEquals(setOf("bill-kotlin-quality-check"), discovered)
+    assertEquals(setOf("bill-kotlin-code-quality-check"), discovered)
   }
 
   @Test
@@ -245,11 +245,11 @@ class SkillRemoveJvmFileSystemTest {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val request = SkillRemovalRequest(
-      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-quality-check", allowShipped = true),
+      target = SkillRemovalTarget.HorizontalSkill(skillName = "bill-code-quality-check", allowShipped = true),
       repoRootAbsolutePath = repoRoot.toString(),
     )
 
-    val edits = fs.planManifestEdits(request, listOf("bill-quality-check", "bill-kotlin-quality-check"))
+    val edits = fs.planManifestEdits(request, listOf("bill-code-quality-check", "bill-kotlin-code-quality-check"))
 
     assertTrue(
       edits.any {
@@ -295,10 +295,10 @@ class SkillRemoveJvmFileSystemTest {
   private fun seedRepo(): Path {
     val repoRoot = Files.createTempDirectory("skillbill-skill-remove-fs").also(tempDirs::add)
     seedSkillDir(repoRoot.resolve("skills/bill-code-review"))
-    seedSkillDir(repoRoot.resolve("skills/bill-quality-check"))
+    seedSkillDir(repoRoot.resolve("skills/bill-code-quality-check"))
     seedSkillDir(repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review"))
     seedSkillDir(repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-architecture"))
-    seedSkillDir(repoRoot.resolve("platform-packs/kotlin/quality-check/bill-kotlin-quality-check"))
+    seedSkillDir(repoRoot.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check"))
     seedSkillDir(repoRoot.resolve("platform-packs/kmp/code-review/bill-kmp-code-review"))
     seedSkillDir(repoRoot.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ui"))
     Files.writeString(repoRoot.resolve("platform-packs/kotlin/platform.yaml"), KOTLIN_PLATFORM_YAML)
@@ -327,7 +327,7 @@ class SkillRemoveJvmFileSystemTest {
       |area_metadata:
       |  architecture:
       |    focus: "architecture"
-      |declared_quality_check_file: quality-check/bill-kotlin-quality-check/content.md
+      |declared_quality_check_file: quality-check/bill-kotlin-code-quality-check/content.md
       |pointers:
       |  code-review/bill-kotlin-code-review:
       |    - name: shell-ceremony.md
@@ -335,7 +335,7 @@ class SkillRemoveJvmFileSystemTest {
       |  code-review/bill-kotlin-code-review-architecture:
       |    - name: shell-ceremony.md
       |      target: orchestration/shell-content-contract/shell-ceremony.md
-      |  quality-check/bill-kotlin-quality-check:
+      |  quality-check/bill-kotlin-code-quality-check:
       |    - name: shell-ceremony.md
       |      target: orchestration/shell-content-contract/shell-ceremony.md
       |
@@ -370,7 +370,7 @@ class SkillRemoveJvmFileSystemTest {
       |class: feature-implement
       |contract_version: "1.1"
       |matchers:
-      |  - exact: bill-feature-implement
+      |  - exact: bill-feature-task
       |pointers:
       |  - shell-ceremony
       |  - android-compose-edge-to-edge

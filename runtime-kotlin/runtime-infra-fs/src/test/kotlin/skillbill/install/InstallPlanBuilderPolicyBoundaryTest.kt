@@ -82,7 +82,7 @@ class InstallPlanBuilderPolicyBoundaryTest {
 
   private fun seedPlatformPack(repoRoot: Path, slug: String) {
     val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-quality-check"
+    val qualityCheckName = "bill-$slug-code-quality-check"
     val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
     Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
     Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))

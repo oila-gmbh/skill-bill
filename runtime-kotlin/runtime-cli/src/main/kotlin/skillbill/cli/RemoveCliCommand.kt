@@ -3,6 +3,7 @@
 package skillbill.cli
 
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -10,6 +11,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.SkillRemoveService
 import skillbill.domain.skillremove.SkillRemovalRefusedException
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
+import skillbill.domain.skillremove.model.SkillRemovalRefusalReason
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
 import skillbill.domain.skillremove.model.SkillRemovalTarget
@@ -49,7 +51,7 @@ class RemoveCliCommand(
   private val target by argument(
     help = "Removal target. Examples: 'skill:bill-foo', 'platform:my-platform', " +
       "'addon:platform-packs/kmp/addons/my-addon.md'.",
-  )
+  ).optional()
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to operate on. Defaults to the current working directory.",
@@ -59,15 +61,21 @@ class RemoveCliCommand(
     .flag(default = false)
   private val allowShipped by option(
     "--allow-shipped",
-    help = "Allow removal of built-in shipped surfaces (kotlin / kmp). '.bill-shared' is never removable.",
+    help = "Allow removal of shipped product surfaces such as bill-* skills and kotlin / kmp pre-shells. " +
+      "'.bill-shared' is never removable.",
   ).flag(default = false)
   private val format by formatOption()
 
   override fun run() {
-    val parsed = parseTarget(target, allowShipped)
+    val rawTarget = target
+      ?: run {
+        state.result = errorResult(removeUsageMessage(), format)
+        return
+      }
+    val parsed = parseTarget(rawTarget, allowShipped)
       ?: run {
         state.result = errorResult(
-          "Invalid remove target: '$target'. Expected one of: skill:<name>, platform:<slug>, addon:<path>.",
+          "Invalid remove target: '$rawTarget'.\n\n${removeUsageMessage()}",
           format,
         )
         return
@@ -84,7 +92,7 @@ class RemoveCliCommand(
       // Refusal is part of the contract: emit a typed error and exit non-zero.
       // F-S04: scrub absolute paths from any refusal message before it reaches the user.
       state.result = errorResult(
-        SkillRemoveErrorSanitizer.sanitize(refusal.message.orEmpty(), absoluteRepoRoot),
+        refusalErrorMessage(refusal, rawTarget, absoluteRepoRoot),
         format,
       )
       return
@@ -106,6 +114,30 @@ class RemoveCliCommand(
       "addon" -> SkillRemovalTarget.AddOn(relativePath = value)
       else -> null
     }
+  }
+
+  private fun refusalErrorMessage(
+    refusal: SkillRemovalRefusedException,
+    rawTarget: String,
+    repoRootAbsolutePath: String,
+  ): String {
+    val sanitized = SkillRemoveErrorSanitizer.sanitize(refusal.message.orEmpty(), repoRootAbsolutePath)
+    if (refusal.refusalReason != SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED) {
+      return sanitized
+    }
+    return """
+      $sanitized
+
+      Why this is protected:
+        bill-* skills and kotlin/kmp pre-shells are shipped product surfaces.
+        Removing them is a maintainer-only operation because it changes the workflow set installed for every agent.
+
+      To preview the maintainer removal:
+        skill-bill remove $rawTarget --dry-run --allow-shipped
+
+      To remove it after reviewing the preview:
+        skill-bill remove $rawTarget --allow-shipped
+    """.trimIndent()
   }
 
   private fun previewResult(preview: SkillRemovalResult.Preview, format: CliFormat): CliExecutionResult {
@@ -157,4 +189,20 @@ class RemoveCliCommand(
     val payload = mapOf("status" to "error", "error" to message)
     return CliExecutionResult(exitCode = 1, stdout = CliOutput.emit(payload, format), payload = payload)
   }
+
+  private fun removeUsageMessage(): String = """
+    Missing remove target.
+
+    Examples:
+      skill-bill remove skill:bill-my-skill --dry-run
+      skill-bill remove platform:my-platform --dry-run
+      skill-bill remove addon:platform-packs/kmp/addons/my-addon.md --dry-run
+
+    Target forms:
+      skill:<name>
+      platform:<slug>
+      addon:<path>
+
+    Use --dry-run first to preview the exact files, README edits, and agent links that will be removed.
+  """.trimIndent()
 }

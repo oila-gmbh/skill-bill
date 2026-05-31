@@ -55,10 +55,10 @@ class InstallPlanContractCoverageTest {
     assertEquals(listOf("kmp", "kotlin", "python"), plan.selectedPlatformSlugs)
     val plannedSkills = plan.skills.associateBy { skill -> skill.name }
     assertEquals(InstallPlanSkillKind.BASE, plannedSkills.getValue("bill-code-review").kind)
-    assertEquals(InstallPlanSkillKind.BASE, plannedSkills.getValue("bill-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.BASE, plannedSkills.getValue("bill-code-quality-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-review-security").kind)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-quality-check").kind)
     assertEquals(plan.skills.map { skill -> skill.name }, plan.staging.skillPaths.map { path -> path.skillName })
     plan.staging.skillPaths.forEach { intent ->
       assertEquals(plan.staging.root, intent.stagingRoot)
@@ -171,7 +171,7 @@ class InstallPlanContractCoverageTest {
     val repoRoot = Files.createTempDirectory("skillbill-install-plan-contract-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-plan-contract-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review")
-    seedBaseSkill(repoRoot, "bill-quality-check")
+    seedBaseSkill(repoRoot, "bill-code-quality-check")
     seedPlatformPack(repoRoot, "kotlin", areaNames = listOf("architecture", "testing"))
     seedPlatformPack(repoRoot, "kmp", areaNames = listOf("architecture", "testing"))
     return PlanFixture(repoRoot = repoRoot, home = home)
@@ -185,7 +185,7 @@ class InstallPlanContractCoverageTest {
 
   private fun seedPlatformPack(repoRoot: Path, slug: String, areaNames: List<String>) {
     val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-quality-check"
+    val qualityCheckName = "bill-$slug-code-quality-check"
     val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
     val areaSkillNames = areaNames.associateWith { area -> "bill-$slug-code-review-$area" }
     val declaredAreas = areaNames.joinToString("") { area -> "\n  - $area" }

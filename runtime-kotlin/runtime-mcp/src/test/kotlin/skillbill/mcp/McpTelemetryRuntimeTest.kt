@@ -129,7 +129,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
           {
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-implement"],
+            "supported_workflows": ["bill-feature-verify", "bill-feature-task"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -185,7 +185,7 @@ private fun expectedMcpCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-implement"),
+  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task"),
   "region" to "eu",
 )
 

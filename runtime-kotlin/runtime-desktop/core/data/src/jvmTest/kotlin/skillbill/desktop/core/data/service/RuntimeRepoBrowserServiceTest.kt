@@ -277,7 +277,7 @@ class RuntimeRepoBrowserServiceTest {
     val service = RuntimeRepoBrowserService()
     val session = service.open(repo.toString())
     val supportPointerId =
-      service.treeForSessionLocalId(session, "generated:skills/bill-quality-check/stack-routing.md")
+      service.treeForSessionLocalId(session, "generated:skills/bill-code-quality-check/stack-routing.md")
     val providerOutputId = service.treeForSessionLocalId(
       session,
       "generated:skills/bill-alpha/claude-agents/alpha-agent.md",
@@ -842,7 +842,7 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   private fun writeQualityCheckWithGeneratedSupportPointer(repo: Path) {
-    writeContentSkill(repo, "bill-quality-check", "Quality guidance.")
+    writeContentSkill(repo, "bill-code-quality-check", "Quality guidance.")
     Files.createDirectories(repo.resolve("orchestration/skill-classes"))
     Files.writeString(
       repo.resolve("orchestration/skill-classes/quality-check-shell.yaml"),
@@ -851,13 +851,13 @@ class RuntimeRepoBrowserServiceTest {
         |contract_version: "1.1"
         |
         |matchers:
-        |  - exact: bill-quality-check
+        |  - exact: bill-code-quality-check
         |
         |pointers:
         |  - stack-routing
       """.trimMargin(),
     )
-    Files.writeString(repo.resolve("skills/bill-quality-check/stack-routing.md"), "Generated pointer\n")
+    Files.writeString(repo.resolve("skills/bill-code-quality-check/stack-routing.md"), "Generated pointer\n")
   }
 
   private fun writePlatformPack(repo: Path) {

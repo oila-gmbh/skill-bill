@@ -517,7 +517,7 @@ object RepoValidationRuntime {
 
   private fun validateWorkflowContracts(root: Path, issues: MutableList<String>) {
     val checks = mapOf(
-      "skills/bill-feature-implement/content.md" to listOf(
+      "skills/bill-feature-task/content.md" to listOf(
         "Step id: `assess`",
         "Step id: `implement`",
         "Step id: `pr_description`",
@@ -677,7 +677,7 @@ object RepoValidationRuntime {
     if (relative == "orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md") {
       return referenced in setOf(
         "bill-java-code-review",
-        "bill-java-quality-check",
+        "bill-java-code-quality-check",
         "bill-kotlin-code-review-new",
         "bill-new-horizontal",
       )

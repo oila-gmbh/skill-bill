@@ -1,6 +1,6 @@
 # Getting Started
 
-Skill Bill installs governed agent workflows plus a local runtime. The fastest way to understand the product is to run `/bill-feature-implement` on a small feature spec: it plans the work, implements it, reviews it, validates it, records history when relevant, and prepares the PR handoff.
+Skill Bill installs governed agent workflows plus a local runtime. The fastest way to understand the product is to run `/bill-feature-task` on a small feature spec: it plans the work, implements it, reviews it, validates it, records history when relevant, and prepares the PR handoff.
 
 The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
 
@@ -10,7 +10,7 @@ Use this guide when you want to install Skill Bill, understand the runtime model
 
 Skill Bill has three operator surfaces:
 
-- installed slash-command workflows such as `/bill-feature-implement`, `/bill-code-review`, and `/bill-quality-check`
+- installed slash-command workflows such as `/bill-feature-task`, `/bill-code-review`, and `/bill-code-quality-check`
 - the local `skill-bill` CLI
 - the local `skill-bill-mcp` stdio MCP server
 
@@ -96,7 +96,7 @@ Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code comm
 
 Installed skills are symlinks to rendered staging directories under `~/.skill-bill/installed-skills/`. Re-run `./install.sh` after changing the checkout so installed agents pick up refreshed `SKILL.md` wrappers, support pointer files, and content hashes.
 
-On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, and the `bill-feature-task` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task/content.md`.
 
 ## Runtime Model
 
@@ -215,12 +215,12 @@ skill-bill telemetry status --format json
 Then try the stable skill entry points in your agent, in this order:
 
 - `/bill-feature-spec` (optional prep-first path for spec-only sessions)
-- `/bill-feature-implement`
+- `/bill-feature-task`
 - `/bill-code-review`
-- `/bill-quality-check`
+- `/bill-code-quality-check`
 - `/bill-feature-verify`
 
-Use `/bill-feature-implement` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
+Use `/bill-feature-task` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
 
 ## Runtime Fallback Boundary
 
@@ -254,7 +254,7 @@ Strict and loud-fail guarantees:
 
 - MCP tools publish strict schemas for priority workflow, telemetry, review, learning, scaffold, and workflow-state tools. Unknown top-level arguments are rejected before handler dispatch when the schema is strict.
 - Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, generated wrapper sections, and generated support pointers.
-- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid payloads, source-shape violations, or render drift fail the command. `skill-bill new --payload <file> --dry-run` previews planned files and manifest edits, including platform-pack baseline composition blocks, and `skill-bill show <skill>` exposes manifest-declared review composition for inspection. Legacy platform-pack payloads without `baseline_layers` continue to produce manifests with no composition section.
+- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid wizard input, invalid payloads, source-shape violations, or render drift fail the command. `skill-bill new --dry-run` previews planned files and manifest edits, including platform-pack baseline composition blocks; `skill-bill new --payload <file> --dry-run` is the scripted equivalent. `skill-bill show <skill>` exposes manifest-declared review composition for inspection. Legacy platform-pack payloads without `baseline_layers` continue to produce manifests with no composition section.
 - `install link-skill` creates real symlinks to staged rendered skill directories and is covered by Kotlin CLI tests.
 
 Model-mediated guarantees:
@@ -270,7 +270,7 @@ Use strict guarantees for compatibility and safety boundaries. Use model-mediate
 Skill Bill has two layers:
 
 - the governed workflow framework: authoring rules, render/install staging, shell contracts, manifests, validators, CLI/MCP runtime, workflow state, telemetry, and cross-agent installation
-- bundled reference workflows: `bill-feature-implement`, `bill-code-review`, `bill-quality-check`, `bill-feature-verify`, `bill-pr-description`, and supporting skills
+- bundled reference workflows: `bill-feature-task`, `bill-code-review`, `bill-code-quality-check`, `bill-feature-verify`, `bill-pr-description`, and supporting skills
 
 The bundled workflows are production-usable defaults, not a lock-in boundary. A team can delete or replace them and still use the framework to build its own governed workflow system.
 
@@ -295,7 +295,7 @@ Review and telemetry:
 | `skill-bill record-feedback`  | Record feedback for imported findings               |
 | `skill-bill triage`           | Record triage decisions                             |
 | `skill-bill stats`            | Show review acceptance metrics                      |
-| `skill-bill implement-stats`  | Show local `bill-feature-implement` metrics         |
+| `skill-bill implement-stats`  | Show local `bill-feature-task` metrics         |
 | `skill-bill verify-stats`     | Show local `bill-feature-verify` metrics            |
 | `skill-bill telemetry status` | Show telemetry configuration and pending sync state |
 | `skill-bill telemetry sync`   | Flush queued telemetry                              |
@@ -328,7 +328,7 @@ Authoring and install:
 | `skill-bill render`                     | Render generated wrappers to stdout or install output without writing generated files into source |
 | `skill-bill fill <skill>`               | Write authored `content.md` text and validate                                                     |
 | `skill-bill upgrade`                    | Validate governed render output and regenerate native-agent artifacts through runtime guardrails   |
-| `skill-bill new --payload <file>`       | Scaffold a governed skill or platform pack                                                        |
+| `skill-bill new`                        | Scaffold a governed skill or platform pack through deterministic prompts                           |
 | `skill-bill create-and-fill`            | Scaffold and immediately author one content-managed skill                                         |
 | `skill-bill new-addon`                  | Create a pack-owned add-on                                                                        |
 | `skill-bill remove`                     | Remove a horizontal skill, platform pack, or governed add-on with cleanup                         |

@@ -16,7 +16,7 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-implement` is the flagship workflow: spec to plan, implementation, code review, quality check, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents.
+`bill-feature-task` is the flagship workflow: spec to plan, implementation, code review, quality check, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents.
 
 Bundled skills and reference packs are useful defaults, not the framework boundary. Teams may delete, fork, or replace bundled workflows while retaining the governed contracts: source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
@@ -77,7 +77,7 @@ Product versus extension surface:
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
 
-`kmp` quality-check routing currently falls back to `kotlin`. `bill-feature-implement` and `bill-feature-verify` remain pre-shell.
+`kmp` quality-check routing currently falls back to `kotlin`. `bill-feature-task` and `bill-feature-verify` remain pre-shell.
 
 ## Runtime Contract Schemas
 
@@ -104,9 +104,8 @@ Declare add-on consumers in the owning pack manifest under `addon_usage`. Do not
 
 Use the scaffolder for new skills:
 
-- `skill-bill new --interactive`
-- `skill-bill new --payload <file>`
-- `/bill-create-skill`
+- `skill-bill new`
+- `skill-bill new --payload <file>` for scripted automation
 
 For normal authoring use CLI reads and writes:
 
@@ -141,7 +140,7 @@ For feature-implement or feature-verify overrides, keep the historic `skills/<pl
 
 ## Quality Checks
 
-Prefer routing through `bill-quality-check`. If no platform checker exists, document the fallback explicitly.
+Prefer routing through `bill-code-quality-check`. If no platform checker exists, document the fallback explicitly.
 
 Design bias:
 

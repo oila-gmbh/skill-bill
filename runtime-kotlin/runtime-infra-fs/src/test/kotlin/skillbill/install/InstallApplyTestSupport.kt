@@ -45,7 +45,7 @@ open class InstallApplyTestSupport {
     val repoRoot = Files.createTempDirectory("skillbill-install-apply-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-apply-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review", nativeAgentName = "bill-code-review-worker")
-    seedBaseSkill(repoRoot, "bill-quality-check")
+    seedBaseSkill(repoRoot, "bill-code-quality-check")
     seedPlatformPack(repoRoot, "kotlin", nativeAgentName = "bill-kotlin-code-review-worker")
     seedPlatformPack(repoRoot, "kmp", nativeAgentName = "bill-kmp-code-review-worker")
     return ApplyFixture(repoRoot, home)
@@ -104,7 +104,7 @@ open class InstallApplyTestSupport {
   protected fun seedPlatformPack(repoRoot: Path, slug: String, nativeAgentName: String? = null) {
     val packRoot = repoRoot.resolve("platform-packs/$slug")
     val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-quality-check"
+    val qualityCheckName = "bill-$slug-code-quality-check"
     val codeReviewDir = packRoot.resolve("code-review/$codeReviewName")
     val qualityCheckDir = packRoot.resolve("quality-check/$qualityCheckName")
     Files.createDirectories(codeReviewDir)

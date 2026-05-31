@@ -54,6 +54,14 @@ class AuthoringContentMutationTest {
   }
 
   @Test
+  fun `renderContentBody quotes descriptions with yaml mapping separators`() {
+    val context = TemplateContext("bill-example", "code-review", "kotlin", "", "Kotlin")
+    val rendered = renderContentBody(context, "Use as entry point: prepare the thing.", "Plain body.\n")
+
+    assertContains(rendered, "description: \"Use as entry point: prepare the thing.\"")
+  }
+
+  @Test
   fun `coerceFullContentText fails with clear message when neither supplied nor existing carries frontmatter`() {
     val target = createOrphanTarget()
 
