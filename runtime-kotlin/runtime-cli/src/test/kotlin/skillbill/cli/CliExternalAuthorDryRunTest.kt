@@ -129,7 +129,7 @@ private fun scaffoldQualityCheckOverride(fixture: ExternalAuthorDryRunFixture) {
     }
   val qualityCheckSkill = fixture.packRoot
     .resolve("quality-check")
-    .resolve("bill-${fixture.platform}-code-quality-check")
+    .resolve("bill-${fixture.platform}-code-check")
 
   assertEquals(0, result.exitCode, result.stdout)
   assertEquals("ok", result.payload?.get("status"), result.stdout)

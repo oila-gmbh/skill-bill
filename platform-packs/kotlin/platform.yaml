@@ -51,7 +51,7 @@ area_metadata:
   reliability:
     focus: "timeouts, retries, background work, and observability"
 
-declared_quality_check_file: quality-check/bill-kotlin-code-quality-check/content.md
+declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md
 
 # Pointer files (single-line markdown files containing only a relative path) are generated
 # from this block during render/install output. Targets are repo-rooted; the renderer computes
@@ -129,7 +129,7 @@ pointers:
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
-  quality-check/bill-kotlin-code-quality-check:
+  quality-check/bill-kotlin-code-check:
     - name: shell-ceremony.md
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: stack-routing.md

@@ -261,7 +261,7 @@ private fun renderParentSpec(input: ParentSpecRenderInput): String = buildString
   appendLine()
   appendLine("## Validation Strategy")
   appendLine()
-  appendLine(input.validationStrategy.ifBlank { "bill-code-quality-check" })
+  appendLine(input.validationStrategy.ifBlank { "bill-code-check" })
 }
 
 private fun renderSubtaskSpec(

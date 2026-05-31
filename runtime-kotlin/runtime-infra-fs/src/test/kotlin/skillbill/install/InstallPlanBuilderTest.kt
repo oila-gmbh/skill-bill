@@ -64,11 +64,11 @@ class InstallPlanBuilderTest {
     )
     assertEquals(listOf("kotlin"), plan.selectedPlatformSlugs)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
-    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review-architecture").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review-testing").kind)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-check").kind)
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"))
     assertFalse(skillsByName.containsKey("bill-kmp-code-review-architecture"))
   }
@@ -91,10 +91,10 @@ class InstallPlanBuilderTest {
     assertEquals(listOf("python"), plan.selectedPlatformSlugs)
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
-    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-review-security").kind)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-quality-check").kind)
+    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-check").kind)
     assertFalse(skillsByName.containsKey("bill-kotlin-code-review"))
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"))
   }
@@ -318,7 +318,7 @@ class InstallPlanBuilderTest {
     Files.writeString(
       manifest,
       Files.readString(manifest).replace(
-        "declared_quality_check_file: \"quality-check/bill-collapsed-code-quality-check/content.md\"",
+        "declared_quality_check_file: \"quality-check/bill-collapsed-code-check/content.md\"",
         "declared_quality_check_file: \"code-review/bill-collapsed-code-review/content.md\"",
       ),
     )
@@ -534,7 +534,7 @@ class InstallPlanBuilderTest {
     val repoRoot = Files.createTempDirectory("skillbill-install-plan-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-plan-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review")
-    seedBaseSkill(repoRoot, "bill-code-quality-check")
+    seedBaseSkill(repoRoot, "bill-code-check")
     seedPlatformPack(repoRoot, "kotlin", areaNames = listOf("architecture", "testing"))
     seedPlatformPack(repoRoot, "kmp", areaNames = listOf("architecture", "testing"))
     return PlanFixture(repoRoot = repoRoot, home = home)
@@ -566,7 +566,7 @@ class InstallPlanBuilderTest {
   private fun seedPlatformPack(
     repoRoot: Path,
     slug: String,
-    qualityCheckName: String = "bill-$slug-code-quality-check",
+    qualityCheckName: String = "bill-$slug-code-check",
     areaNames: List<String> = listOf("architecture"),
     pointerTarget: String? = null,
   ) {

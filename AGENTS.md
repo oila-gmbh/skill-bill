@@ -140,7 +140,7 @@ For feature-implement or feature-verify overrides, keep the historic `skills/<pl
 
 ## Quality Checks
 
-Prefer routing through `bill-code-quality-check`. If no platform checker exists, document the fallback explicitly.
+Prefer routing through `bill-code-check`. If no platform checker exists, document the fallback explicitly.
 
 Design bias:
 

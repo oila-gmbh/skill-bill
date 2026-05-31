@@ -25,7 +25,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     InstallOperations.applyInstall(selectedPlatformPlan)
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-check")))
 
     val baseOnlyReplacementPlan = InstallOperations.planInstall(
       fixture.request(
@@ -38,9 +38,9 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-check")))
     assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-quality-check"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-check"), LinkOption.NOFOLLOW_LINKS))
   }
 
   @Test
@@ -50,7 +50,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     Files.createDirectories(targetDir)
     val legacySourceLink = targetDir.resolve("bill-code-review")
     createSymlinkOrSkip(legacySourceLink, fixture.repoRoot.resolve("skills/bill-code-review"))
-    val legacyManagedDir = targetDir.resolve("bill-code-quality-check")
+    val legacyManagedDir = targetDir.resolve("bill-code-check")
     Files.createDirectories(legacyManagedDir)
     Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
     Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
@@ -98,14 +98,16 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
       assertFalse(Files.exists(path, LinkOption.NOFOLLOW_LINKS), "$path should be removed")
     }
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-check")))
   }
 
   private fun createLegacyRenamedLinks(fixture: ApplyFixture, targetDir: Path): List<Path> {
     val links = listOf(
       "bill-backend-kotlin-code-review" to "platform-packs/kotlin/code-review/bill-kotlin-code-review",
-      "bill-quality-check" to "skills/bill-code-quality-check",
-      "bill-kotlin-quality-check" to "platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check",
+      "bill-quality-check" to "skills/bill-code-check",
+      "bill-code-quality-check" to "skills/bill-code-check",
+      "bill-kotlin-quality-check" to "platform-packs/kotlin/quality-check/bill-kotlin-code-check",
+      "bill-kotlin-code-quality-check" to "platform-packs/kotlin/quality-check/bill-kotlin-code-check",
       "bill-feature-implement" to "skills/bill-feature-task",
       "bill-feature-implement-agentic" to "skills/bill-feature-task",
       "bill-new-skill-all-agents" to "skills/bill-create-skill",

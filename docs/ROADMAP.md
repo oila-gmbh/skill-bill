@@ -14,7 +14,7 @@ This roadmap exists to keep the bigger picture visible while the repository grow
 
 **Make AI-assisted engineering feel like a reliable team capability, not a bag of prompts.**
 
-In practical terms, that means a team should be able to adopt `/bill-feature-task` as a governed spec-to-PR workflow, use `/bill-code-review` and `/bill-code-quality-check` as reusable phases or standalone entry points, and trust:
+In practical terms, that means a team should be able to adopt `/bill-feature-task` as a governed spec-to-PR workflow, use `/bill-code-review` and `/bill-code-check` as reusable phases or standalone entry points, and trust:
 
 - what behavior they will get
 - how scope will be interpreted
@@ -31,7 +31,7 @@ Skill Bill is most valuable when it behaves like infrastructure rather than a pr
 The current bundled workflow hierarchy is intentional:
 
 - `bill-feature-task` is the flagship bundled workflow.
-- `bill-code-review`, `bill-code-quality-check`, `bill-pr-description`, `bill-boundary-history`, platform packs, add-ons, native agents, workflow state, and telemetry are reusable subsystems inside the flagship workflow.
+- `bill-code-review`, `bill-code-check`, `bill-pr-description`, `bill-boundary-history`, platform packs, add-ons, native agents, workflow state, and telemetry are reusable subsystems inside the flagship workflow.
 - Every bundled skill remains replaceable. Teams can delete the shipped skills and keep the framework for their own governed workflows.
 
 The clearest structural moat is **cross-agent portability**. Individual pieces of Skill Bill — governed taxonomy, validator-backed rules, skill scaffolders — exist in adjacent projects or could plausibly be bundled by a first-party agent vendor. The piece a first-party vendor structurally cannot bundle is one source of truth synced across competing coding agents. That is the piece to protect.
@@ -65,7 +65,7 @@ Skill Bill is succeeding when most of the following are true:
 - **Workflow contract pilot (shipped):** Added `orchestration/workflow-contract/PLAYBOOK.md` to define when a top-level command becomes a workflow, what durable state and artifacts it owns, and how child telemetry rolls up into one parent lifecycle. `bill-feature-task` is the first pilot; leaf skills remain standalone and reusable.
 - **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
 - **SKILL-15 and follow-ons (shipped):** The new-skill scaffolder, auto-installer, and terminal-first authoring loop now exist as real product surface. Governed skill creation, editing, rendering, validation, add-on creation, and install primitives are available through `skill-bill`, with contract-backed tests and rollback behavior.
-- **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-code-quality-check`, `bill-feature-task`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
+- **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-code-check`, `bill-feature-task`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
 - **Workflow runtime and resume surfaces (shipped):** Durable workflow state, resume, continue, local stats, and matching MCP tools now exist for both `bill-feature-task` and `bill-feature-verify`, so long-running orchestrators no longer depend only on chat history.
 - **Operator docs split (shipped):** The documentation surface is now split into a shorter `README.md`, a primary `docs/getting-started.md`, and a team-focused `docs/getting-started-for-teams.md`, which is a healthier structure for adoption than a single overloaded README.
 - **Early external adoption signal (observed):** Multiple external users have used Skill Bill for real work, `bill-feature-task` has emerged as the strongest day-to-day workflow, `bill-code-review` is the strongest standalone phase, and non-maintainers have created platform packs for themselves.
@@ -123,7 +123,7 @@ The highest-leverage flows today are:
 - `/bill-feature-task`
 - `/bill-code-review`
 - `/bill-feature-verify`
-- `/bill-code-quality-check`
+- `/bill-code-check`
 - `/bill-pr-description`
 
 The next phase of maturity is making `bill-feature-task` feel complete and dependable enough for daily team use, while keeping its component skills strong as standalone entry points.

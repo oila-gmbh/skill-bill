@@ -98,7 +98,7 @@ It is a tiny CI/CD for the feature itself, not just the code.
 
 ### 3. Native platform overrides via platform packs
 
-Generic skills like `/bill-code-review` and `/bill-code-quality-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `kotlin`, `kmp`), with native versions such as `bill-kotlin-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `.kt`, `build.gradle.kts`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
+Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `kotlin`, `kmp`), with native versions such as `bill-kotlin-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `.kt`, `build.gradle.kts`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
 
 ### 4. Manifest-driven task decomposition, auto-resume by issue key
 
@@ -323,7 +323,7 @@ Skill Bill ships a complete Kotlin/KMP pack as a working example of how to autho
 - `/bill-feature-task` orchestrates spec-to-PR work and composes the rest of the pack
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack
-- `/bill-code-quality-check` routes to the matching stack-specific checker
+- `/bill-code-check` routes to the matching stack-specific checker
 - `/bill-pr-description` generates PR text and QA steps
 - `/bill-feature-verify` verifies a PR against a spec or design doc
 
@@ -340,7 +340,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 |-------|---------|
 | `/bill-boundary-decisions` | Record architectural and implementation decisions in `agent/decisions.md` |
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
-| `/bill-code-quality-check` | Stable quality-check entry point that routes to the matching checker |
+| `/bill-code-check` | Stable quality-check entry point that routes to the matching checker |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack |
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |

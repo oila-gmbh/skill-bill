@@ -304,8 +304,8 @@ remove_desktop_app() {
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
 # same (for example, moving
-# skills/kotlin/bill-kotlin-code-quality-check/ to
-# platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check/) do NOT need
+# skills/kotlin/bill-kotlin-code-check/ to
+# platform-packs/kotlin/quality-check/bill-kotlin-code-check/) do NOT need
 # RENAMED_SKILL_PAIRS entries. The installer's build_skill_names walks both
 # skills/ AND platform-packs/, and the uninstaller removes
 # $agent_dir/<skill_name> symlinks by name — so relocations are discovered
@@ -336,9 +336,11 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-kotlin-feature-implement:bill-feature-task'
   'bill-feature-implement-agentic:bill-feature-task'
   'bill-kotlin-feature-verify:bill-feature-verify'
-  'bill-quality-check:bill-code-quality-check'
-  'bill-kotlin-quality-check:bill-kotlin-code-quality-check'
-  'bill-gcheck:bill-code-quality-check'
+  'bill-quality-check:bill-code-check'
+  'bill-code-quality-check:bill-code-check'
+  'bill-kotlin-quality-check:bill-kotlin-code-check'
+  'bill-kotlin-code-quality-check:bill-kotlin-code-check'
+  'bill-gcheck:bill-code-check'
 )
 
 declare -a SKILL_NAMES=()

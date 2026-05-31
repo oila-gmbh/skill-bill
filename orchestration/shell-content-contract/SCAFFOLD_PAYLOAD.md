@@ -187,16 +187,16 @@ validation fails if generated provider artifacts are checked into the repo.
 {
   "scaffold_payload_version": "1.0",
   "kind": "platform-override-piloted",
-  "name": "bill-kotlin-code-quality-check",
+  "name": "bill-kotlin-code-check",
   "platform": "kotlin",
   "family": "quality-check"
 }
 ```
 
 This lands the skill at
-`platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check/content.md` and edits
+`platform-packs/kotlin/quality-check/bill-kotlin-code-check/content.md` and edits
 the owning pack's `platform.yaml` to register
-`declared_quality_check_file: quality-check/bill-kotlin-code-quality-check/content.md`.
+`declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md`.
 Generated `SKILL.md` wrappers and pointer files are render/install output only.
 
 ### New platform pack
@@ -213,7 +213,7 @@ Generated `SKILL.md` wrappers and pointer files are render/install output only.
 
 This creates `platform-packs/java/platform.yaml`,
 `platform-packs/java/code-review/bill-java-code-review/content.md`, and
-`platform-packs/java/quality-check/bill-java-code-quality-check/content.md`, plus
+`platform-packs/java/quality-check/bill-java-code-check/content.md`, plus
 bare specialist content stubs for every approved code-review area. The built-in
 `java` preset supplies the routing signals. Generated wrappers and platform
 pointer files are not staged into source.

@@ -362,7 +362,7 @@ private fun planPlatformPack(
     )
   }
   val baselineName = canonicalName(payload, defaultName = "bill-$platform-code-review")
-  val qualityCheckName = "bill-$platform-code-quality-check"
+  val qualityCheckName = "bill-$platform-code-check"
   val baselineLayers = adapters.optionalBaselineLayers(payload, repoRoot, platform)
   val selection = policyResolvePlatformPackSelection(payload)
   val selectedAreas = selection.selectedAreas
@@ -820,7 +820,7 @@ private fun canonicalName(payload: Map<String, Any?>, defaultName: String): Stri
 }
 
 private fun defaultPlatformOverrideName(platform: String, family: String): String = if (family == "quality-check") {
-  "bill-$platform-code-quality-check"
+  "bill-$platform-code-check"
 } else {
   "bill-$platform-$family"
 }

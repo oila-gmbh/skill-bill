@@ -73,7 +73,7 @@ Optional top-level fields:
   quality-check content contract (see below). Omitting the key is valid —
   the shell contract version stays `1.1` and packs without the key remain
   contract-compliant. Today the `kmp` pack intentionally omits the key; the
-  `bill-code-quality-check` shell falls back to the `kotlin` pack for that slug.
+  `bill-code-check` shell falls back to the `kotlin` pack for that slug.
 
 ## Required Content Files
 
@@ -237,7 +237,7 @@ Loader precedence is authoritative and must stay stable:
 
 ### Loud-Fail Rules (quality-check)
 
-The `bill-code-quality-check` shell resolves the per-platform quality-check file
+The `bill-code-check` shell resolves the per-platform quality-check file
 through a dedicated loader (`skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`).
 The loader enforces two additional loud-fail rules when a pack declares the
 optional `declared_quality_check_file` key:

@@ -312,7 +312,7 @@ class McpRuntimeTest {
     val started =
       McpRuntime.qualityCheckStarted(
         QualityCheckStartedRequest(
-          routedSkill = "bill-kotlin-code-quality-check",
+          routedSkill = "bill-kotlin-code-check",
           detectedStack = "kotlin",
           scopeType = "repo",
           initialFailureCount = 0,
@@ -330,7 +330,7 @@ class McpRuntimeTest {
           failingCheckNames = emptyList(),
           unsupportedReason = "",
           orchestrated = true,
-          routedSkill = "bill-kotlin-code-quality-check",
+          routedSkill = "bill-kotlin-code-check",
           detectedStack = "kotlin",
           scopeType = "repo",
           initialFailureCount = 0,
@@ -342,7 +342,7 @@ class McpRuntimeTest {
 
     assertEquals("skipped_in_orchestrated_mode", started["status"])
     assertEquals("orchestrated", finished["mode"])
-    assertEquals("bill-code-quality-check", payload["skill"])
+    assertEquals("bill-code-check", payload["skill"])
     assertFalse("session_id" in payload)
     assertFalse(Files.exists(tempDir.resolve("metrics.db")))
   }
@@ -770,7 +770,7 @@ private fun recordFeatureImplementLifecycle(context: McpRuntimeContext) {
       featureFlagPattern = "none",
       boundaryHistoryValue = "medium",
       planDeviationNotes = "",
-      childSteps = listOf(mapOf("skill" to "bill-code-quality-check", "result" to "pass")),
+      childSteps = listOf(mapOf("skill" to "bill-code-check", "result" to "pass")),
     ),
     context,
   )
@@ -780,7 +780,7 @@ private fun recordQualityCheckLifecycle(context: McpRuntimeContext) {
   val started =
     McpRuntime.qualityCheckStarted(
       QualityCheckStartedRequest(
-        routedSkill = "bill-kotlin-code-quality-check",
+        routedSkill = "bill-kotlin-code-check",
         detectedStack = "kotlin",
         scopeType = "branch_diff",
         initialFailureCount = 1,

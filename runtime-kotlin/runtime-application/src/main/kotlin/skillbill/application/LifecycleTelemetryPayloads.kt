@@ -45,7 +45,7 @@ private fun QualityCheckFinishedRequest.qualityCheckPayload(level: String): Map<
     "iterations" to iterations,
     "result" to result,
     "duration_seconds" to durationSeconds,
-    "skill" to "bill-code-quality-check",
+    "skill" to "bill-code-check",
   ).apply {
     if (level == "full") {
       put("failing_check_names", failingCheckNames)

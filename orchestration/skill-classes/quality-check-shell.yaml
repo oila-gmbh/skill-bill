@@ -2,7 +2,7 @@ class: quality-check-shell
 contract_version: "1.1"
 
 matchers:
-  - exact: bill-code-quality-check
+  - exact: bill-code-check
 
 pointers:
   - shell-ceremony
@@ -51,7 +51,7 @@ sections:
       - `ShellContentContractException(MISSING_CONTENT_FILE)` from `runtime-contracts` — the pack declares `declared_quality_check_file` but the referenced file does not exist, or the caller invoked `loadQualityCheckContent` on a pack whose `declared_quality_check_file` is null without applying the explicit `kmp` → `kotlin` fallback.
       - `ShellContentContractException(MISSING_REQUIRED_SECTION)` from `runtime-contracts` — the declared quality-check content file is missing one of the required H2 sections.
 
-      The shell never silently substitutes a default checker. A broken pack must be repaired before `/bill-code-quality-check` can complete.
+      The shell never silently substitutes a default checker. A broken pack must be repaired before `/bill-code-check` can complete.
 
   - heading: Delegation Contract
     body: |
@@ -79,7 +79,7 @@ sections:
 
       This skill is telemeterable via the `quality_check_started` and `quality_check_finished` MCP tools.
 
-      Standalone invocation (user runs `bill-code-quality-check` directly):
+      Standalone invocation (user runs `bill-code-check` directly):
 
       1. Call `quality_check_started` once stack routing is decided, with `routed_skill`, `detected_stack`, `scope_type` (`files` / `working_tree` / `branch_diff` / `repo`), and `initial_failure_count` (0 if the first check has not run yet).
       2. Save the returned `session_id`.

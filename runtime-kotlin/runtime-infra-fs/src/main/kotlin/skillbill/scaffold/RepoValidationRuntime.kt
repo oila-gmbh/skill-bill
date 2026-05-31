@@ -677,7 +677,7 @@ object RepoValidationRuntime {
     if (relative == "orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md") {
       return referenced in setOf(
         "bill-java-code-review",
-        "bill-java-code-quality-check",
+        "bill-java-code-check",
         "bill-kotlin-code-review-new",
         "bill-new-horizontal",
       )

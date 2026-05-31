@@ -130,7 +130,7 @@ Spawn a subagent with the pre-planning briefing defined in the inline reference 
 - Read `CLAUDE.md`, `AGENTS.md`, and the matching `bill-feature-task` section in `.agents/skill-overrides.md` when present.
 - Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies for affected boundaries, reusable components.
 - When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning and pattern discovery.
-- Confirm `bill-code-quality-check` can route this repo; if not, pick a repo-native validation command.
+- Confirm `bill-code-check` can route this repo; if not, pick a repo-native validation command.
 - If the rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool (do not search the filesystem to locate skill files) and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
 The subagent returns the pre-planning return contract from the inline reference sections below. The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent. Persist `preplan_digest` before advancing to `plan`.
@@ -227,9 +227,9 @@ Step id: `validate`
 
 Primary artifact: `validation_result`
 
-Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-quality-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
+Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
 
-If `bill-code-quality-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
+If `bill-code-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
 
 The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `validation_result`, then advance to `write_history`.
 
@@ -566,7 +566,7 @@ Instructions:
 4. Scan `agent/decisions.md` header lines in each likely boundary; open full entries only when titles look relevant.
 5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
    When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
-6. Confirm `bill-code-quality-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
+6. Confirm `bill-code-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
 7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
 8. Do NOT produce a plan. Do NOT implement anything.
 9. Follow the Durable Progress Write Contract in this skill:
@@ -585,7 +585,7 @@ RESULT:
   "boundary_history_value": "none|irrelevant|low|medium|high",
   "boundary_decisions_digest": "<concise summary or empty string>",
   "codebase_patterns_digest": "<concise summary — similar features, reusable components, gotchas>",
-  "validation_strategy": "bill-code-quality-check | <repo-native command>",
+  "validation_strategy": "bill-code-check | <repo-native command>",
   "feature_flag": {
     "used": false,
     "pattern": "none|simple_conditional|di_switch|legacy",
@@ -714,7 +714,7 @@ RESULT:
       "scope": "<what this subtask owns>",
       "acceptance_criteria": ["<criterion 1>", "<criterion 2>"],
       "non_goals": ["<explicitly deferred work>"],
-      "validation_strategy": "<bill-code-quality-check or repo-native command>",
+      "validation_strategy": "<bill-code-check or repo-native command>",
       "handoff_prompt": "Run bill-feature-task on <spec_path>."
     }
   ],
@@ -861,14 +861,14 @@ RESULT:
 You are the quality-check subagent. Your job is to run the final validation gate and return a structured result.
 
 Feature: {feature_name}
-Validation strategy: {validation_strategy}  # 'bill-code-quality-check' or a repo-native command
+Validation strategy: {validation_strategy}  # 'bill-code-check' or a repo-native command
 Scope: branch diff since main for MEDIUM/LARGE, current unit of work for SMALL.
 Workflow id: {workflow_id}
 Step id: {step_id}  # validate
 Attempt count: {attempt_count}
 
 Instructions:
-1. If validation_strategy is `bill-code-quality-check`, invoke the `bill-code-quality-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
+1. If validation_strategy is `bill-code-check`, invoke the `bill-code-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
 3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.

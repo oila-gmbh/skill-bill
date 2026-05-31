@@ -47,9 +47,9 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(
       setOf(
         "bill-code-review",
-        "bill-code-quality-check",
+        "bill-code-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-code-quality-check",
+        "bill-kotlin-code-check",
       ),
       skillsByName.keys,
     )

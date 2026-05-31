@@ -51,7 +51,7 @@ sealed class SkillRemovalTarget {
 
     /**
      * SKILL-49: every horizontal skill that begins with the `bill-` prefix is a shipped product
-     * surface (`bill-code-review`, `bill-feature-task`, `bill-code-quality-check`, ...). The UI
+     * surface (`bill-code-review`, `bill-feature-task`, `bill-code-check`, ...). The UI
      * never opens the Delete affordance on these because `isBuiltInName` returns true; the
      * domain `enforceRefusalPolicy` mirrors the same predicate so even a CLI request without
      * `--allow-shipped` is refused. Maintainer paths that genuinely need to remove a deprecated

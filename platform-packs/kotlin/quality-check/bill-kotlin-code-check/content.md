@@ -1,11 +1,11 @@
 ---
-name: bill-kotlin-code-quality-check
+name: bill-kotlin-code-check
 description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Gradle/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them. Use when user mentions gradlew check, Kotlin lint, ktfmt, detekt, or fix Gradle warnings.
 ---
 
 # Kotlin Quality Check
 
-This is the current Gradle/Kotlin implementation behind the shared `bill-code-quality-check` router. Invoke it directly only when you already know the repo should use the Gradle/Kotlin quality-check path.
+This is the current Gradle/Kotlin implementation behind the shared `bill-code-check` router. Invoke it directly only when you already know the repo should use the Gradle/Kotlin quality-check path.
 
 Execute `./gradlew check` and systematically fix issues **only in files changed in the current unit of work**. Ignore pre-existing issues in untouched files.
 

@@ -28,7 +28,7 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
     "shell-content-contract.md",
     "shell-ceremony.md",
   ),
-  "bill-code-quality-check" to setOf("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
+  "bill-code-check" to setOf("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
   "bill-pr-description" to setOf("shell-ceremony.md", "telemetry-contract.md"),
   "bill-feature-task" to setOf(
     "shell-ceremony.md",
@@ -59,7 +59,7 @@ private val LEGACY_PATTERN_GOLDEN: List<Pair<Regex, Set<String>>> = listOf(
     "telemetry-contract.md",
     "shell-ceremony.md",
   ),
-  Regex("^bill-[a-z0-9-]+-quality-check$") to setOf(
+  Regex("^bill-[a-z0-9-]+-code-check$") to setOf(
     "stack-routing.md",
     "telemetry-contract.md",
     "shell-ceremony.md",

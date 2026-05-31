@@ -6,7 +6,7 @@ A team adoption guide for Skill Bill. Use [Getting Started](getting-started.md) 
 
 Skill Bill gives a team governed agent workflows, not just prompt files. There are two useful adoption modes:
 
-- Adopt the bundled flagship workflow: start with `/bill-feature-task`, then use `/bill-code-review`, `/bill-code-quality-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
+- Adopt the bundled flagship workflow: start with `/bill-feature-task`, then use `/bill-code-review`, `/bill-code-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
 - Adopt the governed workflow platform: fork, replace, or delete bundled skills and author team-owned workflows and platform packs on the same contracts.
 
 The useful adoption unit is:
@@ -47,7 +47,7 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 | `/bill-feature-spec` | Preparing specs before implementation starts | Shared single-spec/decomposed preparation artifacts for feature and goal workflows |
 | `/bill-feature-task` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
 | `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Routed review with summary, risk register, action items, and verdict |
-| `/bill-code-quality-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
+| `/bill-code-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
 | `/bill-feature-verify` | Checking a teammate PR against a spec | Criteria-based verification plus review and validation guidance |
 
 Start with `/bill-feature-task` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.

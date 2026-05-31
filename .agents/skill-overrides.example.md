@@ -1,6 +1,6 @@
 # Skill Overrides
 
-## bill-kotlin-code-quality-check
+## bill-kotlin-code-check
 - Treat warnings as blocking work.
 - Skip formatting-only rewrites unless the user explicitly asks for them.
 

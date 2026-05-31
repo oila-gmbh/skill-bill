@@ -118,7 +118,7 @@ class ScaffoldServiceParityTest {
       )
     val packRoot = repo.resolve("platform-packs").resolve("java")
     val baseline = packRoot.resolve("code-review/bill-java-code-review")
-    val qualityCheck = packRoot.resolve("quality-check/bill-java-code-quality-check")
+    val qualityCheck = packRoot.resolve("quality-check/bill-java-code-check")
 
     assertEquals("platform-pack", result.kind)
     assertSourceBundle(baseline.resolve("native-agents/agents.yaml"), "arch", "perf")
@@ -132,7 +132,7 @@ class ScaffoldServiceParityTest {
     assertFalse("Subagent Spawn Runtime Notes" in Files.readString(baseline.resolve("content.md")))
     assertContains(renderAuthoringTarget(repo, "bill-java-code-review").stdout, "### Subagent Spawn Runtime Notes")
     assertNoGeneratedWrapperOrSupportingFiles(baseline, "bill-java-code-review")
-    assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-code-quality-check")
+    assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-code-check")
   }
 
   @Test
@@ -512,20 +512,20 @@ class ScaffoldServiceParityTest {
           "platform-override-piloted",
           "platform" to "kotlin",
           "family" to "quality-check",
-          "name" to "bill-kotlin-code-quality-check",
+          "name" to "bill-kotlin-code-check",
         ),
       )
     val manifest = Files.readString(repo.resolve("platform-packs/kotlin/platform.yaml"))
 
-    assertEquals("bill-kotlin-code-quality-check", result.skillName)
-    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-code-quality-check/content.md\"")
+    assertEquals("bill-kotlin-code-check", result.skillName)
+    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-code-check/content.md\"")
     assertNoGeneratedWrapperOrSupportingFiles(
-      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check"),
-      "bill-kotlin-code-quality-check",
+      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check"),
+      "bill-kotlin-code-check",
     )
     val pack = loadPlatformPack(repo.resolve("platform-packs/kotlin"))
     assertEquals(
-      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check/content.md"),
+      repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check/content.md"),
       loadQualityCheckContent(pack),
     )
   }
@@ -540,7 +540,7 @@ class ScaffoldServiceParityTest {
           "platform-override-piloted",
           "platform" to "kotlin",
           "family" to "quality-check",
-          "name" to "bill-kotlin-code-quality-check",
+          "name" to "bill-kotlin-code-check",
           "content_body" to """
             |## Focus
             |
@@ -552,18 +552,18 @@ class ScaffoldServiceParityTest {
           """.trimMargin(),
         ),
       )
-    val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check")
+    val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check")
     val content = Files.readString(skillDir.resolve("content.md"))
     val manifest = Files.readString(repo.resolve("platform-packs/kotlin/platform.yaml"))
 
-    assertEquals("bill-kotlin-code-quality-check", result.skillName)
-    assertContains(content, "name: bill-kotlin-code-quality-check")
+    assertEquals("bill-kotlin-code-check", result.skillName)
+    assertContains(content, "name: bill-kotlin-code-check")
     assertContains(content, "## Focus\n\nRun Kotlin checks with the governed quality-check ceremony.")
     assertFalse("## Descriptor" in content)
     assertFalse("## Execution" in content)
     assertFalse("## Ceremony" in content)
-    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-code-quality-check/content.md\"")
-    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-code-quality-check")
+    assertContains(manifest, "declared_quality_check_file: \"quality-check/bill-kotlin-code-check/content.md\"")
+    assertNoGeneratedWrapperOrSupportingFiles(skillDir, "bill-kotlin-code-check")
     val pack = loadPlatformPack(repo.resolve("platform-packs/kotlin"))
     assertEquals(skillDir.resolve("content.md"), loadQualityCheckContent(pack))
   }
@@ -573,7 +573,7 @@ class ScaffoldServiceParityTest {
     withIsolatedUserHome {
       val repo = seedRepo()
       val manifestPath = repo.resolve("platform-packs/kotlin/platform.yaml")
-      val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check")
+      val skillDir = repo.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check")
       val before = snapshotTree(repo)
       val beforeManifest = Files.readAllBytes(manifestPath)
 
@@ -584,7 +584,7 @@ class ScaffoldServiceParityTest {
             "platform-override-piloted",
             "platform" to "kotlin",
             "family" to "quality-check",
-            "name" to "bill-kotlin-code-quality-check",
+            "name" to "bill-kotlin-code-check",
             "content_body" to "## Descriptor\n\nGenerated wrapper content must not be authored here.",
           ),
         )

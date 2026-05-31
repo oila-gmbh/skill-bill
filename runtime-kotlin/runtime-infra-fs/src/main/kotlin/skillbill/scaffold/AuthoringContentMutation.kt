@@ -14,7 +14,7 @@ private val horizontalSkillFamilies: Map<String, String> =
     "bill-feature-guard-cleanup" to "advisor",
     "bill-unit-test-value-check" to "advisor",
     "bill-code-review" to "advisor",
-    "bill-code-quality-check" to "advisor",
+    "bill-code-check" to "advisor",
   )
 
 internal fun replaceSectionBody(text: String, sectionName: String, newBody: String): String {

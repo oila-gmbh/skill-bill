@@ -18,7 +18,7 @@ class ReadmeCatalogAppendTest {
     | Skill | Purpose |
     |-------|---------|
     | `/bill-boundary-history` | Record reusable feature history |
-    | `/bill-code-quality-check` | Stable quality-check entry point |
+    | `/bill-code-check` | Stable quality-check entry point |
     | `/bill-code-review` | Stable code-review entry point |
     | `/bill-pr-description` | Generate a PR title and description |
 
@@ -38,7 +38,7 @@ class ReadmeCatalogAppendTest {
     assertEquals(
       listOf(
         "| `/bill-boundary-history` | Record reusable feature history |",
-        "| `/bill-code-quality-check` | Stable quality-check entry point |",
+        "| `/bill-code-check` | Stable quality-check entry point |",
         "| `/bill-code-review` | Stable code-review entry point |",
         "| `/bill-pr-description` | Generate a PR title and description |",
         "| `/bill-pr-review-fix` | Resolve PR review comments end-to-end |",

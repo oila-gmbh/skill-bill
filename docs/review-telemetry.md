@@ -143,7 +143,7 @@ Skill Bill uses **parent-owned telemetry** across the whole skill suite. A singl
 Every telemeterable skill must be usable alone. When invoked directly by a user, each skill generates its own session id and emits its own events:
 
 - `bill-code-review` lifecycle — `skillbill_review_finished` once the final review output is imported and all findings resolve
-- `bill-code-quality-check` lifecycle — `skillbill_quality_check_started` + `_finished`
+- `bill-code-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
 - `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
@@ -177,8 +177,8 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
       ...
     },
     {
-      "skill": "bill-code-quality-check",
-      "routed_skill": "bill-kotlin-code-quality-check",
+      "skill": "bill-code-check",
+      "routed_skill": "bill-kotlin-code-check",
       "result": "pass",
       "iterations": 2,
       ...
@@ -206,7 +206,7 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 ### Router skills never emit
 
-`bill-code-review` and `bill-code-quality-check` are thin routers. They do not emit telemetry merely because routing happened. Routing metadata is carried inside the concrete routed skill's telemetry call, and the router passes `orchestrated` through to the routed concrete skill unchanged. The user-facing standalone lifecycle can still produce the events listed below once the routed workflow reaches its telemetry seam.
+`bill-code-review` and `bill-code-check` are thin routers. They do not emit telemetry merely because routing happened. Routing metadata is carried inside the concrete routed skill's telemetry call, and the router passes `orchestrated` through to the routed concrete skill unchanged. The user-facing standalone lifecycle can still produce the events listed below once the routed workflow reaches its telemetry seam.
 
 ### Event catalog
 
@@ -237,7 +237,7 @@ Both `anonymous` and `full`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
-| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-code-quality-check`; KMP currently falls back to Kotlin quality-check behavior) |
+| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-code-check`; KMP currently falls back to Kotlin quality-check behavior) |
 | `detected_stack` | string | Dominant stack routed for |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |

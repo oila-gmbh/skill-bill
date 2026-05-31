@@ -2,9 +2,9 @@ class: quality-check-leaf
 contract_version: "1.1"
 
 matchers:
-  - pattern: "^bill-[a-z0-9-]+-quality-check$"
+  - pattern: "^bill-[a-z0-9-]+-code-check$"
     exclude_exact:
-      - bill-code-quality-check
+      - bill-code-check
 
 pointers:
   - shell-ceremony
