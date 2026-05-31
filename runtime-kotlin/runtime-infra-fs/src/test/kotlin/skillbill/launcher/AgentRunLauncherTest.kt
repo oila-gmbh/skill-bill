@@ -8,11 +8,13 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -119,6 +121,7 @@ class AgentRunLauncherTest {
         stdout = "partial",
         stderr = "slow",
         timedOut = true,
+        interrupted = false,
         spawnFailed = false,
       ),
     )
@@ -135,6 +138,7 @@ class AgentRunLauncherTest {
         stdout = "",
         stderr = "missing executable",
         timedOut = false,
+        interrupted = false,
         spawnFailed = true,
       ),
     )
@@ -336,6 +340,33 @@ class AgentRunLauncherTest {
   }
 
   @Test
+  fun `jvm process runner kills child when parent thread is interrupted`() {
+    val runner = JvmAgentRunProcessRunner()
+    var result: AgentRunProcessResult? = null
+    val worker = thread(start = true) {
+      result = runner.run(
+        AgentRunProcessRequest(
+          command = listOf("sh", "-c", "sleep 30"),
+          workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+          timeout = 30.seconds,
+        ),
+      )
+    }
+
+    Thread.sleep(150)
+    worker.interrupt()
+    worker.join(5_000)
+
+    assertFalse(worker.isAlive)
+    val completed = assertNotNull(result)
+    assertFalse(completed.timedOut)
+    assertTrue(completed.interrupted)
+    assertContains(completed.stderr, "interrupted by parent signal")
+    assertEquals("parent_interrupted", completed.liveness?.reason)
+    assertEquals("killed", completed.liveness?.processState)
+  }
+
+  @Test
   fun `worktree activity probe tracks meaningful file changes and ignores build outputs`() {
     val root = Files.createTempDirectory("skillbill-worktree-activity")
     val probe = WorktreeActivityProbe(root, scanIntervalNanos = 0)
@@ -367,6 +398,7 @@ private class RecordingAgentRunProcessRunner(
     stdout = "ok",
     stderr = "",
     timedOut = false,
+    interrupted = false,
     spawnFailed = false,
   ),
 ) : AgentRunProcessRunner {

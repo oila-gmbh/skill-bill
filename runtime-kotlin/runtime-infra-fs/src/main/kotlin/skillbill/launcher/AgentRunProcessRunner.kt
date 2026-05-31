@@ -56,6 +56,7 @@ data class AgentRunProcessResult(
   val stdout: String,
   val stderr: String,
   val timedOut: Boolean,
+  val interrupted: Boolean,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
 )

@@ -14,6 +14,8 @@ enum class GoalRunnerTerminalStatus {
 enum class GoalRunnerStopReason {
   FAILED,
   BLOCKED,
+  POLICY_BLOCKED,
+  INTERRUPTED,
   TIMEOUT,
   NO_TERMINAL_STORE_OUTCOME,
   PULL_REQUEST_FAILED,
@@ -22,6 +24,7 @@ enum class GoalRunnerStopReason {
 
 data class GoalRunnerLaunchFacts(
   val timedOut: Boolean = false,
+  val interrupted: Boolean = false,
   val spawnFailed: Boolean = false,
   val exitStatus: Int? = null,
   val liveness: GoalRunnerLivenessSnapshot? = null,

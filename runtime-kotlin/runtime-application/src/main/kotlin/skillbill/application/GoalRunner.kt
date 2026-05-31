@@ -12,6 +12,7 @@ import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerSelection
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStopReport
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
@@ -31,6 +32,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 
@@ -45,6 +47,9 @@ class GoalRunner(
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
+    preflightPolicyBlockedReport(state, request)?.let { report ->
+      return report
+    }
     val attempted = mutableListOf<Int>()
     var terminalReport: GoalRunnerRunReport? = null
     request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
@@ -119,13 +124,40 @@ class GoalRunner(
     val launchOutcome = subtaskLauncher.launch(
       subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
     )
-    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    var refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: attemptedState
-    val reconciled = GoalRunnerOutcomeReconciler.reconcile(
+    var launchFacts = launchOutcome.toGoalRunnerLaunchFacts()
+    var reconciled = GoalRunnerOutcomeReconciler.reconcile(
       subtaskId = subtaskId,
-      launchFacts = launchOutcome.toGoalRunnerLaunchFacts(),
+      launchFacts = launchFacts,
       storedOutcome = storedOutcome(refreshed, subtaskId, request),
     )
+    if (
+      reconciled is GoalRunnerReconciledOutcome.Stop &&
+      reconciled.reason == GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME &&
+      shouldRetryNoTerminalOutcome(launchFacts)
+    ) {
+      val lateOutcome = waitForLateTerminalOutcome(refreshed, subtaskId, request)
+      reconciled = if (lateOutcome != null) {
+        GoalRunnerOutcomeReconciler.reconcile(
+          subtaskId = subtaskId,
+          launchFacts = launchFacts,
+          storedOutcome = lateOutcome,
+        )
+      } else {
+        val retryLaunchOutcome = subtaskLauncher.launch(
+          subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
+        )
+        refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+          ?: refreshed
+        launchFacts = retryLaunchOutcome.toGoalRunnerLaunchFacts()
+        GoalRunnerOutcomeReconciler.reconcile(
+          subtaskId = subtaskId,
+          launchFacts = launchFacts,
+          storedOutcome = storedOutcome(refreshed, subtaskId, request),
+        )
+      }
+    }
     return when (reconciled) {
       is GoalRunnerReconciledOutcome.Complete -> {
         val completed = manifestStore.save(
@@ -170,6 +202,28 @@ class GoalRunner(
         )
       }
 
+  private fun waitForLateTerminalOutcome(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerStoredOutcome? {
+    repeat(NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS) {
+      try {
+        Thread.sleep(NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        return null
+      }
+      val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+        ?: state
+      val candidate = storedOutcome(refreshed, subtaskId, request)
+      if (candidate != null) {
+        return candidate
+      }
+    }
+    return null
+  }
+
   private fun stoppedIteration(
     state: GoalRunnerManifestState,
     subtaskId: Int,
@@ -180,8 +234,11 @@ class GoalRunner(
     val knownWorkflowId = reconciled.workflowId
       ?: state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
     val stoppedOutcome = if (
-      reconciled.reason in setOf(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, GoalRunnerStopReason.TIMEOUT) &&
-      knownWorkflowId != null
+      reconciled.reason in setOf(
+        GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
+        GoalRunnerStopReason.TIMEOUT,
+        GoalRunnerStopReason.INTERRUPTED,
+      ) && knownWorkflowId != null
     ) {
       val progress = outcomeStore.progress(knownWorkflowId, request.dbPathOverride)
       val blockedStepId = outcomeStore.markBlocked(
@@ -286,6 +343,66 @@ class GoalRunner(
     }
   }
 
+  private fun preflightPolicyBlockedReport(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerRunReport.Stopped? {
+    val violation = protectedBranchViolation(state.manifest, request.repoRoot) ?: return null
+    val selection = GoalRunnerPlanner.selectNext(state.manifest)
+    if (selection is GoalRunnerSelection.Done) {
+      return null
+    }
+    val subtaskId = when (selection) {
+      is GoalRunnerSelection.Run -> selection.decision.subtask.id
+      is GoalRunnerSelection.Blocked -> selection.subtask.id
+      is GoalRunnerSelection.Done -> 0
+    }
+    val blockedManifest = if (subtaskId > 0) {
+      state.manifest.withBlockedSelection(subtaskId, violation)
+    } else {
+      state.manifest.copy(
+        status = "blocked",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "blocked"),
+      )
+    }
+    val saved = manifestStore.save(state.copy(manifest = blockedManifest), request.dbPathOverride)
+    if (subtaskId > 0) {
+      request.eventSink.emit(
+        GoalRunnerRunEvent.SubtaskStopped(
+          issueKey = saved.manifest.issueKey,
+          subtaskId = subtaskId,
+          reason = GoalRunnerStopReason.POLICY_BLOCKED.name.lowercase(),
+          blockedReason = violation,
+        ),
+      )
+    }
+    return stopped(
+      issueKey = saved.manifest.issueKey,
+      attempted = emptyList(),
+      subtaskId = subtaskId,
+      reason = GoalRunnerStopReason.POLICY_BLOCKED,
+      blockedReason = violation,
+      workflowId = null,
+      lastResumableStep = "create_branch",
+    )
+  }
+
+  private fun protectedBranchViolation(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? {
+    if (manifest.executionModel != DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK) {
+      return null
+    }
+    val currentBranch = gitOperations.currentBranch(repoRoot).value.trim()
+    val selectedSubtaskBranch = manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
+      ?.let { id -> manifest.subtasks.firstOrNull { subtask -> subtask.id == id }?.branch }
+    val protectedBranch = protectedBranchName(selectedSubtaskBranch)
+      ?: protectedBranchName(manifest.featureBranch)
+      ?: protectedBranchName(currentBranch)
+      ?: return null
+    return "Goal runner policy blocked execution because same-branch mode resolved to protected branch " +
+      "'$protectedBranch'. Set decomposition feature/subtask branches to a non-protected branch " +
+      "(for example `feat/${manifest.issueKey}-${manifest.featureName}`) before resuming."
+  }
+
   private fun completed(
     manifest: DecompositionManifest,
     attempted: List<Int>,
@@ -335,6 +452,22 @@ class GoalRunner(
 
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
 private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
+private const val MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS = 1
+private const val NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS = 2
+private const val NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS = 200L
+private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+
+private fun shouldRetryNoTerminalOutcome(launchFacts: GoalRunnerLaunchFacts): Boolean =
+  !launchFacts.timedOut &&
+    !launchFacts.interrupted &&
+    !launchFacts.spawnFailed &&
+    launchFacts.exitStatus == 0 &&
+    MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS > 0
+
+private fun protectedBranchName(branch: String?): String? = branch
+  ?.trim()
+  ?.takeIf(String::isNotBlank)
+  ?.takeIf { normalized -> normalized.lowercase() in PROTECTED_GOAL_BRANCHES }
 
 private fun parseGitPorcelainPaths(output: String): List<String> = output
   .lineSequence()
@@ -370,6 +503,7 @@ private fun supervisionEvent(
   reason = reason.name.lowercase(),
   continuationMode = when (reason) {
     GoalRunnerStopReason.TIMEOUT -> "killed_unresponsive_child"
+    GoalRunnerStopReason.INTERRUPTED -> "killed_by_parent_interrupt"
     GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "continue_inline"
     else -> "none"
   },
@@ -452,6 +586,7 @@ private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLau
   when (this) {
     is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
       timedOut = timedOut,
+      interrupted = interrupted,
       spawnFailed = spawnFailed,
       exitStatus = exitStatus,
       liveness = liveness?.let { snapshot ->

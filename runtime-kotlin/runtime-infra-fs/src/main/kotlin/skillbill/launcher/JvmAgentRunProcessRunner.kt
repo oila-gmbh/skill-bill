@@ -44,7 +44,36 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       onChunkRead = { outputTracker.markObserved() },
     ).also { it.start() }
     writeAndCloseStdin(process, request.stdinText)
-    val wait = waitForProcess(process, request, outputTracker)
+    val wait = try {
+      waitForProcess(process, request, outputTracker)
+    } catch (_: InterruptedException) {
+      process.destroyForcibly()
+      runCatching { process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
+      stdout.join()
+      stderr.join()
+      Thread.currentThread().interrupt()
+      val interruptMessage = "Agent run interrupted by parent signal before completion."
+      return AgentRunProcessResult(
+        exitStatus = null,
+        stdout = stdout.text(),
+        stderr = stderr.text().let { existing ->
+          if (existing.isBlank()) {
+            interruptMessage
+          } else {
+            "$existing\n$interruptMessage"
+          }
+        },
+        timedOut = false,
+        interrupted = true,
+        spawnFailed = false,
+        liveness = AgentRunLivenessSnapshot(
+          phase = "watchdog",
+          reason = "parent_interrupted",
+          processState = "killed",
+          lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
+        ),
+      )
+    }
     val finished = wait.finished
     if (!finished) {
       process.destroyForcibly()
@@ -57,6 +86,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       stdout = stdout.text(),
       stderr = stderr.text().withTimeoutMessage(wait, request),
       timedOut = !finished,
+      interrupted = false,
       spawnFailed = false,
       liveness = wait.liveness,
     )
@@ -73,6 +103,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     stdout = "",
     stderr = error.message.orEmpty(),
     timedOut = false,
+    interrupted = false,
     spawnFailed = true,
   )
 

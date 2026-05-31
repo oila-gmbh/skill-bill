@@ -19,6 +19,8 @@ import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
@@ -164,9 +166,10 @@ class GoalRunnerTest {
     assertEquals("wfl-1", stopped.stop.workflowId)
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
     assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
-    assertEquals(null, launcher.requests.single().skillRunRequest.timeout)
-    assertEquals(30.minutes, launcher.requests.single().skillRunRequest.progressIdleTimeout)
-    assertContains(requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()), "wfl-1")
+    assertEquals(2, launcher.requests.size)
+    assertEquals(null, launcher.requests.first().skillRunRequest.timeout)
+    assertEquals(30.minutes, launcher.requests.first().skillRunRequest.progressIdleTimeout)
+    assertContains(requireNotNull(launcher.requests.first().skillRunRequest.progressProbe.progressToken()), "wfl-1")
     outcomes.progresses["wfl-1"] = GoalRunnerWorkflowProgress(
       workflowId = "wfl-1",
       workflowStatus = "running",
@@ -174,10 +177,35 @@ class GoalRunnerTest {
       progressToken = "child-progress-token",
     )
     assertContains(
-      requireNotNull(launcher.requests.single().skillRunRequest.progressProbe.progressToken()),
+      requireNotNull(launcher.requests.first().skillRunRequest.progressProbe.progressToken()),
       "child-progress-token",
     )
     assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `missing terminal outcome retries once and can recover`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    var launches = 0
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launches += 1
+      if (launches == 2) {
+        outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      }
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val completed = assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1), completed.attemptedSubtasks)
+    assertEquals(2, launcher.requests.size)
+    assertEquals("complete", store.manifest.status)
+    assertEquals("sha-1", store.manifest.subtasks.single().commitSha)
   }
 
   @Test
@@ -200,6 +228,55 @@ class GoalRunnerTest {
     assertEquals("blocked", store.manifest.subtasks.single().status)
     assertEquals("implement", store.manifest.subtasks.single().lastResumableStep)
     assertEquals("implement", stopped.stop.lastResumableStep)
+  }
+
+  @Test
+  fun `same-branch run blocks before launch when feature branch resolves to protected main`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).copy(featureBranch = "main"),
+    )
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val outcomes = RecordingOutcomeStore()
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = FixedBranchGitOperations("main"),
+    )
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.POLICY_BLOCKED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "protected branch 'main'")
+    assertEquals(emptyList(), launcher.requests)
+    assertEquals("blocked", store.manifest.status)
+    assertEquals("blocked", store.manifest.currentSubtaskIntent.action)
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+    assertContains(store.manifest.subtasks.single().blockedReason.orEmpty(), "protected branch")
+  }
+
+  @Test
+  fun `same-branch policy guard does not demote already completed goals`() {
+    val completeManifest = manifest(subtaskCount = 1)
+      .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+      .copy(status = "complete", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"))
+    val store = InMemoryGoalManifestStore(manifest = completeManifest.copy(featureBranch = "main"))
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = FixedBranchGitOperations("main"),
+    )
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(emptyList(), launcher.requests)
+    assertEquals("complete", store.manifest.status)
   }
 
   @Test
@@ -596,6 +673,28 @@ private class RecordingPullRequestPort : GoalPullRequestPort {
     requests += request
     return GoalPullRequestResult.Opened("https://github.com/canonical/skill-bill/pull/56")
   }
+}
+
+private class FixedBranchGitOperations(
+  private val branch: String,
+) : WorkflowGitOperations {
+  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 }
 
 private fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(

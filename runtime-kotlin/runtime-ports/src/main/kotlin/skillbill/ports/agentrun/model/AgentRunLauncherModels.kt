@@ -82,11 +82,13 @@ data class AgentRunLaunchFacts(
   val stdout: String,
   val stderr: String,
   val timedOut: Boolean,
+  val interrupted: Boolean = false,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }
+    require(!interrupted || exitStatus == null) { "interrupted launch facts must not report an exitStatus." }
     require(!spawnFailed || exitStatus == null) { "spawnFailed launch facts must not report an exitStatus." }
   }
 }

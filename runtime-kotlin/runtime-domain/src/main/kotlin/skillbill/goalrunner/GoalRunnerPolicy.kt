@@ -64,6 +64,12 @@ object GoalRunnerOutcomeReconciler {
     launchFacts: GoalRunnerLaunchFacts,
     storedOutcome: GoalRunnerStoredOutcome?,
   ): GoalRunnerReconciledOutcome = when {
+    launchFacts.interrupted -> stop(
+      reason = GoalRunnerStopReason.INTERRUPTED,
+      blockedReason = "Subtask $subtaskId was interrupted before a terminal workflow-store outcome was written.",
+      storedOutcome = storedOutcome,
+      liveness = launchFacts.liveness,
+    )
     launchFacts.timedOut -> stop(
       reason = GoalRunnerStopReason.TIMEOUT,
       blockedReason = "Subtask $subtaskId timed out before reaching a terminal workflow-store outcome.",
