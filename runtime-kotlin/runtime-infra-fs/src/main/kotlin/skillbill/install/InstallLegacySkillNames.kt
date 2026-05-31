@@ -26,8 +26,14 @@ private val renamedSkillPairs: List<Pair<String, String>> = listOf(
   "bill-feature-implement-agentic" to "bill-feature-implement",
   "bill-kotlin-feature-verify" to "bill-feature-verify",
   "bill-gcheck" to "bill-quality-check",
-  "bill-skill-scaffold" to "bill-create-skill",
-  "bill-new-skill-all-agents" to "bill-create-skill",
+)
+
+private val retiredSkillNames: List<String> = listOf(
+  "bill-create-skill",
+  "bill-grill-plan",
+  "bill-skill-remove",
+  "bill-skill-scaffold",
+  "bill-new-skill-all-agents",
 )
 
 internal fun legacySkillBillCleanupNames(currentSkillNames: List<String>): List<String> = buildList {
@@ -38,5 +44,9 @@ internal fun legacySkillBillCleanupNames(currentSkillNames: List<String>): List<
   renamedSkillPairs.forEach { (oldName, _) ->
     add(oldName)
     add("mdp-${oldName.removePrefix("bill-")}")
+  }
+  retiredSkillNames.forEach { name ->
+    add(name)
+    add("mdp-${name.removePrefix("bill-")}")
   }
 }.distinct()

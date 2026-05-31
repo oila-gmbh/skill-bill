@@ -105,6 +105,16 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
       newSkillAllAgentsLink,
       fixture.repoRoot.resolve("skills/bill-create-skill"),
     )
+    val grillPlanLink = targetDir.resolve("bill-grill-plan")
+    createSymlinkOrSkip(
+      grillPlanLink,
+      fixture.repoRoot.resolve("skills/bill-grill-plan"),
+    )
+    val skillRemoveLink = targetDir.resolve("bill-skill-remove")
+    createSymlinkOrSkip(
+      skillRemoveLink,
+      fixture.repoRoot.resolve("skills/bill-skill-remove"),
+    )
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
@@ -120,6 +130,8 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     assertFalse(Files.exists(agenticFeatureImplementLink, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(skillScaffoldManagedDir, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(newSkillAllAgentsLink, LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(grillPlanLink, LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(skillRemoveLink, LinkOption.NOFOLLOW_LINKS))
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-quality-check")))
   }

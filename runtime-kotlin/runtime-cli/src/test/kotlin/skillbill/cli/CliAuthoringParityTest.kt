@@ -181,8 +181,6 @@ class CliAuthoringParityTest {
     val context = CliRuntimeContext(userHome = tempDir)
 
     listOf(
-      listOf("new-skill", "--interactive", "--format", "json") to "skill-bill new-skill --payload <file>",
-      listOf("new", "--interactive", "--format", "json") to "skill-bill new --payload <file>",
       listOf("new-addon", "--interactive", "--format", "json") to
         "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
       listOf("create-and-fill", "--interactive", "--format", "json") to

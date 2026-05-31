@@ -119,9 +119,9 @@ What the UI gives the user without exposing the machinery:
 
 - Tree-based skill/artifact browser — authored skills, generated artifacts, platform packs, all navigable in one view.
 - First-run setup dialog and repo directory chooser.
-- Scaffold wizard — UI driver for `bill-create-skill` so authors do not memorize CLI args; the tree selection jumps to the newly authored file on success.
+- Scaffold wizard — deterministic `skill-bill new` prompts backed by the same payload contract used by automation; the tree selection jumps to the newly authored file on success.
 - Validate-agent-configs runner — the manifest/drift validator wired as a button with a result panel.
-- Confirm-deletion dialog — for `bill-skill-remove`, with safety prompts built in.
+- Confirm-deletion dialog — for deterministic `skill-bill remove`, with safety prompts built in.
 - Command palette — keyboard-driven action surface for all operations.
 - Keyboard accelerators and accessibility-friendly navigation.
 - Repo file-change observer — external edits (e.g. from a coding agent) reflect in the tree without manual refresh.
@@ -319,6 +319,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs as working examples of how to
 
 **Daily entry points (in the reference pack):**
 
+- `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
 - `/bill-feature-implement` orchestrates spec-to-PR work and composes the rest of the pack
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack
@@ -341,18 +342,16 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-boundary-decisions` | Record architectural and implementation decisions in `agent/decisions.md` |
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack |
-| `/bill-create-skill` | Scaffold and bootstrap governed skills and platform packs |
+| `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
 | `/bill-feature-implement` | End-to-end feature workflow from spec through review and validation |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
-| `/bill-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
-| `/bill-grill-plan` | Stress-test a plan or design by walking the decision tree |
+| `/bill-feature-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-quality-check` | Stable quality-check entry point that routes to the matching checker |
-| `/bill-skill-remove` | Remove an existing skill or platform skill set and clean up installs |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |
 
 ## Architecture snapshot

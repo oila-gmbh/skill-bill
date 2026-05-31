@@ -50,9 +50,25 @@ internal fun inferSkillDescription(context: TemplateContext, areaFocus: String =
 }
 
 internal fun renderFrontmatter(skillName: String, description: String): String = buildString {
+  fun scalar(value: String): String {
+    if (value.isEmpty()) {
+      return "\"\""
+    }
+    val edgeWhitespace = value.first().isWhitespace() || value.last().isWhitespace()
+    val leadingReserved = value.first() in YAML_RESERVED_LEADING_CHARS
+    val inlineSeparators = value.contains(": ") || value.contains(" #")
+    val inlineReserved = value.any { char -> char in YAML_RESERVED_INLINE_CHARS }
+    val needsQuoting = edgeWhitespace || leadingReserved || inlineSeparators || inlineReserved
+    return if (needsQuoting) {
+      "\"" + value.map { char -> YAML_DOUBLE_QUOTE_ESCAPES[char] ?: char.toString() }.joinToString("") + "\""
+    } else {
+      value
+    }
+  }
+
   appendLine("---")
-  appendLine("name: $skillName")
-  appendLine("description: $description")
+  appendLine("name: ${scalar(skillName)}")
+  appendLine("description: ${scalar(description)}")
   appendLine("---")
 }
 
@@ -132,6 +148,19 @@ private fun codeReviewDescription(context: TemplateContext, label: String, areaF
     "Use when reviewing code changes across code-review specialists."
   }
 }
+
+private val YAML_RESERVED_LEADING_CHARS: Set<Char> =
+  setOf('-', '?', ':', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`')
+
+private val YAML_RESERVED_INLINE_CHARS: Set<Char> = setOf('\n', '\r', '\t')
+
+private val YAML_DOUBLE_QUOTE_ESCAPES: Map<Char, String> = mapOf(
+  '\\' to "\\\\",
+  '"' to "\\\"",
+  '\n' to "\\n",
+  '\r' to "\\r",
+  '\t' to "\\t",
+)
 
 private fun renderGovernedContentStarter(context: TemplateContext, description: String): String {
   val summary = description.ifBlank { inferSkillDescription(context) }

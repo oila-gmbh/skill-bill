@@ -104,9 +104,8 @@ Declare add-on consumers in the owning pack manifest under `addon_usage`. Do not
 
 Use the scaffolder for new skills:
 
-- `skill-bill new --interactive`
-- `skill-bill new --payload <file>`
-- `/bill-create-skill`
+- `skill-bill new`
+- `skill-bill new --payload <file>` for scripted automation
 
 For normal authoring use CLI reads and writes:
 

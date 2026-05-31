@@ -39,7 +39,7 @@ class GoalRunCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-goal. Defaults to SKILL_BILL_AGENT or codex.",
+    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -114,7 +114,7 @@ class GoalStatusCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-goal. Defaults to SKILL_BILL_AGENT or codex.",
+    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
   )
   private val agentOverride by option(
     "--agent-override",

@@ -222,7 +222,7 @@ class McpRuntimeTest {
     assertEquals("orchestrated", orchestrated["mode"])
     assertTrue("telemetry_payload" in orchestrated)
     val telemetryPayload = orchestrated["telemetry_payload"] as Map<*, *>
-    assertEquals("bill-create-skill", telemetryPayload["skill"])
+    assertEquals("skill-bill-scaffold", telemetryPayload["skill"])
     assertEquals("dry-run", telemetryPayload["result"])
     assertEquals("horizontal", telemetryPayload["kind"])
     assertEquals("bill-horizontal-mcp", telemetryPayload["skill_name"])

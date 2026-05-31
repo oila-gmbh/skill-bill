@@ -21,6 +21,8 @@ import skillbill.cli.scaffold.parseScaffoldCommandRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
+import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.PLATFORM_PACK_PRESETS
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -348,10 +350,12 @@ class FillSkillCommand(
 class NewSkillCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
-  private val unsupportedScaffoldService: UnsupportedScaffoldService,
-) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a payload file or interactive prompts.") {
+) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
-  private val interactive by option("--interactive", help = "Collect a skill scaffold payload via interactive prompts.")
+  private val interactive by option(
+    "--interactive",
+    help = "Run the prompt wizard. This is the default when --payload is omitted.",
+  )
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
     .flag(default = false)
@@ -359,15 +363,8 @@ class NewSkillCommand(
 
   override fun run() {
     state.result =
-      if (interactive) {
-        unsupportedNativeScaffoldResult(
-          unsupportedScaffoldService.retiredUnsupportedMessage(
-            "new-skill --interactive",
-            "skill-bill new-skill --payload <file>",
-            editor = false,
-          ),
-          format,
-        )
+      if (interactive || payload == null) {
+        runNativeScaffoldWizard(dryRun, format, state, scaffoldService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
       }
@@ -378,10 +375,12 @@ class NewSkillCommand(
 class NewCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
-  private val unsupportedScaffoldService: UnsupportedScaffoldService,
-) : DocumentedCliCommand("new", "Alias for new-skill: scaffold one skill from a payload file or interactive prompts.") {
+) : DocumentedCliCommand("new", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
-  private val interactive by option("--interactive", help = "Collect a skill scaffold payload via interactive prompts.")
+  private val interactive by option(
+    "--interactive",
+    help = "Run the prompt wizard. This is the default when --payload is omitted.",
+  )
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
     .flag(default = false)
@@ -389,15 +388,8 @@ class NewCommand(
 
   override fun run() {
     state.result =
-      if (interactive) {
-        unsupportedNativeScaffoldResult(
-          unsupportedScaffoldService.retiredUnsupportedMessage(
-            "new --interactive",
-            "skill-bill new --payload <file>",
-            editor = false,
-          ),
-          format,
-        )
+      if (interactive || payload == null) {
+        runNativeScaffoldWizard(dryRun, format, state, scaffoldService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
       }
@@ -414,7 +406,7 @@ class CreateAndFillCommand(
   "Scaffold one governed skill, then immediately author content.md and validate it.",
 ) {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
-  private val interactive by option("--interactive", help = "Collect a skill scaffold payload via interactive prompts.")
+  private val interactive by option("--interactive", help = "Retired in SKILL-32; use --payload instead.")
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
     .flag(default = false)
@@ -453,10 +445,10 @@ class NewAddonCommand(
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
 ) : DocumentedCliCommand("new-addon", "Create a governed add-on file inside an existing platform pack.") {
-  private val platform by option("--platform", help = "Owning platform slug. Required unless --interactive is used.")
+  private val platform by option("--platform", help = "Owning platform slug.")
   private val name by option(
     "--name",
-    help = "Add-on slug (without a bill- prefix). Required unless --interactive is used.",
+    help = "Add-on slug (without a bill- prefix).",
   )
   private val body by option("--body", help = "Complete markdown body to write to the add-on file.")
   private val bodyFile by option("--body-file", help = "Path to a markdown file to copy into the add-on (or '-').")
@@ -465,7 +457,7 @@ class NewAddonCommand(
     help = "Skill-relative directory to register as an add-on consumer. May be repeated. " +
       "Defaults to the pack baseline code-review skill.",
   ).multiple()
-  private val interactive by option("--interactive", help = "Prompt for platform, add-on slug, and markdown content.")
+  private val interactive by option("--interactive", help = "Retired in SKILL-32; use explicit options instead.")
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
     .flag(default = false)
@@ -547,6 +539,126 @@ class InstallLinkSkillCommand(
     )
     state.result = CliExecutionResult(exitCode = 0, stdout = "")
   }
+}
+
+private fun runNativeScaffoldWizard(
+  dryRun: Boolean,
+  format: CliFormat,
+  state: CliRunState,
+  scaffoldService: ScaffoldService,
+): CliExecutionResult {
+  val payload =
+    try {
+      collectScaffoldWizardPayload(state)
+    } catch (error: IllegalArgumentException) {
+      return errorResult(error.message.orEmpty(), format)
+    }
+  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+}
+
+private fun collectScaffoldWizardPayload(state: CliRunState): Map<String, Any?> {
+  state.liveStdout(
+    "Skill Bill scaffold wizard\n" +
+      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+  )
+  return when (val kind = normalizeWizardKind(promptRequired(state, "Kind"))) {
+    "horizontal" -> horizontalWizardPayload(state)
+    "platform-pack" -> platformPackWizardPayload(state)
+    "platform-override-piloted" -> platformOverrideWizardPayload(state)
+    "code-review-area" -> codeReviewAreaWizardPayload(state)
+    "add-on" -> addOnWizardPayload(state)
+    else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")
+  }
+}
+
+private fun horizontalWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("horizontal")
+  put("name", normalizeBillSkillName(promptRequired(state, "Skill name")))
+  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+}
+
+private fun platformPackWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("platform-pack")
+  val platform = promptRequired(state, "Platform slug")
+  put("platform", platform)
+  promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
+  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+  put("skeleton_mode", promptDefault(state, "Skeleton mode [starter/full]", "starter"))
+  val routingSignal = if (platform in PLATFORM_PACK_PRESETS) {
+    promptOptional(state, "Routing signal override (optional)")
+  } else {
+    promptRequired(state, "Routing signal")
+  }
+  routingSignal.ifNotBlank { signal -> put("routing_signals", mapOf("strong" to listOf(signal))) }
+}
+
+private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("platform-override-piloted")
+  put("platform", promptRequired(state, "Platform slug"))
+  put("family", promptRequired(state, "Family"))
+  promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
+  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+}
+
+private fun codeReviewAreaWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("code-review-area")
+  put("platform", promptRequired(state, "Platform slug"))
+  put("area", promptCodeReviewArea(state))
+  promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
+  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+}
+
+private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("add-on")
+  put("platform", promptRequired(state, "Platform slug"))
+  put("name", promptRequired(state, "Add-on name"))
+  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+  promptOptional(state, "Body").ifNotBlank { body -> put("body", body) }
+  promptOptional(state, "Consumer skill dirs, comma-separated").ifNotBlank { dirs ->
+    put("consumer_skill_dirs", dirs.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+  }
+}
+
+private fun MutableMap<String, Any?>.putScaffoldBase(kind: String) {
+  put("scaffold_payload_version", "1.0")
+  put("kind", kind)
+}
+
+private fun normalizeWizardKind(value: String): String = when (value.trim().lowercase()) {
+  "1", "horizontal", "skill" -> "horizontal"
+  "2", "platform", "platform-pack", "pack" -> "platform-pack"
+  "3", "platform-override", "platform-override-piloted", "override" -> "platform-override-piloted"
+  "4", "code-review-area", "area", "specialist" -> "code-review-area"
+  "5", "add-on", "addon" -> "add-on"
+  else -> value
+}
+
+private fun promptCodeReviewArea(state: CliRunState): String {
+  val sortedAreas = APPROVED_CODE_REVIEW_AREAS.sorted()
+  state.liveStdout("Approved areas: ${sortedAreas.joinToString(", ")}\n")
+  return promptRequired(state, "Area")
+}
+
+private fun promptDefault(state: CliRunState, label: String, default: String): String {
+  val value = promptOptional(state, label)
+  return value.ifBlank { default }
+}
+
+private fun promptRequired(state: CliRunState, label: String): String {
+  val value = promptOptional(state, label)
+  require(value.isNotBlank()) { "Missing required scaffold wizard value: $label." }
+  return value
+}
+
+private fun promptOptional(state: CliRunState, label: String): String {
+  state.liveStdout("$label: ")
+  return state.readInputLine()?.trim().orEmpty()
+}
+
+private fun normalizeBillSkillName(name: String): String = if (name.startsWith("bill-")) name else "bill-$name"
+
+private inline fun String.ifNotBlank(block: (String) -> Unit) {
+  if (isNotBlank()) block(this)
 }
 
 private fun runNativeScaffoldPayload(
@@ -756,7 +868,7 @@ private fun readCliTextFile(path: String, state: CliRunState): String =
 private fun readScaffoldPayload(payloadPath: String?, state: CliRunState): Map<String, Any?> {
   val payloadText =
     when {
-      payloadPath == null -> throw IllegalArgumentException("Either --payload or --interactive is required.")
+      payloadPath == null -> throw IllegalArgumentException("--payload is required for this command.")
       payloadPath == "-" -> state.stdinText.orEmpty()
       else -> Path.of(payloadPath).toFile().readText()
     }

@@ -40,7 +40,7 @@ object McpScaffoldRuntime {
           "area" to payload["area"].orEmpty(),
           "result" to outcome,
           "duration_seconds" to 0,
-          "skill" to "bill-create-skill",
+          "skill" to "skill-bill-scaffold",
         )
 
       if (orchestrated) {
@@ -72,7 +72,7 @@ object McpScaffoldRuntime {
               "area" to payload["area"].orEmpty(),
               "result" to "failed",
               "duration_seconds" to 0,
-              "skill" to "bill-create-skill",
+              "skill" to "skill-bill-scaffold",
               "error" to error.message.orEmpty(),
             ) - "session_id",
           "error" to error.message.orEmpty(),

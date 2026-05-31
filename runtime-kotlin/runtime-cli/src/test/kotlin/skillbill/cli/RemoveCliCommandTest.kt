@@ -18,6 +18,23 @@ import kotlin.test.assertTrue
  */
 class RemoveCliCommandTest {
   @Test
+  fun `remove without target returns examples instead of generic missing argument error`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-remove-missing-target")
+    val result = CliRuntime.run(
+      listOf("remove", "--format", "json"),
+      CliRuntimeContext(userHome = tempDir),
+    )
+    val payload = decodeJsonObject(result.stdout)
+    val error = payload["error"].toString()
+
+    assertEquals(1, result.exitCode)
+    assertEquals("error", payload["status"].toString().trim('"'))
+    assertTrue("skill-bill remove skill:bill-my-skill --dry-run" in error)
+    assertTrue("skill-bill remove platform:my-platform --dry-run" in error)
+    assertTrue("skill-bill remove addon:platform-packs/kmp/addons/my-addon.md --dry-run" in error)
+  }
+
+  @Test
   fun `remove --dry-run returns a preview payload without mutating the repo`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-dry-run")
     val skillDir = tempDir.resolve("skills/bill-foo")

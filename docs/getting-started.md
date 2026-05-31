@@ -254,7 +254,7 @@ Strict and loud-fail guarantees:
 
 - MCP tools publish strict schemas for priority workflow, telemetry, review, learning, scaffold, and workflow-state tools. Unknown top-level arguments are rejected before handler dispatch when the schema is strict.
 - Shell and platform-pack fixtures enforce the governed contract version, manifest shape, declared files, generated wrapper sections, and generated support pointers.
-- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid payloads, source-shape violations, or render drift fail the command. `skill-bill new --payload <file> --dry-run` previews planned files and manifest edits, including platform-pack baseline composition blocks, and `skill-bill show <skill>` exposes manifest-declared review composition for inspection. Legacy platform-pack payloads without `baseline_layers` continue to produce manifests with no composition section.
+- Scaffold and validation commands operate on structured manifests and `content.md` source files; invalid wizard input, invalid payloads, source-shape violations, or render drift fail the command. `skill-bill new --dry-run` previews planned files and manifest edits, including platform-pack baseline composition blocks; `skill-bill new --payload <file> --dry-run` is the scripted equivalent. `skill-bill show <skill>` exposes manifest-declared review composition for inspection. Legacy platform-pack payloads without `baseline_layers` continue to produce manifests with no composition section.
 - `install link-skill` creates real symlinks to staged rendered skill directories and is covered by Kotlin CLI tests.
 
 Model-mediated guarantees:
@@ -329,7 +329,7 @@ Authoring and install:
 | `skill-bill render`                     | Render generated wrappers to stdout or install output without writing generated files into source |
 | `skill-bill fill <skill>`               | Write authored `content.md` text and validate                                                     |
 | `skill-bill upgrade`                    | Validate governed render output and regenerate native-agent artifacts through runtime guardrails   |
-| `skill-bill new --payload <file>`       | Scaffold a governed skill or platform pack                                                        |
+| `skill-bill new`                        | Scaffold a governed skill or platform pack through deterministic prompts                           |
 | `skill-bill create-and-fill`            | Scaffold and immediately author one content-managed skill                                         |
 | `skill-bill new-addon`                  | Create a pack-owned add-on                                                                        |
 | `skill-bill remove`                     | Remove a horizontal skill, platform pack, or governed add-on with cleanup                         |

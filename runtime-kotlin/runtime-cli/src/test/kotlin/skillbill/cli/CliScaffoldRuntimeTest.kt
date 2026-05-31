@@ -28,6 +28,45 @@ class CliScaffoldRuntimeTest {
   }
 
   @Test
+  fun `new wizard scaffolds horizontal skill without requiring payload file`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-wizard")
+    val result =
+      CliRuntime.run(
+        listOf("new", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText =
+          """
+          horizontal
+          bill-wizard-skill
+          Wizard-created skill.
+          """.trimIndent(),
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertTrue(payload.stringValue("skill_path").endsWith("/skills/bill-wizard-skill"))
+  }
+
+  @Test
+  fun `new interactive flag runs the same deterministic wizard`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-interactive")
+    val payload =
+      scaffoldPayload(
+        listOf("new-skill", "--interactive", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = "1\nwizard-alias-skill\n\n",
+          userHome = tempDir,
+        ),
+      )
+
+    assertEquals("ok", payload.stringValue("status"))
+    assertTrue(payload.stringValue("skill_path").endsWith("/skills/bill-wizard-alias-skill"))
+  }
+
+  @Test
   fun `create-and-fill dry run preserves scaffold payload contract`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-fill")
     val bodyFile = tempDir.resolve("content-body.md")

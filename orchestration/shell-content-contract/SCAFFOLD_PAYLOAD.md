@@ -1,15 +1,17 @@
 ---
 name: scaffold-payload
-description: Payload schema for the new-skill scaffolder (SKILL-15). Documents the JSON contract consumed by `skill-bill new-skill --payload`, the `new_skill_scaffold` MCP tool, and the `bill-create-skill` skill.
+description: Payload schema for the new-skill scaffolder (SKILL-15). Documents the JSON contract consumed by `skill-bill new --payload`, the `new_skill_scaffold` MCP tool, and desktop/runtime scaffold callers.
 ---
 
 # Scaffold Payload Contract
 
-This is the canonical payload schema for the new-skill scaffolder. Every
-caller of `skillbill.scaffold.ScaffoldService.scaffold(payload)` (in `runtime-core`) — the `runtime-cli` `new-skill` command, the `runtime-mcp` `new_skill_scaffold` tool,
-and the `bill-create-skill` skill — ships a payload that conforms to
-this schema. Mismatches raise specific named exceptions and abort the run;
-no silent coercion.
+This is the canonical payload schema for scripted scaffold callers. The human
+CLI path is `skill-bill new`, which collects deterministic prompts and then
+builds this same payload internally. Payload callers such as
+`skill-bill new --payload`, the `runtime-mcp` `new_skill_scaffold` tool, and
+desktop/runtime scaffold integrations must ship a payload that conforms to this
+schema. Mismatches raise specific named exceptions and abort the run; no silent
+coercion.
 
 ## Versioning
 

@@ -3,6 +3,7 @@
 package skillbill.cli
 
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -49,7 +50,7 @@ class RemoveCliCommand(
   private val target by argument(
     help = "Removal target. Examples: 'skill:bill-foo', 'platform:my-platform', " +
       "'addon:platform-packs/kmp/addons/my-addon.md'.",
-  )
+  ).optional()
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to operate on. Defaults to the current working directory.",
@@ -64,10 +65,15 @@ class RemoveCliCommand(
   private val format by formatOption()
 
   override fun run() {
-    val parsed = parseTarget(target, allowShipped)
+    val rawTarget = target
+      ?: run {
+        state.result = errorResult(removeUsageMessage(), format)
+        return
+      }
+    val parsed = parseTarget(rawTarget, allowShipped)
       ?: run {
         state.result = errorResult(
-          "Invalid remove target: '$target'. Expected one of: skill:<name>, platform:<slug>, addon:<path>.",
+          "Invalid remove target: '$rawTarget'.\n\n${removeUsageMessage()}",
           format,
         )
         return
@@ -157,4 +163,21 @@ class RemoveCliCommand(
     val payload = mapOf("status" to "error", "error" to message)
     return CliExecutionResult(exitCode = 1, stdout = CliOutput.emit(payload, format), payload = payload)
   }
+
+  private fun removeUsageMessage(): String =
+    """
+    Missing remove target.
+
+    Examples:
+      skill-bill remove skill:bill-my-skill --dry-run
+      skill-bill remove platform:my-platform --dry-run
+      skill-bill remove addon:platform-packs/kmp/addons/my-addon.md --dry-run
+
+    Target forms:
+      skill:<name>
+      platform:<slug>
+      addon:<path>
+
+    Use --dry-run first to preview the exact files, README edits, and agent links that will be removed.
+    """.trimIndent()
 }

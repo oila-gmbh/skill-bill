@@ -64,6 +64,29 @@ class AuthoringRenderOutputTest {
   }
 
   @Test
+  fun `renderWrapper quotes frontmatter descriptions that are not valid plain yaml scalars`() {
+    val repoRoot = tempRoot.resolve("quoted-frontmatter-repo")
+    val skillDir = repoRoot.resolve("skills/bill-render-quoted")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-render-quoted
+      description: "Use as entry point: prepare the thing."
+      ---
+
+      # Authored Body
+
+      Run the authored guidance.
+      """.trimIndent() + "\n",
+    )
+    val renderedWrapper = renderWrapper(resolveTarget(repoRoot, "bill-render-quoted"))
+
+    assertContains(renderedWrapper, "description: \"Use as entry point: prepare the thing.\"")
+  }
+
+  @Test
   fun `platform-pack render includes pointer blocks from renderPointer in manifest declaration order`() {
     val fixture = writePlatformRenderFixture()
 

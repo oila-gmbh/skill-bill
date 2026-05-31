@@ -68,7 +68,7 @@ Goal-continuation rules:
 
 When planning returns `mode: "decompose"`, `bill-feature-implement` must use
 the shared feature-spec preparation path owned by `bill-feature-spec` and
-reused by `bill-goal`.
+reused by `bill-feature-goal`.
 
 Do not bypass this shared path with one-off decomposition writing logic in this
 skill. The shared path owns parent/spec-subtask writing and decomposition
@@ -148,7 +148,7 @@ The subagent returns one of two planning return contracts:
 - `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
 - `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-implement run.
 
-Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`, including manifest validation against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-feature-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`, including manifest validation against `orchestration/contracts/decomposition-manifest-schema.yaml`; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
 
 If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
 
