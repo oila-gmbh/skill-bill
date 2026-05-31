@@ -19,14 +19,12 @@ import kotlin.test.assertTrue
  */
 class PlatformPackSchemaValidatesExistingPacksTest {
   @Test
-  fun `canonical schema validates kotlin and kmp platform_yaml`() {
+  fun `canonical schema validates shipped platform_yamls`() {
     val repoRoot = repoRootFromTest()
     val schema = loadCanonicalSchema(repoRoot)
 
-    val packs = listOf(
-      repoRoot.resolve("platform-packs/kotlin/platform.yaml"),
-      repoRoot.resolve("platform-packs/kmp/platform.yaml"),
-    )
+    val packs = discoverPlatformManifests(repoRoot)
+    assertTrue(packs.isNotEmpty(), "No platform pack manifests discovered.")
     packs.forEach { packPath ->
       assertTrue(Files.isRegularFile(packPath), "Missing manifest at $packPath.")
       val instance = YAMLMapper().readTree(Files.readString(packPath))
@@ -36,6 +34,17 @@ class PlatformPackSchemaValidatesExistingPacksTest {
         "Schema rejected $packPath:\n${errors.joinToString("\n") { error -> " - $error" }}",
       )
     }
+  }
+}
+
+private fun discoverPlatformManifests(repoRoot: Path): List<Path> {
+  val packsRoot = repoRoot.resolve("platform-packs")
+  return Files.list(packsRoot).use { entries ->
+    entries
+      .map { packRoot -> packRoot.resolve("platform.yaml") }
+      .filter { manifest -> Files.isRegularFile(manifest) }
+      .sorted()
+      .toList()
   }
 }
 

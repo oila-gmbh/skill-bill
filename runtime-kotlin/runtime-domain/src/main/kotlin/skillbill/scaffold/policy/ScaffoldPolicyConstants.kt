@@ -67,7 +67,16 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
     ),
     "php" to PlatformPackPreset(
       displayName = "PHP",
-      strongSignals = listOf("composer.json", ".php", "phpunit.xml"),
+      strongSignals = listOf(
+        "composer.json",
+        "composer.lock",
+        ".php",
+        "phpunit.xml",
+        "phpunit.xml.dist",
+        "pest.php",
+        "phpstan.neon",
+        "psalm.xml",
+      ),
       tieBreakers = listOf("Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."),
     ),
   )

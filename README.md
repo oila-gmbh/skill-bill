@@ -98,7 +98,7 @@ It is a tiny CI/CD for the feature itself, not just the code.
 
 ### 3. Native platform overrides via platform packs
 
-Generic skills like `/bill-code-review` and `/bill-quality-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `kotlin`, `kmp`), with native versions such as `bill-kotlin-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `.kt`, `build.gradle.kts`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
+Generic skills like `/bill-code-review` and `/bill-quality-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `kotlin`, `kmp`, `php`), with native versions such as `bill-kotlin-code-review` and `bill-php-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons; PHP includes backend/service review, persistence/API/security/testing lanes, and server-rendered UI/UX lanes. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `.kt`, `build.gradle.kts`, `.php`, `composer.json`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
 
 ### 4. Manifest-driven task decomposition, auto-resume by issue key
 
@@ -239,7 +239,7 @@ Supported install targets today:
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
-Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, the `bill-php-code-review` PHP specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
 
 ## Desktop App
 
@@ -315,7 +315,7 @@ and provider-native artifacts remain install/render output rather than source.
 
 ## Reference pack
 
-Skill Bill ships a complete Kotlin/KMP pack as a working example of how to author against the framework. Use it directly if it fits your stack; otherwise treat it as the spec for what authoring your own pack looks like. Everything in this section is replaceable — none of it is load-bearing for Skill Bill itself.
+Skill Bill ships complete Kotlin/KMP and PHP packs as working examples of how to author against the framework. Use them directly if they fit your stack; otherwise treat them as the spec for what authoring your own pack looks like. Everything in this section is replaceable — none of it is load-bearing for Skill Bill itself.
 
 **Daily entry points (in the reference pack):**
 
@@ -329,6 +329,7 @@ Skill Bill ships a complete Kotlin/KMP pack as a working example of how to autho
 
 - `kotlin` — baseline Kotlin review and quality-check behavior
 - `kmp` — Kotlin baseline plus Android/KMP depth and governed add-ons
+- `php` — PHP backend, service, persistence, API, security, testing, UI, UX/accessibility, and quality-check behavior
 
 Routing, validation, and installation are manifest-driven, so the system accepts any conforming pack rather than a hardcoded shortlist. Drop a new pack in `platform-packs/<lang>/` with a valid `platform.yaml` and `skill-bill` will route to it — that is the supported extension point.
 
