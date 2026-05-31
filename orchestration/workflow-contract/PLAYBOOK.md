@@ -20,7 +20,7 @@ whose behavior already spans multiple sequential child steps.
 The current workflow contract version is **`0.1`**.
 
 - `0.x` means the shape is piloted and may still tighten before a stable `1.0`.
-- The first pilot scope is `bill-feature-implement`.
+- The first pilot scope is `bill-feature-task`.
 - `bill-feature-verify` is the next intended adopter.
 
 ## When To Use A Workflow
@@ -61,7 +61,7 @@ backend, but the shape below is the contract:
 ```json
 {
   "workflow_id": "wfl-20260421-142530-a1b2",
-  "workflow_name": "bill-feature-implement",
+  "workflow_name": "bill-feature-task",
   "contract_version": "0.1",
   "status": "running",
   "current_step_id": "plan",
@@ -80,7 +80,7 @@ backend, but the shape below is the contract:
 Required top-level fields:
 
 - `workflow_id` — unique id for the workflow run
-- `workflow_name` — stable top-level command name, e.g. `bill-feature-implement`
+- `workflow_name` — stable top-level command name, e.g. `bill-feature-task`
 - `contract_version` — workflow contract version string
 - `status` — `pending | running | completed | failed | abandoned`
 - `current_step_id` — stable step id currently being evaluated, or empty when
@@ -159,7 +159,7 @@ produce one authoritative completion event.
 ## Runtime Pilot Surface
 
 The runtime-facing pilot uses dedicated MCP tools per top-level workflow. The
-first adopter was `bill-feature-implement`; `bill-feature-verify` is the second
+first adopter was `bill-feature-task`; `bill-feature-verify` is the second
 adopter and follows the same model with its own state machine and storage:
 
 - `feature_implement_workflow_list`
@@ -184,7 +184,7 @@ linked to workflow state via `session_id` rather than replaced by it.
 
 `feature_implement_workflow_continue` is the first activation tool in the pilot:
 it does not execute the workflow itself, but it re-opens resumable state and
-returns a governed continuation payload for `bill-feature-implement`, including
+returns a governed continuation payload for `bill-feature-task`, including
 the resumed step id, recovered artifacts, reference sections to read, and a
 paste-ready continuation prompt.
 
@@ -210,9 +210,9 @@ Outcome fields are `issue_key`, `subtask_id`, terminal `status`, `commit_sha`,
 authoritative channel; stdout and git-tracked manifest projections are
 diagnostic/recovery views.
 
-## Pilot: `bill-feature-implement`
+## Pilot: `bill-feature-task`
 
-`bill-feature-implement` is the first workflow contract pilot. Its stable step
+`bill-feature-task` is the first workflow contract pilot. Its stable step
 ids are:
 
 1. `assess`
@@ -229,7 +229,7 @@ ids are:
 12. `finish`
 
 For this pilot, the authored workflow source stays in
-`skills/bill-feature-implement/content.md`. Install and render flows generate the
+`skills/bill-feature-task/content.md`. Install and render flows generate the
 runtime `SKILL.md` wrapper from that source plus the shared shell contract.
 Generated wrappers are not committed under `skills/`.
 The rendered `SKILL.md` remains the runtime-facing source of truth for:

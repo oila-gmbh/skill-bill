@@ -208,7 +208,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot.artifacts)
     val stepArtifacts = stepArtifactKeys.associateWith { snapshot.artifacts.getValue(it) }
     val extraFields =
-      if (definition.skillName == "bill-feature-implement") {
+      if (definition.skillName == "bill-feature-task") {
         implementExtraFields(snapshot.artifacts)
       } else {
         emptyMap()
@@ -470,8 +470,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       val stepLabel = definition.stepLabels[resumeStepId] ?: resumeStepId
       val artifacts = artifactKeys.joinToString().ifBlank { "none" }
       val instructionPath =
-        if (definition.skillName == "bill-feature-implement") {
-          "`skills/bill-feature-implement/content.md`"
+        if (definition.skillName == "bill-feature-task") {
+          "`skills/bill-feature-task/content.md`"
         } else {
           "`skills/bill-feature-verify/content.md`"
         }
@@ -509,7 +509,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
           "Continue status: $continueStatus",
           "Resume step: $resumeStepId (${definition.stepLabels[resumeStepId] ?: resumeStepId})",
         )
-      if (definition.skillName == "bill-feature-implement") {
+      if (definition.skillName == "bill-feature-task") {
         commonLines += "Feature: ${(extraFields["feature_name"] as String).ifBlank { "(unknown)" }}"
         commonLines += "Feature size: ${(extraFields["feature_size"] as String).ifBlank { "(unknown)" }}"
         commonLines += "Branch: ${(extraFields["branch_name"] as String).ifBlank { "(unknown)" }}"

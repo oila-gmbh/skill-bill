@@ -15,14 +15,13 @@ import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.InstallAgentService
 import skillbill.application.InstallService
+import skillbill.application.ScaffoldCatalogService
 import skillbill.application.ScaffoldService
 import skillbill.application.UnsupportedScaffoldService
 import skillbill.cli.scaffold.parseScaffoldCommandRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.PLATFORM_PACK_PRESETS
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -350,6 +349,7 @@ class FillSkillCommand(
 class NewSkillCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
+  private val scaffoldCatalogService: ScaffoldCatalogService,
 ) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -364,7 +364,7 @@ class NewSkillCommand(
   override fun run() {
     state.result =
       if (interactive || payload == null) {
-        runNativeScaffoldWizard(dryRun, format, state, scaffoldService)
+        runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
       }
@@ -375,6 +375,7 @@ class NewSkillCommand(
 class NewCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
+  private val scaffoldCatalogService: ScaffoldCatalogService,
 ) : DocumentedCliCommand("new", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -389,7 +390,7 @@ class NewCommand(
   override fun run() {
     state.result =
       if (interactive || payload == null) {
-        runNativeScaffoldWizard(dryRun, format, state, scaffoldService)
+        runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
       }
@@ -546,26 +547,30 @@ private fun runNativeScaffoldWizard(
   format: CliFormat,
   state: CliRunState,
   scaffoldService: ScaffoldService,
+  scaffoldCatalogService: ScaffoldCatalogService,
 ): CliExecutionResult {
   val payload =
     try {
-      collectScaffoldWizardPayload(state)
+      collectScaffoldWizardPayload(state, scaffoldCatalogService)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
   return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
 }
 
-private fun collectScaffoldWizardPayload(state: CliRunState): Map<String, Any?> {
+private fun collectScaffoldWizardPayload(
+  state: CliRunState,
+  scaffoldCatalogService: ScaffoldCatalogService,
+): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill scaffold wizard\n" +
       "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
   )
   return when (val kind = normalizeWizardKind(promptRequired(state, "Kind"))) {
     "horizontal" -> horizontalWizardPayload(state)
-    "platform-pack" -> platformPackWizardPayload(state)
+    "platform-pack" -> platformPackWizardPayload(state, scaffoldCatalogService.platformPackPresets())
     "platform-override-piloted" -> platformOverrideWizardPayload(state)
-    "code-review-area" -> codeReviewAreaWizardPayload(state)
+    "code-review-area" -> codeReviewAreaWizardPayload(state, scaffoldCatalogService.approvedCodeReviewAreas())
     "add-on" -> addOnWizardPayload(state)
     else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")
   }
@@ -577,14 +582,17 @@ private fun horizontalWizardPayload(state: CliRunState): Map<String, Any?> = bui
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }
 
-private fun platformPackWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+private fun platformPackWizardPayload(
+  state: CliRunState,
+  platformPackPresets: Map<String, String>,
+): Map<String, Any?> = buildMap {
   putScaffoldBase("platform-pack")
   val platform = promptRequired(state, "Platform slug")
   put("platform", platform)
   promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
   put("skeleton_mode", promptDefault(state, "Skeleton mode [starter/full]", "starter"))
-  val routingSignal = if (platform in PLATFORM_PACK_PRESETS) {
+  val routingSignal = if (platform in platformPackPresets) {
     promptOptional(state, "Routing signal override (optional)")
   } else {
     promptRequired(state, "Routing signal")
@@ -600,10 +608,13 @@ private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?>
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }
 
-private fun codeReviewAreaWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+private fun codeReviewAreaWizardPayload(
+  state: CliRunState,
+  approvedCodeReviewAreas: Set<String>,
+): Map<String, Any?> = buildMap {
   putScaffoldBase("code-review-area")
   put("platform", promptRequired(state, "Platform slug"))
-  put("area", promptCodeReviewArea(state))
+  put("area", promptCodeReviewArea(state, approvedCodeReviewAreas))
   promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }
@@ -633,8 +644,8 @@ private fun normalizeWizardKind(value: String): String = when (value.trim().lowe
   else -> value
 }
 
-private fun promptCodeReviewArea(state: CliRunState): String {
-  val sortedAreas = APPROVED_CODE_REVIEW_AREAS.sorted()
+private fun promptCodeReviewArea(state: CliRunState, approvedCodeReviewAreas: Set<String>): String {
+  val sortedAreas = approvedCodeReviewAreas.sorted()
   state.liveStdout("Approved areas: ${sortedAreas.joinToString(", ")}\n")
   return promptRequired(state, "Area")
 }

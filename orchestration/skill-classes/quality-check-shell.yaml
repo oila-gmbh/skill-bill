@@ -85,7 +85,7 @@ sections:
       2. Save the returned `session_id`.
       3. Call `quality_check_finished` when the quality-check loop finishes, with `session_id`, `final_failure_count`, `iterations`, `result` (`pass` / `fail` / `skipped` / `unsupported_stack`), optional `failing_check_names` and `unsupported_reason`.
 
-      Orchestrated invocation (invoked by another skill such as `bill-feature-implement` that passes `orchestrated=true`):
+      Orchestrated invocation (invoked by another skill such as `bill-feature-task` that passes `orchestrated=true`):
 
       1. Skip `quality_check_started` entirely.
       2. Call `quality_check_finished` once with `orchestrated=true` and all started+finished fields combined (`routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, `final_failure_count`, `iterations`, `result`, `failing_check_names`, `unsupported_reason`, `duration_seconds`).

@@ -345,13 +345,13 @@ class JvmDesktopFirstRunGatewayTest {
           status = InstallApplyStatus.WARNING,
           skills = listOf(
             InstallAppliedSkill(
-              skillName = "bill-feature-implement",
+              skillName = "bill-feature-task",
               kind = InstallPlanSkillKind.BASE,
-              sourceDir = plan.request.targetPaths.skillsRoot.resolve("bill-feature-implement"),
+              sourceDir = plan.request.targetPaths.skillsRoot.resolve("bill-feature-task"),
               staging = InstallSkillStagingOutcome(
                 status = InstallSkillStagingStatus.STAGED,
-                sourceDir = plan.request.targetPaths.skillsRoot.resolve("bill-feature-implement"),
-                stagingDir = plan.staging.root.resolve("bill-feature-implement-hash"),
+                sourceDir = plan.request.targetPaths.skillsRoot.resolve("bill-feature-task"),
+                stagingDir = plan.staging.root.resolve("bill-feature-task-hash"),
               ),
             ),
           ),
@@ -515,8 +515,8 @@ private fun InstallPlanRequest.toPlan(): InstallPlan {
     selectedPlatformSlugs = selectedPlatforms,
     skills = listOf(
       InstallPlanSkill(
-        name = "bill-feature-implement",
-        sourceDir = targetPaths.skillsRoot.resolve("bill-feature-implement"),
+        name = "bill-feature-task",
+        sourceDir = targetPaths.skillsRoot.resolve("bill-feature-task"),
         kind = InstallPlanSkillKind.BASE,
       ),
       InstallPlanSkill(
@@ -583,7 +583,7 @@ private fun Path.runtimeAssets(): DesktopRuntimeAssets {
 }
 
 private fun seedRuntimeAssetRoot(root: Path) {
-  Files.createDirectories(root.resolve("skills/bill-feature-implement"))
+  Files.createDirectories(root.resolve("skills/bill-feature-task"))
   Files.createDirectories(root.resolve("platform-packs/kotlin"))
   Files.createDirectories(root.resolve("platform-packs/python"))
   Files.createDirectories(root.resolve("orchestration"))
@@ -591,7 +591,7 @@ private fun seedRuntimeAssetRoot(root: Path) {
   Files.createDirectories(root.resolve("runtime-mcp/bin"))
   Files.createDirectories(root.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin"))
   Files.createDirectories(root.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin"))
-  Files.writeString(root.resolve("skills/bill-feature-implement/content.md"), "# content\n")
+  Files.writeString(root.resolve("skills/bill-feature-task/content.md"), "# content\n")
   Files.writeString(root.resolve("platform-packs/kotlin/platform.yaml"), "platform: kotlin\n")
   Files.writeString(root.resolve("platform-packs/python/platform.yaml"), "platform: python\n")
   Files.writeString(root.resolve("runtime-mcp/bin/runtime-mcp"), "#!/usr/bin/env bash\n")

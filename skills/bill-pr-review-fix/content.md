@@ -247,4 +247,4 @@ Only when the user explicitly opts in:
 - One thread → one fix mapping in working memory until Phase 2 reports it.
 - Quality gate runs after fixes, before replies are posted, so reply context can cite the final state.
 - If quality gate fails and cannot be fixed, stop. Do not post replies promising fixes that aren't green.
-- If invoked from `bill-feature-implement` or another orchestrator, follow its instructions for telemetry forwarding; standalone runs do not emit telemetry of their own.
+- If invoked from `bill-feature-task` or another orchestrator, follow its instructions for telemetry forwarding; standalone runs do not emit telemetry of their own.

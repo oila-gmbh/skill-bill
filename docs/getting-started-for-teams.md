@@ -6,7 +6,7 @@ A team adoption guide for Skill Bill. Use [Getting Started](getting-started.md) 
 
 Skill Bill gives a team governed agent workflows, not just prompt files. There are two useful adoption modes:
 
-- Adopt the bundled flagship workflow: start with `/bill-feature-implement`, then use `/bill-code-review`, `/bill-quality-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
+- Adopt the bundled flagship workflow: start with `/bill-feature-task`, then use `/bill-code-review`, `/bill-quality-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
 - Adopt the governed workflow platform: fork, replace, or delete bundled skills and author team-owned workflows and platform packs on the same contracts.
 
 The useful adoption unit is:
@@ -24,7 +24,7 @@ The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bil
 One maintainer should do this first:
 
 1. Install from the branch or release the team will use.
-2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-feature-implement` on a small spec.
+2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-feature-task` on a small spec.
 3. Decide which reference packs matter for the team.
 4. Add project guidance in `AGENTS.md` or `.agents/skill-overrides.md`.
 5. Run the validation gate before asking others to install.
@@ -45,12 +45,12 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 | Command | Use it when | What to expect |
 |---------|-------------|----------------|
 | `/bill-feature-spec` | Preparing specs before implementation starts | Shared single-spec/decomposed preparation artifacts for feature and goal workflows |
-| `/bill-feature-implement` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
+| `/bill-feature-task` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
 | `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Routed review with summary, risk register, action items, and verdict |
 | `/bill-quality-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
 | `/bill-feature-verify` | Checking a teammate PR against a spec | Criteria-based verification plus review and validation guidance |
 
-Start with `/bill-feature-implement` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
+Start with `/bill-feature-task` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
 
 ## Runtime Expectations
 
@@ -64,7 +64,7 @@ Team members should not need to know migration history. Current behavior is:
 - Repo validation and maintainer commands are Kotlin-backed; the legacy maintainer stack is no longer required for current team workflows.
 - Runtime rollback means installing a previous release, not toggling a legacy fallback.
 
-On Claude, Codex, OpenCode, and Junie, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, `bill-php-code-review` ships native subagent definitions for its PHP specialists, and `bill-feature-implement` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; parser tolerance for older unpinned sources is migration support, not a reason to omit the pin in new source. Install renders the same sources into `~/.skill-bill/native-agents/` before linking Claude markdown, Codex TOMLs, OpenCode markdown, or Junie markdown into each runtime's native agents directory. Codex TOMLs normally install to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes without `.codex`. Generated provider files are install-cache outputs, not committed source. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-kotlin-code-review-architecture` subagent", "spawn the `bill-php-code-review-security` subagent", "spawn the `bill-feature-implement-planning` subagent", and so on) is runtime-neutral: Claude and Junie resolve the installed Markdown/YAML custom subagents, Codex resolves each TOML by `name`, and OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+On Claude, Codex, OpenCode, and Junie, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, `bill-php-code-review` ships native subagent definitions for its PHP specialists, and `bill-feature-task` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; parser tolerance for older unpinned sources is migration support, not a reason to omit the pin in new source. Install renders the same sources into `~/.skill-bill/native-agents/` before linking Claude markdown, Codex TOMLs, OpenCode markdown, or Junie markdown into each runtime's native agents directory. Codex TOMLs normally install to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes without `.codex`. Generated provider files are install-cache outputs, not committed source. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-kotlin-code-review-architecture` subagent", "spawn the `bill-php-code-review-security` subagent", "spawn the `bill-feature-task-planning` subagent", and so on) is runtime-neutral: Claude and Junie resolve the installed Markdown/YAML custom subagents, Codex resolves each TOML by `name`, and OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task/content.md`.
 
 ## Fallback And Failure Boundaries
 
@@ -199,7 +199,7 @@ The Kotlin CLI has an integration test for this flow using temporary directories
 
 Suggested rollout:
 
-1. One maintainer calibrates on a small real feature spec with `/bill-feature-implement`.
+1. One maintainer calibrates on a small real feature spec with `/bill-feature-task`.
 2. Two or three engineers install from the same branch or tag and run feature implementation plus standalone review on live work.
 3. The team triages false positives and adds learnings or overrides.
 4. Platform owners fork, delete, or create skills and packs only when bundled defaults no longer fit.

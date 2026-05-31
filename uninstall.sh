@@ -332,7 +332,9 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-code-review-testing:bill-kotlin-code-review-testing'
   'bill-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
   'bill-kotlin-code-review-ux-accessibility:bill-kmp-code-review-ux-accessibility'
-  'bill-kotlin-feature-implement:bill-feature-implement'
+  'bill-feature-implement:bill-feature-task'
+  'bill-kotlin-feature-implement:bill-feature-task'
+  'bill-feature-implement-agentic:bill-feature-task'
   'bill-kotlin-feature-verify:bill-feature-verify'
   'bill-gcheck:bill-quality-check'
 )

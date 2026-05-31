@@ -17,7 +17,7 @@ class WorkflowStateStoreTest {
         WorkflowStateRow(
           workflowId = "wfl-001",
           sessionId = "fis-001",
-          workflowName = "bill-feature-implement",
+          workflowName = "bill-feature-task",
           contractVersion = "",
           workflowStatus = "running",
           currentStepId = "plan",
@@ -88,7 +88,7 @@ class WorkflowStateStoreTest {
         workflowRow(
           workflowId = "wfl-terminal",
           sessionId = "fis-terminal",
-          workflowName = "bill-feature-implement",
+          workflowName = "bill-feature-task",
           currentStepId = "assess",
         )
 
@@ -119,7 +119,7 @@ class WorkflowStateStoreTest {
           workflowRow(
             workflowId = workflowId,
             sessionId = "fis-00$index",
-            workflowName = "bill-feature-implement",
+            workflowName = "bill-feature-task",
             currentStepId = "assess",
           ),
         )

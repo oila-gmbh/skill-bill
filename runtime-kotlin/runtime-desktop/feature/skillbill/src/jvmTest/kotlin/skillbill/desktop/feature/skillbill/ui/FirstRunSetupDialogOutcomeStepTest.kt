@@ -93,7 +93,7 @@ class FirstRunSetupDialogOutcomeStepTest {
                 label = "Claude",
                 message = "Existing unmanaged file was preserved.",
                 severity = FirstRunInstallDetailSeverity.ERROR,
-                path = "/home/alex/.claude/skills/bill-feature-implement",
+                path = "/home/alex/.claude/skills/bill-feature-task",
               ),
             ),
           ),
@@ -106,7 +106,7 @@ class FirstRunSetupDialogOutcomeStepTest {
     onNodeWithText("failure").assertIsDisplayed()
     onNodeWithText("Claude").assertIsDisplayed()
     onNodeWithText("Existing unmanaged file was preserved.").assertIsDisplayed()
-    onNodeWithText("/home/alex/.claude/skills/bill-feature-implement").assertIsDisplayed()
+    onNodeWithText("/home/alex/.claude/skills/bill-feature-task").assertIsDisplayed()
     onNodeWithText("Retry").assertIsDisplayed()
   }
 

@@ -105,5 +105,5 @@ skill-bill telemetry stats implement --since 30d --group-by week
 - If you use another analytics backend, adapt this Worker to translate those payloads before forwarding or querying.
 - The `/stats` route in this example is intentionally PostHog-specific. The Skill Bill CLI and MCP server are not.
 - `in_progress_runs` in the normalized `/stats` response is derived as `max(started_runs - finished_runs, 0)` for the requested date window.
-- for `bill-feature-implement`, `boundary_history_useful_runs` is derived as `boundary_history_value in ('medium', 'high')`
+- for `bill-feature-task`, `boundary_history_useful_runs` is derived as `boundary_history_value in ('medium', 'high')`
 - grouped `/stats` series are trend-oriented event-window buckets, not session-cohort analytics.

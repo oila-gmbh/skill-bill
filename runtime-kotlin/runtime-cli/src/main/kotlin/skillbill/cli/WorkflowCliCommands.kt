@@ -21,7 +21,7 @@ class WorkflowTopLevelCommands(
   verifyCommands: VerifyWorkflowCommands,
 ) {
   val workflowCommand: DocumentedNoOpCliCommand =
-    object : DocumentedNoOpCliCommand("workflow", "Inspect or resume durable bill-feature-implement workflow runs.") {}
+    object : DocumentedNoOpCliCommand("workflow", "Inspect or resume durable bill-feature-task workflow runs.") {}
       .subcommands(
         implementCommands.open,
         implementCommands.update,

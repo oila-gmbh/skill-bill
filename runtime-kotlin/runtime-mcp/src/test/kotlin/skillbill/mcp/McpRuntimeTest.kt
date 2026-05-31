@@ -104,7 +104,7 @@ class McpRuntimeTest {
     assertEquals("bill-kotlin-code-review", importResult["routed_skill"])
     assertEquals(featureImplementStatsKeys(), implementStats.keys)
     assertEquals(dbPath, implementStats["db_path"])
-    assertEquals("bill-feature-implement", implementStats["workflow"])
+    assertEquals("bill-feature-task", implementStats["workflow"])
     assertEquals(1, implementStats["total_runs"])
     assertEquals(1, implementStats["finished_runs"])
     assertEquals(mapOf("SMALL" to 0, "MEDIUM" to 1, "LARGE" to 0), implementStats["feature_size_counts"])

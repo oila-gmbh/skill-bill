@@ -91,10 +91,15 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     Files.createDirectories(legacyManagedDir)
     Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
     Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
+    val featureImplementLink = targetDir.resolve("bill-feature-implement")
+    createSymlinkOrSkip(
+      featureImplementLink,
+      fixture.repoRoot.resolve("skills/bill-feature-task"),
+    )
     val agenticFeatureImplementLink = targetDir.resolve("bill-feature-implement-agentic")
     createSymlinkOrSkip(
       agenticFeatureImplementLink,
-      fixture.repoRoot.resolve("skills/bill-feature-implement"),
+      fixture.repoRoot.resolve("skills/bill-feature-task"),
     )
     val skillScaffoldManagedDir = targetDir.resolve("mdp-skill-scaffold")
     Files.createDirectories(skillScaffoldManagedDir)
@@ -127,6 +132,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertFalse(Files.exists(legacySourceLink, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(legacyManagedDir, LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(featureImplementLink, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(agenticFeatureImplementLink, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(skillScaffoldManagedDir, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(newSkillAllAgentsLink, LinkOption.NOFOLLOW_LINKS))

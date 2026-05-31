@@ -36,6 +36,6 @@ internal fun telemetryMutationResult(settings: TelemetrySettings, clearedEvents:
 
 internal fun mapWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"
-  "implement" -> "bill-feature-implement"
+  "implement" -> "bill-feature-task"
   else -> throw IllegalArgumentException("workflow must be one of: verify, implement.")
 }

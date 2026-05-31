@@ -42,7 +42,7 @@ interface WorkflowStateSchemaValidator {
    * "is it a mapping?" a compile-time concern of the caller — the
    * `WorkflowEngine` / `WorkflowRecordMapping` parse seams already
    * produce a `LinkedHashMap<String, Any?>` by construction. The `slug`
-   * is the snapshot's `workflow_name` (e.g. `bill-feature-implement`)
+   * is the snapshot's `workflow_name` (e.g. `bill-feature-task`)
    * and is woven into the loud-fail message so per-skill regressions
    * are easy to spot.
    */

@@ -1,11 +1,11 @@
 ---
 name: bill-feature-spec
-description: Prepare governed feature-spec artifacts from issue-keyed requirements, choosing single-spec or decomposed mode through the shared preparation path used by bill-feature-implement and bill-feature-goal.
+description: Prepare governed feature-spec artifacts from issue-keyed requirements, choosing single-spec or decomposed mode through the shared preparation path used by bill-feature-task and bill-feature-goal.
 ---
 
 # Feature Spec Preparation
 
-`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. It is the standalone preparation entry point used before `bill-feature-implement` or `bill-feature-goal` execution.
+`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. It is the standalone preparation entry point used before `bill-feature-task` or `bill-feature-goal` execution.
 
 ## Intake Contract
 
@@ -29,7 +29,7 @@ Use `single_spec` by default unless the work clearly needs dependency-ordered su
 
 ## Shared Preparation Path
 
-Always route preparation through the shared feature-spec preparation runtime path. Do not fork logic between `bill-feature-spec`, `bill-feature-implement`, and `bill-feature-goal`.
+Always route preparation through the shared feature-spec preparation runtime path. Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.
 
 The shared path is responsible for writing the governed artifacts and enforcing loud-fail validation behavior.
 
@@ -45,7 +45,7 @@ For `single_spec`:
 Return the next command as:
 
 ```bash
-Run bill-feature-implement on .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md
+Run bill-feature-task on .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md
 ```
 
 ## decomposed Output Rules

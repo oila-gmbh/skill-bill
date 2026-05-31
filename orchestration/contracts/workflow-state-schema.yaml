@@ -2,7 +2,7 @@
 #
 # This file describes the shape of every `WorkflowStateSnapshot` the Skill
 # Bill runtime persists and replays for the two shipped workflow families:
-# `bill-feature-implement` and `bill-feature-verify`. It is authored in YAML
+# `bill-feature-task` and `bill-feature-verify`. It is authored in YAML
 # for human readability and consumed as a JSON Schema (Draft 2020-12) by
 # the Kotlin runtime (`WorkflowStateSchemaValidator` in `runtime-contracts`).
 #
@@ -88,7 +88,7 @@ $defs:
     type: object
     properties:
       workflow_name:
-        const: "bill-feature-implement"
+        const: "bill-feature-task"
       workflow_status:
         type: string
         enum:
@@ -221,7 +221,7 @@ properties:
     type: string
     minLength: 1
     enum:
-      - bill-feature-implement
+      - bill-feature-task
       - bill-feature-verify
     description: >
       Workflow family identifier. Determines which per-skill enum branch
@@ -285,7 +285,7 @@ properties:
 # `current_step_id` / `steps[].step_id` enum is used for the declared
 # `workflow_name`. `oneOf` (not `anyOf`) because the two branches are
 # mutually exclusive — a snapshot with `workflow_name=bill-feature-verify`
-# must NOT validate against the `bill-feature-implement` enum and vice
+# must NOT validate against the `bill-feature-task` enum and vice
 # versa.
 oneOf:
   - $ref: "#/$defs/featureImplementBranch"
@@ -302,7 +302,7 @@ x-coherence-checks:
   per-skill-status-divergence:
     description: >
       The two shipped workflow families ship divergent enums:
-      `bill-feature-implement` has 12 step ids and 6 workflow statuses
+      `bill-feature-task` has 12 step ids and 6 workflow statuses
       (including `blocked`), while `bill-feature-verify` has 8 step ids
       and 5 workflow statuses (no `blocked`). The schema encodes this
       with `oneOf` keyed on `workflow_name` so a `verify` snapshot

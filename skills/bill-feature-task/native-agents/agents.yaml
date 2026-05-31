@@ -1,7 +1,7 @@
 contract_version: "0.1"
 agents:
-  - name: bill-feature-implement-pre-planning
-    description: "Pre-planning subagent for bill-feature-implement: produce a digest the planning subagent will consume."
+  - name: bill-feature-task-pre-planning
+    description: "Pre-planning subagent for bill-feature-task: produce a digest the planning subagent will consume."
     body: |-
       You are the pre-planning subagent for feature implementation. Do not re-read the raw spec; operate only on the briefing below and on the files you explore in the repo.
       
@@ -20,7 +20,7 @@ agents:
       {bullet_list_of_non_goals}
       
       Instructions:
-      1. Read `CLAUDE.md`, `AGENTS.md`, and any `.agents/skill-overrides.md` section matching `bill-feature-implement`. Treat all standards as mandatory.
+      1. Read `CLAUDE.md`, `AGENTS.md`, and any `.agents/skill-overrides.md` section matching `bill-feature-task`. Treat all standards as mandatory.
       2. For MEDIUM/LARGE, save the spec to `.feature-specs/{issue_key}-{feature_name}/spec.md` with status "In Progress", sources, acceptance criteria, and consolidated spec content. Preserve code blocks, schemas, and enums verbatim.
       3. Read `agent/history.md` in each boundary likely to be touched (newest first; stop when no longer relevant). Rate boundary-history value using one of the following anchored definitions:
          - `none` — no `agent/history.md` file existed at pre-read time in any touched boundary (nothing was read because nothing was there).
@@ -56,8 +56,8 @@ agents:
         },
         "standards_notes": "<anything from CLAUDE.md/AGENTS.md/skill-overrides.md the planner must honor>"
       }
-  - name: bill-feature-implement-planning
-    description: "Planning subagent for bill-feature-implement: emit an ordered implementation plan or a decomposition package."
+  - name: bill-feature-task-planning
+    description: "Planning subagent for bill-feature-task: emit an ordered implementation plan or a decomposition package."
     body: |-
       You are the planning subagent for feature implementation. Do not re-read the raw spec; operate on the briefing below.
       
@@ -93,8 +93,8 @@ agents:
       - Once decomposition mode is selected, do not implement anything and do not return an implementation task list.
       - Read the saved spec path only as needed to create accurate subtask specs.
       - Write subtask specs under `.feature-specs/{issue_key}-{feature_name}/` using names like `spec_subtask_1_foundation.md`, `spec_subtask_2_runtime-wiring.md`, and `spec_subtask_3_validation.md`.
-      - Keep `spec.md` as the parent overview. Each subtask spec links back to `spec.md`, contains only the scope for that subtask, and includes acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-implement` prompt.
-      - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-implement run.
+      - Keep `spec.md` as the parent overview. Each subtask spec links back to `spec.md`, contains only the scope for that subtask, and includes acceptance criteria, non-goals, dependencies, validation strategy, and the recommended next `bill-feature-task` prompt.
+      - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-task run.
       - Order subtasks by dependency and identify the first subtask to run.
       - The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order.
       - The manifest must declare `contract_version`, `parent_spec_path`, ordered `subtasks`, dependency ids, each subtask `spec_path`, `execution_model`, `base_branch`, either `feature_branch` or ordered `stack_branches`, and `current_subtask_intent` derived from the recommended first/current subtask.
@@ -133,7 +133,7 @@ agents:
       RESULT:
       {
         "mode": "decompose",
-        "decomposition_reason": "<why this is too large for one reliable feature-implement execution>",
+        "decomposition_reason": "<why this is too large for one reliable feature-task execution>",
         "parent_spec_path": "<path to spec.md>",
         "recommended_first_subtask_id": 1,
         "subtasks": [
@@ -147,13 +147,13 @@ agents:
             "acceptance_criteria": ["<criterion 1>", "<criterion 2>"],
             "non_goals": ["<explicitly deferred work>"],
             "validation_strategy": "<bill-quality-check or repo-native command>",
-            "handoff_prompt": "Run bill-feature-implement on <spec_path>."
+            "handoff_prompt": "Run bill-feature-task on <spec_path>."
           }
         ],
         "presentation_summary": "I split this into N subtasks. We should work on subtask <id> first because <dependency reason>."
       }
-  - name: bill-feature-implement-implementation
-    description: "Implementation subagent for bill-feature-implement: execute an ordered plan atomically and return a structured summary."
+  - name: bill-feature-task-implementation
+    description: "Implementation subagent for bill-feature-task: execute an ordered plan atomically and return a structured summary."
     body: |-
       You are the implementation subagent for feature implementation. Do not re-read the raw spec; operate on the briefing below and on the files in the repo.
       
@@ -201,8 +201,8 @@ agents:
         "stopped_early": <bool>,
         "stopped_reason": "<empty if stopped_early is false>"
       }
-  - name: bill-feature-implement-implementation-fix
-    description: "Implementation fix-loop variant for bill-feature-implement: respawned by the code-review step to address Blocker/Major findings."
+  - name: bill-feature-task-implementation-fix
+    description: "Implementation fix-loop variant for bill-feature-task: respawned by the code-review step to address Blocker/Major findings."
     body: |-
       You are the implementation subagent, invoked to fix findings from the code-review step. Scope: fix only the findings listed below; do not add unrelated changes.
       
@@ -217,8 +217,8 @@ agents:
       Test gate is relaxed: write tests only when the finding being fixed requires them (for example, a finding about missing regression coverage or a broken test). Do not treat the standard "write tests if the plan included testable logic" gate as mandatory in fix mode — the plan is not being re-executed here.
       
       Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
-  - name: bill-feature-implement-completeness-audit
-    description: "Completeness audit subagent for bill-feature-implement: verify every acceptance criterion is satisfied."
+  - name: bill-feature-task-completeness-audit
+    description: "Completeness audit subagent for bill-feature-task: verify every acceptance criterion is satisfied."
     body: |-
       You are the completeness audit subagent. Do not re-read the raw spec unless you need to resolve ambiguity in a criterion; prefer the briefing.
       
@@ -263,8 +263,8 @@ agents:
           }
         ]
       }
-  - name: bill-feature-implement-quality-check
-    description: "Quality-check subagent for bill-feature-implement: run the final validation gate and return a structured result."
+  - name: bill-feature-task-quality-check
+    description: "Quality-check subagent for bill-feature-task: run the final validation gate and return a structured result."
     body: |-
       You are the quality-check subagent. Your job is to run the final validation gate and return a structured result.
       
@@ -291,8 +291,8 @@ agents:
         "fixes_applied": "<brief summary>",
         "telemetry_payload": { ... verbatim from quality_check_finished ... }
       }
-  - name: bill-feature-implement-pr-description
-    description: "PR-description subagent for bill-feature-implement: create the pull request and return its URL."
+  - name: bill-feature-task-pr-description
+    description: "PR-description subagent for bill-feature-task: create the pull request and return its URL."
     body: |-
       You are the PR-description subagent. Your job is to create the pull request and return its URL.
       

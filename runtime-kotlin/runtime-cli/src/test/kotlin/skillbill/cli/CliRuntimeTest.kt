@@ -172,7 +172,7 @@ class CliRuntimeTest {
       runJson("--db", dbPath.toString(), "feature-implement-stats", "--format", "json")
     val verifyAliasPayload =
       runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json")
-    assertEquals("bill-feature-implement", implementAliasPayload["workflow"])
+    assertEquals("bill-feature-task", implementAliasPayload["workflow"])
     assertEquals("bill-feature-verify", verifyAliasPayload["workflow"])
   }
 
@@ -524,7 +524,7 @@ class CliRuntimeTest {
         listOf(
           "doctor",
           "skill",
-          "bill-feature-implement",
+          "bill-feature-task",
           "--repo-root",
           ".",
           "--content",
@@ -537,7 +537,7 @@ class CliRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals(
       "doctor skill was retired in SKILL-32; use " +
-        "`skill-bill show bill-feature-implement --repo-root . --content none` instead.",
+        "`skill-bill show bill-feature-task --repo-root . --content none` instead.",
       result.stdout,
     )
   }
@@ -789,7 +789,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
             "source": "custom_capabilities",
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-implement"],
+            "supported_workflows": ["bill-feature-verify", "bill-feature-task"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -887,7 +887,7 @@ private fun expectedCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-implement"),
+  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task"),
   "region" to "eu",
 )
 

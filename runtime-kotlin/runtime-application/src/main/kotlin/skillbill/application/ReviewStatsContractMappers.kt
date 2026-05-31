@@ -56,7 +56,7 @@ private fun ReviewFindingDetail.toPayload(): Map<String, Any?> = linkedMapOf<Str
 }
 
 private fun FeatureImplementWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(
-  "workflow" to "bill-feature-implement",
+  "workflow" to "bill-feature-task",
   "total_runs" to totalRuns,
   "finished_runs" to finishedRuns,
   "in_progress_runs" to inProgressRuns,

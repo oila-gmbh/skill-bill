@@ -71,6 +71,6 @@
   ],
   "updated_at": "<UPDATED_AT>",
   "workflow_id": "<WORKFLOW_ID>",
-  "workflow_name": "bill-feature-implement",
+  "workflow_name": "bill-feature-task",
   "workflow_status": "running"
 }

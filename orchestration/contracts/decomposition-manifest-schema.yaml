@@ -29,7 +29,7 @@ $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/decomposition-manifest-schema.yaml"
 title: "Parent decomposition manifest"
 description: >
-  Schema for the parent manifest written when bill-feature-implement
+  Schema for the parent manifest written when bill-feature-task
   decomposes an oversized feature into ordered subtask specs. The
   manifest is optional for ordinary single-spec workflows, but required
   at the decomposition write seam. Review, audit, validation, and

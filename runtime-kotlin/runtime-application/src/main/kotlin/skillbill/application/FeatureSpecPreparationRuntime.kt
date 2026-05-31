@@ -7,7 +7,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationIntake
 /**
  * Shared feature-spec preparation entry points for orchestrators.
  *
- * `bill-feature-spec`, `bill-feature-implement`, and `bill-feature-goal` wrappers
+ * `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal` wrappers
  * intentionally call the same injected core to prevent divergence.
  */
 class FeatureSpecPreparationRuntime(

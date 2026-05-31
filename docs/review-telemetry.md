@@ -146,7 +146,7 @@ Every telemeterable skill must be usable alone. When invoked directly by a user,
 - `bill-quality-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-implement` — `skillbill_feature_implement_started` + `_finished`
+- `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
 
 ### The `orchestrated` flag
 
@@ -212,8 +212,8 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 | Event | Emitted by | Orchestrated alternative |
 |-------|------------|--------------------------|
-| `skillbill_feature_implement_started` | `bill-feature-implement` (Step 1 confirm) | — (top-level only) |
-| `skillbill_feature_implement_finished` | `bill-feature-implement` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
+| `skillbill_feature_implement_started` | `bill-feature-task` (Step 1 confirm) | — (top-level only) |
+| `skillbill_feature_implement_finished` | `bill-feature-task` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
 | `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
 | `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
 | `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
@@ -518,7 +518,7 @@ Client capability contract:
   "supports_stats": true,
   "supported_workflows": [
     "bill-feature-verify",
-    "bill-feature-implement"
+    "bill-feature-task"
   ]
 }
 ```
@@ -535,7 +535,7 @@ Client request contract:
 ```
 
 The MCP tool accepts either canonical workflow ids
-(`bill-feature-verify`, `bill-feature-implement`) or short aliases
+(`bill-feature-verify`, `bill-feature-task`) or short aliases
 (`verify`, `implement`). The dispatcher maps aliases to canonical ids before
 calling the proxy. The CLI subcommands use the short forms
 `skill-bill telemetry stats verify` and `skill-bill telemetry stats implement`.
@@ -556,7 +556,7 @@ Normalized remote stats payloads now include:
 - optional `group_by`
 - optional `series`
 
-For `bill-feature-implement`, normalized remote stats also include:
+For `bill-feature-task`, normalized remote stats also include:
 
 - `boundary_history_written_runs`
 - `boundary_history_written_rate`

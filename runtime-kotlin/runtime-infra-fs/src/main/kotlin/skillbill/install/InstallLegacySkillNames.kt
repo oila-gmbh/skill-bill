@@ -22,8 +22,9 @@ private val renamedSkillPairs: List<Pair<String, String>> = listOf(
   "bill-code-review-testing" to "bill-kotlin-code-review-testing",
   "bill-code-review-ux-accessibility" to "bill-kmp-code-review-ux-accessibility",
   "bill-kotlin-code-review-ux-accessibility" to "bill-kmp-code-review-ux-accessibility",
-  "bill-kotlin-feature-implement" to "bill-feature-implement",
-  "bill-feature-implement-agentic" to "bill-feature-implement",
+  "bill-feature-implement" to "bill-feature-task",
+  "bill-kotlin-feature-implement" to "bill-feature-task",
+  "bill-feature-implement-agentic" to "bill-feature-task",
   "bill-kotlin-feature-verify" to "bill-feature-verify",
   "bill-gcheck" to "bill-quality-check",
 )

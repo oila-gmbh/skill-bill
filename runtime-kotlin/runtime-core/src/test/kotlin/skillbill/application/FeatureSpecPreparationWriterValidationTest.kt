@@ -83,7 +83,7 @@ class FeatureSpecPreparationWriterValidationTest {
         nonGoals = listOf("No skill wiring."),
         dependencyNotes = "No dependencies.",
         validationStrategy = "bill-quality-check",
-        nextPath = "Run bill-feature-implement on spec_subtask_1_foundation.md.",
+        nextPath = "Run bill-feature-task on spec_subtask_1_foundation.md.",
         dependsOn = emptyList(),
       ),
       FeatureSpecSubtaskPreparation(
@@ -94,7 +94,7 @@ class FeatureSpecPreparationWriterValidationTest {
         nonGoals = listOf("No final integration wiring."),
         dependencyNotes = "Depends on subtask 1 contracts.",
         validationStrategy = "bill-quality-check",
-        nextPath = "Run bill-feature-implement on spec_subtask_2_runtime.md.",
+        nextPath = "Run bill-feature-task on spec_subtask_2_runtime.md.",
         dependsOn = listOf(1),
       ),
     ),
@@ -105,7 +105,7 @@ class FeatureSpecPreparationWriterValidationTest {
     result.subtaskSpecPaths.forEach { subtaskSpecPath ->
       val fullPath = repoRoot.resolve(subtaskSpecPath)
       assertTrue(Files.isRegularFile(fullPath))
-      assertContains(Files.readString(fullPath), "Run bill-feature-implement on")
+      assertContains(Files.readString(fullPath), "Run bill-feature-task on")
     }
   }
 

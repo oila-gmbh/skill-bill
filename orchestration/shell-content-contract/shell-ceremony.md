@@ -69,7 +69,7 @@ mandates fired. Recommended shape:
 }
 ```
 
-Skills with structured workflow state (e.g. `bill-feature-implement`)
+Skills with structured workflow state (e.g. `bill-feature-task`)
 persist preflight under the assess-phase artifact and postflight under the
 finalization-phase artifact. Skills without structured state may report the
 result inline in their final summary.

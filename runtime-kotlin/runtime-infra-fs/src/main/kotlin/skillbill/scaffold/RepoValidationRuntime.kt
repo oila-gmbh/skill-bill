@@ -517,7 +517,7 @@ object RepoValidationRuntime {
 
   private fun validateWorkflowContracts(root: Path, issues: MutableList<String>) {
     val checks = mapOf(
-      "skills/bill-feature-implement/content.md" to listOf(
+      "skills/bill-feature-task/content.md" to listOf(
         "Step id: `assess`",
         "Step id: `implement`",
         "Step id: `pr_description`",

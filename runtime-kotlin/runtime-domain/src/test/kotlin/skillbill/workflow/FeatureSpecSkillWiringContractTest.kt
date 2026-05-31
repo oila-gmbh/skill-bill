@@ -15,7 +15,7 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "Always invoke `bill-feature-spec` first")
     assertContains(content, "Treat its selected mode as authoritative for dispatch")
     assertContains(content, "For `single_spec` output")
-    assertContains(content, "Run `bill-feature-implement` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`")
+    assertContains(content, "Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`")
     assertContains(content, "For `decomposed` output")
     assertContains(content, "Invoke `bill-feature-goal` in the current session")
     assertContains(content, "Do not ask an extra confirmation before invoking `bill-feature-goal`")
@@ -29,12 +29,12 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "If the issue key is missing, stop and ask for it.")
     assertContains(content, "single_spec")
     assertContains(content, "decomposed")
-    assertContains(content, "Do not fork logic between `bill-feature-spec`, `bill-feature-implement`, and `bill-feature-goal`.")
+    assertContains(content, "Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.")
   }
 
   @Test
-  fun `bill feature implement content routes decomposition through shared preparation path`() {
-    val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-implement/content.md"))
+  fun `bill feature task content routes decomposition through shared preparation path`() {
+    val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
 
     assertContains(content, "## Shared Feature-Spec Preparation Path")
     assertContains(content, "invoke the shared feature-spec preparation path")

@@ -1,8 +1,8 @@
 ## [2026-05-31] SKILL-59 subtask 2 spec-writing-runtime
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
-- Added typed feature-spec write models (`FeatureSpecWriteRequest`, `FeatureSpecWriteResult`, `FeatureSpecSubtaskPreparation`) so single-spec/decomposed persistence can be shared by future `bill-feature-spec`, `bill-feature-implement`, and `bill-goal` callers through one runtime contract. reusable
+- Added typed feature-spec write models (`FeatureSpecWriteRequest`, `FeatureSpecWriteResult`, `FeatureSpecSubtaskPreparation`) so single-spec/decomposed persistence can be shared by future `bill-feature-spec`, `bill-feature-task`, and `bill-goal` callers through one runtime contract. reusable
 - Added typed loud-fail `FeatureSpecPreparationModeConflictError`; `single_spec` now fails immediately when a decomposition manifest already exists for the same issue/feature directory instead of silently mixing modes. reusable
-- Added `FeatureSpecPreparationWriter` as the shared file-writing seam: `single_spec` writes/updates `.feature-specs/<issue>-<feature>/spec.md` and returns the `bill-feature-implement` path without creating `decomposition-manifest.yaml`; `decomposed` writes parent + ordered subtask specs and reuses `DecompositionManifestWriter`/`DecompositionManifestValidator` seams for manifest serialization/validation. reusable
+- Added `FeatureSpecPreparationWriter` as the shared file-writing seam: `single_spec` writes/updates `.feature-specs/<issue>-<feature>/spec.md` and returns the `bill-feature-task` path without creating `decomposition-manifest.yaml`; `decomposed` writes parent + ordered subtask specs and reuses `DecompositionManifestWriter`/`DecompositionManifestValidator` seams for manifest serialization/validation. reusable
 - Regression coverage now locks single-spec write/no-manifest behavior, conflict loud-fail, decomposed subtask spec content contract, schema-valid manifest emission, and goal-status import readability from checked-in decomposition projection (`FeatureSpecPreparationWriterTest`, `FeatureSpecPreparationWriterValidationTest`).
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented (subtask scope)
@@ -35,8 +35,8 @@ Feature flag: N/A
 Acceptance criteria: 2/2 implemented (subtask scope)
 
 ## [2026-05-30] SKILL-57 subtask 2 feature-implement-phase-heartbeats
-Areas: skills/bill-feature-implement authored workflow contract, runtime-kotlin/runtime-domain continuation definitions, runtime-kotlin/runtime-mcp golden continuation payloads, runtime-kotlin/runtime-infra-fs workflow/launcher tests
-- Added a governed `Durable Progress Write Contract` to `bill-feature-implement` and threaded it through heavy phase (`preplan`, `plan`, `implement`, `audit`, `validate`, `pr_description`) subagent briefings with required phase/task/heartbeat/phase-complete write points and explicit `workflow_id`/`step_id`/`attempt_count` context. reusable
+Areas: skills/bill-feature-task authored workflow contract, runtime-kotlin/runtime-domain continuation definitions, runtime-kotlin/runtime-mcp golden continuation payloads, runtime-kotlin/runtime-infra-fs workflow/launcher tests
+- Added a governed `Durable Progress Write Contract` to `bill-feature-task` and threaded it through heavy phase (`preplan`, `plan`, `implement`, `audit`, `validate`, `pr_description`) subagent briefings with required phase/task/heartbeat/phase-complete write points and explicit `workflow_id`/`step_id`/`attempt_count` context. reusable
 - Progress writes are now explicitly best-effort-but-visible in authored contracts: each heavy phase result includes `progress_write_failures`, and briefings require stopping for orchestrator-level blocking when reliable writes cannot continue. reusable
 - Continuation payload guidance now includes durable progress instructions for heavy phases by adding `content.md :: Durable Progress Write Contract` reference sections and step directives that call out resumed-attempt progress writes per step. reusable
 - Updated continuation golden payload and runtime tests to lock the new progress-guidance wording; tightened launcher live-output assertion to tolerate chunked stream writes without weakening behavior coverage. reusable
@@ -82,7 +82,7 @@ Feature flag: N/A
 Acceptance criteria: 7/7 implemented (subtask scope)
 
 ## [2026-05-29] SKILL-56 subtask 1 headless-continuation-contract
-Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-implement
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-task
 - Added issue-key goal continuation for decomposed feature-implement parents with optional `subtask_id` constraint; domain selector now has a terminal-subtask outcome so retrying a completed requested subtask is idempotent while later work remains. reusable
 - New subtask workflows start at `preplan` with `assessment`/`branch`/`goal_continuation` artifacts already persisted; interactive feature-implement still owns confirmation and PR creation.
 - Goal-continuation outcomes are typed in application results and mapped to stable CLI/MCP wire fields: `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, `last_resumable_step`. reusable
@@ -371,17 +371,17 @@ Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 
 ## [2026-05-24] SKILL-53 decomposition-manifest-commit-projection
-Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, skills/bill-feature-implement
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, skills/bill-feature-task
 - Same-branch subtask commits now include staged `decomposition-manifest.yaml` status/current-intent projections; the previous infra Git adapter behavior that unstaged manifest projections before committing was removed. reusable
 - Git-tracked decomposition manifests intentionally project `commit_sha: null`; subtask commit SHAs remain durable workflow runtime state because a commit cannot contain its own final SHA without changing that SHA. reusable
 Feature flag: N/A
 Acceptance criteria: internal defect fix
 
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-validation-projection
-Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-implement
+Areas: runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-core application tests, skills/bill-feature-task
 - Parent decomposition projection now updates the parent spec status in addition to subtask frontmatter, and Markdown `## Status` sections are projected when present. reusable
 - Final all-subtasks completion coverage asserts parent/subtask manifest state, commit advancement, and human-readable spec projection in one application-level flow.
-- `bill-feature-implement` provider-neutral planning agents now carry the same decomposition manifest/execution-model guidance as governed `content.md`; source install was refreshed with `./install.sh`.
+- `bill-feature-task` provider-neutral planning agents now carry the same decomposition manifest/execution-model guidance as governed `content.md`; source install was refreshed with `./install.sh`.
 Feature flag: N/A
 Acceptance criteria: 16/16 implemented
 
@@ -405,11 +405,11 @@ Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 
 ## [2026-05-23] SKILL-51 decomposition-workflow-state-foundation
-Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-contracts/error, skills/bill-feature-implement
+Areas: orchestration/contracts, runtime-kotlin/runtime-domain/workflow, runtime-kotlin/runtime-application/workflow, runtime-kotlin/runtime-contracts/error, skills/bill-feature-task
 - New runtime contract `orchestration/contracts/decomposition-manifest-schema.yaml` defines the parent manifest for decomposed feature work; `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` and classpath copy wiring mirror the workflow/install-plan schema pattern. reusable
 - `DecompositionManifestCodec`, `DecompositionManifestCoherenceValidator`, and `DecompositionManifestWireMap` provide schema-backed YAML load/write mapping plus Kotlin cross-field checks for dependency order, same-branch defaults, stacked branch opt-in, and current subtask intent. reusable
 - `WorkflowService` now writes a validated `decomposition-manifest.yaml` only for implement workflow updates whose plan artifact has `mode=decompose`; ordinary single-spec `mode=implement` updates remain manifest-free.
-- Authored `bill-feature-implement/content.md` now makes decomposition manifest creation part of the terminal planning-mode contract; generated skill installs were refreshed with `./install.sh`.
+- Authored `bill-feature-task/content.md` now makes decomposition manifest creation part of the terminal planning-mode contract; generated skill installs were refreshed with `./install.sh`.
 - Known limitation: branch checkout/commits, parent continuation, stack advancement, and subtask status transitions remain deferred to later SKILL-51 subtasks.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
@@ -1037,7 +1037,7 @@ Acceptance criteria: 5/5 implemented
 
 ## [2026-04-25] workflow-runtime-phase-5
 Areas: skillbill.workflow, skillbill.application, skillbill.ports.persistence, skillbill.infrastructure.sqlite, skillbill.cli, skillbill.mcp, runtime contracts
-- Added Kotlin-owned durable workflow runtime behavior for `bill-feature-implement` and `bill-feature-verify`: open, update, get, list, latest, resume, and continue now route through `WorkflowService`.
+- Added Kotlin-owned durable workflow runtime behavior for `bill-feature-task` and `bill-feature-verify`: open, update, get, list, latest, resume, and continue now route through `WorkflowService`.
 - Reused the existing `feature_implement_workflows` and `feature_verify_workflows` SQLite tables through `WorkflowStateRepository`; no workflow-local store, schema redesign, Python entrypoint cutover, loader/scaffolder/install changes, launcher changes, or Python deletion were included.
 - Preserved stable step ids, step state ordering, artifact patch semantics, resume summaries, session-summary hydration from telemetry session rows, blocked/done/already-running/reopened continuation decisions, and exact step-specific continuation directives in Kotlin domain/contract code.
 - CLI and MCP adapters now delegate workflow calls to application services and add adapter-facing `status`/`db_path`/blocked-error payload fields at the boundary.

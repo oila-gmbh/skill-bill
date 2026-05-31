@@ -1,16 +1,16 @@
 ---
 name: bill-feature
-description: "Use as the primary feature entry point: prepare a governed feature spec, then dispatch single-spec work to bill-feature-implement or decomposed work to bill-feature-goal."
+description: "Use as the primary feature entry point: prepare a governed feature spec, then dispatch single-spec work to bill-feature-task or decomposed work to bill-feature-goal."
 ---
 
 # Feature Content
 
 `bill-feature` is the primary feature entry point. It owns routing only: prepare the governed feature-spec artifacts first, then choose the correct downstream executor from the prepared result.
 
-It does not replace `bill-feature-spec`, `bill-feature-implement`, or `bill-feature-goal`. It composes them:
+It does not replace `bill-feature-spec`, `bill-feature-task`, or `bill-feature-goal`. It composes them:
 
 - `bill-feature-spec` owns feature-spec preparation.
-- `bill-feature-implement` owns one implementation unit.
+- `bill-feature-task` owns one implementation unit.
 - `bill-feature-goal` owns decomposed goal-loop execution with durable state.
 
 ## Intake
@@ -34,9 +34,9 @@ Wait for `bill-feature-spec` to produce governed artifacts under `.feature-specs
 
 For `single_spec` output:
 
-- Run `bill-feature-implement` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session.
+- Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session.
 - Do not invoke `bill-feature-goal`.
-- Let `bill-feature-implement` own implementation, review, validation, history, and PR description behavior.
+- Let `bill-feature-task` own implementation, review, validation, history, and PR description behavior.
 
 For `decomposed` output:
 
@@ -50,4 +50,4 @@ If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surfac
 
 If the user asks for status on a decomposed feature, route to `bill-feature-goal` status behavior.
 
-If the user asks for status on a single-spec feature implementation, use the normal `bill-feature-implement` workflow status behavior when a workflow id is available.
+If the user asks for status on a single-spec feature implementation, use the normal `bill-feature-task` workflow status behavior when a workflow id is available.

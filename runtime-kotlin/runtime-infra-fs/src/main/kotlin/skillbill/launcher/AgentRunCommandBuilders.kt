@@ -101,7 +101,7 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
   val subtaskOption = request.subtaskId?.let { id -> " --subtask-id $id" }.orEmpty()
   val subtaskLine = request.subtaskId?.let { id -> "\nSubtask id: $id" }.orEmpty()
   return """
-    Use the installed `bill-feature-implement` skill in non-interactive goal-continuation mode.
+    Use the installed `bill-feature-task` skill in non-interactive goal-continuation mode.
 
     Issue key: ${request.issueKey}$subtaskLine
     Goal-continuation: enabled.
@@ -114,7 +114,7 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
     Do not force workflow state manually. Never call `skill-bill workflow update` just to mark blocked.
     If the continuation command reports `continue_status=blocked` or `continue_status=done`, treat that durable state as authoritative and stop.
     Treat durable workflow state as authoritative. Do not infer subtask success from stdout.
-    Return exactly the `RESULT:` block required by the bill-feature-implement implementation subagent contract.
+    Return exactly the `RESULT:` block required by the bill-feature-task implementation subagent contract.
   """.trimIndent()
 }
 

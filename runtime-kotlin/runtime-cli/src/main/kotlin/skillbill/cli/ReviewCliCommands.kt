@@ -109,7 +109,7 @@ class ReviewStatsCommand(
 class FeatureImplementStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
-) : DocumentedCliCommand("implement-stats", "Show aggregate bill-feature-implement metrics.") {
+) : DocumentedCliCommand("implement-stats", "Show aggregate bill-feature-task metrics.") {
   private val format by formatOption()
 
   override fun run() {

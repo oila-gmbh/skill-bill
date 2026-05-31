@@ -20,7 +20,7 @@ sealed class DesktopSkillRemovalTarget {
     val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared", "kotlin", "kmp")
 
     /**
-     * SKILL-49: horizontal product skills (`bill-code-review`, `bill-feature-implement`, ...) are
+     * SKILL-49: horizontal product skills (`bill-code-review`, `bill-feature-task`, ...) are
      * the runtime's own surfaces and never deletable from the desktop tree. Mirrors
      * `skillbill.domain.skillremove.model.SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX`.
      */

@@ -21,7 +21,7 @@ class SQLiteDatabaseSessionFactoryTest {
           WorkflowStateRecord(
             workflowId = "wfl-rollback",
             sessionId = "fis-rollback",
-            workflowName = "bill-feature-implement",
+            workflowName = "bill-feature-task",
             contractVersion = "",
             workflowStatus = "running",
             currentStepId = "implement",

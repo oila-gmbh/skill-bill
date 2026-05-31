@@ -64,7 +64,7 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Caller Integration Notes
 
-- If a review is invoked from `bill-feature-implement`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- If a review is invoked from `bill-feature-task`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 - After all P0 and P1 items are resolved, run `bill-quality-check` as final verification when the project uses a routed quality-check path and the review is being run standalone.
 
 ## Shared Report Structure

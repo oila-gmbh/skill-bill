@@ -6,7 +6,7 @@ One source of truth for your AI coding skills — authored once, synced across C
 
 ![Skill Bill demo — capture pending](docs/assets/skill-bill-demo-placeholder.svg)
 
-> The image above is a **static placeholder**. The motion demo (a real `/bill-feature-implement` spec→PR run) is produced **out-of-band** and is **not yet committed** — the recorded binary is intentionally missing for now. See the [demo storyboard](docs/assets/skill-bill-demo-storyboard.md) for the shot list and the [capture instructions](docs/assets/skill-bill-demo-capture-instructions.md) for how it gets recorded and swapped in.
+> The image above is a **static placeholder**. The motion demo (a real `/bill-feature-task` spec→PR run) is produced **out-of-band** and is **not yet committed** — the recorded binary is intentionally missing for now. See the [demo storyboard](docs/assets/skill-bill-demo-storyboard.md) for the shot list and the [capture instructions](docs/assets/skill-bill-demo-capture-instructions.md) for how it gets recorded and swapped in.
 
 ## Quickstart (≈60 seconds)
 
@@ -80,7 +80,7 @@ Skill Bill ships a stack of capabilities that compose. Most of them are invisibl
 
 `install.sh` symlinks every skill into each detected agent's directory (Claude Code, Copilot, Codex, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
 
-### 2. `bill-feature-implement` — the end-to-end feature factory
+### 2. `bill-feature-task` — the end-to-end feature factory
 
 One slash command that takes a spec or design doc and walks it all the way to a merged-ready PR, scaling ceremony to the size of the work. The pipeline: assessment → branch → pre-planning digest → planning (or decomposition) → implementation → code review → completeness audit → quality check → history/decisions → commit/push → PR description.
 
@@ -102,9 +102,9 @@ Generic skills like `/bill-code-review` and `/bill-quality-check` are routing sh
 
 ### 4. Manifest-driven task decomposition, auto-resume by issue key
 
-When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), `bill-feature-implement` switches into `mode: "decompose"` instead of implementing.
+When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), `bill-feature-task` switches into `mode: "decompose"` instead of implementing.
 
-- **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature-implement` prompt to run for it later.
+- **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature-task` prompt to run for it later.
 - **Schema-validated manifest**: a `decomposition-manifest.yaml` is generated and validated against `orchestration/contracts/decomposition-manifest-schema.yaml`, so the plan itself is a contract, not loose prose.
 - **You only need the issue key**: when you come back and say "continue SKILL-51", the runtime resolves the parent manifest, finds the in-progress subtask at its last durable workflow step, and picks up there. If none is in-progress, it starts the first pending subtask whose dependencies are complete. You never have to remember "was I on subtask 2 step 4 or subtask 3 step 1."
 - **Blocked-aware**: if the current path is blocked it stops and tells you why, instead of silently skipping to a later dependent subtask.
@@ -131,7 +131,7 @@ All of the symlink installs, manifest validation, platform-pack routing, native-
 
 ### 6. Stateful, resumable workflows with native subagents
 
-`bill-feature-implement` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
+`bill-feature-task` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
 
 - **Durable state**: `feature_implement_workflow_open` mints a `workflow_id`; every phase boundary writes via `feature_implement_workflow_update`. If a session dies mid-run, `feature_implement_workflow_resume` / `feature_implement_workflow_continue` re-enters at the exact phase with the prior payload as the continuation contract — the run survives crashes, compaction, even a host reboot. Same shape exists for `bill-feature-verify` (`feature_verify_workflow_*`).
 - **Native subagents per phase**: pre-planning, planning, implementation, completeness-audit, quality-check, PR-description, and an implementation-fix loop each ship as their own installed agent.
@@ -162,7 +162,7 @@ Every skill reads the project's override file as part of its shared ceremony, so
 - **Action mandates at named lifecycle positions**: overrides can declare mandates that fire at specific orchestrator lifecycle points (e.g. before applying the skill body, at end-of-run for state writes). Skills cannot quietly skip them.
 - **Composable with `AGENTS.md`**: the shared ceremony loads both general project conventions and per-skill targeted tweaks.
 
-Net effect: you fine-tune `bill-code-review` with an extra checklist item, or force `bill-feature-implement` to call a project-specific telemetry tool, by editing one markdown file in the repo. No skill fork, no agent reinstall.
+Net effect: you fine-tune `bill-code-review` with an extra checklist item, or force `bill-feature-task` to call a project-specific telemetry tool, by editing one markdown file in the repo. No skill fork, no agent reinstall.
 
 ### 9. Per-module memory
 
@@ -176,7 +176,7 @@ Every skill that matters emits typed telemetry, not just log lines.
 - **Orchestrator/child relationship is modeled**: orchestrated subagents call their own `*_finished` with `orchestrated=true` and return a `telemetry_payload`; the orchestrator assembles a parent/child tree. You can see the whole run as a tree, not a flat stream.
 - **Separated from workflow state, on purpose**: workflow state persists even when telemetry returns `status: skipped`. Telemetry is observability; workflow state is correctness. They never get confused.
 - **Health-checked and transport-resilient**: before terminal writes the orchestrator pings the MCP transport; if closed, it switches to the packaged `runtime-mcp` stdio fallback for the remaining telemetry and workflow calls. Runs do not get left in a half-reported state because a transport died.
-- **Aggregate stats tools** give you queryable rollups, so you can actually see how your feature-implement pipeline is behaving instead of grepping logs.
+- **Aggregate stats tools** give you queryable rollups, so you can actually see how your feature-task pipeline is behaving instead of grepping logs.
 - **Pluggable proxy target**: events flow through a telemetry proxy, with a hosted relay as the default. Point it at your own service by setting `proxy_url` in the telemetry config (or `TELEMETRY_PROXY_URL` in the environment) and `skill-bill telemetry sync` / `capabilities` / `stats` will operate against it. Self-host, anonymize, or fork the proxy itself — Skill Bill's telemetry pipeline doesn't lock you to anyone's backend.
 
 ### 11. Strict, declarative skill-set contract with drift protection
@@ -239,7 +239,7 @@ Supported install targets today:
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
-Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, the `bill-php-code-review` PHP specialists, and the `bill-feature-implement` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-implement/content.md`.
+Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, the `bill-php-code-review` PHP specialists, and the `bill-feature-task` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task/content.md`.
 
 ## Desktop App
 
@@ -320,7 +320,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs as working examples of how to
 **Daily entry points (in the reference pack):**
 
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
-- `/bill-feature-implement` orchestrates spec-to-PR work and composes the rest of the pack
+- `/bill-feature-task` orchestrates spec-to-PR work and composes the rest of the pack
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack
 - `/bill-quality-check` routes to the matching stack-specific checker
@@ -345,7 +345,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
-| `/bill-feature-implement` | End-to-end feature workflow from spec through review and validation |
+| `/bill-feature-task` | End-to-end feature workflow from spec through review and validation |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-feature-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
