@@ -1,85 +1,137 @@
 package skillbill.application
 
-import skillbill.contracts.JsonSupport
-import skillbill.workflow.toWireMap
+import skillbill.application.model.DecompositionManifestWriteRequest
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertContains
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 
 class DecompositionManifestNestedProjectionTest {
   @Test
-  fun `nested decomposition writes manifest beside child specs without overwriting parent manifest`() {
-    val fixture = nestedProjectionFixture()
+  fun `workflow update rejects decomposition when parent spec is already a decomposed subtask`() {
+    val fixture = nestedDecompositionFixture()
+    writeTopLevelDecomposition(fixture.repoRoot, fixture.topLevelParentSpecPath)
 
-    val result = writeFromWorkflowUpdate(
-      repoRoot = fixture.repoRoot,
-      existingArtifactsJson = "{}",
-      artifactsPatch = mapOf("plan" to nestedDecompositionPlan(fixture.parentSpecPath, fixture.nestedDirectory)),
-    )
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeFromWorkflowUpdate(
+        repoRoot = fixture.repoRoot,
+        existingArtifactsJson = "{}",
+        artifactsPatch = mapOf(
+          "plan" to nestedDecompositionPlan(fixture.nestedParentSpecPath, fixture.nestedDirectory),
+        ),
+      )
+    }
 
-    assertNotNull(result)
-    assertEquals(fixture.nestedManifestPath, result.manifestPath)
-    assertEquals("parent-manifest", Files.readString(fixture.parentManifestPath))
-    assertEquals("SKILL-52.1", result.manifest.issueKey)
-    assertEquals("install-policy-extraction", result.manifest.featureName)
+    assertContains(error.reason, "already a decomposed subtask")
+    assertContains(error.reason, ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_1_install-policy.md")
   }
 
   @Test
-  fun `runtime projection keeps nested manifest beside child specs`() {
-    val fixture = nestedProjectionFixture()
-    val initial = writeFromWorkflowUpdate(
-      repoRoot = fixture.repoRoot,
-      existingArtifactsJson = "{}",
-      artifactsPatch = mapOf("plan" to nestedDecompositionPlan(fixture.parentSpecPath, fixture.nestedDirectory)),
-    )
-    assertNotNull(initial)
-    val completed = initial.manifest.copy(
-      subtasks = initial.manifest.subtasks.map { subtask ->
-        if (subtask.id == 1) subtask.copy(status = "complete", workflowId = "wfl-child") else subtask
-      },
+  fun `direct decomposed writer rejects decomposition when parent spec is already a decomposed subtask`() {
+    val fixture = nestedDecompositionFixture()
+    writeTopLevelDecomposition(fixture.repoRoot, fixture.topLevelParentSpecPath)
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeIfDecomposed(
+        DecompositionManifestWriteRequest(
+          repoRoot = fixture.repoRoot,
+          parentSpecPath = fixture.nestedParentSpecPath,
+          planningResult = nestedDecompositionPlan(fixture.nestedParentSpecPath, fixture.nestedDirectory),
+          baseBranch = "main",
+          featureBranch = "feature/SKILL-52.1-nested",
+        ),
+      )
+    }
+
+    assertContains(error.reason, "nested decomposition of subtask specs is not supported")
+  }
+
+  @Test
+  fun `workflow update loud fails when manifest scan encounters malformed decomposition manifest`() {
+    val fixture = nestedDecompositionFixture()
+    val malformedManifest = fixture.topLevelParentSpecPath.parent.resolve("decomposition-manifest.yaml")
+    Files.writeString(
+      malformedManifest,
+      """
+      contract_version: "0.2"
+      issue_key: SKILL-52.1
+      subtasks: [
+      """.trimIndent(),
     )
 
-    val result = writeProjectionFromWorkflowState(
-      repoRoot = fixture.repoRoot,
-      artifactsJson = JsonSupport.mapToJsonString(mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to completed.toWireMap())),
-    )
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeFromWorkflowUpdate(
+        repoRoot = fixture.repoRoot,
+        existingArtifactsJson = "{}",
+        artifactsPatch = mapOf(
+          "plan" to nestedDecompositionPlan(fixture.nestedParentSpecPath, fixture.nestedDirectory),
+        ),
+      )
+    }
 
-    assertNotNull(result)
-    assertEquals(fixture.nestedManifestPath, result.manifestPath)
-    assertEquals("parent-manifest", Files.readString(fixture.parentManifestPath))
-    assertEquals("complete", loadDecompositionManifest(result.manifestPath).subtasks.single { it.id == 1 }.status)
+    assertContains(error.reason, "failed to load decomposition manifest")
+    assertContains(error.reason, malformedManifest.toString())
   }
 }
 
-private data class NestedProjectionFixture(
+private data class NestedDecompositionFixture(
   val repoRoot: Path,
-  val parentSpecPath: Path,
+  val topLevelParentSpecPath: Path,
+  val nestedParentSpecPath: Path,
   val nestedDirectory: Path,
-  val parentManifestPath: Path,
-  val nestedManifestPath: Path,
 )
 
-private fun nestedProjectionFixture(): NestedProjectionFixture {
+private fun nestedDecompositionFixture(): NestedDecompositionFixture {
   val repoRoot = Files.createTempDirectory("skillbill-nested-decomposition-manifest")
-  val parentSpecPath =
-    repoRoot.resolve(".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_install-policy.md")
-  val nestedDirectory = parentSpecPath.parent.resolve("install-policy-extraction")
-  val childSpecPath = nestedDirectory.resolve("spec_subtask_1_foundation.md")
+  val topLevelParentSpecPath = repoRoot.resolve(".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec.md")
+  val nestedParentSpecPath = topLevelParentSpecPath.parent.resolve("spec_subtask_1_install-policy.md")
+  val nestedDirectory = nestedParentSpecPath.parent.resolve("install-policy-extraction")
   Files.createDirectories(nestedDirectory)
-  val parentManifestPath = parentSpecPath.parent.resolve("decomposition-manifest.yaml")
-  Files.writeString(parentManifestPath, "parent-manifest")
-  Files.writeString(parentSpecPath, "# Parent subtask spec\n")
-  Files.writeString(childSpecPath, "# Nested child spec\n")
-  return NestedProjectionFixture(
+  Files.writeString(topLevelParentSpecPath, "# Parent spec\n")
+  Files.writeString(nestedParentSpecPath, "# Subtask spec\n")
+  return NestedDecompositionFixture(
     repoRoot = repoRoot,
-    parentSpecPath = parentSpecPath,
+    topLevelParentSpecPath = topLevelParentSpecPath,
+    nestedParentSpecPath = nestedParentSpecPath,
     nestedDirectory = nestedDirectory,
-    parentManifestPath = parentManifestPath,
-    nestedManifestPath = nestedDirectory.resolve("decomposition-manifest.yaml"),
   )
 }
+
+private fun writeTopLevelDecomposition(repoRoot: Path, parentSpecPath: Path) {
+  val result = writeIfDecomposed(
+    DecompositionManifestWriteRequest(
+      repoRoot = repoRoot,
+      parentSpecPath = parentSpecPath,
+      planningResult = topLevelDecompositionPlan(parentSpecPath),
+      baseBranch = "main",
+      featureBranch = "feature/SKILL-52.1-top-level",
+    ),
+  )
+  assertNotNull(result)
+}
+
+private fun topLevelDecompositionPlan(parentSpecPath: Path): Map<String, Any?> = linkedMapOf(
+  "mode" to "decompose",
+  "parent_spec_path" to parentSpecPath.toString(),
+  "recommended_first_subtask_id" to 1,
+  "subtasks" to listOf(
+    linkedMapOf(
+      "id" to 1,
+      "name" to "Install Policy",
+      "spec_path" to parentSpecPath.parent.resolve("spec_subtask_1_install-policy.md").toString(),
+      "depends_on" to emptyList<Int>(),
+    ),
+    linkedMapOf(
+      "id" to 2,
+      "name" to "Runtime",
+      "spec_path" to parentSpecPath.parent.resolve("spec_subtask_2_runtime.md").toString(),
+      "depends_on" to listOf(1),
+    ),
+  ),
+)
 
 private fun nestedDecompositionPlan(parentSpecPath: Path, subtaskDirectory: Path): Map<String, Any?> = linkedMapOf(
   "mode" to "decompose",
