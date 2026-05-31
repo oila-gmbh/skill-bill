@@ -1,3 +1,30 @@
+## [2026-05-31] SKILL-58 subtask 4 runtime-consistency-and-contract-validation
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-core, install.sh
+- Goal startup now emits runtime provenance (`executable`, `version`, `build_id`) through a dedicated `RuntimeProvenanceService` and `RuntimeProvenanceContract`, keeping path/system probing out of presenter code. reusable
+- Installer delegation now exports `SKILL_BILL_RUNTIME_EXECUTABLE` when invoking runtime-cli, so installed-path runs report explicit provenance without changing goal heartbeat/completion semantics. reusable
+- Added dual-path parity guard (`GoalRuntimeDelegationParityTest`) that normalizes path variance and fails loudly if repo-local vs installed runtime diverge on goal status/progress semantics. reusable
+- Extended regression coverage for status/progress reconciliation and provenance output (`GoalRunnerTest`, `WorkflowServiceTest`, `CliGoalRuntimeTest`, runtime-contract tests).
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask scope)
+
+## [2026-05-31] SKILL-58 subtask 3 operator-progress-ux-and-completion-confirmation
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli tests, runtime-kotlin/runtime-application tests
+- Goal foreground default output now emits structured heartbeat lines (`issue_key`, `subtask`, `step`, `liveness`) while hiding raw child stdout/stderr unless `--debug-child-output` is explicitly enabled. reusable
+- Added lightweight liveness classification at the CLI boundary with the contract values `durable_progress`, `file_activity`, `output_only`, `idle`, derived from workflow-progress/status-heartbeat streams and raw-output observation. reusable
+- Goal completion reporting now carries authoritative summary fields (`subtasks_completed`, `subtasks_pending`, `subtasks_blocked`, `pull_request_status`) from `GoalRunnerRunReport.Completed` through CLI payload/text output, and the live terminal line is an explicit single completion confirmation. reusable
+- Regression coverage now asserts default-mode heartbeat formatting + raw-output suppression and verifies completion summary fields and PR status wiring.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented (subtask scope)
+
+## [2026-05-30] SKILL-58 subtask 2 durable-reconciliation-and-stale-running-hygiene
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application tests, runtime-kotlin/runtime-cli tests
+- Added `GoalRunnerWorkflowOutcomeStore.reconcileAuthoritativeOutcomes(...)` with explicit inactive-row gating (`allowInactiveReconciliation`) so goal-run finalization can close stale inactive `running` children while status reads avoid destructive inactive cleanup. reusable
+- `GoalRunnerStatusService.status` now reconciles against refreshed manifest snapshots before save and protects active retries from being overwritten by non-complete sibling outcomes; complete sibling outcomes may still authoritatively supersede stale blocked/in-progress projection. reusable
+- Workflow-store authoritative selection now uses deterministic ordering by snapshot recency/workflow id and complete-first semantics for sibling continuations, avoiding unstable iteration-order behavior. reusable
+- Added regression coverage for: active child not blocked without terminal outcome, stale-running reconciliation with authoritative complete sibling, active retry preserved when blocked sibling exists, and CLI status parity for authoritative complete vs stale-running child. reusable
+Feature flag: N/A
+Acceptance criteria: 2/2 implemented (subtask scope)
+
 ## [2026-05-30] SKILL-57 subtask 2 feature-implement-phase-heartbeats
 Areas: skills/bill-feature-implement authored workflow contract, runtime-kotlin/runtime-domain continuation definitions, runtime-kotlin/runtime-mcp golden continuation payloads, runtime-kotlin/runtime-infra-fs workflow/launcher tests
 - Added a governed `Durable Progress Write Contract` to `bill-feature-implement` and threaded it through heavy phase (`preplan`, `plan`, `implement`, `audit`, `validate`, `pr_description`) subagent briefings with required phase/task/heartbeat/phase-complete write points and explicit `workflow_id`/`step_id`/`attempt_count` context. reusable

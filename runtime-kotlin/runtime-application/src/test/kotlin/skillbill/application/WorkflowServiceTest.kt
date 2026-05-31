@@ -29,6 +29,7 @@ import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -412,6 +413,18 @@ class WorkflowServiceTest {
     )
   }
 
+  private fun newService(): WorkflowService {
+    val workflows = InMemoryWorkflowStates()
+    return WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+  }
+}
+
+class WorkflowGoalRunnerOutcomeStoreTest {
   @Test
   fun `goal runner outcome store reads durable blocked continuation outcome`() {
     val workflows = InMemoryWorkflowStates()
@@ -446,6 +459,220 @@ class WorkflowServiceTest {
     assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
     assertEquals("preplan could not progress", outcome.blockedReason)
     assertEquals("preplan", outcome.lastResumableStep)
+  }
+
+  @Test
+  @Suppress("LongMethod")
+  fun `goal runner outcome reconciliation closes stale running child in favor of authoritative terminal workflow`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val staleOpened = testWorkflowEngine.openRecord(definition, "wfl-stale", "fis-001", "preplan")
+    val staleRunning = testWorkflowEngine.updateRecord(
+      definition,
+      staleOpened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    val authoritativeOpened = testWorkflowEngine.openRecord(definition, "wfl-authoritative", "fis-002", "preplan")
+    val authoritative = testWorkflowEngine.updateRecord(
+      definition,
+      authoritativeOpened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(
+          mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to "wfl-authoritative",
+            "commit_sha" to "sha-1",
+            "last_resumable_step" to "commit_push",
+          ),
+        ),
+        sessionId = "fis-002",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(staleRunning.toRecord())
+    workflows.saveFeatureImplementWorkflow(authoritative.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-stale", "wfl-authoritative"))
+
+    val subtaskOutcome = requireNotNull(outcomes[1])
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, subtaskOutcome.status)
+    assertEquals("wfl-authoritative", subtaskOutcome.workflowId)
+    val stale = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-stale")).toSnapshot()
+    assertEquals("blocked", stale.workflowStatus)
+    assertEquals("blocked", decodeWorkflowStepsForTest(stale.stepsJson).getValue("implement"))
+    assertContains(stale.artifactsJson, "stale running child 'wfl-stale'")
+  }
+
+  @Test
+  fun `goal runner outcome reconciliation closes inactive running child without authoritative sibling`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-orphan", "fis-001", "preplan")
+    val running = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", emptySet())
+
+    val outcome = requireNotNull(outcomes[1])
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals("wfl-orphan", outcome.workflowId)
+    val orphan = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-orphan")).toSnapshot()
+    assertEquals("blocked", orphan.workflowStatus)
+    assertContains(orphan.artifactsJson, "no longer active")
+  }
+
+  @Test
+  fun `goal runner outcome reconciliation keeps active running child without authoritative terminal outcome`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-active", "fis-001", "preplan")
+    val running = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
+
+    assertTrue(outcomes.isEmpty())
+    val active = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-active")).toSnapshot()
+    assertEquals("running", active.workflowStatus)
+    assertEquals("running", decodeWorkflowStepsForTest(active.stepsJson).getValue("implement"))
+  }
+
+  @Test
+  @Suppress("LongMethod")
+  fun `goal runner outcome reconciliation keeps active retry when only blocked sibling exists`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val blockedOpened = testWorkflowEngine.openRecord(definition, "wfl-blocked", "fis-001", "preplan")
+    val blocked = testWorkflowEngine.updateRecord(
+      definition,
+      blockedOpened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "blocked",
+        currentStepId = "review",
+        stepUpdates = listOf(
+          mapOf("step_id" to "review", "status" to "blocked", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    val activeOpened = testWorkflowEngine.openRecord(definition, "wfl-active", "fis-002", "preplan")
+    val active = testWorkflowEngine.updateRecord(
+      definition,
+      activeOpened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-002",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(blocked.toRecord())
+    workflows.saveFeatureImplementWorkflow(active.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
+
+    val outcome = requireNotNull(outcomes[1])
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals("wfl-blocked", outcome.workflowId)
+    val stillActive = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-active")).toSnapshot()
+    assertEquals("running", stillActive.workflowStatus)
+    assertEquals("running", decodeWorkflowStepsForTest(stillActive.stepsJson).getValue("implement"))
+    val stillBlocked = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-blocked")).toSnapshot()
+    assertEquals("blocked", stillBlocked.workflowStatus)
   }
 
   @Test
@@ -520,6 +747,7 @@ class WorkflowServiceTest {
 
     requireNotNull(progress)
     assertEquals("finish", progress.currentStepId)
+    assertEquals("workflow_status=running; step=finish", progress.latestLivenessSignal)
   }
 
   @Test
@@ -555,16 +783,6 @@ class WorkflowServiceTest {
     val steps = decodeWorkflowStepsForTest(saved.stepsJson)
     assertEquals("completed", steps.getValue("preplan"))
     assertEquals("running", steps.getValue("implement"))
-  }
-
-  private fun newService(): WorkflowService {
-    val workflows = InMemoryWorkflowStates()
-    return WorkflowService(
-      database = FakeDatabaseSessionFactory(workflows),
-      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-    )
   }
 }
 

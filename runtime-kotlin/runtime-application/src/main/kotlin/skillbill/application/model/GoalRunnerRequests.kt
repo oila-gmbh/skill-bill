@@ -53,6 +53,9 @@ sealed interface GoalRunnerRunEvent {
   data class Completed(
     override val issueKey: String,
     val completedCount: Int,
+    val pendingCount: Int,
+    val blockedCount: Int,
+    val pullRequestStatus: String,
     val pullRequestUrl: String?,
   ) : GoalRunnerRunEvent
 }

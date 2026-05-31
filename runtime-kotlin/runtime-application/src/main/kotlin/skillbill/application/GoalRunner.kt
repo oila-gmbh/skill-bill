@@ -87,6 +87,9 @@ class GoalRunner(
         GoalRunnerRunEvent.Completed(
           issueKey = terminalReport.issueKey,
           completedCount = terminalReport.subtasksCompleted,
+          pendingCount = terminalReport.subtasksPending,
+          blockedCount = terminalReport.subtasksBlocked,
+          pullRequestStatus = terminalReport.pullRequestStatus,
           pullRequestUrl = terminalReport.pullRequestUrl,
         ),
       )
@@ -232,6 +235,11 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
   ): GoalRunnerRunReport {
+    outcomeStore.reconcileAuthoritativeOutcomes(
+      issueKey = state.manifest.issueKey,
+      activeWorkflowIds = emptySet(),
+      dbPathOverride = request.dbPathOverride,
+    )
     val finalState = manifestStore.save(state, request.dbPathOverride)
     finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
       return stopped(
@@ -246,8 +254,10 @@ class GoalRunner(
     }
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
-      is GoalPullRequestResult.Opened -> completed(finalState.manifest, attempted, result.url)
-      is GoalPullRequestResult.Existing -> completed(finalState.manifest, attempted, result.url)
+      is GoalPullRequestResult.Opened ->
+        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "opened")
+      is GoalPullRequestResult.Existing ->
+        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "existing")
       is GoalPullRequestResult.Failed -> stopped(
         issueKey = finalState.manifest.issueKey,
         attempted = attempted,
@@ -280,11 +290,15 @@ class GoalRunner(
     manifest: DecompositionManifest,
     attempted: List<Int>,
     pullRequestUrl: String?,
+    pullRequestStatus: String,
   ): GoalRunnerRunReport.Completed = GoalRunnerRunReport.Completed(
     issueKey = manifest.issueKey,
     attemptedSubtasks = attempted,
     pullRequestUrl = pullRequestUrl,
+    pullRequestStatus = pullRequestStatus,
     subtasksCompleted = manifest.subtasks.count { it.status == "complete" || it.status == "skipped" },
+    subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
+    subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
   )
 
   private fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(

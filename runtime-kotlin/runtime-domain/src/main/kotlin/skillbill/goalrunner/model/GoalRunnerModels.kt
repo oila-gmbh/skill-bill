@@ -119,7 +119,10 @@ sealed interface GoalRunnerRunReport {
     override val issueKey: String,
     override val attemptedSubtasks: List<Int>,
     val pullRequestUrl: String?,
+    val pullRequestStatus: String,
     val subtasksCompleted: Int,
+    val subtasksPending: Int,
+    val subtasksBlocked: Int,
   ) : GoalRunnerRunReport
 
   data class Stopped(

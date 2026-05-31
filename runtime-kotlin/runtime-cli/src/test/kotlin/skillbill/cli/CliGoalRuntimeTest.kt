@@ -151,14 +151,45 @@ class CliGoalRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
     assertContains(result.stdout, "attempted_subtasks: 1, 2")
+    assertContains(result.stdout, "subtasks_pending: 0")
+    assertContains(result.stdout, "subtasks_blocked: 0")
+    assertContains(result.stdout, "pull_request_status: opened")
     assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
     assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
     assertContains(liveStdout.toString(), "child-1-stdout")
-    assertContains(liveStdout.toString(), "goal SKILL-901: complete")
+    assertContains(liveStdout.toString(), "goal SKILL-901: completion confirmed")
     assertContains(liveStderr.toString(), "child-1-stderr")
     assertEquals(listOf(null, null), launcher.requests.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
+  }
+
+  @Test
+  fun `goal default live output emits structured heartbeat and hides raw child output`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val liveStdout = StringBuilder()
+    val liveStderr = StringBuilder()
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(),
+      fixture.context(
+        launcher = GoalFixtureAgentRunLauncher(fixture),
+        liveStdout = { liveStdout.append(it) },
+        liveStderr = { liveStderr.append(it) },
+      ),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(
+      liveStdout.toString(),
+      "goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress",
+    )
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
+    assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
+    assertEquals(false, liveStderr.toString().contains("child-1-stderr"), liveStderr.toString())
   }
 
   @Test
@@ -191,6 +222,8 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
+    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "version=0.1.0 build_id=0.1.0")
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals("", liveStderr.toString())
@@ -293,6 +326,80 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "current_subtask: 1")
     assertContains(status.stdout, "active_agent: codex")
   }
+
+  @Test
+  fun `goal status prefers authoritative complete child and closes stale running child workflow`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val staleChild = startRunningGoalChild(fixture)
+    seedAuthoritativeCompleteChild(fixture)
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    val staleWorkflow = runGoalJson(
+      listOf("--db", fixture.dbPath.toString(), "workflow", "get", staleChild, "--format", "json"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "pending: 0")
+    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "current_subtask: none")
+    assertEquals("blocked", staleWorkflow["workflow_status"])
+    assertContains(staleWorkflow["artifacts"]?.toString().orEmpty(), "stale running child")
+  }
+}
+
+private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(
+  listOf(
+    "--db",
+    fixture.dbPath.toString(),
+    "workflow",
+    "continue",
+    "SKILL-901",
+    "--subtask-id",
+    "1",
+    "--format",
+    "json",
+  ),
+  fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+)["workflow_id"] as String
+
+private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
+  val authoritativeChild = runGoalJson(
+    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )["workflow_id"] as String
+  runGoalJson(
+    workflowUpdateCommand(
+      WorkflowUpdateFixture(
+        dbPath = fixture.dbPath,
+        workflowId = authoritativeChild,
+        currentStep = "commit_push",
+        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+        artifactsPatch = jsonString(
+          mapOf(
+            "goal_continuation" to mapOf(
+              "issue_key" to "SKILL-901",
+              "subtask_id" to 1,
+              "suppress_pr" to true,
+            ),
+            "goal_continuation_outcome" to mapOf(
+              "issue_key" to "SKILL-901",
+              "subtask_id" to 1,
+              "status" to "complete",
+              "workflow_id" to authoritativeChild,
+              "commit_sha" to "sha-1",
+              "last_resumable_step" to "commit_push",
+            ),
+          ),
+        ),
+      ),
+    ),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
 }
 
 private data class GoalCliFixture(
@@ -341,6 +448,16 @@ private class GoalFixtureAgentRunLauncher(
     val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
     request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDOUT, "child-$subtaskId-stdout\n")
     request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDERR, "child-$subtaskId-stderr\n")
+    request.skillRunRequest.outputSink.write(
+      AgentRunOutputStream.STDERR,
+      "skill-bill: workflow progress: subtask $subtaskId " +
+        "workflow wfl-$subtaskId step implement durable_progress step=implement\n",
+    )
+    request.skillRunRequest.outputSink.write(
+      AgentRunOutputStream.STDERR,
+      "skill-bill: status heartbeat (90s): child run still active; workflow: " +
+        "subtask $subtaskId workflow wfl-$subtaskId step implement durable_progress\n",
+    )
     val dbPath = requireNotNull(request.skillRunRequest.dbPathOverride)
     val workflowId = startSubtaskWorkflow(subtaskId, dbPath)
     if (subtaskId == failSubtask) {

@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: Complete
 ---
 
 # SKILL-58 Subtask 2 - Durable-State Reconciliation + Stale-Row Hygiene
@@ -10,4 +10,3 @@ Issue key: SKILL-58
 Ensure `goal status`, workflow-store runtime state, and checked-in decomposition
 projection remain consistent, and reconcile stale `running` child workflow rows
 to typed terminal outcomes.
-

@@ -34,6 +34,9 @@ Implement on one branch with a commit per subtask:
   - stale `running` workflow rows left behind after goal completion;
   - effective runtime binary path ambiguity (`~/.skill-bill/runtime/...` symlink
     versus local repo build output).
+  - decomposition bootstrap can pin `feature_branch`/branch artifact to `main`,
+    causing create-branch to become a silent no-op and running subtask work on
+    the default branch.
 
 ## Problem
 
@@ -109,7 +112,15 @@ that still feel ambiguous to humans:
    - repo-local built binary path; and
    - installed `~/.skill-bill/runtime` path.
    Contract tests must fail if they diverge on goal status/progress semantics.
-10. Maintainer validation passes:
+10. Decomposition goal continuation must not silently execute on the default
+    branch (`main`/`master`) because of stale or bootstrapped branch artifacts.
+    If branch context resolves to a default branch for an active decomposed
+    goal, runtime must either:
+    - derive the expected feature branch deterministically from issue/spec
+      identity; or
+    - fail loudly with a typed blocked reason that requires explicit operator
+      override.
+11. Maintainer validation passes:
     - `skill-bill validate`
     - `(cd runtime-kotlin && ./gradlew check)`
     - `npx --yes agnix --strict .`
@@ -137,4 +148,3 @@ that still feel ambiguous to humans:
   only during `goal run` startup/teardown?
 - Should heartbeat interval be globally configurable in config file, CLI flag
   only, or both?
-

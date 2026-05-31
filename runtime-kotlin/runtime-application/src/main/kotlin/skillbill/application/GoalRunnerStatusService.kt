@@ -1,11 +1,11 @@
 package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
+import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -13,6 +13,7 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.install.model.InstallAgent
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -27,23 +28,51 @@ class GoalRunnerStatusService(
       ?.let { InstallAgent.fromNormalizedId(it, label = "configuredAgentOverrideId") }
       ?: InstallAgent.fromNormalizedId(request.invokedAgentId, label = "invokedAgentId")
     return manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
-      ?.manifest
-      ?.let { loadedManifest ->
-        val manifest = loadedManifest.withTerminalCurrentSubtask(request)
-        val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
-          subtask.id == manifest.currentSubtaskIntent.subtaskId
+      ?.let { loadedState ->
+        val activeWorkflowIds = loadedState.manifest.activeWorkflowIds()
+        val authoritativeOutcomes = outcomeStore.reconcileAuthoritativeOutcomes(
+          issueKey = loadedState.manifest.issueKey,
+          activeWorkflowIds = activeWorkflowIds,
+          allowInactiveReconciliation = false,
+          dbPathOverride = request.dbPathOverride,
+        )
+        val state = persistReconciledManifestIfChanged(loadedState, request, authoritativeOutcomes)
+        val currentSubtask = state.manifest.subtasks.firstOrNull { subtask ->
+          subtask.id == state.manifest.currentSubtaskIntent.subtaskId
         }
         val progress = currentSubtask
           ?.workflowId
           ?.takeIf(String::isNotBlank)
           ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
         GoalRunnerStatusProjector.project(
-          manifest = manifest,
+          manifest = state.manifest,
           activeAgent = effectiveAgent.id,
           currentStepOverride = progress?.currentStepId,
           latestLivenessSignal = progress?.latestLivenessSignal,
         )
       }
+  }
+
+  private fun persistReconciledManifestIfChanged(
+    loadedState: GoalRunnerManifestState,
+    request: GoalRunnerStatusRequest,
+    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
+  ): GoalRunnerManifestState {
+    val initialReconciled = loadedState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
+    if (initialReconciled == loadedState.manifest) {
+      return loadedState
+    }
+    val latestState = manifestStore.loadByIssueKey(
+      issueKey = loadedState.manifest.issueKey,
+      dbPathOverride = request.dbPathOverride,
+      repoRoot = request.repoRoot,
+    ) ?: loadedState
+    val latestReconciled = latestState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
+    return if (latestReconciled != latestState.manifest) {
+      manifestStore.save(latestState.copy(manifest = latestReconciled), request.dbPathOverride)
+    } else {
+      latestState
+    }
   }
 
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
@@ -61,65 +90,83 @@ class GoalRunnerStatusService(
     )
   }
 
-  private fun DecompositionManifest.withTerminalCurrentSubtask(
+  private fun DecompositionManifest.reconciledWithTerminalOutcomes(
     request: GoalRunnerStatusRequest,
+    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   ): DecompositionManifest {
-    val currentSubtask = subtasks.firstOrNull { subtask -> subtask.id == currentSubtaskIntent.subtaskId }
-    val outcome = currentSubtask
-      ?.workflowId
-      ?.takeIf(String::isNotBlank)
-      ?.let { workflowId ->
+    val reconciledSubtasks = subtasks.map { subtask ->
+      val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
+      if (workflowId == null) {
+        return@map subtask
+      }
+      val preferredAuthoritative = authoritativeOutcomes[subtask.id]
+        ?.takeIf { outcome ->
+          // Do not let non-complete sibling outcomes overwrite an active retry workflow.
+          !(
+            subtask.status == "in_progress" &&
+              outcome.workflowId != workflowId &&
+              outcome.status != GoalRunnerTerminalStatus.COMPLETE
+            )
+        }
+      val outcome = preferredAuthoritative ?: workflowId.let { knownWorkflowId ->
         outcomeStore.terminalOutcome(
-          workflowId = workflowId,
+          workflowId = knownWorkflowId,
           issueKey = issueKey,
-          subtaskId = currentSubtask.id,
+          subtaskId = subtask.id,
           dbPathOverride = request.dbPathOverride,
         )
-      }
-    return if (currentSubtask == null || outcome == null) {
-      this
-    } else {
-      when (outcome.status) {
-        GoalRunnerTerminalStatus.COMPLETE -> withStatusOutcome(currentSubtask.id, "complete", outcome)
+      } ?: return@map subtask
+      val status = when (outcome.status) {
+        GoalRunnerTerminalStatus.COMPLETE -> "complete"
         GoalRunnerTerminalStatus.BLOCKED,
         GoalRunnerTerminalStatus.FAILED,
         GoalRunnerTerminalStatus.TIMEOUT,
         GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
-        -> withStatusOutcome(currentSubtask.id, "blocked", outcome)
+        -> "blocked"
       }
+      subtask.copy(
+        status = status,
+        workflowId = outcome.workflowId.takeIf(String::isNotBlank) ?: subtask.workflowId,
+        commitSha = outcome.commitSha ?: subtask.commitSha,
+        blockedReason = outcome.blockedReason
+          ?.takeIf { status == "blocked" }
+          ?: subtask.blockedReason.takeIf { status == "blocked" },
+        lastResumableStep = outcome.lastResumableStep ?: subtask.lastResumableStep,
+      )
     }
+    return copy(subtasks = reconciledSubtasks)
+      .withParentStatus()
+      .withDerivedCurrentIntent()
   }
+}
 
-  private fun DecompositionManifest.withStatusOutcome(
-    subtaskId: Int,
-    status: String,
-    outcome: GoalRunnerStoredOutcome,
-  ): DecompositionManifest {
-    val updatedSubtasks = subtasks.map { subtask ->
-      if (subtask.id == subtaskId) {
-        subtask.copy(
-          status = status,
-          workflowId = outcome.workflowId.takeIf(String::isNotBlank) ?: subtask.workflowId,
-          commitSha = outcome.commitSha ?: subtask.commitSha,
-          blockedReason = outcome.blockedReason.takeIf { status == "blocked" },
-          lastResumableStep = outcome.lastResumableStep ?: subtask.lastResumableStep,
-        )
-      } else {
-        subtask
-      }
+private fun DecompositionManifest.activeWorkflowIds(): Set<String> = subtasks
+  .asSequence()
+  .filter { subtask -> subtask.status == "in_progress" || currentSubtaskIntent.subtaskId == subtask.id }
+  .mapNotNull(DecompositionSubtask::workflowId)
+  .map(String::trim)
+  .filter(String::isNotBlank)
+  .toSet()
+
+private fun DecompositionManifest.withDerivedCurrentIntent(): DecompositionManifest {
+  val nextIntent = subtasks.firstOrNull { it.status == "blocked" }?.let { blocked ->
+    CurrentSubtaskIntent(subtaskId = blocked.id, action = "blocked")
+  } ?: subtasks.firstOrNull { it.status == "in_progress" }?.let { inProgress ->
+    CurrentSubtaskIntent(subtaskId = inProgress.id, action = "resume")
+  } ?: firstRunnablePendingSubtask()?.let { pending ->
+    CurrentSubtaskIntent(subtaskId = pending.id, action = "start")
+  } ?: CurrentSubtaskIntent(subtaskId = 0, action = "none")
+  return copy(currentSubtaskIntent = nextIntent)
+}
+
+private fun DecompositionManifest.firstRunnablePendingSubtask(): DecompositionSubtask? {
+  val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
+  return subtasks.firstOrNull { subtask ->
+    subtask.status == "pending" && subtask.dependencies.all { dependency ->
+      val dependencySubtask = subtasksById[dependency.subtaskId]
+      dependencySubtask?.status in setOf("complete", "skipped") || (dependency.optional && dependency.skipped)
     }
-    val parentStatus = when {
-      updatedSubtasks.all { it.status in setOf("complete", "skipped") } -> "complete"
-      updatedSubtasks.any { it.status == "blocked" } -> "blocked"
-      updatedSubtasks.any { it.status in setOf("in_progress", "complete", "skipped") } -> "in_progress"
-      else -> "pending"
-    }
-    val intent = when (status) {
-      "complete" -> CurrentSubtaskIntent(subtaskId = 0, action = "none")
-      else -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked")
-    }
-    return copy(status = parentStatus, currentSubtaskIntent = intent, subtasks = updatedSubtasks)
-  }
+  } ?: subtasks.firstOrNull { it.status == "pending" }
 }
 
 private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
