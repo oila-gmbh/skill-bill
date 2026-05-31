@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 
 class FeatureSpecPreparationRuntimeTest {
   @Test
-  fun `feature-implement and goal wrappers share the same preparation core`() {
+  fun `feature-spec, feature-implement, and goal wrappers share the same preparation core`() {
     var invocationCount = 0
     val runtime = FeatureSpecPreparationRuntime { intake ->
       invocationCount += 1
@@ -29,12 +29,16 @@ class FeatureSpecPreparationRuntimeTest {
       constraints = listOf("Constraint 1"),
     )
 
+    val featureSpecDecision = runtime.prepareForFeatureSpec(intake)
     val featureImplementDecision = runtime.prepareForFeatureImplement(intake)
     val goalDecision = runtime.prepareForGoal(intake)
 
-    assertEquals(2, invocationCount)
+    assertEquals(3, invocationCount)
+    assertEquals(FeatureSpecPreparationMode.DECOMPOSED, featureSpecDecision.mode)
     assertEquals(FeatureSpecPreparationMode.DECOMPOSED, featureImplementDecision.mode)
     assertEquals(FeatureSpecPreparationMode.DECOMPOSED, goalDecision.mode)
+    assertEquals(featureSpecDecision, featureImplementDecision)
+    assertEquals(featureSpecDecision, goalDecision)
     assertEquals(featureImplementDecision, goalDecision)
   }
 }

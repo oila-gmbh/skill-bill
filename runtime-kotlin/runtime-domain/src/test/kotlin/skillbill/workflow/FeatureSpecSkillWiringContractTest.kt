@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 
 class FeatureSpecSkillWiringContractTest {
   @Test
@@ -14,6 +15,7 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "If the issue key is missing, stop and ask for it.")
     assertContains(content, "single_spec")
     assertContains(content, "decomposed")
+    assertContains(content, "Do not fork logic between `bill-feature-spec`, `bill-feature-implement`, and `bill-goal`.")
   }
 
   @Test
@@ -27,12 +29,18 @@ class FeatureSpecSkillWiringContractTest {
   @Test
   fun `bill goal content reuses shared preparation and keeps goal runner consumer only`() {
     val content = Files.readString(repoRootFromTest().resolve("skills/bill-goal/content.md"))
+    val featureSpecContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-spec/content.md"))
 
     assertContains(content, "invoke `bill-feature-spec` in this session")
     assertContains(content, "`skill-bill goal <issue_key>` remains consumer-only")
-    assertContains(content, "asks for exactly one confirmation")
+    assertContains(featureSpecContent, "`skill-bill goal <issue_key>` is consumer-only")
+    assertContains(content, "Ask one confirmation question")
+    assertEquals(1, countOccurrences(content, "Ask one confirmation question"))
   }
 }
+
+private fun countOccurrences(haystack: String, needle: String): Int =
+  Regex(Regex.escape(needle)).findAll(haystack).count()
 
 private fun repoRootFromTest(): Path {
   var current = Path.of("").toAbsolutePath().normalize()

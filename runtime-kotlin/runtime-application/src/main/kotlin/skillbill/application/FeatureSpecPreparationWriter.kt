@@ -29,6 +29,7 @@ class FeatureSpecPreparationWriter(
     val decompositionManifestPath = specDirectory.resolve(DECOMPOSITION_MANIFEST_FILENAME)
     return when (request.decision.mode) {
       FeatureSpecPreparationMode.SINGLE_SPEC -> {
+        validateSingleSpecRequest(request)
         assertNoDecompositionManifest(issueKey, decompositionManifestPath)
         writeParentSpec(
           parentSpecPath = parentSpecPath,
@@ -117,6 +118,12 @@ class FeatureSpecPreparationWriter(
     )
   }
 
+  private fun validateSingleSpecRequest(request: FeatureSpecWriteRequest) {
+    if (request.subtasks.isNotEmpty()) {
+      invalidRequest("subtasks", "single_spec mode cannot include decomposition subtasks.")
+    }
+  }
+
   private fun assertNoDecompositionManifest(issueKey: String, manifestPath: Path) {
     if (!fileStore.isRegularFile(manifestPath)) {
       return
@@ -138,16 +145,18 @@ class FeatureSpecPreparationWriter(
   ) {
     fileStore.writeTextAtomically(
       parentSpecPath,
-        renderParentSpec(
+      renderParentSpec(
+        ParentSpecRenderInput(
           issueKey = decision.issueKey,
           featureName = featureName,
           mode = decision.mode,
-        intendedOutcome = decision.intendedOutcome,
-        acceptanceCriteria = decision.acceptanceCriteria,
-        constraints = decision.constraints,
-        nonGoals = decision.nonGoals,
-        overview = parentSpecOverview,
-        validationStrategy = validationStrategy,
+          intendedOutcome = decision.intendedOutcome,
+          acceptanceCriteria = decision.acceptanceCriteria,
+          constraints = decision.constraints,
+          nonGoals = decision.nonGoals,
+          overview = parentSpecOverview,
+          validationStrategy = validationStrategy,
+        ),
       ),
     )
   }
@@ -199,58 +208,60 @@ private data class PreparedSubtask(
   val definition: FeatureSpecSubtaskPreparation,
 )
 
-private fun renderParentSpec(
-  issueKey: String,
-  featureName: String,
-  mode: FeatureSpecPreparationMode,
-  intendedOutcome: String,
-  acceptanceCriteria: List<String>,
-  constraints: List<String>,
-  nonGoals: List<String>,
-  overview: String,
-  validationStrategy: String,
-): String = buildString {
+private data class ParentSpecRenderInput(
+  val issueKey: String,
+  val featureName: String,
+  val mode: FeatureSpecPreparationMode,
+  val intendedOutcome: String,
+  val acceptanceCriteria: List<String>,
+  val constraints: List<String>,
+  val nonGoals: List<String>,
+  val overview: String,
+  val validationStrategy: String,
+)
+
+private fun renderParentSpec(input: ParentSpecRenderInput): String = buildString {
   appendLine("---")
   appendLine("status: In Progress")
   appendLine("---")
   appendLine()
-  appendLine("# $issueKey - $featureName")
+  appendLine("# ${input.issueKey} - ${input.featureName}")
   appendLine()
   appendLine("## Mode")
   appendLine()
-  appendLine(mode.wireValue)
+  appendLine(input.mode.wireValue)
   appendLine()
   appendLine("## Intended Outcome")
   appendLine()
-  appendLine(intendedOutcome.ifBlank { "(none provided)" })
+  appendLine(input.intendedOutcome.ifBlank { "(none provided)" })
   appendLine()
   appendLine("## Overview")
   appendLine()
-  appendLine(overview.ifBlank { "(none provided)" })
+  appendLine(input.overview.ifBlank { "(none provided)" })
   appendLine()
   appendLine("## Acceptance Criteria")
   appendLine()
-  acceptanceCriteria.forEachIndexed { index, criterion ->
+  input.acceptanceCriteria.forEachIndexed { index, criterion ->
     appendLine("${index + 1}. $criterion")
   }
   appendLine()
   appendLine("## Constraints")
   appendLine()
-  constraints.forEach { constraint ->
+  input.constraints.forEach { constraint ->
     appendLine("- $constraint")
   }
   appendLine()
   appendLine("## Non-Goals")
   appendLine()
-  if (nonGoals.isEmpty()) {
+  if (input.nonGoals.isEmpty()) {
     appendLine("- None")
   } else {
-    nonGoals.forEach { nonGoal -> appendLine("- $nonGoal") }
+    input.nonGoals.forEach { nonGoal -> appendLine("- $nonGoal") }
   }
   appendLine()
   appendLine("## Validation Strategy")
   appendLine()
-  appendLine(validationStrategy.ifBlank { "bill-quality-check" })
+  appendLine(input.validationStrategy.ifBlank { "bill-quality-check" })
 }
 
 private fun renderSubtaskSpec(

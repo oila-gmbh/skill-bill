@@ -66,6 +66,36 @@ class FeatureSpecPreparationWriterTest {
   }
 
   @Test
+  fun `single_spec loud fails when decomposition subtasks are provided`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-single-subtasks")
+    val error = assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
+      writer.write(
+        repoRoot = repoRoot,
+        request = FeatureSpecWriteRequest(
+          decision = singleSpecDecision(),
+          featureName = "feature-spec-horizontal-skill",
+          parentSpecOverview = "single_spec should reject decomposed-only payload fields.",
+          validationStrategy = "bill-quality-check",
+          subtasks = listOf(
+            FeatureSpecSubtaskPreparation(
+              id = 1,
+              name = "decomposed-only",
+              scope = "Should not be accepted in single_spec mode.",
+              acceptanceCriteria = listOf("Rejected."),
+              nonGoals = emptyList(),
+              dependencyNotes = "",
+              validationStrategy = "bill-quality-check",
+              nextPath = "Run bill-feature-implement on spec_subtask_1_decomposed-only.md.",
+            ),
+          ),
+        ),
+      )
+    }
+
+    assertEquals("subtasks", error.fieldPath)
+  }
+
+  @Test
   fun `decomposed writes parent and ordered subtask specs then writes manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-decomposed")
     val result = writer.write(

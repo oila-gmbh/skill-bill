@@ -7,16 +7,17 @@ import skillbill.featurespec.model.FeatureSpecPreparationIntake
 /**
  * Shared feature-spec preparation entry points for orchestrators.
  *
- * `bill-feature-implement` and `bill-goal` wrappers intentionally call
- * the same injected core to prevent divergence.
+ * `bill-feature-spec`, `bill-feature-implement`, and `bill-goal` wrappers
+ * intentionally call the same injected core to prevent divergence.
  */
 class FeatureSpecPreparationRuntime(
   private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
     FeatureSpecPreparationPolicy::prepare,
 ) {
+  fun prepareForFeatureSpec(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision = prepareCore(intake)
+
   fun prepareForFeatureImplement(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision =
     prepareCore(intake)
 
-  fun prepareForGoal(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision =
-    prepareCore(intake)
+  fun prepareForGoal(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision = prepareCore(intake)
 }

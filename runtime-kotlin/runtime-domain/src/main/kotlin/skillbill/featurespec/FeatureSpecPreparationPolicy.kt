@@ -74,11 +74,7 @@ object FeatureSpecPreparationPolicy {
     }
   }
 
-  private fun normalizeRequiredList(
-    values: List<String>,
-    fieldPath: String,
-    emptyReason: String,
-  ): List<String> {
+  private fun normalizeRequiredList(values: List<String>, fieldPath: String, emptyReason: String): List<String> {
     if (values.isEmpty()) {
       invalidRequest(fieldPath, emptyReason)
     }
