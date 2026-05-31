@@ -23,11 +23,13 @@ import kotlin.time.DurationUnit
 class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   override fun run(request: AgentRunProcessRequest): AgentRunProcessResult {
     val processStart = startProcess(request)
-    if (processStart is ProcessStart.Failed) {
-      return spawnFailure(processStart.error)
+    return when (processStart) {
+      is ProcessStart.Failed -> spawnFailure(processStart.error)
+      is ProcessStart.Started -> runStartedProcess(processStart.process, request)
     }
-    val process = (processStart as ProcessStart.Started).process
+  }
 
+  private fun runStartedProcess(process: Process, request: AgentRunProcessRequest): AgentRunProcessResult {
     val outputTracker = OutputObservationTracker()
     val stdout = CappedUtf8Drain(
       input = process.inputStream,
@@ -52,27 +54,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       stdout.join()
       stderr.join()
       Thread.currentThread().interrupt()
-      val interruptMessage = "Agent run interrupted by parent signal before completion."
-      return AgentRunProcessResult(
-        exitStatus = null,
-        stdout = stdout.text(),
-        stderr = stderr.text().let { existing ->
-          if (existing.isBlank()) {
-            interruptMessage
-          } else {
-            "$existing\n$interruptMessage"
-          }
-        },
-        timedOut = false,
-        interrupted = true,
-        spawnFailed = false,
-        liveness = AgentRunLivenessSnapshot(
-          phase = "watchdog",
-          reason = "parent_interrupted",
-          processState = "killed",
-          lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
-        ),
-      )
+      return interruptedResult(stdout, stderr, outputTracker)
     }
     val finished = wait.finished
     if (!finished) {
@@ -89,6 +71,34 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       interrupted = false,
       spawnFailed = false,
       liveness = wait.liveness,
+    )
+  }
+
+  private fun interruptedResult(
+    stdout: CappedUtf8Drain,
+    stderr: CappedUtf8Drain,
+    outputTracker: OutputObservationTracker,
+  ): AgentRunProcessResult {
+    val interruptMessage = "Agent run interrupted by parent signal before completion."
+    return AgentRunProcessResult(
+      exitStatus = null,
+      stdout = stdout.text(),
+      stderr = stderr.text().let { existing ->
+        if (existing.isBlank()) {
+          interruptMessage
+        } else {
+          "$existing\n$interruptMessage"
+        }
+      },
+      timedOut = false,
+      interrupted = true,
+      spawnFailed = false,
+      liveness = AgentRunLivenessSnapshot(
+        phase = "watchdog",
+        reason = "parent_interrupted",
+        processState = "killed",
+        lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
+      ),
     )
   }
 

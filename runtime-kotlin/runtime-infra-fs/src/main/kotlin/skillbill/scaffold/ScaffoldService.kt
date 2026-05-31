@@ -819,12 +819,11 @@ private fun canonicalName(payload: Map<String, Any?>, defaultName: String): Stri
   }
 }
 
-private fun defaultPlatformOverrideName(platform: String, family: String): String =
-  if (family == "quality-check") {
-    "bill-$platform-code-quality-check"
-  } else {
-    "bill-$platform-$family"
-  }
+private fun defaultPlatformOverrideName(platform: String, family: String): String = if (family == "quality-check") {
+  "bill-$platform-code-quality-check"
+} else {
+  "bill-$platform-$family"
+}
 
 // SKILL-52.1 subtask 2: `requireString`, `requireStringOrDefault`, and `requireStringList` now live
 // in `skillbill.scaffold.policy` (runtime-domain) as the single source of truth. The duplicate

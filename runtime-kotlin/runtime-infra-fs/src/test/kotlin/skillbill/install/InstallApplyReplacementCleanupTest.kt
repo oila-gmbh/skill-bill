@@ -6,6 +6,7 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -82,59 +83,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     Files.createDirectories(targetDir)
-    val legacySourceLink = targetDir.resolve("bill-backend-kotlin-code-review")
-    createSymlinkOrSkip(
-      legacySourceLink,
-      fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review"),
-    )
-    val legacyManagedDir = targetDir.resolve("mdp-gcheck")
-    Files.createDirectories(legacyManagedDir)
-    Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
-    Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
-    val oldQualityCheckLink = targetDir.resolve("bill-quality-check")
-    createSymlinkOrSkip(
-      oldQualityCheckLink,
-      fixture.repoRoot.resolve("skills/bill-code-quality-check"),
-    )
-    val oldKotlinQualityCheckLink = targetDir.resolve("bill-kotlin-quality-check")
-    createSymlinkOrSkip(
-      oldKotlinQualityCheckLink,
-      fixture.repoRoot.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check"),
-    )
-    val oldPhpQualityCheckLink = targetDir.resolve("bill-php-quality-check")
-    createSymlinkOrSkip(
-      oldPhpQualityCheckLink,
-      fixture.repoRoot.resolve("platform-packs/php/quality-check/bill-php-code-quality-check"),
-    )
-    val featureImplementLink = targetDir.resolve("bill-feature-implement")
-    createSymlinkOrSkip(
-      featureImplementLink,
-      fixture.repoRoot.resolve("skills/bill-feature-task"),
-    )
-    val agenticFeatureImplementLink = targetDir.resolve("bill-feature-implement-agentic")
-    createSymlinkOrSkip(
-      agenticFeatureImplementLink,
-      fixture.repoRoot.resolve("skills/bill-feature-task"),
-    )
-    val skillScaffoldManagedDir = targetDir.resolve("mdp-skill-scaffold")
-    Files.createDirectories(skillScaffoldManagedDir)
-    Files.writeString(skillScaffoldManagedDir.resolve(".skill-bill-install"), "")
-    Files.writeString(skillScaffoldManagedDir.resolve("SKILL.md"), "old managed install")
-    val newSkillAllAgentsLink = targetDir.resolve("bill-new-skill-all-agents")
-    createSymlinkOrSkip(
-      newSkillAllAgentsLink,
-      fixture.repoRoot.resolve("skills/bill-create-skill"),
-    )
-    val grillPlanLink = targetDir.resolve("bill-grill-plan")
-    createSymlinkOrSkip(
-      grillPlanLink,
-      fixture.repoRoot.resolve("skills/bill-grill-plan"),
-    )
-    val skillRemoveLink = targetDir.resolve("bill-skill-remove")
-    createSymlinkOrSkip(
-      skillRemoveLink,
-      fixture.repoRoot.resolve("skills/bill-skill-remove"),
-    )
+    val legacyPaths = createLegacyRenamedLinks(fixture, targetDir)
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
@@ -145,19 +94,38 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val result = InstallOperations.applyInstall(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
-    assertFalse(Files.exists(legacySourceLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(legacyManagedDir, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(oldQualityCheckLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(oldKotlinQualityCheckLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(oldPhpQualityCheckLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(featureImplementLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(agenticFeatureImplementLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(skillScaffoldManagedDir, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(newSkillAllAgentsLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(grillPlanLink, LinkOption.NOFOLLOW_LINKS))
-    assertFalse(Files.exists(skillRemoveLink, LinkOption.NOFOLLOW_LINKS))
+    legacyPaths.forEach { path ->
+      assertFalse(Files.exists(path, LinkOption.NOFOLLOW_LINKS), "$path should be removed")
+    }
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-quality-check")))
+  }
+
+  private fun createLegacyRenamedLinks(fixture: ApplyFixture, targetDir: Path): List<Path> {
+    val links = listOf(
+      "bill-backend-kotlin-code-review" to "platform-packs/kotlin/code-review/bill-kotlin-code-review",
+      "bill-quality-check" to "skills/bill-code-quality-check",
+      "bill-kotlin-quality-check" to "platform-packs/kotlin/quality-check/bill-kotlin-code-quality-check",
+      "bill-php-quality-check" to "platform-packs/php/quality-check/bill-php-code-quality-check",
+      "bill-feature-implement" to "skills/bill-feature-task",
+      "bill-feature-implement-agentic" to "skills/bill-feature-task",
+      "bill-new-skill-all-agents" to "skills/bill-create-skill",
+      "bill-grill-plan" to "skills/bill-grill-plan",
+      "bill-skill-remove" to "skills/bill-skill-remove",
+    ).map { (linkName, sourcePath) ->
+      targetDir.resolve(linkName).also { link ->
+        createSymlinkOrSkip(link, fixture.repoRoot.resolve(sourcePath))
+      }
+    }
+    val managedDirs = listOf(
+      targetDir.resolve("mdp-gcheck"),
+      targetDir.resolve("mdp-skill-scaffold"),
+    ).onEach { managedDir ->
+      Files.createDirectories(managedDir)
+      Files.writeString(managedDir.resolve(".skill-bill-install"), "")
+      Files.writeString(managedDir.resolve("SKILL.md"), "old managed install")
+    }
+    return links + managedDirs
   }
 
   @Test

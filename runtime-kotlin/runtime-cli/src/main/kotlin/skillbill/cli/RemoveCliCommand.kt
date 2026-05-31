@@ -11,9 +11,9 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.SkillRemoveService
 import skillbill.domain.skillremove.SkillRemovalRefusedException
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
+import skillbill.domain.skillremove.model.SkillRemovalRefusalReason
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
-import skillbill.domain.skillremove.model.SkillRemovalRefusalReason
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import java.nio.file.Path
 
@@ -190,8 +190,7 @@ class RemoveCliCommand(
     return CliExecutionResult(exitCode = 1, stdout = CliOutput.emit(payload, format), payload = payload)
   }
 
-  private fun removeUsageMessage(): String =
-    """
+  private fun removeUsageMessage(): String = """
     Missing remove target.
 
     Examples:
@@ -205,5 +204,5 @@ class RemoveCliCommand(
       addon:<path>
 
     Use --dry-run first to preview the exact files, README edits, and agent links that will be removed.
-    """.trimIndent()
+  """.trimIndent()
 }

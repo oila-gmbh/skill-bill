@@ -5,6 +5,7 @@ package skillbill.application
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.application.model.DecompositionManifestWriteResult
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
@@ -218,7 +219,7 @@ object DecompositionManifestWriter {
       stackBranches = stackBranches,
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = currentSubtask.id, action = "start"),
       subtasks = subtasks,
-      )
+    )
   }
 }
 
@@ -234,13 +235,10 @@ private fun assertParentSpecIsNotDecomposedSubtask(
     .mapNotNull { manifestPath ->
       val manifest = try {
         loadDecompositionManifest(manifestPath, fileStore, validator)
-      } catch (error: Exception) {
-        val detail = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()
-        invalidManifest(
-          parentSpecPath.toString(),
-          "failed to load decomposition manifest '$manifestPath' while validating parent_spec_path " +
-            "'$parentSpecLabel': $detail",
-        )
+      } catch (error: IOException) {
+        invalidParentSpecManifestLoad(parentSpecPath, manifestPath, parentSpecLabel, error)
+      } catch (error: InvalidDecompositionManifestSchemaError) {
+        invalidParentSpecManifestLoad(parentSpecPath, manifestPath, parentSpecLabel, error)
       }
       val matchingSubtask = manifest.subtasks.firstOrNull { subtask ->
         resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)).normalize() == normalizedParentSpec
@@ -257,6 +255,20 @@ private fun assertParentSpecIsNotDecomposedSubtask(
         "nested decomposition of subtask specs is not supported.",
     )
   }
+}
+
+private fun invalidParentSpecManifestLoad(
+  parentSpecPath: Path,
+  manifestPath: Path,
+  parentSpecLabel: String,
+  error: Exception,
+): Nothing {
+  val detail = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()
+  invalidManifest(
+    parentSpecPath.toString(),
+    "failed to load decomposition manifest '$manifestPath' while validating parent_spec_path " +
+      "'$parentSpecLabel': $detail",
+  )
 }
 
 private fun DecompositionManifestWriteRequest.manifestPath(): Path = decompositionManifestPath(

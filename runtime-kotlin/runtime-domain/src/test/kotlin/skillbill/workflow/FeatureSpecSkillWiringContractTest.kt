@@ -29,7 +29,10 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "If the issue key is missing, stop and ask for it.")
     assertContains(content, "single_spec")
     assertContains(content, "decomposed")
-    assertContains(content, "Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.")
+    assertContains(
+      content,
+      "Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.",
+    )
   }
 
   @Test

@@ -608,16 +608,14 @@ private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?>
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }
 
-private fun codeReviewAreaWizardPayload(
-  state: CliRunState,
-  approvedCodeReviewAreas: Set<String>,
-): Map<String, Any?> = buildMap {
-  putScaffoldBase("code-review-area")
-  put("platform", promptRequired(state, "Platform slug"))
-  put("area", promptCodeReviewArea(state, approvedCodeReviewAreas))
-  promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
-  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-}
+private fun codeReviewAreaWizardPayload(state: CliRunState, approvedCodeReviewAreas: Set<String>): Map<String, Any?> =
+  buildMap {
+    putScaffoldBase("code-review-area")
+    put("platform", promptRequired(state, "Platform slug"))
+    put("area", promptCodeReviewArea(state, approvedCodeReviewAreas))
+    promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
+    promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+  }
 
 private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
   putScaffoldBase("add-on")
