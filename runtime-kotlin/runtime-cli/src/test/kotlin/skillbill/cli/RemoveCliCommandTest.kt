@@ -164,6 +164,10 @@ class RemoveCliCommandTest {
     val error = payload["error"].toString()
     assertTrue("--allow-shipped" in error)
     assertTrue("allowShipped" !in error)
+    assertTrue("Why this is protected:" in error)
+    assertTrue("bill-* skills and kotlin/kmp pre-shells are shipped product surfaces" in error)
+    assertTrue("skill-bill remove skill:bill-code-review --dry-run --allow-shipped" in error)
+    assertTrue("skill-bill remove skill:bill-code-review --allow-shipped" in error)
   }
 
   @Test

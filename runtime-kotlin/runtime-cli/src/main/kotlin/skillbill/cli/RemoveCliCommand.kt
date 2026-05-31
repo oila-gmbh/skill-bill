@@ -13,6 +13,7 @@ import skillbill.domain.skillremove.SkillRemovalRefusedException
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
+import skillbill.domain.skillremove.model.SkillRemovalRefusalReason
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import java.nio.file.Path
 
@@ -91,7 +92,7 @@ class RemoveCliCommand(
       // Refusal is part of the contract: emit a typed error and exit non-zero.
       // F-S04: scrub absolute paths from any refusal message before it reaches the user.
       state.result = errorResult(
-        SkillRemoveErrorSanitizer.sanitize(refusal.message.orEmpty(), absoluteRepoRoot),
+        refusalErrorMessage(refusal, rawTarget, absoluteRepoRoot),
         format,
       )
       return
@@ -113,6 +114,30 @@ class RemoveCliCommand(
       "addon" -> SkillRemovalTarget.AddOn(relativePath = value)
       else -> null
     }
+  }
+
+  private fun refusalErrorMessage(
+    refusal: SkillRemovalRefusedException,
+    rawTarget: String,
+    repoRootAbsolutePath: String,
+  ): String {
+    val sanitized = SkillRemoveErrorSanitizer.sanitize(refusal.message.orEmpty(), repoRootAbsolutePath)
+    if (refusal.refusalReason != SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED) {
+      return sanitized
+    }
+    return """
+      $sanitized
+
+      Why this is protected:
+        bill-* skills and kotlin/kmp pre-shells are shipped product surfaces.
+        Removing them is a maintainer-only operation because it changes the workflow set installed for every agent.
+
+      To preview the maintainer removal:
+        skill-bill remove $rawTarget --dry-run --allow-shipped
+
+      To remove it after reviewing the preview:
+        skill-bill remove $rawTarget --allow-shipped
+    """.trimIndent()
   }
 
   private fun previewResult(preview: SkillRemovalResult.Preview, format: CliFormat): CliExecutionResult {
