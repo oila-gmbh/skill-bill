@@ -120,6 +120,7 @@ object DecompositionManifestWriter {
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
     fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   ): DecompositionManifestWriteResult {
+    assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()
     val existing = loadManifestOrNull(manifestPath, validator, fileStore)
     val manifest = request.toManifest()
@@ -145,6 +146,7 @@ object DecompositionManifestWriter {
     fileStore: DecompositionManifestFileStore,
   ): DecompositionManifest {
     val parentSpecPath = Path.of(parentSpecPath(plan))
+    assertParentSpecIsNotDecomposedSubtask(repoRoot, parentSpecPath, validator, fileStore)
     val branchName = branchName(artifactsPatch?.get("branch")).ifBlank { branchName(existingArtifacts["branch"]) }
     val executionModel = executionModel(plan)
     val request = DecompositionManifestWriteRequest(
@@ -216,6 +218,43 @@ object DecompositionManifestWriter {
       stackBranches = stackBranches,
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = currentSubtask.id, action = "start"),
       subtasks = subtasks,
+      )
+  }
+}
+
+private fun assertParentSpecIsNotDecomposedSubtask(
+  repoRoot: Path,
+  parentSpecPath: Path,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+) {
+  val normalizedParentSpec = resolvedParentSpecPath(repoRoot, parentSpecPath).normalize()
+  val parentSpecLabel = repoRelativePath(repoRoot, parentSpecPath)
+  val referringManifests = fileStore.findDecompositionManifestFiles(repoRoot)
+    .mapNotNull { manifestPath ->
+      val manifest = try {
+        loadDecompositionManifest(manifestPath, fileStore, validator)
+      } catch (error: Exception) {
+        val detail = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()
+        invalidManifest(
+          parentSpecPath.toString(),
+          "failed to load decomposition manifest '$manifestPath' while validating parent_spec_path " +
+            "'$parentSpecLabel': $detail",
+        )
+      }
+      val matchingSubtask = manifest.subtasks.firstOrNull { subtask ->
+        resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)).normalize() == normalizedParentSpec
+      } ?: return@mapNotNull null
+      manifestPath to matchingSubtask.id
+    }
+  if (referringManifests.isNotEmpty()) {
+    val references = referringManifests.joinToString(", ") { (manifestPath, subtaskId) ->
+      "$manifestPath (subtask_id=$subtaskId)"
+    }
+    invalidManifest(
+      parentSpecPath.toString(),
+      "parent_spec_path '$parentSpecLabel' is already a decomposed subtask in $references; " +
+        "nested decomposition of subtask specs is not supported.",
     )
   }
 }
