@@ -89,6 +89,9 @@ Options:
                            without re-running the full install.
   --reuse-last-selection   Reuse the latest successful agent, platform,
                            telemetry, and MCP choices from ~/.skill-bill.
+                           Desktop app install uses the normal non-interactive
+                           default unless --with-desktop-app or --no-desktop-app
+                           is provided.
 USAGE
 }
 
@@ -514,8 +517,10 @@ prompt_for_desktop_app_install() {
     default_choice="no"
   fi
 
-  # Non-interactive (no TTY): resolve to the gated default WITHOUT blocking on read.
-  if [[ ! -t 0 ]]; then
+  # Non-interactive (no TTY) and reuse mode resolve to the gated default WITHOUT
+  # blocking on read. The shared install-selection record owns runtime choices
+  # only; explicit --with/--no-desktop-app remains the desktop override.
+  if [[ ! -t 0 || "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     DESKTOP_APP_INSTALL="$default_choice"
     return 0
   fi
@@ -789,13 +794,40 @@ run_runtime_cli() {
   SKILL_BILL_RUNTIME_EXECUTABLE="$RUNTIME_CLI_BIN" "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
 }
 
-run_selection_runtime_cli() {
-  local runtime_bin="$RUNTIME_CLI_BUILD_BIN"
-  if [[ ! -x "$runtime_bin" ]]; then
-    runtime_bin="$RUNTIME_CLI_BIN"
+runtime_cli_supports_selection_replay() {
+  local runtime_bin="$1"
+  [[ -x "$runtime_bin" ]] || return 1
+  "$runtime_bin" install --help 2>/dev/null | grep -q "replay-last-selection"
+}
+
+build_selection_replay_runtime_cli() {
+  if [[ "${SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD:-}" == "1" ]]; then
+    return 1
   fi
-  if [[ ! -x "$runtime_bin" ]]; then
+
+  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
+  if [[ ! -x "$gradlew" ]]; then
+    return 1
+  fi
+
+  info "Preparing source runtime CLI for saved selection replay..."
+  (
+    cd "$RUNTIME_KOTLIN_DIR"
+    ./gradlew -q :runtime-cli:installDist
+  )
+}
+
+run_selection_runtime_cli() {
+  local runtime_bin=""
+  if runtime_cli_supports_selection_replay "$RUNTIME_CLI_BUILD_BIN"; then
+    runtime_bin="$RUNTIME_CLI_BUILD_BIN"
+  elif runtime_cli_supports_selection_replay "$RUNTIME_CLI_BIN"; then
+    runtime_bin="$RUNTIME_CLI_BIN"
+  elif build_selection_replay_runtime_cli && runtime_cli_supports_selection_replay "$RUNTIME_CLI_BUILD_BIN"; then
+    runtime_bin="$RUNTIME_CLI_BUILD_BIN"
+  else
     err "Cannot reuse saved install selections: no Skill Bill runtime CLI is available before cleanup."
+    err "The runtime CLI must support 'install replay-last-selection'."
     err "Run ./install.sh without --reuse-last-selection to choose install options again."
     exit 1
   fi
@@ -1634,22 +1666,31 @@ prompt_for_telemetry_preference() {
 
 replay_last_install_selection() {
   local output
+  local error_output
+  local stderr_file
   local kind
   local value
   local extra
 
+  stderr_file="$(mktemp)"
   if ! output="$(
     run_selection_runtime_cli install replay-last-selection \
       --skills "$SKILLS_DIR" \
-      --platform-packs "$PLATFORM_PACKS_DIR" 2>&1
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>"$stderr_file"
   )"; then
     err "Cannot reuse saved install selections."
     if [[ -n "$(trim_string "$output")" ]]; then
       err "$(trim_string "$output")"
     fi
+    error_output="$(trim_string "$(cat "$stderr_file")")"
+    rm -f "$stderr_file"
+    if [[ -n "$error_output" ]]; then
+      err "$error_output"
+    fi
     err "Run ./install.sh without --reuse-last-selection to choose install options again."
     exit 1
   fi
+  rm -f "$stderr_file"
 
   AGENT_SELECTION_MODE="manual"
   AGENT_NAMES=()

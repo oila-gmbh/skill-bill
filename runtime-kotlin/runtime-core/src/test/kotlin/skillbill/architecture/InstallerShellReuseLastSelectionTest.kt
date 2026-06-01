@@ -24,6 +24,7 @@ class InstallerShellReuseLastSelectionTest {
     assertEquals(0, run.exitCode, run.output)
     assertContains(run.output, "Reusing latest successful install selections")
     assertContains(run.output, "Selections:     reused latest successful install selection")
+    assertFalse(run.output.contains("Install the optional Skill Bill desktop app"), run.output)
     assertEquals(
       expectedApplyArgs(run) + listOf(
         "--agent",
@@ -131,6 +132,11 @@ class InstallerShellReuseLastSelectionTest {
     |  home="${'$'}2"
     |  shift 2
     |fi
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "--help" ]]; then
+    |  printf '%s\n' "Commands:"
+    |  printf '%s\n' "  replay-last-selection"
+    |  exit 0
+    |fi
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "agent-path" ]]; then
     |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
     |  exit 0
@@ -140,6 +146,7 @@ class InstallerShellReuseLastSelectionTest {
     |    printf '%s\n' "Install selection record is missing at '${'$'}home/.skill-bill/install-selection.json'."
     |    exit 1
     |  fi
+    |  printf '%s\n' "SLF4J(W): No SLF4J providers were found." >&2
     |  printf 'agent\tcodex\t%s\n' "${'$'}home/agent-targets/codex"
     |  printf 'platform-mode\tselected\nplatform\tkotlin\ntelemetry\tfull\nmcp\tregister\n'
     |  exit 0
