@@ -139,6 +139,33 @@ All of the symlink installs, manifest validation, platform-pack routing, native-
 - **Why this matters for tokens**: each subagent gets a self-contained briefing scoped to its phase/area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
 - **Transport-resilient telemetry**: a packaged Kotlin `runtime-mcp` stdio fallback ensures a dropped MCP transport does not leave a workflow stuck in `running`.
 
+For decomposed goals, the foreground `skill-bill goal` runtime owns a flat worker
+model: it selects one runnable subtask, opens or resumes that child workflow,
+launches one fresh child process, and advances only from durable workflow state.
+Nested/native subagents inside the child session are useful for focus and
+debugging, but the reliability contract is the runtime-owned workflow row plus
+the decomposition projection.
+
+Operator-facing observability stays local and bounded:
+
+```bash
+skill-bill goal SKILL-901
+skill-bill goal status SKILL-901 --diff-stat
+skill-bill goal watch SKILL-901 --interval-seconds 5 --max-refreshes 3
+skill-bill goal status SKILL-901 --diff-hunk runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt --diff-hunk-max-hunks 2 --diff-hunk-max-lines 20 --diff-hunk-max-bytes 4000
+```
+
+Typical output:
+
+```text
+goal_observability: issue_key=SKILL-901 subtask_id=1 workflow_phase=implement worker_role=foreground liveness_class=durable_progress sequence_number=1
+latest_observability: phase=implement role=phase_subagent liveness=durable_progress sequence=8
+diff_stat: files_changed=3 insertions=12 deletions=4
+watch_diff_stat: index=2 files_changed=3 insertions=12 deletions=4
+selected_diff_hunks: count=1 truncated=false
+selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=+new
+```
+
 ### 7. `content.md` is the only authored surface; everything else is generated
 
 A skill author touches exactly one file. Free-form markdown, frontmatter on top, prose body underneath, write it however you want. No JSON, no schema, no boilerplate.

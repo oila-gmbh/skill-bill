@@ -45,11 +45,14 @@ class GoalRunner(
   private val pullRequestPort: GoalPullRequestPort,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
+  private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
+
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request)
+    val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
     if (terminalReport == null) {
       request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     }
@@ -57,31 +60,13 @@ class GoalRunner(
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
       when (selection) {
         is GoalRunnerSelection.Done -> terminalReport = finalizeGoal(state, request, attempted)
-        is GoalRunnerSelection.Blocked -> {
-          state = manifestStore.save(
-            state.copy(manifest = state.manifest.withBlockedSelection(selection.subtask.id, selection.reason)),
-            request.dbPathOverride,
-          )
-          terminalReport = stopped(
-            issueKey = state.manifest.issueKey,
-            attempted = attempted,
-            subtaskId = selection.subtask.id,
-            reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
-            blockedReason = selection.reason,
-            workflowId = selection.subtask.workflowId,
-            lastResumableStep = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
-          )
-          request.eventSink.emit(
-            GoalRunnerRunEvent.SubtaskStopped(
-              issueKey = state.manifest.issueKey,
-              subtaskId = selection.subtask.id,
-              reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED.name.lowercase(),
-              blockedReason = selection.reason,
-            ),
-          )
-        }
+        is GoalRunnerSelection.Blocked -> blockedSelectionIteration(state, selection, request, attempted, observability)
+          .also { result ->
+            state = result.state
+            terminalReport = result.report
+          }
         is GoalRunnerSelection.Run -> {
-          val result = runSelectedSubtask(state, selection, request, attempted)
+          val result = runSelectedSubtask(state, selection, request, attempted, observability)
           state = result.state
           terminalReport = result.report
         }
@@ -102,11 +87,55 @@ class GoalRunner(
     return terminalReport
   }
 
+  private fun blockedSelectionIteration(
+    state: GoalRunnerManifestState,
+    selection: GoalRunnerSelection.Blocked,
+    request: GoalRunnerRunRequest,
+    attempted: List<Int>,
+    observability: GoalRunnerObservabilityEmitter,
+  ): GoalRunnerIterationResult {
+    val saved = manifestStore.save(
+      state.copy(manifest = state.manifest.withBlockedSelection(selection.subtask.id, selection.reason)),
+      request.dbPathOverride,
+    )
+    selection.subtask.workflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+      observability.record(
+        subject = GoalRunnerObservabilitySubject(workflowId, saved.manifest.issueKey, selection.subtask.id),
+        signal = GoalRunnerObservabilitySignal(
+          workflowPhase = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
+          livenessClass = "block",
+          activitySummary = selection.reason,
+        ),
+      )
+    }
+    request.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = saved.manifest.issueKey,
+        subtaskId = selection.subtask.id,
+        reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED.name.lowercase(),
+        blockedReason = selection.reason,
+      ),
+    )
+    return GoalRunnerIterationResult(
+      state = saved,
+      report = stopped(
+        issueKey = saved.manifest.issueKey,
+        attempted = attempted,
+        subtaskId = selection.subtask.id,
+        reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+        blockedReason = selection.reason,
+        workflowId = selection.subtask.workflowId,
+        lastResumableStep = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
+      ),
+    )
+  }
+
   private fun runSelectedSubtask(
     state: GoalRunnerManifestState,
     selection: GoalRunnerSelection.Run,
     request: GoalRunnerRunRequest,
     attempted: MutableList<Int>,
+    observability: GoalRunnerObservabilityEmitter,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
@@ -128,18 +157,40 @@ class GoalRunner(
       subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
     )
     val launchReconciliation = reconcileLaunchOutcome(attemptedState, launchOutcome, subtaskId, request)
-    val refreshed = launchReconciliation.refreshed
+    val workerRequestResult = workerRequestHandler.handle(
+      state = launchReconciliation.refreshed,
+      launchOutcome = launchReconciliation.launchOutcome,
+      subtaskId = subtaskId,
+      request = request,
+    )
+    val refreshed = workerRequestResult.state
     val reconciled = launchReconciliation.reconciled
-    return when (reconciled) {
-      is GoalRunnerReconciledOutcome.Complete -> {
-        val completed = manifestStore.save(
-          refreshed.copy(manifest = refreshed.manifest.withCompletedSubtask(subtaskId, reconciled)),
-          request.dbPathOverride,
-        )
-        request.eventSink.emit(GoalRunnerRunEvent.SubtaskCompleted(completed.manifest.issueKey, subtaskId))
-        GoalRunnerIterationResult(state = completed)
-      }
-      is GoalRunnerReconciledOutcome.Stop -> stoppedIteration(refreshed, subtaskId, reconciled, request, attempted)
+    refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
+      observability.recordLaunchLifecycle(
+        subject = GoalRunnerObservabilitySubject(workflowId, refreshed.manifest.issueKey, subtaskId),
+        action = selection.decision.action.name.lowercase(),
+        progress = safeProgress(workflowId, request),
+        launchOutcome = launchReconciliation.launchOutcome,
+      )
+    }
+    return workerRequestResult.operatorConfirmationStop?.let { stop ->
+      stoppedIteration(refreshed, subtaskId, stop, request, attempted, observability)
+    } ?: when (reconciled) {
+      is GoalRunnerReconciledOutcome.Complete -> completedIteration(
+        refreshed,
+        subtaskId,
+        reconciled,
+        request,
+        observability,
+      )
+      is GoalRunnerReconciledOutcome.Stop -> stoppedIteration(
+        refreshed,
+        subtaskId,
+        reconciled,
+        request,
+        attempted,
+        observability,
+      )
     }
   }
 
@@ -214,15 +265,16 @@ class GoalRunner(
       storedOutcome = storedOutcome(refreshed, subtaskId, request),
     )
     return if (shouldRecheckTerminalOutcome(reconciled, launchFacts)) {
-      recheckTerminalOutcome(attemptedState, refreshed, launchFacts, subtaskId, request)
+      recheckTerminalOutcome(attemptedState, refreshed, launchOutcome, launchFacts, subtaskId, request)
     } else {
-      GoalRunnerLaunchReconciliation(refreshed = refreshed, reconciled = reconciled)
+      GoalRunnerLaunchReconciliation(refreshed = refreshed, reconciled = reconciled, launchOutcome = launchOutcome)
     }
   }
 
   private fun recheckTerminalOutcome(
     attemptedState: GoalRunnerManifestState,
     refreshed: GoalRunnerManifestState,
+    launchOutcome: AgentRunLaunchOutcome,
     launchFacts: GoalRunnerLaunchFacts,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
@@ -232,6 +284,7 @@ class GoalRunner(
       GoalRunnerLaunchReconciliation(
         refreshed = refreshed,
         reconciled = GoalRunnerOutcomeReconciler.reconcile(subtaskId, launchFacts, lateOutcome),
+        launchOutcome = launchOutcome,
       )
     } else {
       retryLaunchOutcome(attemptedState, refreshed, subtaskId, request)
@@ -257,6 +310,7 @@ class GoalRunner(
         launchFacts = retryLaunchFacts,
         storedOutcome = storedOutcome(retryRefreshed, subtaskId, request),
       ),
+      launchOutcome = retryLaunchOutcome,
     )
   }
 
@@ -328,37 +382,23 @@ class GoalRunner(
     reconciled: GoalRunnerReconciledOutcome.Stop,
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
+    observability: GoalRunnerObservabilityEmitter,
   ): GoalRunnerIterationResult {
     val knownWorkflowId = reconciled.workflowId
       ?: state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
-    val stoppedOutcome = if (
-      reconciled.reason in setOf(
-        GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
-        GoalRunnerStopReason.TIMEOUT,
-        GoalRunnerStopReason.INTERRUPTED,
-      ) && knownWorkflowId != null
-    ) {
-      val progress = outcomeStore.progress(knownWorkflowId, request.dbPathOverride)
-      val blockedStepId = outcomeStore.markBlocked(
-        workflowId = knownWorkflowId,
-        blockedReason = reconciled.blockedReason.withStopDiagnostics(knownWorkflowId, progress, reconciled.liveness),
-        lastResumableStep = reconciled.lastResumableStep,
-        supervisionEvent = supervisionEvent(
-          reason = reconciled.reason,
-          knownWorkflowId = knownWorkflowId,
-          progress = progress,
-          liveness = reconciled.liveness,
-        ),
-        dbPathOverride = request.dbPathOverride,
-      )
-      blockedStepId?.takeIf(String::isNotBlank)?.let { stepId ->
-        reconciled.copy(lastResumableStep = stepId)
-      } ?: reconciled
-    } else {
-      reconciled
-    }
+    val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId, request)
     val blocked = state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    knownWorkflowId?.let { workflowId ->
+      observability.record(
+        subject = GoalRunnerObservabilitySubject(workflowId, saved.manifest.issueKey, subtaskId),
+        signal = GoalRunnerObservabilitySignal(
+          workflowPhase = stoppedOutcome.lastResumableStep,
+          livenessClass = if (stoppedOutcome.reason == GoalRunnerStopReason.FAILED) "failure" else "block",
+          activitySummary = stoppedOutcome.blockedReason,
+        ),
+      )
+    }
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskStopped(
         issueKey = saved.manifest.issueKey,
@@ -376,13 +416,65 @@ class GoalRunner(
         reason = stoppedOutcome.reason,
         blockedReason = stoppedOutcome.blockedReason.withStopDiagnostics(
           knownWorkflowId = knownWorkflowId,
-          progress = knownWorkflowId?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) },
+          progress = knownWorkflowId?.let { workflowId -> safeProgress(workflowId, request) },
           liveness = stoppedOutcome.liveness,
         ),
         workflowId = knownWorkflowId,
         lastResumableStep = stoppedOutcome.lastResumableStep,
       ),
     )
+  }
+
+  private fun markChildWorkflowBlockedIfNeeded(
+    reconciled: GoalRunnerReconciledOutcome.Stop,
+    knownWorkflowId: String?,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerReconciledOutcome.Stop {
+    if (knownWorkflowId == null || reconciled.reason !in CHILD_WORKFLOW_BLOCK_REASONS) {
+      return reconciled
+    }
+    val progress = safeProgress(knownWorkflowId, request)
+    val blockedStepId = outcomeStore.markBlocked(
+      workflowId = knownWorkflowId,
+      blockedReason = reconciled.blockedReason.withStopDiagnostics(knownWorkflowId, progress, reconciled.liveness),
+      lastResumableStep = reconciled.lastResumableStep,
+      supervisionEvent = supervisionEvent(
+        reason = reconciled.reason,
+        knownWorkflowId = knownWorkflowId,
+        progress = progress,
+        liveness = reconciled.liveness,
+      ),
+      dbPathOverride = request.dbPathOverride,
+    )
+    return blockedStepId?.takeIf(String::isNotBlank)?.let { stepId ->
+      reconciled.copy(lastResumableStep = stepId)
+    } ?: reconciled
+  }
+
+  private fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? =
+    runCatching { outcomeStore.progress(workflowId, request.dbPathOverride) }.getOrNull()
+
+  private fun completedIteration(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    reconciled: GoalRunnerReconciledOutcome.Complete,
+    request: GoalRunnerRunRequest,
+    observability: GoalRunnerObservabilityEmitter,
+  ): GoalRunnerIterationResult {
+    val completed = manifestStore.save(
+      state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
+      request.dbPathOverride,
+    )
+    request.eventSink.emit(GoalRunnerRunEvent.SubtaskCompleted(completed.manifest.issueKey, subtaskId))
+    observability.record(
+      subject = GoalRunnerObservabilitySubject(reconciled.workflowId, completed.manifest.issueKey, subtaskId),
+      signal = GoalRunnerObservabilitySignal(
+        workflowPhase = reconciled.lastResumableStep,
+        livenessClass = "completion",
+        activitySummary = "Subtask $subtaskId completed with commit ${reconciled.commitSha}.",
+      ),
+    )
+    return GoalRunnerIterationResult(state = completed)
   }
 
   private fun finalizeGoal(
@@ -571,6 +663,11 @@ private const val MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS = 1
 private const val NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS = 2
 private const val NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS = 200L
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+private val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
+  GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
+  GoalRunnerStopReason.TIMEOUT,
+  GoalRunnerStopReason.INTERRUPTED,
+)
 
 private fun shouldRetryNoTerminalOutcome(launchFacts: GoalRunnerLaunchFacts): Boolean = !launchFacts.timedOut &&
   !launchFacts.interrupted &&
@@ -691,7 +788,7 @@ private class GoalRunnerWorkflowProgressProbe(
       ?: return null
     val childProgress = subtask.workflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
+      ?.let { workflowId -> runCatching { outcomeStore.progress(workflowId, request.dbPathOverride) }.getOrNull() }
     return GoalRunnerProgressState(subtask, childProgress)
   }
 }
@@ -861,6 +958,7 @@ private data class GoalRunnerBranchPlan(
 private data class GoalRunnerLaunchReconciliation(
   val refreshed: GoalRunnerManifestState,
   val reconciled: GoalRunnerReconciledOutcome,
+  val launchOutcome: AgentRunLaunchOutcome,
 )
 
 private data class GoalRunnerIterationResult(

@@ -1,3 +1,13 @@
+## [2026-06-01] SKILL-61 subtask 4 validation-docs-operator-scenarios
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, install.sh, uninstall.sh, docs, skills/bill-feature-goal
+- Added end-to-end goal observability coverage for interrupted resume, terminal cleanup, default progress, watch/status, diff stat, bounded hunks, and clean/dirty/renamed/deleted/untracked worktree activity. reusable
+- Goal-continuation now propagates `SKILL_BILL_GOAL_CONTINUATION=1`; `install.sh`, `uninstall.sh`, and mutating install/link/MCP/native-agent CLI paths refuse with exit 64 so active workflow stores are not mutated mid-continuation. reusable
+- Interrupted resume assertions now prove the original child workflow completes and no duplicate running child remains; terminal/stale cleanup remains workflow-store authoritative, not stdout-derived. reusable
+- Docs and governed skill source describe the runtime-owned flat worker model, with nested subagents framed only as optional debug/context convenience.
+- Maintainer validation passed: `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs`; install sync intentionally skipped during goal-continuation.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented (subtask scope)
+
 ## [2026-05-31] SKILL-59 subtask 4 regression-and-maintainer-validation
 Areas: runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/FeatureSpecPreparationRuntime.kt, runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/FeatureSpecPreparationWriter.kt, runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/featurespec/FeatureSpecPreparationPolicy.kt, runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationRuntimeTest.kt, runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationWriterTest.kt, runtime-kotlin/runtime-core/src/test/kotlin/skillbill/application/FeatureSpecPreparationWriterValidationTest.kt, runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/FeatureSpecSkillWiringContractTest.kt
 - Added explicit shared-runtime coverage for `bill-feature-spec` alongside `bill-feature-implement` and `bill-goal` so all three wrappers are locked to one preparation core entrypoint with equality assertions. reusable

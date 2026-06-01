@@ -393,6 +393,15 @@ runtime-ports
     - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.WorkflowFamily.sessionSummary`
+    - `skillbill.workflow.GoalObservabilityEventValidator.validate`
+    - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
+    - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
+    - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
+    - `skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts`
+    - `skillbill.workflow.model.goalObservabilityHistoryFromArtifacts`
+    - `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
+    - `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
+    - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
     - `skillbill.application.lifecycleOkPayload`
     - `skillbill.application.lifecycleSkippedPayload`
     - `skillbill.application.lifecycleErrorPayload`
@@ -738,6 +747,15 @@ Categories:
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
 - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.WorkflowFamily.sessionSummary`
+- `skillbill.workflow.GoalObservabilityEventValidator.validate`
+- `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
+- `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
+- `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
+- `skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts`
+- `skillbill.workflow.model.goalObservabilityHistoryFromArtifacts`
+- `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
+- `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
+- `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`

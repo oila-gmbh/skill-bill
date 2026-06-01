@@ -157,6 +157,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.install.model.InstallPlanWireValidator",
       "skillbill.launcher.FileSystemAgentRunLauncher",
       "skillbill.workflow.DecompositionManifestValidator",
+      "skillbill.workflow.GoalObservabilityEventValidator",
       "skillbill.workflow.WorkflowSnapshotValidator",
     )
     val violations = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))

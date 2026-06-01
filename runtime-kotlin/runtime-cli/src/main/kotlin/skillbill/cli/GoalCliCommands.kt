@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
@@ -25,6 +26,9 @@ import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
+import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
+import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -33,6 +37,7 @@ class GoalRunCommand(
   private val goalRunner: GoalRunner,
   private val runtimeProvenanceService: RuntimeProvenanceService,
   goalStatusCommand: GoalStatusCommand,
+  goalWatchCommand: GoalWatchCommand,
   goalResetCommand: GoalResetCommand,
   private val state: CliRunState,
 ) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
@@ -58,17 +63,17 @@ class GoalRunCommand(
     .default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT.inWholeMinutes.toInt())
   private val noLiveOutput by option(
     "--no-live-output",
-    help = "Do not tee child stdout and stderr to this terminal.",
+    help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
   ).flag(default = false)
   private val debugChildOutput by option(
     "--debug-child-output",
-    help = "Show full child stdout/stderr instead of only structured skill-bill lines.",
+    help = "Show full child stdout/stderr. Noisy; default output keeps raw child streams hidden.",
   ).flag(default = false)
 
   override val invokeWithoutSubcommand: Boolean = true
 
   init {
-    subcommands(goalStatusCommand, goalResetCommand)
+    subcommands(goalStatusCommand, goalWatchCommand, goalResetCommand)
   }
 
   override fun run() {
@@ -121,20 +126,136 @@ class GoalStatusCommand(
     help = "Optional agent override whose id should be shown as active.",
   )
   private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+  private val diffStat by option(
+    "--diff-stat",
+    help = "Include one current worktree diff stat snapshot. Runs git diff --numstat once.",
+  ).flag(default = false)
+  private val diffHunks by option(
+    "--diff-hunk",
+    help = "Include bounded selected diff hunks for this path. Repeat for multiple paths; noisier than --diff-stat.",
+  ).multiple()
+  private val diffHunkMaxHunks by option(
+    "--diff-hunk-max-hunks",
+    help = "Maximum selected diff hunks to print when --diff-hunk is used.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_HUNKS)
+  private val diffHunkMaxLines by option(
+    "--diff-hunk-max-lines",
+    help = "Maximum selected diff lines to print across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_LINES)
+  private val diffHunkMaxBytes by option(
+    "--diff-hunk-max-bytes",
+    help = "Maximum selected diff bytes to print across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
 
   override fun run() {
     val projection = goalRunnerStatusService.status(
-      GoalRunnerStatusRequest(
-        issueKey = issueKey,
-        invokedAgentId = agent ?: state.environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
-        configuredAgentOverrideId = agentOverride,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
-      ),
+      state.goalStatusRequest(statusCliRequestOptions()),
     )
     val payload = projection.toGoalStatusCliMap(issueKey)
     state.completeText(goalStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
   }
+
+  private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
+    issueKey = issueKey,
+    agent = agent,
+    agentOverride = agentOverride,
+    repoRoot = repoRoot,
+    diff = GoalStatusCliDiffOptions(
+      includeDiffStat = diffStat,
+      selectedDiffHunkPaths = diffHunks,
+      selectedDiffMaxHunks = diffHunkMaxHunks,
+      selectedDiffMaxLines = diffHunkMaxLines,
+      selectedDiffMaxBytes = diffHunkMaxBytes,
+    ),
+  )
+}
+
+@Inject
+class GoalWatchCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("watch", "Refresh decomposed goal status without starting child runs.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val agent by option(
+    "--agent",
+    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
+  )
+  private val agentOverride by option(
+    "--agent-override",
+    help = "Optional agent override whose id should be shown as active.",
+  )
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+  private val diffStat by option(
+    "--diff-stat",
+    help = "Include one current worktree diff stat snapshot per refresh. " +
+      "Runs git diff --numstat each refresh.",
+  ).flag(default = false)
+  private val diffHunks by option(
+    "--diff-hunk",
+    help = "Include bounded selected diff hunks for this path on each refresh. " +
+      "Repeat for multiple paths; can be noisy.",
+  ).multiple()
+  private val diffHunkMaxHunks by option(
+    "--diff-hunk-max-hunks",
+    help = "Maximum selected diff hunks to print per refresh when --diff-hunk is used.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_HUNKS)
+  private val diffHunkMaxLines by option(
+    "--diff-hunk-max-lines",
+    help = "Maximum selected diff lines to print per refresh across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_LINES)
+  private val diffHunkMaxBytes by option(
+    "--diff-hunk-max-bytes",
+    help = "Maximum selected diff bytes to print per refresh across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
+  private val intervalSeconds by option(
+    "--interval-seconds",
+    help = "Seconds between read-only status refreshes. Lower values increase terminal noise and repeated git cost.",
+  ).int().default(DEFAULT_GOAL_WATCH_INTERVAL_SECONDS)
+  private val maxRefreshes by option(
+    "--max-refreshes",
+    help = "Stop after this many refreshes. Defaults to one refresh for non-interactive automation.",
+  ).int().default(DEFAULT_GOAL_WATCH_REFRESHES)
+
+  override fun run() {
+    require(intervalSeconds >= 0) { "--interval-seconds must be non-negative." }
+    require(maxRefreshes > 0) { "--max-refreshes must be positive." }
+    var latestRefresh: Map<String, Any?>? = null
+    for (refreshIndex in 1..maxRefreshes) {
+      val projection = goalRunnerStatusService.statusRefresh(
+        state.goalStatusRequest(statusCliRequestOptions()),
+      )
+      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshIndex)
+      latestRefresh = refresh
+      if (refreshIndex < maxRefreshes) {
+        state.liveStdout(goalWatchRefreshText(refresh))
+      }
+      if (refreshIndex < maxRefreshes && intervalSeconds > 0) {
+        Thread.sleep(intervalSeconds * MILLIS_PER_SECOND)
+      }
+    }
+    val payload = linkedMapOf<String, Any?>(
+      "status" to latestRefresh?.get("status"),
+      "issue_key" to issueKey,
+      "refresh_count" to maxRefreshes,
+      "interval_seconds" to intervalSeconds,
+      "latest_refresh" to latestRefresh,
+    )
+    state.completeText(goalWatchText(payload), payload, exitCode = payload.goalStatusExitCode())
+  }
+
+  private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
+    issueKey = issueKey,
+    agent = agent,
+    agentOverride = agentOverride,
+    repoRoot = repoRoot,
+    diff = GoalStatusCliDiffOptions(
+      includeDiffStat = diffStat,
+      selectedDiffHunkPaths = diffHunks,
+      selectedDiffMaxHunks = diffHunkMaxHunks,
+      selectedDiffMaxLines = diffHunkMaxLines,
+      selectedDiffMaxBytes = diffHunkMaxBytes,
+    ),
+  )
 }
 
 @Inject
@@ -178,10 +299,12 @@ private class GoalRunPresenter(
   private val liveOutput: Boolean,
   private val runtimeProvenance: RuntimeProvenanceContract,
 ) {
+  private val lock = Any()
   private var activeSubtaskId: Int? = null
   private var activeStepId: String? = null
   private var lastLivenessClass: String = GOAL_LIVENESS_IDLE
   private var sawRawChildOutputSinceLastHeartbeat: Boolean = false
+  private var observabilitySequence: Int = 0
 
   fun emitStartupProvenance() {
     state.liveStdout(
@@ -192,22 +315,24 @@ private class GoalRunPresenter(
 
   fun eventSink(): skillbill.application.model.GoalRunnerEventSink =
     skillbill.application.model.GoalRunnerEventSink { event ->
-      when (event) {
-        is GoalRunnerRunEvent.SubtaskStarted -> {
-          activeSubtaskId = event.subtaskId
-          activeStepId = "preplan"
-          lastLivenessClass = GOAL_LIVENESS_IDLE
-          sawRawChildOutputSinceLastHeartbeat = false
+      synchronized(lock) {
+        when (event) {
+          is GoalRunnerRunEvent.SubtaskStarted -> {
+            activeSubtaskId = event.subtaskId
+            activeStepId = "preplan"
+            lastLivenessClass = GOAL_LIVENESS_IDLE
+            sawRawChildOutputSinceLastHeartbeat = false
+          }
+          is GoalRunnerRunEvent.SubtaskCompleted -> {
+            activeSubtaskId = event.subtaskId
+            activeStepId = "commit_push"
+            lastLivenessClass = GOAL_LIVENESS_DURABLE_PROGRESS
+            sawRawChildOutputSinceLastHeartbeat = false
+          }
+          else -> Unit
         }
-        is GoalRunnerRunEvent.SubtaskCompleted -> {
-          activeSubtaskId = event.subtaskId
-          activeStepId = "commit_push"
-          lastLivenessClass = GOAL_LIVENESS_DURABLE_PROGRESS
-          sawRawChildOutputSinceLastHeartbeat = false
-        }
-        else -> Unit
+        state.liveStdout(event.progressLine())
       }
-      state.liveStdout(event.progressLine())
     }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
@@ -221,7 +346,9 @@ private class GoalRunPresenter(
         }
         return@AgentRunOutputSink
       }
-      handleStructuredProgressText(text)
+      synchronized(lock) {
+        handleStructuredProgressText(text)
+      }
     }
   }
 
@@ -261,6 +388,11 @@ private class GoalRunPresenter(
     val step = activeStepId ?: "unknown"
     state.liveStdout(
       "goal $issueKey: heartbeat subtask=$subtask step=$step liveness=$heartbeatLiveness\n",
+    )
+    observabilitySequence += 1
+    state.liveStdout(
+      "goal_observability: issue_key=$issueKey subtask_id=$subtask workflow_phase=$step " +
+        "worker_role=foreground liveness_class=$heartbeatLiveness sequence_number=$observabilitySequence\n",
     )
     sawRawChildOutputSinceLastHeartbeat = false
     if (heartbeatLiveness != GOAL_LIVENESS_DURABLE_PROGRESS) {
@@ -322,6 +454,36 @@ private fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (thi
   )
 }
 
+private data class GoalStatusCliRequestOptions(
+  val issueKey: String,
+  val agent: String?,
+  val agentOverride: String?,
+  val repoRoot: String?,
+  val diff: GoalStatusCliDiffOptions = GoalStatusCliDiffOptions(),
+)
+
+private data class GoalStatusCliDiffOptions(
+  val includeDiffStat: Boolean = false,
+  val selectedDiffHunkPaths: List<String> = emptyList(),
+  val selectedDiffMaxHunks: Int = DEFAULT_SELECTED_DIFF_MAX_HUNKS,
+  val selectedDiffMaxLines: Int = DEFAULT_SELECTED_DIFF_MAX_LINES,
+  val selectedDiffMaxBytes: Int = DEFAULT_SELECTED_DIFF_MAX_BYTES,
+)
+
+private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions): GoalRunnerStatusRequest =
+  GoalRunnerStatusRequest(
+    issueKey = options.issueKey,
+    invokedAgentId = options.agent ?: environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
+    configuredAgentOverrideId = options.agentOverride,
+    dbPathOverride = dbOverride,
+    repoRoot = options.repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    includeDiffStat = options.diff.includeDiffStat,
+    selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
+    selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,
+    selectedDiffMaxLines = options.diff.selectedDiffMaxLines,
+    selectedDiffMaxBytes = options.diff.selectedDiffMaxBytes,
+  )
+
 private fun goalRunText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
   appendLine("status: ${payload["status"]}")
@@ -341,7 +503,7 @@ private fun goalRunText(payload: Map<String, Any?>): String = buildString {
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
 
 private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
-  linkedMapOf(
+  linkedMapOf<String, Any?>(
     "status" to "ok",
     "issue_key" to it.issueKey,
     "complete_count" to it.completeCount,
@@ -351,7 +513,11 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "current_step" to it.currentStep,
     "active_agent" to it.activeAgent,
     "latest_liveness_signal" to it.latestLivenessSignal,
-  )
+  ).apply {
+    it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
+    it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
+    it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
+  }
 } ?: linkedMapOf(
   "status" to "not_found",
   "issue_key" to issueKey,
@@ -374,9 +540,83 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  (payload["latest_observability_event"] as? Map<*, *>)?.let { event ->
+    appendLine(
+      "latest_observability: phase=${event["workflow_phase"]} role=${event["worker_role"]} " +
+        "liveness=${event["liveness_class"]} sequence=${event["sequence_number"]}",
+    )
+  }
+  appendDiffStatusLines(payload)
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+
+private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
+  linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
+
+private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  appendLine("refresh_count: ${payload["refresh_count"]}")
+  appendLine("interval_seconds: ${payload["interval_seconds"]}")
+  val latestRefresh = payload["latest_refresh"] as? Map<*, *> ?: return@buildString
+  append(goalWatchRefreshText(latestRefresh))
+}
+
+private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
+  appendLine(
+    "watch_refresh: index=${refresh["refresh_index"]} status=${refresh["status"]} " +
+      "current_subtask=${refresh["current_subtask"] ?: "none"} " +
+      "current_step=${refresh["current_step"] ?: "none"} " +
+      "liveness=${refresh["latest_liveness_signal"] ?: "none"}",
+  )
+  (refresh["latest_observability_event"] as? Map<*, *>)?.let { event ->
+    appendLine(
+      "watch_observability: index=${refresh["refresh_index"]} phase=${event["workflow_phase"]} " +
+        "role=${event["worker_role"]} liveness=${event["liveness_class"]} " +
+        "sequence=${event["sequence_number"]}",
+    )
+  }
+  appendDiffStatusLines(refresh, watchIndex = refresh["refresh_index"]?.toString())
+}
+
+private fun StringBuilder.appendDiffStatusLines(payload: Map<*, *>, watchIndex: String? = null) {
+  val indexPrefix = watchIndex?.let { " index=$it" }.orEmpty()
+  (payload["diff_stat"] as? Map<*, *>)?.let { stat ->
+    appendLine(
+      "${if (watchIndex == null) "diff_stat" else "watch_diff_stat"}:$indexPrefix " +
+        "files_changed=${stat["files_changed"]} insertions=${stat["insertions"]} deletions=${stat["deletions"]}",
+    )
+  }
+  val selected = payload["selected_diff_hunks"] as? Map<*, *> ?: return
+  val hunks = (selected["hunks"] as? List<*>).orEmpty()
+  appendLine(
+    "${if (watchIndex == null) "selected_diff_hunks" else "watch_selected_diff_hunks"}:$indexPrefix " +
+      "count=${hunks.size} truncated=${selected["truncated"]}",
+  )
+  hunks.forEachIndexed { hunkIndex, rawHunk ->
+    val hunk = rawHunk as? Map<*, *> ?: return@forEachIndexed
+    val path = hunk["path"].toString().goalCliToken()
+    val staged = hunk["staged"]
+    val lines = (hunk["lines"] as? List<*>).orEmpty()
+    appendLine(
+      "${if (watchIndex == null) "selected_diff_hunk" else "watch_selected_diff_hunk"}:$indexPrefix " +
+        "hunk_index=${hunkIndex + 1} path=$path staged=$staged " +
+        "header=${hunk["header"].toString().goalCliToken()} line_count=${lines.size} truncated=${hunk["truncated"]}",
+    )
+    lines.forEachIndexed { lineIndex, rawLine ->
+      appendLine(
+        "${if (watchIndex == null) "selected_diff_line" else "watch_selected_diff_line"}:$indexPrefix " +
+          "hunk_index=${hunkIndex + 1} line_index=${lineIndex + 1} path=$path staged=$staged " +
+          "text=${rawLine.toString().goalCliToken()}",
+      )
+    }
+  }
+}
+
+private fun String.goalCliToken(): String = replace("\\", "\\\\")
+  .replace("\t", "\\t")
+  .replace(" ", "\\s")
 
 private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boolean): Map<String, Any?> = this?.let {
   linkedMapOf(
@@ -433,6 +673,9 @@ private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"
 private const val GOAL_LIVENESS_IDLE = "idle"
+private const val DEFAULT_GOAL_WATCH_INTERVAL_SECONDS = 5
+private const val DEFAULT_GOAL_WATCH_REFRESHES = 1
+private const val MILLIS_PER_SECOND = 1_000L
 private const val RUNTIME_EXECUTABLE_ENV = "SKILL_BILL_RUNTIME_EXECUTABLE"
 private const val RUNTIME_CLASSPATH_ENV = "SKILL_BILL_RUNTIME_CLASSPATH"
 private const val RUNTIME_PATH_SEPARATOR_ENV = "SKILL_BILL_PATH_SEPARATOR"

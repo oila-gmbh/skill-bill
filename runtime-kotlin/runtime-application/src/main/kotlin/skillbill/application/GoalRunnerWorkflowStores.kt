@@ -7,20 +7,27 @@ import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
 
 @Inject
@@ -182,6 +189,7 @@ private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
 class WorkflowGoalRunnerOutcomeStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -262,17 +270,78 @@ class WorkflowGoalRunnerOutcomeStore(
       val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
       val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
+      val observabilityEvent = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
         workflowStatus = record.workflowStatus,
         currentStepId = currentStep,
         progressToken = record.progressToken(),
         latestDurableProgressEvent = progressEvent,
-        latestLivenessSignal = progressEvent?.summary()
+        latestGoalObservabilityEvent = observabilityEvent?.toProgressEvent(),
+        latestLivenessSignal = observabilityEvent?.compactLivenessSummary()
+          ?: progressEvent?.summary()
           ?: "workflow_status=${record.workflowStatus}; step=$currentStep",
         lastSnapshotUpdatedAt = record.updatedAt,
       )
     }
+
+  override fun recordObservabilityEvent(
+    request: GoalRunnerObservabilityRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val observabilityPatch = GoalObservabilityArtifacts.patchForRuntimeEvent(
+      input = GoalObservabilityArtifacts.RuntimeEventInput(
+        artifacts = artifacts,
+        request = request,
+      ),
+      validator = goalObservabilityEventValidator,
+    )
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = observabilityPatch,
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    true
+  }
+
+  override fun recordWorkerSubtaskRequestOutcomes(
+    workflowId: String,
+    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
+    dbPathOverride: String?,
+  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existing = (artifacts[WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY] as? List<*>)
+      .orEmpty()
+      .mapNotNull { item -> item as? Map<*, *> }
+      .map { item -> JsonSupport.anyToStringAnyMap(item) }
+    val updatedOutcomes = (existing + outcomes.map(GoalRunnerWorkerSubtaskRequestOutcome::toArtifactMap))
+      .takeLast(WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT)
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY to updatedOutcomes),
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    true
+  }
 
   private fun loadContinuationCandidates(
     workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
@@ -513,6 +582,18 @@ private fun GoalRunnerProgressEvent.summary(): String = buildString {
   }
 }
 
+private fun skillbill.workflow.model.GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
+  GoalObservabilityProgressEvent(
+    issueKey = issueKey,
+    subtaskId = subtaskId,
+    workflowPhase = workflowPhase,
+    workerRole = workerRole,
+    livenessClass = livenessClass,
+    activitySummary = activitySummary,
+    sequenceNumber = sequenceNumber,
+    timestamp = timestamp,
+  )
+
 private fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
   "phase" to phase,
   "reason" to reason,
@@ -525,6 +606,45 @@ private fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = lin
   "last_file_activity_at" to lastFileActivityAt,
   "last_output_at" to lastOutputAt,
 )
+
+private const val WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY = "goal_worker_subtask_request_outcomes"
+private const val WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT = 50
+
+private fun GoalRunnerWorkerSubtaskRequestOutcome.toArtifactMap(): Map<String, Any?> = when (this) {
+  is GoalRunnerWorkerSubtaskRequestOutcome.Accepted -> linkedMapOf(
+    "status" to "accepted",
+    "source_stream" to sourceStream,
+    "request" to request.toArtifactMap(),
+    "subtask_id" to subtask.id,
+    "spec_path" to subtask.specPath,
+  )
+  is GoalRunnerWorkerSubtaskRequestOutcome.Queued -> linkedMapOf(
+    "status" to "queued",
+    "source_stream" to sourceStream,
+    "request" to request.toArtifactMap(),
+    "reason" to reason,
+  )
+  is GoalRunnerWorkerSubtaskRequestOutcome.Rejected -> linkedMapOf(
+    "status" to "rejected",
+    "source_stream" to sourceStream,
+    "reason" to reason.name.lowercase(),
+    "message" to message,
+  )
+  is GoalRunnerWorkerSubtaskRequestOutcome.RequiresOperatorConfirmation -> linkedMapOf(
+    "status" to "requires_operator_confirmation",
+    "source_stream" to sourceStream,
+    "request" to request.toArtifactMap(),
+    "reason" to reason,
+  )
+}
+
+private fun GoalRunnerWorkerSubtaskRequest.toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+  "name" to name,
+  "spec_path" to specPath,
+  "rationale" to rationale,
+  "depends_on_subtask_ids" to dependsOnSubtaskIds,
+  "requires_operator_confirmation" to requiresOperatorConfirmation,
+).filterValues { value -> value != null }
 
 private fun WorkflowStateSnapshot.progressToken(): String = listOf(
   workflowId,

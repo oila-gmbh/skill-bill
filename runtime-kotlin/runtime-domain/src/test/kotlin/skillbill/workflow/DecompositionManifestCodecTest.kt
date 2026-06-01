@@ -30,6 +30,27 @@ class DecompositionManifestCodecTest {
     assertContains(error.reason, "issue_key must be a string")
   }
 
+  @Test
+  fun `manifest exposes next sibling subtask id without schema changes`() {
+    val manifest = validManifest().copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "Foundation",
+          specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
+        ),
+        DecompositionSubtask(
+          id = 3,
+          name = "Follow up",
+          specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_3_follow_up.md",
+        ),
+      ),
+    )
+
+    assertEquals(4, manifest.nextSubtaskId())
+    assertEquals(manifest, DecompositionManifestCodec.decodeMap(manifest.toWireMap()))
+  }
+
   private fun validManifest(): DecompositionManifest = DecompositionManifest(
     issueKey = "SKILL-51",
     featureName = "decomposition",

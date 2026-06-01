@@ -373,6 +373,60 @@ rm -rf platform-packs/java
 
 In normal team usage, remove scaffolded example files with your usual VCS workflow instead of deleting committed pack files by hand. The explicit `link-skill` target receives a symlink to a rendered staging directory, not to the source skill directory.
 
+## Goal Observability
+
+`bill-feature-goal` hands confirmed decompositions to the foreground
+`skill-bill goal` runtime. The runtime owns a flat worker model: one runnable
+subtask, one durable child workflow, one fresh child process. Native or nested
+subagents may help the child session stay focused, but workflow-store state is
+the reliability contract.
+
+This keeps the SKILL-56 and SKILL-58 goal-runner behavior intact: status/watch
+are read-only, raw child output stays hidden unless debug output is requested,
+stale running children are reconciled against authoritative terminal outcomes,
+and the goal advances only after a durable child outcome is written.
+
+Run the goal normally to see compact progress while raw child output stays
+hidden:
+
+```bash
+skill-bill goal SKILL-901
+```
+
+```text
+goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress
+goal_observability: issue_key=SKILL-901 subtask_id=1 workflow_phase=implement worker_role=foreground liveness_class=durable_progress sequence_number=1
+```
+
+Use read-only status or watch commands when checking an in-flight run:
+
+```bash
+skill-bill goal status SKILL-901
+skill-bill goal watch SKILL-901 --interval-seconds 5 --max-refreshes 3
+```
+
+```text
+latest_observability: phase=implement role=phase_subagent liveness=durable_progress sequence=8
+watch_observability: index=2 phase=implement role=phase_subagent liveness=durable_progress sequence=8
+```
+
+Add current git activity only when needed:
+
+```bash
+skill-bill goal status SKILL-901 --diff-stat
+skill-bill goal status SKILL-901 \
+  --diff-hunk runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt \
+  --diff-hunk-max-hunks 2 \
+  --diff-hunk-max-lines 20 \
+  --diff-hunk-max-bytes 4000
+```
+
+```text
+diff_stat: files_changed=3 insertions=12 deletions=4
+selected_diff_hunks: count=1 truncated=false
+selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=+new
+```
+
 ## MCP Server
 
 `skill-bill-mcp` exposes the same local runtime primitives as structured MCP tools. It is useful when an agent can call local tools directly and should not parse CLI text.

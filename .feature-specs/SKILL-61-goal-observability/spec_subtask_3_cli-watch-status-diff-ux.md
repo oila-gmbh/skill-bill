@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: Complete
 ---
 
 # SKILL-61 Subtask 3 - CLI Watch, Status, and Diff UX
