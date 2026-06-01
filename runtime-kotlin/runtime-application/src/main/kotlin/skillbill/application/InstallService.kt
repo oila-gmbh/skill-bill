@@ -90,6 +90,12 @@ class InstallService(
     InstallPlanPolicy.validateInstallPlanSnapshot(plan, installPlanWireValidator)
   }
 
+  fun discoverPlatformPackSlugs(request: InstallPlanRequest): Set<String> = planningPorts.planningFactsPort
+    .collectPlanningFacts(InstallPlanningFactsRequest(request))
+    .facts
+    .platformManifests
+    .mapTo(mutableSetOf()) { manifest -> manifest.slug }
+
   fun linkSkill(source: Path, targetDir: Path, agent: String, repoRoot: Path? = null, home: Path? = null): List<Path> =
     skillLinkPort.linkSkill(
       InstallSkillLinkRequest(

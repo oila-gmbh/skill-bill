@@ -14,6 +14,7 @@ import skillbill.application.McpRegistrationService
 import skillbill.application.NativeAgentInstallService
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -34,6 +35,8 @@ import skillbill.model.RuntimeContext
 import skillbill.ports.install.model.NativeAgentLinkOutcome
 import skillbill.ports.install.model.NativeAgentLinkProvider
 import skillbill.ports.install.model.NativeAgentLinkRequest
+import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
 
@@ -111,6 +114,89 @@ class InstallApplyCommand(
       userHome = plan.request.home,
     )
     return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator
+  }
+}
+
+@Inject
+class InstallReplayLastSelectionCommand(
+  private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
+  private val installService: InstallService,
+  private val installSelectionPersistencePort: InstallSelectionPersistencePort,
+) : DocumentedCliCommand(
+  "replay-last-selection",
+  "Print the latest successful install choices as tab-separated replay fields.",
+) {
+  private val platformPacksRoot by option(
+    "--platform-packs",
+    help = "Platform packs root used to validate saved selected platform slugs.",
+  ).required()
+  private val skillsRoot by option(
+    "--skills",
+    help = "Base skills root used by the install planning fact collector.",
+  ).required()
+
+  override fun run() {
+    try {
+      val selection = installSelectionPersistencePort
+        .readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(state.userHome))
+        .selection
+      val availablePlatformSlugs = installService.discoverPlatformPackSlugs(replayDiscoveryRequest())
+      val staleSlugs = selection.platformPackSelection.selectedSlugs - availablePlatformSlugs
+      require(staleSlugs.isEmpty()) {
+        "Saved install selection references unavailable platform pack slug(s): " +
+          "${staleSlugs.sorted().joinToString(", ")}."
+      }
+      state.completeText(selection.toReplayText(), emptyMap())
+    } catch (error: SkillBillRuntimeException) {
+      state.completeText("${error.message.orEmpty()}\n", emptyMap(), exitCode = 1)
+    } catch (error: IllegalArgumentException) {
+      state.completeText("${error.message.orEmpty()}\n", emptyMap(), exitCode = 1)
+    }
+  }
+
+  private fun replayDiscoveryRequest(): InstallPlanRequest = InstallPlanRequest(
+    repoRoot = Path.of(platformPacksRoot).toAbsolutePath().normalize().parent ?: Path.of(".").toAbsolutePath(),
+    home = state.userHome,
+    agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
+    platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.NONE),
+    telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
+    mcpRegistrationChoice = McpRegistrationChoice(register = false),
+    runtimeDistributionInputs = RuntimeDistributionInputs(
+      runtimeInstallRoot = state.userHome.resolve(".skill-bill/runtime"),
+    ),
+    targetPaths = InstallationTargetPaths(
+      skillsRoot = Path.of(skillsRoot),
+      platformPacksRoot = Path.of(platformPacksRoot),
+    ),
+    windowsSymlinkPreflight = WindowsSymlinkPreflight(
+      state = WindowsSymlinkPreflightState.NOT_WINDOWS,
+      decision = WindowsSymlinkDecision.NOT_REQUIRED,
+    ),
+  )
+
+  private fun skillbill.install.model.SharedInstallSelection.toReplayText(): String = buildString {
+    selectedAgents.map(InstallAgent::id).sorted().forEach { agentId ->
+      append("agent\t")
+      append(agentId)
+      append('\t')
+      append(installAgentService.agentPath(agentId, state.userHome))
+      append('\n')
+    }
+    append("platform-mode\t")
+    append(platformPackSelection.mode.name.lowercase())
+    append('\n')
+    platformPackSelection.selectedSlugs.sorted().forEach { slug ->
+      append("platform\t")
+      append(slug)
+      append('\n')
+    }
+    append("telemetry\t")
+    append(telemetryLevel.id)
+    append('\n')
+    append("mcp\t")
+    append(if (mcpRegistrationChoice.register) "register" else "skip")
+    append('\n')
   }
 }
 

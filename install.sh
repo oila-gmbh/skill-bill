@@ -28,6 +28,7 @@ DESKTOP_APP_PREBUILT_SOURCE_PATH=""
 INSTALL_SOURCE="prebuilt"
 RELEASE_TAG="${SKILL_BILL_RELEASE_TAG:-}"
 DESKTOP_APP_ONLY=0
+REUSE_LAST_SELECTION=0
 RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-Sermilion/skill-bill}"
 # Offline / test overrides. When SKILL_BILL_RELEASE_DIR is set, assets are copied
 # from that local directory (no network). When SKILL_BILL_RELEASE_BASE_URL is set,
@@ -68,7 +69,7 @@ usage() {
   cat <<USAGE
 Usage: ./install.sh [--from-source] [--release TAG]
                     [--with-desktop-app|--no-desktop-app] [--desktop-app-dir PATH]
-                    [--desktop-app-only]
+                    [--desktop-app-only] [--reuse-last-selection]
 
 By default the installer downloads and checksum-verifies the prebuilt runtime
 images from the matching GitHub release — no JDK and no Gradle build required.
@@ -86,6 +87,8 @@ Options:
   --desktop-app-only       Install ONLY the prebuilt desktop app (skip the full
                            installer). Use this to add the desktop app later
                            without re-running the full install.
+  --reuse-last-selection   Reuse the latest successful agent, platform,
+                           telemetry, and MCP choices from ~/.skill-bill.
 USAGE
 }
 
@@ -110,6 +113,10 @@ parse_args() {
         ;;
       --desktop-app-only)
         DESKTOP_APP_ONLY=1
+        shift
+        ;;
+      --reuse-last-selection)
+        REUSE_LAST_SELECTION=1
         shift
         ;;
       --release)
@@ -151,6 +158,12 @@ parse_args() {
         ;;
     esac
   done
+
+  if [[ "$DESKTOP_APP_ONLY" -eq 1 && "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+    err "--reuse-last-selection cannot be combined with --desktop-app-only."
+    err "Run the full installer with --reuse-last-selection, or run --desktop-app-only by itself."
+    exit 1
+  fi
 }
 
 host_path() {
@@ -774,6 +787,19 @@ build_kotlin_runtime_distributions() {
 
 run_runtime_cli() {
   SKILL_BILL_RUNTIME_EXECUTABLE="$RUNTIME_CLI_BIN" "$RUNTIME_CLI_BIN" --home "$HOME" "$@"
+}
+
+run_selection_runtime_cli() {
+  local runtime_bin="$RUNTIME_CLI_BUILD_BIN"
+  if [[ ! -x "$runtime_bin" ]]; then
+    runtime_bin="$RUNTIME_CLI_BIN"
+  fi
+  if [[ ! -x "$runtime_bin" ]]; then
+    err "Cannot reuse saved install selections: no Skill Bill runtime CLI is available before cleanup."
+    err "Run ./install.sh without --reuse-last-selection to choose install options again."
+    exit 1
+  fi
+  SKILL_BILL_RUNTIME_EXECUTABLE="$runtime_bin" "$runtime_bin" --home "$HOME" "$@"
 }
 
 path_contains_dir() {
@@ -1606,6 +1632,108 @@ prompt_for_telemetry_preference() {
   done
 }
 
+replay_last_install_selection() {
+  local output
+  local kind
+  local value
+  local extra
+
+  if ! output="$(
+    run_selection_runtime_cli install replay-last-selection \
+      --skills "$SKILLS_DIR" \
+      --platform-packs "$PLATFORM_PACKS_DIR" 2>&1
+  )"; then
+    err "Cannot reuse saved install selections."
+    if [[ -n "$(trim_string "$output")" ]]; then
+      err "$(trim_string "$output")"
+    fi
+    err "Run ./install.sh without --reuse-last-selection to choose install options again."
+    exit 1
+  fi
+
+  AGENT_SELECTION_MODE="manual"
+  AGENT_NAMES=()
+  AGENT_PATHS=()
+  PLATFORM_SELECTION_MODE="none"
+  SELECTED_PLATFORM_PACKAGES=()
+  TELEMETRY_LEVEL="anonymous"
+  MCP_REGISTRATION="register"
+
+  while IFS=$'\t' read -r kind value extra; do
+    [[ -z "${kind:-}" ]] && continue
+    case "$kind" in
+      agent)
+        if [[ -z "${value:-}" || -z "${extra:-}" ]]; then
+          err "Cannot reuse saved install selections: malformed replay agent entry."
+          exit 1
+        fi
+        AGENT_NAMES+=("$value")
+        AGENT_PATHS+=("$extra")
+        ;;
+      platform-mode)
+        case "$value" in
+          none|selected|all)
+            PLATFORM_SELECTION_MODE="$value"
+            ;;
+          *)
+            err "Cannot reuse saved install selections: unknown platform mode '$value'."
+            exit 1
+            ;;
+        esac
+        ;;
+      platform)
+        if [[ -z "${value:-}" ]]; then
+          err "Cannot reuse saved install selections: malformed replay platform entry."
+          exit 1
+        fi
+        SELECTED_PLATFORM_PACKAGES+=("$value")
+        ;;
+      telemetry)
+        case "$value" in
+          anonymous|full|off)
+            TELEMETRY_LEVEL="$value"
+            ;;
+          *)
+            err "Cannot reuse saved install selections: unknown telemetry level '$value'."
+            exit 1
+            ;;
+        esac
+        ;;
+      mcp)
+        case "$value" in
+          register|skip)
+            MCP_REGISTRATION="$value"
+            ;;
+          *)
+            err "Cannot reuse saved install selections: unknown MCP registration choice '$value'."
+            exit 1
+            ;;
+        esac
+        ;;
+      *)
+        err "Cannot reuse saved install selections: unknown replay field '$kind'."
+        exit 1
+        ;;
+    esac
+  done <<< "$output"
+
+  if [[ ${#AGENT_NAMES[@]} -eq 0 ]]; then
+    err "Cannot reuse saved install selections: saved selection has no agents."
+    err "Run ./install.sh without --reuse-last-selection to choose install options again."
+    exit 1
+  fi
+  if [[ "$PLATFORM_SELECTION_MODE" == "selected" && ${#SELECTED_PLATFORM_PACKAGES[@]} -eq 0 ]]; then
+    err "Cannot reuse saved install selections: selected platform mode has no saved platform slugs."
+    err "Run ./install.sh without --reuse-last-selection to choose install options again."
+    exit 1
+  fi
+  if [[ "$PLATFORM_SELECTION_MODE" == "all" ]]; then
+    SELECTED_PLATFORM_PACKAGES=("${PLATFORM_PACKAGES[@]}")
+  fi
+
+  ok "Reusing latest successful install selections from $SKILL_BILL_STATE_DIR/install-selection.json"
+}
+
 build_runtime_install_args() {
   local i
 
@@ -1739,18 +1867,28 @@ run_desktop_only_install() {
 
 run_full_install() {
   print_install_plan "full"
+  if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+    build_platform_packages
+    replay_last_install_selection
+  fi
   run_pre_install_uninstall
   install_runtime_distributions
-  build_platform_packages
+  if [[ "$REUSE_LAST_SELECTION" -ne 1 ]]; then
+    build_platform_packages
+  fi
 
   echo ""
   printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
   echo ""
   info "Supported agents: copilot, claude, codex, opencode, junie"
-  info "Install behavior: collect choices, then delegate planning and apply to the Kotlin runtime."
-  prompt_for_agent_selection
-  prompt_for_platform_selection
-  prompt_for_telemetry_preference
+  if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+    info "Install behavior: reuse saved choices, then delegate planning and apply to the Kotlin runtime."
+  else
+    info "Install behavior: collect choices, then delegate planning and apply to the Kotlin runtime."
+    prompt_for_agent_selection
+    prompt_for_platform_selection
+    prompt_for_telemetry_preference
+  fi
   prompt_for_desktop_app_install
   install_runtime_launchers
   build_desktop_app_distribution
@@ -1765,6 +1903,9 @@ run_full_install() {
   info "Telemetry:      $TELEMETRY_LEVEL"
   info "MCP:            $MCP_REGISTRATION"
   info "Desktop app:    $DESKTOP_APP_INSTALL"
+  if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+    info "Selections:     reused latest successful install selection"
+  fi
   echo ""
 
   apply_runtime_install
@@ -1778,6 +1919,9 @@ run_full_install() {
   info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
   info "Telemetry:       $TELEMETRY_LEVEL"
   info "MCP:             $MCP_REGISTRATION"
+  if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+    info "Selections:      reused latest successful install selection"
+  fi
   if [[ "$DESKTOP_APP_INSTALL" == "yes" ]]; then
     info "Desktop app:     ${DESKTOP_APP_INSTALLED_PATH:-installed for $(desktop_host_os)}"
     if [[ -n "$DESKTOP_APP_LAUNCHER_PATH" ]]; then

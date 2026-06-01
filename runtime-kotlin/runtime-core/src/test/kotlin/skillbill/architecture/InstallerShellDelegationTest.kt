@@ -32,6 +32,8 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "--telemetry \"\$TELEMETRY_LEVEL\"")
     assertContains(installScript, "--mcp \"\$MCP_REGISTRATION\"")
     assertContains(installScript, "--runtime-mcp-bin \"\$RUNTIME_MCP_BIN\"")
+    assertContains(installScript, "--reuse-last-selection")
+    assertContains(installScript, "install replay-last-selection")
     assertContains(installScript, "SKILL_BILL_RUNTIME_EXECUTABLE=\"\$RUNTIME_CLI_BIN\"")
     // The Gradle desktop build is now gated behind --from-source: the helper and the
     // Gradle task must still exist (from-source coverage), but only run when
@@ -52,7 +54,6 @@ class InstallerShellDelegationTest {
     assertFalse(installScript.contains("install link-opencode-agents"))
     assertFalse(installScript.contains("install link-junie-agents"))
     assertFalse(installScript.contains("telemetry set-level"))
-    assertFalse(installScript.contains("install-selection.json"))
     assertFalse(installScript.contains("firstRun."))
   }
 
