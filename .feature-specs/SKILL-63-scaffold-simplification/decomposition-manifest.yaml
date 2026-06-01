@@ -20,7 +20,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wfl-20260601-173424-ftlc"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies: []
 - id: 2
   name: "full-platform-pack-contract"
