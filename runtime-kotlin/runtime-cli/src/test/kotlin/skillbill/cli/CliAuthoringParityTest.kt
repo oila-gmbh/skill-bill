@@ -182,7 +182,7 @@ class CliAuthoringParityTest {
 
     listOf(
       listOf("new-addon", "--interactive", "--format", "json") to
-        "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
+        "skill-bill new-addon --platform <platform> --name <name>",
       listOf("create-and-fill", "--interactive", "--format", "json") to
         "skill-bill create-and-fill --payload <file> --body-file <file>",
       listOf("edit", "bill-feature-task", "--repo-root", outerRepoRoot().toString(), "--format", "json") to

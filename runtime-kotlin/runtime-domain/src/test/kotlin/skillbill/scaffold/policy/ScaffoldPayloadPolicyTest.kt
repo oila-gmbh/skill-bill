@@ -1,6 +1,7 @@
 package skillbill.scaffold.policy
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -19,6 +20,26 @@ import kotlin.test.assertFailsWith
  * (`parseBaselineLayerPayload`).
  */
 class ScaffoldPayloadPolicyTest {
+  @Test
+  fun `active creation kinds exclude retired partial scaffold kinds`() {
+    assertEquals(
+      setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON),
+      ACTIVE_CREATION_SKILL_KINDS,
+    )
+    assertEquals(true, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED !in ACTIVE_CREATION_SKILL_KINDS)
+    assertEquals(true, SKILL_KIND_CODE_REVIEW_AREA !in ACTIVE_CREATION_SKILL_KINDS)
+  }
+
+  @Test
+  fun `retired partial scaffold kind error recommends full pack or edit remove`() {
+    val error = assertFailsWith<RetiredScaffoldKindError> {
+      rejectRetiredPartialScaffoldKind(SKILL_KIND_CODE_REVIEW_AREA)
+    }
+    val message = error.message.orEmpty()
+    assertEquals(true, message.contains("platform-pack"))
+    assertEquals(true, message.contains("edit/remove existing platform-pack content"))
+  }
+
   @Test
   fun `parseBaselineLayerPayload accepts a well-formed object`() {
     val raw = mapOf(

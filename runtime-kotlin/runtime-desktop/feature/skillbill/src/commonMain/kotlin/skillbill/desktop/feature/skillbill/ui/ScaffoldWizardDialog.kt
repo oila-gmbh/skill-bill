@@ -219,7 +219,7 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     SectionLabel("Wizard kind")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      ScaffoldKind.values().forEach { kind ->
+      ScaffoldKind.activeCreationValues().forEach { kind ->
         val isSelected = kind == selected
         val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
         val foregroundColor = when {
@@ -338,15 +338,6 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
           callbacks.onFormChanged { it.copy(displayName = value) }
         },
       )
-      PresetPicker(
-        label = "Skeleton mode",
-        options = listOf("full" to "Full skeleton", "starter" to "Starter skeleton"),
-        selected = fields.skeletonMode,
-        enabled = !state.busy,
-        onSelected = { value ->
-          callbacks.onFormChanged { it.copy(skeletonMode = value) }
-        },
-      )
       BaselineLayerControls(state = state, callbacks = callbacks)
     }
     ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> {
@@ -422,14 +413,6 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
         enabled = !state.busy,
         onSelected = { value ->
           callbacks.onFormChanged { it.copy(platform = value) }
-        },
-      )
-      TextFieldRow(
-        label = "Body",
-        value = fields.addonBody,
-        enabled = !state.busy,
-        onValueChanged = { value ->
-          callbacks.onFormChanged { it.copy(addonBody = value) }
         },
       )
     }

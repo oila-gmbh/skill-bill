@@ -286,7 +286,7 @@ class CliInstallRuntimeTest {
   fun `mcp registration writes and removes packaged bin commands for all config formats`() {
     mcpCases().forEach { case ->
       val home = Files.createTempDirectory("skillbill-cli-mcp-${case.agent}")
-      val context = CliRuntimeContext(userHome = home)
+      val context = installCliContext(home)
       val configPath = home.resolve(case.relativeConfigPath)
       Files.createDirectories(configPath.parent)
       Files.writeString(configPath, case.seed)
@@ -307,7 +307,7 @@ class CliInstallRuntimeTest {
   @Test
   fun `opencode mcp registration fails loudly and preserves invalid jsonc`() {
     val home = Files.createTempDirectory("skillbill-cli-invalid-opencode")
-    val context = CliRuntimeContext(userHome = home)
+    val context = installCliContext(home)
     val configPath = home.resolve(".config/opencode/opencode.json")
     Files.createDirectories(configPath.parent)
     val invalid = "{\n  \"theme\": \"opencode\",\n  \"mcp\": \n"
@@ -347,7 +347,7 @@ class CliInstallRuntimeTest {
           "--legacy-name",
           "not-skill-bill",
         ),
-        CliRuntimeContext(userHome = home),
+        installCliContext(home),
       )
 
     assertEquals(0, cleanup.exitCode, cleanup.stdout)
@@ -362,7 +362,10 @@ class CliInstallRuntimeTest {
     val home = Files.createTempDirectory("skillbill cli home with spaces")
     Files.createDirectories(home.resolve(".codex"))
 
-    val result = CliRuntime.run(listOf("--home", home.toString(), "install", "agent-path", "codex"))
+    val result = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "agent-path", "codex"),
+      installCliContext(home),
+    )
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(home.resolve(".codex/skills").toString(), result.stdout.trim())
@@ -378,8 +381,13 @@ class CliInstallRuntimeTest {
         "--skills",
         fixture.skills.toString(),
       ) + extraArgs,
-      CliRuntimeContext(userHome = fixture.home),
+      installCliContext(fixture.home),
     )
+
+  private fun installCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
+    userHome = home,
+    environment = emptyMap(),
+  )
 
   private fun installFixture(): InstallFixture {
     val home = Files.createTempDirectory("skillbill-cli-install-native")

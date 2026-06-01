@@ -19,9 +19,6 @@ class CliExternalAuthorDryRunTest {
       val baselineSkill = scaffoldPlatformPack(fixture)
       assertValidationPasses(fixture.repoRoot, fixture.context)
 
-      scaffoldQualityCheckOverride(fixture)
-      assertValidationPasses(fixture.repoRoot, fixture.context)
-
       val installedLink = linkBaselineSkill(fixture, baselineSkill)
 
       Files.deleteIfExists(installedLink)
@@ -59,7 +56,7 @@ private fun createExternalAuthorDryRunFixture(): ExternalAuthorDryRunFixture {
     repoRoot = repoRoot,
     platform = platform,
     packRoot = repoRoot.resolve("platform-packs").resolve(platform),
-    context = CliRuntimeContext(userHome = userHome),
+    context = CliRuntimeContext(userHome = userHome, environment = emptyMap()),
   )
 }
 
@@ -115,27 +112,6 @@ private fun scaffoldPlatformPack(fixture: ExternalAuthorDryRunFixture): Path {
   return baselineSkill
 }
 
-private fun scaffoldQualityCheckOverride(fixture: ExternalAuthorDryRunFixture) {
-  preparePackForQualityCheckOverride(fixture.packRoot)
-  val payloadFile = fixture.tempRoot.resolve("external-quality-check-override-payload.json")
-  Files.writeString(
-    payloadFile,
-    CliOutput.emit(externalQualityCheckOverridePayload(fixture.repoRoot, fixture.platform), CliFormat.JSON),
-  )
-
-  val result =
-    withTemporaryUserHome(fixture.userHome) {
-      CliRuntime.run(listOf("new", "--payload", payloadFile.toString(), "--format", "json"), fixture.context)
-    }
-  val qualityCheckSkill = fixture.packRoot
-    .resolve("quality-check")
-    .resolve("bill-${fixture.platform}-code-check")
-
-  assertEquals(0, result.exitCode, result.stdout)
-  assertEquals("ok", result.payload?.get("status"), result.stdout)
-  assertTrue(Files.isRegularFile(qualityCheckSkill.resolve("content.md")))
-}
-
 private fun linkBaselineSkill(fixture: ExternalAuthorDryRunFixture, baselineSkill: Path): Path {
   val targetDir = fixture.tempRoot.resolve("agent").resolve("skills")
   val result =
@@ -164,7 +140,6 @@ private fun externalPackPayload(repoRoot: Path, platform: String): Map<String, A
   "scaffold_payload_version" to "1.0",
   "kind" to "platform-pack",
   "platform" to platform,
-  "skeleton_mode" to "starter",
   "display_name" to "External",
   "description" to "Use when reviewing external author fixture changes.",
   "routing_signals" to mapOf(
@@ -173,24 +148,6 @@ private fun externalPackPayload(repoRoot: Path, platform: String): Map<String, A
   ),
   "repo_root" to repoRoot.toString(),
 )
-
-private fun externalQualityCheckOverridePayload(repoRoot: Path, platform: String): Map<String, Any?> = mapOf(
-  "scaffold_payload_version" to "1.0",
-  "kind" to "platform-override-piloted",
-  "platform" to platform,
-  "family" to "quality-check",
-  "repo_root" to repoRoot.toString(),
-)
-
-private fun preparePackForQualityCheckOverride(packRoot: Path) {
-  val manifestPath = packRoot.resolve("platform.yaml")
-  val manifestWithoutQualityCheck =
-    Files.readAllLines(manifestPath)
-      .filterNot { line -> line.trimStart().startsWith("declared_quality_check_file:") }
-      .joinToString("\n") + "\n"
-  Files.writeString(manifestPath, manifestWithoutQualityCheck)
-  deleteRecursively(packRoot.resolve("quality-check"))
-}
 
 private fun assertValidationPasses(repoRoot: Path, context: CliRuntimeContext) {
   val result =

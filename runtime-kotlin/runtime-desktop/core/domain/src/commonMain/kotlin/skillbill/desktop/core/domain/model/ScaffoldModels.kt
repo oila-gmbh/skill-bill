@@ -1,23 +1,24 @@
 package skillbill.desktop.core.domain.model
 
 /**
- * Supported wizard kinds. Mirrors the runtime's SUPPORTED_SKILL_KINDS exactly so contract-valid
- * payloads can be produced 1:1 from a single enum value.
+ * Scaffold kind identifiers. Retired partial kinds remain modeled so legacy source records can be
+ * displayed and removed, but only [activeCreationValues] are offered by creation surfaces.
  */
-enum class ScaffoldKind(val payloadKind: String, val displayLabel: String) {
-  HORIZONTAL_SKILL("horizontal", "Horizontal skill"),
-  PLATFORM_PACK("platform-pack", "Platform pack"),
-  PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family"),
-  CODE_REVIEW_AREA("code-review-area", "Code-review area"),
-  ADD_ON("add-on", "Add-on"),
-}
+enum class ScaffoldKind(
+  val payloadKind: String,
+  val displayLabel: String,
+  val creationSupported: Boolean,
+) {
+  HORIZONTAL_SKILL("horizontal", "Horizontal skill", true),
+  PLATFORM_PACK("platform-pack", "Platform pack", true),
+  PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family", false),
+  CODE_REVIEW_AREA("code-review-area", "Code-review area", false),
+  ADD_ON("add-on", "Add-on", true),
+  ;
 
-/**
- * Skeleton-mode selector for platform-pack scaffolds. Mirrors the runtime payload field.
- */
-enum class ScaffoldPlatformPackSkeleton {
-  STARTER,
-  FULL,
+  companion object {
+    fun activeCreationValues(): List<ScaffoldKind> = entries.filter { it.creationSupported }
+  }
 }
 
 /**
@@ -76,12 +77,6 @@ sealed class ScaffoldPayload {
     val platform: String,
     val displayName: String = "",
     val description: String = "",
-    val skeletonMode: ScaffoldPlatformPackSkeleton = ScaffoldPlatformPackSkeleton.FULL,
-    /**
-     * Optional specialist-area override (must come from [ScaffoldCatalogSnapshot.approvedCodeReviewAreas]).
-     * When non-empty, the wizard must not also send a skeleton mode — the contract is mutually exclusive.
-     */
-    val specialistAreas: List<String> = emptyList(),
     val strongRoutingSignals: List<String> = emptyList(),
     val tieBreakers: List<String> = emptyList(),
     val baselineLayers: List<ScaffoldBaselineLayerPayload> = emptyList(),
@@ -96,14 +91,6 @@ sealed class ScaffoldPayload {
       target["platform"] = platform
       if (displayName.isNotBlank()) target["display_name"] = displayName
       if (description.isNotBlank()) target["description"] = description
-      if (specialistAreas.isNotEmpty()) {
-        target["specialist_areas"] = specialistAreas
-      } else {
-        target["skeleton_mode"] = when (skeletonMode) {
-          ScaffoldPlatformPackSkeleton.STARTER -> "starter"
-          ScaffoldPlatformPackSkeleton.FULL -> "full"
-        }
-      }
       if (strongRoutingSignals.isNotEmpty() || tieBreakers.isNotEmpty()) {
         val routing = linkedMapOf<String, Any?>()
         if (strongRoutingSignals.isNotEmpty()) routing["strong"] = strongRoutingSignals

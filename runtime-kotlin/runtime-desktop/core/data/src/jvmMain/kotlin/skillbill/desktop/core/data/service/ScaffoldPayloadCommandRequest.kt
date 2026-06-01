@@ -2,13 +2,13 @@ package skillbill.desktop.core.data.service
 
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldPayload
-import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
+import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 
 /**
  * SKILL-52.2 subtask 2: direct sealed → sealed mapping from the desktop's typed
@@ -34,15 +34,6 @@ internal fun ScaffoldPayload.toCommandRequest(): ScaffoldCommandRequest = when (
     platform = platform,
     displayName = displayName,
     description = description,
-    skeletonMode = if (specialistAreas.isEmpty()) {
-      when (skeletonMode) {
-        ScaffoldPlatformPackSkeleton.STARTER -> "starter"
-        ScaffoldPlatformPackSkeleton.FULL -> "full"
-      }
-    } else {
-      null
-    },
-    specialistAreas = specialistAreas.takeIf { it.isNotEmpty() },
     routingSignals = if (strongRoutingSignals.isNotEmpty() || tieBreakers.isNotEmpty()) {
       RoutingSignalsInput(
         strong = strongRoutingSignals.takeIf { it.isNotEmpty() },
@@ -58,24 +49,8 @@ internal fun ScaffoldPayload.toCommandRequest(): ScaffoldCommandRequest = when (
     scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
     repoRoot = repoRoot,
   )
-  is ScaffoldPayload.PlatformOverride -> ScaffoldCommandRequest.PlatformOverride(
-    platform = platform,
-    family = family,
-    description = description,
-    contentBody = contentBody,
-    subagentSpecialists = subagentSpecialists.takeIf { it.isNotEmpty() },
-    suppressSubagents = suppressSubagents,
-    scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
-    repoRoot = repoRoot,
-  )
-  is ScaffoldPayload.CodeReviewArea -> ScaffoldCommandRequest.CodeReviewArea(
-    platform = platform,
-    area = area,
-    description = description,
-    contentBody = contentBody,
-    scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
-    repoRoot = repoRoot,
-  )
+  is ScaffoldPayload.PlatformOverride -> rejectRetiredPartialScaffoldCommandKind(kind.payloadKind)
+  is ScaffoldPayload.CodeReviewArea -> rejectRetiredPartialScaffoldCommandKind(kind.payloadKind)
   is ScaffoldPayload.AddOn -> ScaffoldCommandRequest.AddOn(
     name = name,
     platform = platform,

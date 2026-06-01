@@ -69,8 +69,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "kotlin",
       displayName = "Kotlin",
       description = "",
-      skeletonMode = "starter",
-      specialistAreas = null,
       routingSignals = RoutingSignalsInput(strong = listOf(".kt"), tieBreakers = null),
       baselineLayers = emptyList(),
       subagentSpecialists = null,
@@ -84,7 +82,7 @@ class ScaffoldCommandRequestRawPayloadTest {
     assertEquals("platform-pack", raw["kind"])
     assertEquals("kotlin", raw["platform"])
     assertEquals("Kotlin", raw["display_name"])
-    assertEquals("starter", raw["skeleton_mode"])
+    assertFalse("skeleton_mode" in raw)
     assertFalse("specialist_areas" in raw)
     val routing = raw["routing_signals"] as Map<*, *>
     assertEquals(listOf(".kt"), routing["strong"])
@@ -101,8 +99,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "kotlin",
       displayName = "Kotlin",
       description = "",
-      skeletonMode = "full",
-      specialistAreas = null,
       routingSignals = null,
       baselineLayers = emptyList(),
       subagentSpecialists = null,
@@ -116,8 +112,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "kotlin",
       displayName = "Kotlin",
       description = "",
-      skeletonMode = "full",
-      specialistAreas = null,
       routingSignals = null,
       baselineLayers = emptyList(),
       subagentSpecialists = emptyList(),
@@ -153,8 +147,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "androidx",
       displayName = "AndroidX",
       description = "",
-      skeletonMode = "starter",
-      specialistAreas = null,
       routingSignals = RoutingSignalsInput(strong = listOf("androidx"), tieBreakers = null),
       baselineLayers = listOf(layerA, layerB),
       subagentSpecialists = null,
@@ -182,8 +174,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "kotlin",
       displayName = "Kotlin",
       description = "",
-      skeletonMode = "full",
-      specialistAreas = null,
       routingSignals = null,
       baselineLayers = emptyList(),
       subagentSpecialists = null,
@@ -202,8 +192,6 @@ class ScaffoldCommandRequestRawPayloadTest {
       platform = "kotlin",
       displayName = "",
       description = "",
-      skeletonMode = "full",
-      specialistAreas = null,
       routingSignals = null,
       baselineLayers = emptyList(),
       subagentSpecialists = null,

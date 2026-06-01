@@ -71,7 +71,7 @@ cd runtime-kotlin
 Manual smoke:
 
 1. Open a temporary repo copy.
-2. Create a starter platform pack.
+2. Create a full platform pack.
 3. Validate the repo.
 4. Confirm generated wrappers are not checked in or editable.
 5. Revert the temporary copy outside the app.

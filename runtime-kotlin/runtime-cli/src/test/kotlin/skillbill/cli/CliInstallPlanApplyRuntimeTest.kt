@@ -48,7 +48,7 @@ class CliInstallPlanApplyRuntimeTest {
   fun `install plan maps manual agents platforms telemetry and mcp choices`() {
     val fixture = installPlanApplyFixture()
 
-    val result = CliRuntime.run(manualPlanArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(manualPlanArguments(fixture), installPlanCliContext(fixture.home))
 
     assertEquals(0, result.exitCode, result.stdout)
     val payload = decodeInstallPlanApplyJson(result.stdout)
@@ -89,7 +89,7 @@ class CliInstallPlanApplyRuntimeTest {
       val fixture = installPlanApplyFixture()
       createDetectedAgentHomes(fixture.home)
 
-      val result = CliRuntime.run(detectedPlanArguments(fixture, telemetry), CliRuntimeContext(userHome = fixture.home))
+      val result = CliRuntime.run(detectedPlanArguments(fixture, telemetry), installPlanCliContext(fixture.home))
 
       assertEquals(0, result.exitCode, "$telemetry: ${result.stdout}")
       val payload = decodeInstallPlanApplyJson(result.stdout)
@@ -113,7 +113,7 @@ class CliInstallPlanApplyRuntimeTest {
 
     val result = CliRuntime.run(
       manualBaseOnlyApplyArguments(fixture, targetsByAgent),
-      CliRuntimeContext(userHome = fixture.home),
+      installPlanCliContext(fixture.home),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -244,7 +244,7 @@ class CliInstallPlanApplyRuntimeTest {
       payload = decodeInstallPlanApplyJson(
         CliRuntime.run(
           singleCodexApplyArguments(selectedFixture, platformMode = "selected", platforms = listOf("kotlin")),
-          CliRuntimeContext(userHome = selectedFixture.home),
+          installPlanCliContext(selectedFixture.home),
         ).also { result -> assertEquals(0, result.exitCode, result.stdout) }.stdout,
       ),
       expectedSelectedPlatforms = setOf("kotlin"),
@@ -262,7 +262,7 @@ class CliInstallPlanApplyRuntimeTest {
       payload = decodeInstallPlanApplyJson(
         CliRuntime.run(
           singleCodexApplyArguments(allFixture, platformMode = "all"),
-          CliRuntimeContext(userHome = allFixture.home),
+          installPlanCliContext(allFixture.home),
         ).also { result -> assertEquals(0, result.exitCode, result.stdout) }.stdout,
       ),
       expectedSelectedPlatforms = setOf("kmp", "kotlin"),
@@ -283,7 +283,7 @@ class CliInstallPlanApplyRuntimeTest {
     val fixture = installPlanApplyFixture()
     createDetectedAgentHomes(fixture.home)
 
-    val result = CliRuntime.run(detectedApplyArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(detectedApplyArguments(fixture), installPlanCliContext(fixture.home))
 
     assertEquals(0, result.exitCode, result.stdout)
     val selection = readInstallSelection(fixture.home)
@@ -304,7 +304,7 @@ class CliInstallPlanApplyRuntimeTest {
 
     val result = CliRuntime.run(
       manualSelectedPlatformRegisterMcpApplyArguments(fixture, runtimeMcpBin),
-      CliRuntimeContext(userHome = fixture.home),
+      installPlanCliContext(fixture.home),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -337,7 +337,7 @@ class CliInstallPlanApplyRuntimeTest {
         platformMode = "none",
         extraArgs = listOf("--replace-existing-skill-bill-links"),
       ),
-      CliRuntimeContext(userHome = fixture.home),
+      installPlanCliContext(fixture.home),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -353,7 +353,7 @@ class CliInstallPlanApplyRuntimeTest {
   fun `install apply renders structured windows symlink preflight failure`() {
     val fixture = installPlanApplyFixture()
 
-    val result = CliRuntime.run(windowsFailureApplyArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(windowsFailureApplyArguments(fixture), installPlanCliContext(fixture.home))
 
     assertEquals(1, result.exitCode, result.stdout)
     val payload = decodeInstallPlanApplyJson(result.stdout)
@@ -383,7 +383,7 @@ class CliInstallPlanApplyRuntimeTest {
     // infra-fs adapter). This proves the CLI seam still loud-fails through the
     // inverted port path, not a default-constructed concrete validator.
     val installService = RuntimeComponent::class
-      .create(CliRuntimeContext(userHome = fixture.home).toRuntimeContext())
+      .create(installPlanCliContext(fixture.home).toRuntimeContext())
       .installService
     val planError = assertFailsWith<InvalidInstallPlanSchemaError> {
       installPlanPayload(invalidPlan, installService)
@@ -400,13 +400,13 @@ class CliInstallPlanApplyRuntimeTest {
   fun `install plan and apply JSON preserve byte-equivalent wire ordering`() {
     val fixture = installByteEquivalenceFixture()
 
-    val planResult = CliRuntime.run(singleCodexPlanArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val planResult = CliRuntime.run(singleCodexPlanArguments(fixture), installPlanCliContext(fixture.home))
     assertEquals(0, planResult.exitCode, planResult.stdout)
     assertEquals(CliOutput.emit(singleCodexPlanGoldenPayload(fixture), CliFormat.JSON), planResult.stdout)
 
     val applyResult = CliRuntime.run(
       singleCodexApplyArguments(fixture, platformMode = "none"),
-      CliRuntimeContext(userHome = fixture.home),
+      installPlanCliContext(fixture.home),
     )
     assertEquals(0, applyResult.exitCode, applyResult.stdout)
     assertEquals(CliOutput.emit(singleCodexApplyGoldenPayload(fixture), CliFormat.JSON), applyResult.stdout)
@@ -1072,6 +1072,11 @@ private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "cf4fc54fd276ecd7"
 private const val WINDOWS_SYMLINK_GUIDANCE =
   "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) or run the install command " +
     "from an elevated shell so the JVM can create symlinks."
+
+private fun installPlanCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
+  userHome = home,
+  environment = emptyMap(),
+)
 
 private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> = requireStringAnyMap(get(key), key)
 

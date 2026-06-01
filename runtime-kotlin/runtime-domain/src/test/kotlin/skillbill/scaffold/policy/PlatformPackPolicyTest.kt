@@ -44,19 +44,19 @@ class PlatformPackPolicyTest {
     )
 
     assertTrue(notes.any { it.contains("built-in platform preset for 'java'") })
-    assertTrue(notes.any { it.contains("Full skeleton scaffolded with 2 approved code-review area stubs") })
+    assertTrue(notes.any { it.contains("Full platform pack scaffolded with 2 approved code-review area stubs") })
     assertTrue(notes.contains(sharedContractNote()))
   }
 
   @Test
-  fun `platformPackNotes reports quality-check fallback when no specialists are selected`() {
+  fun `platformPackNotes reports full pack creation without preset note`() {
     val notes = platformPackNotes(
       platform = "custom",
       presetUsed = false,
-      selectedAreas = emptyList(),
+      selectedAreas = listOf("ui"),
     )
 
-    assertTrue(notes.any { it.contains("Quality-check scaffolded by default.") })
+    assertTrue(notes.any { it.contains("Full platform pack scaffolded with 1 approved code-review area stubs") })
     assertTrue(notes.none { it.contains("built-in platform preset") })
   }
 }

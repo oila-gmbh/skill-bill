@@ -940,9 +940,8 @@ private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = 
 
 /**
  * F-X-901 (AC7): toolbar "NEW..." entry point. Renders as a [ToolbarButton] and, when activated,
- * opens a kind picker over every [ScaffoldKind] reachable from the wizard's [KindPicker]. Each
- * entry invokes [onOpenScaffoldWizard] with the corresponding kind, replacing the previous
- * hardcoded `ScaffoldKind.HORIZONTAL_SKILL` routing.
+ * opens a kind picker over every active creation [ScaffoldKind] reachable from the wizard's
+ * [KindPicker]. Each entry invokes [onOpenScaffoldWizard] with the corresponding kind.
  *
  * F-X-901-C: migrated from a bare `Popup` to Material3 [DropdownMenu] so keyboard navigation,
  * focus management, and Escape-to-close are provided by the framework rather than reimplemented.
@@ -979,7 +978,7 @@ private fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaff
         .background(SkillBillTheme.frameTokens.panel)
         .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp)),
     ) {
-      ScaffoldKind.values().forEach { kind ->
+      ScaffoldKind.activeCreationValues().forEach { kind ->
         DropdownMenuItem(
           text = {
             Text(

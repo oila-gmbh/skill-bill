@@ -210,6 +210,11 @@ class InvalidScaffoldPayloadError(
   cause: Throwable? = null,
 ) : ScaffoldError(message, cause)
 
+class RetiredScaffoldKindError(
+  message: String,
+  cause: Throwable? = null,
+) : ScaffoldError(message, cause)
+
 class UnknownSkillKindError(
   message: String,
   cause: Throwable? = null,

@@ -22,6 +22,8 @@ import skillbill.cli.scaffold.parseScaffoldCommandRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
+import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
+import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -487,11 +489,14 @@ class NewAddonCommand(
     "--name",
     help = "Add-on slug (without a bill- prefix).",
   )
-  private val body by option("--body", help = "Complete markdown body to write to the add-on file.")
-  private val bodyFile by option("--body-file", help = "Path to a markdown file to copy into the add-on (or '-').")
+  private val body by option("--body", help = "Advanced/scripted: complete markdown body to write to the add-on file.")
+  private val bodyFile by option(
+    "--body-file",
+    help = "Advanced/scripted: markdown file to copy into the add-on (or '-').",
+  )
   private val consumerSkillDirs by option(
     "--consumer-skill-dir",
-    help = "Skill-relative directory to register as an add-on consumer. May be repeated. " +
+    help = "Advanced/scripted: skill-relative directory to register as an add-on consumer. May be repeated. " +
       "Defaults to the pack baseline code-review skill.",
   ).multiple()
   private val interactive by option("--interactive", help = "Retired in SKILL-32; use explicit options instead.")
@@ -506,7 +511,7 @@ class NewAddonCommand(
         unsupportedNativeScaffoldResult(
           unsupportedScaffoldService.retiredUnsupportedMessage(
             "new-addon --interactive",
-            "skill-bill new-addon --platform <platform> --name <name> --body-file <file>",
+            "skill-bill new-addon --platform <platform> --name <name>",
             editor = false,
           ),
           format,
@@ -591,6 +596,8 @@ private fun runNativeScaffoldWizard(
   val payload =
     try {
       collectScaffoldWizardPayload(state, scaffoldCatalogService)
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
@@ -608,6 +615,8 @@ private fun runNativeAssistedScaffoldWizard(
   val payload =
     try {
       collectAssistedScaffoldWizardPayload(state, scaffoldCatalogService, installAgentService)
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
@@ -621,7 +630,7 @@ private fun collectAssistedScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill assisted scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
   )
   val kind = normalizeWizardKind(promptRequired(state, "Kind"))
   val agent =
@@ -644,13 +653,11 @@ private fun collectScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
   )
   return when (val kind = normalizeWizardKind(promptRequired(state, "Kind"))) {
     "horizontal" -> horizontalWizardPayload(state)
     "platform-pack" -> platformPackWizardPayload(state, scaffoldCatalogService.platformPackPresets())
-    "platform-override-piloted" -> platformOverrideWizardPayload(state)
-    "code-review-area" -> codeReviewAreaWizardPayload(state, scaffoldCatalogService.approvedCodeReviewAreas())
     "add-on" -> addOnWizardPayload(state)
     else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")
   }
@@ -671,7 +678,6 @@ private fun platformPackWizardPayload(
   put("platform", platform)
   promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  put("skeleton_mode", promptDefault(state, "Skeleton mode [starter/full]", "starter"))
   promptRoutingSignals(state, platform, platform in platformPackPresets)
     .ifNotEmpty { signals -> put("routing_signals", mapOf("strong" to signals)) }
 }
@@ -694,38 +700,16 @@ private fun assistedPlatformPackPayload(
   put("platform", profile.slug)
   put("display_name", displayName)
   put("description", "$displayName platform pack for code review and quality checks.")
-  put("skeleton_mode", "full")
   if (profile.slug !in platformPackPresets) {
     put("routing_signals", mapOf("strong" to profile.strongSignals))
   }
 }
-
-private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
-  putScaffoldBase("platform-override-piloted")
-  put("platform", promptRequired(state, "Platform slug"))
-  put("family", promptRequired(state, "Family"))
-  promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
-  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-}
-
-private fun codeReviewAreaWizardPayload(state: CliRunState, approvedCodeReviewAreas: Set<String>): Map<String, Any?> =
-  buildMap {
-    putScaffoldBase("code-review-area")
-    put("platform", promptRequired(state, "Platform slug"))
-    put("area", promptCodeReviewArea(state, approvedCodeReviewAreas))
-    promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
-    promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  }
 
 private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
   putScaffoldBase("add-on")
   put("platform", promptRequired(state, "Platform slug"))
   put("name", promptRequired(state, "Add-on name"))
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  promptOptional(state, "Body").ifNotBlank { body -> put("body", body) }
-  promptOptional(state, "Consumer skill dirs, comma-separated").ifNotBlank { dirs ->
-    put("consumer_skill_dirs", dirs.split(",").map { it.trim() }.filter { it.isNotEmpty() })
-  }
 }
 
 private fun MutableMap<String, Any?>.putScaffoldBase(kind: String) {
@@ -736,16 +720,12 @@ private fun MutableMap<String, Any?>.putScaffoldBase(kind: String) {
 private fun normalizeWizardKind(value: String): String = when (value.trim().lowercase()) {
   "1", "horizontal", "skill" -> "horizontal"
   "2", "platform", "platform-pack", "pack" -> "platform-pack"
-  "3", "platform-override", "platform-override-piloted", "override" -> "platform-override-piloted"
-  "4", "code-review-area", "area", "specialist" -> "code-review-area"
-  "5", "add-on", "addon" -> "add-on"
-  else -> value
-}
-
-private fun promptCodeReviewArea(state: CliRunState, approvedCodeReviewAreas: Set<String>): String {
-  val sortedAreas = approvedCodeReviewAreas.sorted()
-  state.liveStdout("Approved areas: ${sortedAreas.joinToString(", ")}\n")
-  return promptRequired(state, "Area")
+  "3", "add-on", "addon" -> "add-on"
+  else -> if (isRetiredPartialScaffoldCommandKindAlias(value)) {
+    rejectRetiredPartialScaffoldCommandKind(value)
+  } else {
+    value
+  }
 }
 
 private fun promptDefault(state: CliRunState, label: String, default: String): String {
@@ -1091,7 +1071,8 @@ private fun newAddonPayload(
   put("kind", "add-on")
   put("platform", platform.orEmpty())
   put("name", name.orEmpty())
-  put("body", (body ?: bodyFile?.let { path -> readCliTextFile(path, state) }).orEmpty())
+  (body ?: bodyFile?.let { path -> readCliTextFile(path, state) })
+    ?.let { addonBody -> put("body", addonBody) }
   if (consumerSkillDirs.isNotEmpty()) {
     put("consumer_skill_dirs", consumerSkillDirs)
   }

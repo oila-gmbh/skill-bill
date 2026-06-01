@@ -50,8 +50,11 @@ Fields:
 - display name
 - description
 - routing signals, only when no built-in preset exists
-- skeleton mode: starter, full, or custom approved specialist subset
 - optional subagent specialists when supported
+
+Platform pack creation always generates the baseline code-review skill, default
+quality-check skill, and every approved code-review specialist. Remove unwanted
+focus areas afterward through governed removal paths.
 
 The wizard must not create feature-implement or feature-verify overrides for a new platform pack.
 
@@ -93,7 +96,7 @@ cd runtime-kotlin
 Manual smoke:
 
 1. Open a temporary repo copy.
-2. Create a starter platform pack.
+2. Create a full platform pack.
 3. Validate the repo.
 4. Confirm generated wrappers are not checked in.
 5. Revert the temporary copy outside the app.

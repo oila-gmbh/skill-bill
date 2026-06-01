@@ -1,5 +1,6 @@
 package skillbill.scaffold.policy
 
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.scaffold.policy.model.PlatformPackPreset
 
 /**
@@ -20,7 +21,10 @@ const val SKILL_KIND_PLATFORM_PACK: String = "platform-pack"
 const val SKILL_KIND_CODE_REVIEW_AREA: String = "code-review-area"
 const val SKILL_KIND_ADD_ON: String = "add-on"
 
-/** Closed set of scaffold-supported skill kinds. */
+/**
+ * Closed set of legacy scaffold kinds still understood by compatibility internals and typed
+ * models. New creation surfaces must use [ACTIVE_CREATION_SKILL_KINDS] instead.
+ */
 val SUPPORTED_SKILL_KINDS: Set<String> =
   setOf(
     SKILL_KIND_HORIZONTAL,
@@ -29,6 +33,23 @@ val SUPPORTED_SKILL_KINDS: Set<String> =
     SKILL_KIND_CODE_REVIEW_AREA,
     SKILL_KIND_ADD_ON,
   )
+
+/** Kinds that can be created through current scaffold entry points. */
+val ACTIVE_CREATION_SKILL_KINDS: Set<String> =
+  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON)
+
+/** Retired partial scaffold creation kinds. Legacy source handling remains supported. */
+val RETIRED_PARTIAL_SCAFFOLD_KINDS: Set<String> =
+  setOf(SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_CODE_REVIEW_AREA)
+
+val RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES: Set<String> =
+  setOf("platform-override", SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, "override")
+
+val RETIRED_CODE_REVIEW_AREA_KIND_ALIASES: Set<String> =
+  setOf(SKILL_KIND_CODE_REVIEW_AREA, "area", "specialist")
+
+val RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES: Set<String> =
+  RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES + RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
 
 /** Kinds that orchestrate specialist subagents (and therefore accept `subagent_specialists`). */
 val ORCHESTRATOR_KINDS_FOR_SUBAGENTS: Set<String> =
@@ -74,3 +95,15 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
  */
 val PLATFORM_PACK_PRESETS: Map<String, String> =
   PLATFORM_PACK_PRESET_DESCRIPTORS.mapValues { (_, preset) -> preset.displayName }
+
+fun isRetiredPartialScaffoldKindAlias(kind: String): Boolean =
+  kind.trim().lowercase() in RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
+
+fun retiredPartialScaffoldKindError(kind: String): RetiredScaffoldKindError = RetiredScaffoldKindError(
+  "Scaffold kind '$kind' is retired for new partial scaffold creation. " +
+    "Create a full platform pack with kind '$SKILL_KIND_PLATFORM_PACK', or edit/remove existing " +
+    "platform-pack content through normal authoring and removal commands instead of creating " +
+    "partial scaffold pieces.",
+)
+
+fun rejectRetiredPartialScaffoldKind(kind: String): Nothing = throw retiredPartialScaffoldKindError(kind)

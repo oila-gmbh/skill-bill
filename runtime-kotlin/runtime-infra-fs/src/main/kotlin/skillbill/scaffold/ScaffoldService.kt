@@ -488,6 +488,7 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
   }
   val pack = loadPlatformPack(packRoot)
   val skillFile = packRoot.resolve("addons").resolve("$name.md")
+  val addOnFile = repoRoot.relativize(skillFile).toString().replace('\\', '/')
   return ScaffoldPlan(
     kind = SKILL_KIND_ADD_ON,
     skillName = name,
@@ -498,7 +499,7 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
     platform = platform,
     area = "",
     isShelled = false,
-    notes = emptyList(),
+    notes = listOf("After creation, edit the generated add-on body in `$addOnFile`, then validate and render."),
     description = requireStringOrDefault(payload, "description", ""),
     addonBody = payload["body"] as? String,
     addonConsumerSkillDirs = adapters.resolveAddonConsumerSkillDirs(payload, packRoot, pack),

@@ -330,7 +330,7 @@ Authoring and install:
 | `skill-bill upgrade`                    | Validate governed render output and regenerate native-agent artifacts through runtime guardrails   |
 | `skill-bill new`                        | Scaffold a governed skill or platform pack through deterministic prompts                           |
 | `skill-bill create-and-fill`            | Scaffold and immediately author one content-managed skill                                         |
-| `skill-bill new-addon`                  | Create a pack-owned add-on                                                                        |
+| `skill-bill new-addon`                  | Create a pack-owned add-on skeleton, then edit the generated markdown file                        |
 | `skill-bill remove`                     | Remove a horizontal skill, platform pack, or governed add-on with cleanup                         |
 | `skill-bill doctor`                     | Show local install and telemetry health                                                           |
 | `skill-bill install agent-path <agent>` | Print an agent install path                                                                       |
@@ -355,7 +355,6 @@ cat > /tmp/skill-bill-pack.json <<'JSON'
   "scaffold_payload_version": "1.0",
   "kind": "platform-pack",
   "platform": "java",
-  "skeleton_mode": "starter",
   "display_name": "Java",
   "description": "Use when reviewing Java server and library changes."
 }
@@ -371,7 +370,13 @@ rm /tmp/skill-bill-agent/skills/bill-java-code-review
 rm -rf platform-packs/java
 ```
 
-In normal team usage, remove scaffolded example files with your usual VCS workflow instead of deleting committed pack files by hand. The explicit `link-skill` target receives a symlink to a rendered staging directory, not to the source skill directory.
+Platform-pack scaffolds create the baseline code-review skill, default
+quality-check skill, and every approved code-review specialist. Remove unwanted
+focus areas afterward through governed removal paths. In normal team usage,
+remove scaffolded example files with your usual VCS workflow instead of
+deleting committed pack files by hand. The explicit `link-skill` target
+receives a symlink to a rendered staging directory, not to the source skill
+directory.
 
 ## Goal Observability
 

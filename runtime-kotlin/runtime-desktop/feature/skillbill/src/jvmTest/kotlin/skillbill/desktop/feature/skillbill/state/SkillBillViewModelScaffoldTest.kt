@@ -320,8 +320,8 @@ class SkillBillViewModelScaffoldTest {
   // F-T02: payload parity between Plan and Run is asserted at the VM seam (not just the gateway),
   // verifying the view model surfaces the same payload for both modes.
   @Test
-  fun `Plan and Run produce identical payloads for every supported kind`() = runBlocking {
-    ScaffoldKind.values().forEach { kind ->
+  fun `Plan and Run produce identical payloads for every active creation kind`() = runBlocking {
+    ScaffoldKind.activeCreationValues().forEach { kind ->
       val gateway = FakeScaffoldGateway().apply {
         scriptDryRun(
           kind,
@@ -368,6 +368,23 @@ class SkillBillViewModelScaffoldTest {
   }
 
   @Test
+  fun `retired partial scaffold kinds do not open creation wizard`() = runBlocking {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+
+    assertNull(viewModel.beginOpenScaffoldWizard(ScaffoldKind.PLATFORM_OVERRIDE_PILOTED))
+    assertNull(viewModel.beginOpenScaffoldWizard(ScaffoldKind.CODE_REVIEW_AREA))
+
+    viewModel.finishOpenScaffoldWizard(
+      ScaffoldCatalogResponse(
+        kind = ScaffoldKind.PLATFORM_OVERRIDE_PILOTED,
+        snapshot = ScaffoldCatalogSnapshot.empty,
+      ),
+    )
+    assertNull(viewModel.state().scaffoldWizard)
+  }
+
+  @Test
   fun `platform-pack scaffold payload uses selected repo root`() = runBlocking {
     val gateway = FakeScaffoldGateway().apply {
       scriptDryRun(
@@ -393,6 +410,34 @@ class SkillBillViewModelScaffoldTest {
     assertEquals("/repo", gateway.lastDryRunPayload?.toContractMap()?.get("repo_root"))
   }
 
+  @Test
+  fun `add-on wizard payload omits body so runtime creates skeleton`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.ADD_ON,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "add-on",
+            skillName = "review-helper",
+            skillPath = "/repo/platform-packs/kotlin/addons",
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.ADD_ON)
+    viewModel.updateScaffoldForm { it.copy(name = "review-helper", platform = "kotlin", description = "d") }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    val contract = assertNotNull(gateway.lastDryRunPayload).toContractMap()
+    assertEquals("add-on", contract["kind"])
+    assertFalse("body" in contract)
+    assertFalse("consumer_skill_dirs" in contract)
+  }
+
   // F-T03: per-kind exhaustive payload map asserted against a golden derived from
   // SCAFFOLD_PAYLOAD.md so the wizard contract surface is enforced (not just spot-checked).
   @Test
@@ -415,41 +460,8 @@ class SkillBillViewModelScaffoldTest {
         "kind" to "platform-pack",
         "platform" to "java",
         "display_name" to "Java",
-        "skeleton_mode" to "full",
       ),
       pack,
-    )
-
-    val override = ScaffoldPayload.PlatformOverride(
-      platform = "java",
-      family = "code-review",
-      description = "d",
-    ).toContractMap()
-    assertEquals(
-      linkedMapOf<String, Any?>(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "java",
-        "family" to "code-review",
-        "description" to "d",
-      ),
-      override,
-    )
-
-    val area = ScaffoldPayload.CodeReviewArea(
-      platform = "java",
-      area = "security",
-      description = "d",
-    ).toContractMap()
-    assertEquals(
-      linkedMapOf<String, Any?>(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "code-review-area",
-        "platform" to "java",
-        "area" to "security",
-        "description" to "d",
-      ),
-      area,
     )
 
     val addon = ScaffoldPayload.AddOn(name = "bill-addon", platform = "java").toContractMap()

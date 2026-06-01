@@ -11,6 +11,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliScaffoldRuntimeTest {
@@ -67,6 +68,44 @@ class CliScaffoldRuntimeTest {
   }
 
   @Test
+  fun `new add-on wizard creates skeleton plan without body or raw consumer prompts`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-addon-wizard")
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = listOf("3", "kotlin", "cli-addon", "").joinToString("\n"),
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val output = liveStdout.toString()
+    val preview = platformManifestPreview(payload)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertTrue(
+      Path.of(payload.stringValue("skill_path"))
+        .endsWith(Path.of("platform-packs", "kotlin", "addons")),
+    )
+    assertContains(payload["manifest_edits"].toString(), "platform-packs/kotlin/platform.yaml")
+    assertContains(preview, "  code-review/bill-kotlin-code-review:")
+    assertContains(preview, "    - name: \"cli-addon.md\"")
+    assertContains(preview, "addon_usage:")
+    assertContains(preview, "    - slug: \"cli-addon\"")
+    assertFalse("Body:" in output)
+    assertFalse("Consumer skill dirs" in output)
+    assertTrue(
+      payload["notes"]?.jsonArray.orEmpty().any {
+        "edit the generated add-on body" in it.jsonPrimitive.content
+      },
+      "Expected edit note in ${payload["notes"]}",
+    )
+  }
+
+  @Test
   fun `new platform pack wizard explains built-in routing presets and accepts blank override`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-java-preset")
     val liveStdout = StringBuilder()
@@ -74,7 +113,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = "2\njava\nJava\nStuff for Java\nfull\n\n",
+          stdinText = "2\njava\nJava\nStuff for Java\n\n",
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -86,6 +125,7 @@ class CliScaffoldRuntimeTest {
     assertEquals("ok", payload.stringValue("status"))
     assertContains(liveStdout.toString(), "Built-in routing preset found for 'java'")
     assertContains(liveStdout.toString(), "Press Enter to use it")
+    assertFalse("Skeleton mode" in liveStdout.toString())
     assertContains(preview, "- \"pom.xml\"")
     assertContains(preview, "- \"src/main/java\"")
   }
@@ -98,7 +138,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = listOf("2", "go", "Go", "Stuff for Go", "starter", ".go, go.mod").joinToString("\n"),
+          stdinText = listOf("2", "go", "Go", "Stuff for Go", ".go, go.mod").joinToString("\n"),
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -115,6 +155,7 @@ class CliScaffoldRuntimeTest {
     assertContains(liveStdout.toString(), "directories (src/main/java)")
     assertContains(liveStdout.toString(), "dependency coordinates, or language markers")
     assertContains(liveStdout.toString(), "Strong routing signals (comma-separated)")
+    assertFalse("Skeleton mode" in liveStdout.toString())
     assertContains(preview, "- \".go\"")
     assertContains(preview, "- \"go.mod\"")
   }
@@ -140,6 +181,8 @@ class CliScaffoldRuntimeTest {
     assertEquals("ok", payload.stringValue("status"))
     assertContains(liveStdout.toString(), "Skill Bill assisted scaffold wizard")
     assertContains(liveStdout.toString(), "Kind: 1 horizontal, 2 platform-pack")
+    assertFalse("platform-override" in liveStdout.toString())
+    assertFalse("code-review-area" in liveStdout.toString())
     assertContains(liveStdout.toString(), "Available agents:")
     assertContains(liveStdout.toString(), "codex")
     assertContains(liveStdout.toString(), "Language or platform")
@@ -188,6 +231,25 @@ class CliScaffoldRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
     assertContains(payload.stringValue("error"), "currently supports platform-pack")
+  }
+
+  @Test
+  fun `new assisted rejects retired partial scaffold kind alias`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-assisted-retired")
+    val result =
+      CliRuntime.run(
+        listOf("new", "--assisted", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = "platform-override\n",
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(1, result.exitCode)
+    assertEquals("error", payload.stringValue("status"))
+    assertContains(payload.stringValue("error"), "retired for new partial scaffold creation")
+    assertContains(payload.stringValue("error"), "platform-pack")
   }
 
   @Test
@@ -308,7 +370,6 @@ class CliScaffoldRuntimeTest {
             "kind": "platform-pack",
             "platform": "$platform",
             "repo_root": "$repoRoot",
-            "skeleton_mode": "starter",
             "routing_signals": {
               "strong": ["$platform.marker"]
             },

@@ -41,24 +41,13 @@ sealed class ScaffoldCommandRequest {
   ) : ScaffoldCommandRequest()
 
   /**
-   * Platform-pack scaffold input. Mirrors the wire payload fields for `kind: platform-pack`,
-   * preserving the mutually-exclusive `skeleton_mode`/`specialist_areas` selector by keeping
-   * both fields and letting the domain policy re-assert the rule.
+   * Platform-pack scaffold input. New platform-pack requests always create the full approved
+   * specialist set; callers may still opt out of native-agent stubs or override their names.
    */
   data class PlatformPack(
     val platform: String,
     val displayName: String = "",
     val description: String = "",
-    /**
-     * When non-null, the wire payload explicitly declared `skeleton_mode`. Domain policy
-     * enforces that this is mutually exclusive with [specialistAreas].
-     */
-    val skeletonMode: String? = null,
-    /**
-     * When non-null, the wire payload explicitly declared `specialist_areas`. Domain policy
-     * enforces approved-area membership and mutual exclusion with [skeletonMode].
-     */
-    val specialistAreas: List<String>? = null,
     /**
      * When non-null, the wire payload explicitly declared a `routing_signals` block. Carries
      * the optional `strong` / `tie_breakers` arrays so domain policy preset-fallback logic

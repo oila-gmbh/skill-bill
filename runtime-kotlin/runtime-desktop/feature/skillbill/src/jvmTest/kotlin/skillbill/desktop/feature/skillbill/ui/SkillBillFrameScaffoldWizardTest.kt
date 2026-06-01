@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -41,9 +42,9 @@ import kotlin.test.assertTrue
 class SkillBillFrameScaffoldWizardTest {
 
   @Test
-  fun `run is disabled until plan completes for every kind`() {
+  fun `run is disabled until plan completes for every active creation kind`() {
     val emptyCatalog = ScaffoldCatalogSnapshot.empty
-    ScaffoldKind.values().forEach { kind ->
+    ScaffoldKind.activeCreationValues().forEach { kind ->
       val state = ScaffoldWizardState(kind = kind, optionCatalog = emptyCatalog)
       assertFalse(state.runEnabled, "Run must be disabled for $kind without a plan")
     }
@@ -157,8 +158,6 @@ class SkillBillFrameScaffoldWizardTest {
     val fields = ScaffoldWizardFormFields()
     assertEquals("", fields.name)
     assertEquals("", fields.platform)
-    assertEquals("full", fields.skeletonMode)
-    assertTrue(fields.specialistAreas.isEmpty())
     assertTrue(fields.baselineLayers.isEmpty())
     assertFalse(fields.suppressSubagents)
   }
@@ -197,6 +196,60 @@ class SkillBillFrameScaffoldWizardTest {
     val skill = state.optionCatalog.baselineReviewPacks.single().skills.single()
     assertEquals(listOf("kmp-baseline"), skill.supportedModes)
     assertEquals(listOf("same-review-scope"), skill.supportedScopes)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `platform-pack wizard does not render skeleton selector`() = runComposeUiTest {
+    setContent {
+      ScaffoldWizardDialog(
+        state = ScaffoldWizardState(kind = ScaffoldKind.PLATFORM_PACK),
+        canStartScaffoldAction = true,
+        callbacks = ScaffoldWizardCallbacks(
+          onSelectKind = {},
+          onFormChanged = {},
+          onAddBaselineLayer = {},
+          onAddSuggestedBaselineLayer = {},
+          onEditBaselineLayer = { _, _ -> },
+          onRemoveBaselineLayer = {},
+          onDirtyOverrideChanged = {},
+          onPlan = {},
+          onRun = {},
+          onAcknowledgeFailure = {},
+          onDismiss = {},
+        ),
+      )
+    }
+
+    assertTrue(onAllNodesWithText("Skeleton mode").fetchSemanticsNodes().isEmpty())
+    assertTrue(onAllNodesWithText("Starter skeleton").fetchSemanticsNodes().isEmpty())
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `add-on wizard does not render body field`() = runComposeUiTest {
+    setContent {
+      ScaffoldWizardDialog(
+        state = ScaffoldWizardState(kind = ScaffoldKind.ADD_ON),
+        canStartScaffoldAction = true,
+        callbacks = ScaffoldWizardCallbacks(
+          onSelectKind = {},
+          onFormChanged = {},
+          onAddBaselineLayer = {},
+          onAddSuggestedBaselineLayer = {},
+          onEditBaselineLayer = { _, _ -> },
+          onRemoveBaselineLayer = {},
+          onDirtyOverrideChanged = {},
+          onPlan = {},
+          onRun = {},
+          onAcknowledgeFailure = {},
+          onDismiss = {},
+        ),
+      )
+    }
+
+    assertTrue(onAllNodesWithText("Body").fetchSemanticsNodes().isEmpty())
+    assertTrue(onAllNodesWithText("Consumer skill dirs").fetchSemanticsNodes().isEmpty())
   }
 
   @OptIn(ExperimentalTestApi::class)
@@ -360,14 +413,11 @@ class SkillBillFrameScaffoldWizardTest {
   }
 
   @Test
-  fun `display labels are stable per ScaffoldKind`() {
-    // AC7 mirror: kinds offered must match exactly the five wizard variants.
-    val labels = ScaffoldKind.values().map { it.displayLabel }.toSet()
-    assertEquals(5, labels.size)
+  fun `display labels are stable per active creation ScaffoldKind`() {
+    val labels = ScaffoldKind.activeCreationValues().map { it.displayLabel }.toSet()
+    assertEquals(3, labels.size)
     assertTrue(labels.contains("Horizontal skill"))
     assertTrue(labels.contains("Platform pack"))
-    assertTrue(labels.contains("Platform override for piloted family"))
-    assertTrue(labels.contains("Code-review area"))
     assertTrue(labels.contains("Add-on"))
   }
 

@@ -49,7 +49,6 @@ import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
 import skillbill.desktop.core.domain.model.ScaffoldPayload
-import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.ScaffoldWizardState
@@ -2273,7 +2272,7 @@ class SkillBillViewModel(
    * so a wizard cannot open while another repo-scoped operation is mid-flight.
    */
   fun openScaffoldWizard(kind: ScaffoldKind, snapshot: ScaffoldCatalogSnapshot): SkillBillState {
-    if (!canStartScaffoldAction()) {
+    if (!canStartScaffoldAction() || !kind.creationSupported) {
       return currentState
     }
     scaffoldWizard = ScaffoldWizardState(
@@ -2304,7 +2303,7 @@ class SkillBillViewModel(
    * so the route does not pay for a useless filesystem walk.
    */
   fun beginOpenScaffoldWizard(kind: ScaffoldKind): ScaffoldCatalogRequest? {
-    if (!canStartScaffoldAction()) {
+    if (!canStartScaffoldAction() || !kind.creationSupported) {
       return null
     }
     return ScaffoldCatalogRequest(kind = kind, session = currentSession)
@@ -2352,7 +2351,7 @@ class SkillBillViewModel(
    */
   fun selectScaffoldWizardKind(kind: ScaffoldKind): SkillBillState {
     val current = scaffoldWizard ?: return currentState
-    if (current.busy) {
+    if (current.busy || !kind.creationSupported) {
       return currentState
     }
     if (current.kind == kind) {
@@ -3104,12 +3103,6 @@ class SkillBillViewModel(
           platform = fields.platform.trim(),
           displayName = fields.displayName.trim(),
           description = fields.description.trim(),
-          skeletonMode = if (fields.skeletonMode == "starter") {
-            ScaffoldPlatformPackSkeleton.STARTER
-          } else {
-            ScaffoldPlatformPackSkeleton.FULL
-          },
-          specialistAreas = fields.specialistAreas.filter(String::isNotBlank),
           strongRoutingSignals = fields.strongRoutingSignals.filter(String::isNotBlank),
           tieBreakers = fields.tieBreakers.filter(String::isNotBlank),
           baselineLayers = fields.baselineLayers.map { layer ->
@@ -3162,7 +3155,6 @@ class SkillBillViewModel(
           name = fields.name.trim(),
           platform = fields.platform.trim(),
           description = fields.description.trim(),
-          body = fields.addonBody.takeIf { it.isNotBlank() },
         )
       }
     }

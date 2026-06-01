@@ -39,7 +39,9 @@ class FileSystemScaffoldSourceLoader : ScaffoldSourceLoaderPort {
   /**
    * Resolves the `consumer_skill_dirs` payload entry against a loaded [pack]. Returns the
    * normalized, de-duplicated list of skill-relative directories. Falls back to the pack's
-   * baseline skill directory when the payload field is absent.
+   * baseline skill directory when the payload field is absent. Packs without a baseline may use
+   * their only manifest-declared skill directory as the default; packs with no unambiguous default
+   * fail before scaffold planning can mutate files.
    *
    * Replaces the legacy top-level `resolveAddonConsumerSkillDirs` in
    * `skillbill.scaffold.ScaffoldService.kt`.
@@ -51,10 +53,9 @@ class FileSystemScaffoldSourceLoader : ScaffoldSourceLoaderPort {
   ): List<String> {
     val raw = payload["consumer_skill_dirs"]
     val requested = if (raw == null) {
-      listOfNotNull(pack.declaredFiles.baseline?.let { contentFile -> packRoot.relativize(contentFile.parent) })
-        .map { path -> path.toString().replace('\\', '/') }
+      defaultAddonConsumerSkillDirs(packRoot, pack)
     } else {
-      requireStringList(raw, "consumer_skill_dirs")
+      requireStringList(raw, "consumer_skill_dirs").map(String::trim)
     }
     val seen = mutableSetOf<String>()
     return requested.map { dir ->
@@ -97,6 +98,21 @@ class FileSystemScaffoldSourceLoader : ScaffoldSourceLoaderPort {
     throw InvalidScaffoldPayloadError(
       "Scaffold payload field 'consumer_skill_dirs' contains invalid path '$skillRelativeDir': ${error.message}",
       error,
+    )
+  }
+
+  private fun defaultAddonConsumerSkillDirs(packRoot: Path, pack: PlatformManifest): List<String> {
+    pack.declaredFiles.baseline?.let { contentFile ->
+      return listOf(packRoot.relativize(contentFile.parent).toString().replace('\\', '/'))
+    }
+    val declaredSkillDirs = pack.declaredSkillRelativeDirs().sorted()
+    if (declaredSkillDirs.size == 1) {
+      return declaredSkillDirs
+    }
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload for add-on platform '${pack.slug}' omitted 'consumer_skill_dirs', but the pack has " +
+        "no unambiguous default consumer. Provide scripted 'consumer_skill_dirs'. Declared skill directories: " +
+        "$declaredSkillDirs.",
     )
   }
 }

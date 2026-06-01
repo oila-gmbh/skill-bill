@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
@@ -52,30 +53,44 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
-  fun `resolvePlatformPackSelection returns all approved areas when full skeleton is chosen`() {
-    val selection = resolvePlatformPackSelection(mapOf("skeleton_mode" to "full"))
+  fun `detectKind throws RetiredScaffoldKindError for retired partial kind aliases`() {
+    listOf("platform-override-piloted", "platform-override", "override", "code-review-area", "area", "specialist")
+      .forEach { kind ->
+        val error = assertFailsWith<RetiredScaffoldKindError> {
+          detectKind(mapOf("kind" to kind))
+        }
+        val message = error.message.orEmpty()
+        assertTrue(kind in message, "Got: $message")
+        assertTrue("platform-pack" in message, "Got: $message")
+      }
+  }
+
+  @Test
+  fun `resolvePlatformPackSelection returns all approved areas when no selector is provided`() {
+    val selection = resolvePlatformPackSelection(emptyMap())
     assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), selection.selectedAreas)
   }
 
   @Test
-  fun `resolvePlatformPackSelection rejects unknown specialist areas`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackSelection(
-        mapOf("specialist_areas" to listOf("not-an-approved-area")),
-      )
+  fun `resolvePlatformPackSelection rejects retired skeleton_mode with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      resolvePlatformPackSelection(mapOf("skeleton_mode" to "full"))
     }
+    val message = error.message.orEmpty()
+    assertTrue("skeleton_mode" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
   }
 
   @Test
-  fun `resolvePlatformPackSelection rejects payloads providing both skeleton_mode and specialist_areas`() {
-    assertFailsWith<InvalidScaffoldPayloadError> {
-      resolvePlatformPackSelection(
-        mapOf(
-          "skeleton_mode" to "full",
-          "specialist_areas" to listOf("ui"),
-        ),
-      )
+  fun `resolvePlatformPackSelection rejects retired specialist_areas with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      resolvePlatformPackSelection(mapOf("specialist_areas" to listOf("ui")))
     }
+    val message = error.message.orEmpty()
+    assertTrue("specialist_areas" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
   }
 
   @Test

@@ -1,6 +1,7 @@
 package skillbill.cli.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -9,7 +10,6 @@ import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ScaffoldCommandRequestParserTest {
@@ -38,14 +38,13 @@ class ScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parses platform pack request with specialist areas and routing override`() {
+  fun `parses platform pack request with routing override`() {
     val request = parseScaffoldCommandRequest(
       mapOf(
         "scaffold_payload_version" to "1.0",
         "kind" to "platform-pack",
         "platform" to "kotlin",
         "display_name" to "Kotlin",
-        "specialist_areas" to listOf("ui", "security"),
         "routing_signals" to mapOf(
           "strong" to listOf(".kt"),
           "tie_breakers" to listOf("Prefer Kotlin"),
@@ -65,8 +64,6 @@ class ScaffoldCommandRequestParserTest {
     val pack = request as ScaffoldCommandRequest.PlatformPack
     assertEquals("kotlin", pack.platform)
     assertEquals("Kotlin", pack.displayName)
-    assertEquals(listOf("ui", "security"), pack.specialistAreas)
-    assertNull(pack.skeletonMode)
     assertEquals(listOf(".kt"), pack.routingSignals?.strong)
     assertEquals(listOf("Prefer Kotlin"), pack.routingSignals?.tieBreakers)
     assertEquals(1, pack.baselineLayers.size)
@@ -77,35 +74,39 @@ class ScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parses platform override piloted request`() {
-    val request = parseScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "kotlin",
-        "family" to "code-review",
-      ),
-    )
-
-    val override = request as ScaffoldCommandRequest.PlatformOverride
-    assertEquals("kotlin", override.platform)
-    assertEquals("code-review", override.family)
+  fun `platform pack request rejects retired skeleton_mode with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      parseScaffoldCommandRequest(
+        mapOf(
+          "scaffold_payload_version" to "1.0",
+          "kind" to "platform-pack",
+          "platform" to "kotlin",
+          "skeleton_mode" to "starter",
+        ),
+      )
+    }
+    val message = error.message.orEmpty()
+    assertTrue("skeleton_mode" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
   }
 
   @Test
-  fun `parses code review area request`() {
-    val request = parseScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "code-review-area",
-        "platform" to "kotlin",
-        "area" to "security",
-      ),
-    )
-
-    val area = request as ScaffoldCommandRequest.CodeReviewArea
-    assertEquals("kotlin", area.platform)
-    assertEquals("security", area.area)
+  fun `platform pack request rejects retired specialist_areas with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      parseScaffoldCommandRequest(
+        mapOf(
+          "scaffold_payload_version" to "1.0",
+          "kind" to "platform-pack",
+          "platform" to "kotlin",
+          "specialist_areas" to listOf("ui"),
+        ),
+      )
+    }
+    val message = error.message.orEmpty()
+    assertTrue("specialist_areas" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
   }
 
   @Test
@@ -174,23 +175,19 @@ class ScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parser preserves unknown platform-override family verbatim for downstream validation`() {
-    // The parser is a wire-shape adapter — it does NOT validate pre-shell family membership.
-    // UnknownPreShellFamilyError is fired by the runtime orchestrator (planPlatformOverridePiloted
-    // in ScaffoldService) once it sees the family is not in SHELLED_FAMILIES or PRE_SHELL_FAMILIES.
-    // This test pins the contract: the parser preserves the raw family string verbatim on the
-    // typed request, so the loud-fail still fires at the same semantic point downstream.
-    val request = parseScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "kotlin",
-        "family" to "not-a-family",
-      ),
-    )
-
-    val override = request as ScaffoldCommandRequest.PlatformOverride
-    assertEquals("not-a-family", override.family)
+  fun `retired partial kind aliases throw RetiredScaffoldKindError`() {
+    listOf("platform-override-piloted", "platform-override", "override", "code-review-area", "area", "specialist")
+      .forEach { kind ->
+        val error = assertFailsWith<RetiredScaffoldKindError> {
+          parseScaffoldCommandRequest(
+            mapOf("scaffold_payload_version" to "1.0", "kind" to kind),
+          )
+        }
+        val message = error.message.orEmpty()
+        assertTrue(kind in message, "Got: $message")
+        assertTrue("platform-pack" in message, "Got: $message")
+        assertTrue("edit/remove existing platform-pack content" in message, "Got: $message")
+      }
   }
 
   @Test

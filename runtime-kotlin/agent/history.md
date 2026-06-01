@@ -1,3 +1,30 @@
+## [2026-06-01] SKILL-63 subtask 3 add-on-skeleton-wizard
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop, docs
+- Normal add-on creation now creates an editable skeleton instead of asking for body text; CLI/desktop wizard payloads omit body and raw consumer dirs, and scaffold notes point users to edit the generated add-on file. reusable
+- Omitted add-on consumers default to the pack baseline, then a single declared non-baseline skill dir; packs with no unambiguous default loud-fail before mutation and scripted `consumer_skill_dirs` remains the advanced deterministic path. reusable
+- Explicit scripted `body` is treated as present even when blank, while omitted body renders the TODO skeleton; invalid consumer tests snapshot the whole repo tree to lock atomic rejection.
+- Install sync was intentionally skipped during goal-continuation; refresh local installs outside continuation if generated runtime output needs updating.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
+## [2026-06-01] SKILL-63 subtask 2 full-platform-pack-contract
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop, docs
+- `platform-pack` scaffolding now always emits the full baseline/default-quality-check/all-approved-specialist contract; `skeleton_mode` and `specialist_areas` are retired creation selectors at CLI, MCP, raw payload, and desktop seams. reusable
+- Full-pack generation reuses manifest-driven approved areas, baseline native-agent composition, declared file metadata, and loud policy errors instead of preserving partial-pack branches.
+- Desktop wizard state/model/request mapping no longer carries pack skeleton or specialist selectors; docs/examples now show the full-platform-pack contract and mark old selectors as rejected.
+- Install sync was intentionally skipped during goal-continuation; refresh local installs outside continuation if governed generated output needs updating.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
+## [2026-06-01] SKILL-63 subtask 1 scaffold-kind-surface
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop
+- Partial scaffold creation kinds (`platform-override-piloted`, `code-review-area`, and wizard aliases) are now retired at creation seams through typed `RetiredScaffoldKindError`, while legacy constants/models remain for existing source compatibility. reusable
+- Active creation kind lists now split from legacy supported-kind lists; adapters, CLI wizard prompts, assisted mode, desktop menus, and command palette must use active creation values only. reusable
+- Existing platform override/code-review-area source discovery, render, validation, install-plan discovery, and removal paths stay intact; do not delete legacy planning/source helpers just because creation is blocked.
+- Install sync was intentionally skipped during goal-continuation; future local refresh should happen outside workflow continuation.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-06-01] SKILL-62 install-sh-reuse-last-selection
 Areas: install.sh, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core tests
 - `install.sh --reuse-last-selection` now resolves the latest shared install selection before cleanup, skips agent/platform/telemetry/MCP prompts, rejects desktop-only reuse, and reports reused selections in the install summary. reusable

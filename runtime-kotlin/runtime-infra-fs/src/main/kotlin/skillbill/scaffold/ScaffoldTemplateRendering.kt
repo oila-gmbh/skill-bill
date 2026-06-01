@@ -123,12 +123,12 @@ internal fun renderSkillBody(context: TemplateContext, description: String, area
   }
 
 internal fun renderAddonBody(skillName: String, description: String, explicitBody: String?): String {
-  val body = explicitBody?.takeIf { it.isNotBlank() } ?: buildString {
+  val body = explicitBody ?: buildString {
     appendLine("# $skillName")
     appendLine()
     appendLine(description)
     appendLine()
-    appendLine("TODO: author the add-on body.")
+    appendLine("TODO: replace this placeholder with the add-on guidance body.")
   }
   return if (body.endsWith('\n')) body else "$body\n"
 }
