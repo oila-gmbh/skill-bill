@@ -274,6 +274,7 @@ private fun planHorizontal(payload: Map<String, Any?>, repoRoot: Path): Scaffold
     area = "",
     isShelled = false,
     notes = emptyList(),
+    description = requireStringOrDefault(payload, "description", ""),
     contentBody = payload["content_body"] as? String,
     subagentSpecialists = subagents.specialists,
     subagentsSuppressed = subagents.suppressed,

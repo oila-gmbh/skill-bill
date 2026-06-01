@@ -54,6 +54,42 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
+  fun `horizontal scaffold uses supplied description in content and README catalog`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    Files.writeString(
+      repo.resolve("README.md"),
+      """
+        |# Skill Bill
+        |
+        || Skill | Purpose |
+        ||-------|---------|
+        || `/bill-code-check` | Stable quality-check entry point |
+        || `/bill-pr-description` | Generate PR text |
+        |
+      """.trimMargin(),
+    )
+
+    scaffold(
+      payload(
+        repo,
+        "horizontal",
+        "name" to "bill-code-hot-path",
+        "description" to "Use when triaging urgent production incidents.",
+      ),
+    )
+
+    val content = Files.readString(repo.resolve("skills/bill-code-hot-path/content.md"))
+    val readme = Files.readString(repo.resolve("README.md"))
+
+    assertContains(content, "description: Use when triaging urgent production incidents.")
+    assertContains(content, "Use when triaging urgent production incidents.")
+    assertContains(
+      readme,
+      "| `/bill-code-hot-path` | Use when triaging urgent production incidents. |",
+    )
+  }
+
+  @Test
   fun `standalone native agent source stub remains custom body markdown`() {
     val source = renderNativeAgentSourceStub("bill-worker", "bill-orchestrator")
 
