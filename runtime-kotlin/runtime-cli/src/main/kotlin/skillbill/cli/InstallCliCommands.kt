@@ -37,6 +37,28 @@ import skillbill.ports.install.model.NativeAgentLinkRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
 
+private const val GOAL_CONTINUATION_ENV = "SKILL_BILL_GOAL_CONTINUATION"
+private const val GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE = 64
+
+internal fun CliRunState.refuseInstallMutationDuringGoalContinuation(commandName: String): Boolean {
+  if (environment[GOAL_CONTINUATION_ENV] != "1") {
+    return false
+  }
+  val message =
+    "Refusing to run skill-bill install $commandName during skill-bill goal-continuation.\n" +
+      "Goal workers must preserve the active workflow store; run install sync after the goal completes."
+  completeText(
+    "$message\n",
+    mapOf(
+      "status" to "error",
+      "error" to message,
+      "exit_code" to GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE,
+    ),
+    exitCode = GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE,
+  )
+  return true
+}
+
 internal fun completeNativeAgentLinkOutcome(state: CliRunState, outcome: NativeAgentLinkOutcome) {
   val text = (
     outcome.linked.map { path -> "linked\t$path" } +
@@ -71,6 +93,9 @@ class InstallApplyCommand(
   private val installService: InstallService,
 ) : InstallRequestCommand("apply", "Apply a governed Skill Bill install through the shared runtime contract.") {
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("apply")) {
+      return
+    }
     val plan = installService.planInstall(toRequest(state))
     val result = installService.applyInstall(plan, telemetryLevelMutator(plan))
     state.complete(
@@ -277,6 +302,9 @@ class InstallCleanupAgentTargetCommand(
   private val marker by option("--marker", help = "Managed install marker file.").default(".skill-bill-install")
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("cleanup-agent-target")) {
+      return
+    }
     val cleanup = installAgentService.cleanupAgentTarget(
       targetDir = Path.of(targetDir),
       skillNames = skillNames,
@@ -343,6 +371,9 @@ class InstallLinkClaudeAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-claude-agents")) {
+      return
+    }
     completeNativeAgentLinkOutcome(
       state,
       nativeAgentInstallService.linkNativeAgents(NativeAgentLinkProvider.CLAUDE, nativeAgentLinkRequest()),
@@ -367,6 +398,9 @@ class InstallUnlinkClaudeAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-claude-agents")) {
+      return
+    }
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.CLAUDE,
@@ -391,6 +425,9 @@ class InstallLinkCodexAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-codex-agents")) {
+      return
+    }
     completeNativeAgentLinkOutcome(
       state,
       nativeAgentInstallService.linkNativeAgents(
@@ -416,6 +453,9 @@ class InstallUnlinkCodexAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-codex-agents")) {
+      return
+    }
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.CODEX,
@@ -443,6 +483,9 @@ class InstallLinkOpencodeAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-opencode-agents")) {
+      return
+    }
     completeNativeAgentLinkOutcome(
       state,
       nativeAgentInstallService.linkNativeAgents(
@@ -468,6 +511,9 @@ class InstallUnlinkOpencodeAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-opencode-agents")) {
+      return
+    }
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.OPENCODE,
@@ -492,6 +538,9 @@ class InstallLinkJunieAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-junie-agents")) {
+      return
+    }
     completeNativeAgentLinkOutcome(
       state,
       nativeAgentInstallService.linkNativeAgents(
@@ -517,6 +566,9 @@ class InstallUnlinkJunieAgentsCommand(
   private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-junie-agents")) {
+      return
+    }
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.JUNIE,
@@ -540,6 +592,9 @@ class InstallRegisterMcpCommand(
   private val runtimeMcpBin by option("--runtime-mcp-bin", help = "Packaged runtime-mcp bin script.").required()
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("register-mcp")) {
+      return
+    }
     val result = mcpRegistrationService.registerMcp(agent, Path.of(runtimeMcpBin), state.userHome)
     state.completeText(result.configPath.toString(), mapOf("agent" to agent, "changed" to result.changed))
   }
@@ -553,6 +608,9 @@ class InstallUnregisterMcpCommand(
   private val agent by argument(help = "Agent name.")
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unregister-mcp")) {
+      return
+    }
     val result = mcpRegistrationService.unregisterMcp(agent, state.userHome)
     state.completeText(result.configPath.toString(), mapOf("agent" to agent, "changed" to result.changed))
   }

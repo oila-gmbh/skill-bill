@@ -337,6 +337,7 @@ class InstallerShellDelegationTest {
         environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
         environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
+        environment().remove("SKILL_BILL_GOAL_CONTINUATION")
         // Headless + non-interactive: scrub inherited desktop-session signals so the
         // desktop-app prompt deterministically defaults to "no" (no Gradle desktop
         // build is needed for these runtime-apply argv assertions).
@@ -485,6 +486,7 @@ class InstallerShellDelegationTest {
         environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
         environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
+        environment().remove("SKILL_BILL_GOAL_CONTINUATION")
       }
       .start()
     val output = process.inputStream.bufferedReader().readText()
@@ -609,6 +611,7 @@ class InstallerShellDelegationTest {
     builder.environment()["SKILL_BILL_BIN_DIR"] = binDir.toString()
     builder.environment()["SKILL_BILL_RELEASE_DIR"] = releaseDir.toString()
     builder.environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
+    builder.environment().remove("SKILL_BILL_GOAL_CONTINUATION")
     if (options.skipPreinstallUninstall) {
       builder.environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
     }

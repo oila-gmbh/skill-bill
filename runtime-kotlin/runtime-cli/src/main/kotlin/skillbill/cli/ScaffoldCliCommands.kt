@@ -565,6 +565,9 @@ class InstallLinkSkillCommand(
   )
 
   override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-skill")) {
+      return
+    }
     installService.linkSkill(
       source = Path.of(source),
       targetDir = Path.of(targetDir),

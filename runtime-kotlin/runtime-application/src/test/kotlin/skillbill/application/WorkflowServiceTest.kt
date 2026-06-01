@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowGetResult
@@ -473,6 +474,30 @@ class WorkflowServiceTest {
     )
   }
 
+  @Test
+  fun `goal status omits stale active observability after terminal projection wins`() {
+    val workflows = InMemoryWorkflowStates()
+    saveCompleteGoalParent(workflows)
+    saveStaleRunningChildWithObservability(workflows)
+    saveAuthoritativeCompleteChild(workflows)
+
+    val projection = newGoalStatusService(workflows).status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-52.1",
+        invokedAgentId = "codex",
+        repoRoot = Path.of("").toAbsolutePath(),
+      ),
+    )
+
+    requireNotNull(projection)
+    assertEquals(1, projection.completeCount)
+    assertEquals(0, projection.pendingCount)
+    assertEquals(0, projection.blockedCount)
+    assertNull(projection.currentSubtaskId)
+    assertNull(projection.latestObservabilityEvent)
+    assertNull(projection.latestLivenessSignal)
+  }
+
   private fun newService(): WorkflowService {
     val workflows = InMemoryWorkflowStates()
     return WorkflowService(
@@ -480,6 +505,126 @@ class WorkflowServiceTest {
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+  }
+
+  private fun saveCompleteGoalParent(workflows: InMemoryWorkflowStates) {
+    val manifest = decompositionRuntime(status = "complete").copy(
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "install-policy-foundation",
+          specPath = ".feature-specs/SKILL-52.1/spec_subtask_1.md",
+          status = "complete",
+          workflowId = "wfl-authoritative",
+          commitSha = "sha-1",
+          lastResumableStep = "commit_push",
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+        ),
+      ),
+    )
+  }
+
+  private fun saveStaleRunningChildWithObservability(workflows: InMemoryWorkflowStates) {
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      "wfl-stale",
+      "fis-stale",
+      "preplan",
+    )
+    val running = testWorkflowEngine.updateRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
+        artifactsPatch = goalContinuationArtifact() + staleObservabilityArtifact(),
+        sessionId = "fis-stale",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+  }
+
+  private fun saveAuthoritativeCompleteChild(workflows: InMemoryWorkflowStates) {
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      "wfl-authoritative",
+      "fis-done",
+      "preplan",
+    )
+    val complete = testWorkflowEngine.updateRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
+        artifactsPatch = goalContinuationArtifact() + completeOutcomeArtifact(),
+        sessionId = "fis-done",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(complete.toRecord())
+  }
+
+  private fun goalContinuationArtifact(): Map<String, Any?> = mapOf(
+    "goal_continuation" to mapOf(
+      "issue_key" to "SKILL-52.1",
+      "subtask_id" to 1,
+      "suppress_pr" to true,
+    ),
+  )
+
+  private fun staleObservabilityArtifact(): Map<String, Any?> = mapOf(
+    "goal_observability_latest_event" to mapOf(
+      "contract_version" to "0.1",
+      "issue_key" to "SKILL-52.1",
+      "subtask_id" to 1,
+      "workflow_id" to "wfl-stale",
+      "workflow_phase" to "implement",
+      "worker_role" to "phase_subagent",
+      "liveness_class" to "durable_progress",
+      "activity_summary" to "stale edit",
+      "timestamp" to "2026-06-01T00:00:00Z",
+      "sequence_number" to 10,
+    ),
+  )
+
+  private fun completeOutcomeArtifact(): Map<String, Any?> = mapOf(
+    "goal_continuation_outcome" to mapOf(
+      "issue_key" to "SKILL-52.1",
+      "subtask_id" to 1,
+      "status" to "complete",
+      "workflow_id" to "wfl-authoritative",
+      "commit_sha" to "sha-1",
+      "last_resumable_step" to "commit_push",
+    ),
+  )
+
+  private fun newGoalStatusService(workflows: InMemoryWorkflowStates): GoalRunnerStatusService {
+    val database = FakeDatabaseSessionFactory(workflows)
+    return GoalRunnerStatusService(
+      manifestStore = WorkflowGoalRunnerManifestStore(
+        database = database,
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      ),
+      outcomeStore = WorkflowGoalRunnerOutcomeStore(
+        database = database,
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        goalObservabilityEventValidator = testGoalObservabilityEventValidator,
+      ),
     )
   }
 }

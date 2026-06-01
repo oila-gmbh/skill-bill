@@ -66,6 +66,22 @@ Team members should not need to know migration history. Current behavior is:
 
 On Claude, Codex, OpenCode, and Junie, `bill-kmp-code-review` ships native subagent definitions for its KMP specialists, `bill-kotlin-code-review` ships native subagent definitions for its Kotlin specialists, `bill-php-code-review` ships native subagent definitions for its PHP specialists, and `bill-feature-task` ships native subagent definitions for each of its workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; parser tolerance for older unpinned sources is migration support, not a reason to omit the pin in new source. Install renders the same sources into `~/.skill-bill/native-agents/` before linking Claude markdown, Codex TOMLs, OpenCode markdown, or Junie markdown into each runtime's native agents directory. Codex TOMLs normally install to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes without `.codex`. Generated provider files are install-cache outputs, not committed source. The orchestrator's spawn prose ("spawn the `bill-kmp-code-review-ui` subagent", "spawn the `bill-kotlin-code-review-architecture` subagent", "spawn the `bill-php-code-review-security` subagent", "spawn the `bill-feature-task-planning` subagent", and so on) is runtime-neutral: Claude and Junie resolve the installed Markdown/YAML custom subagents, Codex resolves each TOML by `name`, and OpenCode resolves each markdown agent by filename-derived name and supports manual `@<name>` invocation. `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Workflow-state resume is supported intra-runtime via the skill-bill MCP server (any runtime that registered the MCP server can call `feature_implement_workflow_continue`); cross-runtime resume of a paused workflow is best-effort and not part of the support contract. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task/content.md`.
 
+For decomposed feature goals, teach operators to trust the runtime-owned flat
+worker model. `skill-bill goal <issue-key>` selects one runnable subtask, opens
+or resumes that child workflow, starts one fresh child process, and advances
+from durable workflow state. Nested/native subagents inside that child are an
+optional debugging and context-management convenience, not the reliability
+contract. Use `skill-bill goal status <issue-key>` and
+`skill-bill goal watch <issue-key> --interval-seconds 5 --max-refreshes 3` for
+read-only progress; add `--diff-stat` for a bounded worktree summary or
+`--diff-hunk <path> --diff-hunk-max-hunks 2 --diff-hunk-max-lines 20 --diff-hunk-max-bytes 4000`
+for path-scoped hunk output. Expected lines include `goal_observability:`,
+`latest_observability:`, `diff_stat:`, `watch_diff_stat:`, and
+`selected_diff_line:`. This preserves the SKILL-56/SKILL-58 goal-runner
+contracts: status/watch stay read-only, raw child streams remain hidden by
+default, stale running children are closed when a terminal outcome is
+authoritative, and durable child outcomes drive goal advancement.
+
 ## Fallback And Failure Boundaries
 
 Explain this boundary during rollout so engineers know what failed and what merely degraded.

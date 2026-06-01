@@ -38,7 +38,7 @@ class AgentRunLauncherTest {
       "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
     )
     assertTrue(request.inheritEnvironment)
-    assertEquals(emptyMap(), request.environment)
+    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
   }
 
   @Test
@@ -59,6 +59,12 @@ class AgentRunLauncherTest {
       requireNotNull(request.stdinText),
       "Never call `skill-bill workflow update` just to mark blocked.",
     )
+    assertContains(
+      requireNotNull(request.stdinText),
+      "Never run installer or uninstall flows during goal-continuation",
+    )
+    assertContains(requireNotNull(request.stdinText), "do not call `./install.sh`")
+    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -73,6 +79,7 @@ class AgentRunLauncherTest {
     assertContains(request.command, "--dangerously-skip-permissions")
     assertFalse("--pure" in request.command)
     assertContains(request.command.last(), "Goal-continuation: enabled.")
+    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
   }
 
   @Test
@@ -90,10 +97,12 @@ class AgentRunLauncherTest {
     assertContains(request.command, "--timeout")
     assertContains(request.command, "3000")
     assertContains(request.command.last(), "First execute this exact command")
+    assertContains(request.command.last(), "Never run installer or uninstall flows during goal-continuation")
     assertContains(
       request.command.last(),
       "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
     )
+    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -213,6 +222,35 @@ class AgentRunLauncherTest {
 
     assertEquals(0, result.exitStatus)
     assertEquals("prompt over stdin", result.stdout)
+  }
+
+  @Test
+  fun `install scripts refuse process-level execution during goal continuation`() {
+    val repoRoot = repoRoot()
+    val fixtureRoot = Files.createTempDirectory("skillbill-goal-continuation-install-guard")
+
+    listOf("install.sh", "uninstall.sh").forEach { scriptName ->
+      val script = fixtureRoot.resolve(scriptName)
+      Files.copy(repoRoot.resolve(scriptName), script)
+
+      val result = JvmAgentRunProcessRunner().run(
+        AgentRunProcessRequest(
+          command = listOf(bashExecutable().toString(), script.toString()),
+          workingDirectory = fixtureRoot,
+          timeout = 3.seconds,
+          environment = mapOf(
+            "HOME" to fixtureRoot.resolve("home").toString(),
+            "SKILL_BILL_GOAL_CONTINUATION" to "1",
+          ),
+          inheritEnvironment = false,
+        ),
+      )
+
+      assertEquals(64, result.exitStatus, "$scriptName stdout=${result.stdout} stderr=${result.stderr}")
+      assertContains(result.stdout, "Refusing to run $scriptName during skill-bill goal-continuation.")
+      assertFalse(result.stdout.contains("Applying install through the runtime plan/apply path."))
+      assertFalse(result.stdout.contains("Uninstall complete"))
+    }
   }
 
   @Test
@@ -390,6 +428,21 @@ class AgentRunLauncherTest {
     dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
     timeout = 3.seconds,
   )
+
+  private fun repoRoot(): Path {
+    var current: Path? = Path.of("").toAbsolutePath().normalize()
+    while (current != null) {
+      if (Files.isRegularFile(current.resolve("install.sh")) && Files.isDirectory(current.resolve("runtime-kotlin"))) {
+        return current
+      }
+      current = current.parent
+    }
+    error("Could not locate repository root from ${Path.of("").toAbsolutePath().normalize()}")
+  }
+
+  private fun bashExecutable(): Path =
+    listOf(Path.of("/usr/bin/bash"), Path.of("/bin/bash")).firstOrNull(Files::isExecutable)
+      ?: error("Could not locate bash executable")
 }
 
 private class RecordingAgentRunProcessRunner(

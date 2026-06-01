@@ -54,6 +54,62 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `worktree activity reports clean repository with zero activity`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-worktree-clean")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+
+    val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
+
+    assertTrue(result.ok, result.error)
+    assertEquals(0, result.changedFileSummary?.total)
+    assertEquals(0, result.changedFileSummary?.modified)
+    assertEquals(0, result.changedFileSummary?.renamed)
+    assertEquals(0, result.changedFileSummary?.deleted)
+    assertEquals(0, result.changedFileSummary?.untracked)
+    assertEquals(emptyList(), result.changedFileSummary?.samplePaths)
+    assertEquals(0, result.diffStat?.filesChanged)
+    assertEquals(0, result.diffStat?.insertions)
+    assertEquals(0, result.diffStat?.deletions)
+  }
+
+  @Test
+  fun `worktree activity summarizes modified renamed deleted and untracked files`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-worktree-status-kinds")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("modified.txt"), "one\n")
+    Files.writeString(repoRoot.resolve("rename-before.txt"), "rename me\n")
+    Files.writeString(repoRoot.resolve("deleted.txt"), "delete me\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("modified.txt"), "one\ntwo\n")
+    git(repoRoot, "mv", "rename-before.txt", "rename-after.txt")
+    Files.delete(repoRoot.resolve("deleted.txt"))
+    Files.writeString(repoRoot.resolve("untracked.txt"), "new\n")
+
+    val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
+
+    assertTrue(result.ok, result.error)
+    assertEquals(4, result.changedFileSummary?.total)
+    assertEquals(1, result.changedFileSummary?.modified)
+    assertEquals(1, result.changedFileSummary?.renamed)
+    assertEquals(1, result.changedFileSummary?.deleted)
+    assertEquals(1, result.changedFileSummary?.untracked)
+    assertContains(result.changedFileSummary?.samplePaths.orEmpty(), "modified.txt")
+    assertContains(result.changedFileSummary?.samplePaths.orEmpty(), "rename-after.txt")
+    assertContains(result.changedFileSummary?.samplePaths.orEmpty(), "untracked.txt")
+    assertEquals(3, result.diffStat?.filesChanged)
+    assertEquals(1, result.diffStat?.insertions)
+    assertEquals(1, result.diffStat?.deletions)
+  }
+
+  @Test
   fun `worktree activity drains large status and numstat output before waiting`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-worktree-large-drain")
     git(repoRoot, "init")

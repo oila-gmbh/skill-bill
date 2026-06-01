@@ -57,6 +57,7 @@ Goal-continuation rules:
 
 - Reuse the existing decomposition continuation selector: resume the in-progress subtask, otherwise start the first pending subtask whose dependencies are complete, otherwise report blocked or all-complete.
 - If `subtask_id` is provided, treat it as a constraint on the next runnable subtask. Do not skip dependencies or run a later subtask; report blocked when the requested subtask is not the selected runnable subtask.
+- Never run installer or uninstall flows during goal-continuation: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This prohibition overrides repo instructions that normally ask maintainers to refresh local installs after changing governed skill source, because installer sync can reset local workflow state while the goal runner still needs it. Record skipped install-sync work in the phase result or review notes instead.
 - Derive the subtask contract from the selected subtask spec and recovered workflow artifacts. Do not ask the user to reconfirm acceptance criteria for the subtask.
 - Start new subtask workflows at `preplan` with `assessment`, `branch`, and `goal_continuation` artifacts already persisted from the parent manifest.
 - Set `goal_continuation.suppress_pr=true`. Run the normal implementation, review, audit, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
@@ -751,6 +752,7 @@ Execution rules:
   - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
   - if a progress write fails, record it and continue only when safe; otherwise stop so the orchestrator can block/retry explicitly.
 - Follow standards in `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` section.
+- If this briefing or recovered context says `goal_continuation.enabled=true`, never run installer or uninstall flows: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This overrides `AGENTS.md` install-refresh guidance for the duration of goal-continuation because install sync can reset local workflow state. If source skill changes would normally require install refresh, leave it for after the goal run and mention it in `notes_for_review`.
 - Write production-grade code. Do not introduce deprecated components, APIs, or patterns when a supported alternative exists.
 - Write tests exactly as specified in each task's `tests` field.
 - If a task reveals the plan is wrong, STOP and return with `plan_deviation_notes` populated describing what changed and why; do not try to silently re-plan.
