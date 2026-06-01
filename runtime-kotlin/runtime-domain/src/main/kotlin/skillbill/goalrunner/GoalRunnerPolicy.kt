@@ -9,6 +9,10 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSubtaskAction
 import skillbill.goalrunner.model.GoalRunnerSubtaskDecision
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
+import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 
@@ -56,6 +60,70 @@ object GoalRunnerPlanner {
         dependency.optional && dependency.skipped
     }
   }
+}
+
+object GoalRunnerWorkerSubtaskScheduler {
+  fun scheduleQueuedRequests(
+    manifest: DecompositionManifest,
+    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
+  ): GoalRunnerWorkerSubtaskSchedulingResult {
+    var nextManifest = manifest
+    val scheduledOutcomes = outcomes.map { outcome ->
+      when (outcome) {
+        is GoalRunnerWorkerSubtaskRequestOutcome.Queued -> {
+          val duplicate = nextManifest.subtasks.any { subtask ->
+            subtask.name.equals(outcome.request.name, ignoreCase = true) ||
+              subtask.specPath == outcome.request.specPath
+          }
+          if (duplicate) {
+            GoalRunnerWorkerSubtaskRequestOutcome.Rejected(
+              sourceStream = outcome.sourceStream,
+              reason = GoalRunnerWorkerSubtaskRequestRejectionReason.DUPLICATE,
+              message = "Worker subtask request duplicates already scheduled sibling work.",
+            )
+          } else {
+            val subtask = outcome.request.toSubtask(nextManifest)
+            nextManifest = nextManifest.copy(subtasks = nextManifest.subtasks + subtask)
+            GoalRunnerWorkerSubtaskRequestOutcome.Accepted(outcome.request, subtask)
+          }
+        }
+        else -> outcome
+      }
+    }
+    return GoalRunnerWorkerSubtaskSchedulingResult(nextManifest.withParentStatusForWorkerRequests(), scheduledOutcomes)
+  }
+
+  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.toSubtask(
+    manifest: DecompositionManifest,
+  ): DecompositionSubtask {
+    val id = manifest.nextSubtaskId()
+    val dependencies = normalizedDependencies(manifest).map(::DecompositionDependency)
+    return DecompositionSubtask(
+      id = id,
+      name = name,
+      specPath = specPath,
+      status = "pending",
+      dependencies = dependencies,
+    )
+  }
+
+  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.normalizedDependencies(
+    manifest: DecompositionManifest,
+  ): List<Int> {
+    val requestedDependencies = dependsOnSubtaskIds.ifEmpty {
+      manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }?.let(::listOf).orEmpty()
+    }
+    return requestedDependencies
+      .filter { dependency -> manifest.subtasks.any { subtask -> subtask.id == dependency } }
+      .distinct()
+  }
+
+  private fun DecompositionManifest.withParentStatusForWorkerRequests(): DecompositionManifest =
+    if (status == "complete") {
+      copy(status = "in_progress")
+    } else {
+      this
+    }
 }
 
 object GoalRunnerOutcomeReconciler {

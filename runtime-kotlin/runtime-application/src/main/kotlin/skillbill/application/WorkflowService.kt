@@ -12,6 +12,7 @@ import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -20,6 +21,8 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
@@ -39,6 +42,7 @@ class WorkflowService(
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
+  val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 ) {
   // SKILL-52.3 Subtask 1: the workflow engine and the decomposition
   // manifest seams receive their schema-validator dependencies at the
@@ -97,7 +101,12 @@ class WorkflowService(
         decompositionManifestValidator,
         decompositionManifestFileStore,
       )
-      val effectiveInput = runtimeInput.input
+      val effectiveInput = runtimeInput.input.withGoalObservabilityArtifacts(
+        existing = existing,
+        workflowId = request.workflowId,
+        validator = goalObservabilityEventValidator,
+        gitOperations = gitOperations,
+      )
       val updatedRecord = engine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
       val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
@@ -316,6 +325,42 @@ internal data class DecompositionRuntimeInput(
   val input: WorkflowUpdateInput,
   val updated: Boolean,
 )
+
+private fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
+  existing: WorkflowStateSnapshot,
+  workflowId: String,
+  validator: GoalObservabilityEventValidator,
+  gitOperations: WorkflowGitOperations,
+): WorkflowUpdateInput {
+  val patch = artifactsPatch
+  return if (patch?.containsKey("progress_event") != true) {
+    this
+  } else {
+    val existingArtifacts = JsonSupport.parseObjectOrNull(existing.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+    val mergedArtifacts = LinkedHashMap(existingArtifacts).apply { putAll(patch) }
+    val observabilityPatch = GoalObservabilityArtifacts.patchForProgressEvent(
+      input = GoalObservabilityArtifacts.ProgressInput(
+        artifacts = mergedArtifacts,
+        workflowId = workflowId,
+        workflowStatus = workflowStatus,
+        currentStepId = currentStepId,
+        worktreeActivity = gitOperations.worktreeActivity(Path.of("").toAbsolutePath().normalize())
+          .takeIf { activity -> activity.ok }
+          ?.let { activity ->
+            GoalObservabilityArtifacts.GoalObservabilityWorktreeActivity(
+              changedFileSummary = activity.changedFileSummary,
+              diffStat = activity.diffStat,
+            )
+          },
+      ),
+      validator = validator,
+    )
+    observabilityPatch?.let { copy(artifactsPatch = LinkedHashMap(patch).apply { putAll(it) }) } ?: this
+  }
+}
 
 internal fun generateWorkflowId(prefix: String): String {
   val now = OffsetDateTime.now(ZoneOffset.UTC)

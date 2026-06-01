@@ -220,6 +220,24 @@ class CliInstallPlanApplyRuntimeTest {
   }
 
   @Test
+  fun `install apply refuses to mutate during goal continuation`() {
+    val fixture = installPlanApplyFixture()
+
+    val result = CliRuntime.run(
+      singleCodexApplyArguments(fixture, platformMode = "none"),
+      CliRuntimeContext(
+        userHome = fixture.home,
+        environment = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1"),
+      ),
+    )
+
+    assertEquals(64, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Refusing to run skill-bill install apply during skill-bill goal-continuation.")
+    assertFalse(Files.exists(installSelectionPath(fixture.home)))
+    assertFalse(Files.exists(fixture.home.resolve("manual-targets/codex/bill-code-review")))
+  }
+
+  @Test
   fun `install apply links selected and all platform pack payloads through cli contract`() {
     val selectedFixture = installPlanApplyFixture()
     assertApplyPlatformSkills(

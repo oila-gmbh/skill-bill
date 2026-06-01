@@ -127,7 +127,8 @@ open class WorkflowOpenCommand(
 
   override fun run() {
     val payload =
-      service.open(kind, sessionId, currentStepId, state.dbOverride).toCliMap()
+      service.open(kind, sessionId, currentStepId, state.dbOverride)
+        .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -169,7 +170,7 @@ open class WorkflowUpdateCommand(
         sessionId = sessionId,
       )
     val payload =
-      service.update(kind, request, state.dbOverride).toCliMap()
+      service.update(kind, request, state.dbOverride).toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -214,7 +215,8 @@ open class WorkflowGetCommand(
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.get(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
+        service.get(kind, requireNotNull(resolution.workflowId), state.dbOverride)
+          .toCliMap(service.goalObservabilityEventValidator)
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }

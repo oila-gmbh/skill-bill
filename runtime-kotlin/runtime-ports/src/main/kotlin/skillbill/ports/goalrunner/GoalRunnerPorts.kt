@@ -2,10 +2,12 @@ package skillbill.ports.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import java.nio.file.Path
@@ -44,6 +46,14 @@ interface GoalRunnerWorkflowOutcomeStore {
   ): String?
 
   fun progress(workflowId: String, dbPathOverride: String? = null): GoalRunnerWorkflowProgress?
+
+  fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest, dbPathOverride: String? = null): Boolean
+
+  fun recordWorkerSubtaskRequestOutcomes(
+    workflowId: String,
+    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
+    dbPathOverride: String? = null,
+  ): Boolean
 }
 
 fun interface GoalRunnerSubtaskLauncher {

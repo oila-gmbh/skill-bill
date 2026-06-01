@@ -118,6 +118,25 @@ val copyDecompositionManifestSchema =
     }
   }
 
+val canonicalGoalObservabilityEventSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/goal-observability-event-schema.yaml")
+    .absolutePath
+
+val copyGoalObservabilityEventSchema =
+  tasks.register<Copy>("copyGoalObservabilityEventSchema") {
+    val schemaPath = canonicalGoalObservabilityEventSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-61: canonical goal-observability event schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -128,6 +147,7 @@ tasks.named("processResources") {
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
   dependsOn(copyDecompositionManifestSchema)
+  dependsOn(copyGoalObservabilityEventSchema)
 }
 
 tasks.named("processTestResources") {
@@ -136,4 +156,5 @@ tasks.named("processTestResources") {
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
   dependsOn(copyDecompositionManifestSchema)
+  dependsOn(copyGoalObservabilityEventSchema)
 }

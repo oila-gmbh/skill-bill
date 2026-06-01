@@ -52,6 +52,34 @@ Ask one confirmation question: whether to proceed with this decomposition and st
 
 Do not start `skill-bill goal` while the decomposition is unconfirmed. If the user declines, stop and either revise the proposal or leave the goal unstarted, depending on their response.
 
+## Runtime-Owned Worker Model
+
+`skill-bill goal` owns the worker loop after confirmation. The model is flat:
+the foreground runtime reads the decomposition manifest, selects the next
+runnable subtask, opens or resumes the durable child workflow, and launches one
+fresh child process for that subtask. The workflow store is the authority for
+subtask state, resumable step, terminal outcome, commit SHA, progress events,
+and observability snapshots.
+
+Native or nested subagents can still be useful inside a child agent session for
+debugging, context management, or specialist review, but they are not the
+reliability contract. Reliability comes from the runtime-owned workflow rows,
+the decomposition runtime projection, and explicit child process boundaries.
+Do not treat a nested subagent transcript as proof of progress unless the child
+workflow has written durable state.
+
+The inherited SKILL-56/SKILL-58 behavior remains part of the contract:
+
+- parent and child workflow rows are authoritative over prose output
+- each subtask attempt starts from a fresh child process selected by the runtime
+- `goal status` and `goal watch` are read-only and must not launch child runs
+- status reconciliation closes stale running child workflows when a terminal
+  outcome is authoritative
+- raw child stdout/stderr stays hidden by default; use debug output only for
+  diagnostics
+- completion requires an explicit durable terminal outcome before the goal
+  advances or opens the parent PR
+
 ## Confirmed Handoff
 
 After confirmation, ensure the decomposed parent workflow and runtime manifest
@@ -81,3 +109,50 @@ skill-bill goal status <issue_key>
 ```
 
 Report complete, pending, and blocked counts, the current subtask and step, and the active agent exactly as returned by the command. Do not mutate workflow state during a status-only request.
+
+For live polling without launching child runs:
+
+```bash
+skill-bill goal watch <issue_key> --interval-seconds 5 --max-refreshes 12
+```
+
+Default goal execution emits compact progress and observability lines while raw
+child streams stay hidden:
+
+```text
+goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress
+goal_observability: issue_key=SKILL-901 subtask_id=1 workflow_phase=implement worker_role=foreground liveness_class=durable_progress sequence_number=1
+```
+
+Status and watch can include current git activity on demand:
+
+```bash
+skill-bill goal status SKILL-901 --diff-stat
+skill-bill goal watch SKILL-901 --diff-stat --interval-seconds 5 --max-refreshes 3
+```
+
+Expected text includes one bounded stat snapshot per status/refresh:
+
+```text
+diff_stat: files_changed=3 insertions=12 deletions=4
+watch_diff_stat: index=2 files_changed=3 insertions=12 deletions=4
+```
+
+Bounded hunk output is opt-in and path-scoped:
+
+```bash
+skill-bill goal status SKILL-901 \
+  --diff-hunk runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt \
+  --diff-hunk-max-hunks 2 \
+  --diff-hunk-max-lines 20 \
+  --diff-hunk-max-bytes 4000
+```
+
+The runtime prints hunk metadata and bounded lines rather than full raw diff
+output:
+
+```text
+selected_diff_hunks: count=1 truncated=false
+selected_diff_hunk: hunk_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false header=@@_-10,+10_@@ line_count=4 truncated=false
+selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=-old
+```

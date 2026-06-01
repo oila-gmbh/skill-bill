@@ -1,3 +1,30 @@
+## [2026-06-01] SKILL-61 subtask 3 cli-watch-status-diff-ux
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs
+- Goal foreground output now emits default `goal_observability:` lines at the existing bounded heartbeat cadence while keeping raw child stdout/stderr hidden unless `--debug-child-output` is explicit. reusable
+- `goal status` and read-only `goal watch` render latest durable observability, optional diff stat, and explicit selected diff hunks as stable line-oriented records; watch refreshes status without launching child implementation runs. reusable
+- Selected diff hunk support is routed through `WorkflowGitOperations` with shared hunk/line/byte budgets across staged and unstaged reads; git output is drained asynchronously and huge lines are truncated within bounds to avoid pipe stalls. reusable
+- CLI tests now assert help/cost copy, diff-hunk option propagation, raw-output filtering, watch no-launch behavior, and large-output git drain regressions.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-06-01] SKILL-61 subtask 2 runtime-supervisor-worker-boundary
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-core
+- GoalRunner now emits lifecycle observability for subtask start/resume, phase/progress, heartbeat, file activity, worker output summaries, block, completion, and failure while keeping workflow-store state authoritative for active subtask, step, checkpoint, and terminal status. reusable
+- Added a structured worker-subtask request parser and typed outcomes (`accepted`, `queued`, `rejected`, `requires_operator_confirmation`); free-form child text remains diagnostic and never schedules work directly. reusable
+- Accepted worker-requested work appends runtime-visible sibling subtasks through existing decomposition manifest state; request audit persistence is written before manifest mutation so failures do not create hidden partial state.
+- Status/reset/completion paths reconcile latest observability without destructive status reads and clear or terminal-mark stale active-worker state, preserving SKILL-58 stale-running hygiene.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented (subtask scope)
+
+## [2026-06-01] SKILL-61 subtask 1 goal-observability-event-contract
+Areas: orchestration/contracts, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Added a schema-backed `goal_observability_latest_event` / bounded `goal_observability_run_history` contract in workflow artifacts; the event carries issue/subtask, phase, worker role, liveness, activity, timestamp, sequence, changed-file summary, diff stat, and optional heavy file fields. reusable
+- Domain parsing now loud-fails malformed durable records through `GoalObservabilityEventValidator`; CLI/MCP workflow rendering must use the concrete `WorkflowService` validator, not `NoopGoalObservabilityEventValidator`, so schema-only failures are caught at read/render seams. reusable
+- Goal status projection exposes a compact latest observability event beside the legacy liveness string while keeping workflow artifacts as the authoritative storage location; history retention is capped at 50 events.
+- Architecture guardrails document the observability raw-map schema seams as explicit `@OpenBoundaryMap` exceptions and keep the concrete validator adapter in infra-fs via the runtime-core composition root.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
 ## [2026-05-31] SKILL-59 subtask 2 spec-writing-runtime
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
 - Added typed feature-spec write models (`FeatureSpecWriteRequest`, `FeatureSpecWriteResult`, `FeatureSpecSubtaskPreparation`) so single-spec/decomposed persistence can be shared by future `bill-feature-spec`, `bill-feature-task`, and `bill-goal` callers through one runtime contract. reusable

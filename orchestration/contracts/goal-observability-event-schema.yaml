@@ -1,0 +1,167 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/goal-observability-event-schema.yaml"
+title: "Goal observability event"
+description: >
+  Durable event contract for decomposed goal/subtask liveness. Events are stored
+  in workflow artifacts_json under explicit latest-event and bounded run-history
+  keys; decomposition-manifest.yaml is not authoritative telemetry storage.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - issue_key
+  - subtask_id
+  - workflow_phase
+  - worker_role
+  - liveness_class
+  - activity_summary
+  - timestamp
+  - sequence_number
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+    description: >
+      Pinned to GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION. Bump the schema const
+      and Kotlin constant together.
+  issue_key:
+    type: string
+    minLength: 1
+  subtask_id:
+    type: integer
+    minimum: 1
+    maximum: 2147483647
+  workflow_id:
+    type: string
+    minLength: 1
+  workflow_phase:
+    type: string
+    minLength: 1
+    description: "Current workflow phase/step, for example implement or validate."
+  worker_role:
+    type: string
+    minLength: 1
+    description: "Logical worker role/source that emitted the event, for example phase_subagent."
+  liveness_class:
+    type: string
+    minLength: 1
+    description: "Compact class used by default renderers, for example durable_progress."
+  activity_summary:
+    type: string
+    minLength: 1
+  timestamp:
+    type: string
+    minLength: 1
+    description: "Emitter-supplied timestamp; callers normally use an ISO-8601 instant."
+  sequence_number:
+    type: integer
+    minimum: 0
+    maximum: 2147483647
+  changed_file_summary:
+    $ref: "#/$defs/changedFileSummary"
+  diff_stat:
+    $ref: "#/$defs/diffStat"
+  changed_files:
+    type: array
+    description: "Optional heavy field. Default renderers may omit it."
+    maxItems: 500
+    items:
+      type: string
+      minLength: 1
+  diff_stat_by_file:
+    type: array
+    description: "Optional heavy field. Default renderers may omit it."
+    maxItems: 500
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - insertions
+        - deletions
+      properties:
+        path:
+          type: string
+          minLength: 1
+        insertions:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        deletions:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+$defs:
+  changedFileSummary:
+    type: object
+    additionalProperties: false
+    required:
+      - total
+      - added
+      - modified
+      - deleted
+      - renamed
+      - untracked
+    properties:
+      total:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      added:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      modified:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      deleted:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      renamed:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      untracked:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      sample_paths:
+        type: array
+        maxItems: 10
+        items:
+          type: string
+          minLength: 1
+  diffStat:
+    type: object
+    additionalProperties: false
+    required:
+      - files_changed
+      - insertions
+      - deletions
+    properties:
+      files_changed:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      insertions:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      deletions:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+x-coherence-checks:
+  - >
+    Latest-event and run-history data are authoritative only in workflow
+    artifacts_json under goal_observability_latest_event and
+    goal_observability_run_history.
+  - >
+    Run history is capped by the runtime retention constant. Appends preserve
+    sequence order and prune oldest entries.
+  - >
+    Default liveness rendering must be diagnosable from required compact fields
+    plus optional changed_file_summary/diff_stat; heavy changed_files and
+    diff_stat_by_file may be absent.

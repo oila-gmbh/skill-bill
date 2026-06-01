@@ -19,6 +19,10 @@ interface AgentRunCommandBuilder {
   fun build(request: SkillRunRequest): AgentRunCommand
 }
 
+internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
+  "SKILL_BILL_GOAL_CONTINUATION" to "1",
+)
+
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
 
@@ -35,6 +39,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
+    environment = GoalContinuationEnvironment,
   )
 }
 
@@ -54,6 +59,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     stdinText = continuationPrompt(request),
+    environment = GoalContinuationEnvironment,
   )
 }
 
@@ -71,6 +77,7 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
+    environment = GoalContinuationEnvironment,
   )
 }
 
@@ -93,6 +100,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
     },
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
+    environment = GoalContinuationEnvironment,
   )
 }
 
@@ -112,6 +120,7 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
 
     Then continue the returned `continuation_entry_prompt` until the workflow store reaches a terminal goal-continuation outcome.
     Do not force workflow state manually. Never call `skill-bill workflow update` just to mark blocked.
+    Never run installer or uninstall flows during goal-continuation: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This overrides repo instructions that normally ask for local install refresh after governed skill source edits; record skipped install-sync work in the result instead.
     If the continuation command reports `continue_status=blocked` or `continue_status=done`, treat that durable state as authoritative and stop.
     Treat durable workflow state as authoritative. Do not infer subtask success from stdout.
     Return exactly the `RESULT:` block required by the bill-feature-task implementation subagent contract.

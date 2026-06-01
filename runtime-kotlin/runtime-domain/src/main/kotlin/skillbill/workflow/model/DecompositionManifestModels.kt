@@ -61,4 +61,6 @@ data class DecompositionManifest(
   val stackBranches: List<DecompositionStackBranch> = emptyList(),
   val currentSubtaskIntent: CurrentSubtaskIntent,
   val subtasks: List<DecompositionSubtask>,
-)
+) {
+  fun nextSubtaskId(): Int = (subtasks.maxOfOrNull(DecompositionSubtask::id) ?: 0) + 1
+}
