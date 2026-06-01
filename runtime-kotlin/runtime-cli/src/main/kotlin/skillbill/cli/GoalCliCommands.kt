@@ -351,6 +351,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "current_step" to it.currentStep,
     "active_agent" to it.activeAgent,
     "latest_liveness_signal" to it.latestLivenessSignal,
+    "latest_observability_event" to it.latestObservabilityEvent,
   )
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -362,6 +363,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "current_step" to null,
   "active_agent" to null,
   "latest_liveness_signal" to null,
+  "latest_observability_event" to null,
 )
 
 private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
@@ -374,6 +376,12 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  (payload["latest_observability_event"] as? Map<*, *>)?.let { event ->
+    appendLine(
+      "latest_observability: phase=${event["workflow_phase"]} role=${event["worker_role"]} " +
+        "liveness=${event["liveness_class"]} sequence=${event["sequence_number"]}",
+    )
+  }
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1

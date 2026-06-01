@@ -3,33 +3,30 @@ contract_version: "0.2"
 issue_key: "SKILL-61"
 feature_name: "goal-observability"
 parent_spec_path: ".feature-specs/SKILL-61-goal-observability/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-61-goal-observability"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "blocked"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "observability-event-contract"
   spec_path: ".feature-specs/SKILL-61-goal-observability/spec_subtask_1_observability-event-contract.md"
-  status: "blocked"
+  status: "complete"
   branch: "feat/SKILL-61-goal-observability"
   commit_sha: null
-  workflow_id: null
-  blocked_reason: "Goal runner policy blocked execution because same-branch mode resolved\
-    \ to protected branch 'main'. Set decomposition feature/subtask branches to a\
-    \ non-protected branch (for example `feat/SKILL-61-goal-observability`) before\
-    \ resuming."
-  last_resumable_step: "preplan"
+  workflow_id: "wfl-20260601-092053-nukr"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   dependencies: []
 - id: 2
   name: "runtime-supervisor-worker-boundary"
   spec_path: ".feature-specs/SKILL-61-goal-observability/spec_subtask_2_runtime-supervisor-worker-boundary.md"
   status: "pending"
-  branch: "feat/SKILL-61-goal-observability"
+  branch: null
   commit_sha: null
   workflow_id: null
   blocked_reason: null
@@ -42,7 +39,7 @@ subtasks:
   name: "cli-watch-status-diff-ux"
   spec_path: ".feature-specs/SKILL-61-goal-observability/spec_subtask_3_cli-watch-status-diff-ux.md"
   status: "pending"
-  branch: "feat/SKILL-61-goal-observability"
+  branch: null
   commit_sha: null
   workflow_id: null
   blocked_reason: null
@@ -55,7 +52,7 @@ subtasks:
   name: "validation-docs-operator-scenarios"
   spec_path: ".feature-specs/SKILL-61-goal-observability/spec_subtask_4_validation-docs-operator-scenarios.md"
   status: "pending"
-  branch: "feat/SKILL-61-goal-observability"
+  branch: null
   commit_sha: null
   workflow_id: null
   blocked_reason: null

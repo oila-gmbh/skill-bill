@@ -1,5 +1,6 @@
 package skillbill.goalrunner.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 
@@ -144,14 +145,18 @@ data class GoalRunnerStatusProjection(
   val currentStep: String?,
   val activeAgent: String?,
   val latestLivenessSignal: String? = null,
+  @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
+  val latestObservabilityEvent: Map<String, Any?>? = null,
 )
 
 object GoalRunnerStatusProjector {
+  @OpenBoundaryMap("Goal status projection accepts compact latest goal observability event passthrough")
   fun project(
     manifest: DecompositionManifest,
     activeAgent: String? = null,
     currentStepOverride: String? = null,
     latestLivenessSignal: String? = null,
+    latestObservabilityEvent: Map<String, Any?>? = null,
   ): GoalRunnerStatusProjection {
     val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
     return GoalRunnerStatusProjection(
@@ -163,6 +168,7 @@ object GoalRunnerStatusProjector {
       currentStep = currentStepOverride?.takeIf(String::isNotBlank) ?: currentSubtask?.lastResumableStep,
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       latestLivenessSignal = latestLivenessSignal?.takeIf(String::isNotBlank),
+      latestObservabilityEvent = latestObservabilityEvent,
     )
   }
 }

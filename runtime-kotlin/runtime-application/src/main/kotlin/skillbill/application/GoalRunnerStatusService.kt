@@ -49,6 +49,7 @@ class GoalRunnerStatusService(
           activeAgent = effectiveAgent.id,
           currentStepOverride = progress?.currentStepId,
           latestLivenessSignal = progress?.latestLivenessSignal,
+          latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
         )
       }
   }
@@ -227,3 +228,15 @@ private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = G
     )
   },
 )
+
+private fun skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
+  linkedMapOf(
+    "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
+    "workflow_phase" to workflowPhase,
+    "worker_role" to workerRole,
+    "liveness_class" to livenessClass,
+    "activity_summary" to activitySummary,
+    "sequence_number" to sequenceNumber,
+    "timestamp" to timestamp,
+  )

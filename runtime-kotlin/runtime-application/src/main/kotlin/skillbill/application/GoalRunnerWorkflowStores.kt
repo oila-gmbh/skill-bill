@@ -9,18 +9,22 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
 
 @Inject
@@ -182,6 +186,7 @@ private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
 class WorkflowGoalRunnerOutcomeStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -262,13 +267,16 @@ class WorkflowGoalRunnerOutcomeStore(
       val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
       val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
+      val observabilityEvent = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
         workflowStatus = record.workflowStatus,
         currentStepId = currentStep,
         progressToken = record.progressToken(),
         latestDurableProgressEvent = progressEvent,
-        latestLivenessSignal = progressEvent?.summary()
+        latestGoalObservabilityEvent = observabilityEvent?.toProgressEvent(),
+        latestLivenessSignal = observabilityEvent?.compactLivenessSummary()
+          ?: progressEvent?.summary()
           ?: "workflow_status=${record.workflowStatus}; step=$currentStep",
         lastSnapshotUpdatedAt = record.updatedAt,
       )
@@ -512,6 +520,18 @@ private fun GoalRunnerProgressEvent.summary(): String = buildString {
     append(message)
   }
 }
+
+private fun skillbill.workflow.model.GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
+  GoalObservabilityProgressEvent(
+    issueKey = issueKey,
+    subtaskId = subtaskId,
+    workflowPhase = workflowPhase,
+    workerRole = workerRole,
+    livenessClass = livenessClass,
+    activitySummary = activitySummary,
+    sequenceNumber = sequenceNumber,
+    timestamp = timestamp,
+  )
 
 private fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
   "phase" to phase,

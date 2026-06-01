@@ -22,6 +22,7 @@ data class GoalRunnerWorkflowProgress(
   val currentStepId: String,
   val progressToken: String,
   val latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
+  val latestGoalObservabilityEvent: GoalObservabilityProgressEvent? = null,
   val latestLivenessSignal: String? = null,
   val lastSnapshotUpdatedAt: String? = null,
 )
@@ -32,6 +33,17 @@ data class GoalRunnerProgressEvent(
   val kind: String,
   val message: String,
   val sequence: Int,
+  val timestamp: String,
+)
+
+data class GoalObservabilityProgressEvent(
+  val issueKey: String,
+  val subtaskId: Int,
+  val workflowPhase: String,
+  val workerRole: String,
+  val livenessClass: String,
+  val activitySummary: String,
+  val sequenceNumber: Int,
   val timestamp: String,
 )
 

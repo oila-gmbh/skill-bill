@@ -1707,6 +1707,18 @@ class RuntimeArchitectureTest {
       "skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate",
       "skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
       "skillbill.application.WorkflowFamily.sessionSummary",
+      // SKILL-61 subtask 1: goal-observability event maps are durable
+      // workflow-artifact/schema seams. The domain validator owns the schema
+      // boundary and CLI/MCP/projector rendering consumes compact maps after
+      // validation.
+      "skillbill.workflow.GoalObservabilityEventValidator.validate",
+      "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
+      "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
+      "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",
+      "skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts",
+      "skillbill.workflow.model.goalObservabilityHistoryFromArtifacts",
+      "skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent",
+      "skillbill.goalrunner.model.GoalRunnerStatusProjector.project",
       // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
       // application + port `scaffold(payload, dryRun)` overloads on
       // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`

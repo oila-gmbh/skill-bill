@@ -52,6 +52,7 @@ import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
@@ -96,6 +97,7 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 
@@ -308,6 +310,12 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun workflowSnapshotValidator(adapter: WorkflowSnapshotValidatorInfraAdapter): WorkflowSnapshotValidator =
     adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalObservabilityEventValidator(
+    adapter: GoalObservabilityEventValidatorAdapter,
+  ): GoalObservabilityEventValidator = adapter
 
   abstract val installService: InstallService
   abstract val agentRunService: AgentRunService

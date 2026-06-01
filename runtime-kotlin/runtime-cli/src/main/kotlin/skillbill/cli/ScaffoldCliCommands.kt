@@ -588,7 +588,7 @@ private fun runNativeScaffoldWizard(
       collectScaffoldWizardPayload(state, scaffoldCatalogService)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
-  }
+    }
   return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
 }
 
@@ -619,7 +619,8 @@ private fun collectAssistedScaffoldWizardPayload(
       "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
   )
   val kind = normalizeWizardKind(promptRequired(state, "Kind"))
-  val agent = promptAssistedAgent(state, installAgentService.detectAgentTargets(state.userHome).map { target -> target.name })
+  val agent =
+    promptAssistedAgent(state, installAgentService.detectAgentTargets(state.userHome).map { target -> target.name })
   state.liveStdout(
     "Assisted generator: $agent. Scaffold suggestions are deterministic local defaults; " +
       "agent-backed generation needs a structured scaffold output contract.\n",
@@ -800,8 +801,22 @@ private fun assistedPlatformProfile(input: String): AssistedPlatformProfile {
 
 private fun assistedPlatformProfiles(): Map<String, AssistedPlatformProfile> = buildMap {
   putProfile("go", "Go", listOf(".go", "go.mod", "go.sum"), "go", "golang")
-  putProfile("python", "Python", listOf("pyproject.toml", "requirements.txt", "setup.py", "poetry.lock", ".py"), "py", "python")
-  putProfile("javascript", "JavaScript", listOf("package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".js", ".jsx"), "js", "javascript", "node", "nodejs")
+  putProfile(
+    "python",
+    "Python",
+    listOf("pyproject.toml", "requirements.txt", "setup.py", "poetry.lock", ".py"),
+    "py",
+    "python",
+  )
+  putProfile(
+    "javascript",
+    "JavaScript",
+    listOf("package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".js", ".jsx"),
+    "js",
+    "javascript",
+    "node",
+    "nodejs",
+  )
   putProfile("typescript", "TypeScript", listOf("tsconfig.json", "package.json", ".ts", ".tsx"), "ts", "typescript")
   putProfile("rust", "Rust", listOf("Cargo.toml", "Cargo.lock", ".rs"), "rs", "rust")
   putProfile("ruby", "Ruby", listOf("Gemfile", "Gemfile.lock", ".rb"), "rb", "ruby")
@@ -841,12 +856,11 @@ private fun fallbackAssistedPlatformProfile(input: String): AssistedPlatformProf
 private fun languageLookupKey(value: String): String =
   value.trim().lowercase().filter { character -> character.isLetterOrDigit() || character == '#' || character == '+' }
 
-private fun platformSlugFromInput(value: String): String =
-  value.trim()
-    .lowercase()
-    .replace(Regex("[^a-z0-9]+"), "-")
-    .trim('-')
-    .ifBlank { "platform" }
+private fun platformSlugFromInput(value: String): String = value.trim()
+  .lowercase()
+  .replace(Regex("[^a-z0-9]+"), "-")
+  .trim('-')
+  .ifBlank { "platform" }
 
 private fun displayNameFromInput(input: String, slug: String): String =
   input.trim().takeIf { it.isNotBlank() } ?: slug.split("-").joinToString(" ") { part ->

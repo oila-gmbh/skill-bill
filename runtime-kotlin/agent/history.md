@@ -1,3 +1,12 @@
+## [2026-06-01] SKILL-61 subtask 1 goal-observability-event-contract
+Areas: orchestration/contracts, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Added a schema-backed `goal_observability_latest_event` / bounded `goal_observability_run_history` contract in workflow artifacts; the event carries issue/subtask, phase, worker role, liveness, activity, timestamp, sequence, changed-file summary, diff stat, and optional heavy file fields. reusable
+- Domain parsing now loud-fails malformed durable records through `GoalObservabilityEventValidator`; CLI/MCP workflow rendering must use the concrete `WorkflowService` validator, not `NoopGoalObservabilityEventValidator`, so schema-only failures are caught at read/render seams. reusable
+- Goal status projection exposes a compact latest observability event beside the legacy liveness string while keeping workflow artifacts as the authoritative storage location; history retention is capped at 50 events.
+- Architecture guardrails document the observability raw-map schema seams as explicit `@OpenBoundaryMap` exceptions and keep the concrete validator adapter in infra-fs via the runtime-core composition root.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (subtask scope)
+
 ## [2026-05-31] SKILL-59 subtask 2 spec-writing-runtime
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
 - Added typed feature-spec write models (`FeatureSpecWriteRequest`, `FeatureSpecWriteResult`, `FeatureSpecSubtaskPreparation`) so single-spec/decomposed persistence can be shared by future `bill-feature-spec`, `bill-feature-task`, and `bill-goal` callers through one runtime contract. reusable

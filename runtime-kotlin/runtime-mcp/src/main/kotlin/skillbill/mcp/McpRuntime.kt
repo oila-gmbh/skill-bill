@@ -212,28 +212,38 @@ object McpWorkflowRuntime {
     sessionId: String = "",
     currentStepId: String? = null,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.open(
-    kind,
-    sessionId = sessionId,
-    currentStepId = currentStepId,
-    dbOverride = null,
-  ).toMcpMap()
+  ): Map<String, Any?> {
+    val runtimeServices = services(context)
+    return runtimeServices.workflowService.open(
+      kind,
+      sessionId = sessionId,
+      currentStepId = currentStepId,
+      dbOverride = null,
+    ).toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
+  }
 
   fun update(
     kind: WorkflowFamilyKind,
     request: WorkflowUpdateRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.update(
-    kind,
-    request,
-    dbOverride = null,
-  ).toMcpMap()
+  ): Map<String, Any?> {
+    val runtimeServices = services(context)
+    return runtimeServices.workflowService.update(
+      kind,
+      request,
+      dbOverride = null,
+    ).toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
+  }
 
   fun get(
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.get(kind, workflowId, dbOverride = null).toMcpMap()
+  ): Map<String, Any?> {
+    val runtimeServices = services(context)
+    return runtimeServices.workflowService.get(kind, workflowId, dbOverride = null)
+      .toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
+  }
 
   fun list(
     kind: WorkflowFamilyKind,

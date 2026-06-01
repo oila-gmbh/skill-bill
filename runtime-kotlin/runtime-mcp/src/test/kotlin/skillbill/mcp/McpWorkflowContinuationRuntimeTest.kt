@@ -4,6 +4,7 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
@@ -138,4 +139,7 @@ private object TestWorkflowGitOperations : WorkflowGitOperations {
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
+    WorkflowWorktreeActivityResult(status = "ok")
 }

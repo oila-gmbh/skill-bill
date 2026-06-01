@@ -12,6 +12,7 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -656,4 +657,7 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
+    WorkflowWorktreeActivityResult(status = "ok")
 }

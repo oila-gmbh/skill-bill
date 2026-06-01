@@ -111,6 +111,25 @@ class InvalidTelemetryEventSchemaError(
   cause,
 )
 
+/**
+ * Surfaced when a durable goal-observability event stored in workflow
+ * artifacts_json fails the canonical
+ * `orchestration/contracts/goal-observability-event-schema.yaml` Draft
+ * 2020-12 schema. The composed message carries the artifact/source
+ * label plus the offending field path so malformed latest-event or
+ * run-history records fail loudly at the workflow artifact seam.
+ */
+class InvalidGoalObservabilityEventSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal observability event '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class MissingInstallSelectionRecordError(
   val path: String,
   cause: Throwable? = null,

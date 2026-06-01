@@ -1,6 +1,9 @@
 package skillbill.ports.workflow
 
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.model.GoalObservabilityDiffStat
 import java.nio.file.Path
 
 private const val HASH_RADIX_HEX: Int = 16
@@ -15,6 +18,8 @@ interface WorkflowGitOperations {
   fun validateBranchBase(repoRoot: Path, branch: String, expectedBaseBranch: String): WorkflowGitOperationResult
 
   fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult
+
+  fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult
 }
 
 object NoopWorkflowGitOperations : WorkflowGitOperations {
@@ -37,4 +42,17 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
+    status = "ok",
+    changedFileSummary = GoalObservabilityChangedFileSummary(
+      total = 0,
+      added = 0,
+      modified = 0,
+      deleted = 0,
+      renamed = 0,
+      untracked = 0,
+    ),
+    diffStat = GoalObservabilityDiffStat(filesChanged = 0, insertions = 0, deletions = 0),
+  )
 }

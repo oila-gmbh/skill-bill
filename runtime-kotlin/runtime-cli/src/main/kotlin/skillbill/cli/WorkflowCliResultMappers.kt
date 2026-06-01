@@ -8,6 +8,7 @@ import skillbill.application.model.WorkflowListResult
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.WorkflowEngine
 
 /**
@@ -24,8 +25,10 @@ import skillbill.workflow.WorkflowEngine
  * Any field-order change here will break those goldens; update the
  * goldens deliberately rather than reordering the mapper.
  */
-internal fun WorkflowOpenResult.toCliMap(): Map<String, Any?> = when (this) {
-  is WorkflowOpenResult.Ok -> LinkedHashMap(WorkflowEngine.snapshotMap(snapshot)).apply {
+internal fun WorkflowOpenResult.toCliMap(
+  goalObservabilityEventValidator: GoalObservabilityEventValidator,
+): Map<String, Any?> = when (this) {
+  is WorkflowOpenResult.Ok -> workflowSnapshotCliMap(snapshot, goalObservabilityEventValidator).apply {
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -36,8 +39,10 @@ internal fun WorkflowOpenResult.toCliMap(): Map<String, Any?> = when (this) {
   )
 }
 
-internal fun WorkflowUpdateResult.toCliMap(): Map<String, Any?> = when (this) {
-  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.snapshotMap(snapshot)).apply {
+internal fun WorkflowUpdateResult.toCliMap(
+  goalObservabilityEventValidator: GoalObservabilityEventValidator,
+): Map<String, Any?> = when (this) {
+  is WorkflowUpdateResult.Ok -> workflowSnapshotCliMap(snapshot, goalObservabilityEventValidator).apply {
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -48,8 +53,10 @@ internal fun WorkflowUpdateResult.toCliMap(): Map<String, Any?> = when (this) {
   ).apply { dbPath?.let { put("db_path", it) } }
 }
 
-internal fun WorkflowGetResult.toCliMap(): Map<String, Any?> = when (this) {
-  is WorkflowGetResult.Ok -> LinkedHashMap(WorkflowEngine.snapshotMap(snapshot)).apply {
+internal fun WorkflowGetResult.toCliMap(
+  goalObservabilityEventValidator: GoalObservabilityEventValidator,
+): Map<String, Any?> = when (this) {
+  is WorkflowGetResult.Ok -> workflowSnapshotCliMap(snapshot, goalObservabilityEventValidator).apply {
     put("status", "ok")
     put("db_path", dbPath)
   }

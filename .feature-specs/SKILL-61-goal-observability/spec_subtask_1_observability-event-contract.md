@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Complete
 ---
 
 # SKILL-61 Subtask 1 - Observability Event Contract

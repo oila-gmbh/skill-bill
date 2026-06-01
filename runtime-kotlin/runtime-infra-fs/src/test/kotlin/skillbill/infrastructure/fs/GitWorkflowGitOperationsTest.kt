@@ -29,6 +29,28 @@ class GitWorkflowGitOperationsTest {
     assertEquals("", git(repoRoot, "status", "--short"))
   }
 
+  @Test
+  fun `worktree activity summarizes changed files and diff stat`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-worktree-activity")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\ntwo\n")
+    Files.writeString(repoRoot.resolve("new.txt"), "new\n")
+
+    val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
+
+    assertTrue(result.ok, result.error)
+    assertEquals(2, result.changedFileSummary?.total)
+    assertEquals(1, result.changedFileSummary?.modified)
+    assertEquals(1, result.changedFileSummary?.untracked)
+    assertEquals(1, result.diffStat?.filesChanged)
+    assertEquals(1, result.diffStat?.insertions)
+  }
+
   private fun git(repoRoot: Path, vararg args: String): String {
     val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
       .redirectErrorStream(true)
