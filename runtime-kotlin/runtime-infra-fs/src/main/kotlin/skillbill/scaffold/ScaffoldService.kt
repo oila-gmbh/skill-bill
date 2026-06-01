@@ -947,6 +947,13 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
     } else {
       plan.skillPath
     }
+  if (plan.kind == SKILL_KIND_PLATFORM_PACK && plan.subagentDescriptions.isNotEmpty()) {
+    return listOf(
+      "Subagent bundle emitted: ${plan.subagentSpecialists.size} entries. " +
+        "Native agents compose from the generated code-review content.md files; " +
+        "fill in those content.md files before shipping.",
+    )
+  }
   return listOf(
     "Subagent bundle emitted: ${plan.subagentSpecialists.size} entries. " +
       "Fill in the TODO placeholders in $stubDir/native-agents/agents.yaml before shipping; " +

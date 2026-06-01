@@ -350,11 +350,17 @@ class NewSkillCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
   private val scaffoldCatalogService: ScaffoldCatalogService,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
     "--interactive",
     help = "Run the prompt wizard. This is the default when --payload is omitted.",
+  )
+    .flag(default = false)
+  private val assisted by option(
+    "--assisted",
+    help = "Run the assisted wizard. It asks for scaffold kind, agent, and the minimum required inputs.",
   )
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
@@ -363,7 +369,18 @@ class NewSkillCommand(
 
   override fun run() {
     state.result =
-      if (interactive || payload == null) {
+      if (assisted && payload != null) {
+        errorResult("--assisted cannot be combined with --payload.", format)
+      } else if (assisted) {
+        runNativeAssistedScaffoldWizard(
+          dryRun,
+          format,
+          state,
+          scaffoldService,
+          scaffoldCatalogService,
+          installAgentService,
+        )
+      } else if (interactive || payload == null) {
         runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
@@ -376,11 +393,17 @@ class NewCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
   private val scaffoldCatalogService: ScaffoldCatalogService,
+  private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("new", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
     "--interactive",
     help = "Run the prompt wizard. This is the default when --payload is omitted.",
+  )
+    .flag(default = false)
+  private val assisted by option(
+    "--assisted",
+    help = "Run the assisted wizard. It asks for scaffold kind, agent, and the minimum required inputs.",
   )
     .flag(default = false)
   private val dryRun by option("--dry-run", help = "Plan the scaffold and report the operations without touching disk.")
@@ -389,7 +412,18 @@ class NewCommand(
 
   override fun run() {
     state.result =
-      if (interactive || payload == null) {
+      if (assisted && payload != null) {
+        errorResult("--assisted cannot be combined with --payload.", format)
+      } else if (assisted) {
+        runNativeAssistedScaffoldWizard(
+          dryRun,
+          format,
+          state,
+          scaffoldService,
+          scaffoldCatalogService,
+          installAgentService,
+        )
+      } else if (interactive || payload == null) {
         runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
       } else {
         runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
@@ -554,8 +588,48 @@ private fun runNativeScaffoldWizard(
       collectScaffoldWizardPayload(state, scaffoldCatalogService)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
+  }
+  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+}
+
+private fun runNativeAssistedScaffoldWizard(
+  dryRun: Boolean,
+  format: CliFormat,
+  state: CliRunState,
+  scaffoldService: ScaffoldService,
+  scaffoldCatalogService: ScaffoldCatalogService,
+  installAgentService: InstallAgentService,
+): CliExecutionResult {
+  val payload =
+    try {
+      collectAssistedScaffoldWizardPayload(state, scaffoldCatalogService, installAgentService)
+    } catch (error: IllegalArgumentException) {
+      return errorResult(error.message.orEmpty(), format)
     }
   return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+}
+
+private fun collectAssistedScaffoldWizardPayload(
+  state: CliRunState,
+  scaffoldCatalogService: ScaffoldCatalogService,
+  installAgentService: InstallAgentService,
+): Map<String, Any?> {
+  state.liveStdout(
+    "Skill Bill assisted scaffold wizard\n" +
+      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+  )
+  val kind = normalizeWizardKind(promptRequired(state, "Kind"))
+  val agent = promptAssistedAgent(state, installAgentService.detectAgentTargets(state.userHome).map { target -> target.name })
+  state.liveStdout(
+    "Assisted generator: $agent. Scaffold suggestions are deterministic local defaults; " +
+      "agent-backed generation needs a structured scaffold output contract.\n",
+  )
+  return when (kind) {
+    "platform-pack" -> assistedPlatformPackWizardPayload(state, scaffoldCatalogService.platformPackPresets())
+    else -> throw IllegalArgumentException(
+      "Assisted mode currently supports platform-pack scaffolds. Use the normal wizard for kind '$kind'.",
+    )
+  }
 }
 
 private fun collectScaffoldWizardPayload(
@@ -592,12 +666,32 @@ private fun platformPackWizardPayload(
   promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
   put("skeleton_mode", promptDefault(state, "Skeleton mode [starter/full]", "starter"))
-  val routingSignal = if (platform in platformPackPresets) {
-    promptOptional(state, "Routing signal override (optional)")
-  } else {
-    promptRequired(state, "Routing signal")
+  promptRoutingSignals(state, platform, platform in platformPackPresets)
+    .ifNotEmpty { signals -> put("routing_signals", mapOf("strong" to signals)) }
+}
+
+private fun assistedPlatformPackWizardPayload(
+  state: CliRunState,
+  platformPackPresets: Map<String, String>,
+): Map<String, Any?> {
+  val platformInput = promptRequired(state, "Language or platform")
+  return assistedPlatformPackPayload(platformInput, platformPackPresets)
+}
+
+private fun assistedPlatformPackPayload(
+  platformInput: String,
+  platformPackPresets: Map<String, String>,
+): Map<String, Any?> = buildMap {
+  val profile = assistedPlatformProfile(platformInput)
+  val displayName = platformPackPresets[profile.slug] ?: profile.displayName
+  putScaffoldBase("platform-pack")
+  put("platform", profile.slug)
+  put("display_name", displayName)
+  put("description", "$displayName platform pack for code review and quality checks.")
+  put("skeleton_mode", "full")
+  if (profile.slug !in platformPackPresets) {
+    put("routing_signals", mapOf("strong" to profile.strongSignals))
   }
-  routingSignal.ifNotBlank { signal -> put("routing_signals", mapOf("strong" to listOf(signal))) }
 }
 
 private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
@@ -653,6 +747,112 @@ private fun promptDefault(state: CliRunState, label: String, default: String): S
   return value.ifBlank { default }
 }
 
+private fun promptRoutingSignals(state: CliRunState, platform: String, hasPreset: Boolean): List<String> {
+  if (hasPreset) {
+    state.liveStdout(
+      "Built-in routing preset found for '$platform'. Press Enter to use it, or enter comma-separated " +
+        "replacement signals such as file extensions, filenames, or directory markers.\n",
+    )
+    return parseCommaSeparated(promptOptional(state, "Routing signal override (optional, comma-separated)"))
+  }
+  state.liveStdout(
+    "Routing signals tell Skill Bill when to use this platform pack. Enter comma-separated text " +
+      "markers that strongly identify the stack in changed files, repo markers, or dependency manifests.\n" +
+      "Use file extensions (.kt, .go), filenames (go.mod, package.json), directories (src/main/java), " +
+      "dependency coordinates, or language markers.\n",
+  )
+  val signals = parseCommaSeparated(promptRequired(state, "Strong routing signals (comma-separated)"))
+  require(signals.isNotEmpty()) {
+    "Missing required scaffold wizard value: Strong routing signals (comma-separated)."
+  }
+  return signals
+}
+
+private fun promptAssistedAgent(state: CliRunState, detectedAgents: List<String>): String {
+  val agents = detectedAgents.distinct().sorted()
+  if (agents.isEmpty()) {
+    state.liveStdout("No installed agents detected; using local deterministic assistance.\n")
+    return "local"
+  }
+  state.liveStdout(
+    "Available agents:\n" +
+      agents.mapIndexed { index, agent -> "  ${index + 1}. $agent" }.joinToString(separator = "\n") +
+      "\n",
+  )
+  val selected = promptDefault(state, "Agent [1]", "1")
+  val byNumber = selected.toIntOrNull()?.let { number -> agents.getOrNull(number - 1) }
+  val byName = agents.firstOrNull { agent -> agent.equals(selected, ignoreCase = true) }
+  return byNumber ?: byName ?: throw IllegalArgumentException(
+    "Unknown assisted agent '$selected'. Choose one of: ${agents.joinToString(", ")}.",
+  )
+}
+
+private data class AssistedPlatformProfile(
+  val slug: String,
+  val displayName: String,
+  val strongSignals: List<String>,
+)
+
+private fun assistedPlatformProfile(input: String): AssistedPlatformProfile {
+  val key = languageLookupKey(input)
+  return assistedPlatformProfiles()[key] ?: fallbackAssistedPlatformProfile(input)
+}
+
+private fun assistedPlatformProfiles(): Map<String, AssistedPlatformProfile> = buildMap {
+  putProfile("go", "Go", listOf(".go", "go.mod", "go.sum"), "go", "golang")
+  putProfile("python", "Python", listOf("pyproject.toml", "requirements.txt", "setup.py", "poetry.lock", ".py"), "py", "python")
+  putProfile("javascript", "JavaScript", listOf("package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".js", ".jsx"), "js", "javascript", "node", "nodejs")
+  putProfile("typescript", "TypeScript", listOf("tsconfig.json", "package.json", ".ts", ".tsx"), "ts", "typescript")
+  putProfile("rust", "Rust", listOf("Cargo.toml", "Cargo.lock", ".rs"), "rs", "rust")
+  putProfile("ruby", "Ruby", listOf("Gemfile", "Gemfile.lock", ".rb"), "rb", "ruby")
+  putProfile("csharp", "C#", listOf(".csproj", ".sln", ".cs"), "csharp", "c#", "dotnet")
+  putProfile("cpp", "C++", listOf("CMakeLists.txt", ".cpp", ".hpp", ".cc", ".h"), "cpp", "c++")
+  putProfile("c", "C", listOf("Makefile", ".c", ".h"), "c")
+  putProfile("swift", "Swift", listOf("Package.swift", ".swift"), "swift")
+  putProfile("scala", "Scala", listOf("build.sbt", ".scala"), "scala")
+  putProfile("clojure", "Clojure", listOf("deps.edn", "project.clj", ".clj"), "clojure")
+  putProfile("elixir", "Elixir", listOf("mix.exs", "mix.lock", ".ex", ".exs"), "elixir")
+  putProfile("erlang", "Erlang", listOf("rebar.config", ".erl", ".hrl"), "erlang")
+  putProfile("dart", "Dart", listOf("pubspec.yaml", ".dart"), "dart")
+  putProfile("lua", "Lua", listOf(".lua"), "lua")
+  putProfile("haskell", "Haskell", listOf("stack.yaml", "cabal.project", ".hs"), "haskell")
+}
+
+private fun MutableMap<String, AssistedPlatformProfile>.putProfile(
+  slug: String,
+  displayName: String,
+  strongSignals: List<String>,
+  vararg aliases: String,
+) {
+  val profile = AssistedPlatformProfile(slug = slug, displayName = displayName, strongSignals = strongSignals)
+  aliases.forEach { alias -> put(languageLookupKey(alias), profile) }
+}
+
+private fun fallbackAssistedPlatformProfile(input: String): AssistedPlatformProfile {
+  val slug = platformSlugFromInput(input)
+  val displayName = displayNameFromInput(input, slug)
+  return AssistedPlatformProfile(
+    slug = slug,
+    displayName = displayName,
+    strongSignals = listOf(".$slug", "$slug/"),
+  )
+}
+
+private fun languageLookupKey(value: String): String =
+  value.trim().lowercase().filter { character -> character.isLetterOrDigit() || character == '#' || character == '+' }
+
+private fun platformSlugFromInput(value: String): String =
+  value.trim()
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), "-")
+    .trim('-')
+    .ifBlank { "platform" }
+
+private fun displayNameFromInput(input: String, slug: String): String =
+  input.trim().takeIf { it.isNotBlank() } ?: slug.split("-").joinToString(" ") { part ->
+    part.replaceFirstChar { character -> character.uppercase() }
+  }
+
 private fun promptRequired(state: CliRunState, label: String): String {
   val value = promptOptional(state, label)
   require(value.isNotBlank()) { "Missing required scaffold wizard value: $label." }
@@ -669,6 +869,13 @@ private fun normalizeBillSkillName(name: String): String = if (name.startsWith("
 private inline fun String.ifNotBlank(block: (String) -> Unit) {
   if (isNotBlank()) block(this)
 }
+
+private inline fun <T> List<T>.ifNotEmpty(block: (List<T>) -> Unit) {
+  if (isNotEmpty()) block(this)
+}
+
+private fun parseCommaSeparated(value: String): List<String> =
+  value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
 private fun runNativeScaffoldPayload(
   payloadPath: String?,

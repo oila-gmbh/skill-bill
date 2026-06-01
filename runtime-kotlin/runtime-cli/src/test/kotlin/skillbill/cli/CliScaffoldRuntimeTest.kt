@@ -67,6 +67,130 @@ class CliScaffoldRuntimeTest {
   }
 
   @Test
+  fun `new platform pack wizard explains built-in routing presets and accepts blank override`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-java-preset")
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = "2\njava\nJava\nStuff for Java\nfull\n\n",
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val preview = platformManifestPreview(payload)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertContains(liveStdout.toString(), "Built-in routing preset found for 'java'")
+    assertContains(liveStdout.toString(), "Press Enter to use it")
+    assertContains(preview, "- \"pom.xml\"")
+    assertContains(preview, "- \"src/main/java\"")
+  }
+
+  @Test
+  fun `new platform pack wizard explains custom routing signals and accepts comma separated values`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-routing-help")
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = listOf("2", "go", "Go", "Stuff for Go", "starter", ".go, go.mod").joinToString("\n"),
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val preview = platformManifestPreview(payload)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertContains(liveStdout.toString(), "Routing signals tell Skill Bill when to use this platform pack")
+    assertContains(liveStdout.toString(), "changed files, repo markers, or dependency manifests")
+    assertContains(liveStdout.toString(), "Use file extensions (.kt, .go)")
+    assertContains(liveStdout.toString(), "filenames (go.mod, package.json)")
+    assertContains(liveStdout.toString(), "directories (src/main/java)")
+    assertContains(liveStdout.toString(), "dependency coordinates, or language markers")
+    assertContains(liveStdout.toString(), "Strong routing signals (comma-separated)")
+    assertContains(preview, "- \".go\"")
+    assertContains(preview, "- \"go.mod\"")
+  }
+
+  @Test
+  fun `new assisted asks kind and agent then scaffolds platform pack from language`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-assisted")
+    Files.createDirectories(tempDir.resolve(".codex"))
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new", "--assisted", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = listOf("2", "codex", "go").joinToString("\n"),
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val preview = platformManifestPreview(payload)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertContains(liveStdout.toString(), "Skill Bill assisted scaffold wizard")
+    assertContains(liveStdout.toString(), "Kind: 1 horizontal, 2 platform-pack")
+    assertContains(liveStdout.toString(), "Available agents:")
+    assertContains(liveStdout.toString(), "codex")
+    assertContains(liveStdout.toString(), "Language or platform")
+    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/go"))
+    assertContains(preview, "display_name: \"Go\"")
+    assertContains(preview, "- \".go\"")
+    assertContains(preview, "- \"go.mod\"")
+    assertContains(preview, "ui: \"code-review/bill-go-code-review-ui/content.md\"")
+  }
+
+  @Test
+  fun `new assisted falls back to local assistance when no agent is detected`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-assisted-prompt")
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new-skill", "--assisted", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = listOf("2", "golang").joinToString("\n"),
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertContains(liveStdout.toString(), "No installed agents detected")
+    assertContains(liveStdout.toString(), "Language or platform")
+    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/go"))
+  }
+
+  @Test
+  fun `new assisted rejects unsupported scaffold kind`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-assisted-error")
+    val result =
+      CliRuntime.run(
+        listOf("new", "--assisted", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = "1\n",
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(1, result.exitCode)
+    assertEquals("error", payload.stringValue("status"))
+    assertContains(payload.stringValue("error"), "currently supports platform-pack")
+  }
+
+  @Test
   fun `create-and-fill dry run preserves scaffold payload contract`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-fill")
     val bodyFile = tempDir.resolve("content-body.md")
@@ -441,6 +565,16 @@ private fun decodeJsonObject(rawJson: String): JsonObject {
 }
 
 private fun JsonObject.stringValue(key: String): String = this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+
+private fun platformManifestPreview(payload: JsonObject): String {
+  val manifestPath = payload["manifest_edits"]?.jsonArray?.single()?.jsonPrimitive?.contentOrNull.orEmpty()
+  return payload["manifest_edit_previews"]
+    ?.jsonObject
+    ?.get(manifestPath)
+    ?.jsonPrimitive
+    ?.contentOrNull
+    .orEmpty()
+}
 
 private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
   assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern}, got $value")
