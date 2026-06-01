@@ -7,14 +7,14 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.model.command.RoutingSignalsInput
+import skillbill.scaffold.model.command.ACTIVE_SCAFFOLD_COMMAND_KINDS
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_ADD_ON
-import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_HORIZONTAL
-import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_PLATFORM_OVERRIDE_PILOTED
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_PLATFORM_PACK
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_PAYLOAD_VERSION
-import skillbill.scaffold.model.command.SUPPORTED_SCAFFOLD_COMMAND_KINDS
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
+import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
+import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 
 /**
  * SKILL-52.2 subtask 2: CLI raw-map → typed [ScaffoldCommandRequest] parser. Runs at the CLI
@@ -35,8 +35,6 @@ fun parseScaffoldCommandRequest(payload: Map<String, Any?>): ScaffoldCommandRequ
   return when (kind) {
     SCAFFOLD_COMMAND_KIND_HORIZONTAL -> parseHorizontal(payload, version, repoRoot)
     SCAFFOLD_COMMAND_KIND_PLATFORM_PACK -> parsePlatformPack(payload, version, repoRoot)
-    SCAFFOLD_COMMAND_KIND_PLATFORM_OVERRIDE_PILOTED -> parsePlatformOverride(payload, version, repoRoot)
-    SCAFFOLD_COMMAND_KIND_CODE_REVIEW_AREA -> parseCodeReviewArea(payload, version, repoRoot)
     SCAFFOLD_COMMAND_KIND_ADD_ON -> parseAddOn(payload, version, repoRoot)
     else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
   }
@@ -56,9 +54,12 @@ private fun validateVersionAndKind(payload: Map<String, Any?>): Pair<String, Str
     )
   }
   val kind = requireString(payload, "kind")
-  if (kind !in SUPPORTED_SCAFFOLD_COMMAND_KINDS) {
+  if (isRetiredPartialScaffoldCommandKindAlias(kind)) {
+    rejectRetiredPartialScaffoldCommandKind(kind)
+  }
+  if (kind !in ACTIVE_SCAFFOLD_COMMAND_KINDS) {
     throw UnknownSkillKindError(
-      "Scaffold payload declares unsupported kind '$kind'. Supported kinds: $SUPPORTED_SCAFFOLD_COMMAND_KINDS.",
+      "Scaffold payload declares unsupported kind '$kind'. Supported kinds: $ACTIVE_SCAFFOLD_COMMAND_KINDS.",
     )
   }
   return version to kind
@@ -121,40 +122,6 @@ private fun parseRoutingSignalsInput(routing: Any?): RoutingSignalsInput? = when
     "Scaffold payload field 'routing_signals' must be an object when provided.",
   )
 }
-
-private fun parsePlatformOverride(
-  payload: Map<String, Any?>,
-  version: String,
-  repoRoot: String?,
-): ScaffoldCommandRequest.PlatformOverride = ScaffoldCommandRequest.PlatformOverride(
-  platform = requireString(payload, "platform"),
-  family = requireString(payload, "family"),
-  description = requireStringOrDefault(payload, "description", ""),
-  contentBody = optionalString(payload, "content_body"),
-  subagentSpecialists = if (payload.containsKey("subagent_specialists")) {
-    parseStringList(payload, "subagent_specialists")
-  } else {
-    null
-  },
-  suppressSubagents = parseBooleanOrFalse(payload, "no_subagents"),
-  nameOverride = requireOptionalNonBlank(payload, "name"),
-  scaffoldPayloadVersion = version,
-  repoRoot = repoRoot,
-)
-
-private fun parseCodeReviewArea(
-  payload: Map<String, Any?>,
-  version: String,
-  repoRoot: String?,
-): ScaffoldCommandRequest.CodeReviewArea = ScaffoldCommandRequest.CodeReviewArea(
-  platform = requireString(payload, "platform"),
-  area = requireString(payload, "area"),
-  description = requireStringOrDefault(payload, "description", ""),
-  contentBody = optionalString(payload, "content_body"),
-  nameOverride = requireOptionalNonBlank(payload, "name"),
-  scaffoldPayloadVersion = version,
-  repoRoot = repoRoot,
-)
 
 private fun parseAddOn(payload: Map<String, Any?>, version: String, repoRoot: String?): ScaffoldCommandRequest.AddOn =
   ScaffoldCommandRequest.AddOn(

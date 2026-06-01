@@ -4,6 +4,7 @@ import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldPayload
 import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
@@ -189,37 +190,33 @@ class ScaffoldPayloadCommandRequestTest {
   }
 
   @Test
-  fun `PlatformOverride payload maps to typed request with verbatim fields`() {
-    val request = ScaffoldPayload.PlatformOverride(
-      platform = "kotlin",
-      family = "quality-check",
-      description = "qc override",
-      contentBody = "## body",
-      subagentSpecialists = emptyList(),
-      suppressSubagents = false,
-    ).toCommandRequest() as ScaffoldCommandRequest.PlatformOverride
+  fun `PlatformOverride payload is rejected before runtime request submission`() {
+    val error = assertFailsWith<RetiredScaffoldKindError> {
+      ScaffoldPayload.PlatformOverride(
+        platform = "kotlin",
+        family = "quality-check",
+        description = "qc override",
+        contentBody = "## body",
+        subagentSpecialists = emptyList(),
+        suppressSubagents = false,
+      ).toCommandRequest()
+    }
 
-    assertEquals("kotlin", request.platform)
-    assertEquals("quality-check", request.family)
-    assertEquals("qc override", request.description)
-    assertEquals("## body", request.contentBody)
-    assertNull(request.subagentSpecialists, "empty subagentSpecialists must collapse to null")
-    assertEquals(false, request.suppressSubagents)
+    assertTrue("retired for new partial scaffold creation" in error.message.orEmpty())
   }
 
   @Test
-  fun `CodeReviewArea payload maps to typed request`() {
-    val request = ScaffoldPayload.CodeReviewArea(
-      platform = "kotlin",
-      area = "security",
-      description = "",
-      contentBody = null,
-    ).toCommandRequest() as ScaffoldCommandRequest.CodeReviewArea
+  fun `CodeReviewArea payload is rejected before runtime request submission`() {
+    val error = assertFailsWith<RetiredScaffoldKindError> {
+      ScaffoldPayload.CodeReviewArea(
+        platform = "kotlin",
+        area = "security",
+        description = "",
+        contentBody = null,
+      ).toCommandRequest()
+    }
 
-    assertEquals("kotlin", request.platform)
-    assertEquals("security", request.area)
-    assertEquals("", request.description)
-    assertNull(request.contentBody)
+    assertTrue("platform-pack" in error.message.orEmpty())
   }
 
   @Test

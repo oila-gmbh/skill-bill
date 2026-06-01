@@ -1,3 +1,12 @@
+## [2026-06-01] SKILL-63 subtask 1 scaffold-kind-surface
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop
+- Partial scaffold creation kinds (`platform-override-piloted`, `code-review-area`, and wizard aliases) are now retired at creation seams through typed `RetiredScaffoldKindError`, while legacy constants/models remain for existing source compatibility. reusable
+- Active creation kind lists now split from legacy supported-kind lists; adapters, CLI wizard prompts, assisted mode, desktop menus, and command palette must use active creation values only. reusable
+- Existing platform override/code-review-area source discovery, render, validation, install-plan discovery, and removal paths stay intact; do not delete legacy planning/source helpers just because creation is blocked.
+- Install sync was intentionally skipped during goal-continuation; future local refresh should happen outside workflow continuation.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-06-01] SKILL-62 install-sh-reuse-last-selection
 Areas: install.sh, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core tests
 - `install.sh --reuse-last-selection` now resolves the latest shared install selection before cleanup, skips agent/platform/telemetry/MCP prompts, rejects desktop-only reuse, and reports reused selections in the install summary. reusable

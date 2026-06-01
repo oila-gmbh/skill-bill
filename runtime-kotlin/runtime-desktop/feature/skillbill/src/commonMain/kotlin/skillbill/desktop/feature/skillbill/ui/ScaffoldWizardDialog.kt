@@ -219,7 +219,7 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     SectionLabel("Wizard kind")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      ScaffoldKind.values().forEach { kind ->
+      ScaffoldKind.activeCreationValues().forEach { kind ->
         val isSelected = kind == selected
         val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
         val foregroundColor = when {

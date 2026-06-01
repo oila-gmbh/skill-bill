@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
@@ -49,6 +50,19 @@ class ScaffoldPayloadMapPolicyTest {
     assertFailsWith<UnknownSkillKindError> {
       detectKind(mapOf("kind" to "not-a-kind"))
     }
+  }
+
+  @Test
+  fun `detectKind throws RetiredScaffoldKindError for retired partial kind aliases`() {
+    listOf("platform-override-piloted", "platform-override", "override", "code-review-area", "area", "specialist")
+      .forEach { kind ->
+        val error = assertFailsWith<RetiredScaffoldKindError> {
+          detectKind(mapOf("kind" to kind))
+        }
+        val message = error.message.orEmpty()
+        assertTrue(kind in message, "Got: $message")
+        assertTrue("platform-pack" in message, "Got: $message")
+      }
   }
 
   @Test

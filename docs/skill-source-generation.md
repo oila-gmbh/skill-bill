@@ -256,11 +256,15 @@ Supported scaffold kinds:
   stubs. Payloads may also declare `baseline_layers`; the scaffolder validates
   those references before mutation and writes them as
   `code_review_composition.baseline_layers` in the new manifest.
-- `platform-override-piloted`: creates a governed platform override or
-  pre-shell source depending on family
-- `code-review-area`: creates one approved specialist content file and
-  registers it in the pack manifest
 - `add-on`: creates one pack-owned add-on under `platform-packs/<slug>/addons/`
+
+Retired partial scaffold kinds are rejected for new creation:
+`platform-override-piloted`, `platform-override`, `override`,
+`code-review-area`, `area`, and `specialist`. The error recommends creating a
+full `platform-pack`, or editing/removing existing pack content through normal
+authoring and removal flows. Existing platform override and code-review area
+source files remain discoverable, renderable, installable, validatable, and
+removable.
 
 Scaffolding writes source files only. It does not stage generated `SKILL.md`
 wrappers or support pointer files into source.

@@ -91,9 +91,10 @@ class JvmRuntimeScaffoldGatewayTest {
   }
 
   // SKILL-52.2 subtask 2: parity asserts the typed `ScaffoldCommandRequest` (not a raw map) is
-  // identical across dry-run/execute for every kind, preserving the original AC2 intent.
+  // identical across dry-run/execute for every active creation kind, preserving the original AC2
+  // intent without routing retired partial scaffold kinds.
   @Test
-  fun `payload parity holds between dry-run and execute for every kind`() = runBlocking {
+  fun `payload parity holds between dry-run and execute for active creation kinds`() = runBlocking {
     val recorded = mutableListOf<ScaffoldCommandRequest>()
     val gateway = JvmRuntimeScaffoldGateway().apply {
       scaffolder = { request, _ ->
@@ -109,8 +110,6 @@ class JvmRuntimeScaffoldGatewayTest {
     val payloads: List<ScaffoldPayload> = listOf(
       ScaffoldPayload.HorizontalSkill(name = "bill-horizontal"),
       ScaffoldPayload.PlatformPack(platform = "java"),
-      ScaffoldPayload.PlatformOverride(platform = "java", family = "code-review"),
-      ScaffoldPayload.CodeReviewArea(platform = "java", area = "security"),
       ScaffoldPayload.AddOn(name = "bill-addon", platform = "java"),
     )
     payloads.forEach { payload ->
@@ -121,6 +120,35 @@ class JvmRuntimeScaffoldGatewayTest {
     pairs.forEach { (dryRequest, executeRequest) ->
       assertEquals(dryRequest, executeRequest, "dry-run and execute requests must be identical (AC2)")
     }
+  }
+
+  @Test
+  fun `retired partial creation payloads fail before runtime request submission`() = runBlocking {
+    var scaffolderInvocations = 0
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ ->
+        scaffolderInvocations += 1
+        ScaffoldResult(
+          kind = "unexpected",
+          skillName = "bill-unexpected",
+          skillPath = Path.of("/tmp/unexpected"),
+        )
+      }
+    }
+
+    val payloads: List<ScaffoldPayload> = listOf(
+      ScaffoldPayload.PlatformOverride(platform = "java", family = "code-review"),
+      ScaffoldPayload.CodeReviewArea(platform = "java", area = "security"),
+    )
+    payloads.forEach { payload ->
+      listOf(gateway.dryRun(payload), gateway.execute(payload)).forEach { result ->
+        val failed = result as ScaffoldRunResult.Failed
+        assertEquals("RetiredScaffoldKindError", failed.exceptionName)
+        assertTrue(failed.rollbackComplete)
+      }
+    }
+
+    assertEquals(0, scaffolderInvocations, "retired payloads must not reach the runtime scaffolder")
   }
 
   @Test

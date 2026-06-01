@@ -31,41 +31,29 @@ Every payload MUST include:
   version string.
 - `kind` — one of:
   - `"horizontal"` — placed under `skills/<name>/content.md`.
-  - `"platform-override-piloted"` — placed under
-    `platform-packs/<slug>/<family>/<name>/content.md` plus a manifest edit
-    for shelled families. Pre-shell families are placed under
-    `skills/<platform>/<name>/content.md` with an interim-location note.
   - `"platform-pack"` — creates a new `platform-packs/<slug>/` root with a
     baseline `code-review` skill, a default `quality-check` skill,
     and a freshly rendered `platform.yaml`.
-  - `"code-review-area"` — placed under
-    `platform-packs/<slug>/code-review/<name>/content.md` plus additions to
-    `declared_code_review_areas`, `declared_files.areas`, and
-    `area_metadata` in the owning `platform.yaml`.
   - `"add-on"` — placed at `platform-packs/<platform>/addons/<name>.md` (flat; no
     sub-directory).
-- `name` — the canonical `bill-...` slug for the new skill. For
-  `platform-pack` and `code-review-area`, the scaffolder derives canonical
-  names when this key is omitted; if provided, the value must still match the
-  canonical shape.
+- `name` — the canonical `bill-...` slug for a new horizontal skill. For
+  `platform-pack`, the scaffolder derives canonical names when this key is
+  omitted; if provided, the value must still match the canonical shape.
+
+Retired partial creation kinds are rejected before scaffold execution:
+`"platform-override-piloted"`, `"platform-override"`, `"override"`,
+`"code-review-area"`, `"area"`, and `"specialist"` raise
+`RetiredScaffoldKindError`. Create a full `platform-pack`, or edit/remove
+existing pack content through normal authoring and removal commands instead of
+creating partial scaffold pieces. Existing platform override and code-review
+area source files remain discoverable, renderable, installable, validatable, and
+removable.
 
 ## Conditionally Required Keys
 
-- `platform` — required for `platform-override-piloted`, `code-review-area`,
-  `platform-pack`, and `add-on`.
-  - For `platform-override-piloted`, `code-review-area`, and `add-on`, it
-    must name an existing platform slug (e.g. `kotlin`, `kmp`).
+- `platform` — required for `platform-pack` and `add-on`.
+  - For `add-on`, it must name an existing platform slug (e.g. `kotlin`, `kmp`).
   - For `platform-pack`, it is the new platform slug to create.
-- `family` — required for `platform-override-piloted`. One of the known
-  families:
-  - Shelled: `code-review`, `quality-check`.
-  - Pre-shell (see the pre-shell family registry in `skillbill.scaffold` (`runtime-core`)):
-    `feature-implement`, `feature-verify`.
-- `area` — required for `code-review-area`. Must be one of the approved
-  areas in the approved code-review area set declared in `skillbill.scaffold` (`runtime-core`):
-  `architecture`, `performance`, `platform-correctness`, `security`,
-  `testing`, `api-contracts`, `persistence`, `reliability`, `ui`,
-  `ux-accessibility`.
 - `routing_signals` — required for `platform-pack` only when the platform
   does not have a built-in preset. Must be a mapping with a non-empty
   `strong` list and optional `tie_breakers` list. For
@@ -120,15 +108,15 @@ Every payload MUST include:
 - `subagent_specialists` — list of specialist subagent names to scaffold
   alongside an orchestrator skill. Each name must match
   `^[a-z][a-z0-9-]*$`, be non-empty, and unique within the list. Honored
-  ONLY for orchestrator kinds: `horizontal`, `platform-override-piloted`,
-  and `platform-pack`. For `platform-pack`, stubs are attached to the
+  ONLY for active orchestrator kinds: `horizontal` and `platform-pack`. For
+  `platform-pack`, stubs are attached to the
   baseline orchestrator skill (`bill-<platform>-code-review`) only, never
   to the per-area specialist skills or the quality-check skill. When omitted
   for `platform-pack`, the scaffolder defaults to one native-agent source per
   selected code-review specialist area, named after the generated specialist
   skill (`bill-<platform>-code-review-<area>`) and described with the same
   per-area review focus as the specialist `content.md`. Supplying this field
-  for `code-review-area` or `add-on` raises `InvalidScaffoldPayloadError`.
+  for `add-on` raises `InvalidScaffoldPayloadError`.
   Default: `[]` for non-platform-pack orchestrators.
 - `no_subagents` — boolean opt-out. When `true`, the scaffolder skips the
   default subagent stub emission for an orchestrator kind even when
@@ -168,36 +156,20 @@ validation fails if generated provider artifacts are checked into the repo.
 }
 ```
 
-### Platform-override (piloted, code-review family)
+### Retired partial kind rejection
 
 ```json
 {
   "scaffold_payload_version": "1.0",
   "kind": "platform-override-piloted",
-  "name": "bill-kotlin-code-review-new",
   "platform": "kotlin",
-  "family": "code-review",
-  "description": "..."
+  "family": "code-review"
 }
 ```
 
-### Platform-override (piloted, quality-check family)
-
-```json
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "platform-override-piloted",
-  "name": "bill-kotlin-code-check",
-  "platform": "kotlin",
-  "family": "quality-check"
-}
-```
-
-This lands the skill at
-`platform-packs/kotlin/quality-check/bill-kotlin-code-check/content.md` and edits
-the owning pack's `platform.yaml` to register
-`declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md`.
-Generated `SKILL.md` wrappers and pointer files are render/install output only.
+This raises `RetiredScaffoldKindError`. Use a full `platform-pack` scaffold for
+new platform behavior, or edit/remove existing pack content directly through the
+authoring/removal commands.
 
 ### New platform pack
 
@@ -268,22 +240,9 @@ omit `baseline_layers` remain valid and generate no
 ```json
 {
   "scaffold_payload_version": "1.0",
-  "kind": "code-review-area",
-  "platform": "kotlin",
-  "area": "api-contracts",
+  "kind": "horizontal",
+  "name": "bill-api-contract-review",
   "content_body": "## Focus\n\nReview API boundary regressions.\n\n## Review Guidance\n\n- Prefer client-visible contract issues.\n- Call out backward-compatibility breaks explicitly.\n"
-}
-```
-
-### Code-review area
-
-```json
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "code-review-area",
-  "name": "bill-kotlin-code-review-api-contracts",
-  "platform": "kotlin",
-  "area": "api-contracts"
 }
 ```
 
@@ -306,7 +265,10 @@ All exceptions derive from `skillbill.contracts.ShellContentContractException` a
   disagrees with the scaffolder.
 - `InvalidScaffoldPayloadError` — missing required key, malformed value, or
   unapproved area slug.
-- `UnknownSkillKindError` — `kind` is not one of the supported kinds.
+- `RetiredScaffoldKindError` — `kind` is a retired partial creation kind
+  (`platform-override-piloted`, `platform-override`, `override`,
+  `code-review-area`, `area`, or `specialist`).
+- `UnknownSkillKindError` — `kind` is not one of the active supported kinds.
 - `UnknownPreShellFamilyError` — pre-shell family not in
   `PRE_SHELL_FAMILIES`.
 - `MissingPlatformPackError` — platform pack (`platform-packs/<slug>/`)

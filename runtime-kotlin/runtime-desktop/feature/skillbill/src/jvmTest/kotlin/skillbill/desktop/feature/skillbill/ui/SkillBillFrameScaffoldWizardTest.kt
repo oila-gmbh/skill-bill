@@ -41,9 +41,9 @@ import kotlin.test.assertTrue
 class SkillBillFrameScaffoldWizardTest {
 
   @Test
-  fun `run is disabled until plan completes for every kind`() {
+  fun `run is disabled until plan completes for every active creation kind`() {
     val emptyCatalog = ScaffoldCatalogSnapshot.empty
-    ScaffoldKind.values().forEach { kind ->
+    ScaffoldKind.activeCreationValues().forEach { kind ->
       val state = ScaffoldWizardState(kind = kind, optionCatalog = emptyCatalog)
       assertFalse(state.runEnabled, "Run must be disabled for $kind without a plan")
     }
@@ -360,14 +360,11 @@ class SkillBillFrameScaffoldWizardTest {
   }
 
   @Test
-  fun `display labels are stable per ScaffoldKind`() {
-    // AC7 mirror: kinds offered must match exactly the five wizard variants.
-    val labels = ScaffoldKind.values().map { it.displayLabel }.toSet()
-    assertEquals(5, labels.size)
+  fun `display labels are stable per active creation ScaffoldKind`() {
+    val labels = ScaffoldKind.activeCreationValues().map { it.displayLabel }.toSet()
+    assertEquals(3, labels.size)
     assertTrue(labels.contains("Horizontal skill"))
     assertTrue(labels.contains("Platform pack"))
-    assertTrue(labels.contains("Platform override for piloted family"))
-    assertTrue(labels.contains("Code-review area"))
     assertTrue(labels.contains("Add-on"))
   }
 

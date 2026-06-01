@@ -166,8 +166,6 @@ class ScaffoldBaselineLayerPayloadTest {
     val repo = seedRepo()
     listOf(
       payload(repo, "horizontal", "name" to "bill-not-a-pack"),
-      payload(repo, "platform-override-piloted", "platform" to "kotlin", "family" to "quality-check"),
-      payload(repo, "code-review-area", "platform" to "kotlin", "area" to "performance"),
       payload(repo, "add-on", "platform" to "kotlin", "name" to "review-helper"),
     ).forEach { basePayload ->
       val before = snapshotTree(repo)

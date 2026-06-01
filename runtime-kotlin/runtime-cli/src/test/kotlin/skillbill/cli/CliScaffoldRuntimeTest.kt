@@ -11,6 +11,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliScaffoldRuntimeTest {
@@ -140,6 +141,8 @@ class CliScaffoldRuntimeTest {
     assertEquals("ok", payload.stringValue("status"))
     assertContains(liveStdout.toString(), "Skill Bill assisted scaffold wizard")
     assertContains(liveStdout.toString(), "Kind: 1 horizontal, 2 platform-pack")
+    assertFalse("platform-override" in liveStdout.toString())
+    assertFalse("code-review-area" in liveStdout.toString())
     assertContains(liveStdout.toString(), "Available agents:")
     assertContains(liveStdout.toString(), "codex")
     assertContains(liveStdout.toString(), "Language or platform")
@@ -188,6 +191,25 @@ class CliScaffoldRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
     assertContains(payload.stringValue("error"), "currently supports platform-pack")
+  }
+
+  @Test
+  fun `new assisted rejects retired partial scaffold kind alias`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-assisted-retired")
+    val result =
+      CliRuntime.run(
+        listOf("new", "--assisted", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = "platform-override\n",
+          userHome = tempDir,
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(1, result.exitCode)
+    assertEquals("error", payload.stringValue("status"))
+    assertContains(payload.stringValue("error"), "retired for new partial scaffold creation")
+    assertContains(payload.stringValue("error"), "platform-pack")
   }
 
   @Test

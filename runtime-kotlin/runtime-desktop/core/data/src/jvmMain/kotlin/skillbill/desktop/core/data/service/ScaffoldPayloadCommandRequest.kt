@@ -4,6 +4,7 @@ import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldPayload
 import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
@@ -58,24 +59,8 @@ internal fun ScaffoldPayload.toCommandRequest(): ScaffoldCommandRequest = when (
     scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
     repoRoot = repoRoot,
   )
-  is ScaffoldPayload.PlatformOverride -> ScaffoldCommandRequest.PlatformOverride(
-    platform = platform,
-    family = family,
-    description = description,
-    contentBody = contentBody,
-    subagentSpecialists = subagentSpecialists.takeIf { it.isNotEmpty() },
-    suppressSubagents = suppressSubagents,
-    scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
-    repoRoot = repoRoot,
-  )
-  is ScaffoldPayload.CodeReviewArea -> ScaffoldCommandRequest.CodeReviewArea(
-    platform = platform,
-    area = area,
-    description = description,
-    contentBody = contentBody,
-    scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
-    repoRoot = repoRoot,
-  )
+  is ScaffoldPayload.PlatformOverride -> rejectRetiredPartialScaffoldCommandKind(kind.payloadKind)
+  is ScaffoldPayload.CodeReviewArea -> rejectRetiredPartialScaffoldCommandKind(kind.payloadKind)
   is ScaffoldPayload.AddOn -> ScaffoldCommandRequest.AddOn(
     name = name,
     platform = platform,

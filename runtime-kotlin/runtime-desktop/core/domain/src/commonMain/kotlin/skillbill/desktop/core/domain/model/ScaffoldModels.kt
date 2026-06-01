@@ -1,15 +1,23 @@
 package skillbill.desktop.core.domain.model
 
 /**
- * Supported wizard kinds. Mirrors the runtime's SUPPORTED_SKILL_KINDS exactly so contract-valid
- * payloads can be produced 1:1 from a single enum value.
+ * Scaffold kind identifiers. Retired partial kinds remain modeled so legacy source records can be
+ * displayed and removed, but only [activeCreationValues] are offered by creation surfaces.
  */
-enum class ScaffoldKind(val payloadKind: String, val displayLabel: String) {
-  HORIZONTAL_SKILL("horizontal", "Horizontal skill"),
-  PLATFORM_PACK("platform-pack", "Platform pack"),
-  PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family"),
-  CODE_REVIEW_AREA("code-review-area", "Code-review area"),
-  ADD_ON("add-on", "Add-on"),
+enum class ScaffoldKind(
+  val payloadKind: String,
+  val displayLabel: String,
+  val creationSupported: Boolean,
+) {
+  HORIZONTAL_SKILL("horizontal", "Horizontal skill", true),
+  PLATFORM_PACK("platform-pack", "Platform pack", true),
+  PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family", false),
+  CODE_REVIEW_AREA("code-review-area", "Code-review area", false),
+  ADD_ON("add-on", "Add-on", true);
+
+  companion object {
+    fun activeCreationValues(): List<ScaffoldKind> = entries.filter { it.creationSupported }
+  }
 }
 
 /**

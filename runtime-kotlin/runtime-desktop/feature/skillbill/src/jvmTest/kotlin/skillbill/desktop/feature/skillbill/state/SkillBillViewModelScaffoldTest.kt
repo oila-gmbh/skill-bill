@@ -320,8 +320,8 @@ class SkillBillViewModelScaffoldTest {
   // F-T02: payload parity between Plan and Run is asserted at the VM seam (not just the gateway),
   // verifying the view model surfaces the same payload for both modes.
   @Test
-  fun `Plan and Run produce identical payloads for every supported kind`() = runBlocking {
-    ScaffoldKind.values().forEach { kind ->
+  fun `Plan and Run produce identical payloads for every active creation kind`() = runBlocking {
+    ScaffoldKind.activeCreationValues().forEach { kind ->
       val gateway = FakeScaffoldGateway().apply {
         scriptDryRun(
           kind,
@@ -365,6 +365,23 @@ class SkillBillViewModelScaffoldTest {
         "AC2: $kind dry-run and execute payload maps must be identical",
       )
     }
+  }
+
+  @Test
+  fun `retired partial scaffold kinds do not open creation wizard`() = runBlocking {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+
+    assertNull(viewModel.beginOpenScaffoldWizard(ScaffoldKind.PLATFORM_OVERRIDE_PILOTED))
+    assertNull(viewModel.beginOpenScaffoldWizard(ScaffoldKind.CODE_REVIEW_AREA))
+
+    viewModel.finishOpenScaffoldWizard(
+      ScaffoldCatalogResponse(
+        kind = ScaffoldKind.PLATFORM_OVERRIDE_PILOTED,
+        snapshot = ScaffoldCatalogSnapshot.empty,
+      ),
+    )
+    assertNull(viewModel.state().scaffoldWizard)
   }
 
   @Test
@@ -418,38 +435,6 @@ class SkillBillViewModelScaffoldTest {
         "skeleton_mode" to "full",
       ),
       pack,
-    )
-
-    val override = ScaffoldPayload.PlatformOverride(
-      platform = "java",
-      family = "code-review",
-      description = "d",
-    ).toContractMap()
-    assertEquals(
-      linkedMapOf<String, Any?>(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "java",
-        "family" to "code-review",
-        "description" to "d",
-      ),
-      override,
-    )
-
-    val area = ScaffoldPayload.CodeReviewArea(
-      platform = "java",
-      area = "security",
-      description = "d",
-    ).toContractMap()
-    assertEquals(
-      linkedMapOf<String, Any?>(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "code-review-area",
-        "platform" to "java",
-        "area" to "security",
-        "description" to "d",
-      ),
-      area,
     )
 
     val addon = ScaffoldPayload.AddOn(name = "bill-addon", platform = "java").toContractMap()

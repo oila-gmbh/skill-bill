@@ -22,6 +22,8 @@ import skillbill.cli.scaffold.parseScaffoldCommandRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
+import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
+import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -591,6 +593,8 @@ private fun runNativeScaffoldWizard(
   val payload =
     try {
       collectScaffoldWizardPayload(state, scaffoldCatalogService)
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
@@ -608,6 +612,8 @@ private fun runNativeAssistedScaffoldWizard(
   val payload =
     try {
       collectAssistedScaffoldWizardPayload(state, scaffoldCatalogService, installAgentService)
+    } catch (error: SkillBillRuntimeException) {
+      return errorResult(error.message.orEmpty(), format)
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
@@ -621,7 +627,7 @@ private fun collectAssistedScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill assisted scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
   )
   val kind = normalizeWizardKind(promptRequired(state, "Kind"))
   val agent =
@@ -644,13 +650,11 @@ private fun collectScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 platform-override, 4 code-review-area, 5 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
   )
   return when (val kind = normalizeWizardKind(promptRequired(state, "Kind"))) {
     "horizontal" -> horizontalWizardPayload(state)
     "platform-pack" -> platformPackWizardPayload(state, scaffoldCatalogService.platformPackPresets())
-    "platform-override-piloted" -> platformOverrideWizardPayload(state)
-    "code-review-area" -> codeReviewAreaWizardPayload(state, scaffoldCatalogService.approvedCodeReviewAreas())
     "add-on" -> addOnWizardPayload(state)
     else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")
   }
@@ -700,23 +704,6 @@ private fun assistedPlatformPackPayload(
   }
 }
 
-private fun platformOverrideWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
-  putScaffoldBase("platform-override-piloted")
-  put("platform", promptRequired(state, "Platform slug"))
-  put("family", promptRequired(state, "Family"))
-  promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
-  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-}
-
-private fun codeReviewAreaWizardPayload(state: CliRunState, approvedCodeReviewAreas: Set<String>): Map<String, Any?> =
-  buildMap {
-    putScaffoldBase("code-review-area")
-    put("platform", promptRequired(state, "Platform slug"))
-    put("area", promptCodeReviewArea(state, approvedCodeReviewAreas))
-    promptOptional(state, "Skill name override").ifNotBlank { name -> put("name", normalizeBillSkillName(name)) }
-    promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  }
-
 private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
   putScaffoldBase("add-on")
   put("platform", promptRequired(state, "Platform slug"))
@@ -736,16 +723,12 @@ private fun MutableMap<String, Any?>.putScaffoldBase(kind: String) {
 private fun normalizeWizardKind(value: String): String = when (value.trim().lowercase()) {
   "1", "horizontal", "skill" -> "horizontal"
   "2", "platform", "platform-pack", "pack" -> "platform-pack"
-  "3", "platform-override", "platform-override-piloted", "override" -> "platform-override-piloted"
-  "4", "code-review-area", "area", "specialist" -> "code-review-area"
-  "5", "add-on", "addon" -> "add-on"
-  else -> value
-}
-
-private fun promptCodeReviewArea(state: CliRunState, approvedCodeReviewAreas: Set<String>): String {
-  val sortedAreas = approvedCodeReviewAreas.sorted()
-  state.liveStdout("Approved areas: ${sortedAreas.joinToString(", ")}\n")
-  return promptRequired(state, "Area")
+  "3", "add-on", "addon" -> "add-on"
+  else -> if (isRetiredPartialScaffoldCommandKindAlias(value)) {
+    rejectRetiredPartialScaffoldCommandKind(value)
+  } else {
+    value
+  }
 }
 
 private fun promptDefault(state: CliRunState, label: String, default: String): String {

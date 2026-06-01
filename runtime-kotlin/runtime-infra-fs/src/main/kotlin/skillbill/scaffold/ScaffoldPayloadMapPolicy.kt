@@ -4,7 +4,10 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
-import skillbill.scaffold.policy.SUPPORTED_SKILL_KINDS
+import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
+import skillbill.scaffold.policy.RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
+import skillbill.scaffold.policy.RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES
+import skillbill.scaffold.policy.rejectRetiredPartialScaffoldKind
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): the legacy raw-map scaffold-payload policy helpers used to
@@ -50,10 +53,16 @@ internal fun detectKind(payload: Map<String, Any?>): String {
     ?: throw InvalidScaffoldPayloadError(
       "Scaffold payload field 'kind' must be a non-empty string.",
     )
-  if (kind !in SUPPORTED_SKILL_KINDS) {
+  if (kind.trim().lowercase() in RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES) {
+    rejectRetiredPartialScaffoldKind(kind)
+  }
+  if (kind.trim().lowercase() in RETIRED_CODE_REVIEW_AREA_KIND_ALIASES) {
+    rejectRetiredPartialScaffoldKind(kind)
+  }
+  if (kind !in ACTIVE_CREATION_SKILL_KINDS) {
     throw UnknownSkillKindError(
       "Scaffold payload declares unsupported kind '$kind'. " +
-        "Supported kinds: $SUPPORTED_SKILL_KINDS.",
+        "Supported kinds: $ACTIVE_CREATION_SKILL_KINDS.",
     )
   }
   return kind

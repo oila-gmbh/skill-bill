@@ -2273,7 +2273,7 @@ class SkillBillViewModel(
    * so a wizard cannot open while another repo-scoped operation is mid-flight.
    */
   fun openScaffoldWizard(kind: ScaffoldKind, snapshot: ScaffoldCatalogSnapshot): SkillBillState {
-    if (!canStartScaffoldAction()) {
+    if (!canStartScaffoldAction() || !kind.creationSupported) {
       return currentState
     }
     scaffoldWizard = ScaffoldWizardState(
@@ -2304,7 +2304,7 @@ class SkillBillViewModel(
    * so the route does not pay for a useless filesystem walk.
    */
   fun beginOpenScaffoldWizard(kind: ScaffoldKind): ScaffoldCatalogRequest? {
-    if (!canStartScaffoldAction()) {
+    if (!canStartScaffoldAction() || !kind.creationSupported) {
       return null
     }
     return ScaffoldCatalogRequest(kind = kind, session = currentSession)
@@ -2352,7 +2352,7 @@ class SkillBillViewModel(
    */
   fun selectScaffoldWizardKind(kind: ScaffoldKind): SkillBillState {
     val current = scaffoldWizard ?: return currentState
-    if (current.busy) {
+    if (current.busy || !kind.creationSupported) {
       return currentState
     }
     if (current.kind == kind) {

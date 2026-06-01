@@ -232,28 +232,6 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
       rankOffset = -9,
     ),
     newScaffoldCandidate(
-      id = "command.new-platform-override",
-      title = "New platform override",
-      subtitle = "Scaffold a platform-piloted family override",
-      marker = "no",
-      action = CommandPaletteAction.NEW_PLATFORM_OVERRIDE,
-      blockedByBusy = blockedByBusy,
-      state = state,
-      keywords = listOf("new", "scaffold", "platform", "override", "family", "create"),
-      rankOffset = -10,
-    ),
-    newScaffoldCandidate(
-      id = "command.new-code-review-area",
-      title = "New code-review area",
-      subtitle = "Scaffold an approved code-review specialist area",
-      marker = "nc",
-      action = CommandPaletteAction.NEW_CODE_REVIEW_AREA,
-      blockedByBusy = blockedByBusy,
-      state = state,
-      keywords = listOf("new", "scaffold", "code-review", "area", "specialist", "create"),
-      rankOffset = -11,
-    ),
-    newScaffoldCandidate(
       id = "command.new-add-on",
       title = "New add-on",
       subtitle = "Scaffold a governed add-on under a platform pack",
@@ -262,7 +240,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
       blockedByBusy = blockedByBusy,
       state = state,
       keywords = listOf("new", "scaffold", "add-on", "addon", "create"),
-      rankOffset = -12,
+      rankOffset = -10,
     ),
   )
 }

@@ -1,6 +1,7 @@
 package skillbill.mcp.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -125,57 +126,6 @@ class McpScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parses platform override piloted request`() {
-    val request = parseMcpScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "kotlin",
-        "family" to "code-review",
-      ),
-    )
-
-    val override = request as ScaffoldCommandRequest.PlatformOverride
-    assertEquals("kotlin", override.platform)
-    assertEquals("code-review", override.family)
-  }
-
-  @Test
-  fun `parser preserves unknown platform-override family verbatim for downstream validation`() {
-    // The MCP adapter parser is wire-shape only — it does NOT validate pre-shell family membership.
-    // UnknownPreShellFamilyError fires later in ScaffoldService.planPlatformOverridePiloted when
-    // the family is non-shelled and not in PRE_SHELL_FAMILIES. This test pins the contract: the
-    // parser preserves the raw family string verbatim on the typed request.
-    val request = parseMcpScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-override-piloted",
-        "platform" to "kotlin",
-        "family" to "not-a-family",
-      ),
-    )
-
-    val override = request as ScaffoldCommandRequest.PlatformOverride
-    assertEquals("not-a-family", override.family)
-  }
-
-  @Test
-  fun `parses code review area request`() {
-    val request = parseMcpScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "code-review-area",
-        "platform" to "kotlin",
-        "area" to "security",
-      ),
-    )
-
-    val area = request as ScaffoldCommandRequest.CodeReviewArea
-    assertEquals("kotlin", area.platform)
-    assertEquals("security", area.area)
-  }
-
-  @Test
   fun `parses add-on request`() {
     val request = parseMcpScaffoldCommandRequest(
       mapOf(
@@ -213,6 +163,22 @@ class McpScaffoldCommandRequestParserTest {
       )
     }
     assertTrue(error.message.orEmpty().contains("not-a-kind"))
+  }
+
+  @Test
+  fun `retired partial kind aliases throw RetiredScaffoldKindError`() {
+    listOf("platform-override-piloted", "platform-override", "override", "code-review-area", "area", "specialist")
+      .forEach { kind ->
+        val error = assertFailsWith<RetiredScaffoldKindError> {
+          parseMcpScaffoldCommandRequest(
+            mapOf("scaffold_payload_version" to "1.0", "kind" to kind),
+          )
+        }
+        val message = error.message.orEmpty()
+        assertTrue(kind in message, "Got: $message")
+        assertTrue("platform-pack" in message, "Got: $message")
+        assertTrue("edit/remove existing platform-pack content" in message, "Got: $message")
+      }
   }
 
   @Test

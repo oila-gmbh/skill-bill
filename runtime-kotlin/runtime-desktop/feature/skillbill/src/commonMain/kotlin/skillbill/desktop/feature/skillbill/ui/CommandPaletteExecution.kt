@@ -42,8 +42,6 @@ internal fun executeCommandPaletteResult(result: CommandPaletteResult, actions: 
     CommandPaletteAction.INSTALL_SETUP -> actions.openInstallSetup()
     CommandPaletteAction.NEW_HORIZONTAL_SKILL -> actions.openScaffoldWizard(ScaffoldKind.HORIZONTAL_SKILL)
     CommandPaletteAction.NEW_PLATFORM_PACK -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_PACK)
-    CommandPaletteAction.NEW_PLATFORM_OVERRIDE -> actions.openScaffoldWizard(ScaffoldKind.PLATFORM_OVERRIDE_PILOTED)
-    CommandPaletteAction.NEW_CODE_REVIEW_AREA -> actions.openScaffoldWizard(ScaffoldKind.CODE_REVIEW_AREA)
     CommandPaletteAction.NEW_ADD_ON -> actions.openScaffoldWizard(ScaffoldKind.ADD_ON)
   }
   return true

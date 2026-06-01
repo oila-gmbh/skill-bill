@@ -37,7 +37,7 @@ fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAreas: List
   } else {
     "Quality-check scaffolded by default."
   }
-  notes += "Follow-on code-review-area scaffolds can extend the pack without manual manifest edits."
+  notes += "Edit the generated pack content or remove unused stubs instead of creating partial follow-on scaffolds."
   notes += sharedContractNote()
   return notes
 }
