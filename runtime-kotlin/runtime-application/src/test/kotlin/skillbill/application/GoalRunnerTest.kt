@@ -258,6 +258,56 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `same-branch goal checks out feature branch from protected current branch before launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val git = RecordingGitOperations(currentBranch = "main")
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = git,
+    )
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf("feat/SKILL-56-goal@main"), git.checkouts)
+    assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals("complete", store.manifest.status)
+  }
+
+  @Test
+  fun `same-branch goal blocks at create branch when feature branch checkout fails`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = RecordingGitOperations(currentBranch = "main", checkoutError = "cannot create feature branch"),
+    )
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "cannot create feature branch")
+    assertEquals("create_branch", stopped.stop.lastResumableStep)
+    assertEquals(emptyList(), launcher.requests)
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+    assertEquals("create_branch", store.manifest.subtasks.single().lastResumableStep)
+  }
+
+  @Test
   fun `same-branch policy guard does not demote already completed goals`() {
     val completeManifest = manifest(subtaskCount = 1)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
@@ -692,6 +742,40 @@ private class FixedBranchGitOperations(
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
+}
+
+private class RecordingGitOperations(
+  private val currentBranch: String = "",
+  private val checkoutError: String? = null,
+  private val validationError: String? = null,
+) : WorkflowGitOperations {
+  val checkouts: MutableList<String> = mutableListOf()
+  val validations: MutableList<String> = mutableListOf()
+
+  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
+    checkouts += "$branch@${baseBranch.orEmpty()}"
+    return checkoutError?.let { WorkflowGitOperationResult(status = "error", error = it) }
+      ?: WorkflowGitOperationResult(status = "ok", value = branch)
+  }
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = currentBranch)
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult {
+    validations += "$branch@$expectedBaseBranch"
+    return validationError?.let { WorkflowGitOperationResult(status = "error", error = it) }
+      ?: WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  }
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")

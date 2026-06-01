@@ -109,6 +109,9 @@ class GoalRunner(
     attempted: MutableList<Int>,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
+    goalBranchSetupFailure(state, selection, request)?.let { failure ->
+      return failure
+    }
     val attemptedState = manifestStore.save(
       state.copy(manifest = state.manifest.withAttemptedSubtask(subtaskId)),
       request.dbPathOverride,
@@ -138,6 +141,62 @@ class GoalRunner(
       }
       is GoalRunnerReconciledOutcome.Stop -> stoppedIteration(refreshed, subtaskId, reconciled, request, attempted)
     }
+  }
+
+  private fun goalBranchSetupFailure(
+    state: GoalRunnerManifestState,
+    selection: GoalRunnerSelection.Run,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerIterationResult? {
+    val subtaskId = selection.decision.subtask.id
+    val branchPlan = state.manifest.branchPlanFor(subtaskId)
+    if (branchPlan.branch.isBlank()) {
+      return null
+    }
+    val checkout = gitOperations.checkoutBranch(request.repoRoot, branchPlan.branch, branchPlan.baseBranch)
+    val setupError = if (!checkout.ok) {
+      checkout.error
+    } else if (branchPlan.validateBase) {
+      gitOperations.validateBranchBase(request.repoRoot, branchPlan.branch, branchPlan.baseBranch)
+        .takeUnless { it.ok }
+        ?.error
+        .orEmpty()
+    } else {
+      ""
+    }
+    return setupError.takeIf(String::isNotBlank)?.let { error ->
+      blockedBranchSetupIteration(state, subtaskId, error, request)
+    }
+  }
+
+  private fun blockedBranchSetupIteration(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    reason: String,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerIterationResult {
+    val blocked = state.manifest.withBranchSetupBlockedSubtask(subtaskId, reason)
+    val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    request.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = saved.manifest.issueKey,
+        subtaskId = subtaskId,
+        reason = GoalRunnerStopReason.BLOCKED.name.lowercase(),
+        blockedReason = reason,
+      ),
+    )
+    return GoalRunnerIterationResult(
+      state = saved,
+      report = stopped(
+        issueKey = saved.manifest.issueKey,
+        attempted = emptyList(),
+        subtaskId = subtaskId,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = reason,
+        workflowId = null,
+        lastResumableStep = "create_branch",
+      ),
+    )
   }
 
   private fun reconcileLaunchOutcome(
@@ -386,7 +445,7 @@ class GoalRunner(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
   ): GoalRunnerRunReport.Stopped? {
-    val violation = protectedBranchViolation(state.manifest, request.repoRoot)
+    val violation = protectedBranchViolation(state.manifest)
     val selection = GoalRunnerPlanner.selectNext(state.manifest)
     return if (violation == null || selection is GoalRunnerSelection.Done) {
       null
@@ -436,20 +495,23 @@ class GoalRunner(
     )
   }
 
-  private fun protectedBranchViolation(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? =
+  private fun protectedBranchViolation(manifest: DecompositionManifest): String? =
     if (manifest.executionModel == DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK) {
-      protectedBranchViolationMessage(manifest, repoRoot)
+      protectedBranchViolationMessage(manifest)
     } else {
       null
     }
 
-  private fun protectedBranchViolationMessage(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? {
-    val currentBranch = gitOperations.currentBranch(repoRoot).value.trim()
-    val selectedSubtaskBranch = manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
-      ?.let { id -> manifest.subtasks.firstOrNull { subtask -> subtask.id == id }?.branch }
-    val protectedBranch = protectedBranchName(selectedSubtaskBranch)
-      ?: protectedBranchName(manifest.featureBranch)
-      ?: protectedBranchName(currentBranch)
+  private fun protectedBranchViolationMessage(manifest: DecompositionManifest): String? {
+    val selection = GoalRunnerPlanner.selectNext(manifest) as? GoalRunnerSelection.Run
+    val selectedBranch = selection
+      ?.decision
+      ?.subtask
+      ?.id
+      ?.let { subtaskId -> manifest.branchPlanFor(subtaskId).branch }
+      ?.takeIf(String::isNotBlank)
+      ?: manifest.featureBranch
+    val protectedBranch = protectedBranchName(selectedBranch)
       ?: return null
     return "Goal runner policy blocked execution because same-branch mode resolved to protected branch " +
       "'$protectedBranch'. Set decomposition feature/subtask branches to a non-protected branch " +
@@ -721,6 +783,25 @@ private fun DecompositionManifest.withStoppedSubtask(
   },
 )
 
+private fun DecompositionManifest.withBranchSetupBlockedSubtask(
+  subtaskId: Int,
+  reason: String,
+): DecompositionManifest = copy(
+  status = "blocked",
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked"),
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id == subtaskId) {
+      subtask.copy(
+        status = "blocked",
+        blockedReason = reason,
+        lastResumableStep = "create_branch",
+      )
+    } else {
+      subtask
+    }
+  },
+)
+
 private fun DecompositionManifest.withBlockedSelection(subtaskId: Int, reason: String): DecompositionManifest = copy(
   status = "blocked",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked"),
@@ -761,6 +842,21 @@ private fun DecompositionManifest.toPullRequestRequest(repoRoot: java.nio.file.P
 }
 
 private fun DecompositionManifest.branchForFinalPullRequest(): String = stackBranches.lastOrNull()?.branch.orEmpty()
+
+private fun DecompositionManifest.branchPlanFor(subtaskId: Int): GoalRunnerBranchPlan = when (executionModel) {
+  DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
+    GoalRunnerBranchPlan(branch = featureBranch.orEmpty(), baseBranch = baseBranch, validateBase = false)
+  DecompositionExecutionModel.STACKED_BRANCHES -> {
+    val stackBranch = stackBranches.first { it.subtaskId == subtaskId }
+    GoalRunnerBranchPlan(branch = stackBranch.branch, baseBranch = stackBranch.baseBranch, validateBase = true)
+  }
+}
+
+private data class GoalRunnerBranchPlan(
+  val branch: String,
+  val baseBranch: String,
+  val validateBase: Boolean,
+)
 
 private data class GoalRunnerLaunchReconciliation(
   val refreshed: GoalRunnerManifestState,
