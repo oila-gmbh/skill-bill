@@ -1,8 +1,8 @@
 package skillbill.scaffold.model.command
 
-import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
 import skillbill.scaffold.policy.RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
+import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL

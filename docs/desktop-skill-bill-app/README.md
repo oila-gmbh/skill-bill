@@ -163,8 +163,11 @@ New platform pack wizard:
 - display name
 - description
 - routing signals, only when no built-in preset exists
-- skeleton mode: starter, full, or custom approved specialist subset
 - optional subagent specialists for supported orchestrator sources
+
+Platform pack creation always generates the baseline code-review skill, default
+quality-check skill, and every approved code-review specialist. Remove unwanted
+focus areas afterward through governed removal paths.
 
 The wizard must run a dry-run plan first when available, show the generated operations, then execute the scaffold operation atomically.
 

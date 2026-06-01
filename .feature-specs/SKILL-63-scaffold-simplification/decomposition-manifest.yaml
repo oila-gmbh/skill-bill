@@ -25,12 +25,12 @@ subtasks:
 - id: 2
   name: "full-platform-pack-contract"
   spec_path: ".feature-specs/SKILL-63-scaffold-simplification/spec_subtask_2_full-platform-pack-contract.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-63-scaffold-simplification"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260601-181738-pl0q"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies:
   - subtask_id: 1
     optional: false

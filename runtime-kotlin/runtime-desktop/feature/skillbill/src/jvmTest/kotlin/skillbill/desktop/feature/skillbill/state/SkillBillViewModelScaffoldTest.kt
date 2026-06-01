@@ -432,7 +432,6 @@ class SkillBillViewModelScaffoldTest {
         "kind" to "platform-pack",
         "platform" to "java",
         "display_name" to "Java",
-        "skeleton_mode" to "full",
       ),
       pack,
     )

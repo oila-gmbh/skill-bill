@@ -1,12 +1,12 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.error.MissingContentFileError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
 import skillbill.nativeagent.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.NativeAgentOperations
 import skillbill.nativeagent.NativeAgentProvider
+import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.renderPlatformPackManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -151,7 +151,7 @@ class ScaffoldServiceParityTest {
     val result =
       scaffold(
         payload(repo, "platform-pack", "platform" to "java") +
-          mapOf("skeleton_mode" to "starter", "subagent_specialists" to listOf("arch", "perf")),
+          mapOf("subagent_specialists" to listOf("arch", "perf")),
       )
     val packRoot = repo.resolve("platform-packs").resolve("java")
     val baseline = packRoot.resolve("code-review/bill-java-code-review")
@@ -173,52 +173,40 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
-  fun `platform pack custom specialist areas are approved sorted and registered`() = withIsolatedUserHome {
+  fun `platform pack generates all approved specialist areas and registers them`() = withIsolatedUserHome {
     val repo = seedRepo()
-    val result =
-      scaffold(
-        payload(repo, "platform-pack", "platform" to "php") +
-          mapOf("specialist_areas" to listOf("security", "architecture")),
-      )
+    val result = scaffold(payload(repo, "platform-pack", "platform" to "php"))
     val manifest = Files.readString(repo.resolve("platform-packs/php/platform.yaml"))
 
     assertEquals("platform-pack", result.kind)
-    assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-architecture/content.md")),
-    )
-    assertTrue(
-      Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-security/content.md")),
-    )
-    assertTrue(manifest.indexOf("  - \"architecture\"") < manifest.indexOf("  - \"security\""))
-    assertContains(manifest, "architecture: \"code-review/bill-php-code-review-architecture/content.md\"")
-    assertContains(manifest, "security: \"code-review/bill-php-code-review-security/content.md\"")
+    APPROVED_CODE_REVIEW_AREAS.sorted().forEach { area ->
+      assertTrue(
+        Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-$area/content.md")),
+        "Missing generated specialist content.md for $area",
+      )
+      assertContains(manifest, "  - \"$area\"")
+      assertContains(manifest, "$area: \"code-review/bill-php-code-review-$area/content.md\"")
+    }
     assertComposedSourceBundle(
       repo.resolve("platform-packs/php/code-review/bill-php-code-review/native-agents/agents.yaml"),
-      mapOf(
-        "bill-php-code-review-architecture" to
-          "Use when reviewing PHP changes for architecture, boundaries, and dependency direction.",
-        "bill-php-code-review-security" to
-          "Use when reviewing PHP changes for secrets handling, auth, and sensitive-data exposure.",
-      ),
+      APPROVED_CODE_REVIEW_AREAS.associate { area ->
+        "bill-php-code-review-$area" to
+          "Use when reviewing PHP changes for ${defaultAreaFocus(area)}."
+      },
     )
     assertDistinctProviderAgents(repo)
-    assertNoGeneratedWrapperOrSupportingFiles(
-      repo.resolve("platform-packs/php/code-review/bill-php-code-review-architecture"),
-      "bill-php-code-review-architecture",
-    )
-    assertNoGeneratedWrapperOrSupportingFiles(
-      repo.resolve("platform-packs/php/code-review/bill-php-code-review-security"),
-      "bill-php-code-review-security",
-    )
     val pack = loadPlatformPack(repo.resolve("platform-packs/php"))
-    assertEquals(
-      repo.resolve("platform-packs/php/code-review/bill-php-code-review-architecture/content.md"),
-      pack.declaredFiles.areas.getValue("architecture"),
-    )
-    assertEquals(
-      repo.resolve("platform-packs/php/code-review/bill-php-code-review-security/content.md"),
-      pack.declaredFiles.areas.getValue("security"),
-    )
+    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertEquals(
+        repo.resolve("platform-packs/php/code-review/bill-php-code-review-$area/content.md"),
+        pack.declaredFiles.areas.getValue(area),
+      )
+      assertNoGeneratedWrapperOrSupportingFiles(
+        repo.resolve("platform-packs/php/code-review/bill-php-code-review-$area"),
+        "bill-php-code-review-$area",
+      )
+    }
     val subagentNote = result.notes.single { note -> note.startsWith("Subagent bundle emitted:") }
     assertContains(subagentNote, "content.md files")
     assertFalse("native-agents/agents.yaml" in subagentNote)
@@ -230,14 +218,21 @@ class ScaffoldServiceParityTest {
     val repo = seedRepo()
 
     scaffold(
-      payload(repo, "platform-pack", "platform" to "php") +
-        mapOf("specialist_areas" to listOf("security"), "no_subagents" to true),
+      payload(repo, "platform-pack", "platform" to "php") + mapOf("no_subagents" to true),
     )
 
     assertFalse(
       Files.exists(repo.resolve("platform-packs/php/code-review/bill-php-code-review/native-agents")),
       "no_subagents=true must opt out of default platform-pack native-agent source generation",
     )
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertTrue(
+        Files.isRegularFile(repo.resolve("platform-packs/php/code-review/bill-php-code-review-$area/content.md")),
+        "no_subagents must not suppress content.md for $area",
+      )
+    }
+    val pack = loadPlatformPack(repo.resolve("platform-packs/php"))
+    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
   }
 
   @Test
@@ -350,7 +345,7 @@ class ScaffoldServiceParityTest {
       assertFailsWith<InvalidScaffoldPayloadError> {
         scaffold(payload(repo, "platform-pack", "platform" to "java") + mapOf("specialist_areas" to listOf("mobile")))
       }.message.orEmpty(),
-      "unknown areas",
+      "no longer supported",
     )
   }
 
@@ -469,7 +464,7 @@ class ScaffoldServiceParityTest {
     val result =
       scaffold(
         payload(repo, "platform-pack", "platform" to "foo-bar") +
-          mapOf("skeleton_mode" to "starter", "routing_signals" to mapOf("strong" to listOf(".foobar"))),
+          mapOf("routing_signals" to mapOf("strong" to listOf(".foobar"))),
       )
     val target = resolveTarget(repo, "bill-foo-bar-code-review")
     val rendered = renderWrapper(target)

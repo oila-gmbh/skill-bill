@@ -58,8 +58,6 @@ data class ScaffoldWizardFormFields(
   val family: String = "",
   val area: String = "",
   val displayName: String = "",
-  val skeletonMode: String = "full",
-  val specialistAreas: List<String> = emptyList(),
   val strongRoutingSignals: List<String> = emptyList(),
   val tieBreakers: List<String> = emptyList(),
   val baselineLayers: List<ScaffoldBaselineLayerForm> = emptyList(),

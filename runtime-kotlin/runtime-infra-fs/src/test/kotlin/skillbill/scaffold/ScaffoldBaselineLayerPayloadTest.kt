@@ -18,7 +18,6 @@ class ScaffoldBaselineLayerPayloadTest {
       scaffold(
         payload(repo, "platform-pack", "platform" to "androidx") +
           mapOf(
-            "skeleton_mode" to "starter",
             "routing_signals" to mapOf("strong" to listOf("androidx")),
             "baseline_layers" to kotlinBaselinePayload(),
           ),
@@ -43,7 +42,7 @@ class ScaffoldBaselineLayerPayloadTest {
 
     scaffold(
       payload(repo, "platform-pack", "platform" to "legacy") +
-        mapOf("skeleton_mode" to "starter", "routing_signals" to mapOf("strong" to listOf("legacy.marker"))),
+        mapOf("routing_signals" to mapOf("strong" to listOf("legacy.marker"))),
     )
 
     val manifest = Files.readString(repo.resolve("platform-packs/legacy/platform.yaml"))
@@ -60,7 +59,6 @@ class ScaffoldBaselineLayerPayloadTest {
         "scaffold_payload_version" to "1.0",
         "kind" to "platform-pack",
         "platform" to "androidx",
-        "skeleton_mode" to "starter",
         "routing_signals" to mapOf("strong" to listOf("androidx")),
         "baseline_layers" to kotlinBaselinePayload(),
       )
@@ -102,7 +100,7 @@ class ScaffoldBaselineLayerPayloadTest {
       val error = assertFailsWith<InvalidScaffoldPayloadError> {
         scaffold(
           payload(repo, "platform-pack", "platform" to platform) +
-            mapOf("skeleton_mode" to "starter", "routing_signals" to mapOf("strong" to listOf("marker-$index"))) +
+            mapOf("routing_signals" to mapOf("strong" to listOf("marker-$index"))) +
             extraPayload,
         )
       }
@@ -150,7 +148,7 @@ class ScaffoldBaselineLayerPayloadTest {
         val error = assertFailsWith<InvalidScaffoldPayloadError> {
           scaffold(
             payload(repo, "platform-pack", "platform" to platform) +
-              mapOf("skeleton_mode" to "starter", "routing_signals" to mapOf("strong" to listOf("marker-$index"))) +
+              mapOf("routing_signals" to mapOf("strong" to listOf("marker-$index"))) +
               extraPayload,
           )
         }

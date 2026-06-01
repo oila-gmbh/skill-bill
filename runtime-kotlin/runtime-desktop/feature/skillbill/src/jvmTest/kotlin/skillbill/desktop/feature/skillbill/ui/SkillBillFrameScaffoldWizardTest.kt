@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -157,8 +158,6 @@ class SkillBillFrameScaffoldWizardTest {
     val fields = ScaffoldWizardFormFields()
     assertEquals("", fields.name)
     assertEquals("", fields.platform)
-    assertEquals("full", fields.skeletonMode)
-    assertTrue(fields.specialistAreas.isEmpty())
     assertTrue(fields.baselineLayers.isEmpty())
     assertFalse(fields.suppressSubagents)
   }
@@ -197,6 +196,33 @@ class SkillBillFrameScaffoldWizardTest {
     val skill = state.optionCatalog.baselineReviewPacks.single().skills.single()
     assertEquals(listOf("kmp-baseline"), skill.supportedModes)
     assertEquals(listOf("same-review-scope"), skill.supportedScopes)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `platform-pack wizard does not render skeleton selector`() = runComposeUiTest {
+    setContent {
+      ScaffoldWizardDialog(
+        state = ScaffoldWizardState(kind = ScaffoldKind.PLATFORM_PACK),
+        canStartScaffoldAction = true,
+        callbacks = ScaffoldWizardCallbacks(
+          onSelectKind = {},
+          onFormChanged = {},
+          onAddBaselineLayer = {},
+          onAddSuggestedBaselineLayer = {},
+          onEditBaselineLayer = { _, _ -> },
+          onRemoveBaselineLayer = {},
+          onDirtyOverrideChanged = {},
+          onPlan = {},
+          onRun = {},
+          onAcknowledgeFailure = {},
+          onDismiss = {},
+        ),
+      )
+    }
+
+    assertTrue(onAllNodesWithText("Skeleton mode").fetchSemanticsNodes().isEmpty())
+    assertTrue(onAllNodesWithText("Starter skeleton").fetchSemanticsNodes().isEmpty())
   }
 
   @OptIn(ExperimentalTestApi::class)

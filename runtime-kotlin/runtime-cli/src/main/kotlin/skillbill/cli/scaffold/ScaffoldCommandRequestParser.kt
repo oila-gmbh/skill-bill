@@ -6,8 +6,8 @@ import skillbill.contracts.scaffold.wire.requireStringOrDefault
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
-import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.ACTIVE_SCAFFOLD_COMMAND_KINDS
+import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_ADD_ON
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_HORIZONTAL
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_PLATFORM_PACK
@@ -84,19 +84,13 @@ private fun parsePlatformPack(
   version: String,
   repoRoot: String?,
 ): ScaffoldCommandRequest.PlatformPack {
-  val skeletonMode = (payload["skeleton_mode"] as? String)?.takeIf { it.isNotBlank() }
-  val specialistAreas = if (payload.containsKey("specialist_areas")) {
-    parseStringList(payload, "specialist_areas")
-  } else {
-    null
-  }
+  rejectLegacyPlatformPackSelector(payload, "skeleton_mode")
+  rejectLegacyPlatformPackSelector(payload, "specialist_areas")
   val routingInput = parseRoutingSignalsInput(payload["routing_signals"])
   return ScaffoldCommandRequest.PlatformPack(
     platform = requireString(payload, "platform"),
     displayName = requireStringOrDefault(payload, "display_name", ""),
     description = requireStringOrDefault(payload, "description", ""),
-    skeletonMode = skeletonMode,
-    specialistAreas = specialistAreas,
     routingSignals = routingInput,
     baselineLayers = parseBaselineLayers(payload),
     subagentSpecialists = if (payload.containsKey("subagent_specialists")) {
@@ -109,6 +103,14 @@ private fun parsePlatformPack(
     nameOverride = requireOptionalNonBlank(payload, "name"),
     scaffoldPayloadVersion = version,
     repoRoot = repoRoot,
+  )
+}
+
+private fun rejectLegacyPlatformPackSelector(payload: Map<String, Any?>, field: String) {
+  if (!payload.containsKey(field)) return
+  throw InvalidScaffoldPayloadError(
+    "Scaffold payload field '$field' is no longer supported for kind 'platform-pack'. " +
+      "Create the full platform pack, then remove unwanted focus areas through governed removal paths.",
   )
 }
 

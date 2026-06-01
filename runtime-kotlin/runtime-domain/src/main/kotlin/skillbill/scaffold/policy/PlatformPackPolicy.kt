@@ -5,9 +5,8 @@ import java.nio.file.Path
 /**
  * SKILL-52.1 subtask 2: pure-policy half of platform-pack scaffolding.
  *
- * Resolves the wire-payload selection (`specialist_areas` / `skeleton_mode`), derives the
- * routing-signal + display-name defaults, composes the human-readable notes that ship with a
- * scaffold result, and produces the deterministic install-path list.
+ * Derives routing-signal + display-name defaults, composes the human-readable notes that ship
+ * with a scaffold result, and produces the deterministic install-path list.
  *
  * Uses `java.nio.file.Path` only for path arithmetic (`resolve`) — there is no IO. `PlatformPackSelection`
  * and `PlatformPackDefaults` live in `skillbill.scaffold.policy.model` per the domain `model` rule.
@@ -22,8 +21,8 @@ import java.nio.file.Path
 
 /**
  * Composes the human-readable note list shipped with a scaffold result. [presetUsed] indicates
- * that built-in defaults were applied; the area-count phrasing depends on whether code-review
- * specialists were selected.
+ * that built-in defaults were applied. Platform-pack scaffolds now always include the full
+ * approved specialist set; unwanted focus areas can be removed later through governed removal.
  */
 fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAreas: List<String>): List<String> {
   val notes = mutableListOf<String>()
@@ -32,11 +31,7 @@ fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAreas: List
       "Applied built-in platform preset for '$platform'. " +
       "Override 'routing_signals' only when the defaults need adjustment."
   }
-  notes += if (selectedAreas.isNotEmpty()) {
-    "Full skeleton scaffolded with ${selectedAreas.size} approved code-review area stubs."
-  } else {
-    "Quality-check scaffolded by default."
-  }
+  notes += "Full platform pack scaffolded with ${selectedAreas.size} approved code-review area stubs."
   notes += "Edit the generated pack content or remove unused stubs instead of creating partial follow-on scaffolds."
   notes += sharedContractNote()
   return notes

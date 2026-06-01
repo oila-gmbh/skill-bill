@@ -113,12 +113,11 @@ val PLATFORM_PACK_PRESETS: Map<String, String> =
 fun isRetiredPartialScaffoldKindAlias(kind: String): Boolean =
   kind.trim().lowercase() in RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
 
-fun retiredPartialScaffoldKindError(kind: String): RetiredScaffoldKindError =
-  RetiredScaffoldKindError(
-    "Scaffold kind '$kind' is retired for new partial scaffold creation. " +
-      "Create a full platform pack with kind '$SKILL_KIND_PLATFORM_PACK', or edit/remove existing " +
-      "platform-pack content through normal authoring and removal commands instead of creating " +
-      "partial scaffold pieces.",
-  )
+fun retiredPartialScaffoldKindError(kind: String): RetiredScaffoldKindError = RetiredScaffoldKindError(
+  "Scaffold kind '$kind' is retired for new partial scaffold creation. " +
+    "Create a full platform pack with kind '$SKILL_KIND_PLATFORM_PACK', or edit/remove existing " +
+    "platform-pack content through normal authoring and removal commands instead of creating " +
+    "partial scaffold pieces.",
+)
 
 fun rejectRetiredPartialScaffoldKind(kind: String): Nothing = throw retiredPartialScaffoldKindError(kind)

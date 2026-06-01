@@ -3,10 +3,10 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
-import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
 import skillbill.scaffold.policy.RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
 import skillbill.scaffold.policy.RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES
+import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.rejectRetiredPartialScaffoldKind
 
 /**

@@ -15,46 +15,17 @@ import skillbill.scaffold.policy.model.PlatformPackSelection
  */
 
 internal fun resolvePlatformPackSelection(payload: Map<String, Any?>): PlatformPackSelection {
-  val skeletonMode = requireStringOrDefaultMap(payload, "skeleton_mode", "full")
-  val specialistAreas = payload["specialist_areas"]?.let { value ->
-    validateSpecialistAreas(requireStringListPayload(value, "specialist_areas"))
-  }
-  enforceSkeletonModeValue(skeletonMode)
-  enforceSkeletonModeAreasExclusive(payload, specialistAreas)
-  val selectedAreas =
-    specialistAreas?.let { requested ->
-      APPROVED_CODE_REVIEW_AREAS.sorted().filter { area -> area in requested.toSet() }
-    }
-      ?: if (skeletonMode == "full") APPROVED_CODE_REVIEW_AREAS.sorted() else emptyList()
-  return PlatformPackSelection(selectedAreas = selectedAreas)
+  rejectLegacyPlatformPackSelector(payload, "skeleton_mode")
+  rejectLegacyPlatformPackSelector(payload, "specialist_areas")
+  return PlatformPackSelection(selectedAreas = APPROVED_CODE_REVIEW_AREAS.sorted())
 }
 
-private fun validateSpecialistAreas(areas: List<String>): List<String> {
-  val unknown = areas.filter { area -> area !in APPROVED_CODE_REVIEW_AREAS }
-  if (unknown.isNotEmpty()) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'specialist_areas' contains unknown areas $unknown; " +
-        "approved areas: $APPROVED_CODE_REVIEW_AREAS.",
-    )
-  }
-  return areas
-}
-
-private fun enforceSkeletonModeValue(skeletonMode: String) {
-  if (skeletonMode !in setOf("starter", "full")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload field 'skeleton_mode' must be one of [full, starter] when provided.",
-    )
-  }
-}
-
-private fun enforceSkeletonModeAreasExclusive(payload: Map<String, Any?>, specialistAreas: List<String>?) {
-  if (specialistAreas != null && payload.containsKey("skeleton_mode")) {
-    throw InvalidScaffoldPayloadError(
-      "Scaffold payload may not provide both 'skeleton_mode' and 'specialist_areas'; " +
-        "choose one specialist selection mode.",
-    )
-  }
+private fun rejectLegacyPlatformPackSelector(payload: Map<String, Any?>, field: String) {
+  if (!payload.containsKey(field)) return
+  throw InvalidScaffoldPayloadError(
+    "Scaffold payload field '$field' is no longer supported for kind 'platform-pack'. " +
+      "Create the full platform pack, then remove unwanted focus areas through governed removal paths.",
+  )
 }
 
 internal fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: String): PlatformPackDefaults {

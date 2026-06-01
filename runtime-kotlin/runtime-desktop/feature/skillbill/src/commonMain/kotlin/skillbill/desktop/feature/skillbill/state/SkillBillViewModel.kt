@@ -49,7 +49,6 @@ import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
 import skillbill.desktop.core.domain.model.ScaffoldPayload
-import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.ScaffoldWizardState
@@ -3104,12 +3103,6 @@ class SkillBillViewModel(
           platform = fields.platform.trim(),
           displayName = fields.displayName.trim(),
           description = fields.description.trim(),
-          skeletonMode = if (fields.skeletonMode == "starter") {
-            ScaffoldPlatformPackSkeleton.STARTER
-          } else {
-            ScaffoldPlatformPackSkeleton.FULL
-          },
-          specialistAreas = fields.specialistAreas.filter(String::isNotBlank),
           strongRoutingSignals = fields.strongRoutingSignals.filter(String::isNotBlank),
           tieBreakers = fields.tieBreakers.filter(String::isNotBlank),
           baselineLayers = fields.baselineLayers.map { layer ->

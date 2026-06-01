@@ -51,10 +51,6 @@ private fun ScaffoldCommandRequest.PlatformPack.appendPlatformPackFields(base: M
   nameOverride?.let { base["name"] = it }
   if (displayName.isNotBlank()) base["display_name"] = displayName
   if (description.isNotBlank()) base["description"] = description
-  // Preserve the mutually-exclusive selector exactly as parsed: only emit fields the wire
-  // payload actually declared. The domain policy re-asserts the rule loudly.
-  specialistAreas?.let { base["specialist_areas"] = it }
-  skeletonMode?.let { base["skeleton_mode"] = it }
   routingSignals?.let { signals ->
     val routing = linkedMapOf<String, Any?>()
     signals.strong?.let { routing["strong"] = it }

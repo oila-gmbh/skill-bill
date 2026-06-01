@@ -71,14 +71,6 @@ removable.
   `## Ceremony`.
 - `display_name` — human-friendly label for `platform-pack`. Defaults to a
   title-cased version of `platform`.
-- `skeleton_mode` — `starter` or `full` for `platform-pack`. Defaults to
-  `full`.
-  - `starter` creates the pack root, baseline `code-review`, and default
-    `quality-check`.
-  - `full` also creates bare specialist stubs for every approved
-    code-review area and registers them in the generated manifest, including
-    the `area_metadata` entries used to auto-render governed `## Descriptor`
-    sections.
 - `baseline_layers` — optional list for `platform-pack` only. When present,
   the scaffolder writes `code_review_composition.baseline_layers` into the
   new pack's `platform.yaml`. Each entry must include:
@@ -113,7 +105,7 @@ removable.
   baseline orchestrator skill (`bill-<platform>-code-review`) only, never
   to the per-area specialist skills or the quality-check skill. When omitted
   for `platform-pack`, the scaffolder defaults to one native-agent source per
-  selected code-review specialist area, named after the generated specialist
+  generated code-review specialist area, named after the generated specialist
   skill (`bill-<platform>-code-review-<area>`) and described with the same
   per-area review focus as the specialist `content.md`. Supplying this field
   for `add-on` raises `InvalidScaffoldPayloadError`.
@@ -125,7 +117,7 @@ removable.
   `InvalidScaffoldPayloadError`. Default: `false`.
 
 When `subagent_specialists` is non-empty, or when platform-pack defaults
-derive specialists from selected code-review areas, and subagents are not
+derive specialists from the full generated code-review area set, and subagents are not
 suppressed, the scaffolder emits one provider-neutral source bundle at
 `<orchestrator-skill-dir>/native-agents/agents.yaml` with one entry per specialist.
 Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are
@@ -188,23 +180,9 @@ This creates `platform-packs/java/platform.yaml`,
 `platform-packs/java/quality-check/bill-java-code-check/content.md`, plus
 bare specialist content stubs for every approved code-review area. The built-in
 `java` preset supplies the routing signals. Generated wrappers and platform
-pointer files are not staged into source.
-
-### Starter platform pack override
-
-```json
-{
-  "scaffold_payload_version": "1.0",
-  "kind": "platform-pack",
-  "platform": "java",
-  "skeleton_mode": "starter"
-}
-```
-
-This creates only the baseline Java pack without the approved specialist
-stubs. Direct payload callers can still opt into `starter`, but the
-user-facing intake defaults to `full`. The generated files are intentionally
-minimal so the user can enrich the authored `content.md` files afterwards.
+pointer files are not staged into source. `skeleton_mode` and
+`specialist_areas` are retired for new platform-pack creation; remove unwanted
+focus areas afterward through governed removal paths.
 
 ### Platform pack with baseline review composition
 
@@ -241,7 +219,7 @@ omit `baseline_layers` remain valid and generate no
 {
   "scaffold_payload_version": "1.0",
   "kind": "horizontal",
-  "name": "bill-api-contract-review",
+  "name": "bill-pr-description",
   "content_body": "## Focus\n\nReview API boundary regressions.\n\n## Review Guidance\n\n- Prefer client-visible contract issues.\n- Call out backward-compatibility breaks explicitly.\n"
 }
 ```

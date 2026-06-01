@@ -405,7 +405,7 @@ class CliRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-cli-install")
     Files.createDirectories(tempDir.resolve(".claude"))
     Files.createDirectories(tempDir.resolve(".junie"))
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = emptyMap())
 
     val agentPathResult = CliRuntime.run(listOf("install", "agent-path", "codex"), context)
     val detectAgentsResult = CliRuntime.run(listOf("install", "detect-agents"), context)
@@ -453,7 +453,10 @@ class CliRuntimeTest {
     Files.createDirectories(tempDir.resolve(".config/opencode"))
     Files.createDirectories(tempDir.resolve(".junie"))
 
-    val result = CliRuntime.run(listOf("install", "detect-agents"), CliRuntimeContext(userHome = tempDir))
+    val result = CliRuntime.run(
+      listOf("install", "detect-agents"),
+      CliRuntimeContext(userHome = tempDir, environment = emptyMap()),
+    )
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(
@@ -471,7 +474,7 @@ class CliRuntimeTest {
   @Test
   fun `link-skill stages content managed skills when repo root is supplied`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install-staged")
-    val context = CliRuntimeContext(userHome = tempDir.resolve("home"))
+    val context = CliRuntimeContext(userHome = tempDir.resolve("home"), environment = emptyMap())
     val repoRoot = tempDir.resolve("repo")
     val skillName = "bill-cli-staged"
     val sourceSkill = repoRoot.resolve("skills").resolve(skillName)

@@ -2,7 +2,6 @@ package skillbill.desktop.core.data.service
 
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldPayload
-import skillbill.desktop.core.domain.model.ScaffoldPlatformPackSkeleton
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.RetiredScaffoldKindError
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -18,8 +17,7 @@ import kotlin.test.assertTrue
  * SKILL-52.2 subtask 2 (TEST-T02): field-by-field tests for
  * [skillbill.desktop.core.data.service.toCommandRequest] — the typed desktop payload to runtime
  * `ScaffoldCommandRequest` sealed-to-sealed bridge. Specifically pins:
- *  - specialistAreas non-empty collapses skeletonMode to null on the typed request,
- *  - STARTER/FULL enum maps to the runtime-wire strings,
+ *  - platform-pack payloads do not emit skeleton/subset selectors,
  *  - routing-signals null/empty handling,
  *  - unsupported baseline-layer wire-values throw [InvalidScaffoldPayloadError] (CORR-F003)
  *    so the gateway's SkillBillRuntimeException branch reports rollbackComplete = true.
@@ -46,46 +44,9 @@ class ScaffoldPayloadCommandRequestTest {
   }
 
   @Test
-  fun `PlatformPack with non-empty specialistAreas collapses skeletonMode to null`() {
-    val request = ScaffoldPayload.PlatformPack(
-      platform = "kotlin",
-      displayName = "Kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.FULL,
-      specialistAreas = listOf("ui", "security"),
-    ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
-
-    assertNull(request.skeletonMode, "specialistAreas non-empty must collapse skeletonMode to null")
-    assertEquals(listOf("ui", "security"), request.specialistAreas)
-  }
-
-  @Test
-  fun `PlatformPack STARTER skeletonMode maps to 'starter' wire string`() {
-    val request = ScaffoldPayload.PlatformPack(
-      platform = "kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.STARTER,
-      specialistAreas = emptyList(),
-    ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
-
-    assertEquals("starter", request.skeletonMode)
-    assertNull(request.specialistAreas, "empty specialistAreas list must become null on the typed request")
-  }
-
-  @Test
-  fun `PlatformPack FULL skeletonMode maps to 'full' wire string`() {
-    val request = ScaffoldPayload.PlatformPack(
-      platform = "kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.FULL,
-      specialistAreas = emptyList(),
-    ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
-
-    assertEquals("full", request.skeletonMode)
-  }
-
-  @Test
   fun `PlatformPack empty routing signals on both sides yields routingSignals = null`() {
     val request = ScaffoldPayload.PlatformPack(
       platform = "kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.FULL,
       strongRoutingSignals = emptyList(),
       tieBreakers = emptyList(),
     ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
@@ -100,14 +61,12 @@ class ScaffoldPayloadCommandRequestTest {
   fun `PlatformPack one-side-empty routing signals preserves the other side`() {
     val onlyStrong = ScaffoldPayload.PlatformPack(
       platform = "kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.FULL,
       strongRoutingSignals = listOf(".kt"),
       tieBreakers = emptyList(),
     ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
 
     val onlyTieBreakers = ScaffoldPayload.PlatformPack(
       platform = "kotlin",
-      skeletonMode = ScaffoldPlatformPackSkeleton.FULL,
       strongRoutingSignals = emptyList(),
       tieBreakers = listOf("Prefer Kotlin"),
     ).toCommandRequest() as ScaffoldCommandRequest.PlatformPack
@@ -122,7 +81,6 @@ class ScaffoldPayloadCommandRequestTest {
   fun `PlatformPack maps baseline layers to runtime sealed equivalents`() {
     val request = ScaffoldPayload.PlatformPack(
       platform = "androidx",
-      skeletonMode = ScaffoldPlatformPackSkeleton.STARTER,
       strongRoutingSignals = listOf("androidx"),
       baselineLayers = listOf(
         ScaffoldBaselineLayerPayload(
@@ -147,7 +105,6 @@ class ScaffoldPayloadCommandRequestTest {
   fun `unsupported baseline-layer scope throws InvalidScaffoldPayloadError with field path`() {
     val payload = ScaffoldPayload.PlatformPack(
       platform = "androidx",
-      skeletonMode = ScaffoldPlatformPackSkeleton.STARTER,
       strongRoutingSignals = listOf("androidx"),
       baselineLayers = listOf(
         ScaffoldBaselineLayerPayload(
@@ -170,7 +127,6 @@ class ScaffoldPayloadCommandRequestTest {
   fun `unsupported baseline-layer mode throws InvalidScaffoldPayloadError with field path`() {
     val payload = ScaffoldPayload.PlatformPack(
       platform = "androidx",
-      skeletonMode = ScaffoldPlatformPackSkeleton.STARTER,
       strongRoutingSignals = listOf("androidx"),
       baselineLayers = listOf(
         ScaffoldBaselineLayerPayload(

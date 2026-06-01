@@ -6,8 +6,8 @@ import skillbill.contracts.scaffold.wire.requireStringOrDefault
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
-import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.ACTIVE_SCAFFOLD_COMMAND_KINDS
+import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_ADD_ON
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_HORIZONTAL
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_PLATFORM_PACK
@@ -80,19 +80,13 @@ private fun parsePlatformPack(
   version: String,
   repoRoot: String?,
 ): ScaffoldCommandRequest.PlatformPack {
-  val skeletonMode = (args["skeleton_mode"] as? String)?.takeIf { it.isNotBlank() }
-  val specialistAreas = if (args.containsKey("specialist_areas")) {
-    parseStringList(args, "specialist_areas")
-  } else {
-    null
-  }
+  rejectLegacyPlatformPackSelector(args, "skeleton_mode")
+  rejectLegacyPlatformPackSelector(args, "specialist_areas")
   val routingInput = parseRoutingSignalsInput(args["routing_signals"])
   return ScaffoldCommandRequest.PlatformPack(
     platform = requireString(args, "platform"),
     displayName = requireStringOrDefault(args, "display_name", ""),
     description = requireStringOrDefault(args, "description", ""),
-    skeletonMode = skeletonMode,
-    specialistAreas = specialistAreas,
     routingSignals = routingInput,
     baselineLayers = parseBaselineLayers(args),
     subagentSpecialists = if (args.containsKey("subagent_specialists")) {
@@ -105,6 +99,14 @@ private fun parsePlatformPack(
     nameOverride = requireOptionalNonBlank(args, "name"),
     scaffoldPayloadVersion = version,
     repoRoot = repoRoot,
+  )
+}
+
+private fun rejectLegacyPlatformPackSelector(args: Map<String, Any?>, field: String) {
+  if (!args.containsKey(field)) return
+  throw InvalidScaffoldPayloadError(
+    "Scaffold payload field '$field' is no longer supported for kind 'platform-pack'. " +
+      "Create the full platform pack, then remove unwanted focus areas through governed removal paths.",
   )
 }
 

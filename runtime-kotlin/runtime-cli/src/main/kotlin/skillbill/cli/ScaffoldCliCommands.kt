@@ -675,7 +675,6 @@ private fun platformPackWizardPayload(
   put("platform", platform)
   promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  put("skeleton_mode", promptDefault(state, "Skeleton mode [starter/full]", "starter"))
   promptRoutingSignals(state, platform, platform in platformPackPresets)
     .ifNotEmpty { signals -> put("routing_signals", mapOf("strong" to signals)) }
 }
@@ -698,7 +697,6 @@ private fun assistedPlatformPackPayload(
   put("platform", profile.slug)
   put("display_name", displayName)
   put("description", "$displayName platform pack for code review and quality checks.")
-  put("skeleton_mode", "full")
   if (profile.slug !in platformPackPresets) {
     put("routing_signals", mapOf("strong" to profile.strongSignals))
   }

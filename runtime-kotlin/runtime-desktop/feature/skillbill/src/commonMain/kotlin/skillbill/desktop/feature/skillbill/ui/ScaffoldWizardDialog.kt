@@ -338,15 +338,6 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
           callbacks.onFormChanged { it.copy(displayName = value) }
         },
       )
-      PresetPicker(
-        label = "Skeleton mode",
-        options = listOf("full" to "Full skeleton", "starter" to "Starter skeleton"),
-        selected = fields.skeletonMode,
-        enabled = !state.busy,
-        onSelected = { value ->
-          callbacks.onFormChanged { it.copy(skeletonMode = value) }
-        },
-      )
       BaselineLayerControls(state = state, callbacks = callbacks)
     }
     ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> {

@@ -10,7 +10,6 @@ import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -44,14 +43,13 @@ class McpScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parses platform pack request with specialist areas and routing override`() {
+  fun `parses platform pack request with routing override`() {
     val request = parseMcpScaffoldCommandRequest(
       mapOf(
         "scaffold_payload_version" to "1.0",
         "kind" to "platform-pack",
         "platform" to "kotlin",
         "display_name" to "Kotlin",
-        "specialist_areas" to listOf("ui", "security"),
         "routing_signals" to mapOf(
           "strong" to listOf(".kt"),
           "tie_breakers" to listOf("Prefer Kotlin"),
@@ -71,8 +69,6 @@ class McpScaffoldCommandRequestParserTest {
     val pack = request as ScaffoldCommandRequest.PlatformPack
     assertEquals("kotlin", pack.platform)
     assertEquals("Kotlin", pack.displayName)
-    assertEquals(listOf("ui", "security"), pack.specialistAreas)
-    assertNull(pack.skeletonMode)
     assertEquals(listOf(".kt"), pack.routingSignals?.strong)
     assertEquals(listOf("Prefer Kotlin"), pack.routingSignals?.tieBreakers)
     assertEquals(1, pack.baselineLayers.size)
@@ -83,19 +79,39 @@ class McpScaffoldCommandRequestParserTest {
   }
 
   @Test
-  fun `parses platform pack request with skeleton mode`() {
-    val request = parseMcpScaffoldCommandRequest(
-      mapOf(
-        "scaffold_payload_version" to "1.0",
-        "kind" to "platform-pack",
-        "platform" to "kotlin",
-        "skeleton_mode" to "starter",
-      ),
-    )
+  fun `platform pack request rejects retired skeleton_mode with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      parseMcpScaffoldCommandRequest(
+        mapOf(
+          "scaffold_payload_version" to "1.0",
+          "kind" to "platform-pack",
+          "platform" to "kotlin",
+          "skeleton_mode" to "starter",
+        ),
+      )
+    }
+    val message = error.message.orEmpty()
+    assertTrue("skeleton_mode" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
+  }
 
-    val pack = request as ScaffoldCommandRequest.PlatformPack
-    assertEquals("kotlin", pack.platform)
-    assertEquals("starter", pack.skeletonMode)
+  @Test
+  fun `platform pack request rejects retired specialist_areas with migration message`() {
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      parseMcpScaffoldCommandRequest(
+        mapOf(
+          "scaffold_payload_version" to "1.0",
+          "kind" to "platform-pack",
+          "platform" to "kotlin",
+          "specialist_areas" to listOf("ui"),
+        ),
+      )
+    }
+    val message = error.message.orEmpty()
+    assertTrue("specialist_areas" in message, "Got: $message")
+    assertTrue("no longer supported" in message, "Got: $message")
+    assertTrue("remove unwanted focus areas" in message, "Got: $message")
   }
 
   @Test

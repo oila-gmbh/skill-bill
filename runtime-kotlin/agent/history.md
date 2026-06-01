@@ -1,3 +1,12 @@
+## [2026-06-01] SKILL-63 subtask 2 full-platform-pack-contract
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop, docs
+- `platform-pack` scaffolding now always emits the full baseline/default-quality-check/all-approved-specialist contract; `skeleton_mode` and `specialist_areas` are retired creation selectors at CLI, MCP, raw payload, and desktop seams. reusable
+- Full-pack generation reuses manifest-driven approved areas, baseline native-agent composition, declared file metadata, and loud policy errors instead of preserving partial-pack branches.
+- Desktop wizard state/model/request mapping no longer carries pack skeleton or specialist selectors; docs/examples now show the full-platform-pack contract and mark old selectors as rejected.
+- Install sync was intentionally skipped during goal-continuation; refresh local installs outside continuation if governed generated output needs updating.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-06-01] SKILL-63 subtask 1 scaffold-kind-surface
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop
 - Partial scaffold creation kinds (`platform-override-piloted`, `code-review-area`, and wizard aliases) are now retired at creation seams through typed `RetiredScaffoldKindError`, while legacy constants/models remain for existing source compatibility. reusable

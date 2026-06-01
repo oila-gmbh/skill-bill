@@ -56,7 +56,7 @@ private fun createExternalAuthorDryRunFixture(): ExternalAuthorDryRunFixture {
     repoRoot = repoRoot,
     platform = platform,
     packRoot = repoRoot.resolve("platform-packs").resolve(platform),
-    context = CliRuntimeContext(userHome = userHome),
+    context = CliRuntimeContext(userHome = userHome, environment = emptyMap()),
   )
 }
 
@@ -140,7 +140,6 @@ private fun externalPackPayload(repoRoot: Path, platform: String): Map<String, A
   "scaffold_payload_version" to "1.0",
   "kind" to "platform-pack",
   "platform" to platform,
-  "skeleton_mode" to "starter",
   "display_name" to "External",
   "description" to "Use when reviewing external author fixture changes.",
   "routing_signals" to mapOf(

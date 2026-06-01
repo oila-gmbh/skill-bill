@@ -13,19 +13,12 @@ enum class ScaffoldKind(
   PLATFORM_PACK("platform-pack", "Platform pack", true),
   PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family", false),
   CODE_REVIEW_AREA("code-review-area", "Code-review area", false),
-  ADD_ON("add-on", "Add-on", true);
+  ADD_ON("add-on", "Add-on", true),
+  ;
 
   companion object {
     fun activeCreationValues(): List<ScaffoldKind> = entries.filter { it.creationSupported }
   }
-}
-
-/**
- * Skeleton-mode selector for platform-pack scaffolds. Mirrors the runtime payload field.
- */
-enum class ScaffoldPlatformPackSkeleton {
-  STARTER,
-  FULL,
 }
 
 /**
@@ -84,12 +77,6 @@ sealed class ScaffoldPayload {
     val platform: String,
     val displayName: String = "",
     val description: String = "",
-    val skeletonMode: ScaffoldPlatformPackSkeleton = ScaffoldPlatformPackSkeleton.FULL,
-    /**
-     * Optional specialist-area override (must come from [ScaffoldCatalogSnapshot.approvedCodeReviewAreas]).
-     * When non-empty, the wizard must not also send a skeleton mode — the contract is mutually exclusive.
-     */
-    val specialistAreas: List<String> = emptyList(),
     val strongRoutingSignals: List<String> = emptyList(),
     val tieBreakers: List<String> = emptyList(),
     val baselineLayers: List<ScaffoldBaselineLayerPayload> = emptyList(),
@@ -104,14 +91,6 @@ sealed class ScaffoldPayload {
       target["platform"] = platform
       if (displayName.isNotBlank()) target["display_name"] = displayName
       if (description.isNotBlank()) target["description"] = description
-      if (specialistAreas.isNotEmpty()) {
-        target["specialist_areas"] = specialistAreas
-      } else {
-        target["skeleton_mode"] = when (skeletonMode) {
-          ScaffoldPlatformPackSkeleton.STARTER -> "starter"
-          ScaffoldPlatformPackSkeleton.FULL -> "full"
-        }
-      }
       if (strongRoutingSignals.isNotEmpty() || tieBreakers.isNotEmpty()) {
         val routing = linkedMapOf<String, Any?>()
         if (strongRoutingSignals.isNotEmpty()) routing["strong"] = strongRoutingSignals

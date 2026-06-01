@@ -75,7 +75,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = "2\njava\nJava\nStuff for Java\nfull\n\n",
+          stdinText = "2\njava\nJava\nStuff for Java\n\n",
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -87,6 +87,7 @@ class CliScaffoldRuntimeTest {
     assertEquals("ok", payload.stringValue("status"))
     assertContains(liveStdout.toString(), "Built-in routing preset found for 'java'")
     assertContains(liveStdout.toString(), "Press Enter to use it")
+    assertFalse("Skeleton mode" in liveStdout.toString())
     assertContains(preview, "- \"pom.xml\"")
     assertContains(preview, "- \"src/main/java\"")
   }
@@ -99,7 +100,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = listOf("2", "go", "Go", "Stuff for Go", "starter", ".go, go.mod").joinToString("\n"),
+          stdinText = listOf("2", "go", "Go", "Stuff for Go", ".go, go.mod").joinToString("\n"),
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -116,6 +117,7 @@ class CliScaffoldRuntimeTest {
     assertContains(liveStdout.toString(), "directories (src/main/java)")
     assertContains(liveStdout.toString(), "dependency coordinates, or language markers")
     assertContains(liveStdout.toString(), "Strong routing signals (comma-separated)")
+    assertFalse("Skeleton mode" in liveStdout.toString())
     assertContains(preview, "- \".go\"")
     assertContains(preview, "- \"go.mod\"")
   }
@@ -330,7 +332,6 @@ class CliScaffoldRuntimeTest {
             "kind": "platform-pack",
             "platform": "$platform",
             "repo_root": "$repoRoot",
-            "skeleton_mode": "starter",
             "routing_signals": {
               "strong": ["$platform.marker"]
             },
