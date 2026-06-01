@@ -1,3 +1,12 @@
+## [2026-06-01] SKILL-62 install-sh-reuse-last-selection
+Areas: install.sh, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-core tests
+- `install.sh --reuse-last-selection` now resolves the latest shared install selection before cleanup, skips agent/platform/telemetry/MCP prompts, rejects desktop-only reuse, and reports reused selections in the install summary. reusable
+- Added a runtime-owned `install replay-last-selection` CLI seam so shell replay uses the shared selection parser, current agent target resolution, manifest-backed platform slug validation, and a fresh current-install MCP binary path. reusable
+- `InstallService.discoverPlatformPackSlugs` exposes platform manifest discovery without pulling filesystem or planning-port internals into the CLI boundary.
+- Regression coverage locks happy-path replay, missing/malformed records, stale selected platform slugs, desktop-only rejection, cleanup-before-failure behavior, and usage/delegation wiring.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented
+
 ## [2026-06-01] SKILL-61 subtask 3 cli-watch-status-diff-ux
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs
 - Goal foreground output now emits default `goal_observability:` lines at the existing bounded heartbeat cadence while keeping raw child stdout/stderr hidden unless `--debug-child-output` is explicit. reusable
