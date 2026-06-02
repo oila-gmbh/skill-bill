@@ -4,6 +4,7 @@ import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowResumeView
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowSummaryView
+import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
 
 /**
  * SKILL-52.1 — Typed application result models for `WorkflowService`.
@@ -35,7 +36,7 @@ sealed interface WorkflowUpdateResult {
   data class Ok(
     val workflowId: String,
     val dbPath: String,
-    val snapshot: WorkflowSnapshotView,
+    val acknowledgement: WorkflowUpdateAcknowledgementView,
   ) : WorkflowUpdateResult
   data class Error(val workflowId: String, val error: String, val dbPath: String? = null) : WorkflowUpdateResult
 }

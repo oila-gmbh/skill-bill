@@ -530,10 +530,10 @@ class McpRuntimeTest {
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
-    val updatedAt = updated["updated_at"].toString()
+    val updatedAt = got["updated_at"].toString()
 
     assertSqliteTimestampShape(updatedAt, "implement updated_at")
-    assertEquals(opened["started_at"], updated["started_at"])
+    assertEquals(opened["started_at"], got["started_at"])
     assertTrue(updatedAt >= opened["started_at"].toString())
 
     assertGoldenPayload(
@@ -550,7 +550,7 @@ class McpRuntimeTest {
       "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
-      "<UPDATED_AT>" to updated["updated_at"].toString(),
+      "<UPDATED_AT>" to got["updated_at"].toString(),
     )
     assertEquals("blocked", updated["workflow_status"])
     assertEquals(1, listed["workflow_count"])
@@ -559,6 +559,7 @@ class McpRuntimeTest {
     assertEquals(listOf("plan"), resumed["missing_artifacts"])
     assertEquals("error", continued["status"])
     assertEquals("blocked", continued["continue_status"])
+    assertCompactContinuationPayload(continued, "implement")
   }
 
   @Test
@@ -603,13 +604,41 @@ class McpRuntimeTest {
       "<UPDATED_AT>" to got["updated_at"].toString(),
       "<CONTINUED_AT>" to continued["updated_at"].toString(),
     )
+    assertCompactUpdateAcknowledgementPayload(updated, "verdict")
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals("verdict", got["current_step_id"])
     assertEquals("resume", resumed["resume_mode"])
     assertEquals("ok", continued["status"])
     assertEquals("reopened", continued["continue_status"])
+    assertEquals("running", continued["workflow_status_before_continue"])
+    assertEquals(
+      "skill-bill --db '${tempDir.resolve("metrics.db").toAbsolutePath().normalize()}' verify-workflow show " +
+        "'$workflowId' --format json",
+      continued["read_only_full_state_command"],
+    )
+    assertCompactContinuationPayload(continued, "verdict")
   }
+}
+
+private fun assertCompactUpdateAcknowledgementPayload(payload: Map<String, *>, updatedStepId: String) {
+  assertEquals("ok", payload["status"])
+  assertEquals(listOf(updatedStepId), payload["updated_step_ids"])
+  assertTrue(payload.containsKey("updated_artifact_keys"))
+  assertTrue(payload.containsKey("read_only_full_state_command"))
+  assertTrue(payload.containsKey("read_only_full_state_guidance"))
+  assertFalse(payload.containsKey("artifacts"))
+  assertFalse(payload.containsKey("steps"))
+  assertFalse(payload.containsKey("session_id"))
+}
+
+private fun assertCompactContinuationPayload(payload: Map<String, *>, resumeStepId: String) {
+  assertEquals(resumeStepId, payload["resume_step_id"])
+  assertTrue(payload.containsKey("current_step_artifacts"))
+  assertTrue(payload.containsKey("read_only_full_state_command"))
+  assertFalse(payload.containsKey("workflow"))
+  assertFalse(payload.containsKey("artifacts"))
+  assertFalse(payload.containsKey("steps"))
 }
 
 private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRuntimeContext): Map<String, *> =

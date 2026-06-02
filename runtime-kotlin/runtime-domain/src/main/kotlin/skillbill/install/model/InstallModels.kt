@@ -31,6 +31,52 @@ enum class InstallAgent(
   }
 }
 
+/**
+ * SKILL-64 Subtask 3 (AC18): pure, effect-free mapping from an already-read
+ * execution-context environment map to the [InstallAgent] that most likely
+ * invoked `skill-bill goal`. The function never reads process state itself; the
+ * CLI/adapter layer reads the process environment (or test fixtures) and passes
+ * the resulting immutable map in, keeping detection deterministic and testable.
+ *
+ * Detection is best-effort and conservative: it returns `null` when the
+ * invoking agent cannot be determined so that callers can fall through to a
+ * documented last-resort default rather than guessing. Agent-specific markers
+ * are checked in a stable order; if multiple markers are present the first
+ * matching agent in [INVOKING_AGENT_CONTEXT_SIGNALS] order wins.
+ */
+object InvokingAgentContextResolver {
+  /**
+   * Ordered context signals mapping environment-variable markers to agents.
+   * Order is significant: earlier entries win when several markers are present.
+   * Markers are matched only when the variable is present with a non-blank
+   * value, mirroring how each agent populates its own execution context.
+   */
+  val INVOKING_AGENT_CONTEXT_SIGNALS: List<InvokingAgentContextSignal> = listOf(
+    InvokingAgentContextSignal(InstallAgent.CLAUDE, listOf("CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT")),
+    InvokingAgentContextSignal(InstallAgent.CODEX, listOf("CODEX_SANDBOX", "CODEX_SANDBOX_ENV", "CODEX_HOME")),
+    InvokingAgentContextSignal(InstallAgent.OPENCODE, listOf("OPENCODE", "OPENCODE_BIN_PATH", "OPENCODE_CONFIG")),
+  )
+
+  /**
+   * Resolve the invoking agent from [environment]. Returns `null` when no
+   * agent-specific marker is present, signalling callers to use their
+   * documented last-resort default.
+   */
+  fun detect(environment: Map<String, String>): InstallAgent? = INVOKING_AGENT_CONTEXT_SIGNALS
+    .firstOrNull { signal -> signal.markerKeys.any { key -> environment[key]?.isNotBlank() == true } }
+    ?.agent
+}
+
+data class InvokingAgentContextSignal(
+  val agent: InstallAgent,
+  val markerKeys: List<String>,
+) {
+  init {
+    require(markerKeys.isNotEmpty()) { "Invoking-agent context signal requires at least one marker key." }
+    require(markerKeys.all(String::isNotBlank)) { "Invoking-agent context marker keys must not be blank." }
+  }
+}
+
 enum class InstallAgentSelectionMode {
   DETECTED,
   MANUAL,

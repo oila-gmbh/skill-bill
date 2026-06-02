@@ -39,11 +39,15 @@ internal fun WorkflowOpenResult.toMcpMap(
   )
 }
 
-internal fun WorkflowUpdateResult.toMcpMap(
-  goalObservabilityEventValidator: GoalObservabilityEventValidator,
-): Map<String, Any?> = when (this) {
-  is WorkflowUpdateResult.Ok -> workflowSnapshotMcpMap(snapshot, goalObservabilityEventValidator).apply {
-    put("status", "ok")
+internal fun WorkflowUpdateResult.toMcpMap(): Map<String, Any?> = when (this) {
+  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
+    val workflowCommand = if (acknowledgement.workflowName == "bill-feature-verify") "verify-workflow" else "workflow"
+    val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
+    val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"
+    put(
+      "read_only_full_state_command",
+      "skill-bill --db $quotedDbPath $workflowCommand show $quotedWorkflowId --format json",
+    )
     put("db_path", dbPath)
   }
   is WorkflowUpdateResult.Error -> linkedMapOf<String, Any?>(
@@ -197,7 +201,12 @@ private fun standardMcpContinueMap(
   dbPath: String,
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {
-  val map = LinkedHashMap(WorkflowEngine.continueMap(view))
+  val map = LinkedHashMap(WorkflowEngine.compactContinueMap(view.compact))
+  val workflowCommand = if (view.skillName == "bill-feature-verify") "verify-workflow" else "workflow"
+  val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
+  val quotedWorkflowId = "'${view.resume.snapshot.workflowId.replace("'", "'\"'\"'")}'"
+  map["read_only_full_state_command"] =
+    "skill-bill --db $quotedDbPath $workflowCommand show $quotedWorkflowId --format json"
   decompositionExtras.forEach { (key, value) -> map[key] = value }
   map["db_path"] = dbPath
   if (view.continueStatus == "blocked") {

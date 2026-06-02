@@ -309,14 +309,14 @@ Workflow state:
 |---------------------------------------|--------------------------------------------|
 | `skill-bill workflow list`            | List persisted implement workflows         |
 | `skill-bill workflow latest`          | Show the latest implement workflow         |
-| `skill-bill workflow show`            | Show one implement workflow                |
+| `skill-bill workflow show`            | Show one implement workflow, including full durable state |
 | `skill-bill workflow resume`          | Build a resume/recovery explanation        |
-| `skill-bill workflow continue`        | Reopen a resumable implement workflow      |
+| `skill-bill workflow continue`        | Reopen a resumable implement workflow and emit compact continuation guidance |
 | `skill-bill verify-workflow list`     | List persisted verify workflows            |
 | `skill-bill verify-workflow latest`   | Show the latest verify workflow            |
-| `skill-bill verify-workflow show`     | Show one verify workflow                   |
+| `skill-bill verify-workflow show`     | Show one verify workflow, including full durable state |
 | `skill-bill verify-workflow resume`   | Build a verify resume/recovery explanation |
-| `skill-bill verify-workflow continue` | Reopen a resumable verify workflow         |
+| `skill-bill verify-workflow continue` | Reopen a resumable verify workflow and emit compact continuation guidance |
 
 Authoring and install:
 
@@ -432,6 +432,36 @@ diff_stat: files_changed=3 insertions=12 deletions=4
 selected_diff_hunks: count=1 truncated=false
 selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=+new
 ```
+
+### Resuming, inspecting state, and accounting
+
+`workflow continue` and `workflow show` are different surfaces:
+
+- `workflow continue` is **mutating activation** — it re-opens resumable state
+  and returns the **compact** continuation payload a session uses to resume work.
+- `workflow show` is **read-only inspection** — it changes nothing and returns
+  the full snapshot (every step plus the complete durable `artifacts` map).
+
+Goal child sessions resume from the **compact continuation output** and treat its
+`current_step_artifacts` as authoritative, instead of rebuilding context from
+chat history. **Fetch full state only when explicitly needed** (for example, to
+read an omitted or large artifact) via the read-only `workflow show` /
+`verify-workflow show` path.
+
+To answer *why* a subtask retried, stopped, or blocked, inspect the append-only
+attempt ledger (`goal_attempt_ledger`) on the child workflow record with
+`workflow show <workflow-id>` — its `action`, `blocked_reason`, `stop_reason`,
+and `final_reconciled_result` fields explain each case without scraping any
+provider session log.
+
+> **Caveat:** provider-reported *total* token counts can be dominated by cached
+> input replay, so they are a diagnostic signal, not a Skill Bill contract. Skill
+> Bill optimizes payload size and session behavior (compact continuation,
+> transition-only monitoring, read-only-on-demand full state) rather than relying
+> on provider cache accounting.
+
+See `orchestration/workflow-contract/PLAYBOOK.md` for the full attempt-ledger
+field reference and the cached-token caveat in detail.
 
 ## MCP Server
 

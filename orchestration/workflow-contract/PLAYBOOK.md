@@ -182,11 +182,22 @@ existing `feature_implement_started` / `_finished` and
 `feature_verify_started` / `_finished` tools remain telemetry-owned; they are
 linked to workflow state via `session_id` rather than replaced by it.
 
+Workflow update tools return compact acknowledgements by default after the
+validated update has been persisted. The acknowledgement includes write status,
+workflow id/status, current step id, updated step ids, updated artifact keys,
+database path, and read-only full-state guidance. It intentionally omits full
+steps and durable artifacts; callers that need complete state should use the
+read-only `*_workflow_get` MCP tools or CLI `workflow show` /
+`verify-workflow show`.
+
 `feature_implement_workflow_continue` is the first activation tool in the pilot:
 it does not execute the workflow itself, but it re-opens resumable state and
-returns a governed continuation payload for `bill-feature-task`, including
-the resumed step id, recovered artifacts, reference sections to read, and a
-paste-ready continuation prompt.
+returns a governed compact continuation payload for `bill-feature-task`,
+including the resumed step id, required and available artifact keys, compact
+current-step artifact summaries, reference sections to read, and a paste-ready
+continuation prompt. The compact payload omits the full workflow snapshot and
+full durable `artifacts` map by default. Use `workflow show` as the read-only
+full-state inspection path when complete durable state is needed.
 
 The CLI exposes the same recovery surface through:
 
@@ -209,6 +220,70 @@ Outcome fields are `issue_key`, `subtask_id`, terminal `status`, `commit_sha`,
 `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is the
 authoritative channel; stdout and git-tracked manifest projections are
 diagnostic/recovery views.
+
+### `workflow continue` vs `workflow show`: mutating activation vs read-only inspection
+
+These two surfaces have different contracts and must not be confused:
+
+- **`workflow continue` is mutating activation.** It re-opens resumable state
+  (transitioning a blocked/idle workflow back to active) and returns the
+  governed **compact** continuation payload — resumed step id, required and
+  available artifact keys, compact current-step artifact summaries, reference
+  sections, and a paste-ready continuation prompt. It is the path a session uses
+  to *resume work*. The compact payload deliberately omits the full workflow
+  snapshot and the full durable `artifacts` map.
+- **`workflow show` is read-only inspection.** It mutates nothing and returns the
+  full snapshot (every step plus the complete durable `artifacts` map). Use it
+  for debugging and full-state recovery, never as the normal resume path.
+
+**Goal child sessions should use the compact continuation output.** A
+goal-continuation child resumes from the compact `workflow continue` payload and
+treats `current_step_artifacts` as authoritative current-step context instead of
+reconstructing prior context from chat history. **Fetch full state only when
+explicitly needed** — e.g. an omitted/large artifact must be inspected — via the
+read-only `workflow show` / `verify-workflow show` path. Compact continuation and
+the compact update acknowledgement carry documented byte budgets (covered by
+size-assertion regressions) so a full snapshot cannot silently leak back into the
+default child-session payload.
+
+### Inspecting the attempt ledger (why a subtask retried, stopped, or blocked)
+
+The goal runner persists an append-only attempt/event ledger as the durable
+`goal_attempt_ledger` artifact on the relevant workflow record. Read it with the
+read-only `workflow show <workflow-id>` path (it lives in the `artifacts` map) to
+answer *why* a subtask behaved the way it did — **without scraping any provider
+JSONL session log.** Each entry carries an `action` plus explanatory fields:
+
+- `child_activation` — first start of a subtask child run.
+- `resume` — a previously blocked subtask was resumed.
+- `retry` — a child returned no terminal store outcome and was retried inline
+  (`stop_reason=no_terminal_store_outcome`).
+- `terminal_done_check` — the runner confirmed a subtask reached a terminal done
+  state (`final_reconciled_result` explains the result).
+- `policy_block` — the run was blocked by policy before launch
+  (`blocked_reason` + `stop_reason=policy_blocked`).
+- `timeout` — the child was killed as unresponsive (`stop_reason=timeout`).
+- `interruption` — the child was killed by a parent interrupt
+  (`stop_reason=interrupted`).
+- `final_reconciled_outcome` — the reconciled result recorded at goal
+  finalization (`final_reconciled_result`).
+
+The explanatory fields `blocked_reason`, `stop_reason`, and
+`final_reconciled_result` are sufficient on their own to explain a retry, stop,
+or block; the ledger sequence space is distinct from the `goal_event` and
+`goal_progress` spaces.
+
+> **CAVEAT (not a Skill Bill contract): cached-input token totals.**
+> Provider-reported *total* token counts for a child session can be dominated by
+> cached input replay — re-reading the same large context on each turn inflates
+> the reported input-token total without reflecting new work. Skill Bill
+> therefore optimizes **payload size and session behavior** (compact
+> continuation, transition-only monitoring, read-only-on-demand full state)
+> rather than relying on provider cache accounting. Best-effort session
+> accounting (`goal_session_accounting`) is recorded when provider data exists
+> and reported as unavailable — without failing the run — when it does not. Treat
+> provider cached-token totals as a diagnostic signal, not a Skill Bill
+> guarantee or billing input.
 
 ## Pilot: `bill-feature-task`
 

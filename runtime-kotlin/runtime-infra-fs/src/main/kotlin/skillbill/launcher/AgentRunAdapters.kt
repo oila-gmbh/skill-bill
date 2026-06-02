@@ -3,6 +3,7 @@ package skillbill.launcher
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
+import java.nio.file.Path
 
 interface AgentRunAdapter {
   val agent: InstallAgent
@@ -24,6 +25,10 @@ class ProcessAgentRunAdapter(
         stdinText = command.stdinText,
         progressIdleTimeout = request.progressIdleTimeout,
         progressProbe = request.progressProbe,
+        declaredProgressProbe = request.declaredProgressProbe,
+        // SKILL-64 Subtask 3 (AC21, AC25): thread the supervisor-side declared-
+        // progress emitter into the process-lifecycle wrapper.
+        progressEmitter = request.progressEmitter,
         activityProbe = WorktreeActivityProbe(command.workingDirectory),
         environment = command.environment,
         inheritEnvironment = command.inheritEnvironment,
@@ -39,8 +44,28 @@ class ProcessAgentRunAdapter(
       interrupted = result.interrupted,
       spawnFailed = result.spawnFailed,
       liveness = result.liveness,
+      // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
+      // descriptors derived from launch context the launcher controls — the
+      // child working directory (session path) and a deterministic, non-secret
+      // session marker (agent + subtask + working dir). No provider-private
+      // token-log format is consulted (Non-Goal).
+      childSessionPath = command.workingDirectory.toString(),
+      childSessionId = childSessionId(agent, request, command.workingDirectory),
     )
   }
+
+  private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =
+    buildString {
+      append(agent.id)
+      append(':')
+      append(request.issueKey)
+      request.subtaskId?.let { id ->
+        append(":subtask-")
+        append(id)
+      }
+      append(':')
+      append(workingDirectory.fileName?.toString() ?: workingDirectory.toString())
+    }
 }
 
 fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallAgent, AgentRunAdapter> = listOf(

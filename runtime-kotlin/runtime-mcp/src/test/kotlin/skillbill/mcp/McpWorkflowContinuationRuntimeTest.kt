@@ -12,6 +12,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class McpWorkflowContinuationRuntimeTest {
   @Test
@@ -35,6 +37,15 @@ class McpWorkflowContinuationRuntimeTest {
     assertEquals("ok", continued["status"])
     assertEquals(1, continued["decomposition_subtask_id"])
     assertEquals(fixture.subtaskSpec.toString(), continued["decomposition_subtask_spec_path"])
+    assertEquals("preplan", continued["resume_step_id"])
+    assertTrue(continued.containsKey("current_step_artifacts"))
+    val continuedWorkflowId = continued["workflow_id"] as String
+    assertEquals(
+      "skill-bill --db '${fixture.dbPath}' workflow show '$continuedWorkflowId' --format json",
+      continued["read_only_full_state_command"],
+    )
+    assertFalse(continued.containsKey("artifacts"))
+    assertFalse(continued.containsKey("steps"))
   }
 
   @Test
@@ -63,6 +74,7 @@ class McpWorkflowContinuationRuntimeTest {
 
 private data class McpDecompositionFixture(
   val context: McpRuntimeContext,
+  val dbPath: Path,
   val parentSpec: Path,
   val subtaskSpec: Path,
   val secondSubtaskSpec: Path,
@@ -99,6 +111,7 @@ private data class McpDecompositionFixture(
 
 private fun mcpDecompositionFixture(): McpDecompositionFixture {
   val tempDir = Files.createTempDirectory("skillbill-mcp-decomposition-continue")
+  val dbPath = tempDir.resolve("metrics.db")
   val configPath = tempDir.resolve("config.json")
   Files.writeString(configPath, """{"install_id":"test","telemetry":{"level":"off"}}""")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
@@ -111,12 +124,13 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
   return McpDecompositionFixture(
     context = McpRuntimeContext(
       environment = mapOf(
-        "SKILL_BILL_REVIEW_DB" to tempDir.resolve("metrics.db").toString(),
+        "SKILL_BILL_REVIEW_DB" to dbPath.toString(),
         CONFIG_ENVIRONMENT_KEY to configPath.toString(),
       ),
       userHome = tempDir,
       workflowGitOperations = TestWorkflowGitOperations,
     ),
+    dbPath = dbPath,
     parentSpec = parentSpec,
     subtaskSpec = subtaskSpec,
     secondSubtaskSpec = secondSubtaskSpec,

@@ -600,6 +600,7 @@ class CliRuntimeTest {
     assertEquals(1, continued.exitCode)
     assertEquals("blocked", continuePayload["continue_status"])
     assertEquals(listOf("plan"), continuePayload["missing_artifacts"])
+    assertEquals(workflowId, continuePayload["workflow_id"])
   }
 
   @Test
@@ -642,7 +643,15 @@ class CliRuntimeTest {
     val continued = runJson("--db", dbPath.toString(), "verify-workflow", "continue", "--latest", "--format", "json")
     val shown = runJson("--db", dbPath.toString(), "verify-workflow", "show", workflowId, "--format", "json")
     assertEquals("reopened", continued["continue_status"])
+    assertEquals("running", continued["workflow_status_before_continue"])
     assertEquals("verdict", continued["continue_step_id"])
+    assertEquals("verdict", continued["resume_step_id"])
+    assertEquals(
+      "skill-bill --db '$dbPath' verify-workflow show '$workflowId' --format json",
+      continued["read_only_full_state_command"],
+    )
+    assertFalse(continued.containsKey("artifacts"))
+    assertFalse(continued.containsKey("steps"))
     assertEquals("verdict", shown["current_step_id"])
   }
 

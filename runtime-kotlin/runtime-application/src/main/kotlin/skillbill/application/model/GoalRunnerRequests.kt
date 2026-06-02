@@ -41,11 +41,16 @@ sealed interface GoalRunnerRunEvent {
     override val issueKey: String,
     val subtaskId: Int,
     val action: String,
+    // SKILL-64 Subtask 3 (AC24): authoritative durable step from the workflow
+    // store, never a hardcoded local default. Null only before a durable step
+    // exists for the child.
+    val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class SubtaskCompleted(
     override val issueKey: String,
     val subtaskId: Int,
+    val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class SubtaskStopped(
@@ -53,6 +58,7 @@ sealed interface GoalRunnerRunEvent {
     val subtaskId: Int,
     val reason: String,
     val blockedReason: String,
+    val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class Completed(
@@ -67,6 +73,10 @@ sealed interface GoalRunnerRunEvent {
 
 val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT: Duration = 30.minutes
 const val DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START: Int = 10_000
+
+// SKILL-64 Subtask 3 (AC16): goal_event: transition sequence space, distinct
+// from the goal_observability sequence space (DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START).
+const val DEFAULT_GOAL_EVENT_SEQUENCE_START: Int = 20_000
 
 fun interface GoalRunnerEventSink {
   fun emit(event: GoalRunnerRunEvent)

@@ -10,6 +10,8 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.WorkflowCompactContinueView
+import skillbill.workflow.model.WorkflowContinuationArtifactSummary
 import skillbill.workflow.model.WorkflowContinueDecision
 import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowDefinition
@@ -18,6 +20,7 @@ import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowSummaryView
+import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.model.WorkflowUpdateInput
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -142,6 +145,22 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     )
   }
 
+  fun updateAcknowledgementView(
+    snapshot: WorkflowSnapshotView,
+    input: WorkflowUpdateInput,
+  ): WorkflowUpdateAcknowledgementView = WorkflowUpdateAcknowledgementView(
+    status = "ok",
+    workflowId = snapshot.workflowId,
+    workflowName = snapshot.workflowName,
+    workflowStatus = snapshot.workflowStatus,
+    currentStepId = snapshot.currentStepId,
+    updatedStepIds = input.stepUpdates.orEmpty().mapNotNull { it["step_id"] as? String },
+    updatedArtifactKeys = input.artifactsPatch.orEmpty().keys.sorted(),
+    readOnlyFullStateGuidance =
+    "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, " +
+      "including steps and the complete durable artifacts map.",
+  )
+
   fun resumeView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowResumeView {
     val snapshot = snapshotView(definition, record)
     val stepsById = snapshot.steps.associateBy { it.stepId }
@@ -188,25 +207,21 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     definition: WorkflowDefinition,
     record: WorkflowStateSnapshot,
     sessionSummary: Map<String, Any?> = emptyMap(),
+    continueStatusOverride: String? = null,
+    workflowStatusBeforeContinueOverride: String? = null,
   ): WorkflowContinueDecision {
     val resume = resumeView(definition, record)
     val snapshot = resume.snapshot
     val currentStep = snapshot.steps.firstOrNull { it.stepId == resume.resumeStepId }
     val attemptCount = currentStep?.attemptCount ?: 0
     val nextAttemptCount = maxOf(attemptCount + 1, 1)
-    val alreadyRunning =
-      snapshot.workflowStatus == "running" &&
-        snapshot.currentStepId == resume.resumeStepId &&
-        currentStep?.status == "running"
-    val continueStatus =
-      when {
-        resume.resumeMode == "done" -> "done"
-        resume.canResume && alreadyRunning -> "already_running"
-        resume.canResume -> "reopened"
-        else -> "blocked"
-      }
+    val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
+    val continueStatus = continueStatusOverride ?: actualContinueStatus
+    val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
     val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot.artifacts)
     val stepArtifacts = stepArtifactKeys.associateWith { snapshot.artifacts.getValue(it) }
+    val currentStepArtifactKeys = resume.requiredArtifacts
+    val omittedArtifactKeys = resume.availableArtifacts.filterNot(currentStepArtifactKeys::contains)
     val extraFields =
       if (definition.skillName == "bill-feature-task") {
         implementExtraFields(snapshot.artifacts)
@@ -219,7 +234,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       resumeStepId = resume.resumeStepId,
       continueStatus = continueStatus,
       nextAction = resume.nextAction,
-      artifactKeys = stepArtifactKeys,
+      currentStepArtifactKeys = currentStepArtifactKeys,
+      omittedArtifactKeys = omittedArtifactKeys,
     )
     val continuationEntryPrompt = continuationEntryPrompt(
       definition = definition,
@@ -227,16 +243,29 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       sessionId = record.sessionId.orEmpty(),
       resumeStepId = resume.resumeStepId,
       continueStatus = continueStatus,
-      artifactKeys = stepArtifactKeys,
+      currentStepArtifactKeys = currentStepArtifactKeys,
+      omittedArtifactKeys = omittedArtifactKeys,
       nextAction = resume.nextAction,
       sessionSummary = sessionSummary,
       extraFields = extraFields,
       nextAttemptCount = nextAttemptCount,
     )
+    val compact = compactContinueView(
+      definition = definition,
+      snapshot = snapshot,
+      resume = resume,
+      continueStatus = continueStatus,
+      workflowStatusBeforeContinue = workflowStatusBeforeContinue,
+      continueStepLabel = definition.stepLabels[resume.resumeStepId] ?: resume.resumeStepId,
+      continueStepDirective = definition.continuationDirectives[resume.resumeStepId]
+        ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
+      continuationBrief = continuationBrief,
+      continuationEntryPrompt = continuationEntryPrompt,
+    )
     val view = WorkflowContinueView(
       resume = resume,
       skillName = definition.skillName,
-      workflowStatusBeforeContinue = snapshot.workflowStatus,
+      workflowStatusBeforeContinue = workflowStatusBeforeContinue,
       continueStatus = continueStatus,
       continueStepId = resume.resumeStepId,
       continueStepLabel = definition.stepLabels[resume.resumeStepId] ?: resume.resumeStepId,
@@ -249,10 +278,11 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       sessionSummary = sessionSummary,
       continuationBrief = continuationBrief,
       continuationEntryPrompt = continuationEntryPrompt,
+      compact = compact,
     )
     return WorkflowContinueDecision(
       view = view,
-      shouldReopen = continueStatus == "reopened",
+      shouldReopen = actualContinueStatus == "reopened",
       resumeStepId = resume.resumeStepId,
       nextAttemptCount = nextAttemptCount,
     )
@@ -367,6 +397,45 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       ),
     )
 
+    @OpenBoundaryMap("Compact wire-shape ordered continue map for CLI/MCP adapters")
+    fun compactContinueMap(view: WorkflowCompactContinueView): Map<String, Any?> = linkedMapOf(
+      "workflow_id" to view.workflowId,
+      "skill_name" to view.skillName,
+      "workflow_status_before_continue" to view.workflowStatusBeforeContinue,
+      "started_at" to view.startedAt,
+      "updated_at" to view.updatedAt,
+      "continue_status" to view.continueStatus,
+      "resume_step_id" to view.resumeStepId,
+      "resume_step_label" to view.resumeStepLabel,
+      "continue_step_id" to view.resumeStepId,
+      "continue_step_label" to view.resumeStepLabel,
+      "continue_step_directive" to view.continueStepDirective,
+      "reference_sections" to view.referenceSections,
+      "required_artifact_keys" to view.requiredArtifactKeys,
+      "available_artifact_keys" to view.availableArtifactKeys,
+      "missing_artifact_keys" to view.missingArtifactKeys,
+      "required_artifacts" to view.requiredArtifactKeys,
+      "available_artifacts" to view.availableArtifactKeys,
+      "missing_artifacts" to view.missingArtifactKeys,
+      "current_step_artifacts" to view.currentStepArtifacts.map(::artifactSummaryMap),
+      "omitted_artifact_keys" to view.omittedArtifactKeys,
+      "continuation_brief" to view.continuationBrief,
+      "continuation_entry_prompt" to view.continuationEntryPrompt,
+      "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
+    )
+
+    @OpenBoundaryMap("Compact wire-shape ordered workflow-update acknowledgement map for CLI/MCP adapters")
+    fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView): Map<String, Any?> = linkedMapOf(
+      "status" to view.status,
+      "workflow_id" to view.workflowId,
+      "workflow_name" to view.workflowName,
+      "workflow_status" to view.workflowStatus,
+      "current_step_id" to view.currentStepId,
+      "updated_step_ids" to view.updatedStepIds,
+      "updated_artifact_keys" to view.updatedArtifactKeys,
+      "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
+    )
+
     private fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
       @Suppress("UNCHECKED_CAST")
       val rawSteps = map["steps"] as List<Map<String, Any?>>
@@ -440,6 +509,23 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       return definition.stepIds.mapNotNull(byStepId::get)
     }
 
+    private fun continueStatusFor(
+      snapshot: WorkflowSnapshotView,
+      resume: WorkflowResumeView,
+      currentStep: WorkflowStepState?,
+    ): String {
+      val alreadyRunning =
+        snapshot.workflowStatus == "running" &&
+          snapshot.currentStepId == resume.resumeStepId &&
+          currentStep?.status == "running"
+      return when {
+        resume.resumeMode == "done" -> "done"
+        resume.canResume && alreadyRunning -> "already_running"
+        resume.canResume -> "reopened"
+        else -> "blocked"
+      }
+    }
+
     private fun continueArtifactKeys(
       definition: WorkflowDefinition,
       resumeStepId: String,
@@ -459,16 +545,101 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       return keys
     }
 
+    private fun compactContinueView(
+      definition: WorkflowDefinition,
+      snapshot: WorkflowSnapshotView,
+      resume: WorkflowResumeView,
+      continueStatus: String,
+      workflowStatusBeforeContinue: String,
+      continueStepLabel: String,
+      continueStepDirective: String,
+      continuationBrief: String,
+      continuationEntryPrompt: String,
+    ): WorkflowCompactContinueView {
+      val requiredKeys = resume.requiredArtifacts
+      val availableKeys = resume.availableArtifacts
+      val currentStepArtifactKeys = requiredKeys
+      val currentStepArtifacts = currentStepArtifactKeys.map { key ->
+        artifactSummary(key, snapshot.artifacts[key], key in snapshot.artifacts)
+      }
+      val omittedKeys = availableKeys.filterNot(currentStepArtifactKeys::contains)
+      return WorkflowCompactContinueView(
+        workflowId = snapshot.workflowId,
+        skillName = definition.skillName,
+        continueStatus = continueStatus,
+        workflowStatusBeforeContinue = workflowStatusBeforeContinue,
+        startedAt = snapshot.startedAt,
+        updatedAt = snapshot.updatedAt,
+        resumeStepId = resume.resumeStepId,
+        resumeStepLabel = continueStepLabel,
+        continueStepDirective = continueStepDirective,
+        referenceSections = definition.continuationReferenceSections[resume.resumeStepId].orEmpty(),
+        requiredArtifactKeys = requiredKeys,
+        availableArtifactKeys = availableKeys,
+        missingArtifactKeys = resume.missingArtifacts,
+        currentStepArtifacts = currentStepArtifacts,
+        omittedArtifactKeys = omittedKeys,
+        continuationBrief = continuationBrief,
+        continuationEntryPrompt = continuationEntryPrompt,
+        readOnlyFullStateGuidance =
+        "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
+      )
+    }
+
+    private fun artifactSummary(key: String, value: Any?, present: Boolean): WorkflowContinuationArtifactSummary {
+      if (!present) {
+        return WorkflowContinuationArtifactSummary(
+          key = key,
+          present = false,
+          inline = false,
+          sizeBytes = null,
+          value = null,
+          preview = null,
+          truncated = false,
+          omitted = true,
+          omissionReason = "missing_required_artifact",
+        )
+      }
+      val serialized = jsonString(value)
+      val sizeBytes = serialized.toByteArray(Charsets.UTF_8).size
+      val inline = sizeBytes <= COMPACT_ARTIFACT_INLINE_MAX_BYTES
+      return WorkflowContinuationArtifactSummary(
+        key = key,
+        present = true,
+        inline = inline,
+        sizeBytes = sizeBytes,
+        value = if (inline) value else null,
+        preview = if (inline) null else serialized.take(COMPACT_ARTIFACT_PREVIEW_CHARS),
+        truncated = !inline && serialized.length > COMPACT_ARTIFACT_PREVIEW_CHARS,
+        omitted = !inline,
+        omissionReason = if (inline) null else "artifact_exceeds_inline_limit",
+      )
+    }
+
+    private fun artifactSummaryMap(summary: WorkflowContinuationArtifactSummary): Map<String, Any?> = linkedMapOf(
+      "key" to summary.key,
+      "present" to summary.present,
+      "inline" to summary.inline,
+      "size_bytes" to summary.sizeBytes,
+      "value" to summary.value,
+      "preview" to summary.preview,
+      "truncated" to summary.truncated,
+      "omitted" to summary.omitted,
+      "omission_reason" to summary.omissionReason,
+    )
+
     private fun continuationBrief(
       definition: WorkflowDefinition,
       workflowId: String,
       resumeStepId: String,
       continueStatus: String,
       nextAction: String,
-      artifactKeys: List<String>,
+      currentStepArtifactKeys: List<String>,
+      omittedArtifactKeys: List<String>,
     ): String {
       val stepLabel = definition.stepLabels[resumeStepId] ?: resumeStepId
-      val artifacts = artifactKeys.joinToString().ifBlank { "none" }
+      val currentArtifacts = currentStepArtifactKeys.joinToString().ifBlank { "none" }
+      val omittedArtifacts = omittedArtifactKeys.joinToString().ifBlank { "none" }
       val instructionPath =
         if (definition.skillName == "bill-feature-task") {
           "`skills/bill-feature-task/content.md`"
@@ -477,8 +648,11 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         }
       return "Resume `${definition.skillName}` workflow `$workflowId` from `$stepLabel` (`$resumeStepId`). " +
         "Follow the normal step instructions in $instructionPath. " +
-        "Use the recovered `step_artifacts` in this payload ($artifacts) instead of reconstructing prior context " +
-        "from chat history. Workflow activation status: `$continueStatus`. Next action: $nextAction"
+        "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
+        "current-step context instead of reconstructing prior context from chat history. " +
+        "Omitted artifact keys ($omittedArtifacts) " +
+        "require read-only inspection with `workflow show` when needed. Workflow activation status: " +
+        "`$continueStatus`. Next action: $nextAction"
     }
 
     private fun continuationEntryPrompt(
@@ -487,7 +661,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       sessionId: String,
       resumeStepId: String,
       continueStatus: String,
-      artifactKeys: List<String>,
+      currentStepArtifactKeys: List<String>,
+      omittedArtifactKeys: List<String>,
       nextAction: String,
       sessionSummary: Map<String, Any?>,
       extraFields: Map<String, Any?>,
@@ -500,7 +675,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
             "Resume the workflow from the recovered current step using the persisted artifacts as " +
               "authoritative context."
             )
-      val artifacts = artifactKeys.joinToString().ifBlank { "none" }
+      val currentArtifacts = currentStepArtifactKeys.joinToString().ifBlank { "none" }
+      val omittedArtifacts = omittedArtifactKeys.joinToString().ifBlank { "none" }
       val commonLines =
         mutableListOf(
           "Use `${definition.skillName}` in continuation mode.",
@@ -514,7 +690,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         commonLines += "Feature size: ${(extraFields["feature_size"] as String).ifBlank { "(unknown)" }}"
         commonLines += "Branch: ${(extraFields["branch_name"] as String).ifBlank { "(unknown)" }}"
       }
-      commonLines += "Recovered artifacts: $artifacts"
+      commonLines += "Current-step artifacts: $currentArtifacts"
+      commonLines += "Omitted artifact keys: $omittedArtifacts"
       if (definition.skillName == "bill-feature-verify") {
         commonLines += "Acceptance criteria count: ${sessionSummary["acceptance_criteria_count"] ?: 0}"
         commonLines += "Rollout relevant: ${sessionSummary["rollout_relevant"] ?: false}"
@@ -523,8 +700,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       commonLines += "Spec summary: $specSummary"
       commonLines += "Reference sections: ${references.ifBlank { "normal step instructions only" }}"
       commonLines +=
-        "Rules: do not rerun completed steps unless the workflow sends work backwards; treat artifacts " +
-        "as authoritative."
+        "Rules: do not rerun completed steps unless the workflow sends work backwards; treat " +
+        "`current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed."
       commonLines +=
         "Workflow update rule: every step_updates item must include step_id, status, and integer " +
         "attempt_count; use attempt_count $nextAttemptCount for `$resumeStepId` unless a later retry increments it."
@@ -641,3 +818,6 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     }
   }
 }
+
+private const val COMPACT_ARTIFACT_INLINE_MAX_BYTES = 4096
+private const val COMPACT_ARTIFACT_PREVIEW_CHARS = 1024

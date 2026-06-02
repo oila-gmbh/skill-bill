@@ -3,9 +3,18 @@
 package skillbill.launcher
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.goalrunner.model.GoalRunnerLivenessClassifier
+import skillbill.goalrunner.model.GoalRunnerLivenessDecision
+import skillbill.goalrunner.model.GoalRunnerLivenessInputs
+import skillbill.goalrunner.model.GoalRunnerLivenessState
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.agentrun.model.AgentRunProgressEmission
+import skillbill.workflow.model.GoalProgressEvent
+import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.model.GoalProgressOutcome
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -31,6 +40,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
 
   private fun runStartedProcess(process: Process, request: AgentRunProcessRequest): AgentRunProcessResult {
     val outputTracker = OutputObservationTracker()
+    val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
       input = process.inputStream,
       limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
@@ -46,27 +56,62 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       onChunkRead = { outputTracker.markObserved() },
     ).also { it.start() }
     writeAndCloseStdin(process, request.stdinText)
+    // SKILL-64 Subtask 3 (AC25, AC21): the process-lifecycle wrapper owns the
+    // declared operation_* lifecycle. operation_started fires once the child is
+    // running; the wait loop fires gated operation_heartbeat ticks; the exit/
+    // timeout/interrupt/kill paths below fire operation_completed.
+    lifecycleEmitter.emitStarted(process.isAlive)
+    // Only an interrupt is recovered here (mapped to a CANCELLED terminal event in
+    // finishRun); any other failure propagates unchanged as before.
     val wait = try {
-      waitForProcess(process, request, outputTracker)
-    } catch (_: InterruptedException) {
-      process.destroyForcibly()
-      runCatching { process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
-      stdout.join()
-      stderr.join()
-      Thread.currentThread().interrupt()
-      return interruptedResult(stdout, stderr, outputTracker)
+      Result.success(waitForProcess(process, request, outputTracker, lifecycleEmitter))
+    } catch (interrupt: InterruptedException) {
+      Result.failure(interrupt)
     }
-    val finished = wait.finished
+    return finishRun(process, request, wait, outputTracker, stdout, stderr, lifecycleEmitter)
+  }
+
+  // SKILL-64 Subtask 3 (F-NP01): every exit path (normal, wall-clock timeout,
+  // forced kill, and interrupt — whether raised inside the wait loop or by the
+  // guarded post-timeout Process.waitFor) funnels through here so exactly one
+  // operation_completed is always emitted with the right terminal outcome:
+  // SUCCEEDED on a clean exit, TIMED_OUT on a timeout kill, CANCELLED on
+  // interrupt. An interrupt also re-raises the thread interrupt and returns the
+  // interrupted result; heartbeats can never dangle without a terminal event.
+  @Suppress("LongParameterList")
+  private fun finishRun(
+    process: Process,
+    request: AgentRunProcessRequest,
+    waitResult: Result<ProcessWait>,
+    outputTracker: OutputObservationTracker,
+    stdout: CappedUtf8Drain,
+    stderr: CappedUtf8Drain,
+    lifecycleEmitter: ProcessLifecycleEmitter,
+  ): AgentRunProcessResult {
+    var interrupted = waitResult.exceptionOrNull() is InterruptedException
+    val wait = waitResult.getOrNull()
+    val finished = wait?.finished == true
     if (!finished) {
       process.destroyForcibly()
-      process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+      runCatching { process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
+        .onFailure { error -> if (error is InterruptedException) interrupted = true }
     }
     stdout.join()
     stderr.join()
+    val terminalOutcome = when {
+      interrupted -> GoalProgressOutcome.CANCELLED
+      finished -> GoalProgressOutcome.SUCCEEDED
+      else -> GoalProgressOutcome.TIMED_OUT
+    }
+    lifecycleEmitter.emitCompleted(processAlive = false, outcome = terminalOutcome)
+    if (interrupted) {
+      Thread.currentThread().interrupt()
+      return interruptedResult(stdout, stderr, outputTracker)
+    }
     return AgentRunProcessResult(
       exitStatus = if (finished) process.exitValue() else null,
       stdout = stdout.text(),
-      stderr = stderr.text().withTimeoutMessage(wait, request),
+      stderr = stderr.text().withTimeoutMessage(requireNotNull(wait), request),
       timedOut = !finished,
       interrupted = false,
       spawnFailed = false,
@@ -106,7 +151,8 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     process: Process,
     request: AgentRunProcessRequest,
     outputTracker: OutputObservationTracker,
-  ): ProcessWait = ProcessWaitLoop(process, request, outputTracker).wait()
+    lifecycleEmitter: ProcessLifecycleEmitter,
+  ): ProcessWait = ProcessWaitLoop(process, request, outputTracker, lifecycleEmitter).wait()
 
   private fun spawnFailure(error: Exception): AgentRunProcessResult = AgentRunProcessResult(
     exitStatus = null,
@@ -159,6 +205,7 @@ private class ProcessWaitLoop(
   private val process: Process,
   private val request: AgentRunProcessRequest,
   private val outputTracker: OutputObservationTracker,
+  private val lifecycleEmitter: ProcessLifecycleEmitter,
 ) {
   private val timeoutMillis = request.timeout
     ?.toLong(DurationUnit.MILLISECONDS)
@@ -172,6 +219,9 @@ private class ProcessWaitLoop(
   private val statusHeartbeatNanos = request.statusHeartbeatInterval
     .toLong(DurationUnit.NANOSECONDS)
     .coerceAtLeast(MIN_TIMEOUT_NANOS)
+  private val operationDeadlineNanos = request.operationDeadline
+    .toLong(DurationUnit.NANOSECONDS)
+    .coerceAtLeast(MIN_TIMEOUT_NANOS)
   private val startNanos = System.nanoTime()
   private var lastWorkflowProgressNanos = startNanos
   private var lastStatusHeartbeatNanos = startNanos
@@ -183,6 +233,9 @@ private class ProcessWaitLoop(
   private var lastSnapshotInstant: Instant? = null
   private var lastActivityLabel: String? = null
   private var lastActivityInstant: Instant? = null
+
+  // SKILL-64 Subtask 3 (AC20-AC24): authoritative declared-progress tracking.
+  private var declaredTracker = DeclaredProgressTracker(startNanos)
 
   fun wait(): ProcessWait {
     var wait: ProcessWait? = null
@@ -225,10 +278,55 @@ private class ProcessWaitLoop(
 
   private fun pollProgress(): ProcessWait? {
     val nowNanos = System.nanoTime()
+    pollDeclaredProgress(nowNanos)
     pollWorkflowProgress(nowNanos)
     pollFileActivity(nowNanos)
     pollStatusHeartbeat(nowNanos)
-    return if (idleTimeoutNanos != null && nowNanos - lastWorkflowProgressNanos >= idleTimeoutNanos) {
+    // SKILL-64 Subtask 3 (AC20-AC23): when the worker has declared a progress
+    // event, the deterministic taxonomy is authoritative. mtime/stdout/token
+    // signals below stay as non-authoritative hints only.
+    return if (declaredTracker.hasDeclaredEvent) {
+      declaredProgressWait(nowNanos)
+    } else {
+      legacyIdleWait(nowNanos)
+    }
+  }
+
+  private fun pollDeclaredProgress(nowNanos: Long) {
+    val snapshot = request.declaredProgressProbe.safeDeclaredProgress() ?: return
+    declaredTracker.observe(snapshot, nowNanos)
+  }
+
+  private fun declaredProgressWait(nowNanos: Long): ProcessWait? {
+    val decision = declaredTracker.classify(nowNanos, operationDeadlineNanos, idleTimeoutNanos)
+    return when (decision.state) {
+      GoalRunnerLivenessState.UNRESPONSIVE -> ProcessWait(
+        finished = false,
+        progressIdleTimedOut = true,
+        fileActivityGraceExhausted = false,
+        wallClockTimedOut = false,
+        liveness = declaredLiveness("watchdog", "operation_deadline_overrun", "killed", decision.state),
+      )
+      // working/progressing disarm the idle timeout; idle arms it but the
+      // configured idle window is still honoured before any kill.
+      GoalRunnerLivenessState.IDLE ->
+        if (idleTimeoutNanos != null && nowNanos - declaredTracker.lastAdvanceNanos >= idleTimeoutNanos) {
+          ProcessWait(
+            finished = false,
+            progressIdleTimedOut = true,
+            fileActivityGraceExhausted = false,
+            wallClockTimedOut = false,
+            liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", decision.state),
+          )
+        } else {
+          null
+        }
+      GoalRunnerLivenessState.WORKING, GoalRunnerLivenessState.PROGRESSING -> null
+    }
+  }
+
+  private fun legacyIdleWait(nowNanos: Long): ProcessWait? =
+    if (idleTimeoutNanos != null && nowNanos - lastWorkflowProgressNanos >= idleTimeoutNanos) {
       val graceActive = fileActivityWindowStartNanos?.let { windowStart ->
         nowNanos - windowStart < fileActivityGraceNanos
       } == true
@@ -246,7 +344,6 @@ private class ProcessWaitLoop(
     } else {
       null
     }
-  }
 
   private fun pollWorkflowProgress(nowNanos: Long) {
     val progressToken = request.progressProbe.safeProgressToken()
@@ -276,6 +373,12 @@ private class ProcessWaitLoop(
       return
     }
     lastStatusHeartbeatNanos = nowNanos
+    // SKILL-64 Subtask 3 (AC25, AC21, AC22): emit a declared operation_heartbeat
+    // gated to the status-heartbeat cadence (NOT per-250ms tick) carrying the
+    // authoritative process-alive signal, so an "alive but quiet" long op is
+    // provably distinguished from a hung one without the phase agent self-
+    // reporting.
+    lifecycleEmitter.emitHeartbeat(process.isAlive)
     val workflowLabel = lastProgressLabel?.takeIf(String::isNotBlank)
     val activityLabel = lastActivityLabel?.takeIf(String::isNotBlank)
     val details = listOfNotNull(
@@ -317,25 +420,182 @@ private class ProcessWaitLoop(
     )
   }
 
-  private fun liveness(phase: String, reason: String, processState: String): AgentRunLivenessSnapshot {
-    val (workflowId, workflowStep) = parseWorkflowIdAndStep(lastProgressLabel)
+  private fun liveness(phase: String, reason: String, processState: String): AgentRunLivenessSnapshot =
+    declaredLiveness(phase, reason, processState, livenessState = null)
+
+  // SKILL-64 Subtask 3 (AC24): report the authoritative durable step from the
+  // typed declared event when present, never a regex-parsed local label.
+  private fun declaredLiveness(
+    phase: String,
+    reason: String,
+    processState: String,
+    livenessState: GoalRunnerLivenessState?,
+  ): AgentRunLivenessSnapshot {
+    val declared = declaredTracker.latestEvent
+    val (parsedWorkflowId, parsedWorkflowStep) = parseWorkflowIdAndStep(lastProgressLabel)
     return AgentRunLivenessSnapshot(
       phase = phase,
       reason = reason,
       processState = processState,
-      workflowId = workflowId,
-      workflowStep = workflowStep,
-      lastDurableProgressAt = lastProgressInstant?.toIsoUtc(),
+      workflowId = declared?.workflowId ?: parsedWorkflowId,
+      workflowStep = declared?.let { it.stepId ?: it.workflowPhase } ?: parsedWorkflowStep,
+      lastDurableProgressAt = declared?.timestamp ?: lastProgressInstant?.toIsoUtc(),
       lastDurableProgressLabel = lastProgressLabel?.takeIf(String::isNotBlank),
       lastWorkflowSnapshotAt = lastSnapshotInstant?.toIsoUtc(),
       lastFileActivityAt = lastActivityInstant?.toIsoUtc(),
       lastFileActivityLabel = lastActivityLabel?.takeIf(String::isNotBlank),
       lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
+      livenessState = livenessState,
+      activeOperationName = declaredTracker.activeOperationName,
+      activeOperationKind = declaredTracker.activeOperationKind,
+      activeOperationExpectedLong = declaredTracker.activeOperationExpectedLong,
     )
   }
 
   private fun elapsedMillis(): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
 }
+
+/**
+ * SKILL-64 Subtask 3 (AC20-AC23): tracks the latest declared progress event and
+ * derives the deterministic liveness taxonomy via the pure domain classifier.
+ * mtime/stdout/token movement are not consulted here.
+ */
+private class DeclaredProgressTracker(startNanos: Long) {
+  var latestEvent: GoalProgressEvent? = null
+    private set
+  private var processAlive: Boolean = true
+  private var operationActive: Boolean = false
+  var activeOperationName: String? = null
+    private set
+  var activeOperationKind: String? = null
+    private set
+  var activeOperationExpectedLong: Boolean = false
+    private set
+  private var operationStartedNanos: Long = startNanos
+  var lastAdvanceNanos: Long = startNanos
+    private set
+  private var lastSequenceNumber: Int = Int.MIN_VALUE
+
+  val hasDeclaredEvent: Boolean get() = latestEvent != null
+
+  fun observe(snapshot: AgentRunDeclaredProgressSnapshot, nowNanos: Long) {
+    val event = snapshot.latestEvent
+    processAlive = snapshot.processAlive
+    if (event.sequenceNumber <= lastSequenceNumber && latestEvent != null) {
+      // Stale or duplicate event: refresh only the process-alive hint.
+      return
+    }
+    lastSequenceNumber = event.sequenceNumber
+    latestEvent = event
+    lastAdvanceNanos = nowNanos
+    when (event.eventKind) {
+      GoalProgressEventKind.OPERATION_STARTED, GoalProgressEventKind.OPERATION_HEARTBEAT -> {
+        // SKILL-64 Subtask 3 (F-P01): seed the operation start from the FIRST
+        // operation event of a previously-inactive operation, HEARTBEAT
+        // included. The durable store keeps only the latest declared event, so
+        // the supervisor frequently first ingests a HEARTBEAT; measuring the
+        // operation deadline from process start would falsely kill a
+        // legitimately long operation (AC22). When the operation name changes we
+        // also treat it as a fresh operation start.
+        val wasActive = operationActive
+        val sameOperation = activeOperationName == event.operationName
+        operationActive = true
+        activeOperationName = event.operationName
+        activeOperationKind = event.operationKind
+        activeOperationExpectedLong = event.expectedLong
+        if (!wasActive || !sameOperation || event.eventKind == GoalProgressEventKind.OPERATION_STARTED) {
+          operationStartedNanos = nowNanos
+        }
+      }
+      GoalProgressEventKind.OPERATION_COMPLETED -> {
+        operationActive = false
+        activeOperationName = null
+        activeOperationKind = null
+        activeOperationExpectedLong = false
+      }
+      GoalProgressEventKind.PHASE_STARTED, GoalProgressEventKind.PHASE_COMPLETED -> Unit
+    }
+  }
+
+  fun classify(nowNanos: Long, operationDeadlineNanos: Long, idleTimeoutNanos: Long?): GoalRunnerLivenessDecision {
+    val deadlineOverrun = operationActive && (nowNanos - operationStartedNanos) >= operationDeadlineNanos
+    val durableAdvanceWithinInterval = idleTimeoutNanos?.let { window ->
+      nowNanos - lastAdvanceNanos < window
+    } ?: true
+    return GoalRunnerLivenessClassifier.classify(
+      GoalRunnerLivenessInputs(
+        processAlive = processAlive,
+        operationActive = operationActive,
+        operationExpectedLong = activeOperationExpectedLong,
+        durableAdvanceWithinInterval = durableAdvanceWithinInterval,
+        operationDeadlineOverrun = deadlineOverrun,
+        wallClockCapExceeded = false,
+      ),
+    )
+  }
+}
+
+/**
+ * SKILL-64 Subtask 3 (AC25, AC21): drives the declared operation_* lifecycle
+ * from the process-lifecycle wrapper. Emits a stable [CHILD_OPERATION_NAME] /
+ * [CHILD_OPERATION_KIND] with expected_long=true so a long child run (such as a
+ * `gradlew check` phase) is declared automatically, without the phase agent
+ * having to self-report. The emitter is effect-free at the type level; the
+ * adapter mints timestamp/sequence, resolves the workflow id, and persists best
+ * effort. operation_started is emitted at most once.
+ */
+private class ProcessLifecycleEmitter(private val request: AgentRunProcessRequest) {
+  private var started = false
+  private var completed = false
+
+  fun emitStarted(processAlive: Boolean) {
+    if (started) {
+      return
+    }
+    started = true
+    emit(GoalProgressEventKind.OPERATION_STARTED, processAlive, GoalProgressOutcome.NONE)
+  }
+
+  fun emitHeartbeat(processAlive: Boolean) {
+    if (!started || completed) {
+      return
+    }
+    emit(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive, GoalProgressOutcome.NONE)
+  }
+
+  fun emitCompleted(processAlive: Boolean, outcome: GoalProgressOutcome) {
+    if (completed || !started) {
+      return
+    }
+    completed = true
+    emit(GoalProgressEventKind.OPERATION_COMPLETED, processAlive, outcome)
+  }
+
+  private fun emit(kind: GoalProgressEventKind, processAlive: Boolean, outcome: GoalProgressOutcome) {
+    // Best-effort: a faulty emitter must never break the process-wait loop.
+    runCatching {
+      request.progressEmitter.emit(
+        AgentRunProgressEmission(
+          eventKind = kind,
+          processAlive = processAlive,
+          operationName = CHILD_OPERATION_NAME,
+          operationKind = CHILD_OPERATION_KIND,
+          expectedLong = true,
+          outcome = outcome,
+        ),
+      )
+    }
+  }
+
+  private companion object {
+    const val CHILD_OPERATION_NAME = "child_agent_run"
+    const val CHILD_OPERATION_KIND = "long_child_run"
+  }
+}
+
+private fun skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe.safeDeclaredProgress():
+  AgentRunDeclaredProgressSnapshot? =
+  runCatching { latestDeclaredProgress() }.getOrNull()
 
 private fun skillbill.ports.agentrun.model.AgentRunProgressProbe.safeProgressToken(): String? =
   runCatching { progressToken() }.getOrNull()

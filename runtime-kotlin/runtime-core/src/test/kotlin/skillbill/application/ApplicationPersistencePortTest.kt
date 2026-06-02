@@ -234,7 +234,7 @@ class ApplicationPersistencePortTest {
       as WorkflowContinueResult.Standard
 
     assertEquals(listOf("transaction", "transaction", "read", "read", "read", "transaction"), database.calls)
-    assertEquals("blocked", updated.snapshot.workflowStatus)
+    assertEquals("blocked", updated.acknowledgement.workflowStatus)
     assertEquals(1, listed.workflowCount)
     assertEquals(workflowId, latest.summary.workflowId)
     assertEquals(listOf("plan"), resumed.resume.missingArtifacts)
@@ -357,7 +357,8 @@ class ApplicationPersistencePortTest {
       dbOverride = null,
     ) as WorkflowUpdateResult.Ok
 
-    val artifacts = updated.snapshot.artifacts
+    val persisted = service.get(WorkflowFamilyKind.IMPLEMENT, workflowId, dbOverride = null) as WorkflowGetResult.Ok
+    val artifacts = persisted.snapshot.artifacts
     assertEquals("implement", (artifacts["plan"] as Map<*, *>)["mode"])
     assertFalse(artifacts.containsKey("decomposition_runtime"))
     assertFalse(Files.exists(parentSpec.parent.resolve("decomposition-manifest.yaml")))

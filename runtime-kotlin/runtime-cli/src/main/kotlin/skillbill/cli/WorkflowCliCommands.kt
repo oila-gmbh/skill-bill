@@ -150,7 +150,7 @@ open class WorkflowUpdateCommand(
   private val service: WorkflowService,
   private val state: CliRunState,
   private val kind: WorkflowFamilyKind,
-) : DocumentedCliCommand(name, "Update durable workflow state.") {
+) : DocumentedCliCommand(name, "Update durable workflow state and return a compact acknowledgement.") {
   private val workflowId by argument(help = "Workflow id to update.")
   private val workflowStatus by option("--workflow-status", help = "Next workflow status.").required()
   private val currentStepId by option("--current-step-id", help = "Optional current step id.").default("")
@@ -170,7 +170,7 @@ open class WorkflowUpdateCommand(
         sessionId = sessionId,
       )
     val payload =
-      service.update(kind, request, state.dbOverride).toCliMap(service.goalObservabilityEventValidator)
+      service.update(kind, request, state.dbOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -204,7 +204,7 @@ open class WorkflowGetCommand(
   private val service: WorkflowService,
   private val state: CliRunState,
   private val kind: WorkflowFamilyKind,
-) : DocumentedCliCommand(name, "Fetch durable workflow state.") {
+) : DocumentedCliCommand(name, "Fetch read-only full durable workflow state.") {
   private val workflowId by argument(help = "Workflow id to inspect.").optional()
   private val latest by option("--latest", help = "Resolve the most recently updated workflow.").flag(default = false)
   private val format by formatOption()

@@ -1,17 +1,50 @@
 package skillbill.mcp
 
 import skillbill.application.model.WorkflowGetResult
+import skillbill.application.model.WorkflowUpdateResult
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStepState
+import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class WorkflowMcpResultMappersTest {
+  @Test
+  fun `workflow update mapper emits compact acknowledgement without full state`() {
+    val mapped = WorkflowUpdateResult.Ok(
+      workflowId = "wfl-1",
+      dbPath = "/tmp/metrics.db",
+      acknowledgement = WorkflowUpdateAcknowledgementView(
+        status = "ok",
+        workflowId = "wfl-1",
+        workflowName = "bill-feature-task",
+        workflowStatus = "running",
+        currentStepId = "implement",
+        updatedStepIds = listOf("implement"),
+        updatedArtifactKeys = listOf("implementation_summary"),
+        readOnlyFullStateGuidance = "Use workflow show.",
+      ),
+    ).toMcpMap()
+
+    assertEquals("ok", mapped["status"])
+    assertEquals("wfl-1", mapped["workflow_id"])
+    assertEquals("bill-feature-task", mapped["workflow_name"])
+    assertEquals("running", mapped["workflow_status"])
+    assertEquals("implement", mapped["current_step_id"])
+    assertEquals(listOf("implement"), mapped["updated_step_ids"])
+    assertEquals(listOf("implementation_summary"), mapped["updated_artifact_keys"])
+    assertEquals("/tmp/metrics.db", mapped["db_path"])
+    assertTrue(mapped.containsKey("read_only_full_state_command"))
+    assertFalse(mapped.containsKey("steps"))
+    assertFalse(mapped.containsKey("artifacts"))
+  }
+
   @Test
   fun `workflow mapper exposes compact goal observability summary without heavy fields`() {
     val mapped = WorkflowGetResult.Ok(

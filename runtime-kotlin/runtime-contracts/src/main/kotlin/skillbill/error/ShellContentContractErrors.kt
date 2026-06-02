@@ -130,6 +130,25 @@ class InvalidGoalObservabilityEventSchemaError(
   cause,
 )
 
+/**
+ * SKILL-64 Subtask 3: surfaced when a durable goal declared-progress event
+ * stored in workflow artifacts_json fails the canonical
+ * `orchestration/contracts/goal-progress-event-schema.yaml` Draft 2020-12
+ * schema. The composed message carries the artifact/source label plus the
+ * offending field path so malformed declared-progress records fail loudly at
+ * the workflow artifact seam, distinct from goal-observability event failures.
+ */
+class InvalidGoalProgressEventSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal progress event '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class MissingInstallSelectionRecordError(
   val path: String,
   cause: Throwable? = null,

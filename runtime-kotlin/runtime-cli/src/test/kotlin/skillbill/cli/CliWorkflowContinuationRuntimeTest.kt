@@ -10,6 +10,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class CliWorkflowContinuationRuntimeTest {
   @Test
@@ -24,6 +26,15 @@ class CliWorkflowContinuationRuntimeTest {
     assertEquals("ok", continued["status"])
     assertEquals(1, continued["decomposition_subtask_id"])
     assertEquals(fixture.subtaskSpec.toString(), continued["decomposition_subtask_spec_path"])
+    assertEquals("preplan", continued["resume_step_id"])
+    assertTrue(continued.containsKey("current_step_artifacts"))
+    val continuedWorkflowId = continued["workflow_id"] as String
+    assertEquals(
+      "skill-bill --db '${fixture.dbPath}' workflow show '$continuedWorkflowId' --format json",
+      continued["read_only_full_state_command"],
+    )
+    assertFalse(continued.containsKey("artifacts"))
+    assertFalse(continued.containsKey("steps"))
   }
 
   @Test
