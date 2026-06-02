@@ -28,6 +28,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
   var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
     val originalContinueStatus = decision.view.continueStatus
+    val originalWorkflowStatus = decision.view.workflowStatusBeforeContinue
     val runtimeInput = family.withDecompositionRuntime(
       record,
       decision.toReopenInput(record.sessionId),
@@ -39,11 +40,13 @@ internal fun WorkflowEngine.continueExistingWorkflow(
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
     if (runtimeInput.updated) projectionArtifactsJson = record.artifactsJson
-    val refreshed = continueDecision(family.definition, record, sessionSummary)
-    // Preserve the pre-reopen continue_status so the wire shape matches
-    // the historical "reopened" status even though the underlying record
-    // is now running again.
-    decision = refreshed.copy(view = refreshed.view.copy(continueStatus = originalContinueStatus))
+    decision = continueDecision(
+      family.definition,
+      record,
+      sessionSummary,
+      continueStatusOverride = originalContinueStatus,
+      workflowStatusBeforeContinueOverride = originalWorkflowStatus,
+    )
   }
   return ContinuationStepResult(
     WorkflowContinueResult.Standard(

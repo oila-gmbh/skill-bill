@@ -1,0 +1,124 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/goal-progress-event-schema.yaml"
+title: "Goal declared progress event"
+description: >
+  SKILL-64 Subtask 3 (AC20-AC25): durable, monotonically-sequenced progress
+  events that a goal worker/child declares at phase boundaries and around long
+  operations. The supervisor decides liveness and idle-timeout outcomes purely
+  from these declared facts plus process liveness; source-file mtimes, stdout
+  chatter, and token movement are non-authoritative hints only. Events are
+  stored in workflow artifacts_json under explicit latest-event and bounded
+  run-history keys; decomposition-manifest.yaml is not authoritative telemetry
+  storage.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - event_kind
+  - workflow_id
+  - workflow_phase
+  - process_alive
+  - sequence_number
+  - timestamp
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+    description: >
+      Pinned to GOAL_PROGRESS_EVENT_CONTRACT_VERSION. Bump the schema const
+      and Kotlin constant together.
+  event_kind:
+    type: string
+    enum:
+      - phase_started
+      - phase_completed
+      - operation_started
+      - operation_heartbeat
+      - operation_completed
+    description: >
+      Declared lifecycle event. phase_* mark workflow phase/step boundaries;
+      operation_* bracket long operations such as `gradlew check` or a test run.
+  workflow_id:
+    type: string
+    minLength: 1
+  workflow_phase:
+    type: string
+    minLength: 1
+    description: "Authoritative durable workflow phase/step, for example implement or validate."
+  step_id:
+    type: string
+    minLength: 1
+    description: "Optional durable step identifier when distinct from the rendered phase label."
+  operation_name:
+    type: string
+    minLength: 1
+    description: >
+      Required for operation_* events: stable operation name, for example
+      `gradlew check`. Omitted for phase_* events.
+  operation_kind:
+    type: string
+    minLength: 1
+    description: >
+      Optional classification of the operation, for example `build`, `test`,
+      or `command`.
+  expected_long:
+    type: boolean
+    description: >
+      True when the operation is a known long-running command. A live, declared
+      long operation suspends the progress-idle timeout (AC22).
+  process_alive:
+    type: boolean
+    description: >
+      Authoritative process-liveness signal at emission time. A false value with
+      no completion is a deterministic unresponsive signal (AC23).
+  outcome:
+    type: string
+    enum:
+      - none
+      - succeeded
+      - failed
+      - timed_out
+      - cancelled
+    description: >
+      Declared outcome. phase_completed/operation_completed carry a terminal
+      outcome; in-flight events use `none`.
+  sequence_number:
+    type: integer
+    minimum: 0
+    maximum: 2147483647
+    description: "Monotonic per-stream sequence number, distinct from goal_event and ledger sequence spaces."
+  timestamp:
+    type: string
+    minLength: 1
+    description: "Emitter-supplied ISO-8601 instant minted in the adapter layer."
+allOf:
+  # SKILL-64 Subtask 3 (F-T02): operation_* events MUST declare operation_name.
+  # This enforces the first x-coherence-check at the schema seam so the durable
+  # write seam (recordProgressEvent) loud-fails a malformed operation event.
+  - if:
+      properties:
+        event_kind:
+          enum:
+            - operation_started
+            - operation_heartbeat
+            - operation_completed
+      required:
+        - event_kind
+    then:
+      required:
+        - operation_name
+x-coherence-checks:
+  - >
+    operation_started, operation_heartbeat, and operation_completed events must
+    carry operation_name; phase_started and phase_completed omit it.
+  - >
+    Liveness and idle-timeout decisions derive only from declared progress
+    events plus process_alive. mtimes, stdout chatter, and token movement are
+    non-authoritative hints.
+  - >
+    A declared, live (process_alive=true) operation with expected_long=true
+    suspends the progress-idle timeout until its operation deadline or the
+    subtask wall-clock cap.
+  - >
+    Run history is capped by the runtime retention constant. Appends preserve
+    sequence order and prune oldest entries.

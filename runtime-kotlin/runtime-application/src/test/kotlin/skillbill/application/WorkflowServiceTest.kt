@@ -8,11 +8,19 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
+import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
+import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
+import skillbill.goalrunner.model.GoalSessionAccounting
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -25,6 +33,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
@@ -32,12 +41,15 @@ import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.GoalProgressEvent
+import skillbill.workflow.model.GoalProgressEventKind
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -162,10 +174,18 @@ class WorkflowServiceTest {
     val standard = assertIs<WorkflowContinueResult.Standard>(continued)
     assertEquals("blocked", standard.view.continueStatus)
     assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
+    assertEquals(listOf("plan"), standard.view.compact.missingArtifactKeys)
+    val missingSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
+    assertFalse(missingSummary.present)
+    assertEquals("missing_required_artifact", missingSummary.omissionReason)
+    assertEquals(
+      "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
+      standard.view.compact.readOnlyFullStateGuidance,
+    )
   }
 
   @Test
-  fun `InvalidWorkflowStateSchemaError loud-fails through WorkflowService get`() {
+  fun `InvalidWorkflowStateSchemaError loud-fails through WorkflowService get and continue before projection`() {
     // SKILL-52.3 subtask 1: the concrete workflow-state schema validator now
     // lives in `runtime-infra-fs` and is reached through the injected
     // `WorkflowSnapshotValidator` port. This test pins the seam contract: the
@@ -193,6 +213,45 @@ class WorkflowServiceTest {
     )
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       service.get(WorkflowFamilyKind.IMPLEMENT, "wfl-loud")
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "wfl-loud")
+    }
+  }
+
+  @Test
+  fun `InvalidWorkflowStateSchemaError loud-fails through WorkflowService update before acknowledgement`() {
+    val workflows = InMemoryWorkflowStates()
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      "wfl-update-loud",
+      "fis-001",
+      "assess",
+    ).toRecord()
+    workflows.saveFeatureImplementWorkflow(opened)
+    val loudFailValidator = object : WorkflowSnapshotValidator {
+      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+        throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
+    }
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = loudFailValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      service.update(
+        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowUpdateRequest(
+          workflowId = "wfl-update-loud",
+          workflowStatus = "running",
+          currentStepId = "preplan",
+          stepUpdates = listOf(mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1)),
+          artifactsPatch = mapOf("assessment" to mapOf("ok" to true), "branch" to mapOf("ok" to true)),
+          sessionId = "",
+        ),
+      )
     }
   }
 
@@ -236,19 +295,11 @@ class WorkflowServiceTest {
     )
 
     val ok = assertIs<WorkflowUpdateResult.Ok>(updated)
-    val latest = ok.snapshot.artifacts["goal_observability_latest_event"] as Map<*, *>
-    val history = ok.snapshot.artifacts["goal_observability_run_history"] as List<*>
-    assertEquals("SKILL-61", latest["issue_key"])
-    assertEquals(1, latest["subtask_id"])
-    assertEquals("implement", latest["workflow_phase"])
-    assertEquals("phase_subagent", latest["worker_role"])
-    assertEquals("durable_progress", latest["liveness_class"])
-    assertEquals("editing runtime files", latest["activity_summary"])
-    assertEquals(opened.workflowId, latest["workflow_id"])
-    assertEquals(7, latest["sequence_number"])
-    assertEquals(mapOf("files_changed" to 0, "insertions" to 0, "deletions" to 0), latest["diff_stat"])
-    assertEquals(1, history.size)
-    assertTrue(ok.snapshot.artifacts.containsKey("progress_event"))
+    assertProgressEventAcknowledgement(ok)
+    val persisted = assertIs<WorkflowGetResult.Ok>(
+      service.get(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+    )
+    assertPersistedProgressEventArtifacts(persisted, opened.workflowId)
   }
 
   @Test
@@ -629,6 +680,87 @@ class WorkflowServiceTest {
   }
 }
 
+/**
+ * SKILL-64 Subtask 4 (AC1, AC2): the compact workflow-update acknowledgement
+ * byte-budget regression. Kept in its own class so it does not push the broad
+ * [WorkflowServiceTest] over the detekt LargeClass threshold.
+ */
+class WorkflowUpdateAcknowledgementBudgetTest {
+  @Test
+  fun `compact update acknowledgement stays under byte ceiling and omits full durable state`() {
+    // A workflow update with a representative LARGE artifacts_patch must return a
+    // compact typed acknowledgement, not a full snapshot. The serialized ack
+    // stays under a named ceiling and carries only the documented compact fields
+    // + read-only full-state guidance — never the full durable artifacts map or
+    // the full per-step list.
+    val service = newAckBudgetService()
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val updated = service.update(
+      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowUpdateRequest(
+        workflowId = opened.workflowId,
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "implement", "body" to "x".repeat(12000)),
+          "preplan_digest" to mapOf("risk" to "low", "notes" to "y".repeat(8000)),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+
+    val ok = assertIs<WorkflowUpdateResult.Ok>(updated)
+    val ack = ok.acknowledgement
+    assertEquals("ok", ack.status)
+    assertEquals(opened.workflowId, ack.workflowId)
+    assertEquals("running", ack.workflowStatus)
+    assertEquals("implement", ack.currentStepId)
+    assertEquals(listOf("implement"), ack.updatedStepIds)
+    assertEquals(listOf("plan", "preplan_digest"), ack.updatedArtifactKeys)
+
+    // Build the compact ack wire shape (typed ack map + result-level db_path) and
+    // assert it stays under the ceiling. A regression that echoes the full
+    // durable artifacts map back in the ack would blow past it.
+    val ackMap = WorkflowEngine.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
+    val serialized = skillbill.contracts.JsonSupport.mapToJsonString(ackMap)
+    val byteSize = serialized.toByteArray(Charsets.UTF_8).size
+    assertTrue(
+      byteSize < COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING,
+      "Compact update acknowledgement was $byteSize bytes, exceeding the " +
+        "$COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING ceiling; the full durable state was likely echoed back.",
+    )
+    // The ack carries only documented compact fields + read-only guidance.
+    assertEquals(
+      setOf(
+        "status",
+        "workflow_id",
+        "workflow_name",
+        "workflow_status",
+        "current_step_id",
+        "updated_step_ids",
+        "updated_artifact_keys",
+        "read_only_full_state_guidance",
+        "db_path",
+      ),
+      ackMap.keys,
+    )
+    // The full durable artifacts map and the full per-step list must NOT appear.
+    assertFalse(serialized.contains("\"artifacts\""))
+    assertFalse(serialized.contains("\"steps\""))
+    assertFalse(serialized.contains("x".repeat(2000)))
+    assertFalse(serialized.contains("y".repeat(2000)))
+    assertTrue(ack.readOnlyFullStateGuidance.isNotBlank())
+  }
+
+  private fun newAckBudgetService(): WorkflowService = WorkflowService(
+    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+    decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    decompositionManifestValidator = testDecompositionManifestValidator,
+  )
+}
+
 class WorkflowGoalRunnerOutcomeStoreTest {
   @Test
   fun `goal runner outcome store reads durable blocked continuation outcome`() {
@@ -956,7 +1088,12 @@ class WorkflowGoalRunnerOutcomeStoreTest {
   }
 
   @Test
-  fun `goal runner progress loud-fails malformed goal observability latest event`() {
+  fun `goal runner progress keeps declared liveness when goal observability latest event is malformed`() {
+    // SKILL-64 Subtask 3 (F-R01): a corrupt goal_observability_latest_event must
+    // NOT return null for the whole poll (callers wrap progress() in
+    // runCatching{}.getOrNull()) — that would permanently disable deterministic
+    // declared-progress liveness and revert to legacy false-kill heuristics.
+    // The declared-progress read is independent of the observability decode.
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
@@ -966,6 +1103,17 @@ class WorkflowGoalRunnerOutcomeStoreTest {
             "contract_version" to "0.1",
             "issue_key" to "SKILL-61",
           ),
+          GoalProgressEvent(
+            eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
+            workflowId = "wfl-child",
+            workflowPhase = "validate",
+            processAlive = true,
+            sequenceNumber = 5,
+            timestamp = "2026-06-02T10:00:00Z",
+            operationName = "gradlew check",
+            operationKind = "build",
+            expectedLong = true,
+          ).let { event -> "goal_progress_latest_event" to event.toArtifactMap() },
         ),
       ),
     )
@@ -979,9 +1127,13 @@ class WorkflowGoalRunnerOutcomeStoreTest {
       },
     )
 
-    assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
-      store.progress("wfl-child")
-    }
+    val progress = requireNotNull(store.progress("wfl-child"))
+
+    assertNull(progress.latestGoalObservabilityEvent)
+    val declared = requireNotNull(progress.latestDeclaredProgressEvent)
+    assertEquals(GoalProgressEventKind.OPERATION_HEARTBEAT, declared.eventKind)
+    assertEquals("gradlew check", declared.operationName)
+    assertTrue(declared.processAlive)
   }
 
   @Test
@@ -1043,6 +1195,180 @@ class WorkflowGoalRunnerOutcomeStoreTest {
     assertEquals("needs approval", confirmation["reason"])
   }
 
+  // SKILL-64 Subtask 3 (F-T01): the durable appendHistoryArtifact write seam
+  // (decode artifacts_json -> append -> sequence-ordered prune -> latest-event
+  // mirror) had zero coverage. These exercise it through the real outcome store.
+  @Test
+  fun `record progress event accumulates append-only and mirrors latest-event key`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    assertTrue(store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 0)))
+    assertTrue(store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 1)))
+
+    val artifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot().artifactsJson,
+    )
+    val history = artifacts["goal_progress_run_history"] as List<*>
+    assertEquals(2, history.size)
+    assertEquals(0, (history[0] as Map<*, *>)["sequence_number"])
+    assertEquals(1, (history[1] as Map<*, *>)["sequence_number"])
+    val latest = artifacts["goal_progress_latest_event"] as Map<*, *>
+    assertEquals(1, latest["sequence_number"])
+  }
+
+  @Test
+  fun `record progress event prunes oldest entry at retention limit in sequence order`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    // Append more than the bounded history limit, deliberately out of order, to
+    // assert sequence-ordered retention that drops the OLDEST (lowest sequence).
+    val total = skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT + 5
+    (total - 1 downTo 0).forEach { sequence ->
+      store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = sequence))
+    }
+
+    val artifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot().artifactsJson,
+    )
+    val history = artifacts["goal_progress_run_history"] as List<*>
+    assertEquals(skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT, history.size)
+    val sequences = history.map { (it as Map<*, *>)["sequence_number"] }
+    assertEquals(5, sequences.first())
+    assertEquals(total - 1, sequences.last())
+    assertEquals(sequences.sortedBy { it as Int }, sequences)
+  }
+
+  @Test
+  fun `record progress event returns false when workflow is missing`() {
+    val workflows = InMemoryWorkflowStates()
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    assertFalse(store.recordProgressEvent(progressEventRequest("wfl-missing", sequenceNumber = 0)))
+  }
+
+  @Test
+  fun `record progress event loud-fails through the schema validator at the write seam`() {
+    // SKILL-64 Subtask 3 (F-A01): a malformed declared-progress event must be
+    // rejected at the durable write seam through the injected validator port,
+    // not silently persisted and then dropped by the soft supervisor read.
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      goalProgressEventValidator = object : GoalProgressEventValidator {
+        override fun validate(event: Map<String, Any?>, sourceLabel: String) {
+          throw InvalidGoalProgressEventSchemaError(sourceLabel, "operation_name", "operation_name is required.")
+        }
+      },
+    )
+
+    assertFailsWith<InvalidGoalProgressEventSchemaError> {
+      store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 0))
+    }
+    val artifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot().artifactsJson,
+    )
+    assertFalse(artifacts.containsKey("goal_progress_run_history"))
+    assertFalse(artifacts.containsKey("goal_progress_latest_event"))
+  }
+
+  @Test
+  fun `record session accounting accumulates without mirroring a latest-event key`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    assertTrue(store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 0)))
+    assertTrue(store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 1)))
+    assertFalse(store.recordSessionAccounting(sessionAccountingRequest("wfl-missing", sequenceNumber = 2)))
+
+    val artifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot().artifactsJson,
+    )
+    val history = artifacts["goal_session_accounting"] as List<*>
+    assertEquals(2, history.size)
+    assertFalse(artifacts.containsKey("goal_session_accounting_latest_event"))
+  }
+
+  @Test
+  fun `record attempt ledger entry prunes oldest in sequence order at retention limit`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val total = GOAL_ATTEMPT_LEDGER_LIMIT + 3
+    (total - 1 downTo 0).forEach { sequence ->
+      store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = sequence))
+    }
+    assertFalse(store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-missing", sequenceNumber = 0)))
+
+    val artifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot().artifactsJson,
+    )
+    val history = artifacts["goal_attempt_ledger"] as List<*>
+    assertEquals(GOAL_ATTEMPT_LEDGER_LIMIT, history.size)
+    val sequences = history.map { (it as Map<*, *>)["sequence_number"] }
+    assertEquals(3, sequences.first())
+    assertEquals(total - 1, sequences.last())
+    assertEquals(sequences.sortedBy { it as Int }, sequences)
+  }
+
+  @Test
+  fun `ledger sequence watermarks report the persisted max across continuation children`() {
+    // SKILL-64 Subtask 3 (F-D01): the recorder seeds its monotonic counters from
+    // these watermarks so a resume run continues the append-only stream.
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        "wfl-child",
+        mapOf("goal_continuation" to mapOf("issue_key" to "SKILL-64", "subtask_id" to 1)),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+    store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 0))
+    store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 1))
+    store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 0))
+    // SKILL-64 Subtask 3 (F-NT03): goal_progress is the exact stream the
+    // production supervisor emitter seeds from (GoalRunner.kt watermarkSeed =
+    // maxProgressSequence). Record events out of order to prove the watermark is
+    // the MAX of the persisted goal_progress_run_history, not the last write.
+    store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 3))
+    store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 2))
+
+    val watermarks = store.ledgerSequenceWatermarks("SKILL-64")
+
+    assertEquals(1, watermarks.maxLedgerSequence)
+    assertEquals(0, watermarks.maxAccountingSequence)
+    assertEquals(3, watermarks.maxProgressSequence)
+    assertNull(store.ledgerSequenceWatermarks("SKILL-other").maxLedgerSequence)
+    // No goal_progress recorded for the unrelated issue, so its progress
+    // watermark must be absent (null) rather than 0.
+    assertNull(store.ledgerSequenceWatermarks("SKILL-other").maxProgressSequence)
+  }
+
   @Test
   fun `subtask resume alignment keeps later running step over stale manifest step`() {
     val workflows = InMemoryWorkflowStates()
@@ -1079,6 +1405,14 @@ class WorkflowGoalRunnerOutcomeStoreTest {
   }
 }
 
+/**
+ * SKILL-64 Subtask 4 (AC1, AC2): named ceiling for the compact workflow-update
+ * acknowledgement. The compact ack carries only summary fields + read-only
+ * guidance, so it stays tiny regardless of how large the persisted artifacts
+ * are; echoing the full durable state back would blow past this.
+ */
+private const val COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING = 1024
+
 private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
   val element = skillbill.contracts.JsonSupport.json.parseToJsonElement(stepsJson)
   val value = skillbill.contracts.JsonSupport.jsonElementToValue(element) as List<*>
@@ -1095,6 +1429,75 @@ private fun decodeWorkflowArtifactsForTest(artifactsJson: String): Map<String, A
       skillbill.contracts.JsonSupport.jsonElementToValue(element),
     ),
   )
+}
+
+private fun progressEventRequest(workflowId: String, sequenceNumber: Int): GoalRunnerProgressEventRecordRequest =
+  GoalRunnerProgressEventRecordRequest(
+    workflowId = workflowId,
+    event = GoalProgressEvent(
+      eventKind = GoalProgressEventKind.PHASE_STARTED,
+      workflowId = workflowId,
+      workflowPhase = "implement",
+      processAlive = true,
+      sequenceNumber = sequenceNumber,
+      timestamp = "2026-06-02T10:00:0${sequenceNumber % 10}Z",
+    ),
+  )
+
+private fun sessionAccountingRequest(
+  workflowId: String,
+  sequenceNumber: Int,
+): GoalRunnerSessionAccountingRecordRequest = GoalRunnerSessionAccountingRecordRequest(
+  workflowId = workflowId,
+  accounting = GoalSessionAccounting(
+    subtaskId = 1,
+    phase = "goal_runner_supervision",
+    available = false,
+    sequenceNumber = sequenceNumber,
+    timestamp = "2026-06-02T10:00:0${sequenceNumber % 10}Z",
+    unavailableReason = "no provider accounting",
+  ),
+)
+
+private fun attemptLedgerRequest(workflowId: String, sequenceNumber: Int): GoalRunnerAttemptLedgerRecordRequest =
+  GoalRunnerAttemptLedgerRecordRequest(
+    workflowId = workflowId,
+    entry = GoalAttemptLedgerEntry(
+      action = GoalAttemptLedgerAction.CHILD_ACTIVATION,
+      sequenceNumber = sequenceNumber,
+      timestamp = "2026-06-02T10:00:0${sequenceNumber % 10}Z",
+    ),
+  )
+
+private fun assertProgressEventAcknowledgement(ok: WorkflowUpdateResult.Ok) {
+  assertEquals("running", ok.acknowledgement.workflowStatus)
+  assertEquals("implement", ok.acknowledgement.currentStepId)
+  assertEquals(listOf("implement"), ok.acknowledgement.updatedStepIds)
+  assertEquals(
+    listOf(
+      "goal_continuation",
+      "goal_observability_latest_event",
+      "goal_observability_run_history",
+      "progress_event",
+    ),
+    ok.acknowledgement.updatedArtifactKeys,
+  )
+}
+
+private fun assertPersistedProgressEventArtifacts(persisted: WorkflowGetResult.Ok, workflowId: String) {
+  val latest = persisted.snapshot.artifacts["goal_observability_latest_event"] as Map<*, *>
+  val history = persisted.snapshot.artifacts["goal_observability_run_history"] as List<*>
+  assertEquals("SKILL-61", latest["issue_key"])
+  assertEquals(1, latest["subtask_id"])
+  assertEquals("implement", latest["workflow_phase"])
+  assertEquals("phase_subagent", latest["worker_role"])
+  assertEquals("durable_progress", latest["liveness_class"])
+  assertEquals("editing runtime files", latest["activity_summary"])
+  assertEquals(workflowId, latest["workflow_id"])
+  assertEquals(7, latest["sequence_number"])
+  assertEquals(mapOf("files_changed" to 0, "insertions" to 0, "deletions" to 0), latest["diff_stat"])
+  assertEquals(1, history.size)
+  assertTrue(persisted.snapshot.artifacts.containsKey("progress_event"))
 }
 
 private val testWorkflowEngine: WorkflowEngine = WorkflowEngine(testWorkflowSnapshotValidator)
@@ -1140,7 +1543,7 @@ private fun decompositionRuntime(status: String): DecompositionManifest = Decomp
   ),
 )
 
-private class FakeDatabaseSessionFactory(
+internal class FakeDatabaseSessionFactory(
   private val workflowStates: WorkflowStateRepository,
   private val fakeDbPath: Path = Path.of("/fake/metrics.db"),
 ) : DatabaseSessionFactory {
@@ -1163,7 +1566,7 @@ private class FakeDatabaseSessionFactory(
   }
 }
 
-private class InMemoryWorkflowStates : WorkflowStateRepository {
+internal class InMemoryWorkflowStates : WorkflowStateRepository {
   private val implement = mutableMapOf<String, WorkflowStateRecord>()
   private val verify = mutableMapOf<String, WorkflowStateRecord>()
 

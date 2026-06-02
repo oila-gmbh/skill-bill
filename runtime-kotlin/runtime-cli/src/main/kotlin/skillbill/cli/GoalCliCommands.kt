@@ -15,6 +15,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.RuntimeProvenanceService
+import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
 import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
@@ -24,6 +25,7 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -44,11 +46,12 @@ class GoalRunCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
+    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+      "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_GOAL_AGENT).",
   )
   private val agentOverride by option(
     "--agent-override",
-    help = "Optional agent to use for child subtask runs instead of the invoking agent.",
+    help = "Agent to use for child subtask runs instead of the invoking agent. Wins over --agent and detection.",
   )
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
   private val maxWallClockMinutes by option(
@@ -97,7 +100,7 @@ class GoalRunCommand(
       GoalRunnerRunRequest(
         issueKey = runIssueKey,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
-        invokedAgentId = agent ?: state.environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
+        invokedAgentId = resolveInvokedAgentId(agent, state.environment),
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
         timeout = maxWallClockMinutes?.minutes,
@@ -119,7 +122,8 @@ class GoalStatusCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
+    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+      "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -178,7 +182,8 @@ class GoalWatchCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Defaults to SKILL_BILL_AGENT or codex.",
+    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+      "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -306,6 +311,11 @@ private class GoalRunPresenter(
   private var sawRawChildOutputSinceLastHeartbeat: Boolean = false
   private var observabilitySequence: Int = 0
 
+  // SKILL-64 Subtask 3 (AC16): distinct goal_event sequence space.
+  private var goalEventSequence: Int = DEFAULT_GOAL_EVENT_SEQUENCE_START
+  private var lastEmittedStatus: String? = null
+  private var lastEmittedStep: String? = null
+
   fun emitStartupProvenance() {
     state.liveStdout(
       "goal $issueKey: runtime executable=${runtimeProvenance.executablePath} " +
@@ -316,24 +326,52 @@ private class GoalRunPresenter(
   fun eventSink(): skillbill.application.model.GoalRunnerEventSink =
     skillbill.application.model.GoalRunnerEventSink { event ->
       synchronized(lock) {
+        // SKILL-64 Subtask 3 (AC24): derive step from the authoritative durable
+        // workflow store carried on the event, never a hardcoded local default.
         when (event) {
           is GoalRunnerRunEvent.SubtaskStarted -> {
             activeSubtaskId = event.subtaskId
-            activeStepId = "preplan"
+            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
             lastLivenessClass = GOAL_LIVENESS_IDLE
             sawRawChildOutputSinceLastHeartbeat = false
           }
           is GoalRunnerRunEvent.SubtaskCompleted -> {
             activeSubtaskId = event.subtaskId
-            activeStepId = "commit_push"
+            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
             lastLivenessClass = GOAL_LIVENESS_DURABLE_PROGRESS
             sawRawChildOutputSinceLastHeartbeat = false
+          }
+          is GoalRunnerRunEvent.SubtaskStopped -> {
+            activeSubtaskId = event.subtaskId
+            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
           }
           else -> Unit
         }
         state.liveStdout(event.progressLine())
+        emitGoalEvent(event)
       }
     }
+
+  // SKILL-64 Subtask 3 (AC16): machine-consumable transition stream. Emits one
+  // stable-prefixed `goal_event:` line ONLY on a meaningful change (subtask
+  // change, phase/step transition, blocked, failed, completion, terminal
+  // reconciliation), never per heartbeat, using a monotonic sequence in a space
+  // distinct from observabilitySequence.
+  private fun emitGoalEvent(event: GoalRunnerRunEvent) {
+    val transition = goalEventTransition(event) ?: return
+    val prevStatus = lastEmittedStatus
+    val prevStep = lastEmittedStep
+    val subtask = transition.subtaskId?.toString() ?: activeSubtaskId?.toString() ?: "unknown"
+    val step = activeStepId ?: "unknown"
+    goalEventSequence += 1
+    state.liveStdout(
+      "goal_event: issue_key=$issueKey subtask_id=$subtask prev_step=${prevStep ?: "none"} " +
+        "current_step=$step prev_status=${prevStatus ?: "none"} current_status=${transition.currentStatus} " +
+        "event_kind=${transition.eventKind} sequence_number=$goalEventSequence\n",
+    )
+    lastEmittedStatus = transition.currentStatus
+    lastEmittedStep = step
+  }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE
@@ -410,6 +448,27 @@ private class GoalRunPresenter(
   }
 }
 
+// SKILL-64 Subtask 3 (AC16): maps a run event to a goal_event transition.
+// Every GoalRunnerRunEvent is itself a meaningful state change; per-tick
+// heartbeats are NOT run events and never reach this path.
+private data class GoalEventTransition(
+  val subtaskId: Int?,
+  val currentStatus: String,
+  val eventKind: String,
+)
+
+private fun goalEventTransition(event: GoalRunnerRunEvent): GoalEventTransition? = when (event) {
+  is GoalRunnerRunEvent.Started -> GoalEventTransition(null, "started", "goal_started")
+  is GoalRunnerRunEvent.SubtaskStarted ->
+    GoalEventTransition(event.subtaskId, "in_progress", "subtask_${event.action}")
+  is GoalRunnerRunEvent.SubtaskCompleted ->
+    GoalEventTransition(event.subtaskId, "complete", "subtask_completed")
+  is GoalRunnerRunEvent.SubtaskStopped ->
+    GoalEventTransition(event.subtaskId, event.reason, "subtask_stopped")
+  is GoalRunnerRunEvent.Completed ->
+    GoalEventTransition(null, "complete", "terminal_reconciliation")
+}
+
 private fun GoalRunnerRunEvent.progressLine(): String = when (this) {
   is GoalRunnerRunEvent.Started -> "goal $issueKey: started\n"
   is GoalRunnerRunEvent.SubtaskStarted -> "goal $issueKey: subtask $subtaskId $action\n"
@@ -473,7 +532,7 @@ private data class GoalStatusCliDiffOptions(
 private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions): GoalRunnerStatusRequest =
   GoalRunnerStatusRequest(
     issueKey = options.issueKey,
-    invokedAgentId = options.agent ?: environment["SKILL_BILL_AGENT"] ?: DEFAULT_GOAL_AGENT,
+    invokedAgentId = resolveInvokedAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
     dbPathOverride = dbOverride,
     repoRoot = options.repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
@@ -668,6 +727,20 @@ private fun goalResetText(payload: Map<String, Any?>): String = buildString {
   }
 }
 
+// SKILL-64 Subtask 3 (AC18): resolve the child invoking-agent id without a
+// silent hardcoded codex fallback. Explicit --agent wins, then the
+// SKILL_BILL_AGENT env var, then best-effort detection of the invoking agent's
+// execution context, and only then the documented last-resort default below.
+// --agent-override is independent and continues to win at the
+// AgentRunService.effectiveAgent seam; this only sources invokedAgentId.
+private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<String, String>): String =
+  explicitAgent?.takeIf(String::isNotBlank)
+    ?: environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
+    ?: InvokingAgentContextResolver.detect(environment)?.id
+    ?: DEFAULT_GOAL_AGENT
+
+// Documented last-resort default used only when no explicit flag, env, or
+// detected invoking-agent context is available.
 private const val DEFAULT_GOAL_AGENT = "codex"
 private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"

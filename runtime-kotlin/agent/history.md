@@ -1,3 +1,43 @@
+## [2026-06-02] SKILL-64 subtask 4 validation-docs-payload-budgets
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, orchestration/workflow-contract, docs, skills/bill-feature-task
+- Locks the SKILL-64 compact-payload contract with regression tests + named byte ceilings: `COMPACT_CONTINUATION_PAYLOAD_BYTE_CEILING=8192` and `COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING=1024` sit between compact (~2KB) and full (~20KB) shapes so a reintroduced full snapshot trips the assertion; the load-bearing guards are the byte ceiling + raw-body substring leak checks (structural assertFalse on `step_artifacts`/`artifacts` is inert because the compact view type has no such field). reusable
+- Ledger/accounting coverage drives the real emit→store→read seam end-to-end through `GoalRunner.run` (the dead-seam guard), not the model in isolation: one test per `GoalAttemptLedgerAction` (child_activation/resume/retry/terminal_done_check/timeout/interruption/policy_block/final_reconciled_outcome) asserting explanatory fields (blocked_reason/stop_reason/final_reconciled_result) so the ledger explains every case with no provider JSONL scraping. reusable
+- `launchFacts(interrupted=…)` test helper gained an interrupted branch (exitStatus null) to reach the INTERRUPTED stop reason; transition-only monitoring proven by raising `heartbeatChatterCount` and asserting goal_event count < heartbeat count with a distinct ≥20000 sequence space.
+- Docs: PLAYBOOK.md gained the continue(mutating)-vs-show(read-only) contract, the full attempt-ledger field reference, and the cached-input-token caveat framed explicitly as NOT a Skill Bill contract; mirrored in docs/getting-started.md, README.md, and bill-feature-task/content.md. AC8 stays a caveat, never a billing/contract guarantee.
+- AC10 goldens (mcp/cli workflow-show + verify) were already compact/full-distinct and intentionally named, so no regeneration was needed. Install sync intentionally skipped (goal-continuation mandate) after editing skills/* + docs; refresh local installs out-of-band after the goal run.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
+## [2026-06-02] SKILL-64 subtask 3 goal-runner-integration
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-cli, orchestration/contracts, skills/bill-feature-goal
+- Goal-runner liveness is now deterministic from declared, durable, monotonic `GoalProgressEvent`s + process liveness; the legacy mtime/stdout idle heuristic survives only as a fallback when no declared event exists. Taxonomy `working/progressing/idle/unresponsive` lives in a pure domain classifier. reusable
+- Declared progress is emitted SUPERVISOR-side: `JvmAgentRunProcessRunner` ProcessLifecycleEmitter emits operation_started/heartbeat(gated to status-heartbeat cadence, not per-250ms-tick)/completed from the child process lifecycle (no phase-agent self-report), persisted via `GoalRunnerProgressEventEmitter`→`recordProgressEvent` and read back next tick by `declaredProgressProbe`. reusable
+- Dead-seam trap: a write seam with no production caller passes unit tests but is dead in prod — completeness audit caught `recordProgressEvent` having zero `src/main` callers; guard wiring with an end-to-end test that drives emit→store→probe in ONE run. reusable
+- Patterns reused: distinct watermark-seeded sequence space per stream (progress vs observability vs ledger vs accounting, seeded from persisted max so resumes stay monotonic); schema validator wired at the durable write seam via a runtime-domain port + DI (mirror GoalObservabilityEventValidator); single-source `appendBoundedHistoryBySequence` retention; best-effort writes log-but-never-fail; operation deadline anchored to FIRST operation observation (incl. heartbeat), never process start. reusable
+- New `goal_event:` transition stream (stable prefix + key=value, monotonic, meaningful-change-only); invoking-agent child defaulting order (--agent-override > --agent > SKILL_BILL_AGENT > detected context > documented last-resort); new `goal-progress-event-schema.yaml` follows the 6-step contract recipe.
+- Install sync intentionally skipped (goal-continuation mandate) after editing skills/* and runtime source; refresh local installs outside continuation if generated output needs updating.
+Feature flag: N/A
+Acceptance criteria: 25/25 implemented
+
+## [2026-06-02] SKILL-64 subtask 2 compact-workflow-update-acks
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/workflow-contract
+- `workflow update` now returns a typed compact acknowledgement by default (status, workflow_id, workflow_name, workflow_status, current_step_id, updated_step_ids, updated_artifact_keys, db_path) instead of a full snapshot; `workflow show`/`get` stay the read-only full-state path. reusable
+- The acknowledgement is produced only after `WorkflowEngine.validateUpdate` passes, the transaction saves, and the service re-reads persisted state — never from stdout or an unpersisted projection; loud-fail validation still precedes projection. reusable
+- Domain owns the transport-neutral acknowledgement view (carries `workflow_name`, no presentation fields); CLI/MCP adapters render `read_only_full_state_command`/`db_path` with the resolved `--db` path, mirroring the subtask 1 compact-continue pattern. reusable
+- MCP goldens (`mcp-feature-implement-workflow.json`, `mcp-feature-verify-workflow.json`) deliberately updated to the compact default; added CLI runtime + service + CLI/MCP mapper coverage asserting compact shape and unchanged read-only full-state.
+- Install sync intentionally skipped during goal-continuation after editing skills/bill-feature-task/content.md; refresh local installs outside continuation if generated output needs updating.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-06-02] SKILL-64 subtask 1 compact-continuation-contract
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, docs, skills/bill-feature-task
+- `workflow continue` remains the mutating activation/reopen path, but default CLI/MCP output now uses compact continuation fields instead of full snapshots/artifacts; `workflow show` is the read-only full-state fallback. reusable
+- Compact current-step artifact summaries inline small required artifacts and omit/truncate large or non-current artifacts with metadata; prompts must reference `current_step_artifacts` and send omitted keys to `workflow show`. reusable
+- CLI/MCP adapters render `read_only_full_state_command` with the resolved `--db` path; domain owns only the typed compact view and loud-fail validation still happens before projection.
+- Install sync was intentionally skipped during goal-continuation; refresh local installs outside continuation if governed generated output needs updating.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-01] SKILL-63 subtask 3 add-on-skeleton-wizard
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop, docs
 - Normal add-on creation now creates an editable skeleton instead of asking for body text; CLI/desktop wizard payloads omit body and raw consumer dirs, and scaffold notes point users to edit the generated add-on file. reusable

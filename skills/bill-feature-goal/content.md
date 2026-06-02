@@ -84,15 +84,68 @@ The inherited SKILL-56/SKILL-58 behavior remains part of the contract:
 
 After confirmation, ensure the decomposed parent workflow and runtime manifest
 now exist from the shared feature-spec preparation path. Then execute the
-foreground driver directly in the current agent session:
+foreground driver directly in the current agent session, always passing
+`--agent` set to the agent currently executing this skill:
 
 ```bash
-skill-bill goal <issue_key>
+skill-bill goal <issue_key> --agent <currently-executing-agent>
 ```
+
+Always pass `--agent` set to the agent currently running this skill (for example
+`claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the
+invoking agent — not a hardcoded default — drives child subtask runs. Only use
+`--agent-override` when the user explicitly selected a different child agent;
+`--agent-override` continues to win over `--agent`.
 
 Do not ask the user to run this command manually. The confirmation gate is the only user interaction required before execution starts.
 
-Use `--agent` when the invoking agent id is known and `--agent-override` only when the user explicitly selected a different child agent. Keep live output enabled unless the user asks for quieter output.
+Keep live output enabled unless the user asks for quieter output.
+
+## Watching Long Runs (orchestrator pattern)
+
+Long goal runs may exceed a foreground command timeout. When that risk exists,
+run the driver detached and consume progress through read-only commands rather
+than holding the foreground call open:
+
+- Run `skill-bill goal <issue_key> --agent <agent>` detached (background), then
+  poll progress with the read-only `skill-bill goal status <issue_key>` /
+  `skill-bill goal watch <issue_key>` commands, or consume the
+  `goal_event:` transition stream.
+- Do NOT relay raw per-tick `heartbeat` lines verbatim into the parent
+  assistant-visible transcript. Heartbeats are high-frequency liveness ticks;
+  surface only meaningful transitions to the user.
+- Prefer the transition-only `goal_event:` stream for machine consumption: it
+  emits one line per meaningful change, so you can track progress without
+  deduplicating heartbeats or scraping free-form text.
+
+### `goal_event:` transition schema
+
+The runtime emits a machine-consumable transition line on each meaningful change
+only — subtask change, phase/step transition, blocked, failed, completion, and
+terminal reconciliation — distinct from the per-tick `heartbeat` and
+`goal_observability:` lines. The line uses the stable prefix `goal_event:` and
+stable `key=value` keys:
+
+```text
+goal_event: issue_key=SKILL-901 subtask_id=1 prev_step=preplan current_step=implement prev_status=in_progress current_status=in_progress event_kind=subtask_resume sequence_number=20001
+```
+
+Required keys: `issue_key`, `subtask_id`, `prev_step`, `current_step`,
+`prev_status`, `current_status`, `event_kind`, and a monotonic `sequence_number`.
+The `goal_event:` sequence space is distinct from the `goal_observability:`
+sequence space, so consumers must not assume the two share numbering. A
+`goal_event:` line is emitted only on a meaningful change, never once per
+heartbeat. Phase/step values are sourced from the authoritative durable workflow
+store, never a stale local default.
+
+### Quiet / transition-only monitoring
+
+A quiet or transition-only monitor reports subtask start, phase transition,
+blocked/failed, completion, and sparse liveness events without appending every
+heartbeat to the foreground assistant-visible transcript. Debug/raw child stdout
+and stderr remain explicit opt-in via `--debug-child-output`; default output
+keeps raw child streams hidden and surfaces only compact progress, observability,
+and transition lines.
 
 During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, do not continue the loop manually; summarize the stopped subtask, reason, workflow id when present, and resumable step.
 

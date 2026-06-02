@@ -4,6 +4,10 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
+import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
+import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
+import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_LIMIT
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -12,21 +16,34 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
+import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
+import skillbill.workflow.NoopGoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
+import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
+import skillbill.workflow.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
+import skillbill.workflow.model.GoalProgressEvent
+import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
 
@@ -190,6 +207,7 @@ class WorkflowGoalRunnerOutcomeStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  private val goalProgressEventValidator: GoalProgressEventValidator = NoopGoalProgressEventValidator,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -270,7 +288,17 @@ class WorkflowGoalRunnerOutcomeStore(
       val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
       val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
-      val observabilityEvent = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
+      // SKILL-64 Subtask 3 (F-R01): the declared-progress read MUST be
+      // independent of the observability parse. Decode the declared event first,
+      // then decode observability softly: a single corrupt
+      // goal_observability_latest_event record must NOT return null for the
+      // whole poll (callers wrap progress() in runCatching), which would
+      // permanently disable deterministic declared liveness (AC20-AC23) and
+      // revert to the legacy false-kill heuristics.
+      val declaredProgressEvent = declaredProgressEventFrom(artifacts)
+      val observabilityEvent = runCatching {
+        goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
+      }.getOrNull()
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
         workflowStatus = record.workflowStatus,
@@ -278,6 +306,7 @@ class WorkflowGoalRunnerOutcomeStore(
         progressToken = record.progressToken(),
         latestDurableProgressEvent = progressEvent,
         latestGoalObservabilityEvent = observabilityEvent?.toProgressEvent(),
+        latestDeclaredProgressEvent = declaredProgressEvent,
         latestLivenessSignal = observabilityEvent?.compactLivenessSummary()
           ?: progressEvent?.summary()
           ?: "workflow_status=${record.workflowStatus}; step=$currentStep",
@@ -314,6 +343,90 @@ class WorkflowGoalRunnerOutcomeStore(
     true
   }
 
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean {
+    // SKILL-64 Subtask 3 (AC21, AC25): validate the declared-progress event at
+    // the durable write seam, loud-failing a malformed event exactly like the
+    // sibling recordObservabilityEvent path. A bad event must never reach
+    // artifacts_json where the soft supervisor read would silently drop it.
+    val entryMap = request.event.toArtifactMap()
+    goalProgressEventValidator.validate(entryMap, GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY)
+    return appendHistoryArtifact(
+      HistoryArtifactAppend(
+        workflowId = request.workflowId,
+        latestKey = GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY,
+        historyKey = GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY,
+        retentionLimit = GOAL_PROGRESS_HISTORY_LIMIT,
+        entryMap = entryMap,
+      ),
+      dbPathOverride,
+    )
+  }
+
+  override fun recordSessionAccounting(
+    request: GoalRunnerSessionAccountingRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean = appendHistoryArtifact(
+    HistoryArtifactAppend(
+      workflowId = request.workflowId,
+      latestKey = null,
+      historyKey = GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY,
+      retentionLimit = GOAL_SESSION_ACCOUNTING_LIMIT,
+      entryMap = request.accounting.toArtifactMap(),
+    ),
+    dbPathOverride,
+  )
+
+  override fun recordAttemptLedgerEntry(
+    request: GoalRunnerAttemptLedgerRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean = appendHistoryArtifact(
+    HistoryArtifactAppend(
+      workflowId = request.workflowId,
+      latestKey = null,
+      historyKey = GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY,
+      retentionLimit = GOAL_ATTEMPT_LEDGER_LIMIT,
+      entryMap = request.entry.toArtifactMap(),
+    ),
+    dbPathOverride,
+  )
+
+  // SKILL-64 Subtask 3: shared bounded append-and-cap write seam for the new
+  // declared-progress, session-accounting, and attempt-ledger artifacts. Each
+  // appends one entry, prunes to retentionLimit, and optionally mirrors the
+  // newest entry into a latest-event key.
+  private fun appendHistoryArtifact(append: HistoryArtifactAppend, dbPathOverride: String?): Boolean =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, append.workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existing = (artifacts[append.historyKey] as? List<*>)
+        .orEmpty()
+        .mapNotNull { item -> item as? Map<*, *> }
+        .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+      // SKILL-64 Subtask 3 (F-A03): reuse the domain bounded-retention rule so
+      // the durable write seam keeps the same sequence-ordered, oldest-pruned
+      // semantics as GoalProgressHistory/GoalSessionAccountingHistory/
+      // GoalAttemptLedger.append(); the inline append no longer diverges.
+      val updatedHistory = appendBoundedHistoryBySequence(existing, append.entryMap, append.retentionLimit)
+      val patch = buildMap<String, Any?> {
+        put(append.historyKey, updatedHistory)
+        append.latestKey?.let { put(it, append.entryMap) }
+      }
+      val updated = engine.updateRecord(
+        WorkflowFamily.IMPLEMENT.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = patch,
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+      true
+    }
+
   override fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
@@ -341,6 +454,30 @@ class WorkflowGoalRunnerOutcomeStore(
     )
     WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
     true
+  }
+
+  override fun ledgerSequenceWatermarks(
+    issueKey: String,
+    dbPathOverride: String?,
+  ): GoalRunnerLedgerSequenceWatermarks = database.read(dbPathOverride) { unitOfWork ->
+    val normalizedIssueKey = issueKey.trim()
+    var maxLedger: Int? = null
+    var maxAccounting: Int? = null
+    var maxProgress: Int? = null
+    WorkflowFamily.IMPLEMENT.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
+      val artifacts = decodeArtifacts(snapshot.artifactsJson)
+      if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) {
+        return@forEach
+      }
+      maxLedger = maxHistorySequence(artifacts, GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY, maxLedger)
+      maxAccounting = maxHistorySequence(artifacts, GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY, maxAccounting)
+      maxProgress = maxHistorySequence(artifacts, GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY, maxProgress)
+    }
+    GoalRunnerLedgerSequenceWatermarks(
+      maxLedgerSequence = maxLedger,
+      maxAccountingSequence = maxAccounting,
+      maxProgressSequence = maxProgress,
+    )
   }
 
   private fun loadContinuationCandidates(
@@ -398,6 +535,38 @@ private data class GoalContinuation(
   val subtaskId: Int,
   val suppressPr: Boolean,
 )
+
+private data class HistoryArtifactAppend(
+  val workflowId: String,
+  val latestKey: String?,
+  val historyKey: String,
+  val retentionLimit: Int,
+  val entryMap: Map<String, Any?>,
+)
+
+private data class GoalProgressEventRequiredFields(
+  val eventKind: GoalProgressEventKind,
+  val workflowId: String,
+  val workflowPhase: String,
+  val timestamp: String,
+  val sequenceNumber: Int,
+) {
+  companion object {
+    fun of(
+      eventKind: GoalProgressEventKind?,
+      workflowId: String?,
+      workflowPhase: String?,
+      timestamp: String?,
+      sequenceNumber: Int?,
+    ): GoalProgressEventRequiredFields? = GoalProgressEventRequiredFields(
+      eventKind = eventKind ?: return null,
+      workflowId = workflowId ?: return null,
+      workflowPhase = workflowPhase ?: return null,
+      timestamp = timestamp ?: return null,
+      sequenceNumber = sequenceNumber ?: return null,
+    )
+  }
+}
 
 private data class GoalContinuationCandidate(
   val snapshot: WorkflowStateSnapshot,
@@ -543,9 +712,63 @@ private fun blockedReasonFrom(
 private fun commitShaFrom(artifacts: Map<String, Any?>): String? =
   (artifacts["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
 
+// SKILL-64 Subtask 3 (F-D01): soft-decode the highest sequence_number in a
+// bounded history/ledger artifact list. Malformed entries are skipped rather
+// than throwing; the watermark read must never fail the run.
+private fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String, current: Int?): Int? {
+  val entries = (artifacts[historyKey] as? List<*>).orEmpty()
+  var max = current
+  entries.forEach { item ->
+    val sequence = (item as? Map<*, *>)?.get("sequence_number").asGoalRunnerIntOrNull()
+    val currentMax = max
+    if (sequence != null && (currentMax == null || sequence > currentMax)) {
+      max = sequence
+    }
+  }
+  return max
+}
+
 private fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressEvent? =
   (artifacts["progress_event"] as? Map<*, *>)
     ?.toGoalRunnerProgressEventOrNull()
+
+// SKILL-64 Subtask 3 (AC20-AC23): decode the latest declared progress event for
+// the supervisor read seam. Soft-decode: malformed records yield null rather
+// than failing the read.
+private fun declaredProgressEventFrom(artifacts: Map<String, Any?>): GoalProgressEvent? =
+  (artifacts[GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY] as? Map<*, *>)?.toGoalProgressEventOrNull()
+
+private fun Map<*, *>.toGoalProgressEventOrNull(): GoalProgressEvent? {
+  val eventKind = this["event_kind"]?.toString()?.takeIf(String::isNotBlank)
+    ?.let { value -> runCatching { GoalProgressEventKind.fromWire(value) }.getOrNull() }
+  val workflowId = this["workflow_id"]?.toString()?.takeIf(String::isNotBlank)
+  val workflowPhase = this["workflow_phase"]?.toString()?.takeIf(String::isNotBlank)
+  val timestamp = this["timestamp"]?.toString()?.takeIf(String::isNotBlank)
+  val sequenceNumber = this["sequence_number"].asGoalRunnerIntOrNull()
+  val required = GoalProgressEventRequiredFields.of(eventKind, workflowId, workflowPhase, timestamp, sequenceNumber)
+    ?: return null
+  return runCatching {
+    GoalProgressEvent(
+      eventKind = required.eventKind,
+      workflowId = required.workflowId,
+      workflowPhase = required.workflowPhase,
+      // SKILL-64 Subtask 3 (F-C01): process_alive is the authoritative liveness
+      // signal. On a missing/null/unparseable value, bias toward NOT alive so a
+      // corrupt record cannot mask an unresponsive child (AC23). Only an
+      // explicit boolean true keeps the child considered alive.
+      processAlive = this["process_alive"] == true,
+      sequenceNumber = required.sequenceNumber,
+      timestamp = required.timestamp,
+      stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank),
+      operationName = this["operation_name"]?.toString()?.takeIf(String::isNotBlank),
+      operationKind = this["operation_kind"]?.toString()?.takeIf(String::isNotBlank),
+      expectedLong = this["expected_long"] == true,
+      outcome = this["outcome"]?.toString()?.takeIf(String::isNotBlank)
+        ?.let { value -> runCatching { GoalProgressOutcome.fromWire(value) }.getOrNull() }
+        ?: GoalProgressOutcome.NONE,
+    )
+  }.getOrNull()
+}
 
 private fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
   val stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank)

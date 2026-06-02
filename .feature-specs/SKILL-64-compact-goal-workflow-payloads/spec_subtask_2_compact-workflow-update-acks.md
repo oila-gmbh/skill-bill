@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-64 Subtask 2 - Compact Workflow Update Acknowledgements

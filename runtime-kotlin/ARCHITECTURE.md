@@ -379,6 +379,9 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.summaryMap`
     - `skillbill.workflow.WorkflowEngine.resumeMap`
     - `skillbill.workflow.WorkflowEngine.continueMap`
+    - `skillbill.workflow.WorkflowEngine.compactContinueMap`
+    - `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+    - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
     - `skillbill.install.model.InstallPlanWireValidator.validate`
@@ -402,6 +405,14 @@ runtime-ports
     - `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
     - `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
     - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
+    - `skillbill.workflow.model.GoalProgressEvent.toArtifactMap`
+    - `skillbill.workflow.model.GoalProgressHistory.toArtifactList`
+    - `skillbill.workflow.GoalProgressEventValidator.validate`
+    - `skillbill.workflow.model.appendBoundedHistoryBySequence`
+    - `skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap`
+    - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
+    - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
+    - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
     - `skillbill.application.lifecycleOkPayload`
     - `skillbill.application.lifecycleSkippedPayload`
     - `skillbill.application.lifecycleErrorPayload`
@@ -543,6 +554,19 @@ skillbill.workflow.verify
 - Telemetry-event schema validation is owned by the MCP adapter because the MCP
   tool registry is the event-name source of truth. The owning parse seam is the
   MCP telemetry tool input validator in `runtime-mcp`.
+- Goal declared-progress event schema validation
+  (`orchestration/contracts/goal-progress-event-schema.yaml`) is owned by
+  `skillbill.contracts.workflow.GoalProgressEventSchemaValidator` in
+  `runtime-infra-fs`, reached through the domain-owned port
+  `skillbill.workflow.GoalProgressEventValidator` (wired in `RuntimeComponent`
+  to `skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter`, mirroring
+  `GoalObservabilityEventValidator`). The owning durable write/parse seam is
+  `skillbill.application.WorkflowGoalRunnerOutcomeStore.recordProgressEvent`,
+  which validates the declared-progress event map through the injected port
+  before it is appended to the bounded `goal_progress_run_history` /
+  `goal_progress_latest_event` workflow artifacts. The supervisor read seam
+  (`WorkflowGoalRunnerOutcomeStore.progress`) decodes the latest declared event
+  softly so a malformed stored record cannot disable deterministic liveness.
 
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
@@ -741,6 +765,9 @@ Categories:
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`
 - `skillbill.workflow.WorkflowEngine.continueMap`
+- `skillbill.workflow.WorkflowEngine.compactContinueMap`
+- `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+- `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
@@ -756,6 +783,14 @@ Categories:
 - `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
 - `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
 - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
+- `skillbill.workflow.model.GoalProgressEvent.toArtifactMap`
+- `skillbill.workflow.model.GoalProgressHistory.toArtifactList`
+- `skillbill.workflow.GoalProgressEventValidator.validate`
+- `skillbill.workflow.model.appendBoundedHistoryBySequence`
+- `skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap`
+- `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
+- `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
+- `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`

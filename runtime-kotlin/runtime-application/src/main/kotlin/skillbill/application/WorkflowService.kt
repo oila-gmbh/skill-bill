@@ -120,11 +120,7 @@ class WorkflowService(
           decompositionManifestValidator,
         )
       }
-      WorkflowUpdateResult.Ok(
-        workflowId = updated.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        snapshot = engine.snapshotView(family.definition, updated),
-      )
+      updateOk(family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
       DecompositionManifestWriter.writeProjectionFromWorkflowState(
@@ -238,6 +234,23 @@ class WorkflowService(
       )
     }
     return result
+  }
+
+  private fun updateOk(
+    definition: WorkflowDefinition,
+    updated: WorkflowStateSnapshot,
+    effectiveInput: WorkflowUpdateInput,
+    dbPath: String,
+  ): WorkflowUpdateResult.Ok {
+    val snapshot = engine.snapshotView(definition, updated)
+    return WorkflowUpdateResult.Ok(
+      workflowId = updated.workflowId,
+      dbPath = dbPath,
+      acknowledgement = engine.updateAcknowledgementView(
+        snapshot = snapshot,
+        input = effectiveInput,
+      ),
+    )
   }
 }
 

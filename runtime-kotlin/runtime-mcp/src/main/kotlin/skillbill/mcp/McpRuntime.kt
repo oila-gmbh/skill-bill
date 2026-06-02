@@ -232,7 +232,7 @@ object McpWorkflowRuntime {
       kind,
       request,
       dbOverride = null,
-    ).toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
+    ).toMcpMap()
   }
 
   fun get(

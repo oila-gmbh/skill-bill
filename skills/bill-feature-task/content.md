@@ -28,6 +28,7 @@ Workflow-state rules:
   - `step_updates` for the steps whose status changed
   - `artifacts_patch` for the structured artifact produced by that phase
 - Workflow state is independent of telemetry settings. Persist it even when `feature_implement_started` or `feature_implement_finished` returns `status: skipped`.
+- `feature_implement_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_implement_workflow_get` or `workflow show` for explicit read-only full-state inspection.
 - Follow the detailed per-phase briefing contracts in the inline reference sections below. Do not invent prose-only handoffs when a structured artifact exists.
 
 Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
@@ -41,13 +42,28 @@ When an external caller re-enters this skill using the payload returned by `feat
 Continuation-mode rules:
 
 - Keep the same `workflow_id` and `session_id`; do not open a new workflow.
-- Use `continue_step_id` as the starting point.
-- Use `step_artifacts` and `session_summary` as authoritative recovered context; do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
+- Use `resume_step_id` / `continue_step_id` as the starting point.
+- Use `current_step_artifacts` as authoritative recovered context; inline values are complete, while summarized values carry explicit size, preview, truncation, and omission metadata. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 - Read the `reference_sections` listed in the continuation payload before resuming work.
 - Skip already-completed earlier steps unless the normal workflow loop sends work backwards (for example review back to implement, or audit back to plan).
 - After the resumed step completes, continue the normal sequence defined below.
 - If `continue_status` is `done`, do not rerun the workflow; summarize the terminal state instead.
 - If `continue_status` is `blocked`, stop and restore the missing artifacts named by the workflow payload before continuing.
+- `workflow continue` is a mutating activation/reopen command (it re-opens resumable state), not a read-only inspection command. Its compact continuation output is the default child-session context. Use `workflow show <workflow-id> --format json` for read-only full-state inspection, including the complete durable `artifacts` map, and fetch full state only when explicitly needed.
+
+## Retry, Resume, and Review Reuse
+
+On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
+
+- Treat `current_step_artifacts` as the bounded recovered context. Pull only the artifacts the resumed step needs; do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
+- When an artifact is summarized or omitted with size/truncation metadata, work from the summary and fetch the specific omitted slice read-only only if the resumed step genuinely needs it. Prefer scoped reads over full re-injection.
+- Resume context is bounded: do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
+
+Review and fix-loop reuse (AC5):
+
+- Inside the same subtask fix loop, a prior clean specialist review result may be reused without rerunning that specialist when the relevant changed files and risk areas have not changed since that result was produced.
+- Rerun a specialist when the fix touched files or risk areas that specialist owns, or when its prior risk assessment is no longer valid for the current diff.
+- Never remove, downgrade, or make optional the full per-subtask review and validation, and never suppress a required review specialist when relevant risk changed. Reuse is an optimization within an unchanged risk surface, not a way to skip required review.
 
 ## Goal-Continuation Entry (non-interactive)
 
@@ -63,6 +79,7 @@ Goal-continuation rules:
 - Set `goal_continuation.suppress_pr=true`. Run the normal implementation, review, audit, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
 - Treat a completed `commit_push` step as the terminal success signal for this entry when PR suppression is active. Persist the subtask outcome in durable workflow state; stdout is diagnostic only.
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
+- To explain why a subtask retried, stopped, or blocked, read the append-only attempt ledger (`goal_attempt_ledger`) on the child workflow via read-only `workflow show`; its `action`, `blocked_reason`, `stop_reason`, and `final_reconciled_result` fields are sufficient without scraping any provider session log. Caveat (not a Skill Bill contract): provider-reported total token counts can be dominated by cached input replay, so treat them as a diagnostic signal — Skill Bill optimizes payload size and session behavior, not provider cache accounting. See `orchestration/workflow-contract/PLAYBOOK.md` for detail.
 - Interactive `bill-feature-task` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
 
 ## Shared Feature-Spec Preparation Path
@@ -414,6 +431,7 @@ After every major phase boundary:
 - set the new `current_step_id`
 - pass only the changed steps in `step_updates`
 - merge the new structured artifact through `artifacts_patch`
+- treat the response as a compact acknowledgement only; if a caller needs the complete steps or durable `artifacts` map after the write, call `feature_implement_workflow_get` or `workflow show` explicitly.
 
 When a loop sends work backwards:
 
@@ -450,27 +468,33 @@ When an external caller invokes `feature_implement_workflow_continue`, the
 returned payload becomes the supported re-entry contract for
 `bill-feature-task`.
 
-The continuation payload includes:
+The compact continuation payload includes:
 
 - `skill_name` — always `bill-feature-task`
-- `continuation_mode` — currently `resume_existing_workflow`
 - `continue_status` — `reopened`, `already_running`, `blocked`, or `done`
-- `continue_step_id` and `continue_step_label`
+- `resume_step_id` / `continue_step_id` and the matching step label
 - `continue_step_directive` — the step-specific rule for the resumed phase
-- `reference_sections` — the exact governed sections to re-read before
-  resuming
-- `step_artifacts` — the recovered structured artifacts that should replace
-  chat-history reconstruction
-- `session_summary` — saved Step 1 metadata when a telemetry session exists
+- `required_artifact_keys`, `available_artifact_keys`, and
+  `missing_artifact_keys`
+- `current_step_artifacts` — compact summaries for the required current-step
+  artifacts. Small artifacts are inline; large artifacts include size,
+  preview, truncation, and omission metadata instead of the full value.
+- `omitted_artifact_keys` — available durable artifacts omitted from the
+  compact current-step summaries
 - `continuation_brief` — short human-facing summary
 - `continuation_entry_prompt` — a paste-ready prompt for an orchestrator or AI
   caller
+- `read_only_full_state_command` and `read_only_full_state_guidance` — the
+  read-only `workflow show` fallback for complete state
 
 Re-entry rules:
 
 - Do not open a new workflow when continuing an existing run.
 - Keep using the same `workflow_id` and `session_id`.
-- Treat `step_artifacts` as authoritative inputs for the resumed phase.
+- Treat inline `current_step_artifacts` values as authoritative inputs for the
+  resumed phase. If an artifact is summarized or omitted because it is large,
+  inspect full state with the payload's `read_only_full_state_command` only as
+  needed.
 - Skip earlier completed steps unless the normal workflow loops send work
   backwards.
 - After the resumed step completes, continue the standard `bill-feature-task`

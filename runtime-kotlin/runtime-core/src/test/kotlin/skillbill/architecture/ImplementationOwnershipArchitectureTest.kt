@@ -158,6 +158,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.launcher.FileSystemAgentRunLauncher",
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.GoalObservabilityEventValidator",
+      "skillbill.workflow.GoalProgressEventValidator",
       "skillbill.workflow.WorkflowSnapshotValidator",
     )
     val violations = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))

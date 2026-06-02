@@ -53,6 +53,7 @@ import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
+import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
@@ -98,6 +99,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 
@@ -316,6 +318,15 @@ abstract class RuntimeComponent(
   internal fun goalObservabilityEventValidator(
     adapter: GoalObservabilityEventValidatorAdapter,
   ): GoalObservabilityEventValidator = adapter
+
+  // SKILL-64 Subtask 3: declared goal-progress event schema validator port,
+  // bound to the infra-fs adapter that owns the networknt JSON-Schema check.
+  // The goal-runner outcome store calls this port at the durable
+  // declared-progress write seam, mirroring goalObservabilityEventValidator.
+  @Provides
+  @JvmSynthetic
+  internal fun goalProgressEventValidator(adapter: GoalProgressEventValidatorAdapter): GoalProgressEventValidator =
+    adapter
 
   abstract val installService: InstallService
   abstract val agentRunService: AgentRunService

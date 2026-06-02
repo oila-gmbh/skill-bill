@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -12,6 +13,7 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -19,8 +21,12 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -33,11 +39,14 @@ import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalObservabilityDiffStat
+import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.model.GoalProgressOutcome
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
@@ -178,17 +187,20 @@ class GoalRunnerTest {
     assertEquals(2, launcher.requests.size)
     assertEquals(null, launcher.requests.first().skillRunRequest.timeout)
     assertEquals(30.minutes, launcher.requests.first().skillRunRequest.progressIdleTimeout)
-    assertContains(requireNotNull(launcher.requests.first().skillRunRequest.progressProbe.progressToken()), "wfl-1")
+    // SKILL-64 Subtask 3 (F-PF01): the legacy progress probe and the declared
+    // probe now share one per-tick read. A fresh launch request (= a fresh
+    // per-tick reader) resolves the current store state in a single read, so set
+    // the child progress before reading and assert the token folds both the
+    // manifest subtask token and the child progress token together.
     outcomes.progresses["wfl-1"] = GoalRunnerWorkflowProgress(
       workflowId = "wfl-1",
       workflowStatus = "running",
       currentStepId = "implement",
       progressToken = "child-progress-token",
     )
-    assertContains(
-      requireNotNull(launcher.requests.first().skillRunRequest.progressProbe.progressToken()),
-      "child-progress-token",
-    )
+    val freshProbeToken = requireNotNull(launcher.requests.last().skillRunRequest.progressProbe.progressToken())
+    assertContains(freshProbeToken, "wfl-1")
+    assertContains(freshProbeToken, "child-progress-token")
     assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
   }
 
@@ -894,7 +906,7 @@ class GoalRunnerObservabilityTest {
   )
 }
 
-private class InMemoryGoalManifestStore(
+internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
@@ -947,7 +959,314 @@ private class SequencedLoadGoalManifestStore(
   }
 }
 
-private class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
+// SKILL-64 Subtask 3 (F-D01): the append-only attempt ledger and best-effort
+// session accounting must not restart sequence numbers at 0 on resume. The
+// recorder seeds its monotonic counters from the persisted watermarks.
+class GoalRunnerLedgerRecorderSeedingTest {
+  @Test
+  fun `recorder seeds ledger and accounting sequences from persisted watermarks`() {
+    val outcomes = RecordingOutcomeStore()
+    outcomes.ledgerSequenceWatermarks =
+      GoalRunnerLedgerSequenceWatermarks(maxLedgerSequence = 7, maxAccountingSequence = 3)
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+
+    recorder.recordLedgerEntry(
+      GoalRunnerLedgerContext(
+        workflowId = "wfl-child",
+        action = GoalAttemptLedgerAction.CHILD_ACTIVATION,
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+      ),
+    )
+    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = launchFacts())
+
+    assertEquals(8, outcomes.attemptLedgerRecords.single().entry.sequenceNumber)
+    assertEquals(4, outcomes.sessionAccountingRecords.single().accounting.sequenceNumber)
+  }
+
+  @Test
+  fun `recorder starts at zero when no durable entries exist`() {
+    val outcomes = RecordingOutcomeStore()
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+
+    recorder.recordLedgerEntry(
+      GoalRunnerLedgerContext(
+        workflowId = "wfl-child",
+        action = GoalAttemptLedgerAction.CHILD_ACTIVATION,
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+      ),
+    )
+
+    assertEquals(0, outcomes.attemptLedgerRecords.single().entry.sequenceNumber)
+  }
+
+  @Test
+  fun `accounting is available with session path and id when launch facts expose them`() {
+    // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child session path/id from
+    // launch facts make accounting available=true and populate the ledger entry.
+    val outcomes = RecordingOutcomeStore()
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+    val facts = launchFacts().copy(childSessionPath = "/work/child", childSessionId = "claude:SKILL-56:subtask-1")
+
+    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = facts)
+    recorder.recordLedgerEntry(
+      GoalRunnerLedgerContext(
+        workflowId = "wfl-child",
+        action = GoalAttemptLedgerAction.CHILD_ACTIVATION,
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        launchOutcome = facts,
+      ),
+    )
+
+    val accounting = outcomes.sessionAccountingRecords.single().accounting
+    assertTrue(accounting.available)
+    assertEquals("/work/child", accounting.childSessionPath)
+    assertEquals("claude:SKILL-56:subtask-1", accounting.childSessionId)
+    val ledgerEntry = outcomes.attemptLedgerRecords.single().entry
+    assertEquals("/work/child", ledgerEntry.childSessionPath)
+    assertEquals("claude:SKILL-56:subtask-1", ledgerEntry.childSessionId)
+  }
+
+  @Test
+  fun `accounting is unavailable with reason when no session path id or tokens exist`() {
+    val outcomes = RecordingOutcomeStore()
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+    val facts = launchFacts().copy(childSessionPath = null, childSessionId = null)
+
+    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = facts)
+
+    val accounting = outcomes.sessionAccountingRecords.single().accounting
+    assertTrue(!accounting.available)
+    assertNull(accounting.childSessionPath)
+    assertNull(accounting.childSessionId)
+    assertContains(requireNotNull(accounting.unavailableReason), "not available")
+  }
+
+  @Test
+  fun `best-effort accounting write failure never throws`() {
+    val outcomes = RecordingOutcomeStore().apply { throwOnSessionAccountingRecord = true }
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+
+    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = launchFacts())
+  }
+
+  private fun ledgerRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+// SKILL-64 Subtask 3 (AC21, AC25, AC20, AC22, AC23): the supervisor-side
+// declared-progress emitter is the production driver of the declared
+// operation_* events. It persists into the durable goal_progress run history via
+// recordProgressEvent WITHOUT the child phase-agent self-reporting, mints the
+// timestamp in the adapter layer, and seeds a monotonic sequence from the
+// persisted goal_progress watermark so resume runs stay monotonic.
+class GoalRunnerProgressEventEmitterTest {
+  @Test
+  fun `emitter persists declared operation events into goal_progress run history`() {
+    val outcomes = RecordingOutcomeStore()
+    val emitter = GoalRunnerProgressEventEmitter(
+      outcomeStore = outcomes,
+      request = emitterRunRequest(),
+      resolveWorkflowId = { "wfl-child" },
+      watermarkSeed = null,
+    )
+
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
+    emitter.emit(
+      emission(
+        GoalProgressEventKind.OPERATION_COMPLETED,
+        processAlive = false,
+        outcome = GoalProgressOutcome.SUCCEEDED,
+      ),
+    )
+
+    val recorded = outcomes.progressEventRecords
+    assertEquals(3, recorded.size)
+    assertEquals("wfl-child", recorded.first().workflowId)
+    assertEquals(GoalProgressEventKind.OPERATION_STARTED, recorded[0].event.eventKind)
+    assertEquals(GoalProgressEventKind.OPERATION_HEARTBEAT, recorded[1].event.eventKind)
+    assertEquals(GoalProgressEventKind.OPERATION_COMPLETED, recorded[2].event.eventKind)
+    assertEquals("child_agent_run", recorded[0].event.operationName)
+    assertTrue(recorded[0].event.expectedLong)
+    assertTrue(recorded[0].event.processAlive)
+    assertTrue(!recorded[2].event.processAlive)
+    // Monotonic sequence space seeded from 0.
+    assertEquals(listOf(0, 1, 2), recorded.map { it.event.sequenceNumber })
+  }
+
+  @Test
+  fun `emitter seeds a monotonic sequence from the persisted goal_progress watermark on resume`() {
+    val outcomes = RecordingOutcomeStore()
+    val emitter = GoalRunnerProgressEventEmitter(
+      outcomeStore = outcomes,
+      request = emitterRunRequest(),
+      resolveWorkflowId = { "wfl-child" },
+      watermarkSeed = 41,
+    )
+
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
+
+    assertEquals(listOf(42, 43), outcomes.progressEventRecords.map { it.event.sequenceNumber })
+  }
+
+  @Test
+  fun `emitter is a no-op until the child workflow id is known`() {
+    val outcomes = RecordingOutcomeStore()
+    var workflowId: String? = null
+    val emitter = GoalRunnerProgressEventEmitter(
+      outcomeStore = outcomes,
+      request = emitterRunRequest(),
+      resolveWorkflowId = { workflowId },
+      watermarkSeed = null,
+    )
+
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+    assertTrue(outcomes.progressEventRecords.isEmpty())
+
+    workflowId = "wfl-child"
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
+    assertEquals(1, outcomes.progressEventRecords.size)
+    // First persisted event still anchors the sequence space at 0.
+    assertEquals(0, outcomes.progressEventRecords.single().event.sequenceNumber)
+  }
+
+  @Test
+  fun `emitter write failure never throws`() {
+    val outcomes = RecordingOutcomeStore().apply { throwOnProgressEventRecord = true }
+    val emitter = GoalRunnerProgressEventEmitter(
+      outcomeStore = outcomes,
+      request = emitterRunRequest(),
+      resolveWorkflowId = { "wfl-child" },
+      watermarkSeed = null,
+    )
+
+    emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+  }
+
+  private fun emission(
+    kind: GoalProgressEventKind,
+    processAlive: Boolean,
+    outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
+  ): AgentRunProgressEmission = AgentRunProgressEmission(
+    eventKind = kind,
+    processAlive = processAlive,
+    operationName = "child_agent_run",
+    operationKind = "long_child_run",
+    expectedLong = true,
+    outcome = outcome,
+  )
+
+  private fun emitterRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+// SKILL-64 Subtask 3 (F-NT02): the launch-reconciler wiring that builds the
+// production declared-progress emitter (seeded from the persisted
+// maxProgressSequence watermark, resolving the child workflow id mid-run) and
+// threads it into the SkillRunRequest. Prior tests used RecordingSubtaskLauncher
+// which discarded the emitter and never invoked the process loop, leaving this
+// wiring with zero coverage. These tests drive the SkillRunRequest's emitter
+// directly so the reconciler's wiring is exercised end-to-end.
+class GoalRunnerLaunchReconcilerWiringTest {
+  @Test
+  fun `reconciler threads a watermark-seeded emitter that persists declared events for the resolved workflow`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-1"),
+    )
+    val outcomes = RecordingOutcomeStore().apply {
+      // The production emitter seeds its monotonic sequence from this watermark.
+      ledgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks(maxProgressSequence = 41)
+    }
+    val reconciler = GoalRunnerLaunchReconciler(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = outcomes,
+    )
+
+    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+
+    // Drive the supervisor lifecycle through the emitter the reconciler actually
+    // wired into the SkillRunRequest (what the process loop would call).
+    val emitter = launchRequest.skillRunRequest.progressEmitter
+    emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+    emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
+    emitter.emit(
+      supervisorEmission(
+        GoalProgressEventKind.OPERATION_COMPLETED,
+        processAlive = false,
+        outcome = GoalProgressOutcome.SUCCEEDED,
+      ),
+    )
+
+    val recorded = outcomes.progressEventRecords
+    assertEquals(3, recorded.size, "wired emitter must persist every declared event via recordProgressEvent")
+    // Workflow id resolved mid-run from the per-tick reader, not NONE.
+    assertTrue(recorded.all { it.workflowId == "wfl-1" })
+    assertTrue(recorded.all { it.event.workflowId == "wfl-1" })
+    // Seeded from the persisted watermark (41), so the first sequence is 42 — a
+    // raw AgentRunProgressEmitter.NONE would persist nothing, and seeding from 0
+    // would produce 0,1,2. Both regressions fail this assertion.
+    assertEquals(listOf(42, 43, 44), recorded.map { it.event.sequenceNumber })
+    assertEquals(GoalProgressEventKind.OPERATION_STARTED, recorded[0].event.eventKind)
+    assertEquals(GoalProgressEventKind.OPERATION_COMPLETED, recorded[2].event.eventKind)
+    assertEquals(GoalProgressOutcome.SUCCEEDED, recorded[2].event.outcome)
+  }
+
+  @Test
+  fun `reconciler emitter is a no-op until the child workflow id is resolvable`() {
+    // No workflowId on the subtask yet: resolveWorkflowId returns null, so the
+    // wired emitter must persist nothing (matching the production no-op-until-known
+    // contract) rather than recording an event with a blank workflow id.
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val reconciler = GoalRunnerLaunchReconciler(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = outcomes,
+    )
+
+    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    launchRequest.skillRunRequest.progressEmitter.emit(
+      supervisorEmission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true),
+    )
+
+    assertTrue(outcomes.progressEventRecords.isEmpty())
+  }
+
+  private fun supervisorEmission(
+    kind: GoalProgressEventKind,
+    processAlive: Boolean,
+    outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
+  ): AgentRunProgressEmission = AgentRunProgressEmission(
+    eventKind = kind,
+    processAlive = processAlive,
+    operationName = "child_agent_run",
+    operationKind = "long_child_run",
+    expectedLong = true,
+    outcome = outcome,
+  )
+
+  private fun wiringRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   private val outcomes: MutableMap<String, GoalRunnerStoredOutcome> = mutableMapOf()
   val progresses: MutableMap<String, GoalRunnerWorkflowProgress> = mutableMapOf()
   val blockedWorkflows: MutableList<BlockedWorkflow> = mutableListOf()
@@ -1025,28 +1344,68 @@ private class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     workerSubtaskRequestOutcomes += WorkerSubtaskRequestOutcomeRecord(workflowId, outcomes)
     return workerSubtaskRequestOutcomeRecordResult
   }
+
+  val progressEventRecords: MutableList<GoalRunnerProgressEventRecordRequest> = mutableListOf()
+  val sessionAccountingRecords: MutableList<GoalRunnerSessionAccountingRecordRequest> = mutableListOf()
+  val attemptLedgerRecords: MutableList<GoalRunnerAttemptLedgerRecordRequest> = mutableListOf()
+  var throwOnProgressEventRecord: Boolean = false
+  var throwOnSessionAccountingRecord: Boolean = false
+
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean {
+    if (throwOnProgressEventRecord) {
+      error("progress event persistence failed")
+    }
+    progressEventRecords += request
+    return true
+  }
+
+  override fun recordSessionAccounting(
+    request: GoalRunnerSessionAccountingRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean {
+    if (throwOnSessionAccountingRecord) {
+      error("session accounting persistence failed")
+    }
+    sessionAccountingRecords += request
+    return true
+  }
+
+  override fun recordAttemptLedgerEntry(
+    request: GoalRunnerAttemptLedgerRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean {
+    attemptLedgerRecords += request
+    return true
+  }
+
+  var ledgerSequenceWatermarks: GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
+
+  override fun ledgerSequenceWatermarks(
+    issueKey: String,
+    dbPathOverride: String?,
+  ): GoalRunnerLedgerSequenceWatermarks = ledgerSequenceWatermarks
 }
 
-private data class BlockedWorkflow(
+internal data class BlockedWorkflow(
   val workflowId: String,
   val blockedReason: String,
   val lastResumableStep: String,
   val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
-private data class ReconcileRequest(
+internal data class ReconcileRequest(
   val issueKey: String,
   val activeWorkflowIds: Set<String>,
   val allowInactiveReconciliation: Boolean,
   val dbPathOverride: String?,
 )
 
-private data class WorkerSubtaskRequestOutcomeRecord(
+internal data class WorkerSubtaskRequestOutcomeRecord(
   val workflowId: String,
   val outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
 )
 
-private class RecordingSubtaskLauncher(
+internal class RecordingSubtaskLauncher(
   private val result: (GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ) : GoalRunnerSubtaskLauncher {
   val requests: MutableList<GoalRunnerSubtaskLaunchRequest> = mutableListOf()
@@ -1057,7 +1416,7 @@ private class RecordingSubtaskLauncher(
   }
 }
 
-private class RecordingPullRequestPort : GoalPullRequestPort {
+internal class RecordingPullRequestPort : GoalPullRequestPort {
   val requests: MutableList<GoalPullRequestRequest> = mutableListOf()
 
   override fun open(request: GoalPullRequestRequest): GoalPullRequestResult {
@@ -1168,7 +1527,7 @@ private class RecordingGitOperations(
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 }
 
-private fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(
+internal fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(
   issueKey = "SKILL-56",
   featureName = "goal",
   parentSpecPath = ".feature-specs/SKILL-56-goal/spec.md",
@@ -1185,7 +1544,7 @@ private fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionMa
   },
 )
 
-private fun completeOutcome(subtaskId: Int): GoalRunnerStoredOutcome = GoalRunnerStoredOutcome(
+internal fun completeOutcome(subtaskId: Int): GoalRunnerStoredOutcome = GoalRunnerStoredOutcome(
   status = GoalRunnerTerminalStatus.COMPLETE,
   workflowId = "wfl-$subtaskId",
   commitSha = "sha-$subtaskId",
@@ -1207,20 +1566,22 @@ private fun workerSubtaskRequestJson(
   return "SKILL_BILL_SUBTASK_REQUEST: $payload"
 }
 
-private fun launchFacts(
+internal fun launchFacts(
   timedOut: Boolean = false,
+  interrupted: Boolean = false,
   stdout: String = "diagnostic only",
   stderr: String = "",
 ): AgentRunLaunchFacts = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
-  exitStatus = if (timedOut) null else 0,
+  exitStatus = if (timedOut || interrupted) null else 0,
   stdout = stdout,
   stderr = stderr,
   timedOut = timedOut,
+  interrupted = interrupted,
   spawnFailed = false,
 )
 
-private fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
+internal fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) {
       subtask.copy(workflowId = workflowId)

@@ -1682,6 +1682,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.WorkflowEngine.summaryMap",
       "skillbill.workflow.WorkflowEngine.resumeMap",
       "skillbill.workflow.WorkflowEngine.continueMap",
+      "skillbill.workflow.WorkflowEngine.compactContinueMap",
+      "skillbill.workflow.WorkflowEngine.updateAcknowledgementMap",
+      "skillbill.workflow.model.WorkflowContinuationArtifactSummary.value",
       // SKILL-52.2 subtask 4: domain-owned workflow-snapshot validator port.
       // The map is the canonical schema-validated wire snapshot envelope; the
       // port stays raw-map at the validation seam because the schema itself
@@ -1720,6 +1723,23 @@ class RuntimeArchitectureTest {
       "skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjector.project",
+      // SKILL-64 subtask 3: declared goal-progress, best-effort session
+      // accounting, and append-only attempt-ledger maps are durable
+      // workflow-artifact/schema seams written through the goal-runner outcome
+      // store adapter and surfaced read-only by MCP goal-observability mapping.
+      "skillbill.workflow.model.GoalProgressEvent.toArtifactMap",
+      "skillbill.workflow.model.GoalProgressHistory.toArtifactList",
+      "skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap",
+      "skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList",
+      "skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap",
+      "skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList",
+      // SKILL-64 subtask 3 (F-A01/F-A02): domain-owned declared-progress event
+      // validator port (infra-fs adapter bound in DI) plus the shared bounded
+      // sequence-ordered retention helper used by the durable goal-runner write
+      // seam. Both stay raw-map: the schema validates the wire-map envelope and
+      // the retention helper prunes the same artifact-map lists in place.
+      "skillbill.workflow.GoalProgressEventValidator.validate",
+      "skillbill.workflow.model.appendBoundedHistoryBySequence",
       // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
       // application + port `scaffold(payload, dryRun)` overloads on
       // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`

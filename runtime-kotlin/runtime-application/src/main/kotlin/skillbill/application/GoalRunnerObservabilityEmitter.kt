@@ -53,10 +53,12 @@ internal class GoalRunnerObservabilityEmitter(
     action: String,
     progress: GoalRunnerWorkflowProgress?,
   ) {
+    // SKILL-64 Subtask 3 (AC24): prefer the authoritative durable step; fall
+    // back to "preplan" only when no durable step exists yet for the child.
     record(
       subject = subject,
       signal = GoalRunnerObservabilitySignal(
-        workflowPhase = progress?.currentStepId ?: "preplan",
+        workflowPhase = progress?.currentStepId?.takeIf(String::isNotBlank) ?: "preplan",
         livenessClass = if (action == "resume") "resume" else "subtask_start",
         activitySummary = "Goal runner ${action}s subtask ${subject.subtaskId}.",
       ),

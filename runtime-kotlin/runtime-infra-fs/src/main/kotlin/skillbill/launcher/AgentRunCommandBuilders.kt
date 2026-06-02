@@ -27,6 +27,9 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
 
   override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
+    // The prompt is delivered via stdin, not as a trailing argv token: `--add-dir`
+    // is variadic and would otherwise swallow the prompt as an extra directory,
+    // leaving `claude --print` with no input and blocking forever on stdin.
     command = listOf(
       "claude",
       "--print",
@@ -35,10 +38,10 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       "--dangerously-skip-permissions",
       "--add-dir",
       request.repoRoot.toString(),
-      continuationPrompt(request),
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
+    stdinText = continuationPrompt(request),
     environment = GoalContinuationEnvironment,
   )
 }
@@ -108,6 +111,12 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
   val dbOption = request.dbPathOverride?.let { db -> " --db ${shellDisplay(db)}" }.orEmpty()
   val subtaskOption = request.subtaskId?.let { id -> " --subtask-id $id" }.orEmpty()
   val subtaskLine = request.subtaskId?.let { id -> "\nSubtask id: $id" }.orEmpty()
+  // SKILL-64 Subtask 3 (AC1-AC3, AC12, AC13): the compact continuation output is
+  // the normal activation contract. Still run `workflow continue` first (AC1);
+  // do not imply reasoning over full workflow JSON by default (AC2); fetch the
+  // read-only full-state command only when compact output says required context
+  // is missing/truncated (AC3); bound broad tool output (AC13); and classify
+  // diagnostic/manual `continue` calls so they are not mistaken for retries (AC12).
   return """
     Use the installed `bill-feature-task` skill in non-interactive goal-continuation mode.
 
@@ -118,7 +127,22 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
     First execute this exact command from the repository root:
     `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption --format json`
 
-    Then continue the returned `continuation_entry_prompt` until the workflow store reaches a terminal goal-continuation outcome.
+    The continuation output is compact and is your normal activation contract. Act on the returned
+    `continuation_entry_prompt` directly. Do NOT inspect or reason over full workflow JSON by default, and do
+    NOT request the full durable state just to orient yourself.
+
+    Only if the compact continuation output explicitly reports that required context is missing or truncated,
+    fetch read-only full state once with:
+    `skill-bill$dbOption workflow show ${shellDisplay(request.issueKey)} --format json`
+    Never call `workflow continue` a second time merely to inspect state; a second `continue` is a retry of the
+    activation contract, not a read. Any diagnostic or manual-inspection `continue` you make is classified as
+    diagnostic and must not be treated as a retry of the subtask.
+
+    Bound broad tool output by default: prefer narrow, scoped follow-up reads over dumping large command output
+    into the conversation. Do not paste large file or command dumps into history; request the specific lines or
+    fields you need.
+
+    Then continue until the workflow store reaches a terminal goal-continuation outcome.
     Do not force workflow state manually. Never call `skill-bill workflow update` just to mark blocked.
     Never run installer or uninstall flows during goal-continuation: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This overrides repo instructions that normally ask for local install refresh after governed skill source edits; record skipped install-sync work in the result instead.
     If the continuation command reports `continue_status=blocked` or `continue_status=done`, treat that durable state as authoritative and stop.
