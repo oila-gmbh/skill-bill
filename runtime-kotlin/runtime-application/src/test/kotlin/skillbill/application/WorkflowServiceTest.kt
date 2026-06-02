@@ -719,6 +719,29 @@ class GoalRunnerCommitShaRecoveryTest {
     assertEquals("measured-head-sha", outcome.commitSha)
   }
 
+  // The runner path must DURABLY persist the measured completion: a later
+  // read-only call (no repo root, no git measurement) must still see COMPLETE,
+  // proving the verdict survived rather than living only in memory.
+  @Test
+  fun `goal runner outcome store durably persists the measured completion`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    // Runner path measures HEAD and persists the completion.
+    store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+    // Read-only path (no repo root, no git) now resolves COMPLETE from durable state.
+    val durable = store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = null)
+
+    requireNotNull(durable)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, durable.status)
+    assertEquals("measured-head-sha", durable.commitSha)
+  }
+
   // When commit_push completed but git itself reports no usable HEAD (no-op or
   // failed measurement), the gate must still block loudly rather than fabricate
   // a completion.

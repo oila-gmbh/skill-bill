@@ -27,6 +27,22 @@ class DecompositionContinuationSelectorTest {
     assertEquals("validate", resumed.resumeStepId)
   }
 
+  // SKILL-65: an in_progress subtask with no workflow_id is an orphaned handoff
+  // (marked started, no durable workflow opened). The selector must re-open it as
+  // a fresh Start instead of trying to resume a non-existent workflow.
+  @Test
+  fun `select re-opens in-progress subtask that has no workflow id`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1, status = "complete"),
+        subtask(2, status = "in_progress", dependencies = listOf(DecompositionDependency(1))),
+      ),
+    )
+
+    val started = assertIs<DecompositionContinuationSelection.Start>(selection)
+    assertEquals(2, started.subtask.id)
+  }
+
   @Test
   fun `select starts first pending subtask whose dependencies are complete`() {
     val selection = DecompositionContinuationSelector.select(

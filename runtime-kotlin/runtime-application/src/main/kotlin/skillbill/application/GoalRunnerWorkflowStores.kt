@@ -266,21 +266,87 @@ class WorkflowGoalRunnerOutcomeStore(
     subtaskId: Int,
     dbPathOverride: String?,
     repoRoot: Path?,
-  ): GoalRunnerStoredOutcome? = database.read(dbPathOverride) { unitOfWork ->
-    val snapshot = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+  ): GoalRunnerStoredOutcome? = if (repoRoot == null) {
+    // SKILL-65: read-only callers (e.g. goal status) pass no repo root. Resolve
+    // strictly from durable artifacts; never measure git or mutate state.
+    database.read(dbPathOverride) { unitOfWork ->
+      resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+    }
+  } else {
+    // SKILL-65: the goal runner supplies the repo root. When commit_push completed
+    // under suppress_pr but the agent dropped the self-reported SHA, recover it
+    // from measured git HEAD (ground truth, the SKILL-33 defense) AND durably
+    // persist the commit_push-terminal completion as a goal_continuation_outcome,
+    // so status, reconciliation, and the subtask handoff all agree afterward.
+    database.transaction(dbPathOverride) { unitOfWork ->
+      resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
+        gitOperations.headCommitSha(repoRoot).measuredCommitSha()
+      }?.also { outcome ->
+        persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
+      }
+    }
+  }
+
+  private fun resolveTerminalOutcome(
+    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    measuredCommitSha: () -> String?,
+  ): GoalRunnerStoredOutcome? {
+    val snapshot = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return null
     engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, snapshot)
     val artifacts = decodeArtifacts(snapshot.artifactsJson)
-    val goalContinuation = goalContinuation(artifacts) ?: return@read null
-    if (goalContinuation.issueKey != issueKey || goalContinuation.subtaskId != subtaskId) {
-      return@read null
+    return goalContinuation(artifacts)
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+      ?.let { continuation -> terminalOutcomeFor(snapshot, artifacts, continuation, measuredCommitSha) }
+  }
+
+  // SKILL-65: durably record a commit_push-terminal COMPLETE whose SHA was
+  // recovered from measured git HEAD. Writing goal_continuation_outcome makes the
+  // verdict authoritative (read first by terminalOutcomeFor), so the workflow row
+  // being stranded at a later step no longer reverts the subtask to blocked.
+  // Idempotent and narrowly gated: only when the outcome is COMPLETE, the SHA is
+  // present, the agent artifact had no SHA (so it was measured), and no durable
+  // outcome exists yet.
+  private fun persistMeasuredCompletion(
+    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    outcome: GoalRunnerStoredOutcome,
+  ) {
+    if (outcome.status != GoalRunnerTerminalStatus.COMPLETE || outcome.commitSha.isNullOrBlank()) {
+      return
     }
-    // SKILL-65: this read is the single per-workflow resolution the goal runner
-    // uses to decide subtask completion. Pass a lazy HEAD-measuring resolver so a
-    // dropped self-reported SHA does not block a subtask that actually committed.
-    // The measurement is a side-effect-free `git rev-parse HEAD`; nothing is
-    // persisted here, so the read-only status contract is preserved.
-    terminalOutcomeFor(snapshot, artifacts, goalContinuation) {
-      repoRoot?.let { root -> gitOperations.headCommitSha(root).measuredCommitSha() }
+    val record = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    // Only backfill when no durable outcome exists yet AND the agent artifact had
+    // no SHA (so this SHA was measured from git). Idempotent across repeated reads.
+    val needsBackfill = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr) == null &&
+      commitShaFrom(artifacts).isNullOrBlank()
+    if (needsBackfill) {
+      val updated = engine.updateRecord(
+        WorkflowFamily.IMPLEMENT.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            "goal_continuation_outcome" to mapOf(
+              "issue_key" to issueKey,
+              "subtask_id" to subtaskId,
+              "status" to "complete",
+              "workflow_id" to workflowId,
+              "commit_sha" to outcome.commitSha,
+              "last_resumable_step" to (outcome.lastResumableStep ?: "commit_push"),
+            ),
+          ),
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.IMPLEMENT.save(workflowStates, updated)
     }
   }
 
