@@ -700,7 +700,7 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = HeadShaGitOperations,
     )
 
-    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
 
     requireNotNull(outcome)
     assertEquals(GoalRunnerTerminalStatus.COMPLETE, outcome.status)
@@ -717,8 +717,8 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = HeadShaGitOperations,
     )
 
-    store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
-    val durable = store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = null)
+    store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+    val durable = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
 
     requireNotNull(durable)
     assertEquals(GoalRunnerTerminalStatus.COMPLETE, durable.status)
@@ -735,7 +735,7 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = NoopWorkflowGitOperations,
     )
 
-    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
 
     requireNotNull(outcome)
     assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, outcome.status)
@@ -751,7 +751,7 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = HeadShaGitOperations,
     )
 
-    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = null)
+    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
 
     requireNotNull(outcome)
     assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, outcome.status)

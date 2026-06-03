@@ -639,6 +639,9 @@ class McpFeatureTaskRuntimeWorkflowTest {
     assertSqliteTimestampShape(opened["started_at"].toString(), "task-runtime started_at")
     assertEquals(opened["started_at"], opened["updated_at"])
 
+    // F-019: populate a multi-phase per-phase records map and a multi-entry phase ledger so the
+    // golden pins the populated wire shape (including the post-fix first_started_at and the durable
+    // blocked record + blocked_reason) and the ledger sequence ordering through the MCP payloads.
     val updated = McpWorkflowRuntime.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -646,7 +649,7 @@ class McpFeatureTaskRuntimeWorkflowTest {
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
-        artifactsPatch = mapOf("feature_task_runtime_phase_records" to emptyMap<String, Nothing?>()),
+        artifactsPatch = taskRuntimePhaseArtifactsPatch(),
       ),
       context,
     )
@@ -683,6 +686,50 @@ class McpFeatureTaskRuntimeWorkflowTest {
     assertEquals("feature-task-runtime", got["workflow_name"])
   }
 }
+
+// F-019: a multi-phase records map + multi-entry ledger patch for the task-runtime golden flow.
+private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
+  "feature_task_runtime_phase_records" to linkedMapOf(
+    "plan" to linkedMapOf(
+      "phase_id" to "plan",
+      "status" to "completed",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-03T10:00:00Z",
+      "first_started_at" to "2026-06-03T10:00:00Z",
+      "finished_at" to "2026-06-03T10:01:00Z",
+      "duration_millis" to 60000,
+      "resolved_agent_id" to "claude",
+      "output_artifact" to "{\"contract_version\":\"0.1\"}",
+    ),
+    "implement" to linkedMapOf(
+      "phase_id" to "implement",
+      "status" to "running",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-03T10:01:00Z",
+      "first_started_at" to "2026-06-03T10:01:00Z",
+      "resolved_agent_id" to "claude",
+    ),
+  ),
+  "feature_task_runtime_phase_ledger" to listOf(
+    taskRuntimeLedgerEntry("start", 0, "2026-06-03T10:00:00Z", "plan"),
+    taskRuntimeLedgerEntry("complete", 1, "2026-06-03T10:01:00Z", "plan"),
+    taskRuntimeLedgerEntry("start", 2, "2026-06-03T10:01:00Z", "implement"),
+  ),
+)
+
+private fun taskRuntimeLedgerEntry(
+  action: String,
+  sequenceNumber: Int,
+  timestamp: String,
+  phaseId: String,
+): Map<String, Any?> = linkedMapOf(
+  "action" to action,
+  "sequence_number" to sequenceNumber,
+  "timestamp" to timestamp,
+  "phase_id" to phaseId,
+  "attempt_count" to 1,
+  "resolved_agent_id" to "claude",
+)
 
 private fun assertCompactUpdateAcknowledgementPayload(payload: Map<String, *>, updatedStepId: String) {
   assertEquals("ok", payload["status"])

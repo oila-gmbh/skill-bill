@@ -775,13 +775,13 @@ internal class GoalRunnerLaunchReconciler(
     state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId
       ?.takeIf(String::isNotBlank)
       ?.let { workflowId ->
-        outcomeStore.terminalOutcome(
+        // Lets the store recover a dropped commit SHA from measured HEAD instead of blocking the subtask.
+        outcomeStore.recoverAndPersistTerminalOutcome(
           workflowId = workflowId,
           issueKey = state.manifest.issueKey,
           subtaskId = subtaskId,
-          dbPathOverride = request.dbPathOverride,
-          // Lets the store recover a dropped commit SHA from measured HEAD instead of blocking the subtask.
           repoRoot = request.repoRoot,
+          dbPathOverride = request.dbPathOverride,
         )
       }
 

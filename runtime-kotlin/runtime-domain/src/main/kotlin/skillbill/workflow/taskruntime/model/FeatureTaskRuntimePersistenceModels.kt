@@ -25,20 +25,30 @@ const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
  */
 const val FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY: String = "feature_task_runtime_phase_briefings"
 
+/** Terminal status persisted on a phase record that the runtime blocked on. */
+const val FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED: String = "blocked"
+
 /**
  * Durable per-phase record: one entry per phase id holding its latest persisted state.
  * `finishedAt`/`durationMillis`/`outputArtifact` are nullable because a phase may be
  * persisted while still running; a finished phase carries all three.
+ *
+ * `startedAt` is re-minted on every running transition so `durationMillis` measures only
+ * the current run, never spanning the resume gap; `firstStartedAt` preserves the original
+ * first-started timestamp across resumes. A phase the runtime blocked on persists a
+ * terminal `blocked` status with [blockedReason] so blocked-ness survives ledger pruning.
  */
 data class FeatureTaskRuntimePhaseRecord(
   val phaseId: String,
   val status: String,
   val attemptCount: Int,
   val startedAt: String,
+  val firstStartedAt: String = startedAt,
   val finishedAt: String? = null,
   val durationMillis: Long? = null,
   val resolvedAgentId: String,
   val outputArtifact: String? = null,
+  val blockedReason: String? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -47,6 +57,7 @@ data class FeatureTaskRuntimePhaseRecord(
       "FeatureTaskRuntimePhaseRecord.attemptCount must be >= 1, was $attemptCount."
     }
     require(startedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.startedAt must be non-blank." }
+    require(firstStartedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.firstStartedAt must be non-blank." }
     require(resolvedAgentId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.resolvedAgentId must be non-blank." }
     durationMillis?.let { duration ->
       require(duration >= 0) { "FeatureTaskRuntimePhaseRecord.durationMillis must be non-negative, was $duration." }
@@ -59,26 +70,34 @@ data class FeatureTaskRuntimePhaseRecord(
     "status" to status,
     "attempt_count" to attemptCount,
     "started_at" to startedAt,
+    "first_started_at" to firstStartedAt,
     "resolved_agent_id" to resolvedAgentId,
   ).apply {
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
+    blockedReason?.let { put("blocked_reason", it) }
   }
 
   companion object {
     /** Strict decode; loud-fails on any missing or malformed required field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord = FeatureTaskRuntimePhaseRecord(
-      phaseId = raw.requireStringField("phase_id"),
-      status = raw.requireStringField("status"),
-      attemptCount = raw.requireIntField("attempt_count"),
-      startedAt = raw.requireStringField("started_at"),
-      finishedAt = raw.optionalStringField("finished_at"),
-      durationMillis = raw.optionalLongField("duration_millis"),
-      resolvedAgentId = raw.requireStringField("resolved_agent_id"),
-      outputArtifact = raw.optionalStringField("output_artifact"),
-    )
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
+      val startedAt = raw.requireStringField("started_at")
+      return FeatureTaskRuntimePhaseRecord(
+        phaseId = raw.requireStringField("phase_id"),
+        status = raw.requireStringField("status"),
+        attemptCount = raw.requireIntField("attempt_count"),
+        startedAt = startedAt,
+        // Records written before first_started_at existed fall back to started_at.
+        firstStartedAt = raw.optionalStringField("first_started_at") ?: startedAt,
+        finishedAt = raw.optionalStringField("finished_at"),
+        durationMillis = raw.optionalLongField("duration_millis"),
+        resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+        outputArtifact = raw.optionalStringField("output_artifact"),
+        blockedReason = raw.optionalStringField("blocked_reason"),
+      )
+    }
   }
 }
 

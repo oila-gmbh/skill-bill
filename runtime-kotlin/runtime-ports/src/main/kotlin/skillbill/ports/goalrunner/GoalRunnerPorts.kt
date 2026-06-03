@@ -26,23 +26,41 @@ interface GoalRunnerManifestStore {
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 }
 
-interface GoalRunnerWorkflowOutcomeStore {
+// Terminal-outcome resolution split into a strictly read-only query and an explicit
+// recover-and-persist command (CQS): the query never measures git or mutates state, so
+// status/reconciliation read paths stay side-effect-free; the command is the self-heal path.
+interface GoalRunnerTerminalOutcomeStore {
+  // Strictly read-only terminal-outcome query: resolves the outcome from durable
+  // artifacts only and never measures git or mutates state. Use this from status /
+  // reconciliation read paths.
+  fun terminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    dbPathOverride: String? = null,
+  ): GoalRunnerStoredOutcome?
+
+  // Command variant of the terminal-outcome resolution: when an agent completed
+  // commit_push under suppress_pr but dropped the commit SHA, this recovers it from
+  // measured HEAD at [repoRoot] and durably backfills the measured completion so
+  // status, reconciliation, and the subtask handoff all agree afterward. Self-heal
+  // path only; pure readers must use [terminalOutcome] instead.
+  fun recoverAndPersistTerminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    repoRoot: Path,
+    dbPathOverride: String? = null,
+  ): GoalRunnerStoredOutcome?
+}
+
+interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
   fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String> = emptySet(),
     allowInactiveReconciliation: Boolean = true,
     dbPathOverride: String? = null,
   ): Map<Int, GoalRunnerStoredOutcome>
-
-  fun terminalOutcome(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    dbPathOverride: String? = null,
-    // When non-null, a missing commit SHA may be resolved from measured HEAD.
-    // Read-only callers pass null to keep their no-mutation contract.
-    repoRoot: Path? = null,
-  ): GoalRunnerStoredOutcome?
 
   fun markBlocked(
     workflowId: String,

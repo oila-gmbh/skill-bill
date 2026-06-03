@@ -27,7 +27,7 @@
     "workflow_status": "running",
     "current_step_id": "implement",
     "updated_step_ids": ["implement"],
-    "updated_artifact_keys": ["feature_task_runtime_phase_records"],
+    "updated_artifact_keys": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "read_only_full_state_guidance": "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, including steps and the complete durable artifacts map.",
     "read_only_full_state_command": "skill-bill --db '<DB_PATH>' workflow show '<WORKFLOW_ID>' --format json",
     "db_path": "<DB_PATH>"
@@ -77,7 +77,34 @@
       {"step_id": "audit", "status": "pending", "attempt_count": 0},
       {"step_id": "validate", "status": "pending", "attempt_count": 0}
     ],
-    "artifacts": {"feature_task_runtime_phase_records": {}},
+    "artifacts": {
+      "feature_task_runtime_phase_records": {
+        "plan": {
+          "phase_id": "plan",
+          "status": "completed",
+          "attempt_count": 1,
+          "started_at": "2026-06-03T10:00:00Z",
+          "first_started_at": "2026-06-03T10:00:00Z",
+          "finished_at": "2026-06-03T10:01:00Z",
+          "duration_millis": 60000,
+          "resolved_agent_id": "claude",
+          "output_artifact": "{\"contract_version\":\"0.1\"}"
+        },
+        "implement": {
+          "phase_id": "implement",
+          "status": "running",
+          "attempt_count": 1,
+          "started_at": "2026-06-03T10:01:00Z",
+          "first_started_at": "2026-06-03T10:01:00Z",
+          "resolved_agent_id": "claude"
+        }
+      },
+      "feature_task_runtime_phase_ledger": [
+        {"action": "start", "sequence_number": 0, "timestamp": "2026-06-03T10:00:00Z", "phase_id": "plan", "attempt_count": 1, "resolved_agent_id": "claude"},
+        {"action": "complete", "sequence_number": 1, "timestamp": "2026-06-03T10:01:00Z", "phase_id": "plan", "attempt_count": 1, "resolved_agent_id": "claude"},
+        {"action": "start", "sequence_number": 2, "timestamp": "2026-06-03T10:01:00Z", "phase_id": "implement", "attempt_count": 1, "resolved_agent_id": "claude"}
+      ]
+    },
     "started_at": "<STARTED_AT>",
     "updated_at": "<UPDATED_AT>",
     "finished_at": "",
@@ -98,14 +125,41 @@
       {"step_id": "audit", "status": "pending", "attempt_count": 0},
       {"step_id": "validate", "status": "pending", "attempt_count": 0}
     ],
-    "artifacts": {"feature_task_runtime_phase_records": {}},
+    "artifacts": {
+      "feature_task_runtime_phase_records": {
+        "plan": {
+          "phase_id": "plan",
+          "status": "completed",
+          "attempt_count": 1,
+          "started_at": "2026-06-03T10:00:00Z",
+          "first_started_at": "2026-06-03T10:00:00Z",
+          "finished_at": "2026-06-03T10:01:00Z",
+          "duration_millis": 60000,
+          "resolved_agent_id": "claude",
+          "output_artifact": "{\"contract_version\":\"0.1\"}"
+        },
+        "implement": {
+          "phase_id": "implement",
+          "status": "running",
+          "attempt_count": 1,
+          "started_at": "2026-06-03T10:01:00Z",
+          "first_started_at": "2026-06-03T10:01:00Z",
+          "resolved_agent_id": "claude"
+        }
+      },
+      "feature_task_runtime_phase_ledger": [
+        {"action": "start", "sequence_number": 0, "timestamp": "2026-06-03T10:00:00Z", "phase_id": "plan", "attempt_count": 1, "resolved_agent_id": "claude"},
+        {"action": "complete", "sequence_number": 1, "timestamp": "2026-06-03T10:01:00Z", "phase_id": "plan", "attempt_count": 1, "resolved_agent_id": "claude"},
+        {"action": "start", "sequence_number": 2, "timestamp": "2026-06-03T10:01:00Z", "phase_id": "implement", "attempt_count": 1, "resolved_agent_id": "claude"}
+      ]
+    },
     "started_at": "<STARTED_AT>",
     "updated_at": "<UPDATED_AT>",
     "finished_at": "",
     "resume_mode": "resume",
     "resume_step_id": "implement",
     "last_completed_step_id": "",
-    "available_artifacts": ["feature_task_runtime_phase_records"],
+    "available_artifacts": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "required_artifacts": ["plan"],
     "missing_artifacts": ["plan"],
     "can_resume": false,
@@ -127,17 +181,17 @@
     "continue_step_directive": "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
     "reference_sections": [],
     "required_artifact_keys": ["plan"],
-    "available_artifact_keys": ["feature_task_runtime_phase_records"],
+    "available_artifact_keys": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "missing_artifact_keys": ["plan"],
     "required_artifacts": ["plan"],
-    "available_artifacts": ["feature_task_runtime_phase_records"],
+    "available_artifacts": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "missing_artifacts": ["plan"],
     "current_step_artifacts": [
       {"key": "plan", "present": false, "inline": false, "size_bytes": null, "value": null, "preview": null, "truncated": false, "omitted": true, "omission_reason": "missing_required_artifact"}
     ],
-    "omitted_artifact_keys": ["feature_task_runtime_phase_records"],
-    "continuation_brief": "Resume `feature-task-runtime` workflow `<WORKFLOW_ID>` from `Phase 2: Implement` (`implement`). Follow the normal step instructions in `skills/bill-feature-task-runtime/content.md`. Use `current_step_artifacts` in this compact payload (plan) as authoritative current-step context instead of reconstructing prior context from chat history. Omitted artifact keys (feature_task_runtime_phase_records) require read-only inspection with `workflow show` when needed. Workflow activation status: `blocked`. Next action: Resume implementation from the latest plan output, then persist the validated output.",
-    "continuation_entry_prompt": "Use `feature-task-runtime` in continuation mode.\nWorkflow id: <WORKFLOW_ID>\nSession id: ftr-20260603-mcp\nContinue status: blocked\nResume step: implement (Phase 2: Implement)\nCurrent-step artifacts: plan\nOmitted artifact keys: feature_task_runtime_phase_records\nSpec summary: (none saved)\nReference sections: normal step instructions only\nRules: do not rerun completed steps unless the workflow sends work backwards; treat `current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed.\nWorkflow update rule: every step_updates item must include step_id, status, and integer attempt_count; use attempt_count 2 for `implement` unless a later retry increments it.\nKeep the same workflow_id and session_id, then continue `feature-task-runtime`.\nStep directive: Resume the workflow from the recovered current step using the persisted artifacts as authoritative context.\nImmediate next action: Resume implementation from the latest plan output, then persist the validated output.",
+    "omitted_artifact_keys": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
+    "continuation_brief": "Resume `feature-task-runtime` workflow `<WORKFLOW_ID>` from `Phase 2: Implement` (`implement`). Follow the normal step instructions in `skills/bill-feature-task-runtime/content.md`. Use `current_step_artifacts` in this compact payload (plan) as authoritative current-step context instead of reconstructing prior context from chat history. Omitted artifact keys (feature_task_runtime_phase_ledger, feature_task_runtime_phase_records) require read-only inspection with `workflow show` when needed. Workflow activation status: `blocked`. Next action: Resume implementation from the latest plan output, then persist the validated output.",
+    "continuation_entry_prompt": "Use `feature-task-runtime` in continuation mode.\nWorkflow id: <WORKFLOW_ID>\nSession id: ftr-20260603-mcp\nContinue status: blocked\nResume step: implement (Phase 2: Implement)\nCurrent-step artifacts: plan\nOmitted artifact keys: feature_task_runtime_phase_ledger, feature_task_runtime_phase_records\nSpec summary: (none saved)\nReference sections: normal step instructions only\nRules: do not rerun completed steps unless the workflow sends work backwards; treat `current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed.\nWorkflow update rule: every step_updates item must include step_id, status, and integer attempt_count; use attempt_count 2 for `implement` unless a later retry increments it.\nKeep the same workflow_id and session_id, then continue `feature-task-runtime`.\nStep directive: Resume the workflow from the recovered current step using the persisted artifacts as authoritative context.\nImmediate next action: Resume implementation from the latest plan output, then persist the validated output.",
     "read_only_full_state_guidance": "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
     "read_only_full_state_command": "skill-bill --db '<DB_PATH>' workflow show '<WORKFLOW_ID>' --format json",
     "db_path": "<DB_PATH>",

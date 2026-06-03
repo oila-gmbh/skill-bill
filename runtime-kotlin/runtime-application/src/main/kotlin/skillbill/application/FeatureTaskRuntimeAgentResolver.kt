@@ -7,21 +7,21 @@ import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
  * Pure per-phase agent resolver. The run-wide override is independent and wins at the launch
  * seam; the invoked side resolves in order:
  *
- *   per-phase map entry -> invoked agent id -> `SKILL_BILL_AGENT` env -> invoking agent (default)
+ *   per-phase map entry -> invoking agent id (always-present default)
  *
- * The default is the invoking agent id; there is no hardcoded fallback.
+ * The invoking agent id is already resolved upstream (its own `--agent` / `SKILL_BILL_AGENT` /
+ * detected-context / default order is applied at the CLI boundary) and is required non-blank
+ * here, so it is the always-present default; there is no separate env layer below it.
  */
 object FeatureTaskRuntimeAgentResolver {
   /**
-   * Resolves the effective agent for [phaseId]. [invokedAgentId] is the run's already-resolved
-   * invoking agent (must be non-blank); [environment] supplies the optional `SKILL_BILL_AGENT`
-   * fallback consulted only when neither a per-phase entry nor the invoked agent is usable.
+   * Resolves the effective agent for [phaseId]. A non-blank per-phase map entry wins; otherwise
+   * the [invokedAgentId] (the run's already-resolved invoking agent, required non-blank) is used.
    */
   fun resolve(
     phaseId: String,
     assignment: FeatureTaskRuntimeAgentAssignment,
     invokedAgentId: String,
-    environment: Map<String, String> = emptyMap(),
   ): FeatureTaskRuntimeResolvedPhaseAgent {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimeAgentResolver.resolve requires a non-blank phaseId." }
     require(invokedAgentId.isNotBlank()) {
@@ -29,8 +29,6 @@ object FeatureTaskRuntimeAgentResolver {
         "documented default and must always be present (no hardcoded codex fallback)."
     }
     val resolvedInvoked = assignment.perPhaseAgentIds[phaseId]?.takeIf(String::isNotBlank)
-      ?: invokedAgentId.takeIf(String::isNotBlank)
-      ?: environment[SKILL_BILL_AGENT_ENV]?.takeIf(String::isNotBlank)
       ?: invokedAgentId
     return FeatureTaskRuntimeResolvedPhaseAgent(
       phaseId = phaseId,
@@ -38,6 +36,4 @@ object FeatureTaskRuntimeAgentResolver {
       configuredAgentOverrideId = assignment.override?.takeIf(String::isNotBlank),
     )
   }
-
-  private const val SKILL_BILL_AGENT_ENV = "SKILL_BILL_AGENT"
 }

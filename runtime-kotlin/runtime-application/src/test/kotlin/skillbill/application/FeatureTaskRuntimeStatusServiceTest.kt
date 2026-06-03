@@ -96,6 +96,26 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals("running", projection.phases.single { it.phaseId == "implement" }.status)
   }
 
+  @Test
+  fun `phase with a durable blocked record is reported blocked even when the ledger has no blocked entry`() {
+    // F-002: blocked-ness derives primarily from the durable per-phase record, so it survives even
+    // when the append-only ledger's BLOCKED entry has been pruned by the retention cap.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("plan", attemptCount = 1)
+    harness.recordBlocked("implement", attemptCount = 3, "fix loop exhausted")
+    // Ledger carries only a START (the BLOCKED entry was pruned away); the durable record stands.
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(1, projection.blockedCount)
+    assertEquals("blocked", projection.phases.single { it.phaseId == "implement" }.status)
+    assertEquals("implement", projection.currentPhaseId)
+  }
+
   private fun statusHarness(): StatusHarness {
     val repository = StatusInMemoryWorkflowRepository()
     val database = StatusFakeDatabaseSessionFactory(repository)
@@ -128,6 +148,19 @@ class FeatureTaskRuntimeStatusServiceTest {
         resolvedAgentId = "claude",
         finished = true,
         outputArtifact = """{"contract_version":"0.1"}""",
+      ),
+    )
+
+    fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String) = recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = phaseId,
+        status = "blocked",
+        attemptCount = attemptCount,
+        resolvedAgentId = "claude",
+        finished = false,
+        outputArtifact = null,
+        blockedReason = blockedReason,
       ),
     )
 

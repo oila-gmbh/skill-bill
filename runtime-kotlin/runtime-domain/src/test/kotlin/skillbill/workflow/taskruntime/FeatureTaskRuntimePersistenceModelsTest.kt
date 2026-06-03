@@ -45,6 +45,37 @@ class FeatureTaskRuntimePersistenceModelsTest {
   }
 
   @Test
+  fun `blocked per-phase record round trips with blocked reason and distinct first started at`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "review",
+      status = "blocked",
+      attemptCount = 3,
+      startedAt = "2026-06-02T10:10:00Z",
+      firstStartedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-review-1",
+      blockedReason = "exhausted the bounded fix loop",
+    )
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap())
+    assertEquals(record, decoded)
+    assertEquals("2026-06-02T10:00:00Z", decoded.firstStartedAt)
+    assertEquals("exhausted the bounded fix loop", decoded.blockedReason)
+  }
+
+  @Test
+  fun `per-phase record decode falls back first started at to started at when absent`() {
+    val legacy = mapOf(
+      "phase_id" to "plan",
+      "status" to "running",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-02T10:00:00Z",
+      "resolved_agent_id" to "agent-plan-1",
+    )
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(legacy)
+    assertEquals("2026-06-02T10:00:00Z", decoded.firstStartedAt)
+    assertNull(decoded.blockedReason)
+  }
+
+  @Test
   fun `per-phase record decode loud-fails on missing required field`() {
     val malformed = mapOf(
       "phase_id" to "plan",

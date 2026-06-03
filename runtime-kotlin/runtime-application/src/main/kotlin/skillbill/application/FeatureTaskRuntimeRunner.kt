@@ -73,17 +73,33 @@ class FeatureTaskRuntimeRunner(
         phaseId = phaseId,
         assignment = request.agentAssignment,
         invokedAgentId = request.invokedAgentId,
-        environment = request.environment,
       ),
       request = request,
     )
-    missingUpstream(run.declaration, state.outputs())?.let { missing ->
-      val reason = "Phase '$phaseId' requires upstream output(s) ${missing.joinToString()} that are not " +
-        "present; the runtime blocks rather than launching the phase blind."
-      observability.blocked(phaseId, run.resolvedAgent.resolvedAgentId, attemptCount = 1, reason)
-      return PhaseOutcome.blocked(reason)
+    // Pre-launch blocks: a phase already durably blocked on a prior run (the record survives ledger
+    // pruning, so the budget is never silently reset), or a missing required upstream (never launch
+    // blind). Both resolve to a single block here so the agent is not relaunched.
+    return preLaunchBlock(run, state, observability) ?: runPhaseAttempts(run, state, observability)
+  }
+
+  // Returns a blocked outcome when the phase must block before launching, else null. A persisted
+  // blocked record re-blocks at the resumed iteration; a missing upstream blocks at attempt 1.
+  private fun preLaunchBlock(
+    run: PhaseRun,
+    state: RunState,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome? {
+    val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
+      val reason = persistedReason.ifBlank {
+        "Phase '${run.phaseId}' is durably blocked from a prior run; the runtime re-blocks rather than relaunching."
+      }
+      state.nextIteration(run.phaseId) to reason
     }
-    return runPhaseAttempts(run, state, observability)
+    val missing = persisted ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+      1 to "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
+        "present; the runtime blocks rather than launching the phase blind."
+    }
+    return missing?.let { (attemptCount, reason) -> blockAndPersist(run, attemptCount, reason, observability) }
   }
 
   private fun runPhaseAttempts(
@@ -93,20 +109,52 @@ class FeatureTaskRuntimeRunner(
   ): PhaseOutcome {
     val agentId = run.resolvedAgent.resolvedAgentId
     var iteration = state.nextIteration(run.phaseId)
-    observability.started(run.phaseId, agentId, iteration, iteration == 1 && state.hasPriorRecord(run.phaseId))
-    while (true) {
-      attemptOnce(run, state, iteration, observability)?.let { return it }
-      when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration)) {
-        is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-          iteration = decision.nextIteration
-          observability.fixLoopIteration(run.phaseId, agentId, decision.nextIteration, decision.fixLoopIteration)
-        }
-        is FeatureTaskRuntimeFixLoopDecision.Block -> {
-          observability.blocked(run.phaseId, agentId, iteration, decision.blockedReason)
-          return PhaseOutcome.blocked(decision.blockedReason)
-        }
-      }
+    // The resumed iteration may already exceed the bounded budget (e.g. a fix-loop phase that
+    // burned the cap on a prior run with no valid artifact). Block before launching rather than
+    // relaunching the agent and bypassing the budget across resumes/crashes.
+    FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(run.phaseId, iteration)?.let { reason ->
+      return blockAndPersist(run, iteration, reason, observability)
     }
+    observability.started(run.phaseId, agentId, iteration, iteration > 1 || state.hasPriorRecord(run.phaseId))
+    var outcome: PhaseOutcome? = null
+    while (outcome == null) {
+      outcome = attemptOnce(run, state, iteration, observability)
+        ?: when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration)) {
+          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+            iteration = decision.nextIteration
+            observability.fixLoopIteration(run.phaseId, agentId, decision.nextIteration, decision.fixLoopIteration)
+            null
+          }
+          is FeatureTaskRuntimeFixLoopDecision.Block ->
+            blockAndPersist(run, iteration, decision.blockedReason, observability)
+        }
+    }
+    return outcome
+  }
+
+  // Persists a durable terminal blocked per-phase record (so blocked-ness survives ledger
+  // pruning), emits the blocked observability/ledger event, and returns the blocked outcome.
+  private fun blockAndPersist(
+    run: PhaseRun,
+    attemptCount: Int,
+    reason: String,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome {
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = run.request.workflowId,
+        phaseId = run.phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = attemptCount.coerceAtLeast(1),
+        resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+        finished = false,
+        outputArtifact = null,
+        blockedReason = reason,
+      ),
+      run.request.dbPathOverride,
+    )
+    observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
+    return PhaseOutcome.blocked(reason)
   }
 
   // Returns null only on schema-invalid output (caller consults the fix-loop policy). An
@@ -118,12 +166,10 @@ class FeatureTaskRuntimeRunner(
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome? {
-    val agentId = run.resolvedAgent.resolvedAgentId
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
     val launch = launchAndCapture(run, state)
     launch.infraFailureReason?.let { reason ->
-      observability.blocked(run.phaseId, agentId, iteration, reason)
-      return PhaseOutcome.blocked(reason)
+      return blockAndPersist(run, iteration, reason, observability)
     }
     return completedOutcomeOrNull(run, iteration, requireNotNull(launch.capturedStdout), observability)
   }
@@ -134,7 +180,10 @@ class FeatureTaskRuntimeRunner(
     outputText: String,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome? {
-    if (!validates(run.phaseId, outputText)) {
+    // Schema-invalid output returns null so the caller consults the fix-loop policy.
+    try {
+      outputValidator.validatePhaseOutputText(outputText, sourceLabel = run.phaseId)
+    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
       return null
     }
     persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
@@ -191,23 +240,6 @@ class FeatureTaskRuntimeRunner(
       ?: LaunchResult.captured(outcome.stdout)
   }
 
-  private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
-    facts.spawnFailed ->
-      "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
-    facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
-    facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
-    facts.exitStatus != null && facts.exitStatus != 0 ->
-      "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
-    else -> null
-  }
-
-  private fun validates(phaseId: String, outputText: String): Boolean = try {
-    outputValidator.validatePhaseOutputText(outputText, sourceLabel = phaseId)
-    true
-  } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    false
-  }
-
   private data class PhaseRun(
     val phaseId: String,
     val declaration: FeatureTaskRuntimePhaseDeclaration,
@@ -244,7 +276,9 @@ class FeatureTaskRuntimeRunner(
 
   // `completed` is derived from record status while `outputs` carries only records with a
   // validated artifact, so a complete-but-output-less upstream is absent from the handoff and
-  // triggers a loud missing-upstream block instead of a blind launch. Single-threaded.
+  // triggers a loud missing-upstream block instead of a blind launch. The loaded per-phase
+  // records (not just outputs) are retained so the bounded fix loop resumes from the durable
+  // attempt count rather than resetting to iteration 1 on resume/crash. Single-threaded.
   private class RunState(initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>) {
     private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
       initialRecords.values.mapNotNull(::recordToOutput).toMutableList()
@@ -252,14 +286,33 @@ class FeatureTaskRuntimeRunner(
       initialRecords.values.filter { it.status == STATUS_COMPLETED }.map { it.phaseId }.toMutableSet()
     private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
 
+    // Durable per-phase attempt count from the loaded record (0 when no record exists).
+    private val persistedAttemptCounts: Map<String, Int> =
+      initialRecords.mapValues { (_, record) -> record.attemptCount }
+
+    // Phases already persisted with a durable terminal blocked record.
+    private val blockedRecords: Map<String, String> = initialRecords
+      .filterValues { it.status == STATUS_BLOCKED }
+      .mapValues { (_, record) -> record.blockedReason.orEmpty() }
+
     fun outputs(): List<FeatureTaskRuntimePhaseOutput> = outputs.toList()
 
     fun isComplete(phaseId: String): Boolean = phaseId in completed
 
     fun hasPriorRecord(phaseId: String): Boolean = phaseId in priorRecords
 
-    fun nextIteration(phaseId: String): Int =
-      (outputs.filter { it.phaseId == phaseId }.maxOfOrNull { it.iteration } ?: 0) + 1
+    // The durable per-phase record's blocked reason, when the phase already exhausted its
+    // budget on a prior run, so resume re-blocks immediately instead of relaunching the agent.
+    fun persistedBlockedReason(phaseId: String): String? = blockedRecords[phaseId]
+
+    // Resume the bounded fix loop from durable state: the next attempt is one past the greater
+    // of the persisted record's attempt count and the latest validated output iteration. A phase
+    // that already burned N attempts resumes at attempt N+1; the budget is never reset by resume.
+    fun nextIteration(phaseId: String): Int {
+      val latestOutputIteration = outputs.filter { it.phaseId == phaseId }.maxOfOrNull { it.iteration } ?: 0
+      val persistedAttempts = persistedAttemptCounts[phaseId] ?: 0
+      return maxOf(persistedAttempts, latestOutputIteration) + 1
+    }
 
     fun recordCompleted(output: FeatureTaskRuntimePhaseOutput) {
       outputs += output
@@ -274,7 +327,18 @@ class FeatureTaskRuntimeRunner(
   private companion object {
     const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
+    const val STATUS_BLOCKED = "blocked"
   }
+}
+
+private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
+  facts.spawnFailed ->
+    "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
+  facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
+  facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
+  facts.exitStatus != null && facts.exitStatus != 0 ->
+    "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
+  else -> null
 }
 
 private fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =

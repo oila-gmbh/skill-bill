@@ -1299,7 +1299,14 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     subtaskId: Int,
     dbPathOverride: String?,
-    repoRoot: Path?,
+  ): GoalRunnerStoredOutcome? = outcomes[workflowId]
+
+  override fun recoverAndPersistTerminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    repoRoot: Path,
+    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = outcomes[workflowId]
 
   override fun markBlocked(

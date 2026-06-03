@@ -17,6 +17,8 @@ import skillbill.application.FeatureTaskRuntimeStatusService
 import skillbill.application.WorkflowService
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
+import skillbill.application.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
@@ -189,26 +191,23 @@ class FeatureTaskRuntimeResumeCommand(
   }
 }
 
-private fun runtimeRunEventSink(
-  state: CliRunState,
-  monitor: Boolean,
-): skillbill.application.model.FeatureTaskRuntimeRunEventSink = if (!monitor) {
-  skillbill.application.model.FeatureTaskRuntimeRunEventSink.NONE
+private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {
+  FeatureTaskRuntimeRunEventSink.NONE
 } else {
-  skillbill.application.model.FeatureTaskRuntimeRunEventSink { event ->
+  FeatureTaskRuntimeRunEventSink { event ->
     state.liveStdout(event.runtimeProgressLine())
   }
 }
 
-private fun skillbill.application.model.FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
-  is skillbill.application.model.FeatureTaskRuntimeRunEvent.PhaseStarted ->
+private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
+  is FeatureTaskRuntimeRunEvent.PhaseStarted ->
     "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
       "agent=$resolvedAgentId attempt=$attemptCount\n"
-  is skillbill.application.model.FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
+  is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
     "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
-  is skillbill.application.model.FeatureTaskRuntimeRunEvent.PhaseCompleted ->
+  is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
-  is skillbill.application.model.FeatureTaskRuntimeRunEvent.PhaseBlocked ->
+  is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
 }
 

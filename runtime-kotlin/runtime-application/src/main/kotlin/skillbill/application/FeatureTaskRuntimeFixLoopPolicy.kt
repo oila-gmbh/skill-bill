@@ -19,6 +19,20 @@ object FeatureTaskRuntimeFixLoopPolicy {
 
   fun participatesInFixLoop(phaseId: String): Boolean = phaseId in FIX_LOOP_PHASES
 
+  /**
+   * Returns a block reason when the about-to-run [iteration] (1-based) already exceeds the bounded
+   * budget, else null. Used on resume so a fix-loop phase that already burned the cap on a prior
+   * run (durable attempt count >= cap) re-blocks immediately instead of relaunching the agent and
+   * bypassing the budget across resumes/crashes. Non-fix-loop phases have no retry budget, so a
+   * single re-attempt after a crash is allowed (their schema-gate failure blocks via [decideAfterFailure]).
+   */
+  fun blockReasonIfBudgetExhausted(phaseId: String, iteration: Int): String? =
+    if (participatesInFixLoop(phaseId) && iteration > MAX_FIX_LOOP_ITERATIONS) {
+      blockedReason(phaseId, iteration - 1)
+    } else {
+      null
+    }
+
   /** Decides what to do after a phase attempt at [currentIteration] (1-based) failed its schema gate. */
   fun decideAfterFailure(phaseId: String, currentIteration: Int): FeatureTaskRuntimeFixLoopDecision {
     require(currentIteration >= 1) { "currentIteration must be >= 1, was $currentIteration." }

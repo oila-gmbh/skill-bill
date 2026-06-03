@@ -25,10 +25,13 @@ class FeatureTaskRuntimeStatusService(
    */
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
-    // A block is recorded only in the ledger, never in a per-phase record, so blocked-ness is
-    // derived here to tell a blocked phase from one merely in-flight.
+    // Blocked-ness is derived primarily from the DURABLE per-phase records (a blocked phase
+    // persists a terminal `blocked` record that survives ledger pruning); the append-only ledger
+    // is supplementary detail only. A later non-blocked ledger entry from a resumed run can still
+    // supersede a stale block, but a durable blocked record on a phase always reports blocked.
     val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
-    val blockedPhaseIds = blockedPhaseIds(ledger)
+    val durableBlockedPhaseIds = records.filterValues { it.status == STATUS_BLOCKED }.keys
+    val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
     val phases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
       records[phaseId].toPhaseStatus(phaseId, blocked = phaseId in blockedPhaseIds)
     }
@@ -42,10 +45,15 @@ class FeatureTaskRuntimeStatusService(
     )
   }
 
-  // A phase is blocked when its newest ledger entry is BLOCKED; a later entry from a resumed
-  // run supersedes the block.
-  private fun blockedPhaseIds(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>): Set<String> = ledger
+  // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
+  // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run
+  // supersedes the block. Phases with a durable blocked record are excluded (already authoritative).
+  private fun ledgerBlockedPhaseIds(
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+    durableBlockedPhaseIds: Set<String>,
+  ): Set<String> = ledger
     .groupBy { it.phaseId }
+    .filterKeys { it !in durableBlockedPhaseIds }
     .filterValues { entries ->
       entries.maxByOrNull { it.sequenceNumber }?.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
     }

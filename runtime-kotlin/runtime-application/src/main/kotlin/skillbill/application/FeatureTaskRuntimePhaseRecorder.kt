@@ -13,10 +13,12 @@ import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.time.Duration
@@ -35,9 +37,14 @@ class FeatureTaskRuntimePhaseRecorder(
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
   /**
-   * Persists one per-phase record. A finishing call mints `finished_at` and derives
-   * `duration_millis` from the persisted `started_at`; otherwise it mints `started_at`.
-   * Returns true when the workflow row exists and was updated.
+   * Persists one per-phase record. A `running` transition for a new attempt re-mints
+   * `started_at` so `duration_millis` measures only the current run (never spanning a
+   * resume gap), while `first_started_at` preserves the original first-started timestamp.
+   * A finishing call mints `finished_at` and derives `duration_millis` from the re-minted
+   * `started_at`. A `blocked` status persists a durable terminal record (with the blocked
+   * reason) so blocked-ness survives ledger pruning. The coarse workflow row is advanced to
+   * the active phase and the matching workflow status. Returns true when the workflow row
+   * exists and was updated.
    */
   fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
@@ -47,25 +54,45 @@ class FeatureTaskRuntimePhaseRecorder(
       val existingRecords = phaseRecordsFrom(artifacts)
       val now = Instant.now().toString()
       val previous = existingRecords[request.phaseId]
-      val startedAt = previous?.startedAt ?: now
+      val firstStartedAt = previous?.firstStartedAt ?: now
+      // Re-mint started_at on every running transition so duration measures the current run.
+      // A finishing/blocked write keeps the running attempt's started_at to time only this run.
+      val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
       val phaseRecord = FeatureTaskRuntimePhaseRecord(
         phaseId = request.phaseId,
         status = request.status,
         attemptCount = request.attemptCount,
         startedAt = startedAt,
+        firstStartedAt = firstStartedAt,
         finishedAt = if (request.finished) now else null,
         durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
         resolvedAgentId = request.resolvedAgentId,
         outputArtifact = request.outputArtifact,
+        blockedReason = request.blockedReason,
       )
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
       )
-      persistPatch(unitOfWork.workflowStates, record, patch)
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        patch,
+        currentStepId = request.phaseId,
+        workflowStatus = workflowStatusFor(request),
+      )
       true
     }
+
+  // Coarse workflow-row status mirrors the phase transition: a blocked phase blocks the
+  // row, the final phase completing completes it, every other transition keeps it running.
+  // The per-phase records map remains the detailed source of truth.
+  private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
+    request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> WORKFLOW_STATUS_BLOCKED
+    request.finished && request.phaseId == terminalPhaseId -> WORKFLOW_STATUS_COMPLETED
+    else -> WORKFLOW_STATUS_RUNNING
+  }
 
   /**
    * Persists the assembled per-phase launch briefing keyed by phase id; the latest briefing
@@ -148,10 +175,10 @@ class FeatureTaskRuntimePhaseRecorder(
     }
 
   /**
-   * Strict read of the append-only phase ledger. A block is only ever recorded as a ledger
-   * entry, never as a per-phase record, so a reader needs this to tell a blocked phase from one
-   * merely in-flight. Absent key yields an empty list; a malformed entry loud-fails. Returns
-   * null only when the workflow row is absent.
+   * Strict read of the append-only phase ledger. A block is recorded both as a durable terminal
+   * per-phase record (so blocked-ness survives ledger pruning) and as a ledger entry; this read
+   * supplies the supplementary per-attempt detail. Absent key yields an empty list; a malformed
+   * entry loud-fails. Returns null only when the workflow row is absent.
    */
   fun loadPhaseLedger(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimePhaseLedgerEntry>? =
     database.read(dbOverride) { unitOfWork ->
@@ -183,21 +210,33 @@ class FeatureTaskRuntimePhaseRecorder(
     workflowStates: WorkflowStateRepository,
     record: WorkflowStateSnapshot,
     patch: Map<String, Any?>,
+    currentStepId: String = record.currentStepId,
+    workflowStatus: String = record.workflowStatus,
   ) {
-    // Run progress lives entirely in the per-phase records map; `currentStepId` is deliberately
-    // pinned at the initial step and must not be treated as a second source of truth.
+    // The per-phase records map is the detailed source of truth; the coarse workflow row is
+    // advanced to agree with it so the generic workflow get/list/latest does not disagree with
+    // FeatureTaskRuntimeStatusService.
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       record,
       WorkflowUpdateInput(
-        workflowStatus = record.workflowStatus,
-        currentStepId = record.currentStepId,
+        workflowStatus = workflowStatus,
+        currentStepId = currentStepId,
         stepUpdates = null,
         artifactsPatch = patch,
         sessionId = record.sessionId.orEmpty(),
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+  }
+
+  private companion object {
+    const val STATUS_RUNNING = "running"
+    const val WORKFLOW_STATUS_RUNNING = "running"
+    const val WORKFLOW_STATUS_COMPLETED = "completed"
+    const val WORKFLOW_STATUS_BLOCKED = "blocked"
+    val terminalPhaseId: String =
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last()
   }
 }
 

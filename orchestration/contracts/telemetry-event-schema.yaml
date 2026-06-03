@@ -266,6 +266,11 @@ $defs:
       - failed
       - abandoned
       - blocked
+  # The phase step ids MUST mirror
+  # FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds (the same source
+  # McpToolRegistry derives the MCP update step-id enum from). The parity test
+  # `TelemetryTaskRuntimeStepIdEnumParityTest` (runtime-mcp) fails the build if
+  # this enum and that definition diverge in value or order.
   workflowTaskRuntimeStepIdEnum:
     type: string
     enum:
@@ -286,8 +291,11 @@ $defs:
         $ref: "#/$defs/workflowTaskRuntimeStepIdEnum"
       status:
         $ref: "#/$defs/workflowStepStatusEnum"
+      # Bounds mirror the workflow-state schema's shared `step.attempt_count`.
       attempt_count:
         type: integer
+        minimum: 0
+        maximum: 2147483647
 
   # ---------------------------------------------------------------------
   # Per-event branches.

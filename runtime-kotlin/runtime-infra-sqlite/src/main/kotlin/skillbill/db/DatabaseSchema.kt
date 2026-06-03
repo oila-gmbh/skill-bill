@@ -25,6 +25,7 @@ internal object DatabaseSchema {
       "idx_feedback_events_run",
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
+      "idx_feature_task_runtime_workflows_updated",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -239,7 +240,10 @@ internal object DatabaseSchema {
         workflow_id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL DEFAULT '',
         workflow_name TEXT NOT NULL DEFAULT 'feature-task-runtime',
-        contract_version TEXT NOT NULL DEFAULT '${DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION}',
+        -- No DDL default: contract_version is NOT NULL and is always written by
+        -- upsertWorkflowRow (row.contractVersion.ifBlank { defaultContractVersion }),
+        -- so the single source for the default is DbConstants, not a duplicated DDL literal.
+        contract_version TEXT NOT NULL,
         workflow_status TEXT NOT NULL DEFAULT 'pending',
         current_step_id TEXT NOT NULL DEFAULT '',
         steps_json TEXT NOT NULL DEFAULT '',
@@ -248,6 +252,10 @@ internal object DatabaseSchema {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         finished_at TEXT
       )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_feature_task_runtime_workflows_updated
+        ON feature_task_runtime_workflows(updated_at DESC)
       """.trimIndent(),
     )
 }

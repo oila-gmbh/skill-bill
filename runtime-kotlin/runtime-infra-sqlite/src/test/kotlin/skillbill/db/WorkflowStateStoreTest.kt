@@ -193,6 +193,36 @@ class WorkflowStateStoreTest {
   }
 
   @Test
+  fun `feature task runtime upsert preserves the original started_at across a second save`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime-started").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val initialRow =
+        workflowRow(
+          workflowId = "wftr-started",
+          sessionId = "ftr-started",
+          workflowName = "feature-task-runtime",
+          currentStepId = "plan",
+        )
+
+      store.saveFeatureTaskRuntimeWorkflow(initialRow)
+      val firstStartedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-started")).startedAt
+      assertNotNull(firstStartedAt)
+
+      // A second save of the same workflow_id (e.g. advancing the phase) must not reset
+      // started_at: the upsert leaves it immutable and only refreshes updated_at.
+      store.saveFeatureTaskRuntimeWorkflow(
+        initialRow.copy(currentStepId = "implement", startedAt = "2099-01-01 00:00:00"),
+      )
+
+      val resaved = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-started"))
+      assertEquals(firstStartedAt, resaved.startedAt)
+      assertEquals("implement", resaved.currentStepId)
+    }
+  }
+
+  @Test
   fun `feature task runtime workflow lists and latest use updated timestamp then rowid ordering`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime-list").resolve("metrics.db")
 

@@ -33,6 +33,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeRunnerTest {
@@ -189,15 +190,23 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `invoked agent wins over env and there is no hardcoded codex default`() {
+  fun `invoked agent is the always-present default and there is no hardcoded codex default`() {
+    // The resolver order is per-phase entry -> invoking agent id; env is applied upstream at the
+    // CLI boundary, not here, so an absent per-phase entry falls back to the invoked agent only.
     val resolved = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = "plan",
       assignment = FeatureTaskRuntimeAgentAssignment(),
       invokedAgentId = INVOKED_AGENT,
-      environment = mapOf("SKILL_BILL_AGENT" to "junie"),
     )
     assertEquals(INVOKED_AGENT, resolved.invokedAgentId)
     assertEquals(INVOKED_AGENT, resolved.resolvedAgentId)
+
+    val perPhase = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = "review",
+      assignment = FeatureTaskRuntimeAgentAssignment(perPhaseAgentIds = mapOf("review" to "claude")),
+      invokedAgentId = INVOKED_AGENT,
+    )
+    assertEquals("claude", perPhase.resolvedAgentId)
   }
 
   @Test
@@ -219,6 +228,119 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(PLAN_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["plan"])
     assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["implement"])
     assertEquals(VALID_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["review"])
+  }
+
+  @Test
+  fun `resume of a fix-loop phase that already burned the budget blocks without relaunching`() {
+    // F-001: review persisted as running at attemptCount=3 (the cap) with no valid artifact must
+    // re-block immediately on resume; the bounded budget is not reset by resume/crash.
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("review", "running", 3, phaseAgent("review"), outputArtifact = null)
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    // The agent must never be relaunched for the already-exhausted review phase.
+    assertTrue(harness.launchedPhaseOrder().none { it == "review" })
+    // A durable terminal blocked record is persisted (survives ledger pruning).
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("blocked", reviewRecord.status)
+    assertTrue(requireNotNull(reviewRecord.blockedReason).isNotBlank())
+  }
+
+  @Test
+  fun `resume of a fix-loop phase at attempt one resumes at iteration two`() {
+    // F-001: review persisted as running at attemptCount=1 (no valid artifact) resumes at the
+    // next attempt (iteration 2) rather than resetting to iteration 1.
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("review", "running", 1, phaseAgent("review"), outputArtifact = null)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    // Completed on the resumed attempt; attempt count is 2 (resumed from durable attempt 1).
+    assertEquals(2, reviewRecord.attemptCount)
+    assertEquals("completed", reviewRecord.status)
+  }
+
+  @Test
+  fun `resume of a phase with a durable blocked record re-blocks without relaunching`() {
+    // F-002: a phase persisted with a terminal blocked record (the durable marker that survives
+    // ledger pruning) re-blocks on resume without launching the agent again.
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedBlockedPhase("implement", attemptCount = 1, phaseAgent("implement"), "implement gate failed")
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
+  }
+
+  @Test
+  fun `blocked run persists a durable terminal blocked record alongside the ledger entry`() {
+    // F-002: blocking persists a terminal blocked per-phase record so blocked-ness survives even
+    // if the append-only ledger BLOCKED entry is later pruned by the retention cap.
+    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("implement")))
+
+    harness.runner.run(harness.request())
+
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("blocked", implementRecord.status)
+    assertTrue(requireNotNull(implementRecord.blockedReason).isNotBlank())
+    assertNull(implementRecord.finishedAt)
+  }
+
+  @Test
+  fun `a resumed running attempt re-mints started_at so duration measures only the current run`() {
+    // F-007: on resume the running transition mints a fresh started_at (and keeps first_started_at)
+    // so duration_millis times only the current run, not the resume gap.
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("plan", "running", 1, phaseAgent("plan"), outputArtifact = null)
+    val seeded = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    val originalStartedAt = seeded.startedAt
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    // started_at re-minted on the resumed running attempt; first_started_at preserves the original.
+    assertTrue(planRecord.startedAt >= originalStartedAt)
+    assertEquals(originalStartedAt, planRecord.firstStartedAt)
+  }
+
+  @Test
+  fun `run advances the coarse workflow row to the active phase and completes it on the final phase`() {
+    // F-008: the coarse workflow row tracks the run instead of pinning at the initial step, so the
+    // generic workflow get/list/latest agrees with FeatureTaskRuntimeStatusService.
+    val harness = runnerHarness()
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val row = requireNotNull(harness.repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    assertEquals("completed", row.workflowStatus)
+    assertEquals("validate", row.currentStepId)
+  }
+
+  @Test
+  fun `a blocked run advances the coarse workflow row to blocked at the blocked phase`() {
+    // F-008: a blocked run marks the row blocked at the blocked phase.
+    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("implement")))
+
+    harness.runner.run(harness.request())
+
+    val row = requireNotNull(harness.repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    assertEquals("blocked", row.workflowStatus)
+    assertEquals("implement", row.currentStepId)
   }
 
   @Test
@@ -429,6 +551,23 @@ private class RunnerHarness(
   fun seedPhase(phaseId: String, status: String, attemptCount: Int, agentId: String, outputArtifact: String?) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
+  }
+
+  // Seeds a durable terminal blocked per-phase record (the marker that survives ledger pruning).
+  fun seedBlockedPhase(phaseId: String, attemptCount: Int, agentId: String, blockedReason: String) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.recordPhaseState(
+      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = phaseId,
+        status = "blocked",
+        attemptCount = attemptCount,
+        resolvedAgentId = agentId,
+        finished = false,
+        outputArtifact = null,
+        blockedReason = blockedReason,
+      ),
+    )
   }
 
   fun request(): FeatureTaskRuntimeRunRequest = runRequest

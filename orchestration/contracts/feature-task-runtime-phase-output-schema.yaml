@@ -70,10 +70,17 @@ properties:
     type: object
     description: >
       Phase-specific structured payload forwarded to downstream phases as a
-      declared upstream output. Keys and value shapes are phase-specific by
-      contract; the envelope only guarantees the field is present.
+      declared upstream output. Value shapes are phase-specific by contract
+      (strings, arrays, nested objects all occur), so they are left open; the
+      envelope guarantees the field is present, carries at least one entry
+      (an empty `{}` blocks the run), and uses only non-empty string keys.
+    minProperties: 1
+    propertyNames:
+      type: string
+      minLength: 1
   derived_notes:
-    type:
-      - string
-      - "null"
+    description: >
+      Optional free-text note. Either absent (not set) or a non-empty string;
+      `null` is not a valid value.
+    type: string
     minLength: 1

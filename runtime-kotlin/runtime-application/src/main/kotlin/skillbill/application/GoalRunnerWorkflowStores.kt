@@ -25,6 +25,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -258,32 +259,35 @@ class WorkflowGoalRunnerOutcomeStore(
       .authoritativeOutcomesBySubtask()
   }
 
+  // Strictly read-only: resolve from durable artifacts only, never measuring git or
+  // mutating state, so status / reconciliation reads keep their no-write contract.
   override fun terminalOutcome(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerStoredOutcome? = if (repoRoot == null) {
-    // No repo root means a read-only caller (e.g. goal status): resolve from durable
-    // artifacts only, never measuring git or mutating state.
-    database.read(dbPathOverride) { unitOfWork ->
-      resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
-    }
-  } else {
-    // With a repo root, recover a dropped SHA from measured HEAD and durably persist the
-    // completion so status, reconciliation, and the subtask handoff all agree afterward.
-    database.transaction(dbPathOverride) { unitOfWork ->
-      resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
-        gitOperations.headCommitSha(repoRoot).measuredCommitSha()
-      }?.also { outcome ->
-        persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
-      }
+  ): GoalRunnerStoredOutcome? = database.read(dbPathOverride) { unitOfWork ->
+    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+  }
+
+  // Command path: recover a dropped SHA from measured HEAD and durably persist the
+  // completion so status, reconciliation, and the subtask handoff all agree afterward.
+  override fun recoverAndPersistTerminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
+    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
+      gitOperations.headCommitSha(repoRoot).measuredCommitSha()
+    }?.also { outcome ->
+      persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
     }
   }
 
   private fun resolveTerminalOutcome(
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
@@ -301,7 +305,7 @@ class WorkflowGoalRunnerOutcomeStore(
   // terminalOutcomeFor), so a workflow row stranded at a later step no longer reverts the
   // subtask to blocked. Idempotent: only backfills a measured COMPLETE not yet recorded.
   private fun persistMeasuredCompletion(
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
@@ -552,7 +556,7 @@ class WorkflowGoalRunnerOutcomeStore(
   }
 
   private fun loadContinuationCandidates(
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     issueKey: String,
   ): List<GoalContinuationCandidate> = WorkflowFamily.IMPLEMENT
     .list(workflowStates, Int.MAX_VALUE)
@@ -574,7 +578,7 @@ class WorkflowGoalRunnerOutcomeStore(
     record: WorkflowStateSnapshot,
     blockedReason: String,
     lastResumableStep: String,
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     supervisionEvent: GoalRunnerSupervisionEvent?,
   ): String {
     val steps = decodeWorkflowSteps(record.stepsJson)

@@ -34,7 +34,8 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       contract_version: "0.1"
       phase_id: "plan"
       status: "completed"
-      produced_outputs: {}
+      produced_outputs:
+        tasks: ["task-1"]
       """.trimIndent()
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(missingSummary, "plan")
@@ -49,7 +50,8 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       phase_id: "plan"
       status: "completed"
       summary: "ok"
-      produced_outputs: {}
+      produced_outputs:
+        tasks: ["task-1"]
       rogue_field: "nope"
       """.trimIndent()
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -62,6 +64,58 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val wrongVersion = wellFormed.replace("\"0.1\"", "\"9.9\"")
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wrongVersion, "plan")
+    }
+  }
+
+  @Test
+  fun `output with an empty produced_outputs object fails validation`() {
+    val emptyProducedOutputs =
+      """
+      contract_version: "0.1"
+      phase_id: "plan"
+      status: "completed"
+      summary: "ok"
+      produced_outputs: {}
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(emptyProducedOutputs, "plan")
+    }
+  }
+
+  @Test
+  fun `output with a non-empty produced_outputs object passes validation`() {
+    val populated =
+      """
+      contract_version: "0.1"
+      phase_id: "plan"
+      status: "completed"
+      summary: "ok"
+      produced_outputs:
+        tasks: ["task-1"]
+        owner: "agent"
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(populated, "plan")
+  }
+
+  @Test
+  fun `output with a non-empty derived_notes string passes validation`() {
+    val withNotes = wellFormed + "\nderived_notes: \"a useful note\""
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(withNotes, "plan")
+  }
+
+  @Test
+  fun `output with a null derived_notes fails validation`() {
+    val nullNotes = wellFormed + "\nderived_notes: null"
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(nullNotes, "plan")
+    }
+  }
+
+  @Test
+  fun `output with an empty derived_notes string fails validation`() {
+    val emptyNotes = wellFormed + "\nderived_notes: \"\""
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(emptyNotes, "plan")
     }
   }
 
