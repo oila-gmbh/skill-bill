@@ -1,0 +1,37 @@
+package skillbill.application.model
+
+/** Request for the read-only status projection of one runtime workflow. */
+data class FeatureTaskRuntimeStatusRequest(
+  val workflowId: String,
+  val dbPathOverride: String? = null,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeStatusRequest.workflowId is required." }
+  }
+}
+
+/**
+ * One ordered phase's read-only status. [resolvedAgentId] is null when no record exists yet for
+ * the phase (it has not started).
+ */
+data class FeatureTaskRuntimePhaseStatus(
+  val phaseId: String,
+  val status: String,
+  val attemptCount: Int,
+  val resolvedAgentId: String?,
+  val finished: Boolean,
+)
+
+/**
+ * The read-only status projection for one workflow. [phases] follow the definition's `stepIds`
+ * order; the counts and [currentPhaseId] are derived from them.
+ */
+data class FeatureTaskRuntimeStatusProjection(
+  val workflowId: String,
+  val phases: List<FeatureTaskRuntimePhaseStatus>,
+  val completeCount: Int,
+  val pendingCount: Int,
+  val blockedCount: Int,
+  /** First not-yet-complete phase in definition order, or null when all complete. */
+  val currentPhaseId: String?,
+)

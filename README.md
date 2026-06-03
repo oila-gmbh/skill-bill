@@ -376,6 +376,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-feature-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
+| `/bill-feature-task-runtime` | EXPERIMENTAL runtime-driven feature-task phase loop; not the default path, not auto-routed, and must not destabilize `bill-feature-task` |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |

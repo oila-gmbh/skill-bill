@@ -640,12 +640,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       val stepLabel = definition.stepLabels[resumeStepId] ?: resumeStepId
       val currentArtifacts = currentStepArtifactKeys.joinToString().ifBlank { "none" }
       val omittedArtifacts = omittedArtifactKeys.joinToString().ifBlank { "none" }
-      val instructionPath =
-        if (definition.skillName == "bill-feature-task") {
-          "`skills/bill-feature-task/content.md`"
-        } else {
-          "`skills/bill-feature-verify/content.md`"
-        }
+      val instructionPath = "`${continuationContentPath(definition.skillName)}`"
       return "Resume `${definition.skillName}` workflow `$workflowId` from `$stepLabel` (`$resumeStepId`). " +
         "Follow the normal step instructions in $instructionPath. " +
         "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
@@ -726,6 +721,9 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         "branch_name" to branchName,
       )
     }
+
+    private fun continuationContentPath(skillName: String): String =
+      CONTINUATION_CONTENT_PATHS[skillName] ?: "skills/$skillName/content.md"
 
     private fun step(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
       linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
@@ -821,3 +819,11 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
 
 private const val COMPACT_ARTIFACT_INLINE_MAX_BYTES = 4096
 private const val COMPACT_ARTIFACT_PREVIEW_CHARS = 1024
+
+// Maps a definition's skillName to its resume content.md. feature-task-runtime needs
+// an explicit entry because its shipped skill dir (bill-feature-task-runtime) differs.
+private val CONTINUATION_CONTENT_PATHS: Map<String, String> = mapOf(
+  "bill-feature-task" to "skills/bill-feature-task/content.md",
+  "bill-feature-verify" to "skills/bill-feature-verify/content.md",
+  "feature-task-runtime" to "skills/bill-feature-task-runtime/content.md",
+)

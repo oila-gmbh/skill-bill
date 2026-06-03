@@ -44,6 +44,8 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     return if (commit.ok) runGit(repoRoot, "rev-parse", "HEAD") else commit
   }
 
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "rev-parse", "HEAD")
+
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
@@ -110,14 +112,13 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     )
   }
 
-  private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult = runGit(repoRoot, args.toList())
-
-  private fun runGit(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
-    val result = runGitProcess(repoRoot, args)
+  private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult {
+    val argList = args.toList()
+    val result = runGitProcess(repoRoot, argList)
     return when {
       result.timedOut -> WorkflowGitOperationResult(
         status = "error",
-        error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+        error = "git ${argList.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
       )
       result.readFailure != null -> WorkflowGitOperationResult(
         status = "error",
@@ -126,7 +127,7 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
       result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
       else -> WorkflowGitOperationResult(
         status = "error",
-        error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
+        error = "git ${argList.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
       )
     }
   }

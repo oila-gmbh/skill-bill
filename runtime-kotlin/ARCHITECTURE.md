@@ -413,6 +413,12 @@ runtime-ports
     - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
     - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+    - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
+    - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
     - `skillbill.application.lifecycleOkPayload`
     - `skillbill.application.lifecycleSkippedPayload`
     - `skillbill.application.lifecycleErrorPayload`
@@ -501,6 +507,31 @@ skillbill.workflow
 skillbill.workflow.implement
 skillbill.workflow.verify
 ```
+
+## Feature-Task-Runtime Workflow Family (EXPERIMENTAL)
+
+- `feature-task-runtime` (SKILL-65) is an **experimental** workflow family,
+  distinct from and additive to `bill-feature-task`. The Kotlin runtime owns its
+  phase loop (`plan -> implement -> review -> audit -> validate`) and launches
+  one agent per phase, reusing the goal-runner launcher and `WorkflowEngine`
+  rather than a second orchestration loop. Its definition is
+  `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
+  (own skill/workflow name `feature-task-runtime`, id prefix `wftr`, contract
+  version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`), and its per-phase records and
+  append-only ledger live in
+  `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePersistenceModels`.
+- It is **experimental and must not destabilize or re-route `bill-feature-task`.**
+  It is not a default path and nothing auto-routes work to it; it stays opt-in
+  behind its own `skill-bill feature-task-runtime` command and the
+  `bill-feature-task-runtime` skill. `bill-feature-task`, its
+  `FeatureImplementWorkflowDefinition`, CLI, MCP tools, mappers, and tests are
+  unchanged by this family.
+- The same-spec evaluation procedure is documented in
+  [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md);
+  the authoritative promote/kill decision rule lives in the parent spec
+  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`. The
+  experiment cannot linger as permanent dual maintenance — it is promoted or
+  retired on the evidence that procedure produces.
 
 ## Runtime Contract And Schema Seams
 
@@ -791,6 +822,12 @@ Categories:
 - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
 - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+- `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
+- `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`

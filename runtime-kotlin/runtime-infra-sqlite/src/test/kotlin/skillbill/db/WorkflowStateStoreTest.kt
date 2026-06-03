@@ -1,12 +1,26 @@
 package skillbill.db
 
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class WorkflowStateStoreTest {
+  @Test
+  fun `feature task runtime table contract version default matches schema contract version const`() {
+    // Pin the table default to the validator's schema version so a future
+    // schema bump that forgets it breaks the build, not production writes.
+    assertEquals(
+      WORKFLOW_STATE_CONTRACT_VERSION,
+      DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION,
+      "FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION must equal WORKFLOW_STATE_CONTRACT_VERSION " +
+        "($WORKFLOW_STATE_CONTRACT_VERSION).",
+    )
+  }
+
   @Test
   fun `feature implement workflow rows round trip with updated json payloads`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflows").resolve("metrics.db")
@@ -143,6 +157,97 @@ class WorkflowStateStoreTest {
   }
 
   @Test
+  fun `feature task runtime workflow rows round trip with per-phase records and appended ledger`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val artifactsJson = taskRuntimeArtifactsJson
+
+      val initialRow =
+        WorkflowStateRow(
+          workflowId = "wftr-001",
+          sessionId = "ftr-001",
+          workflowName = "feature-task-runtime",
+          contractVersion = "",
+          workflowStatus = "running",
+          currentStepId = "plan",
+          stepsJson = """[{"step_id":"plan","status":"completed"}]""",
+          artifactsJson = artifactsJson,
+          startedAt = null,
+          updatedAt = null,
+          finishedAt = null,
+        )
+
+      store.saveFeatureTaskRuntimeWorkflow(initialRow)
+
+      val saved = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-001"))
+      assertEquals(DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION, saved.contractVersion)
+      assertEquals("feature-task-runtime", saved.workflowName)
+      assertEquals("plan", saved.currentStepId)
+      assertEquals(artifactsJson, saved.artifactsJson)
+
+      assertEquals(null, store.getFeatureImplementWorkflow("wftr-001"))
+      assertEquals(null, store.getFeatureVerifyWorkflow("wftr-001"))
+    }
+  }
+
+  @Test
+  fun `feature task runtime upsert preserves the original started_at across a second save`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime-started").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val initialRow =
+        workflowRow(
+          workflowId = "wftr-started",
+          sessionId = "ftr-started",
+          workflowName = "feature-task-runtime",
+          currentStepId = "plan",
+        )
+
+      store.saveFeatureTaskRuntimeWorkflow(initialRow)
+      val firstStartedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-started")).startedAt
+      assertNotNull(firstStartedAt)
+
+      // A second save of the same workflow_id (e.g. advancing the phase) must not reset
+      // started_at: the upsert leaves it immutable and only refreshes updated_at.
+      store.saveFeatureTaskRuntimeWorkflow(
+        initialRow.copy(currentStepId = "implement", startedAt = "2099-01-01 00:00:00"),
+      )
+
+      val resaved = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-started"))
+      assertEquals(firstStartedAt, resaved.startedAt)
+      assertEquals("implement", resaved.currentStepId)
+    }
+  }
+
+  @Test
+  fun `feature task runtime workflow lists and latest use updated timestamp then rowid ordering`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime-list").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+
+      listOf("wftr-001", "wftr-002", "wftr-003").forEachIndexed { index, workflowId ->
+        store.saveFeatureTaskRuntimeWorkflow(
+          workflowRow(
+            workflowId = workflowId,
+            sessionId = "ftr-00$index",
+            workflowName = "feature-task-runtime",
+            currentStepId = "plan",
+          ),
+        )
+      }
+
+      assertEquals(listOf("wftr-003", "wftr-002"), store.listFeatureTaskRuntimeWorkflows(2).map { it.workflowId })
+      assertEquals("wftr-003", store.latestFeatureTaskRuntimeWorkflow()?.workflowId)
+      assertTrue(store.listFeatureImplementWorkflows(10).isEmpty())
+      assertTrue(store.listFeatureVerifyWorkflows(10).isEmpty())
+    }
+  }
+
+  @Test
   fun `workflow session summaries preserve started payload shape`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-sessions").resolve("metrics.db")
 
@@ -164,6 +269,42 @@ class WorkflowStateStoreTest {
     }
   }
 }
+
+private val taskRuntimeArtifactsJson: String =
+  """
+  {
+    "feature_task_runtime_phase_records": {
+      "plan": {
+        "phase_id": "plan",
+        "status": "completed",
+        "attempt_count": 1,
+        "started_at": "2026-06-02T10:00:00Z",
+        "finished_at": "2026-06-02T10:01:30Z",
+        "duration_millis": 90000,
+        "resolved_agent_id": "agent-plan-1",
+        "output_artifact": "{\"contract_version\":\"0.1\",\"plan\":\"ok\"}"
+      }
+    },
+    "feature_task_runtime_phase_ledger": [
+      {
+        "action": "start",
+        "sequence_number": 0,
+        "timestamp": "2026-06-02T10:00:00Z",
+        "phase_id": "plan",
+        "attempt_count": 1,
+        "resolved_agent_id": "agent-plan-1"
+      },
+      {
+        "action": "complete",
+        "sequence_number": 1,
+        "timestamp": "2026-06-02T10:01:30Z",
+        "phase_id": "plan",
+        "attempt_count": 1,
+        "resolved_agent_id": "agent-plan-1"
+      }
+    ]
+  }
+  """.trimIndent()
 
 private fun insertFeatureImplementSession(connection: Connection) {
   connection.prepareStatement(

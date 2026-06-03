@@ -33,6 +33,14 @@ class DatabaseSchemaTest {
         DatabaseSchema.indexNames.all { it in indexes },
         "Missing indexes: ${DatabaseSchema.indexNames - indexes}",
       )
+      assertTrue(
+        "feature_task_runtime_workflows" in DatabaseSchema.tableNames,
+        "feature_task_runtime_workflows must be registered in DatabaseSchema.tableNames.",
+      )
+      assertTrue(
+        "feature_task_runtime_workflows" in tables,
+        "feature_task_runtime_workflows must be created by the base schema.",
+      )
     }
   }
 

@@ -7,6 +7,7 @@ import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.contracts.workflow.WorkflowStateSchemaPaths
 import skillbill.testing.repoRootFromTest
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
 import kotlin.test.Test
@@ -106,6 +107,17 @@ class WorkflowStateSchemaContractVersionTest {
     assertBranchStatusesMatch(branch, definition.workflowStatuses, "featureVerifyBranch")
     assertBranchCurrentStepIdsMatch(branch, definition.stepIds.toSet(), "featureVerifyBranch")
     assertBranchStepsStepIdMatch(branch, definition.stepIds.toSet(), "featureVerifyBranch")
+  }
+
+  @Test
+  fun `featureTaskRuntime branch enums match FeatureTaskRuntimePhaseWorkflowDefinition`() {
+    val schema = loadSchemaNode()
+    val branch = schema.path("\$defs").path("featureTaskRuntimeBranch")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+
+    assertBranchStatusesMatch(branch, definition.workflowStatuses, "featureTaskRuntimeBranch")
+    assertBranchCurrentStepIdsMatch(branch, definition.stepIds.toSet(), "featureTaskRuntimeBranch")
+    assertBranchStepsStepIdMatch(branch, definition.stepIds.toSet(), "featureTaskRuntimeBranch")
   }
 
   private fun loadSchemaNode(): JsonNode {

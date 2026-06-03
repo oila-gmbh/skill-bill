@@ -28,6 +28,19 @@ class DecompositionContinuationSelectorTest {
   }
 
   @Test
+  fun `select re-opens in-progress subtask that has no workflow id`() {
+    val selection = DecompositionContinuationSelector.select(
+      manifest(
+        subtask(1, status = "complete"),
+        subtask(2, status = "in_progress", dependencies = listOf(DecompositionDependency(1))),
+      ),
+    )
+
+    val started = assertIs<DecompositionContinuationSelection.Start>(selection)
+    assertEquals(2, started.subtask.id)
+  }
+
+  @Test
   fun `select starts first pending subtask whose dependencies are complete`() {
     val selection = DecompositionContinuationSelector.select(
       manifest(

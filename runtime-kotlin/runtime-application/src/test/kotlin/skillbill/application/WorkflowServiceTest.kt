@@ -31,7 +31,10 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
@@ -677,6 +680,108 @@ class WorkflowServiceTest {
         goalObservabilityEventValidator = testGoalObservabilityEventValidator,
       ),
     )
+  }
+}
+
+private object HeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOperations {
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
+}
+
+/** Kept separate from [WorkflowGoalRunnerOutcomeStoreTest] to stay under the detekt LargeClass threshold. */
+class GoalRunnerCommitShaRecoveryTest {
+  @Test
+  fun `goal runner outcome store backfills missing commit sha from measured git head`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, outcome.status)
+    assertEquals("measured-head-sha", outcome.commitSha)
+  }
+
+  @Test
+  fun `goal runner outcome store durably persists the measured completion`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+    val durable = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
+
+    requireNotNull(durable)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, durable.status)
+    assertEquals("measured-head-sha", durable.commitSha)
+  }
+
+  @Test
+  fun `goal runner outcome store stays blocked when measured git head is unavailable`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = NoopWorkflowGitOperations,
+    )
+
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, outcome.status)
+  }
+
+  @Test
+  fun `goal runner outcome store does not measure git head without a repo root`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, outcome.status)
+  }
+
+  private fun commitPushCompletedWithoutCommitSha(workflowId: String): WorkflowStateRecord {
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      workflowId,
+      "fis-no-sha",
+      "preplan",
+    )
+    val completed = testWorkflowEngine.updateRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-no-sha",
+      ),
+    )
+    return completed.toRecord()
   }
 }
 
@@ -1569,6 +1674,7 @@ internal class FakeDatabaseSessionFactory(
 internal class InMemoryWorkflowStates : WorkflowStateRepository {
   private val implement = mutableMapOf<String, WorkflowStateRecord>()
   private val verify = mutableMapOf<String, WorkflowStateRecord>()
+  private val taskRuntime = mutableMapOf<String, WorkflowStateRecord>()
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
     implement[row.workflowId] = row
@@ -1585,4 +1691,11 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    taskRuntime[row.workflowId] = row
+  }
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntime[workflowId]
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
+    taskRuntime.values.toList().take(limit)
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = taskRuntime.values.lastOrNull()
 }

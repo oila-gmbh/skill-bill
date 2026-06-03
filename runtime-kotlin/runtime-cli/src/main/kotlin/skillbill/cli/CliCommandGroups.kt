@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList")
+
 package skillbill.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
@@ -28,6 +30,7 @@ class UtilityCliCommandGroup(
   workflowCommands: WorkflowTopLevelCommands,
   repoValidationCommands: RepoValidationCliCommands,
   goalRunCommand: GoalRunCommand,
+  featureTaskRuntimeRunCommand: FeatureTaskRuntimeRunCommand,
   versionCommand: VersionCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
@@ -35,6 +38,7 @@ class UtilityCliCommandGroup(
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
       goalRunCommand,
+      featureTaskRuntimeRunCommand,
       versionCommand,
       doctorCommand,
       removeCommand,

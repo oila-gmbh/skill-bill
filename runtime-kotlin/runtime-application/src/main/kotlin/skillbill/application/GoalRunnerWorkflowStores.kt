@@ -25,7 +25,11 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
@@ -208,6 +212,9 @@ class WorkflowGoalRunnerOutcomeStore(
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
   private val goalProgressEventValidator: GoalProgressEventValidator = NoopGoalProgressEventValidator,
+  // Ground-truth git read to recover the terminal commit SHA when an agent completes
+  // commit_push under suppress_pr but omits the SHA. No-op default keeps artifact-only behavior.
+  private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -252,20 +259,88 @@ class WorkflowGoalRunnerOutcomeStore(
       .authoritativeOutcomesBySubtask()
   }
 
+  // Strictly read-only: resolve from durable artifacts only, never measuring git or
+  // mutating state, so status / reconciliation reads keep their no-write contract.
   override fun terminalOutcome(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = database.read(dbPathOverride) { unitOfWork ->
-    val snapshot = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+  }
+
+  // Command path: recover a dropped SHA from measured HEAD and durably persist the
+  // completion so status, reconciliation, and the subtask handoff all agree afterward.
+  override fun recoverAndPersistTerminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
+    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
+      gitOperations.headCommitSha(repoRoot).measuredCommitSha()
+    }?.also { outcome ->
+      persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
+    }
+  }
+
+  private fun resolveTerminalOutcome(
+    workflowStates: WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    measuredCommitSha: () -> String?,
+  ): GoalRunnerStoredOutcome? {
+    val snapshot = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return null
     engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, snapshot)
     val artifacts = decodeArtifacts(snapshot.artifactsJson)
-    val goalContinuation = goalContinuation(artifacts) ?: return@read null
-    if (goalContinuation.issueKey != issueKey || goalContinuation.subtaskId != subtaskId) {
-      return@read null
+    return goalContinuation(artifacts)
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+      ?.let { continuation -> terminalOutcomeFor(snapshot, artifacts, continuation, measuredCommitSha) }
+  }
+
+  // Writing goal_continuation_outcome makes the verdict authoritative (read first by
+  // terminalOutcomeFor), so a workflow row stranded at a later step no longer reverts the
+  // subtask to blocked. Idempotent: only backfills a measured COMPLETE not yet recorded.
+  private fun persistMeasuredCompletion(
+    workflowStates: WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    outcome: GoalRunnerStoredOutcome,
+  ) {
+    if (outcome.status != GoalRunnerTerminalStatus.COMPLETE || outcome.commitSha.isNullOrBlank()) {
+      return
     }
-    terminalOutcomeFor(snapshot, artifacts, goalContinuation)
+    val record = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val needsBackfill = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr) == null &&
+      commitShaFrom(artifacts).isNullOrBlank()
+    if (needsBackfill) {
+      val updated = engine.updateRecord(
+        WorkflowFamily.IMPLEMENT.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            "goal_continuation_outcome" to mapOf(
+              "issue_key" to issueKey,
+              "subtask_id" to subtaskId,
+              "status" to "complete",
+              "workflow_id" to workflowId,
+              "commit_sha" to outcome.commitSha,
+              "last_resumable_step" to (outcome.lastResumableStep ?: "commit_push"),
+            ),
+          ),
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.IMPLEMENT.save(workflowStates, updated)
+    }
   }
 
   override fun markBlocked(
@@ -481,7 +556,7 @@ class WorkflowGoalRunnerOutcomeStore(
   }
 
   private fun loadContinuationCandidates(
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     issueKey: String,
   ): List<GoalContinuationCandidate> = WorkflowFamily.IMPLEMENT
     .list(workflowStates, Int.MAX_VALUE)
@@ -503,7 +578,7 @@ class WorkflowGoalRunnerOutcomeStore(
     record: WorkflowStateSnapshot,
     blockedReason: String,
     lastResumableStep: String,
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     supervisionEvent: GoalRunnerSupervisionEvent?,
   ): String {
     val steps = decodeWorkflowSteps(record.stepsJson)
@@ -593,6 +668,8 @@ private fun terminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,
   artifacts: Map<String, Any?>,
   goalContinuation: GoalContinuation,
+  // Lazily measures HEAD only on the recovery path, so the cost is paid solely there.
+  measuredCommitSha: () -> String? = { null },
 ): GoalRunnerStoredOutcome? = goalContinuationOutcome(
   artifacts = artifacts,
   issueKey = goalContinuation.issueKey,
@@ -601,6 +678,7 @@ private fun terminalOutcomeFor(
 )?.copy(workflowId = snapshot.workflowId) ?: run {
   val steps = decodeWorkflowSteps(snapshot.stepsJson)
   val commitSha = commitShaFrom(artifacts)
+    ?: if (commitPushCompletedUnderSuppressPr(steps, goalContinuation.suppressPr)) measuredCommitSha() else null
   terminalStatus(snapshot, steps, goalContinuation.suppressPr, commitSha)?.let { status ->
     GoalRunnerStoredOutcome(
       status = status,
@@ -687,7 +765,7 @@ private fun terminalStatus(
   suppressPr: Boolean,
   commitSha: String?,
 ): GoalRunnerTerminalStatus? = when {
-  suppressPr && steps.any { it.stepId == "commit_push" && it.status == "completed" } ->
+  commitPushCompletedUnderSuppressPr(steps, suppressPr) ->
     if (commitSha.isNullOrBlank()) {
       GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME
     } else {
@@ -711,6 +789,11 @@ private fun blockedReasonFrom(
 
 private fun commitShaFrom(artifacts: Map<String, Any?>): String? =
   (artifacts["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
+
+private fun commitPushCompletedUnderSuppressPr(steps: List<WorkflowStepState>, suppressPr: Boolean): Boolean =
+  suppressPr && steps.any { it.stepId == "commit_push" && it.status == "completed" }
+
+private fun WorkflowGitOperationResult.measuredCommitSha(): String? = value.trim().takeIf { ok && it.isNotBlank() }
 
 // SKILL-64 Subtask 3 (F-D01): soft-decode the highest sequence_number in a
 // bounded history/ledger artifact list. Malformed entries are skipped rather

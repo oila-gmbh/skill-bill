@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.application.specInputTypes
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 data class McpToolSpec(
   val name: String,
@@ -55,6 +56,13 @@ object McpToolRegistry {
       "feature_verify_workflow_open",
       "feature_verify_workflow_resume",
       "feature_verify_workflow_update",
+      "feature_task_runtime_workflow_get",
+      "feature_task_runtime_workflow_latest",
+      "feature_task_runtime_workflow_list",
+      "feature_task_runtime_workflow_continue",
+      "feature_task_runtime_workflow_open",
+      "feature_task_runtime_workflow_resume",
+      "feature_task_runtime_workflow_update",
       "import_review",
       "new_skill_scaffold",
       "pr_description_generated",
@@ -98,6 +106,17 @@ object McpToolRegistry {
       "feature_verify_workflow_resume" to "Summarize bill-feature-verify workflow resume state.",
       "feature_verify_workflow_update" to
         "Update durable bill-feature-verify workflow state and return a compact acknowledgement.",
+      "feature_task_runtime_workflow_continue" to
+        "Continue durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
+      "feature_task_runtime_workflow_get" to
+        "Fetch read-only full durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
+      "feature_task_runtime_workflow_latest" to "Fetch the latest EXPERIMENTAL bill-feature-task-runtime workflow.",
+      "feature_task_runtime_workflow_list" to "List EXPERIMENTAL bill-feature-task-runtime workflows.",
+      "feature_task_runtime_workflow_open" to "Open durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
+      "feature_task_runtime_workflow_resume" to
+        "Summarize EXPERIMENTAL bill-feature-task-runtime workflow resume state.",
+      "feature_task_runtime_workflow_update" to
+        "Update durable EXPERIMENTAL bill-feature-task-runtime workflow state and return a compact acknowledgement.",
       "import_review" to "Import code review output into the local telemetry store.",
       "new_skill_scaffold" to "Scaffold a new skill from a validated payload.",
       "pr_description_generated" to "Record PR description generation telemetry.",
@@ -281,6 +300,16 @@ object McpToolRegistry {
           "verdict",
           "finish",
         ),
+      ),
+      "feature_task_runtime_workflow_continue" to workflowIdSchema(),
+      "feature_task_runtime_workflow_get" to workflowIdSchema(),
+      "feature_task_runtime_workflow_latest" to emptyObjectSchema,
+      "feature_task_runtime_workflow_list" to workflowListSchema(),
+      "feature_task_runtime_workflow_open" to workflowOpenSchema(),
+      "feature_task_runtime_workflow_resume" to workflowIdSchema(),
+      "feature_task_runtime_workflow_update" to workflowUpdateSchema(
+        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+        stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
       "import_review" to objectSchema(
         required = listOf("review_text"),

@@ -1,0 +1,252 @@
+package skillbill.workflow.taskruntime.model
+
+import skillbill.boundary.OpenBoundaryMap
+import skillbill.error.InvalidWorkflowStateSchemaError
+import java.math.BigDecimal
+import java.math.BigInteger
+
+/**
+ * Effect-free per-phase persistence and append-only phase ledger models. They ride
+ * inside the workflow row's `artifacts_json` envelope. There is no clock, random, or
+ * logging here: the application layer mints every timestamp/duration and passes it in.
+ * Map decode loud-fails on malformed maps with a typed [InvalidWorkflowStateSchemaError]
+ * and does no best-effort parsing. Ledger append/prune reuses the shared
+ * `appendBoundedHistoryBySequence` helper at the durable write seam.
+ */
+
+const val FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY: String = "feature_task_runtime_phase_records"
+const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY: String = "feature_task_runtime_phase_ledger"
+const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
+
+/**
+ * Durable per-phase launch briefing store. The assembled briefing is persisted, keyed
+ * by phase id, before the phase agent is launched, so it is a durable handoff a consumer
+ * reads rather than dead computation. Each entry is the latest briefing for that phase.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY: String = "feature_task_runtime_phase_briefings"
+
+/** Terminal status persisted on a phase record that the runtime blocked on. */
+const val FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED: String = "blocked"
+
+/**
+ * Durable per-phase record: one entry per phase id holding its latest persisted state.
+ * `finishedAt`/`durationMillis`/`outputArtifact` are nullable because a phase may be
+ * persisted while still running; a finished phase carries all three.
+ *
+ * `startedAt` is re-minted on every running transition so `durationMillis` measures only
+ * the current run, never spanning the resume gap; `firstStartedAt` preserves the original
+ * first-started timestamp across resumes. A phase the runtime blocked on persists a
+ * terminal `blocked` status with [blockedReason] so blocked-ness survives ledger pruning.
+ */
+data class FeatureTaskRuntimePhaseRecord(
+  val phaseId: String,
+  val status: String,
+  val attemptCount: Int,
+  val startedAt: String,
+  val firstStartedAt: String = startedAt,
+  val finishedAt: String? = null,
+  val durationMillis: Long? = null,
+  val resolvedAgentId: String,
+  val outputArtifact: String? = null,
+  val blockedReason: String? = null,
+) {
+  init {
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
+    require(status.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.status must be non-blank." }
+    require(attemptCount >= 1) {
+      "FeatureTaskRuntimePhaseRecord.attemptCount must be >= 1, was $attemptCount."
+    }
+    require(startedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.startedAt must be non-blank." }
+    require(firstStartedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.firstStartedAt must be non-blank." }
+    require(resolvedAgentId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.resolvedAgentId must be non-blank." }
+    durationMillis?.let { duration ->
+      require(duration >= 0) { "FeatureTaskRuntimePhaseRecord.durationMillis must be non-negative, was $duration." }
+    }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime per-phase record artifact map at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "phase_id" to phaseId,
+    "status" to status,
+    "attempt_count" to attemptCount,
+    "started_at" to startedAt,
+    "first_started_at" to firstStartedAt,
+    "resolved_agent_id" to resolvedAgentId,
+  ).apply {
+    finishedAt?.let { put("finished_at", it) }
+    durationMillis?.let { put("duration_millis", it) }
+    outputArtifact?.let { put("output_artifact", it) }
+    blockedReason?.let { put("blocked_reason", it) }
+  }
+
+  companion object {
+    /** Strict decode; loud-fails on any missing or malformed required field. */
+    @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
+      val startedAt = raw.requireStringField("started_at")
+      return FeatureTaskRuntimePhaseRecord(
+        phaseId = raw.requireStringField("phase_id"),
+        status = raw.requireStringField("status"),
+        attemptCount = raw.requireIntField("attempt_count"),
+        startedAt = startedAt,
+        // Records written before first_started_at existed fall back to started_at.
+        firstStartedAt = raw.optionalStringField("first_started_at") ?: startedAt,
+        finishedAt = raw.optionalStringField("finished_at"),
+        durationMillis = raw.optionalLongField("duration_millis"),
+        resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+        outputArtifact = raw.optionalStringField("output_artifact"),
+        blockedReason = raw.optionalStringField("blocked_reason"),
+      )
+    }
+  }
+}
+
+/** Actions for the append-only phase attempt/event ledger. */
+enum class FeatureTaskRuntimePhaseLedgerAction(val wireValue: String) {
+  START("start"),
+  RESUME("resume"),
+  RETRY("retry"),
+  FIX_LOOP_ITERATION("fix_loop_iteration"),
+  BLOCKED("blocked"),
+  COMPLETE("complete"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): FeatureTaskRuntimePhaseLedgerAction = entries.firstOrNull { it.wireValue == value }
+      ?: throw InvalidWorkflowStateSchemaError(
+        "Unknown feature-task-runtime phase ledger action '$value'. " +
+          "Allowed: ${entries.joinToString { it.wireValue }}.",
+      )
+  }
+}
+
+/**
+ * One append-only phase ledger entry with a monotonic [sequenceNumber] and an
+ * application-minted [timestamp].
+ */
+data class FeatureTaskRuntimePhaseLedgerEntry(
+  val action: FeatureTaskRuntimePhaseLedgerAction,
+  val sequenceNumber: Int,
+  val timestamp: String,
+  val phaseId: String,
+  val attemptCount: Int,
+  val resolvedAgentId: String? = null,
+  val fixLoopIteration: Int? = null,
+  val blockedReason: String? = null,
+) {
+  init {
+    require(sequenceNumber >= 0) {
+      "FeatureTaskRuntimePhaseLedgerEntry.sequenceNumber must be non-negative, was $sequenceNumber."
+    }
+    require(timestamp.isNotBlank()) { "FeatureTaskRuntimePhaseLedgerEntry.timestamp must be non-blank." }
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLedgerEntry.phaseId must be non-blank." }
+    require(attemptCount >= 1) {
+      "FeatureTaskRuntimePhaseLedgerEntry.attemptCount must be >= 1, was $attemptCount."
+    }
+    fixLoopIteration?.let { iteration ->
+      require(iteration >= 1) {
+        "FeatureTaskRuntimePhaseLedgerEntry.fixLoopIteration must be >= 1 when present, was $iteration."
+      }
+    }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime phase ledger entry artifact map at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "action" to action.wireValue,
+    "sequence_number" to sequenceNumber,
+    "timestamp" to timestamp,
+    "phase_id" to phaseId,
+    "attempt_count" to attemptCount,
+  ).apply {
+    resolvedAgentId?.let { put("resolved_agent_id", it) }
+    fixLoopIteration?.let { put("fix_loop_iteration", it) }
+    blockedReason?.let { put("blocked_reason", it) }
+  }
+
+  companion object {
+    /** Strict decode; loud-fails on any missing or malformed required field. */
+    @OpenBoundaryMap("Feature-task-runtime phase ledger entry decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseLedgerEntry =
+      FeatureTaskRuntimePhaseLedgerEntry(
+        action = FeatureTaskRuntimePhaseLedgerAction.fromWire(raw.requireStringField("action")),
+        sequenceNumber = raw.requireIntField("sequence_number"),
+        timestamp = raw.requireStringField("timestamp"),
+        phaseId = raw.requireStringField("phase_id"),
+        attemptCount = raw.requireIntField("attempt_count"),
+        resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
+        fixLoopIteration = raw.optionalIntField("fix_loop_iteration"),
+        blockedReason = raw.optionalStringField("blocked_reason"),
+      )
+  }
+}
+
+// Strict field decoders. The optional variants return null only when the key is
+// absent; a present-but-malformed value still loud-fails rather than defaulting.
+
+private fun Map<String, Any?>.requireStringField(key: String): String {
+  val value = this[key]
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact map is missing required field '$key'.",
+    )
+  return (value as? String)?.takeIf(String::isNotBlank)
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a non-blank string.",
+    )
+}
+
+private fun Map<String, Any?>.optionalStringField(key: String): String? {
+  if (!containsKey(key) || this[key] == null) {
+    return null
+  }
+  return (this[key] as? String)?.takeIf(String::isNotBlank)
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a non-blank string when present.",
+    )
+}
+
+private fun Map<String, Any?>.requireIntField(key: String): Int {
+  if (!containsKey(key) || this[key] == null) {
+    throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact map is missing required integer field '$key'.",
+    )
+  }
+  return this[key].asExactIntOrNull()
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to an integer.",
+    )
+}
+
+private fun Map<String, Any?>.optionalIntField(key: String): Int? {
+  if (!containsKey(key) || this[key] == null) {
+    return null
+  }
+  return this[key].asExactIntOrNull()
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to an integer when present.",
+    )
+}
+
+private fun Map<String, Any?>.optionalLongField(key: String): Long? {
+  if (!containsKey(key) || this[key] == null) {
+    return null
+  }
+  return this[key].asExactLongOrNull()
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a long integer when present.",
+    )
+}
+
+private fun Any?.asExactIntOrNull(): Int? = asExactLongOrNull()?.let { value ->
+  if (value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) value.toInt() else null
+}
+
+private fun Any?.asExactLongOrNull(): Long? = when (this) {
+  is Byte -> toLong()
+  is Short -> toLong()
+  is Int -> toLong()
+  is Long -> this
+  is BigInteger -> runCatching { longValueExact() }.getOrNull()
+  is BigDecimal -> runCatching { longValueExact() }.getOrNull()
+  is String -> toLongOrNull()
+  else -> null
+}

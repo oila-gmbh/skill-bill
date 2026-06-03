@@ -1740,6 +1740,13 @@ class RuntimeArchitectureTest {
       // the retention helper prunes the same artifact-map lists in place.
       "skillbill.workflow.GoalProgressEventValidator.validate",
       "skillbill.workflow.model.appendBoundedHistoryBySequence",
+      // Durable artifact-map seams riding inside the family workflow row's artifacts_json.
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap",
+      "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
+      "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
       // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
       // application + port `scaffold(payload, dryRun)` overloads on
       // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`

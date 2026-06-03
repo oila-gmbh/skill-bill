@@ -18,6 +18,10 @@ interface WorkflowGitOperations {
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
+  // Git-measured HEAD commit SHA, used as ground truth instead of an
+  // agent-self-reported value.
+  fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
+
   fun validateBranchBase(repoRoot: Path, branch: String, expectedBaseBranch: String): WorkflowGitOperationResult
 
   fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult
@@ -38,6 +42,10 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
     status = "ok",
     value = "recorded:${message.hashCode().toUInt().toString(HASH_RADIX_HEX)}",
   )
+
+  // No-op measures nothing, so the SHA fallback stays inert without a real adapter.
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
 
   override fun validateBranchBase(
     repoRoot: Path,

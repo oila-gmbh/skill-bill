@@ -68,6 +68,13 @@ class McpStdioServerTest {
         "feature_verify_workflow_open",
         "feature_verify_workflow_resume",
         "feature_verify_workflow_update",
+        "feature_task_runtime_workflow_get",
+        "feature_task_runtime_workflow_latest",
+        "feature_task_runtime_workflow_list",
+        "feature_task_runtime_workflow_continue",
+        "feature_task_runtime_workflow_open",
+        "feature_task_runtime_workflow_resume",
+        "feature_task_runtime_workflow_update",
         "import_review",
         "new_skill_scaffold",
         "pr_description_generated",
@@ -186,6 +193,7 @@ class McpStdioServerTest {
     listOf(
       "feature_implement_workflow_latest",
       "feature_verify_workflow_latest",
+      "feature_task_runtime_workflow_latest",
     ).forEach { toolName ->
       val schema = tools.schemaFor(toolName)
 
@@ -492,6 +500,13 @@ private val priorityStrictToolNames =
     "feature_verify_workflow_latest",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_continue",
+    "feature_task_runtime_workflow_open",
+    "feature_task_runtime_workflow_update",
+    "feature_task_runtime_workflow_get",
+    "feature_task_runtime_workflow_list",
+    "feature_task_runtime_workflow_latest",
+    "feature_task_runtime_workflow_resume",
+    "feature_task_runtime_workflow_continue",
     "new_skill_scaffold",
   )
 

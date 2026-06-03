@@ -48,6 +48,20 @@ class InvalidDecompositionManifestSchemaError(
 )
 
 /**
+ * Surfaced when a feature-task-runtime phase output fails the canonical
+ * phase-output schema. The message carries the source label and violation
+ * reason.
+ */
+class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
  * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft
  * 2020-12 schema. The composed message carries the dotted field path of

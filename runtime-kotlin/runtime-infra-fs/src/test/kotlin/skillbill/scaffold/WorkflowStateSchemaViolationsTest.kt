@@ -132,6 +132,62 @@ class WorkflowStateSchemaViolationsTest {
     assertContains(message, "workflow_status")
   }
 
+  @Test
+  fun `unknown top-level property on a feature-task-runtime snapshot loud-fails with the offending key`() {
+    // F-014: the experimental feature-task-runtime branch relies on the top-level
+    // additionalProperties:false to reject unknown fields; pin that it does.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("rogue_field", "x")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "feature-task-runtime")
+    }
+    assertContains(error.message.orEmpty(), "rogue_field")
+  }
+
+  @Test
+  fun `unknown step field on a feature-task-runtime snapshot loud-fails`() {
+    // The branch's steps[].items allOf includes $defs/step (additionalProperties:false),
+    // so an unknown per-step field must loud-fail.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "plan",
+            "status" to "running",
+            "attempt_count" to 1,
+            "rogue_step_field" to "x",
+          ),
+        ),
+      )
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "feature-task-runtime")
+    }
+    assertContains(error.message.orEmpty(), "rogue_step_field")
+  }
+
+  private fun baseTaskRuntimeSnapshot(): Map<String, Any?> = linkedMapOf(
+    "workflow_id" to "wftr-19700101-000000-aaaa",
+    "session_id" to "",
+    "workflow_name" to "feature-task-runtime",
+    "contract_version" to "0.1",
+    "workflow_status" to "running",
+    "current_step_id" to "plan",
+    "steps" to listOf(
+      linkedMapOf<String, Any?>(
+        "step_id" to "plan",
+        "status" to "running",
+        "attempt_count" to 1,
+      ),
+    ),
+    "artifacts" to emptyMap<String, Any?>(),
+    "started_at" to "",
+    "updated_at" to "",
+    "finished_at" to "",
+  )
+
   private fun baseSnapshot(): Map<String, Any?> = linkedMapOf(
     "workflow_id" to "wfl-19700101-000000-aaaa",
     "session_id" to "",

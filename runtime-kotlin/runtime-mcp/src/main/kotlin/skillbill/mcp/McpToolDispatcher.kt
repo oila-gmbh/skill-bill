@@ -43,6 +43,20 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.VERIFY, arguments, context) },
       "feature_verify_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.VERIFY, arguments, context) },
+      "feature_task_runtime_workflow_continue" to
+        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_runtime_workflow_get" to
+        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_runtime_workflow_latest" to
+        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context) },
+      "feature_task_runtime_workflow_list" to
+        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_runtime_workflow_open" to
+        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_runtime_workflow_resume" to
+        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_runtime_workflow_update" to
+        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "import_review" to ::importReview,
       "new_skill_scaffold" to ::newSkillScaffold,
       "pr_description_generated" to ::prDescriptionGenerated,

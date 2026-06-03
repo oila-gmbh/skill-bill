@@ -143,6 +143,63 @@ $defs:
       - workflow_status
       - current_step_id
       - steps
+  # SKILL-65 Subtask 2: the experimental runtime-driven feature-task pipeline
+  # (`FeatureTaskRuntimePhaseWorkflowDefinition`). A third mutually-exclusive
+  # `oneOf` branch keyed on `workflow_name=feature-task-runtime`, with its own
+  # 5-phase step-id set and 6-value workflow-status enum (including `blocked`).
+  # The schema header explicitly allows new families that match this shape; the
+  # IMPLEMENT/VERIFY branches above are unchanged.
+  # Unknown top-level fields on a feature-task-runtime snapshot are rejected by the
+  # top-level `additionalProperties: false` (this branch is one `oneOf` subschema
+  # applied to the whole instance, so it intentionally does NOT redeclare a
+  # branch-level `additionalProperties: false`, which would reject the shared
+  # top-level fields it does not list). Step items are locked down via the shared
+  # `$defs/step` (`additionalProperties: false`) under the `allOf` below.
+  # `WorkflowStateSchemaViolationsTest` pins the unknown-field loud-fail for this
+  # branch.
+  featureTaskRuntimeBranch:
+    type: object
+    properties:
+      workflow_name:
+        const: "feature-task-runtime"
+      workflow_status:
+        type: string
+        enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - abandoned
+          - blocked
+      current_step_id:
+        type: string
+        # See note above on the empty-string allowance.
+        enum:
+          - ""
+          - plan
+          - implement
+          - review
+          - audit
+          - validate
+      steps:
+        type: array
+        items:
+          allOf:
+            - $ref: "#/$defs/step"
+            - properties:
+                step_id:
+                  type: string
+                  enum:
+                    - plan
+                    - implement
+                    - review
+                    - audit
+                    - validate
+    required:
+      - workflow_name
+      - workflow_status
+      - current_step_id
+      - steps
   featureVerifyBranch:
     type: object
     properties:
@@ -223,6 +280,7 @@ properties:
     enum:
       - bill-feature-task
       - bill-feature-verify
+      - feature-task-runtime
     description: >
       Workflow family identifier. Determines which per-skill enum branch
       (see `oneOf` below) governs `workflow_status` / `current_step_id` /
@@ -290,6 +348,7 @@ properties:
 oneOf:
   - $ref: "#/$defs/featureImplementBranch"
   - $ref: "#/$defs/featureVerifyBranch"
+  - $ref: "#/$defs/featureTaskRuntimeBranch"
 
 # ---------------------------------------------------------------------------
 # Coherence checks (enforced in Kotlin)

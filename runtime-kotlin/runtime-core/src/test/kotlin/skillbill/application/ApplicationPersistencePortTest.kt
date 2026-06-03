@@ -1,6 +1,8 @@
 package skillbill.application
 
 import skillbill.application.model.AddLearningInput
+import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowGetResult
@@ -9,6 +11,8 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
@@ -61,6 +65,9 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -239,6 +246,204 @@ class ApplicationPersistencePortTest {
     assertEquals(workflowId, latest.summary.workflowId)
     assertEquals(listOf("plan"), resumed.resume.missingArtifacts)
     assertEquals("blocked", continued.view.continueStatus)
+  }
+
+  @Test
+  fun `workflow service owns task runtime rows through ports for save load list latest`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+
+    val first = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val second = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-002", dbOverride = null)
+      as WorkflowOpenResult.Ok
+
+    val got = service.get(WorkflowFamilyKind.TASK_RUNTIME, first.workflowId, dbOverride = null)
+      as WorkflowGetResult.Ok
+    val listed = service.list(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = null)
+    val latest = service.latest(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = null) as WorkflowLatestResult.Ok
+
+    assertEquals("feature-task-runtime", got.snapshot.workflowName)
+    assertEquals(2, listed.workflowCount)
+    assertEquals(second.workflowId, latest.summary.workflowId)
+    assertEquals(0, service.list(WorkflowFamilyKind.IMPLEMENT, dbOverride = null).workflowCount)
+    assertEquals(0, service.list(WorkflowFamilyKind.VERIFY, dbOverride = null).workflowCount)
+  }
+
+  @Test
+  fun `task runtime recorder mints timestamps and persists per-phase record and append-only ledger`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.START))
+    assertTrue(recorder.recordPlanPhase(workflowId, status = "running", finished = false))
+    assertTrue(
+      recorder.recordPlanPhase(
+        workflowId,
+        status = "completed",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
+    )
+    assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.COMPLETE))
+
+    val artifacts = decodeArtifactsForTest(
+      requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    val phaseRecords = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as Map<String, Any?>
+
+    @Suppress("UNCHECKED_CAST")
+    val planRecord = phaseRecords["plan"] as Map<String, Any?>
+    assertEquals("completed", planRecord["status"])
+    assertEquals("agent-plan-1", planRecord["resolved_agent_id"])
+    // Timestamps and duration are minted by the runtime, never agent-reported.
+    assertTrue((planRecord["started_at"] as String).isNotBlank())
+    assertTrue((planRecord["finished_at"] as String).isNotBlank())
+    assertTrue((planRecord["duration_millis"] as Number).toLong() >= 0)
+    assertEquals("""{"contract_version":"0.1"}""", planRecord["output_artifact"])
+
+    @Suppress("UNCHECKED_CAST")
+    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
+    assertEquals(listOf(0, 1), sequences)
+    assertEquals(sequences.sorted(), sequences)
+    assertEquals(listOf("start", "complete"), ledger.map { it["action"] })
+  }
+
+  @Test
+  fun `task runtime read loud-fails on malformed persisted phase record`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    // Per-phase record missing the required `resolved_agent_id`.
+    val malformedArtifactsJson =
+      """
+      {
+        "feature_task_runtime_phase_records": {
+          "plan": {
+            "phase_id": "plan",
+            "status": "running",
+            "attempt_count": 1,
+            "started_at": "2026-06-02T10:00:00Z"
+          }
+        }
+      }
+      """.trimIndent()
+    val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
+    workflowRepository.saveFeatureTaskRuntimeWorkflow(record.copy(artifactsJson = malformedArtifactsJson))
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = workflowId,
+          phaseId = "implement",
+          status = "running",
+          attemptCount = 1,
+          resolvedAgentId = "agent-implement-1",
+          finished = false,
+        ),
+      )
+    }
+  }
+
+  @Test
+  fun `task runtime ledger append loud-fails on malformed persisted ledger entry`() {
+    // Persisted ledger entry missing the required `action`.
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    val malformedArtifactsJson =
+      """
+      {
+        "feature_task_runtime_phase_ledger": [
+          {
+            "sequence_number": 0,
+            "timestamp": "2026-06-02T10:00:00Z",
+            "phase_id": "plan",
+            "attempt_count": 1
+          }
+        ]
+      }
+      """.trimIndent()
+    val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
+    workflowRepository.saveFeatureTaskRuntimeWorkflow(record.copy(artifactsJson = malformedArtifactsJson))
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.RESUME)
+    }
+  }
+
+  @Test
+  fun `task runtime ledger append loud-fails when persisted ledger is not a list`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    val malformedArtifactsJson =
+      """
+      {
+        "feature_task_runtime_phase_ledger": {"not": "a list"}
+      }
+      """.trimIndent()
+    val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
+    workflowRepository.saveFeatureTaskRuntimeWorkflow(record.copy(artifactsJson = malformedArtifactsJson))
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.RESUME)
+    }
+  }
+
+  @Test
+  fun `task runtime ledger seeds next sequence from persisted max across a re-read`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.START))
+    assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.COMPLETE))
+    // A separate append must continue from the persisted max rather than rewinding to 0.
+    assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.RESUME))
+
+    val artifacts = decodeArtifactsForTest(
+      requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
+    assertEquals(listOf(0, 1, 2), sequences)
+    assertEquals(listOf("start", "complete", "resume"), ledger.map { it["action"] })
   }
 
   @Test
@@ -1195,6 +1400,14 @@ private object NoopWorkflowStateRepository : WorkflowStateRepository {
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
 
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) = Unit
+
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = null
+
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
 }
 
 private fun createDecompositionWorkflow(service: WorkflowService, parentSpec: Path, subtaskSpec: Path): String =
@@ -1330,6 +1543,42 @@ private fun statusSection(path: Path): String {
   return lines.drop(statusHeading + 1).first(String::isNotBlank)
 }
 
+private fun decodeArtifactsForTest(artifactsJson: String): Map<String, Any?> =
+  JsonSupport.parseObjectOrNull(artifactsJson)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    .orEmpty()
+
+private fun FeatureTaskRuntimePhaseRecorder.appendPlanLedger(
+  workflowId: String,
+  action: FeatureTaskRuntimePhaseLedgerAction,
+): Boolean = appendLedgerEntry(
+  FeatureTaskRuntimePhaseLedgerRequest(
+    workflowId = workflowId,
+    action = action,
+    phaseId = "plan",
+    attemptCount = 1,
+    resolvedAgentId = "agent-plan-1",
+  ),
+)
+
+private fun FeatureTaskRuntimePhaseRecorder.recordPlanPhase(
+  workflowId: String,
+  status: String,
+  finished: Boolean,
+  outputArtifact: String? = null,
+): Boolean = recordPhaseState(
+  FeatureTaskRuntimePhaseStateRequest(
+    workflowId = workflowId,
+    phaseId = "plan",
+    status = status,
+    attemptCount = 1,
+    resolvedAgentId = "agent-plan-1",
+    finished = finished,
+    outputArtifact = outputArtifact,
+  ),
+)
+
 private fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -1350,6 +1599,7 @@ private class InMemoryWorkflowStateRepository(
 ) : WorkflowStateRepository {
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
+  private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
   var failNextImplementSave: Boolean = false
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
@@ -1383,6 +1633,18 @@ private class InMemoryWorkflowStateRepository(
 
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? =
     verifySessionSummary?.takeIf { it.sessionId == sessionId }
+
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    taskRuntimeRows[row.workflowId] = row
+  }
+
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntimeRows[workflowId]
+
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
+    taskRuntimeRows.values.toList().asReversed().take(limit)
+
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
+    listFeatureTaskRuntimeWorkflows(1).firstOrNull()
 }
 
 private class FakeWorkflowGitOperations(
@@ -1408,6 +1670,9 @@ private class FakeWorkflowGitOperations(
     }
     return WorkflowGitOperationResult(status = "ok", value = commitSha)
   }
+
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = commitSha)
 
   override fun validateBranchBase(
     repoRoot: Path,

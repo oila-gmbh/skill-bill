@@ -59,7 +59,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wfl-20260602-123507-dr8d"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 3
     optional: false

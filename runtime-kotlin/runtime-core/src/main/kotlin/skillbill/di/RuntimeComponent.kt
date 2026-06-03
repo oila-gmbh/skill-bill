@@ -4,6 +4,9 @@ import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.AgentRunService
+import skillbill.application.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.FeatureTaskRuntimeRunner
+import skillbill.application.FeatureTaskRuntimeStatusService
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.InstallAgentService
@@ -27,7 +30,9 @@ import skillbill.application.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
 import skillbill.infrastructure.fs.FileSystemInstallMcpRegistration
@@ -87,6 +92,7 @@ import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -98,6 +104,7 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -280,6 +287,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun featureTaskRuntimeRunInvariantsSource(
+    adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
+  ): FeatureTaskRuntimeRunInvariantsSource = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun skillRemoveFileSystem(fileSystem: FileSystemSkillRemoveFileSystem): SkillRemoveFileSystem = fileSystem
 
   @Provides
@@ -315,6 +328,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun featureTaskRuntimePhaseOutputValidator(
+    adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter,
+  ): FeatureTaskRuntimePhaseOutputValidator = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun goalObservabilityEventValidator(
     adapter: GoalObservabilityEventValidatorAdapter,
   ): GoalObservabilityEventValidator = adapter
@@ -330,6 +349,13 @@ abstract class RuntimeComponent(
 
   abstract val installService: InstallService
   abstract val agentRunService: AgentRunService
+  abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
+  abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
+  abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService
+
+  // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs adapter type,
+  // which is not on the CLI module's compile classpath.
+  abstract val featureTaskRuntimeRunInvariantsSource: FeatureTaskRuntimeRunInvariantsSource
   abstract val goalRunner: GoalRunner
   abstract val goalRunnerStatusService: GoalRunnerStatusService
   abstract val installAgentService: InstallAgentService

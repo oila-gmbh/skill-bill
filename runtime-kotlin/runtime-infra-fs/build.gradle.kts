@@ -156,6 +156,25 @@ val copyGoalProgressEventSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePhaseOutputSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseOutputSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseOutputSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-65: canonical feature-task-runtime phase output schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -168,6 +187,7 @@ tasks.named("processResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
 }
 
 tasks.named("processTestResources") {
@@ -178,4 +198,5 @@ tasks.named("processTestResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
 }

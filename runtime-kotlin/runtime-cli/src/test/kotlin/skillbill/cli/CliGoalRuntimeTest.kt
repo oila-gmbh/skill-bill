@@ -1104,6 +1104,9 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "test-commit")
 
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,

@@ -115,6 +115,13 @@ oneOf:
   - $ref: "#/$defs/featureVerifyWorkflowOpenEvent"
   - $ref: "#/$defs/featureVerifyWorkflowResumeEvent"
   - $ref: "#/$defs/featureVerifyWorkflowUpdateEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowGetEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowLatestEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowListEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowContinueEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowOpenEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowResumeEvent"
+  - $ref: "#/$defs/featureTaskRuntimeWorkflowUpdateEvent"
   - $ref: "#/$defs/importReviewEvent"
   - $ref: "#/$defs/newSkillScaffoldEvent"
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
@@ -247,6 +254,48 @@ $defs:
         $ref: "#/$defs/workflowStepStatusEnum"
       attempt_count:
         type: integer
+  # SKILL-65 Subtask 4 (AC3): the EXPERIMENTAL feature-task-runtime workflow
+  # status + phase step-id enums. The phase step ids mirror
+  # FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.
+  workflowTaskRuntimeStatusEnum:
+    type: string
+    enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - abandoned
+      - blocked
+  # The phase step ids MUST mirror
+  # FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds (the same source
+  # McpToolRegistry derives the MCP update step-id enum from). The parity test
+  # `TelemetryTaskRuntimeStepIdEnumParityTest` (runtime-mcp) fails the build if
+  # this enum and that definition diverge in value or order.
+  workflowTaskRuntimeStepIdEnum:
+    type: string
+    enum:
+      - plan
+      - implement
+      - review
+      - audit
+      - validate
+  stepUpdateTaskRuntimeShape:
+    type: object
+    additionalProperties: false
+    required:
+      - step_id
+      - status
+      - attempt_count
+    properties:
+      step_id:
+        $ref: "#/$defs/workflowTaskRuntimeStepIdEnum"
+      status:
+        $ref: "#/$defs/workflowStepStatusEnum"
+      # Bounds mirror the workflow-state schema's shared `step.attempt_count`.
+      attempt_count:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
 
   # ---------------------------------------------------------------------
   # Per-event branches.
@@ -826,6 +875,124 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/stepUpdateVerifyShape"
+      artifacts_patch:
+        $ref: "#/$defs/freeObjectShape"
+      session_id:
+        type: string
+
+  # SKILL-65 Subtask 4 (AC3): EXPERIMENTAL feature-task-runtime workflow-family
+  # branches. Payload fields mirror McpToolRegistry.inputSchemas for each tool.
+  featureTaskRuntimeWorkflowContinueEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_continue
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskRuntimeWorkflowGetEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_get
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskRuntimeWorkflowLatestEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_latest
+      contract_version:
+        const: "1.0.0"
+
+  featureTaskRuntimeWorkflowListEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_list
+      contract_version:
+        const: "1.0.0"
+      limit:
+        type: integer
+
+  featureTaskRuntimeWorkflowOpenEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_open
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      current_step_id:
+        type: string
+
+  featureTaskRuntimeWorkflowResumeEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_resume
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskRuntimeWorkflowUpdateEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - workflow_status
+      - current_step_id
+    properties:
+      event_name:
+        const: feature_task_runtime_workflow_update
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+      workflow_status:
+        $ref: "#/$defs/workflowTaskRuntimeStatusEnum"
+      current_step_id:
+        $ref: "#/$defs/workflowTaskRuntimeStepIdEnum"
+      step_updates:
+        type: array
+        items:
+          $ref: "#/$defs/stepUpdateTaskRuntimeShape"
       artifacts_patch:
         $ref: "#/$defs/freeObjectShape"
       session_id:

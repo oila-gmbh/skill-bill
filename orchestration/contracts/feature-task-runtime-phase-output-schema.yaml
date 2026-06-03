@@ -1,0 +1,86 @@
+# Feature-task-runtime per-phase output schema (canonical source of truth).
+#
+# This file describes the structured output every phase of the experimental
+# `feature-task-runtime` pipeline must emit before the runtime advances to the
+# next phase. It is authored in YAML for human readability and consumed as a
+# JSON Schema (Draft 2020-12) by the Kotlin runtime
+# (`FeatureTaskRuntimePhaseOutputSchemaValidator` in `runtime-infra-fs`).
+#
+# Why this exists:
+#
+# - The runtime raises the per-phase progression gate from PRESENCE to
+#   VALIDITY: a phase cannot complete or advance unless its output validates
+#   against this schema. Empty (`{}`), malformed, or partially-filled output
+#   blocks the run loudly with the offending phase id.
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines the REQUIRED-VS-OPTIONAL fields and VALUE-LEVEL
+#   constraints of a single phase's output envelope — anything expressible in
+#   pure JSON Schema (non-empty strings, enums, the pinned contract version).
+# - The phase DAG, the three handoff layers, and latest-iteration selection
+#   are pure-domain concerns and live in
+#   `skillbill.workflow.taskruntime` (`runtime-domain`), not here.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`
+#   in
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt`.
+# - The parity test `FeatureTaskRuntimePhaseOutputSchemaContractVersionTest`
+#   fails the build if they diverge. To bump the contract, edit BOTH
+#   constants in the same change.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml"
+title: "Feature-task-runtime phase output"
+description: >
+  Schema for the structured output a single feature-task-runtime phase emits
+  at its completion seam. The runtime validates this output before recording
+  the phase as complete and assembling the next phase's handoff. Run-invariant,
+  upstream-output, and derived-context handoff layers are modeled in the
+  domain; this schema governs only the per-phase output artifact itself.
+type: object
+additionalProperties: false
+$defs:
+  phaseStatus:
+    type: string
+    enum:
+      - completed
+      - blocked
+      - failed
+required:
+  - contract_version
+  - phase_id
+  - status
+  - summary
+  - produced_outputs
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  phase_id:
+    type: string
+    minLength: 1
+  status:
+    $ref: "#/$defs/phaseStatus"
+  summary:
+    type: string
+    minLength: 1
+  produced_outputs:
+    type: object
+    description: >
+      Phase-specific structured payload forwarded to downstream phases as a
+      declared upstream output. Value shapes are phase-specific by contract
+      (strings, arrays, nested objects all occur), so they are left open; the
+      envelope guarantees the field is present, carries at least one entry
+      (an empty `{}` blocks the run), and uses only non-empty string keys.
+    minProperties: 1
+    propertyNames:
+      type: string
+      minLength: 1
+  derived_notes:
+    description: >
+      Optional free-text note. Either absent (not set) or a non-empty string;
+      `null` is not a valid value.
+    type: string
+    minLength: 1
