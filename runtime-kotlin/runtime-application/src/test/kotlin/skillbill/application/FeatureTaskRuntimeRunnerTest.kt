@@ -2273,6 +2273,7 @@ private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvid
   )
 }
 
+@Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
 private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
@@ -2309,6 +2310,13 @@ private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposito
 
   override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
     error("unused")
+
+  override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = error("unused")
+
+  override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) =
+    error("unused")
+
+  override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = error("unused")
 }
 
 private class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {

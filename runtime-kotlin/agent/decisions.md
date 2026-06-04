@@ -354,3 +354,33 @@ carries the production `jackson.dataformat.yaml` dependency (relocated to
 method is `@OpenBoundaryMap`-annotated and documented in the allow-list +
 `open_extension` inventory because the raw-map architecture scanner walks
 `runtime-ports`.
+
+## 2026-06-04 — Goal telemetry: writes on LifecycleTelemetryRepository, goalStats() on WorkflowStatsRepository
+
+**Context.** SKILL-66 Subtask 2 adds persistence for the goal telemetry event
+family (`goal_started`, `goal_subtask_finished`, `goal_finished`). Acceptance
+criterion 1 reads literally as "`LifecycleTelemetryRepository` gains methods for
+the three goal events ... plus the read/aggregate queries needed for stats", which
+could be read as putting the aggregate read on the same port. But every existing
+lifecycle family keeps writes on `LifecycleTelemetryRepository` (write-only:
+`featureImplementStarted`, `featureVerifyStarted`, `featureTaskRuntimeStarted`,
+...) and puts the aggregate read on `WorkflowStatsRepository`
+(`featureImplementStats()`, `featureVerifyStats()`, `featureTaskRuntimeStats()`).
+
+**Decision.** Goal **writes** (`goalStarted`/`goalSubtaskFinished`/`goalFinished`)
+go on `LifecycleTelemetryRepository`; the aggregate **read** `goalStats()` goes on
+`WorkflowStatsRepository`. AC#1's own tiebreaker clause — "*following the interface
+style of the existing event methods*" — selects parity placement over literal
+single-port grouping. No existing family reads through
+`LifecycleTelemetryRepository`, and breaking that would split the read surface
+across two ports.
+
+**Reason.** Parity keeps the stats surface single-sourced on
+`WorkflowStatsRepository` (which Subtask 4's `goal_stats` tool reads), preserves
+the established write/read seam separation, and avoids leaking a read method onto
+the write-only telemetry port. The cost is that AC#1's literal "on
+`LifecycleTelemetryRepository`" wording is satisfied for writes only; the
+read lives one port over, exactly as `featureTaskRuntimeStats()` does.
+
+**Consumers.** Subtask 3 calls the three write methods from `GoalRunner`;
+Subtask 4 reads `goalStats()` for the `goal_stats` MCP tool and `goal-stats` CLI.

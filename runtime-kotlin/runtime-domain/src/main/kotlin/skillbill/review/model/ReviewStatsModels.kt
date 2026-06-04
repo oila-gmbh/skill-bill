@@ -137,3 +137,37 @@ data class FeatureVerifyWorkflowStats(
   val averageReviewIterations: Double,
   val averageDurationSeconds: Double,
 )
+
+// SKILL-66 Subtask 2: per-run summary used for the most-recent-run lookup in
+// goal stats. `finishedAt`/`status` are blank until the run finishes.
+data class GoalRunSummary(
+  val workflowId: String,
+  val issueKey: String,
+  val featureName: String,
+  val status: String,
+  val startedAt: String,
+  val finishedAt: String,
+  val durationMs: Long,
+  val resumed: Boolean,
+  val subtaskTotal: Int,
+)
+
+// SKILL-66 Subtask 2: goal-run aggregate covering AC#1's four read needs —
+// run counts, terminal-status counts, duration aggregates, per-subtask outcome
+// breakdown — plus the most-recent-run lookup (`null` on an empty store).
+data class GoalWorkflowStats(
+  val totalRuns: Int,
+  val finishedRuns: Int,
+  val inProgressRuns: Int,
+  val completionStatusCounts: Map<String, Int>,
+  val completedRuns: Int,
+  val completedRate: Double,
+  val blockedRuns: Int,
+  val blockedRate: Double,
+  val subtaskOutcomeCounts: Map<String, Int>,
+  val totalSubtaskEvents: Int,
+  val averageRunDurationMs: Double,
+  val averageSubtaskDurationMs: Double,
+  val averageAttemptCount: Double,
+  val mostRecentRun: GoalRunSummary?,
+)

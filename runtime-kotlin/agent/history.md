@@ -45,6 +45,17 @@ Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/con
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 
+## [2026-06-04] SKILL-66 subtask 2 goal-telemetry-persistence
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite
+- `LifecycleTelemetryRepository` gains 3 goal write methods (`goalStarted`/`goalSubtaskFinished`/`goalFinished`); the aggregate read lives on `WorkflowStatsRepository.goalStats()` (run/terminal-status counts, duration aggregates, per-subtask outcome breakdown, most-recent run) — D1 split recorded in `agent/decisions.md`. reusable
+- Records (`GoalStartedRecord`/`GoalSubtaskFinishedRecord`/`GoalFinishedRecord`) sit beside existing lifecycle records with `toRecord()` mappers in their own file (function budget); field-for-field with subtask-1 schema branches, `event_name`/`contract_version` omitted as payload-layer constants per the existing record convention. reusable
+- Migration v3 `add-goal-telemetry-tables` creates `goal_run_sessions` (PK `workflow_id`) + `goal_subtask_events` (composite PK `(issue_key,subtask_id,workflow_id)`); that PK IS the AC#4 resume dedupe identity. Base schema + migrations 1–2 byte-unchanged. reusable
+- Resume-safety pattern: idempotent save via `ON CONFLICT DO NOTHING` + emit-once outbox gated on `*_event_emitted_at` (no double-count, no re-emit on resume), mirroring the existing lifecycle store seams. reusable
+- Gotcha: stats read must strict-parse — `InvalidGoalTelemetryRowError` accessors are kept ISOLATED from the permissive map helpers so malformed rows loud-fail (AC#5); reusing the permissive path would silently truncate. reusable
+- Detekt `TooManyFunctions` on the legitimately-grown interface/store suppressed per existing project precedent; goal payload maps follow lifecycle convention (data-only, identifying/free-text gated behind level==full). Subtask 3 calls the writes from GoalRunner; subtask 4 reads `goalStats()` for the `goal_stats` MCP tool + CLI.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-04] SKILL-66 subtask 1 goal-telemetry-contract-and-schema
 Areas: orchestration/contracts, runtime-kotlin/runtime-mcp
 - `telemetry-event-schema.yaml` gains three strict runtime-internal emission branches (`goalStartedEvent`/`goalSubtaskFinishedEvent`/`goalFinishedEvent`) + a `goalStatsEvent`, following implement/verify field conventions: ISO-8601 `minLength:1` timestamps, bounded int32 counts/durations, two shared status enums (`goalSubtaskStatusEnum` complete/blocked/skipped, `goalFinishedStatusEnum` completed/blocked), `blocked_reason: type:[string,null]`. reusable
@@ -52,7 +63,6 @@ Areas: orchestration/contracts, runtime-kotlin/runtime-mcp
 - `goal_stats` registered in `McpToolRegistry` toolNames/descriptions/inputSchemas with `goalStatsSchema()` (strict, no required, optional since/date_from/date_to/group_by[""/day/week]) mirroring `feature_implement_stats`/`feature_verify_stats`. No dispatcher handler — wiring deferred to subtask 4 (registry/dispatcher tests stay green with no handler since nativeHandlers is never cross-checked against toolNames). reusable
 - Per-family parity test precedent: new `GoalTelemetryEmissionEventParityTest` asserts branch shape/consts/required keysets, validates representative envelopes incl. `blocked_reason` null AND string (networknt Draft 2020-12 accepts the union), and locks the not-a-tool / is-a-tool invariants.
 - No `contract_version` / `TELEMETRY_EVENT_CONTRACT_VERSION` bump — additive branches need none under the schema's own rules. Gotcha: avoid `/*` inside Kotlin KDoc — block comments nest and break compilation.
->>>>>>> b6b2128a (SKILL-66.1: goal telemetry contract & schema)
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 

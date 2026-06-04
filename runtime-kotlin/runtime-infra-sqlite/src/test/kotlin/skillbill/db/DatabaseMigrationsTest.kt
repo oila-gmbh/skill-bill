@@ -17,6 +17,7 @@ class DatabaseMigrationsTest {
       listOf(
         1 to "add-review-workflow-session-columns",
         2 to "normalize-feedback-event-outcomes",
+        3 to "add-goal-telemetry-tables",
       ),
       migrationDefinitions,
     )
@@ -37,6 +38,23 @@ class DatabaseMigrationsTest {
         rows.map { row -> row.version to row.name },
       )
       rows.forEach { row -> assertTrue(row.appliedAt.isNotBlank()) }
+    }
+  }
+
+  @Test
+  fun `ensureDatabase creates goal telemetry tables and records version 3`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("goal-telemetry.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val tables = tableColumns(connection = connection, tableName = "goal_run_sessions")
+      val subtaskColumns = tableColumns(connection = connection, tableName = "goal_subtask_events")
+
+      assertTrue("workflow_id" in tables, "goal_run_sessions should be created with its workflow_id key.")
+      assertTrue("subtask_id" in subtaskColumns, "goal_subtask_events should be created with its subtask_id column.")
+      assertNotNull(
+        migrationRows(connection).singleOrNull { row -> row.version == 3 && row.name == "add-goal-telemetry-tables" },
+        "Migration version 3 add-goal-telemetry-tables should be recorded.",
+      )
     }
   }
 
