@@ -492,6 +492,52 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `goal manifest store refreshes stale db projection from complete checked-in projection`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-refresh-complete")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-52.1-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(
+        completeDecompositionRuntime(),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "blocked"),
+              testDecompositionManifestValidator,
+            ),
+        ),
+      ),
+    )
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+    )
+
+    val refreshed = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
+    val persisted = store.loadByIssueKey("SKILL-52.1", repoRoot = null)
+
+    assertEquals("complete", refreshed?.manifest?.status)
+    assertEquals(0, refreshed?.manifest?.currentSubtaskIntent?.subtaskId)
+    assertEquals("none", refreshed?.manifest?.currentSubtaskIntent?.action)
+    assertEquals("complete", refreshed?.manifest?.subtasks?.single()?.status)
+    assertEquals("sha-complete", refreshed?.manifest?.subtasks?.single()?.commitSha)
+    assertEquals("complete", persisted?.manifest?.status)
+    assertEquals(0, persisted?.manifest?.currentSubtaskIntent?.subtaskId)
+  }
+
+  @Test
   fun `goal manifest store rejects multiple active checked-in projections`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-ambiguous")
     val firstPath = repoRoot.resolve(".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml")
@@ -1685,6 +1731,21 @@ private fun decompositionRuntime(status: String): DecompositionManifest = Decomp
       specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/spec_subtask_1.md",
       status = status,
       workflowId = "wfl-child",
+    ),
+  ),
+)
+
+private fun completeDecompositionRuntime(): DecompositionManifest = decompositionRuntime(status = "complete").copy(
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+  subtasks = listOf(
+    DecompositionSubtask(
+      id = 1,
+      name = "install-policy-foundation",
+      specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/spec_subtask_1.md",
+      status = "complete",
+      workflowId = "wfl-child",
+      commitSha = "sha-complete",
+      lastResumableStep = "commit_push",
     ),
   ),
 )

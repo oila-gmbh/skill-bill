@@ -163,6 +163,13 @@ class GoalRunnerStatusService(
           dbPathOverride = request.dbPathOverride,
         )
       } ?: return@map subtask
+      if (
+        subtask.status == "complete" &&
+        !subtask.commitSha.isNullOrBlank() &&
+        outcome.status != GoalRunnerTerminalStatus.COMPLETE
+      ) {
+        return@map subtask
+      }
       val status = when (outcome.status) {
         GoalRunnerTerminalStatus.COMPLETE -> "complete"
         GoalRunnerTerminalStatus.BLOCKED,

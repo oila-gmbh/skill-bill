@@ -60,12 +60,34 @@ class WorkflowGoalRunnerManifestStore(
 ) : GoalRunnerManifestStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    loadFromWorkflowStore(issueKey, dbPathOverride) ?: repoRoot?.let { root ->
-      importFromManifestProjection(root, issueKey, dbPathOverride)
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
+    val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
+    val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
+    if (
+      stored != null &&
+      projected != null &&
+      projected.isCompleteGoalProjection() &&
+      !stored.manifest.isCompleteGoalProjection()
+    ) {
+      return saveWorkflowProjection(stored.copy(manifest = projected), dbPathOverride).state
     }
+    return stored ?: projected?.let { manifest ->
+      importFromManifestProjection(manifest, dbPathOverride)
+    }
+  }
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    val saved = saveWorkflowProjection(state, dbPathOverride)
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.projectionArtifactsJson,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.state
+  }
+
+  private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
     var projectionArtifactsJson: String? = null
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
@@ -101,15 +123,10 @@ class WorkflowGoalRunnerManifestStore(
         manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
       )
     }
-    projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(
-        Path.of("").toAbsolutePath(),
-        artifactsJson,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
-      )
-    }
-    return saved
+    return SavedManifestProjection(
+      state = saved,
+      projectionArtifactsJson = requireNotNull(projectionArtifactsJson),
+    )
   }
 
   private fun loadFromWorkflowStore(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =
@@ -126,11 +143,9 @@ class WorkflowGoalRunnerManifestStore(
     }
 
   private fun importFromManifestProjection(
-    repoRoot: Path,
-    issueKey: String,
+    manifest: DecompositionManifest,
     dbPathOverride: String?,
   ): GoalRunnerManifestState? {
-    val manifest = findProjectedManifest(repoRoot, issueKey) ?: return null
     val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
     return database.transaction(dbPathOverride) { unitOfWork ->
       val opened = engine.openRecord(
@@ -200,6 +215,17 @@ private data class ProjectedManifestCandidate(
   val path: Path,
   val manifest: DecompositionManifest,
 )
+
+private data class SavedManifestProjection(
+  val state: GoalRunnerManifestState,
+  val projectionArtifactsJson: String,
+)
+
+private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
+  status == "complete" && currentSubtaskIntent.action == "none" && subtasks.all { subtask ->
+    subtask.status in setOf("complete", "skipped") &&
+      (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
+  }
 
 private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
   runCatching { repoRoot.relativize(this).toString() }
