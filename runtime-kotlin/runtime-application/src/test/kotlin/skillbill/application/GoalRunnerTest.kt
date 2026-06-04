@@ -574,6 +574,57 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `status reconciliation preserves completed manifest subtask when child workflow has stale blocked outcome`() {
+    val completedManifest = manifest(subtaskCount = 1)
+      .copy(
+        status = "complete",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+        subtasks = listOf(
+          DecompositionSubtask(
+            id = 1,
+            name = "Subtask 1",
+            specPath = ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+            status = "complete",
+            workflowId = "wfl-1",
+            commitSha = "sha-1",
+            lastResumableStep = "commit_push",
+          ),
+        ),
+      )
+    val store = InMemoryGoalManifestStore(manifest = completedManifest)
+    val outcomes = RecordingOutcomeStore()
+    outcomes["wfl-1"] = GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
+      workflowId = "wfl-1",
+      blockedReason = "stale no-terminal outcome",
+      lastResumableStep = "review",
+      suppressPr = true,
+    )
+    val service = GoalRunnerStatusService(store, outcomes)
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(1, status.completeCount)
+    assertEquals(0, status.pendingCount)
+    assertEquals(0, status.blockedCount)
+    assertEquals(null, status.currentSubtaskId)
+    assertEquals(null, status.currentStep)
+    assertEquals("complete", store.manifest.status)
+    assertEquals("none", store.manifest.currentSubtaskIntent.action)
+    val subtask = store.manifest.subtasks.single()
+    assertEquals("complete", subtask.status)
+    assertEquals(null, subtask.blockedReason)
+    assertEquals("sha-1", subtask.commitSha)
+    assertEquals("commit_push", subtask.lastResumableStep)
+  }
+
+  @Test
   fun `status reconciliation preserves active retry when sibling blocked outcome exists`() {
     val activeManifest = manifest(subtaskCount = 1)
       .copy(
