@@ -17,7 +17,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_1_runtime-run-setup-and-feature-branch.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "a420e0f0"
   workflow_id: "wfl-20260604-075221-eylh"
   blocked_reason: null
   last_resumable_step: "commit_push"
@@ -27,7 +27,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_2_preplan-phase.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "ec13eb2d89451f60ae9aa7b31c56790d3bd349d1"
   workflow_id: "wfl-20260604-095554-hdtn"
   blocked_reason: null
   last_resumable_step: "commit_push"
@@ -37,7 +37,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_3_post-validate-history-commit-pr-phases.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "5d5ef375"
   workflow_id: "wfl-20260604-102305-hly0"
   blocked_reason: null
   last_resumable_step: "commit_push"
@@ -50,7 +50,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_4_size-assessment-and-ceremony-scaling.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "757d11ce"
   workflow_id: "wfl-20260604-104552-6mnc"
   blocked_reason: null
   last_resumable_step: "commit_push"
@@ -66,7 +66,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_5_decomposition-mode-and-planning-stop.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "c10eb351cc9d1ffc6ce7c1d10b8583f05981e91c"
   workflow_id: "wfl-20260604-111923-he9m"
   blocked_reason: null
   last_resumable_step: "finish"
@@ -79,7 +79,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_6_lifecycle-telemetry-and-stats.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "09ff7769"
   workflow_id: "wfl-20260604-124708-ibkm"
   blocked_reason: null
   last_resumable_step: "commit_push"
@@ -98,7 +98,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_7_goal-runner-cooperation-and-continuation.md"
   status: "complete"
   branch: "feat/SKILL-65.1-runtime-feature-task-parity"
-  commit_sha: null
+  commit_sha: "93cc0253"
   workflow_id: "wfl-20260604-161424-h103"
   blocked_reason: null
   last_resumable_step: "commit_push"
