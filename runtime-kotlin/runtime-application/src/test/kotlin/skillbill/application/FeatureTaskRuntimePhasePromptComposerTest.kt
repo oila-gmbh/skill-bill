@@ -35,10 +35,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `each phase carries its own task directive`() {
+    val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("preplan"))
     val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("plan"))
     val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
 
+    assertContains(preplanPrompt, "pre-planning digest")
+    assertContains(preplanPrompt, "scope, affected boundaries, risks/unknowns")
+    assertContains(preplanPrompt, "rollout need")
+    assertContains(preplanPrompt, "Do not modify repository files during this phase.")
+    assertContains(preplanPrompt, "schema-valid produced_outputs")
     assertContains(planPrompt, "Do not modify repository files during this phase.")
+    assertContains(planPrompt, "upstream preplan digest")
     assertContains(implementPrompt, "make the repository changes")
     assertTrue(
       !implementPrompt.contains("Do not modify repository files during this phase."),
@@ -73,6 +80,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
 private const val ISSUE_KEY = "SKILL-66"
 private const val SPEC_REFERENCE = ".feature-specs/SKILL-66/spec.md"
+private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
 private const val PLAN_OUTPUT = """{"plan":"ordered-steps"}"""
 
 private fun briefingFor(phaseId: String) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
@@ -84,6 +92,7 @@ private fun briefingFor(phaseId: String) = FeatureTaskRuntimePhaseBriefingAssemb
       mandatesAndOverrides = emptyList(),
     ),
     recordedOutputs = listOf(
+      FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
       FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
       FeatureTaskRuntimePhaseOutput("implement", 1, """{"implement":"done"}"""),
       FeatureTaskRuntimePhaseOutput("review", 1, """{"review":"ok"}"""),

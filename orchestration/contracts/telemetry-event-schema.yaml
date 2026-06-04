@@ -274,6 +274,7 @@ $defs:
   workflowTaskRuntimeStepIdEnum:
     type: string
     enum:
+      - preplan
       - plan
       - implement
       - review

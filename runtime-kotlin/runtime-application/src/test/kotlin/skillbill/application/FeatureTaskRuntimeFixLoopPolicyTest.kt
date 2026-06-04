@@ -37,6 +37,7 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
   fun `fix-loop phase retries up to the cap then blocks instead of advancing`() {
     val fixLoopPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,

@@ -108,9 +108,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
-    assertContains(result.stdout, "completed_phases: plan, implement, review, audit, validate")
+    assertContains(result.stdout, "completed_phases: preplan, plan, implement, review, audit, validate")
     assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
-    assertEquals(5, launcher.requests.size)
+    assertEquals(6, launcher.requests.size)
   }
 
   @Test
@@ -180,15 +180,15 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    val orderedPhases = listOf("plan", "implement", "review", "audit", "validate")
+    val orderedPhases = ALL_PHASES
     val agentByPhase = orderedPhases.mapIndexed { index, phaseId ->
       phaseId to launcher.requests[index].agentId
     }.toMap()
-    assertEquals(5, launcher.requests.size, result.stdout)
+    assertEquals(6, launcher.requests.size, result.stdout)
     assertEquals("claude", agentByPhase["plan"], result.stdout)
     assertEquals(
-      listOf("codex", "codex", "codex", "codex"),
-      orderedPhases.drop(1).map { agentByPhase.getValue(it) },
+      listOf("codex", "codex", "codex", "codex", "codex"),
+      orderedPhases.filter { it != "plan" }.map { agentByPhase.getValue(it) },
       result.stdout,
     )
   }
@@ -257,7 +257,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     // F-017: with --monitor, per-phase progress lines (started/completed and a fix-loop iteration
     // line on a retry) are streamed to live stdout. Drive a retry via invalid-then-valid review.
     val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 3)
+    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 4)
     val live = StringBuilder()
 
     val result = CliRuntime.run(
@@ -288,7 +288,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
-    assertContains(status.stdout, "complete: 5")
+    assertContains(status.stdout, "complete: 6")
     assertContains(status.stdout, "pending: 0")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "current_phase: none")
@@ -311,8 +311,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime status reports a blocked phase derived from the ledger`() {
     val fixture = runtimeFixture()
-    // Plan completes (launch 0 valid); implement never validates and blocks after the bounded fix loop.
-    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 1)
+    // Preplan and plan complete; implement never validates and blocks immediately.
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "status: blocked")
@@ -330,7 +330,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
-    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "complete: 2")
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_phase: implement")
     assertContains(status.stdout, "phase: id=plan status=completed")
@@ -363,8 +363,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
-    assertContains(result.stdout, "completed_phases: plan, implement, review, audit, validate")
-    assertEquals(5, launcher.requests.size)
+    assertContains(result.stdout, "completed_phases: preplan, plan, implement, review, audit, validate")
+    assertEquals(6, launcher.requests.size)
   }
 
   @Test
@@ -459,16 +459,12 @@ private fun runtimeFixture(): FeatureTaskRuntimeCliFixture {
   )
 }
 
-// Returns one schema-valid phase output per launch. AgentRunLaunchRequest carries no phase id, so
-// the test double infers the phase from launch order. The echoed phase_id is only cosmetic: it adds
-// no wrong-phase regression protection, since the runner labels validation with its own phaseId and
-// never cross-checks the agent-supplied phase_id.
+// Returns one schema-valid phase output per launch. The delivered prompt pins the runtime phase,
+// so the test double reads that phase id and echoes it back in the validated output.
 private class RecordingPhaseLauncher(
   private val invalidFromLaunchIndex: Int? = null,
-  // When set, launches at indices in [reviewIndex, this) emit invalid output and later launches
-  // emit valid output, driving an invalid-then-valid review fix-loop retry. The runner labels
-  // validation with its own phase id and never reads the agent-supplied phase_id, so the cosmetic
-  // emitted phase_id below need not track the exact phase — only validity matters.
+  // When set, review launches before this global launch index emit invalid output and later review
+  // launches emit valid output, driving an invalid-then-valid review fix-loop retry.
   private val invalidReviewUntilLaunchIndex: Int? = null,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
@@ -478,11 +474,11 @@ private class RecordingPhaseLauncher(
     requests += request
     val invalid = (invalidFromLaunchIndex?.let { launchIndex >= it } ?: false) ||
       isInvalidReviewRetry(launchIndex)
-    val cosmeticPhaseId = ORDERED_PHASES.getOrElse(launchIndex) { "plan" }
+    val phaseId = phaseIdFromPrompt(request.skillRunRequest.promptOverride.orEmpty())
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
-      stdout = if (invalid) INVALID_PHASE_OUTPUT else validPhaseOutput(cosmeticPhaseId),
+      stdout = if (invalid) INVALID_PHASE_OUTPUT else validPhaseOutput(phaseId),
       stderr = "",
       timedOut = false,
       spawnFailed = false,
@@ -491,12 +487,15 @@ private class RecordingPhaseLauncher(
 
   private fun isInvalidReviewRetry(launchIndex: Int): Boolean {
     val limit = invalidReviewUntilLaunchIndex ?: return false
-    val reviewIndex = ORDERED_PHASES.indexOf("review")
-    return launchIndex in reviewIndex until limit
+    val phaseId = phaseIdFromPrompt(requests[launchIndex].skillRunRequest.promptOverride.orEmpty())
+    return launchIndex < limit && phaseId == "review"
   }
 
   private companion object {
-    val ORDERED_PHASES = listOf("plan", "implement", "review", "audit", "validate")
+    private val PHASE_LINE = Regex("^Phase: ([a-z-]+) ", setOf(RegexOption.MULTILINE))
+
+    fun phaseIdFromPrompt(prompt: String): String =
+      PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
 
     // Missing the required status/summary/produced_outputs fields, so the per-phase
     // output validator rejects it and the runner never marks the phase complete.
@@ -516,6 +515,8 @@ private class RecordingPhaseLauncher(
     """.trimIndent()
   }
 }
+
+private val ALL_PHASES = listOf("preplan", "plan", "implement", "review", "audit", "validate")
 
 // Records checkouts and reports a configurable current branch so branch-setup is exercised through
 // the CLI without a real git repo. The default reports an existing feature branch (reuse path).

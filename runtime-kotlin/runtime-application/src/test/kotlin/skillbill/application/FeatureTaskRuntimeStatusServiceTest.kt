@@ -52,10 +52,13 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     assertEquals(0, projection.completeCount)
-    assertEquals(5, projection.pendingCount)
+    assertEquals(6, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
-    assertEquals("plan", projection.currentPhaseId)
-    assertEquals(listOf("pending", "pending", "pending", "pending", "pending"), projection.phases.map { it.status })
+    assertEquals("preplan", projection.currentPhaseId)
+    assertEquals(
+      listOf("pending", "pending", "pending", "pending", "pending", "pending"),
+      projection.phases.map { it.status },
+    )
   }
 
   @Test
@@ -65,6 +68,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     // The runner records a block only in the ledger, leaving the per-phase record at
     // `running`; status must derive the blocked state from the newest ledger entry.
     harness.recordRunning("implement", attemptCount = 3)
+    harness.recordCompleted("preplan", attemptCount = 1)
     harness.recordCompleted("plan", attemptCount = 1)
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.BLOCKED, "implement", attemptCount = 3)
@@ -73,7 +77,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals(1, projection.completeCount)
+    assertEquals(2, projection.completeCount)
     assertEquals(1, projection.blockedCount)
     assertEquals("implement", projection.currentPhaseId)
     assertEquals("completed", projection.phases.single { it.phaseId == "plan" }.status)
@@ -102,6 +106,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     // when the append-only ledger's BLOCKED entry has been pruned by the retention cap.
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
     harness.recordCompleted("plan", attemptCount = 1)
     harness.recordBlocked("implement", attemptCount = 3, "fix loop exhausted")
     // Ledger carries only a START (the BLOCKED entry was pruned away); the durable record stands.

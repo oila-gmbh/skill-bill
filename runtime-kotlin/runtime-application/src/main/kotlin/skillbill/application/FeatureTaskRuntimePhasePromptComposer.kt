@@ -25,7 +25,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     val directive = phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
-      loop (plan -> implement -> review -> audit -> validate) for issue $issueKey. The runtime
+      loop (preplan -> plan -> implement -> review -> audit -> validate) for issue $issueKey. The runtime
       owns the loop; do not run other phases, do not open or continue any other skill-bill
       workflow, and do not call `skill-bill workflow continue`.
 
@@ -54,9 +54,14 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   // One imperative task directive per phase; the briefing carries the spec-specific scope.
   private val phaseDirectives: Map<String, String> = mapOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
+      "Produce a pre-planning digest covering scope, affected boundaries, risks/unknowns, " +
+      "and rollout need. Do not modify repository files during this phase. Emit a " +
+      "schema-valid produced_outputs object containing the digest for the downstream plan phase.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
-      "Produce an ordered implementation plan that satisfies every acceptance criterion. " +
-      "Do not modify repository files during this phase.",
+      "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
+      "the upstream preplan digest as planning context. Do not modify repository files during " +
+      "this phase.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
       "Execute the upstream plan output: make the repository changes it describes.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to

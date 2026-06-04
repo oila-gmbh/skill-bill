@@ -14,6 +14,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
  * shape cannot express.
  */
 object FeatureTaskRuntimePhaseWorkflowDefinition {
+  const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
   const val PHASE_IMPLEMENT: String = "implement"
   const val PHASE_REVIEW: String = "review"
@@ -29,9 +30,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
     stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
-    defaultInitialStepId = PHASE_PLAN,
+    defaultInitialStepId = PHASE_PREPLAN,
     stepIds =
     listOf(
+      PHASE_PREPLAN,
       PHASE_PLAN,
       PHASE_IMPLEMENT,
       PHASE_REVIEW,
@@ -40,15 +42,17 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     ),
     stepLabels =
     mapOf(
-      PHASE_PLAN to "Phase 1: Plan",
-      PHASE_IMPLEMENT to "Phase 2: Implement",
-      PHASE_REVIEW to "Phase 3: Code Review",
-      PHASE_AUDIT to "Phase 4: Completeness Audit",
-      PHASE_VALIDATE to "Phase 5: Quality Validation",
+      PHASE_PREPLAN to "Phase 1: Pre-plan",
+      PHASE_PLAN to "Phase 2: Plan",
+      PHASE_IMPLEMENT to "Phase 3: Implement",
+      PHASE_REVIEW to "Phase 4: Code Review",
+      PHASE_AUDIT to "Phase 5: Completeness Audit",
+      PHASE_VALIDATE to "Phase 6: Quality Validation",
     ),
     requiredArtifactsByStep =
     mapOf(
-      PHASE_PLAN to emptyList(),
+      PHASE_PREPLAN to emptyList(),
+      PHASE_PLAN to listOf(PHASE_PREPLAN),
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
       PHASE_REVIEW to listOf(PHASE_IMPLEMENT),
       PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REVIEW),
@@ -56,7 +60,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     ),
     resumeActions =
     mapOf(
-      PHASE_PLAN to "Re-run the plan phase from the run-invariants, then persist the validated plan output.",
+      PHASE_PREPLAN to "Re-run the preplan phase from the run-invariants, then persist the validated digest output.",
+      PHASE_PLAN to "Resume planning from the latest preplan digest, then persist the validated plan output.",
       PHASE_IMPLEMENT to "Resume implementation from the latest plan output, then persist the validated output.",
       PHASE_REVIEW to "Resume code review from the latest implement output and the derived diff context.",
       PHASE_AUDIT to "Resume the completeness audit from the latest plan, implement, and review outputs.",

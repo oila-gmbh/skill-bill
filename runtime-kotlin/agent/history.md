@@ -1,3 +1,13 @@
+## [2026-06-04] SKILL-65.1 subtask 2 preplan-phase
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, orchestration/contracts
+- Feature-task-runtime phase DAG now starts `preplan -> plan -> implement -> review -> audit -> validate`; `PHASE_PREPLAN` is the default initial step, non-file-mutating, has exact labels/resume action/schema enum parity, and `plan` consumes the preplan output. reusable
+- Prompt composer owns a preplan directive that produces a digest (scope, affected boundaries, risks/unknowns, rollout) and forbids repo edits; plan prompt explicitly uses the upstream preplan digest. reusable
+- Resume gotcha: legacy five-phase records with completed `plan` but no `preplan` must invalidate/re-run plan after preplan, not skip to implement with stale upstream context. reusable
+- Schema-gate gotcha: per-phase output validation must compare emitted `phase_id` with the executing source label after schema validation; otherwise a valid envelope can be persisted under the wrong runtime phase. reusable
+- MCP/CLI fixtures now model coherent preplan+plan completion before implement; test doubles read phase id from the delivered prompt so retry attempts cannot emit shifted phase ids.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-04] SKILL-65.1 subtask 1 runtime-run-setup-and-feature-branch
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, runtime-kotlin/ARCHITECTURE.md
 - Feature-task-runtime now establishes a non-default feature branch before every file-mutating phase, persists the resolved branch in workflow artifacts, and reports it through run/resume/status/monitor output. reusable

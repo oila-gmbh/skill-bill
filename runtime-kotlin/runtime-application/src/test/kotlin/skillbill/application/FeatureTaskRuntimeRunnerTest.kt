@@ -49,18 +49,18 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeRunnerTest {
   @Test
-  fun `runs phases deterministically in plan implement review audit validate order`() {
+  fun `runs phases deterministically in preplan plan implement review audit validate order`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
     val report = harness.runner.run(harness.request())
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), completed.completedPhaseIds)
+    assertEquals(ALL_PHASES, completed.completedPhaseIds)
     assertEquals(
-      listOf("plan", "implement", "review", "audit", "validate"),
+      ALL_PHASES,
       harness.launchedPhaseOrder(),
     )
     assertEquals(
-      listOf("plan", "implement", "review", "audit", "validate"),
+      ALL_PHASES,
       harness.launchOrder(),
     )
   }
@@ -73,12 +73,13 @@ class FeatureTaskRuntimeRunnerTest {
       mandatesAndOverrides = listOf("mandate-X"),
     )
     val recorded = listOf(
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("review", 1, VALID_OUTPUT),
     )
 
-    val briefings = listOf("plan", "implement", "review", "audit", "validate").associateWith { phaseId ->
+    val briefings = ALL_PHASES.associateWith { phaseId ->
       val declaration =
         skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)
       val handoff = skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -95,6 +96,8 @@ class FeatureTaskRuntimeRunnerTest {
       assertContains(briefing.briefingText, SPEC_REFERENCE)
       assertContains(briefing.briefingText, "mandate-X")
     }
+    assertTrue(briefings.getValue("plan").upstreamOutputsByPhaseId.containsKey("preplan"))
+    assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId.getValue("preplan"))
     assertTrue(briefings.getValue("implement").upstreamOutputsByPhaseId.containsKey("plan"))
     assertEquals(PLAN_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId.getValue("plan"))
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
@@ -113,9 +116,9 @@ class FeatureTaskRuntimeRunnerTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("implement", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "does not participate in a fix loop")
-    assertEquals(listOf("plan"), blocked.completedPhaseIds)
-    assertEquals(listOf("plan", "implement"), harness.launchedPhaseOrder())
-    assertEquals(listOf("plan", "implement"), harness.launchOrder())
+    assertEquals(listOf("preplan", "plan"), blocked.completedPhaseIds)
+    assertEquals(listOf("preplan", "plan", "implement"), harness.launchedPhaseOrder())
+    assertEquals(listOf("preplan", "plan", "implement"), harness.launchOrder())
   }
 
   @Test
@@ -195,7 +198,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.runner.run(harness.request())
 
     val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-    listOf("plan", "implement", "review", "audit", "validate").forEach { phaseId ->
+    ALL_PHASES.forEach { phaseId ->
       assertEquals("opencode", records.getValue(phaseId).resolvedAgentId, "override must win for $phaseId")
     }
   }
@@ -223,6 +226,7 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `resume restarts from last incomplete phase and restores upstream outputs`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
 
@@ -239,6 +243,36 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(PLAN_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["plan"])
     assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["implement"])
     assertEquals(VALID_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["review"])
+  }
+
+  @Test
+  fun `resume skips completed preplan and restores its digest into plan briefing`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), harness.launchedPhaseOrder())
+    assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
+    val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals(PREPLAN_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
+    assertContains(planBriefing.briefingText, "### from: preplan")
+    assertContains(planBriefing.briefingText, PREPLAN_OUTPUT)
+  }
+
+  @Test
+  fun `resume re-runs legacy completed plan when preplan output is absent`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(ALL_PHASES, harness.launchedPhaseOrder())
+    val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals(VALID_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
+    assertContains(planBriefing.briefingText, "### from: preplan")
   }
 
   @Test
@@ -386,8 +420,8 @@ class FeatureTaskRuntimeRunnerTest {
 
     val started = harness.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseStarted>().map { it.phaseId }
     val done = harness.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseCompleted>().map { it.phaseId }
-    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), started)
-    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), done)
+    assertEquals(ALL_PHASES, started)
+    assertEquals(ALL_PHASES, done)
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
 
@@ -431,7 +465,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.runner.run(harness.request())
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
-    assertEquals(setOf("plan", "implement", "review", "audit", "validate"), briefings.keys)
+    assertEquals(ALL_PHASES.toSet(), briefings.keys)
 
     briefings.forEach { (phaseId, briefing) ->
       assertEquals(SPEC_REFERENCE, briefing.specReference, "spec reference for $phaseId")
@@ -440,6 +474,7 @@ class FeatureTaskRuntimeRunnerTest {
       assertContains(briefing.briefingText, SPEC_REFERENCE)
       assertContains(briefing.briefingText, "mandate-X")
     }
+    assertEquals(VALID_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId["preplan"])
     assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId["plan"])
     assertEquals(VALID_OUTPUT, briefings.getValue("review").upstreamOutputsByPhaseId["implement"])
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
@@ -456,11 +491,11 @@ class FeatureTaskRuntimeRunnerTest {
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("plan", blocked.lastIncompletePhase)
+    assertEquals("preplan", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "failed to launch")
     assertTrue(!blocked.blockedReason.contains("schema"))
     assertTrue(!blocked.blockedReason.contains("exhausted the bounded fix loop"))
-    assertEquals(listOf("plan"), harness.launchedPhaseOrder())
+    assertEquals(listOf("preplan"), harness.launchedPhaseOrder())
   }
 
   @Test
@@ -593,8 +628,8 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       harness.events.first { it is FeatureTaskRuntimeRunEvent.BranchResolved },
     )
     assertTrue(branchEvent.created)
-    // The plan phase (non-file-mutating) precedes branch setup; the create happens before implement.
-    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), harness.launchOrder())
+    // The preplan and plan phases are non-file-mutating; branch setup happens before implement.
+    assertEquals(ALL_PHASES, harness.launchOrder())
   }
 
   @Test
@@ -627,9 +662,9 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertContains(blocked.blockedReason, EXPECTED_FEATURE_BRANCH)
     assertContains(blocked.blockedReason, "checkout exploded")
     assertContains(blocked.blockedReason, "default branch")
-    // plan launched (non-mutating), but no file-mutating phase ever launched.
-    assertEquals(listOf("plan"), harness.launchOrder())
-    assertTrue(harness.launchOrder().none { it != "plan" })
+    // Preplan and plan launched (non-mutating), but no file-mutating phase ever launched.
+    assertEquals(NON_FILE_MUTATING_PHASES.toList(), harness.launchOrder())
+    assertTrue(harness.launchOrder().none { it !in NON_FILE_MUTATING_PHASES })
   }
 
   @Test
@@ -646,9 +681,9 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertContains(blocked.blockedReason, "git HEAD unreadable")
     assertContains(blocked.blockedReason, "default branch")
     assertTrue(git.checkoutCalls.isEmpty(), "an unreadable current branch must never check out")
-    assertEquals(listOf("plan"), harness.launchOrder())
+    assertEquals(NON_FILE_MUTATING_PHASES.toList(), harness.launchOrder())
     assertTrue(
-      harness.launchOrder().none { it != "plan" },
+      harness.launchOrder().none { it !in NON_FILE_MUTATING_PHASES },
       "no file-mutating phase may launch when the current branch is unreadable",
     )
   }
@@ -730,7 +765,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       git.checkoutCalls.isEmpty(),
       "a missing persisted branch must never check out (would create a divergent branch): ${git.checkoutCalls}",
     )
-    val launchedMutating = harness.launchOrder().filter { it != "plan" }
+    val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
     assertTrue(launchedMutating.isEmpty(), "no file-mutating phase may launch when re-attach fails: $launchedMutating")
   }
 
@@ -752,7 +787,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertContains(blocked.blockedReason, persistedBranch)
     assertContains(blocked.blockedReason, "rev-parse exploded")
     assertTrue(git.checkoutCalls.isEmpty(), "an unverifiable persisted branch must never check out")
-    assertTrue(harness.launchOrder().none { it != "plan" })
+    assertTrue(harness.launchOrder().none { it !in NON_FILE_MUTATING_PHASES })
   }
 
   @Test
@@ -770,7 +805,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertContains(blocked.blockedReason, "feat/wrong-landing")
     assertContains(blocked.blockedReason, EXPECTED_FEATURE_BRANCH)
     assertTrue(blocked.blockedReason.contains("HEAD is on"))
-    val launchedMutating = harness.launchOrder().filter { it != "plan" }
+    val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
     assertTrue(
       launchedMutating.isEmpty(),
       "no file-mutating phase may launch when HEAD lands on the wrong branch: $launchedMutating",
@@ -794,7 +829,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals("implement", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "protected branch")
     assertContains(blocked.blockedReason, "main")
-    val launchedMutating = harness.launchOrder().filter { it != "plan" }
+    val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
     assertTrue(
       launchedMutating.isEmpty(),
       "no file-mutating phase may launch when HEAD lands on a protected branch: $launchedMutating",
@@ -817,7 +852,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertContains(blocked.blockedReason, "protected branch")
     assertContains(blocked.blockedReason, "main")
     assertTrue(git.checkoutCalls.isEmpty(), "already-on-protected re-attach must not check out")
-    val launchedMutating = harness.launchOrder().filter { it != "plan" }
+    val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
     assertTrue(
       launchedMutating.isEmpty(),
       "no file-mutating phase may launch when persisted branch is protected: $launchedMutating",
@@ -834,7 +869,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     harness.runner.run(harness.request())
 
-    val launchedMutating = harness.launchOrder().filter { it != "plan" }
+    val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
     assertTrue(launchedMutating.isEmpty(), "no file-mutating phase may launch on the default branch: $launchedMutating")
   }
 
@@ -901,6 +936,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       },
     )
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedBranchSetupBlockedPhase("implement", "checkout exploded on the prior run")
 
     val report = harness.runner.run(harness.request())
@@ -941,7 +977,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(EXPECTED_FEATURE_BRANCH, completed.resolvedBranch)
-    assertEquals(listOf("plan", "implement", "review", "audit", "validate"), harness.launchOrder())
+    assertEquals(ALL_PHASES, harness.launchOrder())
     assertEquals(
       listOf(
         RecordingWorkflowGitOperations.CheckoutCall(EXPECTED_FEATURE_BRANCH, "main"),
@@ -984,10 +1020,12 @@ private const val CONVENTION_SPEC_REFERENCE =
 private const val EXPECTED_FEATURE_BRANCH = "feat/SKILL-65-runtime-feature-task-parity"
 private const val INVOKED_AGENT = "claude-code"
 private const val VALID_OUTPUT = """{"contract_version":"0.1"}"""
+private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
 private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
 private const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
 
-private val ALL_PHASES = listOf("plan", "implement", "review", "audit", "validate")
+private val ALL_PHASES = listOf("preplan", "plan", "implement", "review", "audit", "validate")
+private val NON_FILE_MUTATING_PHASES = setOf("preplan", "plan")
 
 // A distinct invoking agent per phase so a captured launch request is
 // phase-attributable from its invokedAgentId.

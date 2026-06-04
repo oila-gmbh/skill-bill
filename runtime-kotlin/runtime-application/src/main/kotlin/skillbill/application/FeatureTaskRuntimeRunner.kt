@@ -59,7 +59,7 @@ class FeatureTaskRuntimeRunner(
     private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
 
     // Advances one phase: skips already-complete phases, guarantees the feature branch before a
-    // file-mutating phase (the non-mutating plan phase may precede setup), then launches the phase.
+    // file-mutating phase (preplan/plan may precede setup), then launches the phase.
     // Returns true when the run is now blocked and the loop must stop.
     fun advance(phaseId: String): Boolean {
       if (state.isComplete(phaseId)) {
@@ -426,6 +426,20 @@ class FeatureTaskRuntimeRunner(
       .keys
       .toMutableSet()
 
+    init {
+      invalidateLegacyPlanWithoutPreplan()
+    }
+
+    private fun invalidateLegacyPlanWithoutPreplan() {
+      val plan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+      val preplan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
+      if (plan !in completed || preplan in completed) {
+        return
+      }
+      completed.remove(plan)
+      outputs.removeAll { it.phaseId == plan }
+    }
+
     fun outputs(): List<FeatureTaskRuntimePhaseOutput> = outputs.toList()
 
     fun isComplete(phaseId: String): Boolean = phaseId in completed
@@ -478,9 +492,14 @@ class FeatureTaskRuntimeRunner(
     // attributes its durable blocked record and ledger entry rather than a real agent id.
     const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 
-    // The plan phase is non-file-mutating (it produces a plan, touches no working tree); every
-    // later phase mutates or depends on a working tree pinned to the feature branch.
-    fun isFileMutating(phaseId: String): Boolean = phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+    // Preplan and plan are non-file-mutating; every later phase mutates or depends on a working
+    // tree pinned to the feature branch.
+    fun isFileMutating(phaseId: String): Boolean = phaseId !in NON_FILE_MUTATING_PHASES
+
+    val NON_FILE_MUTATING_PHASES = setOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+    )
 
     // Bound on the validator detail appended to a persisted blocked reason so a pathological
     // multi-violation reason cannot bloat the durable record or the CLI progress line.

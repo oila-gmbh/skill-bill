@@ -604,7 +604,7 @@ class McpRuntimeTest {
       "<UPDATED_AT>" to got["updated_at"].toString(),
       "<CONTINUED_AT>" to continued["updated_at"].toString(),
     )
-    assertCompactUpdateAcknowledgementPayload(updated, "verdict")
+    assertCompactUpdateAcknowledgementPayload(updated, listOf("verdict"))
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals("verdict", got["current_step_id"])
@@ -648,7 +648,11 @@ class McpFeatureTaskRuntimeWorkflowTest {
         workflowId = workflowId,
         workflowStatus = "running",
         currentStepId = "implement",
-        stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
         artifactsPatch = taskRuntimePhaseArtifactsPatch(),
       ),
       context,
@@ -679,7 +683,7 @@ class McpFeatureTaskRuntimeWorkflowTest {
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
     )
-    assertCompactUpdateAcknowledgementPayload(updated, "implement")
+    assertCompactUpdateAcknowledgementPayload(updated, listOf("preplan", "plan", "implement"))
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals(workflowId, got["workflow_id"])
@@ -690,6 +694,19 @@ class McpFeatureTaskRuntimeWorkflowTest {
 // F-019: a multi-phase records map + multi-entry ledger patch for the task-runtime golden flow.
 private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
   "feature_task_runtime_phase_records" to linkedMapOf(
+    "preplan" to linkedMapOf(
+      "phase_id" to "preplan",
+      "status" to "completed",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-03T09:59:00Z",
+      "first_started_at" to "2026-06-03T09:59:00Z",
+      "finished_at" to "2026-06-03T10:00:00Z",
+      "duration_millis" to 60000,
+      "resolved_agent_id" to "claude",
+      "output_artifact" to
+        "{\"contract_version\":\"0.1\",\"phase_id\":\"preplan\",\"status\":\"completed\"," +
+        "\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}",
+    ),
     "plan" to linkedMapOf(
       "phase_id" to "plan",
       "status" to "completed",
@@ -699,7 +716,9 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "finished_at" to "2026-06-03T10:01:00Z",
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
-      "output_artifact" to "{\"contract_version\":\"0.1\"}",
+      "output_artifact" to
+        "{\"contract_version\":\"0.1\",\"phase_id\":\"plan\",\"status\":\"completed\"," +
+        "\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}",
     ),
     "implement" to linkedMapOf(
       "phase_id" to "implement",
@@ -711,9 +730,11 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
     ),
   ),
   "feature_task_runtime_phase_ledger" to listOf(
-    taskRuntimeLedgerEntry("start", 0, "2026-06-03T10:00:00Z", "plan"),
-    taskRuntimeLedgerEntry("complete", 1, "2026-06-03T10:01:00Z", "plan"),
-    taskRuntimeLedgerEntry("start", 2, "2026-06-03T10:01:00Z", "implement"),
+    taskRuntimeLedgerEntry("start", 0, "2026-06-03T09:59:00Z", "preplan"),
+    taskRuntimeLedgerEntry("complete", 1, "2026-06-03T10:00:00Z", "preplan"),
+    taskRuntimeLedgerEntry("start", 2, "2026-06-03T10:00:00Z", "plan"),
+    taskRuntimeLedgerEntry("complete", 3, "2026-06-03T10:01:00Z", "plan"),
+    taskRuntimeLedgerEntry("start", 4, "2026-06-03T10:01:00Z", "implement"),
   ),
 )
 
@@ -731,9 +752,9 @@ private fun taskRuntimeLedgerEntry(
   "resolved_agent_id" to "claude",
 )
 
-private fun assertCompactUpdateAcknowledgementPayload(payload: Map<String, *>, updatedStepId: String) {
+private fun assertCompactUpdateAcknowledgementPayload(payload: Map<String, *>, updatedStepIds: List<String>) {
   assertEquals("ok", payload["status"])
-  assertEquals(listOf(updatedStepId), payload["updated_step_ids"])
+  assertEquals(updatedStepIds, payload["updated_step_ids"])
   assertTrue(payload.containsKey("updated_artifact_keys"))
   assertTrue(payload.containsKey("read_only_full_state_command"))
   assertTrue(payload.containsKey("read_only_full_state_guidance"))

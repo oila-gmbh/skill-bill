@@ -68,6 +68,15 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `output whose phase id does not match the executing phase fails validation`() {
+    val wrongPhase = wellFormed.replace("phase_id: \"plan\"", "phase_id: \"implement\"")
+
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wrongPhase, "plan")
+    }
+  }
+
+  @Test
   fun `output with an empty produced_outputs object fails validation`() {
     val emptyProducedOutputs =
       """

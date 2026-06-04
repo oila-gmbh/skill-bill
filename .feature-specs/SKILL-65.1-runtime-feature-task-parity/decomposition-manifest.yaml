@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-65.1-runtime-feature-task-parity"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "runtime-run-setup-and-feature-branch"
@@ -25,12 +25,12 @@ subtasks:
 - id: 2
   name: "preplan-phase"
   spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_2_preplan-phase.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-65.1-runtime-feature-task-parity"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260604-095554-hdtn"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies: []
 - id: 3
   name: "post-validate-history-commit-pr-phases"
