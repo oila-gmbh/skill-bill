@@ -413,10 +413,21 @@ runtime-ports
     - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
     - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+    - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+    - `skillbill.ports.goalrunner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
+    - `skillbill.workflow.taskruntime.model.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
     - `skillbill.application.lifecycleOkPayload`
@@ -426,6 +437,8 @@ runtime-ports
     - `skillbill.application.orchestratedPayload`
     - `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
     - `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+    - `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeStarted`
+    - `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeFinished`
     - `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
     - `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
     - `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
@@ -822,10 +835,21 @@ Categories:
 - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
 - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+- `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+- `skillbill.ports.goalrunner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
+- `skillbill.workflow.taskruntime.model.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
@@ -856,6 +880,8 @@ Categories:
 - `skillbill.application.orchestratedPayload`
 - `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
 - `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
+- `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeStarted`
+- `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeFinished`
 - `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
 - `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
 - `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`

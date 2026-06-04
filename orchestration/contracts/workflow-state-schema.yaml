@@ -146,7 +146,7 @@ $defs:
   # SKILL-65 Subtask 2: the experimental runtime-driven feature-task pipeline
   # (`FeatureTaskRuntimePhaseWorkflowDefinition`). A third mutually-exclusive
   # `oneOf` branch keyed on `workflow_name=feature-task-runtime`, with its own
-  # 5-phase step-id set and 6-value workflow-status enum (including `blocked`).
+  # phase step-id set and 6-value workflow-status enum (including `blocked`).
   # The schema header explicitly allows new families that match this shape; the
   # IMPLEMENT/VERIFY branches above are unchanged.
   # Unknown top-level fields on a feature-task-runtime snapshot are rejected by the
@@ -176,11 +176,15 @@ $defs:
         # See note above on the empty-string allowance.
         enum:
           - ""
+          - preplan
           - plan
           - implement
           - review
           - audit
           - validate
+          - write_history
+          - commit_push
+          - pr
       steps:
         type: array
         items:
@@ -190,11 +194,15 @@ $defs:
                 step_id:
                   type: string
                   enum:
+                    - preplan
                     - plan
                     - implement
                     - review
                     - audit
                     - validate
+                    - write_history
+                    - commit_push
+                    - pr
     required:
       - workflow_name
       - workflow_status

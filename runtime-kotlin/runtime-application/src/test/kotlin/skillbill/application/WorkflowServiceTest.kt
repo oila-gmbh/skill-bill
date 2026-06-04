@@ -757,6 +757,47 @@ class GoalRunnerCommitShaRecoveryTest {
     assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, outcome.status)
   }
 
+  @Test
+  fun `goal runner outcome store persists recovered missing result prefix terminal envelope`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-child",
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcome = store.recoverMissingResultPrefixOutput(
+      workflowId = "wfl-child",
+      issueKey = "SKILL-52.1",
+      subtaskId = 1,
+      output = mapOf(
+        "status" to "blocked",
+        "workflow_id" to "wfl-child",
+        "last_resumable_step" to "implement",
+        "blocked_reason" to "prefixless terminal json",
+      ),
+    )
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals("implement", outcome.lastResumableStep)
+    val saved = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot()
+    val artifacts = decodeWorkflowArtifactsForTest(saved.artifactsJson)
+    assertTrue(artifacts.containsKey("goal_runner_missing_result_prefix_recovery"))
+    assertEquals("prefixless terminal json", outcome.blockedReason)
+  }
+
   private fun commitPushCompletedWithoutCommitSha(workflowId: String): WorkflowStateRecord {
     val opened = testWorkflowEngine.openRecord(
       FeatureImplementWorkflowDefinition.definition,

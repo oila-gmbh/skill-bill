@@ -5,6 +5,7 @@ package skillbill.application
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -21,6 +22,7 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalPullRequestPort
@@ -205,6 +207,7 @@ class GoalRunner(
         attempted,
         observability,
         ledger,
+        launchReconciliation.diagnostics,
       )
     }
   }
@@ -300,6 +303,7 @@ class GoalRunner(
     attempted: List<Int>,
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
+    launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
   ): GoalRunnerIterationResult {
     val knownWorkflowId = reconciled.workflowId
       ?: state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
@@ -315,6 +319,9 @@ class GoalRunner(
           blockedReason = stoppedOutcome.blockedReason,
           finalReconciledResult = stoppedOutcome.reason.name.lowercase(),
           stopReason = stoppedOutcome.reason.name.lowercase(),
+          diagnosticClass = launchDiagnostics?.diagnosticClass ?: stoppedOutcome.reason.toDiagnosticClass(),
+          recoverableJsonPresent = launchDiagnostics?.recoverableJsonPresent ?: false,
+          nextSafeAction = launchDiagnostics?.nextSafeAction ?: stoppedOutcome.reason.nextSafeAction(),
         ),
       )
     }
@@ -692,8 +699,30 @@ internal class GoalRunnerLaunchReconciler(
         declaredProgressProbe = declaredProgressProbe(tickReader),
         progressEmitter = progressEmitter,
         outputSink = request.outputSink,
+        goalContinuation = goalContinuationContext(issueKey, subtaskId, request),
       ),
     )
+  }
+
+  private fun goalContinuationContext(
+    issueKey: String,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): SkillRunGoalContinuationContext? {
+    val state = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot) ?: return null
+    val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
+      ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
+    val subtask = state.manifest.subtasks.firstOrNull { it.id == subtaskId }
+    return branch?.let {
+      SkillRunGoalContinuationContext(
+        parentIssueKey = issueKey,
+        subtaskId = subtaskId,
+        goalBranch = it,
+        suppressPr = true,
+        parentWorkflowId = state.parentWorkflowId,
+        lastResumableStep = subtask?.lastResumableStep?.takeIf(String::isNotBlank),
+      )
+    }
   }
 
   fun reconcileLaunchOutcome(
@@ -713,7 +742,7 @@ internal class GoalRunnerLaunchReconciler(
     return if (shouldRecheckTerminalOutcome(reconciled, launchFacts)) {
       recheckTerminalOutcome(attemptedState, refreshed, launchOutcome, launchFacts, subtaskId, request)
     } else {
-      GoalRunnerLaunchReconciliation(refreshed = refreshed, reconciled = reconciled, launchOutcome = launchOutcome)
+      launchReconciliation(refreshed, reconciled, launchOutcome, subtaskId, request)
     }
   }
 
@@ -737,6 +766,29 @@ internal class GoalRunnerLaunchReconciler(
     }
   }
 
+  private fun launchReconciliation(
+    refreshed: GoalRunnerManifestState,
+    reconciled: GoalRunnerReconciledOutcome,
+    launchOutcome: AgentRunLaunchOutcome,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerLaunchReconciliation {
+    val recovery = missingResultPrefixRecovery(refreshed, reconciled, launchOutcome, subtaskId, request)
+    val recoveredReconciled = recovery?.storedOutcome?.let { recoveredOutcome ->
+      GoalRunnerOutcomeReconciler.reconcile(
+        subtaskId = subtaskId,
+        launchFacts = launchOutcome.toGoalRunnerLaunchFacts(),
+        storedOutcome = recoveredOutcome,
+      )
+    } ?: reconciled
+    return GoalRunnerLaunchReconciliation(
+      refreshed = refreshed,
+      reconciled = recoveredReconciled,
+      launchOutcome = launchOutcome,
+      diagnostics = recovery?.diagnostics ?: malformedResultJsonDiagnostics(reconciled, launchOutcome),
+    )
+  }
+
   private fun retryLaunchOutcome(
     attemptedState: GoalRunnerManifestState,
     refreshed: GoalRunnerManifestState,
@@ -753,14 +805,38 @@ internal class GoalRunnerLaunchReconciler(
     val retryRefreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: refreshed
     val retryLaunchFacts = retryLaunchOutcome.toGoalRunnerLaunchFacts()
-    return GoalRunnerLaunchReconciliation(
-      refreshed = retryRefreshed,
-      reconciled = GoalRunnerOutcomeReconciler.reconcile(
+    val reconciled = GoalRunnerOutcomeReconciler.reconcile(
+      subtaskId = subtaskId,
+      launchFacts = retryLaunchFacts,
+      storedOutcome = storedOutcome(retryRefreshed, subtaskId, request),
+    )
+    return launchReconciliation(retryRefreshed, reconciled, retryLaunchOutcome, subtaskId, request)
+  }
+
+  private fun missingResultPrefixRecovery(
+    refreshed: GoalRunnerManifestState,
+    reconciled: GoalRunnerReconciledOutcome,
+    launchOutcome: AgentRunLaunchOutcome,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerMissingResultPrefixRecovery? = missingPrefixRecoveryCandidate(
+    reconciled,
+    launchOutcome,
+  )?.let { candidate ->
+    val workflowId = refreshed.manifest.workflowIdFor(subtaskId)
+      ?: candidate.workflowId
+    val storedOutcome = workflowId?.let { resolvedWorkflowId ->
+      outcomeStore.recoverMissingResultPrefixOutput(
+        workflowId = resolvedWorkflowId,
+        issueKey = request.issueKey,
         subtaskId = subtaskId,
-        launchFacts = retryLaunchFacts,
-        storedOutcome = storedOutcome(retryRefreshed, subtaskId, request),
-      ),
-      launchOutcome = retryLaunchOutcome,
+        output = candidate.output,
+        dbPathOverride = request.dbPathOverride,
+      )
+    }
+    GoalRunnerMissingResultPrefixRecovery(
+      storedOutcome = storedOutcome,
+      diagnostics = missingResultPrefixDiagnostics(storedOutcome?.lastResumableStep ?: candidate.lastResumableStep),
     )
   }
 
@@ -1155,6 +1231,24 @@ internal data class GoalRunnerLaunchReconciliation(
   val refreshed: GoalRunnerManifestState,
   val reconciled: GoalRunnerReconciledOutcome,
   val launchOutcome: AgentRunLaunchOutcome,
+  val diagnostics: GoalRunnerLaunchDiagnostics? = null,
+)
+
+internal data class GoalRunnerLaunchDiagnostics(
+  val diagnosticClass: String,
+  val recoverableJsonPresent: Boolean,
+  val nextSafeAction: String,
+)
+
+private data class GoalRunnerMissingResultPrefixRecovery(
+  val storedOutcome: GoalRunnerStoredOutcome?,
+  val diagnostics: GoalRunnerLaunchDiagnostics,
+)
+
+private data class GoalRunnerMissingResultPrefixCandidate(
+  val output: Map<String, Any?>,
+  val lastResumableStep: String?,
+  val workflowId: String?,
 )
 
 private fun GoalRunnerStopReason.toLedgerAction(): GoalAttemptLedgerAction = when (this) {
@@ -1202,6 +1296,11 @@ private fun recordLaunchObservabilityLedgerAndAccounting(
       subtaskId = subtaskId,
       progress = progress,
       launchOutcome = launchOutcome,
+      diagnosticClass = (launchOutcome as? AgentRunLaunchFacts)?.takeIf {
+        it.spawnFailed || it.interrupted || it.timedOut || (it.exitStatus != null && it.exitStatus != 0)
+      }?.let { "child_process_failed" },
+      recoverableJsonPresent = null,
+      nextSafeAction = "read_terminal_workflow_state",
     ),
   )
   ledger.recordAccounting(
@@ -1210,6 +1309,131 @@ private fun recordLaunchObservabilityLedgerAndAccounting(
     phase = progress?.currentStepId.orEmpty(),
     launchOutcome = launchOutcome,
   )
+}
+
+private fun GoalRunnerStopReason.toDiagnosticClass(): String = when (this) {
+  GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_workflow_state"
+  GoalRunnerStopReason.FAILED -> "malformed_result_json"
+  GoalRunnerStopReason.TIMEOUT,
+  GoalRunnerStopReason.INTERRUPTED,
+  GoalRunnerStopReason.BLOCKED,
+  -> "child_process_failed"
+  else -> name.lowercase()
+}
+
+private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
+  GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
+  GoalRunnerStopReason.TIMEOUT,
+  GoalRunnerStopReason.INTERRUPTED,
+  -> "resume_from_last_resumable_step"
+  GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
+  else -> "inspect_blocked_reason"
+}
+
+private fun missingResultPrefixDiagnostics(lastResumableStep: String?): GoalRunnerLaunchDiagnostics =
+  GoalRunnerLaunchDiagnostics(
+    diagnosticClass = "missing_result_prefix",
+    recoverableJsonPresent = true,
+    nextSafeAction = if (lastResumableStep.isNullOrBlank()) {
+      "continue_inline"
+    } else {
+      "resume_from_last_resumable_step"
+    },
+  )
+
+private fun missingPrefixRecoveryCandidate(
+  reconciled: GoalRunnerReconciledOutcome,
+  launchOutcome: AgentRunLaunchOutcome,
+): GoalRunnerMissingResultPrefixCandidate? = (reconciled as? GoalRunnerReconciledOutcome.Stop)
+  ?.takeIf { stop -> stop.reason == GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME }
+  ?.let { stop ->
+    (launchOutcome as? AgentRunLaunchFacts)?.let { facts ->
+      terminalJsonObjectWithoutResultPrefix(facts.stdout, facts.stderr)?.let { output ->
+        GoalRunnerMissingResultPrefixCandidate(
+          output = output,
+          lastResumableStep = stop.lastResumableStep,
+          workflowId = facts.liveness?.workflowId?.takeIf(String::isNotBlank),
+        )
+      }
+    }
+  }
+
+private fun malformedResultJsonDiagnostics(
+  reconciled: GoalRunnerReconciledOutcome,
+  launchOutcome: AgentRunLaunchOutcome,
+): GoalRunnerLaunchDiagnostics? = (reconciled as? GoalRunnerReconciledOutcome.Stop)
+  ?.let { launchOutcome as? AgentRunLaunchFacts }
+  ?.takeIf { facts -> childOutputHasJsonLikeContent(facts.stdout, facts.stderr) }
+  ?.takeIf { facts -> terminalJsonObjectWithoutResultPrefix(facts.stdout, facts.stderr) == null }
+  ?.let {
+    GoalRunnerLaunchDiagnostics(
+      diagnosticClass = "malformed_result_json",
+      recoverableJsonPresent = false,
+      nextSafeAction = "inspect_child_output_then_resume",
+    )
+  }
+
+private fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: String): Map<String, Any?>? {
+  val combined = listOf(stdout, stderr)
+    .filter(String::isNotBlank)
+    .joinToString("\n")
+  val candidate = combined
+    .takeUnless { it.contains("RESULT:") }
+    ?.let(::topLevelJsonObjectCandidates)
+    ?.singleOrNull()
+  return candidate
+    ?.let(JsonSupport::parseObjectOrNull)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.takeIf { it.isImplementationReturnContract() || it.isRuntimeTerminalEnvelope() }
+}
+
+private fun childOutputHasJsonLikeContent(stdout: String, stderr: String): Boolean =
+  listOf(stdout, stderr).any { output -> output.contains('{') || output.contains('}') || output.contains("RESULT:") }
+
+private fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.containsAll(
+  setOf(
+    "tasks_completed",
+    "files_created",
+    "files_modified",
+    "tests_written",
+    "plan_deviation_notes",
+    "notes_for_review",
+  ),
+)
+
+private fun Map<String, Any?>.isRuntimeTerminalEnvelope(): Boolean =
+  this["status"]?.toString() in setOf("complete", "completed", "blocked", "failed", "timeout", "timed_out") &&
+    this["workflow_id"]?.toString().orEmpty().isNotBlank()
+
+private fun topLevelJsonObjectCandidates(text: String): List<String> {
+  val candidates = mutableListOf<String>()
+  var depth = 0
+  var start = -1
+  var inString = false
+  var escaped = false
+  text.forEachIndexed { index, char ->
+    when {
+      escaped -> escaped = false
+      inString && char == '\\' -> escaped = true
+      char == '"' -> inString = !inString
+      inString -> Unit
+      char == '{' -> {
+        if (depth == 0) {
+          start = index
+        }
+        depth += 1
+      }
+      char == '}' && depth > 0 -> {
+        depth -= 1
+        if (depth == 0 && start >= 0) {
+          candidates += text.substring(start, index + 1)
+          start = -1
+        }
+      }
+    }
+  }
+  return candidates
 }
 
 private data class GoalRunnerIterationResult(

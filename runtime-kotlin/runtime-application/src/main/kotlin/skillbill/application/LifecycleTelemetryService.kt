@@ -3,6 +3,8 @@ package skillbill.application
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -41,6 +43,29 @@ class LifecycleTelemetryService(
       }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
+  fun featureTaskRuntimeStarted(
+    request: FeatureTaskRuntimeStartedRequest,
+    dbOverride: String? = null,
+  ): Map<String, Any?> {
+    val sessionId = request.sessionId.ifBlank { generateLifecycleSessionId("ftr") }
+    return enabledStandaloneResult(sessionId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.featureTaskRuntimeStarted(request.toRecord(sessionId), settings.level)
+      }
+    }
+  }
+
+  @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
+  fun featureTaskRuntimeFinished(
+    request: FeatureTaskRuntimeFinishedRequest,
+    dbOverride: String? = null,
+  ): Map<String, Any?> = enabledStandaloneResult(request.sessionId) { settings ->
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(request.toRecord(), settings.level)
+    }
+  }
+
+  @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun qualityCheckStarted(request: QualityCheckStartedRequest): Map<String, Any?> {
     val sessionId = generateLifecycleSessionId("qck")
     return when {
@@ -61,7 +86,7 @@ class LifecycleTelemetryService(
     validateQualityCheckFinished(request)
       ?.let { lifecycleErrorPayload(request.sessionId, it) }
       ?: when {
-        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous())
+        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
           enabledStandaloneResult(request.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
@@ -89,7 +114,7 @@ class LifecycleTelemetryService(
     validateFeatureVerifyFinished(request)
       ?.let { lifecycleErrorPayload(request.sessionId, it) }
       ?: when {
-        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous())
+        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
           enabledStandaloneResult(request.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
@@ -102,7 +127,7 @@ class LifecycleTelemetryService(
   fun prDescriptionGenerated(request: PrDescriptionGeneratedRequest): Map<String, Any?> {
     val sessionId = if (request.orchestrated) "" else generateLifecycleSessionId("prd")
     return when {
-      request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous())
+      request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
       else ->
         enabledStandaloneResult(sessionId) { settings ->
           database.transaction(null) { unitOfWork ->
@@ -112,15 +137,23 @@ class LifecycleTelemetryService(
     }
   }
 
-  private fun enabledStandaloneResult(sessionId: String, action: (TelemetrySettings) -> Unit): Map<String, Any?> {
-    val settings = telemetrySettingsOrNull(settingsProvider)
-    return if (settings?.enabled == true) {
-      action(settings)
-      lifecycleOkPayload(sessionId)
-    } else {
-      lifecycleSkippedPayload(sessionId)
-    }
-  }
+  private fun enabledStandaloneResult(sessionId: String, action: (TelemetrySettings) -> Unit): Map<String, Any?> =
+    enabledStandaloneResult(settingsProvider, sessionId, action)
+}
 
-  private fun telemetryLevelOrAnonymous(): String = telemetrySettingsOrNull(settingsProvider)?.level ?: "anonymous"
+internal fun telemetryLevelOrAnonymous(settingsProvider: TelemetrySettingsProvider): String =
+  telemetrySettingsOrNull(settingsProvider)?.level ?: "anonymous"
+
+private fun enabledStandaloneResult(
+  settingsProvider: TelemetrySettingsProvider,
+  sessionId: String,
+  action: (TelemetrySettings) -> Unit,
+): Map<String, Any?> {
+  val settings = telemetrySettingsOrNull(settingsProvider)
+  return if (settings?.enabled == true) {
+    action(settings)
+    lifecycleOkPayload(sessionId)
+  } else {
+    lifecycleSkippedPayload(sessionId)
+  }
 }

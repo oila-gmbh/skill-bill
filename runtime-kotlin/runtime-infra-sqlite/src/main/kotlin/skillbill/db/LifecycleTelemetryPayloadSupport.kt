@@ -46,6 +46,34 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
     }
   }
 
+fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
+  linkedMapOf<String, Any?>(
+    "session_id" to row.stringOrEmpty("session_id"),
+    "feature_size" to row.stringOrEmpty("feature_size"),
+    "issue_key" to row.stringOrEmpty("issue_key"),
+  ).apply {
+    if (level == "full") {
+      put("feature_name", row.stringOrEmpty("feature_name"))
+    }
+  }
+
+fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
+  featureTaskRuntimeStartedPayload(row, level).toMutableMap().apply {
+    put("completion_status", row.stringOrEmpty("completion_status"))
+    put("completed_phase_ids", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("completed_phase_ids")))
+    put("phase_outcomes", parsePhaseOutcomes(row.stringOrEmpty("phase_outcomes")))
+    put("duration_seconds", durationSeconds(row))
+    if (level == "full") {
+      put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))
+      put("blocked_reason", row.stringOrEmpty("blocked_reason"))
+      put("resolved_branch", row.stringOrEmpty("resolved_branch"))
+    }
+  }
+
+private fun parsePhaseOutcomes(rawValue: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawValue)
+  ?.mapValues { (_, value) -> JsonSupport.jsonElementToValue(value) }
+  .orEmpty()
+
 fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> = linkedMapOf(
   "session_id" to row.stringOrEmpty("session_id"),
   "routed_skill" to row.stringOrEmpty("routed_skill"),

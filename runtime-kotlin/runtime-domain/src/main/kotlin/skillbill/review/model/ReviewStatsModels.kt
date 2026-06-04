@@ -96,6 +96,24 @@ data class FeatureImplementWorkflowStats(
   val averageDurationSeconds: Double,
 )
 
+data class FeatureTaskRuntimeWorkflowStats(
+  val totalRuns: Int,
+  val finishedRuns: Int,
+  val inProgressRuns: Int,
+  val featureSizeCounts: Map<String, Int>,
+  val completionStatusCounts: Map<String, Int>,
+  val phaseOutcomeCounts: Map<String, Int>,
+  val completedRuns: Int,
+  val completedRate: Double,
+  val blockedRuns: Int,
+  val blockedRate: Double,
+  val decomposedRuns: Int,
+  val decomposedRate: Double,
+  val errorRuns: Int,
+  val errorRate: Double,
+  val averageCompletedPhaseCount: Double,
+)
+
 data class FeatureVerifyWorkflowStats(
   val totalRuns: Int,
   val finishedRuns: Int,

@@ -38,6 +38,23 @@ data class FeatureImplementFinishedRequest(
   val childSteps: List<Map<String, Any?>>,
 )
 
+data class FeatureTaskRuntimeStartedRequest(
+  val featureSize: String,
+  val issueKey: String,
+  val featureName: String,
+  val sessionId: String = "",
+)
+
+data class FeatureTaskRuntimeFinishedRequest(
+  val sessionId: String,
+  val completionStatus: String,
+  val completedPhaseIds: List<String>,
+  val phaseOutcomes: Map<String, String>,
+  val lastIncompletePhase: String,
+  val blockedReason: String,
+  val resolvedBranch: String,
+)
+
 data class QualityCheckStartedRequest(
   val routedSkill: String,
   val detectedStack: String,

@@ -5,6 +5,14 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.model.GoalObservabilityDiffStat
+import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -46,6 +54,49 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task-runtime run reports the resolved feature branch in text and status without a new flag`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+    // Start on the default branch so the runtime creates+switches to the convention feature branch.
+    val git = FakeRuntimeGitOperations(currentBranchValue = "main")
+
+    val run = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(launcher, workflowGitOperations = git),
+    )
+
+    assertEquals(0, run.exitCode, run.stdout)
+    assertContains(run.stdout, "status: complete")
+    assertContains(run.stdout, "resolved_branch: feat/SKILL-650-runtime")
+    assertEquals(listOf("feat/SKILL-650-runtime"), git.checkoutBranches)
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "resolved_branch: feat/SKILL-650-runtime")
+  }
+
+  @Test
+  fun `feature-task-runtime monitor streams the branch-resolution line`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+    val git = FakeRuntimeGitOperations(currentBranchValue = "main")
+    val live = StringBuilder()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--monitor")),
+      fixture.context(launcher, liveStdout = { live.append(it) }, workflowGitOperations = git),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(live.toString(), "branch created feat/SKILL-650-runtime")
+  }
+
+  @Test
   fun `feature-task-runtime run completes every phase and delegates to the runner`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
@@ -57,9 +108,13 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
-    assertContains(result.stdout, "completed_phases: plan, implement, review, audit, validate")
+    assertContains(result.stdout, "feature_size: SMALL")
+    assertContains(
+      result.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+    )
     assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
-    assertEquals(5, launcher.requests.size)
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
   }
 
   @Test
@@ -129,15 +184,15 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    val orderedPhases = listOf("plan", "implement", "review", "audit", "validate")
+    val orderedPhases = ALL_PHASES
     val agentByPhase = orderedPhases.mapIndexed { index, phaseId ->
       phaseId to launcher.requests[index].agentId
     }.toMap()
-    assertEquals(5, launcher.requests.size, result.stdout)
+    assertEquals(ALL_PHASES.size, launcher.requests.size, result.stdout)
     assertEquals("claude", agentByPhase["plan"], result.stdout)
     assertEquals(
-      listOf("codex", "codex", "codex", "codex"),
-      orderedPhases.drop(1).map { agentByPhase.getValue(it) },
+      orderedPhases.filter { it != "plan" }.map { "codex" },
+      orderedPhases.filter { it != "plan" }.map { agentByPhase.getValue(it) },
       result.stdout,
     )
   }
@@ -195,6 +250,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "feature_size: SMALL")
     assertTrue(launcher.requests.isNotEmpty(), result.stdout)
     launcher.requests.forEach { request ->
       assertEquals(5.minutes, request.skillRunRequest.timeout, result.stdout)
@@ -206,7 +262,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     // F-017: with --monitor, per-phase progress lines (started/completed and a fix-loop iteration
     // line on a retry) are streamed to live stdout. Drive a retry via invalid-then-valid review.
     val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 3)
+    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 4)
     val live = StringBuilder()
 
     val result = CliRuntime.run(
@@ -217,9 +273,152 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     val streamed = live.toString()
     assertContains(streamed, "phase plan started")
+    assertContains(streamed, "run started feature_size=SMALL")
     assertContains(streamed, "phase plan completed")
     assertContains(streamed, "phase review fix_loop")
     assertContains(streamed, "phase review completed")
+  }
+
+  @Test
+  fun `feature-task-runtime run and monitor surface decomposed planning stop`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(decomposePlan = true)
+    val live = StringBuilder()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--monitor")),
+      fixture.context(launcher, liveStdout = { live.append(it) }),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: decomposed")
+    assertContains(result.stdout, "subtask_count: 2")
+    assertContains(result.stdout, "decomposition_manifest_path:")
+    assertContains(result.stdout, "Work the first subtask first")
+    assertContains(live.toString(), "decomposed at planning into 2 subtasks")
+    val launchedPhases = launcher.requests.map { request ->
+      phaseIdFromPrompt(request.skillRunRequest.promptOverride.orEmpty())
+    }
+    assertEquals(
+      listOf("preplan", "plan"),
+      launchedPhases,
+    )
+  }
+
+  @Test
+  fun `feature-task-runtime status reconstructs decomposed summary from durable state`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(decomposePlan = true)
+    val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
+    assertEquals(0, run.exitCode, run.stdout)
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "decomposition_reason: Plan needs ordered subtasks.")
+    assertContains(status.stdout, "subtask_count: 2")
+    assertContains(status.stdout, "decomposition_manifest_path:")
+    assertContains(status.stdout, "Work the first subtask first")
+  }
+
+  @Test
+  fun `feature-task-runtime explicit goal-continuation skips decomposition and pr`() {
+    val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+    val launcher = RecordingPhaseLauncher(decomposePlan = true)
+
+    val result = CliRuntime.run(
+      fixture.runCommand(
+        extra = listOf(
+          "--agent",
+          "codex",
+          "--goal-parent-issue-key",
+          "SKILL-650",
+          "--goal-subtask-id",
+          "5",
+          "--goal-branch",
+          "feat/existing-runtime-branch",
+          "--suppress-pr",
+        ),
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertContains(result.stdout, "subtask_outcome:")
+    assertEquals(
+      ALL_PHASES.filterNot { it == "pr" },
+      launcher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
+    )
+  }
+
+  @Test
+  fun `feature-task-runtime goal continuation reuses branch while direct run creates branch and opens pr phase`() {
+    val goalFixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+    val goalLauncher = RecordingPhaseLauncher(decomposePlan = true)
+    val goalGit = FakeRuntimeGitOperations(currentBranchValue = "feat/pre-created-runtime-branch")
+
+    val goalRun = CliRuntime.run(
+      goalFixture.runCommand(
+        extra = listOf(
+          "--agent",
+          "codex",
+          "--goal-parent-issue-key",
+          "SKILL-650",
+          "--goal-subtask-id",
+          "5",
+          "--goal-branch",
+          "feat/pre-created-runtime-branch",
+          "--goal-parent-workflow-id",
+          "wfl-parent",
+          "--suppress-pr",
+        ),
+      ),
+      goalFixture.context(goalLauncher, workflowGitOperations = goalGit),
+    )
+
+    assertEquals(0, goalRun.exitCode, goalRun.stdout)
+    assertContains(goalRun.stdout, "status: complete")
+    assertContains(goalRun.stdout, "resolved_branch: feat/pre-created-runtime-branch")
+    assertContains(
+      goalRun.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push",
+    )
+    assertContains(goalRun.stdout, "subtask_outcome:")
+    assertContains(goalRun.stdout, "  last_resumable_step: commit_push")
+    assertEquals(emptyList(), goalGit.checkoutBranches, goalRun.stdout)
+    assertEquals(
+      ALL_PHASES.filterNot { it == "pr" },
+      goalLauncher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
+      goalRun.stdout,
+    )
+
+    val directFixture = runtimeFixture()
+    val directLauncher = RecordingPhaseLauncher()
+    val directGit = FakeRuntimeGitOperations(currentBranchValue = "main")
+
+    val directRun = CliRuntime.run(
+      directFixture.runCommand(extra = listOf("--agent", "codex")),
+      directFixture.context(directLauncher, workflowGitOperations = directGit),
+    )
+
+    assertEquals(0, directRun.exitCode, directRun.stdout)
+    assertContains(directRun.stdout, "status: complete")
+    assertContains(directRun.stdout, "resolved_branch: feat/SKILL-650-runtime")
+    assertContains(
+      directRun.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+    )
+    assertEquals(listOf("feat/SKILL-650-runtime"), directGit.checkoutBranches, directRun.stdout)
+    assertEquals(
+      ALL_PHASES,
+      directLauncher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
+      directRun.stdout,
+    )
   }
 
   @Test
@@ -237,7 +436,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
-    assertContains(status.stdout, "complete: 5")
+    assertContains(status.stdout, "feature_size: SMALL")
+    assertContains(status.stdout, "complete: ${ALL_PHASES.size}")
     assertContains(status.stdout, "pending: 0")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "current_phase: none")
@@ -255,13 +455,14 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(1, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: not_found")
+    assertContains(status.stdout, "feature_size: unknown")
   }
 
   @Test
   fun `feature-task-runtime status reports a blocked phase derived from the ledger`() {
     val fixture = runtimeFixture()
-    // Plan completes (launch 0 valid); implement never validates and blocks after the bounded fix loop.
-    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 1)
+    // Preplan and plan complete; implement never validates and blocks immediately.
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "status: blocked")
@@ -279,7 +480,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
-    assertContains(status.stdout, "complete: 1")
+    assertContains(status.stdout, "feature_size: SMALL")
+    assertContains(status.stdout, "complete: 2")
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_phase: implement")
     assertContains(status.stdout, "phase: id=plan status=completed")
@@ -312,8 +514,11 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
-    assertContains(result.stdout, "completed_phases: plan, implement, review, audit, validate")
-    assertEquals(5, launcher.requests.size)
+    assertContains(
+      result.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+    )
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
   }
 
   @Test
@@ -344,6 +549,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, resume.exitCode, resume.stdout)
     assertContains(resume.stdout, "status: complete")
+    assertContains(resume.stdout, "feature_size: SMALL")
     // Every phase was already complete after the first run, so the resume launches nothing.
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
@@ -358,11 +564,16 @@ private data class FeatureTaskRuntimeCliFixture(
     launcher: AgentRunLauncher,
     environment: Map<String, String> = emptyMap(),
     liveStdout: (String) -> Unit = {},
+    // Defaults to an already-checked-out feature branch so the runtime reuses it (no checkout) and
+    // existing completion/blocked expectations stand; branch-setup tests override this to start on
+    // the default branch. The real git adapter is bypassed because the tempDir is not a git repo.
+    workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir,
     agentRunLauncher = launcher,
     environment = environment,
     liveStdout = liveStdout,
+    workflowGitOperations = workflowGitOperations,
   )
 
   fun runCommand(extra: List<String> = emptyList()): List<String> = buildList {
@@ -377,14 +588,16 @@ private data class FeatureTaskRuntimeCliFixture(
   }
 }
 
-private fun runtimeFixture(): FeatureTaskRuntimeCliFixture {
+private fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntimeCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-feature-task-runtime")
-  val specPath = tempDir.resolve(".feature-specs/SKILL-650-runtime/spec.md")
+  val specPath = tempDir.resolve(".feature-specs/SKILL-650-runtime/$specFileName")
   Files.createDirectories(specPath.parent)
   Files.writeString(
     specPath,
     """
     # SKILL-650 runtime spec
+
+    Feature size: SMALL
 
     ## Acceptance Criteria
 
@@ -403,17 +616,19 @@ private fun runtimeFixture(): FeatureTaskRuntimeCliFixture {
   )
 }
 
-// Returns one schema-valid phase output per launch. AgentRunLaunchRequest carries no phase id, so
-// the test double infers the phase from launch order. The echoed phase_id is only cosmetic: it adds
-// no wrong-phase regression protection, since the runner labels validation with its own phaseId and
-// never cross-checks the agent-supplied phase_id.
+private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))
+
+private fun phaseIdFromPrompt(prompt: String): String =
+  PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
+
+// Returns one schema-valid phase output per launch. The delivered prompt pins the runtime phase,
+// so the test double reads that phase id and echoes it back in the validated output.
 private class RecordingPhaseLauncher(
   private val invalidFromLaunchIndex: Int? = null,
-  // When set, launches at indices in [reviewIndex, this) emit invalid output and later launches
-  // emit valid output, driving an invalid-then-valid review fix-loop retry. The runner labels
-  // validation with its own phase id and never reads the agent-supplied phase_id, so the cosmetic
-  // emitted phase_id below need not track the exact phase — only validity matters.
+  // When set, review launches before this global launch index emit invalid output and later review
+  // launches emit valid output, driving an invalid-then-valid review fix-loop retry.
   private val invalidReviewUntilLaunchIndex: Int? = null,
+  private val decomposePlan: Boolean = false,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
 
@@ -422,11 +637,16 @@ private class RecordingPhaseLauncher(
     requests += request
     val invalid = (invalidFromLaunchIndex?.let { launchIndex >= it } ?: false) ||
       isInvalidReviewRetry(launchIndex)
-    val cosmeticPhaseId = ORDERED_PHASES.getOrElse(launchIndex) { "plan" }
+    val phaseId = phaseIdFromPrompt(request.skillRunRequest.promptOverride.orEmpty())
+    val stdout = when {
+      invalid -> INVALID_PHASE_OUTPUT
+      decomposePlan && phaseId == "plan" -> DECOMPOSE_PLAN_OUTPUT
+      else -> validPhaseOutput(phaseId)
+    }
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
-      stdout = if (invalid) INVALID_PHASE_OUTPUT else validPhaseOutput(cosmeticPhaseId),
+      stdout = stdout,
       stderr = "",
       timedOut = false,
       spawnFailed = false,
@@ -435,13 +655,11 @@ private class RecordingPhaseLauncher(
 
   private fun isInvalidReviewRetry(launchIndex: Int): Boolean {
     val limit = invalidReviewUntilLaunchIndex ?: return false
-    val reviewIndex = ORDERED_PHASES.indexOf("review")
-    return launchIndex in reviewIndex until limit
+    val phaseId = phaseIdFromPrompt(requests[launchIndex].skillRunRequest.promptOverride.orEmpty())
+    return launchIndex < limit && phaseId == "review"
   }
 
   private companion object {
-    val ORDERED_PHASES = listOf("plan", "implement", "review", "audit", "validate")
-
     // Missing the required status/summary/produced_outputs fields, so the per-phase
     // output validator rejects it and the runner never marks the phase complete.
     val INVALID_PHASE_OUTPUT =
@@ -458,5 +676,110 @@ private class RecordingPhaseLauncher(
       produced_outputs:
         tasks: ["task-1"]
     """.trimIndent()
+
+    val DECOMPOSE_PLAN_OUTPUT: String = """
+      {
+        "contract_version": "0.1",
+        "phase_id": "plan",
+        "status": "completed",
+        "summary": "Plan needs ordered subtasks.",
+        "produced_outputs": {
+          "mode": "decompose",
+          "reason": "Plan needs ordered subtasks.",
+          "feature_name": "runtime cli decomposition",
+          "parent_spec_overview": "Split the CLI runtime work into ordered subtasks.",
+          "validation_strategy": "bill-code-check",
+          "base_branch": "main",
+          "feature_branch": "feat/SKILL-650-runtime-cli-decomposition",
+          "subtasks": [
+            {
+              "id": 1,
+              "name": "first",
+              "scope": "First subtask.",
+              "acceptance_criteria": ["First criterion."],
+              "non_goals": [],
+              "dependency_notes": "First.",
+              "validation_strategy": "unit tests",
+              "next_path": "Work subtask 2.",
+              "depends_on": []
+            },
+            {
+              "id": 2,
+              "name": "second",
+              "scope": "Second subtask.",
+              "acceptance_criteria": ["Second criterion."],
+              "non_goals": [],
+              "dependency_notes": "Depends on first.",
+              "validation_strategy": "unit tests",
+              "next_path": "Finish.",
+              "depends_on": [1]
+            }
+          ]
+        }
+      }
+    """.trimIndent()
   }
+}
+
+private val ALL_PHASES =
+  listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
+
+// Records checkouts and reports a configurable current branch so branch-setup is exercised through
+// the CLI without a real git repo. The default reports an existing feature branch (reuse path).
+private class FakeRuntimeGitOperations(
+  private var currentBranchValue: String = "feat/pre-created-runtime-branch",
+  private val checkoutResult: WorkflowGitOperationResult? = null,
+) : WorkflowGitOperations {
+  val checkoutBranches: MutableList<String> = mutableListOf()
+
+  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
+    checkoutBranches += branch
+    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+    if (result.ok) {
+      currentBranchValue = branch
+    }
+    return result
+  }
+
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "recorded")
+
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
+    status = "ok",
+    changedFileSummary = GoalObservabilityChangedFileSummary(
+      total = 0,
+      added = 0,
+      modified = 0,
+      deleted = 0,
+      renamed = 0,
+      untracked = 0,
+    ),
+    diffStat = GoalObservabilityDiffStat(filesChanged = 0, insertions = 0, deletions = 0),
+  )
+
+  override fun selectedDiffHunks(
+    repoRoot: Path,
+    request: WorkflowSelectedDiffHunksRequest,
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
+    status = "ok",
+    selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
+  )
 }

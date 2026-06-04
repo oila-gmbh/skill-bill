@@ -15,8 +15,6 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-private const val GIT_TIMEOUT_SECONDS = 30L
-
 @Inject
 class GitWorkflowGitOperations : WorkflowGitOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
@@ -24,27 +22,53 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     if (normalizedBranch.isBlank()) {
       return WorkflowGitOperationResult(status = "error", error = "Branch name is required.")
     }
-    val existing = runGit(repoRoot, "rev-parse", "--verify", "--quiet", normalizedBranch)
+    val existing = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", normalizedBranch)
     return if (existing.ok) {
-      runGit(repoRoot, "checkout", normalizedBranch).withValue(normalizedBranch)
+      runGitCommand(repoRoot, "checkout", normalizedBranch).withValue(normalizedBranch)
     } else {
       val base = baseBranch?.trim().orEmpty()
       if (base.isBlank()) {
-        runGit(repoRoot, "checkout", "-b", normalizedBranch).withValue(normalizedBranch)
+        runGitCommand(repoRoot, "checkout", "-b", normalizedBranch).withValue(normalizedBranch)
       } else {
-        runGit(repoRoot, "checkout", "-b", normalizedBranch, base).withValue(normalizedBranch)
+        runGitCommand(repoRoot, "checkout", "-b", normalizedBranch, base).withValue(normalizedBranch)
       }
     }
   }
 
-  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "branch", "--show-current")
-
-  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
-    val commit = runGit(repoRoot, "commit", "-m", message)
-    return if (commit.ok) runGit(repoRoot, "rev-parse", "HEAD") else commit
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    val normalizedBranch = branch.trim()
+    if (normalizedBranch.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Branch name is required.")
+    }
+    val args = listOf("rev-parse", "--verify", "--quiet", "refs/heads/$normalizedBranch")
+    val existing = runGitProcess(repoRoot, args)
+    return when {
+      existing.timedOut -> WorkflowGitOperationResult(
+        status = "error",
+        error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      )
+      existing.readFailure != null -> WorkflowGitOperationResult(
+        status = "error",
+        error = existing.readFailure.message.orEmpty(),
+      )
+      existing.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = "true")
+      existing.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "false")
+      else -> WorkflowGitOperationResult(
+        status = "error",
+        error = "git ${args.joinToString(" ")} failed with exit code ${existing.exitCode}: ${existing.output}",
+      )
+    }
   }
 
-  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "rev-parse", "HEAD")
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    runGitCommand(repoRoot, "branch", "--show-current")
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
+    val commit = runGitCommand(repoRoot, "commit", "-m", message)
+    return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit
+  }
+
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -56,7 +80,7 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     if (normalizedBranch.isBlank() || normalizedBase.isBlank()) {
       return WorkflowGitOperationResult(status = "error", error = "Branch and expected base branch are required.")
     }
-    val result = runGit(repoRoot, "merge-base", "--is-ancestor", normalizedBase, normalizedBranch)
+    val result = runGitCommand(repoRoot, "merge-base", "--is-ancestor", normalizedBase, normalizedBranch)
     return if (result.ok) {
       WorkflowGitOperationResult(status = "ok", value = normalizedBase)
     } else {
@@ -67,7 +91,8 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     }
   }
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = runGit(repoRoot, "status", "--porcelain")
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    runGitCommand(repoRoot, "status", "--porcelain")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
     val status = worktreeStatus(repoRoot)
@@ -111,29 +136,6 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
       ),
     )
   }
-
-  private fun runGit(repoRoot: Path, vararg args: String): WorkflowGitOperationResult {
-    val argList = args.toList()
-    val result = runGitProcess(repoRoot, argList)
-    return when {
-      result.timedOut -> WorkflowGitOperationResult(
-        status = "error",
-        error = "git ${argList.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
-      )
-      result.readFailure != null -> WorkflowGitOperationResult(
-        status = "error",
-        error = result.readFailure.message.orEmpty(),
-      )
-      result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
-      else -> WorkflowGitOperationResult(
-        status = "error",
-        error = "git ${argList.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
-      )
-    }
-  }
-
-  private fun WorkflowGitOperationResult.withValue(value: String): WorkflowGitOperationResult =
-    if (ok) copy(value = value) else this
 }
 
 private fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {
@@ -150,55 +152,6 @@ private fun runCatchingDiffStat(repoRoot: Path, vararg args: String): GoalObserv
   val result = runGitForActivity(repoRoot, args.toList())
   return if (result.ok) parseDiffStat(result.value) else GoalObservabilityDiffStat(0, 0, 0)
 }
-
-private fun runGitForActivity(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
-  val result = runGitProcess(repoRoot, args)
-  return when {
-    result.timedOut -> WorkflowGitOperationResult(
-      status = "error",
-      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
-    )
-    result.readFailure != null -> WorkflowGitOperationResult(
-      status = "error",
-      error = result.readFailure.message.orEmpty(),
-    )
-    result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
-    else -> WorkflowGitOperationResult(status = "error", error = result.output)
-  }
-}
-
-private fun runGitProcess(repoRoot: Path, args: List<String>): GitProcessResult {
-  val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
-    .redirectErrorStream(true)
-    .start()
-  val output = StringBuilder()
-  var readFailure: IOException? = null
-  val outputThread = thread(start = true, name = "skill-bill-git-output") {
-    try {
-      process.inputStream.bufferedReader().use { reader ->
-        output.append(reader.readText())
-      }
-    } catch (error: IOException) {
-      readFailure = error
-    }
-  }
-  val finished = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-  return if (!finished) {
-    process.destroyForcibly()
-    closeInputAndJoin(process, outputThread)
-    GitProcessResult(output = output.toString().trim(), readFailure = readFailure, timedOut = true)
-  } else {
-    outputThread.join()
-    GitProcessResult(output = output.toString().trim(), readFailure = readFailure, exitCode = process.exitValue())
-  }
-}
-
-private data class GitProcessResult(
-  val output: String,
-  val readFailure: IOException?,
-  val timedOut: Boolean = false,
-  val exitCode: Int = -1,
-)
 
 private fun parseChangedFileSummary(statusOutput: String): GoalObservabilityChangedFileSummary {
   var added = 0
@@ -343,14 +296,6 @@ private data class SelectedDiffReadResult(
   val error: String = "",
 ) {
   val ok: Boolean get() = status == "ok"
-}
-
-private fun closeInputAndJoin(process: Process, outputThread: Thread) {
-  outputThread.join(GIT_OUTPUT_THREAD_JOIN_MILLIS)
-  if (outputThread.isAlive) {
-    process.inputStream.close()
-    outputThread.join(GIT_OUTPUT_THREAD_JOIN_MILLIS)
-  }
 }
 
 private data class BoundedDiffLine(
@@ -539,4 +484,3 @@ private const val GIT_CHANGED_FILE_SAMPLE_LIMIT = 10
 private const val GIT_NUMSTAT_PART_LIMIT = 3
 private const val GIT_ERROR_OUTPUT_LIMIT = 4_000
 private const val GIT_SELECTED_DIFF_MIN_READ_LINE_BYTES = 4_096
-private const val GIT_OUTPUT_THREAD_JOIN_MILLIS = 1_000L

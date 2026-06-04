@@ -179,6 +179,11 @@ data class GoalAttemptLedgerEntry(
   val childSessionId: String? = null,
   val finalReconciledResult: String? = null,
   val stopReason: String? = null,
+  val diagnosticClass: String? = null,
+  val currentStep: String? = null,
+  val exitStatus: Int? = null,
+  val recoverableJsonPresent: Boolean? = null,
+  val nextSafeAction: String? = null,
 ) {
   init {
     require(sequenceNumber >= 0) { "GoalAttemptLedgerEntry.sequenceNumber must be non-negative." }
@@ -202,6 +207,11 @@ data class GoalAttemptLedgerEntry(
       "child_session_id" to childSessionId,
       "final_reconciled_result" to finalReconciledResult,
       "stop_reason" to stopReason,
+      "diagnostic_class" to diagnosticClass,
+      "current_step" to currentStep,
+      "exit_status" to exitStatus,
+      "recoverable_json_present" to recoverableJsonPresent,
+      "next_safe_action" to nextSafeAction,
     )
     return linkedMapOf<String, Any?>(
       "action" to action.wireValue,

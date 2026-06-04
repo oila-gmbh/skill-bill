@@ -20,6 +20,7 @@ data class SkillRunRequest(
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
+  val goalContinuation: SkillRunGoalContinuationContext? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -31,6 +32,23 @@ data class SkillRunRequest(
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
     }
+  }
+}
+
+data class SkillRunGoalContinuationContext(
+  val parentIssueKey: String,
+  val subtaskId: Int,
+  val goalBranch: String,
+  val suppressPr: Boolean,
+  val parentWorkflowId: String? = null,
+  val lastResumableStep: String? = null,
+) {
+  init {
+    require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(goalBranch.isNotBlank()) { "goalBranch is required." }
+    parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
+    lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
   }
 }
 

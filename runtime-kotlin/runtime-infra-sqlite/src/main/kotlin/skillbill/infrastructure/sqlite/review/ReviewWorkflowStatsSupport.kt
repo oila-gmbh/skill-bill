@@ -1,6 +1,8 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.JsonSupport
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import java.sql.Connection
 
@@ -19,6 +21,51 @@ private val completionStatuses =
   )
 private val validationResults = listOf("pass", "fail", "skipped")
 private val featureFlagPatterns = listOf("simple_conditional", "di_switch", "legacy", "none")
+private val featureTaskRuntimeCompletionStatuses =
+  listOf("completed", "blocked", "decomposed_at_planning", "error")
+private val featureTaskRuntimePhaseOutcomes = listOf("completed", "blocked", "running")
+
+fun buildFeatureTaskRuntimeStats(rows: List<Map<String, Any?>>): FeatureTaskRuntimeWorkflowStats {
+  val finishedRows = finishedRows(rows)
+  val completedRuns = finishedRows.count { it.stringValue("completion_status") == "completed" }
+  val blockedRuns = finishedRows.count { it.stringValue("completion_status") == "blocked" }
+  val decomposedRuns = finishedRows.count { it.stringValue("completion_status") == "decomposed_at_planning" }
+  val errorRuns = finishedRows.count { it.stringValue("completion_status") == "error" }
+  val completedPhaseCounts = finishedRows.map { parseJsonList(it["completed_phase_ids"]).size }
+  return FeatureTaskRuntimeWorkflowStats(
+    totalRuns = rows.size,
+    finishedRuns = finishedRows.size,
+    inProgressRuns = rows.size - finishedRows.size,
+    featureSizeCounts = countValues(rows, "feature_size", featureSizes),
+    completionStatusCounts = countValues(finishedRows, "completion_status", featureTaskRuntimeCompletionStatuses),
+    phaseOutcomeCounts = phaseOutcomeCounts(finishedRows),
+    completedRuns = completedRuns,
+    completedRate = rate(completedRuns, finishedRows.size),
+    blockedRuns = blockedRuns,
+    blockedRate = rate(blockedRuns, finishedRows.size),
+    decomposedRuns = decomposedRuns,
+    decomposedRate = rate(decomposedRuns, finishedRows.size),
+    errorRuns = errorRuns,
+    errorRate = rate(errorRuns, finishedRows.size),
+    averageCompletedPhaseCount = average(completedPhaseCounts),
+  )
+}
+
+private fun phaseOutcomeCounts(rows: List<Map<String, Any?>>): Map<String, Int> {
+  val counts = featureTaskRuntimePhaseOutcomes.associateWith { 0 }.toMutableMap()
+  rows.forEach { row ->
+    val outcomes = JsonSupport.parseObjectOrNull(row.stringValue("phase_outcomes"))
+      ?.let { JsonSupport.jsonElementToValue(it) as? Map<*, *> }
+      .orEmpty()
+    outcomes.values.forEach { status ->
+      val key = status?.toString().orEmpty()
+      if (key in counts) {
+        counts[key] = counts.getValue(key) + 1
+      }
+    }
+  }
+  return counts
+}
 
 fun buildFeatureVerifyStats(rows: List<Map<String, Any?>>): FeatureVerifyWorkflowStats {
   val finishedRows = finishedRows(rows)

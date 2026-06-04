@@ -220,8 +220,8 @@ private class ProcessWaitLoop(
     .toLong(DurationUnit.NANOSECONDS)
     .coerceAtLeast(MIN_TIMEOUT_NANOS)
   private val operationDeadlineNanos = request.operationDeadline
-    .toLong(DurationUnit.NANOSECONDS)
-    .coerceAtLeast(MIN_TIMEOUT_NANOS)
+    ?.toLong(DurationUnit.NANOSECONDS)
+    ?.coerceAtLeast(MIN_TIMEOUT_NANOS)
   private val startNanos = System.nanoTime()
   private var lastWorkflowProgressNanos = startNanos
   private var lastStatusHeartbeatNanos = startNanos
@@ -517,8 +517,10 @@ private class DeclaredProgressTracker(startNanos: Long) {
     }
   }
 
-  fun classify(nowNanos: Long, operationDeadlineNanos: Long, idleTimeoutNanos: Long?): GoalRunnerLivenessDecision {
-    val deadlineOverrun = operationActive && (nowNanos - operationStartedNanos) >= operationDeadlineNanos
+  fun classify(nowNanos: Long, operationDeadlineNanos: Long?, idleTimeoutNanos: Long?): GoalRunnerLivenessDecision {
+    val deadlineOverrun = operationDeadlineNanos != null &&
+      operationActive &&
+      (nowNanos - operationStartedNanos) >= operationDeadlineNanos
     val durableAdvanceWithinInterval = idleTimeoutNanos?.let { window ->
       nowNanos - lastAdvanceNanos < window
     } ?: true

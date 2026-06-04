@@ -1,5 +1,6 @@
 package skillbill.ports.goalrunner
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -50,6 +51,15 @@ interface GoalRunnerTerminalOutcomeStore {
     issueKey: String,
     subtaskId: Int,
     repoRoot: Path,
+    dbPathOverride: String? = null,
+  ): GoalRunnerStoredOutcome?
+
+  @OpenBoundaryMap("Recovered missing RESULT-prefix terminal child-output map at the goal-runner workflow seam")
+  fun recoverMissingResultPrefixOutput(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    output: Map<String, Any?>,
     dbPathOverride: String? = null,
   ): GoalRunnerStoredOutcome?
 }

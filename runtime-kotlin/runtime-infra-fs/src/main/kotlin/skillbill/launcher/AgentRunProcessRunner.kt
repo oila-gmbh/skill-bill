@@ -21,7 +21,7 @@ data class AgentRunProcessRequest(
   val progressIdleTimeout: Duration? = null,
   val fileActivityGraceTimeout: Duration = DEFAULT_FILE_ACTIVITY_GRACE_TIMEOUT,
   val statusHeartbeatInterval: Duration = DEFAULT_STATUS_HEARTBEAT_INTERVAL,
-  val operationDeadline: Duration = DEFAULT_OPERATION_DEADLINE,
+  val operationDeadline: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   // SKILL-64 Subtask 3 (AC20): authoritative declared-progress probe; the
   // legacy progressProbe/activityProbe become non-authoritative hints.
@@ -45,7 +45,9 @@ data class AgentRunProcessRequest(
     }
     require(fileActivityGraceTimeout.isPositive()) { "Agent run file activity grace timeout must be positive." }
     require(statusHeartbeatInterval.isPositive()) { "Agent run status heartbeat interval must be positive." }
-    require(operationDeadline.isPositive()) { "Agent run operation deadline must be positive." }
+    operationDeadline?.let { deadline ->
+      require(deadline.isPositive()) { "Agent run operation deadline must be positive when provided." }
+    }
   }
 }
 
@@ -61,12 +63,6 @@ fun interface AgentRunActivityProbe {
 
 val DEFAULT_FILE_ACTIVITY_GRACE_TIMEOUT: Duration = 2.minutes
 val DEFAULT_STATUS_HEARTBEAT_INTERVAL: Duration = 90.seconds
-
-// SKILL-64 Subtask 3 (AC22): documented operation-specific deadline applied to
-// a declared, live long operation in place of the progress-idle timeout. A
-// declared long op is never killed by the idle timeout before this deadline or
-// the subtask wall-clock cap.
-val DEFAULT_OPERATION_DEADLINE: Duration = 60.minutes
 
 data class AgentRunProcessResult(
   val exitStatus: Int?,

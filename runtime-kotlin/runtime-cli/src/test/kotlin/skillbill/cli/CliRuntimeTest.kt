@@ -801,7 +801,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
             "source": "custom_capabilities",
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task"],
+            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "feature-task-runtime"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -899,7 +899,7 @@ private fun expectedCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task"),
+  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task", "feature-task-runtime"),
   "region" to "eu",
 )
 

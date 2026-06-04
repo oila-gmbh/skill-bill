@@ -1,10 +1,12 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureImplementStatsResult
+import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
 import skillbill.application.model.ReviewStatsResult
 import skillbill.contracts.JsonPayloadContract
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats
@@ -20,6 +22,9 @@ fun FeatureImplementStatsResult.toFeatureImplementStatsPayload(): JsonPayloadCon
   MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
 
 fun FeatureVerifyStatsResult.toFeatureVerifyStatsPayload(): JsonPayloadContract =
+  MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
+
+fun FeatureTaskRuntimeStatsResult.toFeatureTaskRuntimeStatsPayload(): JsonPayloadContract =
   MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
 
 private class MapPayloadContract(
@@ -82,6 +87,25 @@ private fun FeatureImplementWorkflowStats.toPayload(): Map<String, Any?> = linke
   "average_files_modified" to averageFilesModified,
   "average_tasks_completed" to averageTasksCompleted,
   "average_duration_seconds" to averageDurationSeconds,
+)
+
+private fun FeatureTaskRuntimeWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "workflow" to "feature-task-runtime",
+  "total_runs" to totalRuns,
+  "finished_runs" to finishedRuns,
+  "in_progress_runs" to inProgressRuns,
+  "feature_size_counts" to featureSizeCounts,
+  "completion_status_counts" to completionStatusCounts,
+  "phase_outcome_counts" to phaseOutcomeCounts,
+  "completed_runs" to completedRuns,
+  "completed_rate" to completedRate,
+  "blocked_runs" to blockedRuns,
+  "blocked_rate" to blockedRate,
+  "decomposed_runs" to decomposedRuns,
+  "decomposed_rate" to decomposedRate,
+  "error_runs" to errorRuns,
+  "error_rate" to errorRate,
+  "average_completed_phase_count" to averageCompletedPhaseCount,
 )
 
 private fun FeatureVerifyWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(

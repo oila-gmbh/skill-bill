@@ -2,6 +2,8 @@ package skillbill.application
 
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -9,6 +11,8 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -50,6 +54,24 @@ fun FeatureImplementFinishedRequest.toRecord(): FeatureImplementFinishedRecord =
   prCreated = prCreated,
   planDeviationNotes = planDeviationNotes,
   childSteps = childSteps,
+)
+
+fun FeatureTaskRuntimeStartedRequest.toRecord(sessionId: String): FeatureTaskRuntimeStartedRecord =
+  FeatureTaskRuntimeStartedRecord(
+    sessionId = sessionId,
+    featureSize = featureSize,
+    issueKey = issueKey,
+    featureName = featureName,
+  )
+
+fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedRecord = FeatureTaskRuntimeFinishedRecord(
+  sessionId = sessionId,
+  completionStatus = completionStatus,
+  completedPhaseIds = completedPhaseIds,
+  phaseOutcomes = phaseOutcomes,
+  lastIncompletePhase = lastIncompletePhase,
+  blockedReason = blockedReason,
+  resolvedBranch = resolvedBranch,
 )
 
 fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedRecord = QualityCheckStartedRecord(

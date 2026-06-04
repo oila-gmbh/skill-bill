@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -37,6 +38,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     return FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = handoff.phaseId,
       specReference = handoff.runInvariants.specReference,
+      featureSize = handoff.runInvariants.featureSize.name,
       acceptanceCriteria = handoff.runInvariants.acceptanceCriteria,
       mandatesAndOverrides = handoff.runInvariants.mandatesAndOverrides,
       // Keeps the full payloads for durable fidelity; only briefingText is budget-bounded.
@@ -82,6 +84,11 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")
       appendLine("spec_reference: ${invariants.specReference}")
+      appendLine("feature_size: ${invariants.featureSize.name}")
+      appendLine("ceremony_scaling:")
+      FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(invariants.featureSize)
+        .toBriefingLines()
+        .forEach { line -> appendLine("  $line") }
       appendLine("acceptance_criteria:")
       invariants.acceptanceCriteria.forEachIndexed { index, criterion ->
         appendLine("  ${index + 1}. $criterion")

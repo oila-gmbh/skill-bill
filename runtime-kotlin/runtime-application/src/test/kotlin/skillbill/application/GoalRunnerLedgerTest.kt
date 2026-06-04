@@ -125,6 +125,64 @@ class GoalRunnerLedgerTest {
   }
 
   @Test
+  fun `prefixless implementation result records missing result prefix diagnostics and recovered output`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val prefixlessJson = """
+      {
+        "tasks_completed": 1,
+        "files_created": [],
+        "files_modified": ["runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/GoalRunner.kt"],
+        "tests_written": [],
+        "plan_deviation_notes": "",
+        "criteria_to_file_map": {},
+        "notes_for_review": "F-001",
+        "progress_write_failures": [],
+        "stopped_early": false,
+        "stopped_reason": ""
+      }
+    """.trimIndent()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(stdout = prefixlessJson)
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
+
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
+    val finalStop = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "no_terminal_store_outcome" }.entry
+    assertEquals("missing_result_prefix", finalStop.diagnosticClass)
+    assertTrue(finalStop.recoverableJsonPresent == true)
+    assertEquals("resume_from_last_resumable_step", finalStop.nextSafeAction)
+    val recovered = outcomes.recoveredMissingResultPrefixOutputs.single()
+    assertEquals("wfl-1", recovered.workflowId)
+    assertEquals("F-001", recovered.output["notes_for_review"])
+  }
+
+  @Test
+  fun `malformed or ambiguous child json records malformed result diagnostics without recovery`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(stdout = """{"tasks_completed":1} {"tasks_completed":2}""")
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
+
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
+    val finalStop = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "no_terminal_store_outcome" }.entry
+    assertEquals("malformed_result_json", finalStop.diagnosticClass)
+    assertFalse(finalStop.recoverableJsonPresent == true)
+    assertEquals("inspect_child_output_then_resume", finalStop.nextSafeAction)
+    assertTrue(outcomes.recoveredMissingResultPrefixOutputs.isEmpty())
+  }
+
+  @Test
   fun `timeout stop reason records a timeout ledger action that explains the stop`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()

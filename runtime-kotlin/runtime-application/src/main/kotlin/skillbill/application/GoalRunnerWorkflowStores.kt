@@ -248,11 +248,14 @@ class WorkflowGoalRunnerOutcomeStore(
           authoritative = authoritative,
         )
         markBlocked(
-          record = stale.snapshot,
-          blockedReason = blockedReason,
-          lastResumableStep = stale.snapshot.currentStepId,
-          workflowStates = unitOfWork.workflowStates,
-          supervisionEvent = null,
+          GoalRunnerBlockWrite(
+            family = stale.family,
+            record = stale.snapshot,
+            blockedReason = blockedReason,
+            lastResumableStep = stale.snapshot.currentStepId,
+            workflowStates = unitOfWork.workflowStates,
+            supervisionEvent = null,
+          ),
         )
       }
     loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey)
@@ -286,6 +289,45 @@ class WorkflowGoalRunnerOutcomeStore(
     }
   }
 
+  override fun recoverMissingResultPrefixOutput(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    output: Map<String, Any?>,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
+    val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val record = family.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val terminalArtifact = missingResultPrefixTerminalOutcomeArtifact(output, issueKey, subtaskId, workflowId)
+    val existingArtifacts = decodeArtifacts(record.artifactsJson)
+    val artifactsPatch = linkedMapOf<String, Any?>(
+      "goal_runner_missing_result_prefix_recovery" to linkedMapOf(
+        "issue_key" to issueKey,
+        "subtask_id" to subtaskId,
+        "workflow_id" to workflowId,
+        "output" to output,
+      ),
+    )
+    if (terminalArtifact != null &&
+      goalContinuationOutcome(existingArtifacts, issueKey, subtaskId, suppressPr = true) == null
+    ) {
+      artifactsPatch["goal_continuation_outcome"] = terminalArtifact
+    }
+    val updated = engine.updateRecord(
+      family.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = artifactsPatch,
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    family.save(unitOfWork.workflowStates, updated)
+    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+  }
+
   private fun resolveTerminalOutcome(
     workflowStates: WorkflowStateRepository,
     workflowId: String,
@@ -293,12 +335,15 @@ class WorkflowGoalRunnerOutcomeStore(
     subtaskId: Int,
     measuredCommitSha: () -> String?,
   ): GoalRunnerStoredOutcome? {
-    val snapshot = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return null
-    engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, snapshot)
-    val artifacts = decodeArtifacts(snapshot.artifactsJson)
-    return goalContinuation(artifacts)
-      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
-      ?.let { continuation -> terminalOutcomeFor(snapshot, artifacts, continuation, measuredCommitSha) }
+    val candidate = workflowFamilyFor(workflowStates, workflowId)
+      ?.let { family -> family.get(workflowStates, workflowId)?.let { snapshot -> family to snapshot } }
+    return candidate?.let { (family, snapshot) ->
+      engine.snapshotView(family.definition, snapshot)
+      val artifacts = decodeArtifacts(snapshot.artifactsJson)
+      goalContinuation(artifacts)
+        ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+        ?.let { continuation -> terminalOutcomeFor(snapshot, artifacts, continuation, measuredCommitSha) }
+    }
   }
 
   // Writing goal_continuation_outcome makes the verdict authoritative (read first by
@@ -311,35 +356,36 @@ class WorkflowGoalRunnerOutcomeStore(
     subtaskId: Int,
     outcome: GoalRunnerStoredOutcome,
   ) {
-    if (outcome.status != GoalRunnerTerminalStatus.COMPLETE || outcome.commitSha.isNullOrBlank()) {
-      return
-    }
-    val record = WorkflowFamily.IMPLEMENT.get(workflowStates, workflowId) ?: return
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val needsBackfill = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr) == null &&
-      commitShaFrom(artifacts).isNullOrBlank()
-    if (needsBackfill) {
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        record,
-        WorkflowUpdateInput(
-          workflowStatus = record.workflowStatus,
-          currentStepId = record.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            "goal_continuation_outcome" to mapOf(
-              "issue_key" to issueKey,
-              "subtask_id" to subtaskId,
-              "status" to "complete",
-              "workflow_id" to workflowId,
-              "commit_sha" to outcome.commitSha,
-              "last_resumable_step" to (outcome.lastResumableStep ?: "commit_push"),
+    val recordContext = workflowFamilyFor(workflowStates, workflowId)
+      ?.let { family -> family.get(workflowStates, workflowId)?.let { record -> family to record } }
+      ?.takeIf { outcome.status == GoalRunnerTerminalStatus.COMPLETE && !outcome.commitSha.isNullOrBlank() }
+    recordContext?.let { (family, record) ->
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val needsBackfill = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr) == null &&
+        commitShaFrom(artifacts).isNullOrBlank()
+      if (needsBackfill) {
+        val updated = engine.updateRecord(
+          family.definition,
+          record,
+          WorkflowUpdateInput(
+            workflowStatus = record.workflowStatus,
+            currentStepId = record.currentStepId,
+            stepUpdates = null,
+            artifactsPatch = mapOf(
+              "goal_continuation_outcome" to mapOf(
+                "issue_key" to issueKey,
+                "subtask_id" to subtaskId,
+                "status" to "complete",
+                "workflow_id" to workflowId,
+                "commit_sha" to outcome.commitSha,
+                "last_resumable_step" to (outcome.lastResumableStep ?: "commit_push"),
+              ),
             ),
+            sessionId = record.sessionId.orEmpty(),
           ),
-          sessionId = record.sessionId.orEmpty(),
-        ),
-      )
-      WorkflowFamily.IMPLEMENT.save(workflowStates, updated)
+        )
+        family.save(workflowStates, updated)
+      }
     }
   }
 
@@ -350,14 +396,25 @@ class WorkflowGoalRunnerOutcomeStore(
     supervisionEvent: GoalRunnerSupervisionEvent?,
     dbPathOverride: String?,
   ): String? = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-    markBlocked(record, blockedReason, lastResumableStep, unitOfWork.workflowStates, supervisionEvent)
+    val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val record = family.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    markBlocked(
+      GoalRunnerBlockWrite(
+        family = family,
+        record = record,
+        blockedReason = blockedReason,
+        lastResumableStep = lastResumableStep,
+        workflowStates = unitOfWork.workflowStates,
+        supervisionEvent = supervisionEvent,
+      ),
+    )
   }
 
   override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
     database.read(dbPathOverride) { unitOfWork ->
-      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, record)
+      val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val record = family.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      engine.snapshotView(family.definition, record)
       val steps = decodeWorkflowSteps(record.stepsJson)
       val artifacts = decodeArtifacts(record.artifactsJson)
       val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
@@ -393,7 +450,9 @@ class WorkflowGoalRunnerOutcomeStore(
     request: GoalRunnerObservabilityRecordRequest,
     dbPathOverride: String?,
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, request.workflowId)
+    val family = workflowFamilyFor(unitOfWork.workflowStates, request.workflowId)
+      ?: return@transaction false
+    val record = family.get(unitOfWork.workflowStates, request.workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val observabilityPatch = GoalObservabilityArtifacts.patchForRuntimeEvent(
@@ -404,7 +463,7 @@ class WorkflowGoalRunnerOutcomeStore(
       validator = goalObservabilityEventValidator,
     )
     val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      family.definition,
       record,
       WorkflowUpdateInput(
         workflowStatus = record.workflowStatus,
@@ -414,7 +473,7 @@ class WorkflowGoalRunnerOutcomeStore(
         sessionId = record.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    family.save(unitOfWork.workflowStates, updated)
     true
   }
 
@@ -471,7 +530,9 @@ class WorkflowGoalRunnerOutcomeStore(
   // newest entry into a latest-event key.
   private fun appendHistoryArtifact(append: HistoryArtifactAppend, dbPathOverride: String?): Boolean =
     database.transaction(dbPathOverride) { unitOfWork ->
-      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, append.workflowId)
+      val family = workflowFamilyFor(unitOfWork.workflowStates, append.workflowId)
+        ?: return@transaction false
+      val record = family.get(unitOfWork.workflowStates, append.workflowId)
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existing = (artifacts[append.historyKey] as? List<*>)
@@ -488,7 +549,7 @@ class WorkflowGoalRunnerOutcomeStore(
         append.latestKey?.let { put(it, append.entryMap) }
       }
       val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
+        family.definition,
         record,
         WorkflowUpdateInput(
           workflowStatus = record.workflowStatus,
@@ -498,7 +559,7 @@ class WorkflowGoalRunnerOutcomeStore(
           sessionId = record.sessionId.orEmpty(),
         ),
       )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+      family.save(unitOfWork.workflowStates, updated)
       true
     }
 
@@ -539,14 +600,16 @@ class WorkflowGoalRunnerOutcomeStore(
     var maxLedger: Int? = null
     var maxAccounting: Int? = null
     var maxProgress: Int? = null
-    WorkflowFamily.IMPLEMENT.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
-      val artifacts = decodeArtifacts(snapshot.artifactsJson)
-      if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) {
-        return@forEach
+    listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).forEach { family ->
+      family.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
+        val artifacts = decodeArtifacts(snapshot.artifactsJson)
+        if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) {
+          return@forEach
+        }
+        maxLedger = maxHistorySequence(artifacts, GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY, maxLedger)
+        maxAccounting = maxHistorySequence(artifacts, GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY, maxAccounting)
+        maxProgress = maxHistorySequence(artifacts, GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY, maxProgress)
       }
-      maxLedger = maxHistorySequence(artifacts, GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY, maxLedger)
-      maxAccounting = maxHistorySequence(artifacts, GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY, maxAccounting)
-      maxProgress = maxHistorySequence(artifacts, GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY, maxProgress)
     }
     GoalRunnerLedgerSequenceWatermarks(
       maxLedgerSequence = maxLedger,
@@ -558,35 +621,30 @@ class WorkflowGoalRunnerOutcomeStore(
   private fun loadContinuationCandidates(
     workflowStates: WorkflowStateRepository,
     issueKey: String,
-  ): List<GoalContinuationCandidate> = WorkflowFamily.IMPLEMENT
-    .list(workflowStates, Int.MAX_VALUE)
-    .mapNotNull { snapshot ->
-      engine.snapshotView(WorkflowFamily.IMPLEMENT.definition, snapshot)
+  ): List<GoalContinuationCandidate> = listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).flatMap { family ->
+    family.list(workflowStates, Int.MAX_VALUE).mapNotNull { snapshot ->
+      engine.snapshotView(family.definition, snapshot)
       val artifacts = decodeArtifacts(snapshot.artifactsJson)
       val goalContinuation = goalContinuation(artifacts) ?: return@mapNotNull null
       if (goalContinuation.issueKey != issueKey) {
         return@mapNotNull null
       }
       GoalContinuationCandidate(
+        family = family,
         snapshot = snapshot,
         goalContinuation = goalContinuation,
         outcome = terminalOutcomeFor(snapshot, artifacts, goalContinuation),
       )
     }
+  }
 
-  private fun markBlocked(
-    record: WorkflowStateSnapshot,
-    blockedReason: String,
-    lastResumableStep: String,
-    workflowStates: WorkflowStateRepository,
-    supervisionEvent: GoalRunnerSupervisionEvent?,
-  ): String {
-    val steps = decodeWorkflowSteps(record.stepsJson)
-    val stepId = blockedStepId(record, steps, lastResumableStep)
+  private fun markBlocked(write: GoalRunnerBlockWrite): String {
+    val steps = decodeWorkflowSteps(write.record.stepsJson)
+    val stepId = blockedStepId(write.record, steps, write.lastResumableStep)
     val attemptCount = steps.firstOrNull { it.stepId == stepId }?.attemptCount ?: 1
     val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
-      record,
+      write.family.definition,
+      write.record,
       WorkflowUpdateInput(
         workflowStatus = "blocked",
         currentStepId = stepId,
@@ -594,15 +652,20 @@ class WorkflowGoalRunnerOutcomeStore(
           mapOf("step_id" to stepId, "status" to "blocked", "attempt_count" to attemptCount),
         ),
         artifactsPatch = buildMap {
-          put("blocked_reason", blockedReason)
-          supervisionEvent?.let { event -> put("supervision_event", event.toArtifactsMap()) }
+          put("blocked_reason", write.blockedReason)
+          write.supervisionEvent?.let { event -> put("supervision_event", event.toArtifactsMap()) }
         },
-        sessionId = record.sessionId.orEmpty(),
+        sessionId = write.record.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.save(workflowStates, updated)
+    write.family.save(write.workflowStates, updated)
     return stepId
   }
+
+  private fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? =
+    listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).firstOrNull { family ->
+      family.get(workflowStates, workflowId) != null
+    }
 }
 
 private data class GoalContinuation(
@@ -644,9 +707,19 @@ private data class GoalProgressEventRequiredFields(
 }
 
 private data class GoalContinuationCandidate(
+  val family: WorkflowFamily,
   val snapshot: WorkflowStateSnapshot,
   val goalContinuation: GoalContinuation,
   val outcome: GoalRunnerStoredOutcome?,
+)
+
+private data class GoalRunnerBlockWrite(
+  val family: WorkflowFamily,
+  val record: WorkflowStateSnapshot,
+  val blockedReason: String,
+  val lastResumableStep: String,
+  val workflowStates: WorkflowStateRepository,
+  val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
 private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
@@ -750,6 +823,53 @@ private fun goalContinuationOutcome(
       )
     }
   }
+
+private fun missingResultPrefixTerminalOutcomeArtifact(
+  output: Map<String, Any?>,
+  issueKey: String,
+  subtaskId: Int,
+  workflowId: String,
+): Map<String, Any?>? = (JsonSupport.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
+  .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
+  ?.let { candidate ->
+    candidate["status"]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->
+      candidate.toMissingResultPrefixOutcomeArtifact(issueKey, subtaskId, workflowId, status)
+    }
+  }
+
+private fun Map<String, Any?>.matchesGoalContinuation(issueKey: String, subtaskId: Int): Boolean {
+  val candidateIssueKey = this["issue_key"]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
+  val candidateSubtaskId = this["subtask_id"].asGoalRunnerIntOrNull() ?: subtaskId
+  return candidateIssueKey == issueKey && candidateSubtaskId == subtaskId
+}
+
+private fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
+  issueKey: String,
+  subtaskId: Int,
+  workflowId: String,
+  status: GoalRunnerTerminalStatus,
+): Map<String, Any?> = linkedMapOf<String, Any?>(
+  "issue_key" to issueKey,
+  "subtask_id" to subtaskId,
+  "status" to status.toGoalContinuationWireStatus(),
+  "workflow_id" to (this["workflow_id"]?.toString()?.takeIf(String::isNotBlank) ?: workflowId),
+  "last_resumable_step" to (
+    this["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank) ?: "preplan"
+    ),
+).apply {
+  this@toMissingResultPrefixOutcomeArtifact["commit_sha"]?.toString()?.takeIf(String::isNotBlank)
+    ?.let { put("commit_sha", it) }
+  this@toMissingResultPrefixOutcomeArtifact["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+    ?.let { put("blocked_reason", it) }
+}
+
+private fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = when (this) {
+  GoalRunnerTerminalStatus.COMPLETE -> "complete"
+  GoalRunnerTerminalStatus.FAILED -> "failed"
+  GoalRunnerTerminalStatus.BLOCKED -> "blocked"
+  GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
+  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
+}
 
 private fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalStatus? = when (status) {
   "complete", "completed" -> GoalRunnerTerminalStatus.COMPLETE

@@ -6,10 +6,13 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
   @Test
@@ -26,6 +29,35 @@ class FeatureTaskRuntimePersistenceModelsTest {
     )
     val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap())
     assertEquals(record, decoded)
+  }
+
+  @Test
+  fun `resolved-branch round trips through its artifact map when created`() {
+    val resolved = FeatureTaskRuntimeResolvedBranch(
+      branch = "feat/SKILL-65.1-runtime-feature-task-parity",
+      baseBranch = "main",
+      created = true,
+    )
+    val decoded = FeatureTaskRuntimeResolvedBranch.fromArtifactMap(resolved.toArtifactMap())
+    assertEquals(resolved, decoded)
+    assertTrue(decoded.created)
+    assertEquals("main", decoded.baseBranch)
+  }
+
+  @Test
+  fun `reused resolved-branch omits base branch and defaults created false`() {
+    val resolved = FeatureTaskRuntimeResolvedBranch(branch = "feat/pre-created-branch")
+    val map = resolved.toArtifactMap()
+    assertNull(map["base_branch"])
+    assertEquals(false, map["created"])
+    assertEquals(resolved, FeatureTaskRuntimeResolvedBranch.fromArtifactMap(map))
+  }
+
+  @Test
+  fun `resolved-branch decode loud-fails on a blank branch`() {
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeResolvedBranch.fromArtifactMap(mapOf("branch" to ""))
+    }
   }
 
   @Test
@@ -132,6 +164,20 @@ class FeatureTaskRuntimePersistenceModelsTest {
   fun `unknown ledger action loud-fails with a typed schema error`() {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimePhaseLedgerAction.fromWire("teleport")
+    }
+  }
+
+  @Test
+  fun `run-invariants decode loud-fails with typed schema error on unknown feature size`() {
+    val malformed = mapOf(
+      "spec_reference" to ".feature-specs/SKILL-65/spec.md",
+      "feature_size" to "HUGE",
+      "acceptance_criteria" to listOf("AC-1"),
+      "mandates_and_overrides" to emptyList<String>(),
+    )
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
     }
   }
 

@@ -14,13 +14,17 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import java.time.Duration
 import java.time.Instant
 
@@ -84,15 +88,6 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
-
-  // Coarse workflow-row status mirrors the phase transition: a blocked phase blocks the
-  // row, the final phase completing completes it, every other transition keeps it running.
-  // The per-phase records map remains the detailed source of truth.
-  private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
-    request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> WORKFLOW_STATUS_BLOCKED
-    request.finished && request.phaseId == terminalPhaseId -> WORKFLOW_STATUS_COMPLETED
-    else -> WORKFLOW_STATUS_RUNNING
-  }
 
   /**
    * Persists the assembled per-phase launch briefing keyed by phase id; the latest briefing
@@ -164,6 +159,42 @@ class FeatureTaskRuntimePhaseRecorder(
     }
 
   /**
+   * Persists the run-scoped resolved feature branch exactly once. Idempotent and non-divergent:
+   * when a branch is already persisted this is a no-op (returns true) and never overwrites it, so a
+   * resume/re-run can never force a second or divergent branch for the same run. Returns true when
+   * the workflow row exists; false only when the row is absent.
+   */
+  fun recordResolvedBranch(
+    workflowId: String,
+    resolvedBranch: FeatureTaskRuntimeResolvedBranch,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    if (resolvedBranchFrom(artifacts) != null) {
+      return@transaction true
+    }
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to resolvedBranch.toArtifactMap()),
+    )
+    true
+  }
+
+  /**
+   * Strict read of the run-scoped resolved feature branch. Returns null when the workflow row is
+   * absent or no branch has been resolved yet; a malformed entry loud-fails.
+   */
+  fun loadResolvedBranch(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeResolvedBranch? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
+    }
+
+  /**
    * Strict read of the per-phase records keyed by phase id; an absent key yields an empty map
    * and a malformed record loud-fails. Returns null only when the workflow row is absent.
    */
@@ -232,12 +263,54 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private companion object {
     const val STATUS_RUNNING = "running"
-    const val WORKFLOW_STATUS_RUNNING = "running"
-    const val WORKFLOW_STATUS_COMPLETED = "completed"
-    const val WORKFLOW_STATUS_BLOCKED = "blocked"
-    val terminalPhaseId: String =
-      FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last()
   }
+}
+
+@Inject
+class FeatureTaskRuntimeDecomposeTerminalRecorder(
+  private val database: DatabaseSessionFactory,
+  private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+) {
+  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+
+  fun recordDecomposeTerminal(
+    workflowId: String,
+    terminal: FeatureTaskRuntimeDecomposeTerminal,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val updated = engine.updateRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = "completed",
+        currentStepId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+        stepUpdates = null,
+        artifactsPatch = mapOf(FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY to terminal.toArtifactMap()),
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+    true
+  }
+
+  fun loadDecomposeTerminal(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeDecomposeTerminal? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      decomposeTerminalFrom(decodeArtifacts(record.artifactsJson))
+    }
+}
+
+// Coarse workflow-row status mirrors the phase transition: a blocked phase blocks the row, the
+// final phase completing completes it, every other transition keeps it running. The per-phase
+// records map remains the detailed source of truth.
+private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
+  request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"
+  request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
+    "completed"
+  else -> "running"
 }
 
 private fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
@@ -270,6 +343,24 @@ private fun phaseBriefingsFrom(artifacts: Map<String, Any?>): Map<String, Featur
   decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY) { _, briefingMap ->
     FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(briefingMap)
   }
+
+private fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
+  val raw = artifacts[FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY] ?: return null
+  val entryMap = JsonSupport.anyToStringAnyMap(raw)
+    ?: schemaError(
+      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY' must decode to a map.",
+    )
+  return FeatureTaskRuntimeResolvedBranch.fromArtifactMap(entryMap)
+}
+
+private fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeDecomposeTerminal? {
+  val raw = artifacts[FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY] ?: return null
+  val entryMap = JsonSupport.anyToStringAnyMap(raw)
+    ?: schemaError(
+      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY' must decode to a map.",
+    )
+  return FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap(entryMap)
+}
 
 private fun phaseLedgerFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
   val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] ?: return emptyList()

@@ -13,4 +13,7 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(phaseOutputText, sourceLabel)
   }
+
+  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> =
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
 }

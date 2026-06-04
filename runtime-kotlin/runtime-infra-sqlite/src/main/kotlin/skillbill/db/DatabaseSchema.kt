@@ -15,6 +15,7 @@ internal object DatabaseSchema {
       "quality_check_sessions",
       "feature_verify_sessions",
       "feature_implement_sessions",
+      "feature_task_runtime_sessions",
       "feature_implement_workflows",
       "feature_verify_workflows",
       "feature_task_runtime_workflows",
@@ -201,6 +202,24 @@ internal object DatabaseSchema {
         boundary_history_value TEXT NOT NULL DEFAULT 'none',
         pr_created INTEGER,
         plan_deviation_notes TEXT NOT NULL DEFAULT '',
+        finished_at TEXT,
+        finished_event_emitted_at TEXT
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS feature_task_runtime_sessions (
+        session_id TEXT PRIMARY KEY,
+        feature_size TEXT NOT NULL DEFAULT 'MEDIUM',
+        issue_key TEXT NOT NULL DEFAULT '',
+        feature_name TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        started_event_emitted_at TEXT,
+        completion_status TEXT NOT NULL DEFAULT '',
+        completed_phase_ids TEXT NOT NULL DEFAULT '',
+        phase_outcomes TEXT NOT NULL DEFAULT '',
+        last_incomplete_phase TEXT NOT NULL DEFAULT '',
+        blocked_reason TEXT NOT NULL DEFAULT '',
+        resolved_branch TEXT NOT NULL DEFAULT '',
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )

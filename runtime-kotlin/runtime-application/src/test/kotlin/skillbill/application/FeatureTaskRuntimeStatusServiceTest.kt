@@ -14,7 +14,9 @@ import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,16 +48,21 @@ class FeatureTaskRuntimeStatusServiceTest {
   fun `workflow with no phase records projects every phase pending`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunInvariants(FeatureTaskRuntimeFeatureSize.LARGE)
 
     val projection = requireNotNull(
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
+    assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    assertEquals(5, projection.pendingCount)
+    assertEquals(9, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
-    assertEquals("plan", projection.currentPhaseId)
-    assertEquals(listOf("pending", "pending", "pending", "pending", "pending"), projection.phases.map { it.status })
+    assertEquals("preplan", projection.currentPhaseId)
+    assertEquals(
+      listOf("pending", "pending", "pending", "pending", "pending", "pending", "pending", "pending", "pending"),
+      projection.phases.map { it.status },
+    )
   }
 
   @Test
@@ -65,6 +72,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     // The runner records a block only in the ledger, leaving the per-phase record at
     // `running`; status must derive the blocked state from the newest ledger entry.
     harness.recordRunning("implement", attemptCount = 3)
+    harness.recordCompleted("preplan", attemptCount = 1)
     harness.recordCompleted("plan", attemptCount = 1)
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.BLOCKED, "implement", attemptCount = 3)
@@ -73,7 +81,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals(1, projection.completeCount)
+    assertEquals(2, projection.completeCount)
     assertEquals(1, projection.blockedCount)
     assertEquals("implement", projection.currentPhaseId)
     assertEquals("completed", projection.phases.single { it.phaseId == "plan" }.status)
@@ -102,6 +110,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     // when the append-only ledger's BLOCKED entry has been pruned by the retention cap.
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
     harness.recordCompleted("plan", attemptCount = 1)
     harness.recordBlocked("implement", attemptCount = 3, "fix loop exhausted")
     // Ledger carries only a START (the BLOCKED entry was pruned away); the durable record stands.
@@ -116,15 +125,119 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals("implement", projection.currentPhaseId)
   }
 
+  @Test
+  fun `projection surfaces the durable resolved feature branch`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/SKILL-65-runtime-feature-task-parity",
+        baseBranch = "main",
+        created = true,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("feat/SKILL-65-runtime-feature-task-parity", projection.resolvedBranch)
+  }
+
+  @Test
+  fun `projection resolved branch is null before branch setup`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.resolvedBranch)
+  }
+
+  @Test
+  fun `projection surfaces the durable decompose terminal with subtask count and guidance fields`() {
+    // T-F001 / AC4: a durable decompose-terminal record projects into the status as a non-null
+    // decomposeTerminal carrying the reason, manifest/subtask paths, and the derived subtask count.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.decomposeTerminalRecorder.recordDecomposeTerminal(
+      WORKFLOW_ID,
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal(
+        reason = "Plan needs ordered subtasks.",
+        parentSpecPath = ".feature-specs/SKILL-65-runtime/spec.md",
+        decompositionManifestPath = ".feature-specs/SKILL-65-runtime/decomposition-manifest.yaml",
+        subtaskSpecPaths = listOf(
+          ".feature-specs/SKILL-65-runtime/spec_subtask_1_domain.md",
+          ".feature-specs/SKILL-65-runtime/spec_subtask_2_runtime.md",
+        ),
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val terminal = requireNotNull(projection.decomposeTerminal)
+    assertEquals("Plan needs ordered subtasks.", terminal.reason)
+    assertEquals(".feature-specs/SKILL-65-runtime/decomposition-manifest.yaml", terminal.decompositionManifestPath)
+    assertEquals(
+      listOf(
+        ".feature-specs/SKILL-65-runtime/spec_subtask_1_domain.md",
+        ".feature-specs/SKILL-65-runtime/spec_subtask_2_runtime.md",
+      ),
+      terminal.subtaskSpecPaths,
+    )
+    assertEquals(2, terminal.subtaskCount)
+    assertEquals(0, projection.pendingCount)
+    assertEquals(0, projection.blockedCount)
+    assertNull(projection.currentPhaseId)
+  }
+
+  @Test
+  fun `projection decompose terminal is null when no decompose stop was recorded`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.decomposeTerminal)
+  }
+
+  @Test
+  fun `projection feature size is null before run invariants are persisted`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.featureSize)
+  }
+
   private fun statusHarness(): StatusHarness {
     val repository = StatusInMemoryWorkflowRepository()
     val database = StatusFakeDatabaseSessionFactory(repository)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, StatusNoopSnapshotValidator)
-    return StatusHarness(recorder, FeatureTaskRuntimeStatusService(recorder))
+    val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
+    val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)
+    return StatusHarness(
+      recorder,
+      decomposeTerminalRecorder,
+      runInvariantsStore,
+      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
+    )
   }
 
   private class StatusHarness(
     val recorder: FeatureTaskRuntimePhaseRecorder,
+    val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+    val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
     val service: FeatureTaskRuntimeStatusService,
   ) {
     fun recordRunning(phaseId: String, attemptCount: Int) = recorder.recordPhaseState(
@@ -175,6 +288,19 @@ class FeatureTaskRuntimeStatusServiceTest {
           blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
         ),
       )
+
+    fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
+      runInvariantsStore.resolve(
+        workflowId = WORKFLOW_ID,
+        proposed =
+        FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-65/spec.md",
+          featureSize = featureSize,
+          acceptanceCriteria = listOf("AC-1"),
+          mandatesAndOverrides = emptyList(),
+        ),
+      )
+    }
   }
 
   private companion object {

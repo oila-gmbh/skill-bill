@@ -35,20 +35,33 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   fun validate(phaseOutput: Map<String, Any?>, sourceLabel: String) {
     val instance: JsonNode = mapper.valueToTree(phaseOutput)
     val errors: Set<ValidationMessage> = schema.validate(instance)
-    if (errors.isEmpty()) {
-      return
+    if (errors.isNotEmpty()) {
+      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors, instance))
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
+      )
     }
-    featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors, instance))
-    throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-      sourceLabel = sourceLabel,
-      reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
-    )
+    val phaseId = phaseOutput["phase_id"] as? String
+    if (phaseId != sourceLabel) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "phase_id must match the executing phase '$sourceLabel' but was '${phaseId.orEmpty()}'.",
+      )
+    }
   }
 
   fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
+  }
+
+  fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
+    val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
+    val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
+    validate(parsed, sourceLabel)
+    return parsed
   }
 
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:

@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Files
 import java.nio.file.Path
@@ -21,9 +22,16 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     val specText = Files.readString(normalizedPath)
     return FeatureTaskRuntimeRunInvariants(
       specReference = normalizedPath.toString(),
+      featureSize = parseFeatureSize(specText),
       acceptanceCriteria = parseNumberedSection(specText, ACCEPTANCE_CRITERIA_HEADINGS),
       mandatesAndOverrides = parseBulletSection(specText, MANDATES_HEADINGS),
     )
+  }
+
+  private fun parseFeatureSize(specText: String): FeatureTaskRuntimeFeatureSize {
+    val rawValue = FEATURE_SIZE_LINE.find(specText)?.groupValues?.get(1)
+      ?: return FeatureTaskRuntimeFeatureSize.DEFAULT
+    return FeatureTaskRuntimeFeatureSize.fromWire(rawValue)
   }
 
   private fun parseNumberedSection(specText: String, headings: Set<String>): List<String> {
@@ -76,5 +84,6 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     val HEADING = Regex("""^#{2,6}\s+(.+)$""")
     val NUMBERED_ITEM = Regex("""^\s*\d+\.\s+(.*)$""")
     val BULLET_ITEM = Regex("""^\s*[-*]\s+(.*)$""")
+    val FEATURE_SIZE_LINE = Regex("""(?im)^\s*(?:feature[_ -]size|size)\s*:\s*([^\r\n#]+)(?:\s+#.*)?$""")
   }
 }

@@ -9,7 +9,7 @@ internal val historySignalSchema: Map<String, Any?> =
 internal val qualityCheckScopeSchema: Map<String, Any?> =
   stringSchema(enum = listOf("files", "working_tree", "branch_diff", "repo"))
 internal val remoteStatsWorkflowSchema: Map<String, Any?> =
-  stringSchema(enum = listOf("verify", "implement", "bill-feature-verify", "bill-feature-task"))
+  stringSchema(enum = listOf("verify", "implement", "bill-feature-verify", "bill-feature-task", "feature-task-runtime"))
 
 internal fun objectSchema(
   required: List<String> = emptyList(),

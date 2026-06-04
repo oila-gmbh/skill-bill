@@ -101,6 +101,11 @@ internal class GoalRunnerLedgerRecorder(
       childSessionId = facts?.childSessionId,
       finalReconciledResult = context.finalReconciledResult?.takeIf(String::isNotBlank),
       stopReason = context.stopReason?.takeIf(String::isNotBlank),
+      diagnosticClass = context.diagnosticClass?.takeIf(String::isNotBlank),
+      currentStep = context.progress?.currentStepId?.takeIf(String::isNotBlank),
+      exitStatus = facts?.exitStatus,
+      recoverableJsonPresent = context.recoverableJsonPresent,
+      nextSafeAction = context.nextSafeAction?.takeIf(String::isNotBlank),
     )
     runCatching {
       outcomeStore.recordAttemptLedgerEntry(
@@ -162,4 +167,7 @@ internal data class GoalRunnerLedgerContext(
   val blockedReason: String? = null,
   val finalReconciledResult: String? = null,
   val stopReason: String? = null,
+  val diagnosticClass: String? = null,
+  val recoverableJsonPresent: Boolean? = null,
+  val nextSafeAction: String? = null,
 )

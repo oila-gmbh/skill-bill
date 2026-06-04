@@ -16,7 +16,6 @@ import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.RuntimeProvenanceService
 import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
-import skillbill.application.model.DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunEvent
@@ -61,9 +60,9 @@ class GoalRunCommand(
   ).int()
   private val progressIdleTimeoutMinutes by option(
     "--progress-idle-timeout-minutes",
-    help = "Per-subtask durable workflow-progress idle timeout in minutes.",
+    help = "Optional per-subtask durable workflow-progress idle timeout in minutes. " +
+      "Default is no idle timeout: a subtask is never killed for taking long.",
   ).int()
-    .default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT.inWholeMinutes.toInt())
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
@@ -104,7 +103,7 @@ class GoalRunCommand(
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
         timeout = maxWallClockMinutes?.minutes,
-        progressIdleTimeout = progressIdleTimeoutMinutes.minutes,
+        progressIdleTimeout = progressIdleTimeoutMinutes?.minutes,
         outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
       ),

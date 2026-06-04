@@ -1,5 +1,6 @@
 package skillbill.application
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.error.FeatureSpecPreparationModeConflictError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
@@ -13,6 +14,7 @@ import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
 import java.nio.file.Path
 
+@Inject
 class FeatureSpecPreparationWriter(
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,

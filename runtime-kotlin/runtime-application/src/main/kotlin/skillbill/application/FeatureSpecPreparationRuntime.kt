@@ -1,5 +1,6 @@
 package skillbill.application
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
@@ -10,6 +11,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationIntake
  * `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal` wrappers
  * intentionally call the same injected core to prevent divergence.
  */
+@Inject
 class FeatureSpecPreparationRuntime(
   private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
     FeatureSpecPreparationPolicy::prepare,

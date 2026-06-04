@@ -126,6 +126,18 @@ decomposition, suppress PR when driven by the goal).
   blocks loudly with an actionable reason rather than silently completing.
 - All git-touching behavior is idempotent across resume (no duplicate branch, no
   second PR, no changes left on the default branch).
+- Subtask-timeout resumability: a goal-driven runtime subtask that hits the goal
+  runner's per-subtask wall-clock budget must resume from `last_resumable_step`
+  with net forward progress (no restart from `preplan`) — observed in the first
+  SKILL-65.1 run (subtask 1 timed out at `review`); addressed under subtask 7
+  AC 7.
+- Terminal-result envelope tolerance: a goal-driven child that exits after
+  useful work but returns valid JSON without the required `RESULT:` label must
+  not become an opaque `no_terminal_store_outcome` block. Durable workflow state
+  stays authoritative, the missing-prefix-only case is recovered only when the
+  JSON matches the declared return contract, and irrecoverable cases remain
+  resumable with a precise blocked reason — observed in ZERO-89 on 2026-06-04;
+  addressed under subtask 7 AC 8-9.
 - Changes stay confined to the `feature-task-runtime` family; the architecture
   ownership tests (`ImplementationOwnershipArchitectureTest`,
   `RuntimeArchitectureTest`) keep passing.

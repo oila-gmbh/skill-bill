@@ -1,6 +1,7 @@
 package skillbill.application.model
 
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFindingStats
@@ -57,4 +58,9 @@ data class FeatureImplementStatsResult(
 data class FeatureVerifyStatsResult(
   val dbPath: String,
   val stats: FeatureVerifyWorkflowStats,
+)
+
+data class FeatureTaskRuntimeStatsResult(
+  val dbPath: String,
+  val stats: FeatureTaskRuntimeWorkflowStats,
 )

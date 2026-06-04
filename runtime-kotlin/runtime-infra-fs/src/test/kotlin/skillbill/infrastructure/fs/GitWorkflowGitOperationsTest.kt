@@ -32,6 +32,38 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `branch exists reports presence without creating the branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-branch-exists")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    git(repoRoot, "branch", "feat/present")
+    val ops = GitWorkflowGitOperations()
+
+    val present = ops.branchExists(repoRoot, "feat/present")
+    val absent = ops.branchExists(repoRoot, "feat/absent")
+
+    assertTrue(present.ok, present.error)
+    assertEquals("true", present.value)
+    assertTrue(absent.ok, absent.error)
+    assertEquals("false", absent.value)
+    assertFalse(git(repoRoot, "branch", "--list", "feat/absent").contains("feat/absent"))
+  }
+
+  @Test
+  fun `branch exists reports fatal git failures as errors instead of absent branches`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-branch-exists-not-repo")
+
+    val result = GitWorkflowGitOperations().branchExists(repoRoot, "feat/persisted")
+
+    assertFalse(result.ok)
+    assertContains(result.error, "git rev-parse")
+  }
+
+  @Test
   fun `worktree activity summarizes changed files and diff stat`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-worktree-activity")
     git(repoRoot, "init")

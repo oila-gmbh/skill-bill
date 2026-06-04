@@ -19,6 +19,22 @@ fun emitFeatureImplementFinished(connection: Connection, sessionId: String, leve
   ) { featureImplementFinishedPayload(row, level) }
 }
 
+fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, level: String) {
+  val row = lifecycleRow(connection, "feature_task_runtime_sessions", sessionId) ?: return
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "started_event_emitted_at"),
+    "skillbill_feature_task_runtime_started",
+  ) { featureTaskRuntimeStartedPayload(row, level) }
+}
+
+fun emitFeatureTaskRuntimeFinished(connection: Connection, sessionId: String, level: String) {
+  val row = lifecycleRow(connection, "feature_task_runtime_sessions", sessionId) ?: return
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "finished_event_emitted_at"),
+    "skillbill_feature_task_runtime_finished",
+  ) { featureTaskRuntimeFinishedPayload(row, level) }
+}
+
 fun emitQualityCheckStarted(connection: Connection, sessionId: String) {
   val row = lifecycleRow(connection, "quality_check_sessions", sessionId) ?: return
   emitOnce(

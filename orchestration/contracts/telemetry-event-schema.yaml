@@ -122,6 +122,9 @@ oneOf:
   - $ref: "#/$defs/featureTaskRuntimeWorkflowOpenEvent"
   - $ref: "#/$defs/featureTaskRuntimeWorkflowResumeEvent"
   - $ref: "#/$defs/featureTaskRuntimeWorkflowUpdateEvent"
+  - $ref: "#/$defs/featureTaskRuntimeStartedEvent"
+  - $ref: "#/$defs/featureTaskRuntimeFinishedEvent"
+  - $ref: "#/$defs/featureTaskRuntimeStatsEvent"
   - $ref: "#/$defs/importReviewEvent"
   - $ref: "#/$defs/newSkillScaffoldEvent"
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
@@ -274,11 +277,15 @@ $defs:
   workflowTaskRuntimeStepIdEnum:
     type: string
     enum:
+      - preplan
       - plan
       - implement
       - review
       - audit
       - validate
+      - write_history
+      - commit_push
+      - pr
   stepUpdateTaskRuntimeShape:
     type: object
     additionalProperties: false
@@ -346,6 +353,18 @@ $defs:
       contract_version:
         const: "1.0.0"
 
+  featureTaskRuntimeStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_runtime_stats
+      contract_version:
+        const: "1.0.0"
+
   readianAuthStatusEvent:
     type: object
     additionalProperties: true
@@ -401,6 +420,7 @@ $defs:
           - implement
           - bill-feature-verify
           - bill-feature-task
+          - feature-task-runtime
       since:
         type: string
       date_from:
@@ -763,6 +783,69 @@ $defs:
         type: string
       duration_seconds:
         type: integer
+
+  featureTaskRuntimeStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - feature_size
+      - issue_key
+      - feature_name
+    properties:
+      event_name:
+        const: feature_task_runtime_started
+      contract_version:
+        const: "1.0.0"
+      feature_size:
+        type: string
+        enum:
+          - SMALL
+          - MEDIUM
+          - LARGE
+      issue_key:
+        type: string
+      feature_name:
+        type: string
+      session_id:
+        type: string
+
+  featureTaskRuntimeFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - session_id
+      - completion_status
+      - completed_phase_ids
+    properties:
+      event_name:
+        const: feature_task_runtime_finished
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      completion_status:
+        type: string
+        enum:
+          - completed
+          - blocked
+          - decomposed_at_planning
+          - error
+      completed_phase_ids:
+        type: array
+        items:
+          type: string
+      phase_outcomes:
+        $ref: "#/$defs/freeObjectShape"
+      last_incomplete_phase:
+        type: string
+      blocked_reason:
+        type: string
+      resolved_branch:
+        type: string
 
   featureVerifyWorkflowContinueEvent:
     type: object

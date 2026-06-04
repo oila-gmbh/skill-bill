@@ -152,7 +152,9 @@ object GoalRunnerOutcomeReconciler {
     )
     storedOutcome == null -> GoalRunnerReconciledOutcome.Stop(
       reason = GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
-      blockedReason = "Subtask $subtaskId finished without a terminal workflow-store outcome.",
+      blockedReason = "Subtask $subtaskId finished without a terminal workflow-store outcome. " +
+        "This can happen when the agent reaches model or rate limits before writing the terminal " +
+        "outcome; check provider limits, then resume from last_resumable_step.",
       workflowId = null,
       commitSha = null,
       lastResumableStep = "preplan",

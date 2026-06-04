@@ -4,6 +4,8 @@ package skillbill.mcp
 
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -133,6 +135,19 @@ object McpRuntime {
 
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.featureVerifyStats(dbOverride = null).toMcpMap()
+
+  fun featureTaskRuntimeStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
+    services(context).reviewService.featureTaskRuntimeStats(dbOverride = null).toMcpMap()
+
+  fun featureTaskRuntimeStarted(
+    request: FeatureTaskRuntimeStartedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureTaskRuntimeStarted(request) }
+
+  fun featureTaskRuntimeFinished(
+    request: FeatureTaskRuntimeFinishedRequest,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureTaskRuntimeFinished(request) }
 
   fun featureImplementStarted(
     request: FeatureImplementStartedRequest,

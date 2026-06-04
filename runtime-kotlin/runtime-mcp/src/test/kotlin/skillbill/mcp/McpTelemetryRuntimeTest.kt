@@ -74,6 +74,35 @@ class McpTelemetryRuntimeTest {
   }
 
   @Test
+  fun `telemetry remote stats tool accepts feature-task-runtime workflow`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-runtime")
+    val configPath = writeMcpTelemetryConfig(tempDir, "off")
+    val env =
+      mapOf(
+        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
+        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
+        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
+      )
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val context =
+      McpRuntimeContext(
+        requester = runtimeAwareTelemetryRequester(capturedRequests),
+        environment = env,
+        userHome = tempDir,
+      )
+
+    val stats =
+      McpToolDispatcher.call(
+        "telemetry_remote_stats",
+        mapOf("workflow" to "feature-task-runtime"),
+        context,
+      )
+
+    assertEquals("feature-task-runtime", stats["workflow"])
+    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"feature-task-runtime\""))
+  }
+
+  @Test
   fun `telemetry remote stats mapper preserves explicit null capabilities`() {
     val result =
       TelemetryRemoteStatsResult(
@@ -151,6 +180,46 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
               "supports_stats": true,
               "inline_only": true
             }
+          }
+          """.trimIndent(),
+        )
+    }
+  }
+
+private fun runtimeAwareTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
+  HttpRequester { method, url, bodyJson, headers ->
+    capturedRequests +=
+      linkedMapOf(
+        "method" to method,
+        "url" to url,
+        "body" to bodyJson,
+        "authorization" to headers["Authorization"],
+      )
+    when {
+      url.endsWith("/capabilities") ->
+        HttpResponse(
+          200,
+          """
+          {
+            "supports_ingest": true,
+            "supports_stats": true,
+            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "feature-task-runtime"],
+            "region": "eu"
+          }
+          """.trimIndent(),
+        )
+
+      else ->
+        HttpResponse(
+          200,
+          """
+          {
+            "status": "ok",
+            "workflow": "feature-task-runtime",
+            "source": "remote_proxy",
+            "started_runs": 3,
+            "finished_runs": 2,
+            "in_progress_runs": 1
           }
           """.trimIndent(),
         )

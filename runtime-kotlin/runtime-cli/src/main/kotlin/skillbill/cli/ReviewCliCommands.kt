@@ -11,13 +11,26 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.ReviewService
 
 @Inject
+class FeatureStatsCommands(
+  val featureImplementStatsCommand: FeatureImplementStatsCommand,
+  val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
+  val featureTaskRuntimeStatsCommand: FeatureTaskRuntimeStatsCommand,
+) {
+  val commands =
+    listOf(
+      featureImplementStatsCommand,
+      featureVerifyStatsCommand,
+      featureTaskRuntimeStatsCommand,
+    )
+}
+
+@Inject
 class ReviewTopLevelCommands(
   val importReviewCommand: ImportReviewCommand,
   val recordFeedbackCommand: RecordFeedbackCommand,
   val triageCommand: TriageCommand,
   val statsCommand: ReviewStatsCommand,
-  val featureImplementStatsCommand: FeatureImplementStatsCommand,
-  val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
+  val featureStatsCommands: FeatureStatsCommands,
 ) {
   val commands =
     listOf(
@@ -25,9 +38,7 @@ class ReviewTopLevelCommands(
       recordFeedbackCommand,
       triageCommand,
       statsCommand,
-      featureImplementStatsCommand,
-      featureVerifyStatsCommand,
-    )
+    ) + featureStatsCommands.commands
 }
 
 @Inject
@@ -126,5 +137,17 @@ class FeatureVerifyStatsCommand(
 
   override fun run() {
     state.complete(service.featureVerifyStats(state.dbOverride).toCliMap(), format)
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeStatsCommand(
+  private val service: ReviewService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("runtime-stats", "Show aggregate EXPERIMENTAL feature-task-runtime metrics.") {
+  private val format by formatOption()
+
+  override fun run() {
+    state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
   }
 }

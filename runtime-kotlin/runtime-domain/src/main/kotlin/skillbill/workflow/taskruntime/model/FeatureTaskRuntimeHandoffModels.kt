@@ -16,6 +16,8 @@ package skillbill.workflow.taskruntime.model
 data class FeatureTaskRuntimeRunInvariants(
   /** Reference (path) to the governed spec the run implements. */
   val specReference: String,
+  /** Resolved run size. Fixed once at run creation and injected into every phase. */
+  val featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.DEFAULT,
   /** Ordered acceptance criteria the run must satisfy. Must be non-empty. */
   val acceptanceCriteria: List<String>,
   /** Mandates and overrides that must reach every phase verbatim. */
@@ -34,6 +36,55 @@ data class FeatureTaskRuntimeRunInvariants(
       "FeatureTaskRuntimeRunInvariants.acceptanceCriteria must not contain blank entries."
     }
   }
+}
+
+/**
+ * Feature-task-runtime ceremony size. When governed inputs omit an explicit size,
+ * the runtime defaults to [MEDIUM]: the full standard-flow ceremony without large-feature
+ * decomposition behavior, keeping the default conservative and deterministic.
+ */
+enum class FeatureTaskRuntimeFeatureSize {
+  SMALL,
+  MEDIUM,
+  LARGE,
+  ;
+
+  companion object {
+    val DEFAULT: FeatureTaskRuntimeFeatureSize = MEDIUM
+
+    fun fromWire(value: String): FeatureTaskRuntimeFeatureSize =
+      entries.firstOrNull { it.name == value.trim().uppercase() }
+        ?: throw IllegalArgumentException(
+          "Unknown feature-task-runtime feature size '$value'. Allowed: ${entries.joinToString { it.name }}.",
+        )
+  }
+}
+
+enum class FeatureTaskRuntimePreplanCeremony(val wireValue: String, val promptLabel: String) {
+  LIGHT("light", "lighter preplan focused on the current unit of work"),
+  FULL("full", "full preplan covering boundaries, risks, rollout, and unknowns"),
+}
+
+enum class FeatureTaskRuntimeReviewScope(val wireValue: String, val promptLabel: String) {
+  CURRENT_UNIT_OF_WORK("current_unit_of_work", "current-unit-of-work review scope"),
+  BRANCH_DIFF("branch_diff", "branch-diff review scope"),
+}
+
+enum class FeatureTaskRuntimeAuditCeremony(val wireValue: String, val promptLabel: String) {
+  LIGHT("light", "lighter audit over the current unit of work and every listed criterion"),
+  FULL_PER_CRITERION("full_per_criterion", "full per-criterion completeness audit"),
+}
+
+data class FeatureTaskRuntimeCeremonyScaling(
+  val preplanCeremony: FeatureTaskRuntimePreplanCeremony,
+  val reviewScope: FeatureTaskRuntimeReviewScope,
+  val auditCeremony: FeatureTaskRuntimeAuditCeremony,
+) {
+  fun toBriefingLines(): List<String> = listOf(
+    "preplan_ceremony: ${preplanCeremony.wireValue} (${preplanCeremony.promptLabel})",
+    "review_scope: ${reviewScope.wireValue} (${reviewScope.promptLabel})",
+    "audit_ceremony: ${auditCeremony.wireValue} (${auditCeremony.promptLabel})",
+  )
 }
 
 /**

@@ -45,55 +45,7 @@ class McpStdioServerTest {
     val tools = response.map("result")["tools"] as List<*>
     val names = tools.map { tool -> requireNotNull(JsonSupport.anyToStringAnyMap(tool))["name"] }
 
-    assertEquals(
-      listOf(
-        "doctor",
-        "feature_implement_finished",
-        "feature_implement_stats",
-        "feature_implement_started",
-        "feature_implement_workflow_get",
-        "feature_implement_workflow_latest",
-        "feature_implement_workflow_list",
-        "feature_implement_workflow_continue",
-        "feature_implement_workflow_open",
-        "feature_implement_workflow_resume",
-        "feature_implement_workflow_update",
-        "feature_verify_finished",
-        "feature_verify_stats",
-        "feature_verify_started",
-        "feature_verify_workflow_get",
-        "feature_verify_workflow_latest",
-        "feature_verify_workflow_list",
-        "feature_verify_workflow_continue",
-        "feature_verify_workflow_open",
-        "feature_verify_workflow_resume",
-        "feature_verify_workflow_update",
-        "feature_task_runtime_workflow_get",
-        "feature_task_runtime_workflow_latest",
-        "feature_task_runtime_workflow_list",
-        "feature_task_runtime_workflow_continue",
-        "feature_task_runtime_workflow_open",
-        "feature_task_runtime_workflow_resume",
-        "feature_task_runtime_workflow_update",
-        "import_review",
-        "new_skill_scaffold",
-        "pr_description_generated",
-        "quality_check_finished",
-        "quality_check_started",
-        "readian_auth_status",
-        "readian_get_article",
-        "readian_get_articles_for_topic_query",
-        "readian_get_spotlight",
-        "readian_mark_story_status",
-        "readian_save_candidate",
-        "resolve_learnings",
-        "review_stats",
-        "telemetry_proxy_capabilities",
-        "telemetry_remote_stats",
-        "triage_findings",
-      ),
-      names,
-    )
+    assertEquals(expectedToolInventory, names)
   }
 
   @Test
@@ -174,7 +126,7 @@ class McpStdioServerTest {
     )
     tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
     assertEquals(
-      listOf("verify", "implement", "bill-feature-verify", "bill-feature-task"),
+      listOf("verify", "implement", "bill-feature-verify", "bill-feature-task", "feature-task-runtime"),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
     )
     assertEquals(
@@ -474,10 +426,63 @@ class McpStdioServerTest {
   }
 }
 
+private val expectedToolInventory =
+  listOf(
+    "doctor",
+    "feature_implement_finished",
+    "feature_implement_stats",
+    "feature_implement_started",
+    "feature_implement_workflow_get",
+    "feature_implement_workflow_latest",
+    "feature_implement_workflow_list",
+    "feature_implement_workflow_continue",
+    "feature_implement_workflow_open",
+    "feature_implement_workflow_resume",
+    "feature_implement_workflow_update",
+    "feature_verify_finished",
+    "feature_verify_stats",
+    "feature_verify_started",
+    "feature_verify_workflow_get",
+    "feature_verify_workflow_latest",
+    "feature_verify_workflow_list",
+    "feature_verify_workflow_continue",
+    "feature_verify_workflow_open",
+    "feature_verify_workflow_resume",
+    "feature_verify_workflow_update",
+    "feature_task_runtime_finished",
+    "feature_task_runtime_started",
+    "feature_task_runtime_stats",
+    "feature_task_runtime_workflow_get",
+    "feature_task_runtime_workflow_latest",
+    "feature_task_runtime_workflow_list",
+    "feature_task_runtime_workflow_continue",
+    "feature_task_runtime_workflow_open",
+    "feature_task_runtime_workflow_resume",
+    "feature_task_runtime_workflow_update",
+    "import_review",
+    "new_skill_scaffold",
+    "pr_description_generated",
+    "quality_check_finished",
+    "quality_check_started",
+    "readian_auth_status",
+    "readian_get_article",
+    "readian_get_articles_for_topic_query",
+    "readian_get_spotlight",
+    "readian_mark_story_status",
+    "readian_save_candidate",
+    "resolve_learnings",
+    "review_stats",
+    "telemetry_proxy_capabilities",
+    "telemetry_remote_stats",
+    "triage_findings",
+  )
+
 private val priorityStrictToolNames =
   listOf(
     "feature_implement_started",
     "feature_implement_finished",
+    "feature_task_runtime_started",
+    "feature_task_runtime_finished",
     "feature_verify_started",
     "feature_verify_finished",
     "quality_check_started",

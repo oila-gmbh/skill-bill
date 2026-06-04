@@ -22,9 +22,11 @@ import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
@@ -45,9 +47,21 @@ class SQLiteUnitOfWork(
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
 }
 
+class SQLiteWorkflowStatsRepository(
+  private val connection: Connection,
+) : WorkflowStatsRepository {
+  override fun featureImplementStats(): FeatureImplementWorkflowStats =
+    ReviewStatsRuntime.featureImplementStats(connection)
+
+  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = ReviewStatsRuntime.featureVerifyStats(connection)
+
+  override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats =
+    ReviewStatsRuntime.featureTaskRuntimeStats(connection)
+}
+
 class SQLiteReviewRepository(
   private val connection: Connection,
-) : ReviewRepository {
+) : ReviewRepository, WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection) {
   private companion object {
     const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
   }
@@ -127,11 +141,6 @@ class SQLiteReviewRepository(
 
   override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot =
     ReviewStatsRuntime.statsSnapshot(connection, runId)
-
-  override fun featureImplementStats(): FeatureImplementWorkflowStats =
-    ReviewStatsRuntime.featureImplementStats(connection)
-
-  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = ReviewStatsRuntime.featureVerifyStats(connection)
 }
 
 class SQLiteLearningRepository(

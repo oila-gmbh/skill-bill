@@ -12,6 +12,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 data class FeatureTaskRuntimePhaseLaunchBriefing(
   val phaseId: String,
   val specReference: String,
+  val featureSize: String,
   val acceptanceCriteria: List<String>,
   val mandatesAndOverrides: List<String>,
   val upstreamOutputsByPhaseId: Map<String, String>,
@@ -22,6 +23,9 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLaunchBriefing.phaseId must be non-blank." }
     require(specReference.isNotBlank()) {
       "FeatureTaskRuntimePhaseLaunchBriefing.specReference must be non-blank; run-invariants are unconditional."
+    }
+    require(featureSize.isNotBlank()) {
+      "FeatureTaskRuntimePhaseLaunchBriefing.featureSize must be non-blank; run-invariants are unconditional."
     }
     require(acceptanceCriteria.isNotEmpty()) {
       "FeatureTaskRuntimePhaseLaunchBriefing.acceptanceCriteria must be non-empty; run-invariants are unconditional."
@@ -34,6 +38,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "phase_id" to phaseId,
     "spec_reference" to specReference,
+    "feature_size" to featureSize,
     "acceptance_criteria" to acceptanceCriteria,
     "mandates_and_overrides" to mandatesAndOverrides,
     "upstream_outputs_by_phase_id" to LinkedHashMap(upstreamOutputsByPhaseId),
@@ -48,6 +53,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
       FeatureTaskRuntimePhaseLaunchBriefing(
         phaseId = raw.requireStringField("phase_id"),
         specReference = raw.requireStringField("spec_reference"),
+        featureSize = raw.requireStringField("feature_size"),
         acceptanceCriteria = raw.requireStringListField("acceptance_criteria"),
         mandatesAndOverrides = raw.requireStringListField("mandates_and_overrides"),
         upstreamOutputsByPhaseId = raw.requireStringMapField("upstream_outputs_by_phase_id"),

@@ -2,6 +2,8 @@ package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
+import skillbill.db.LifecycleTelemetryStore
+import skillbill.db.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
@@ -16,6 +18,8 @@ import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -113,6 +117,115 @@ class ReviewStatsRuntimeTest {
       assertEquals(1, verifyStats.totalRuns)
       assertEquals(1, verifyStats.runsWithGapsFound)
       assertEquals(1, verifyStats.historyRelevanceCounts["medium"])
+    }
+  }
+
+  @Test
+  fun `feature task runtime telemetry persists started then finished and enqueues each event once`() {
+    val (_, connection) = tempDbConnection("feature-task-runtime-telemetry")
+    connection.use {
+      val store = LifecycleTelemetryStore(connection)
+      val outbox = TelemetryOutboxStore(connection)
+      store.featureTaskRuntimeStarted(
+        FeatureTaskRuntimeStartedRecord(
+          sessionId = "ftr-1",
+          featureSize = "MEDIUM",
+          issueKey = "SKILL-65.1",
+          featureName = "lifecycle-telemetry",
+        ),
+        level = "full",
+      )
+      store.featureTaskRuntimeFinished(
+        FeatureTaskRuntimeFinishedRecord(
+          sessionId = "ftr-1",
+          completionStatus = "completed",
+          completedPhaseIds = listOf("preplan", "plan", "implement"),
+          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
+          lastIncompletePhase = "",
+          blockedReason = "",
+          resolvedBranch = "feat/SKILL-65.1",
+        ),
+        level = "full",
+      )
+      // A redundant finished call (e.g. a resume) must re-save idempotently and never re-enqueue.
+      store.featureTaskRuntimeFinished(
+        FeatureTaskRuntimeFinishedRecord(
+          sessionId = "ftr-1",
+          completionStatus = "completed",
+          completedPhaseIds = listOf("preplan", "plan", "implement"),
+          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
+          lastIncompletePhase = "",
+          blockedReason = "",
+          resolvedBranch = "feat/SKILL-65.1",
+        ),
+        level = "full",
+      )
+
+      val pending = outbox.listPending(limit = null)
+      assertEquals(
+        listOf("skillbill_feature_task_runtime_started", "skillbill_feature_task_runtime_finished"),
+        pending.map { it.eventName },
+      )
+      val finishedPayload = JsonSupport.parseObjectOrNull(
+        pending.single { it.eventName == "skillbill_feature_task_runtime_finished" }.payloadJson,
+      )
+      assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
+
+      val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
+      assertEquals(1, stats.totalRuns)
+      assertEquals(1, stats.finishedRuns)
+      assertEquals(1, stats.completedRuns)
+      assertEquals(1, stats.completionStatusCounts["completed"])
+      assertEquals(3, stats.phaseOutcomeCounts["completed"])
+      assertEquals(1, stats.featureSizeCounts["MEDIUM"])
+    }
+  }
+
+  @Test
+  fun `feature task runtime stats counts blocked and decomposed completion statuses`() {
+    val (_, connection) = tempDbConnection("feature-task-runtime-stats")
+    connection.use {
+      val store = LifecycleTelemetryStore(connection)
+      store.featureTaskRuntimeStarted(
+        FeatureTaskRuntimeStartedRecord("ftr-blocked", "SMALL", "SKILL-1", "blocked-run"),
+        level = "anonymous",
+      )
+      store.featureTaskRuntimeFinished(
+        FeatureTaskRuntimeFinishedRecord(
+          sessionId = "ftr-blocked",
+          completionStatus = "blocked",
+          completedPhaseIds = listOf("preplan"),
+          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "blocked"),
+          lastIncompletePhase = "plan",
+          blockedReason = "schema gate failed",
+          resolvedBranch = "",
+        ),
+        level = "anonymous",
+      )
+      store.featureTaskRuntimeStarted(
+        FeatureTaskRuntimeStartedRecord("ftr-decomposed", "LARGE", "SKILL-2", "decomposed-run"),
+        level = "anonymous",
+      )
+      store.featureTaskRuntimeFinished(
+        FeatureTaskRuntimeFinishedRecord(
+          sessionId = "ftr-decomposed",
+          completionStatus = "decomposed_at_planning",
+          completedPhaseIds = listOf("preplan", "plan"),
+          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed"),
+          lastIncompletePhase = "",
+          blockedReason = "",
+          resolvedBranch = "",
+        ),
+        level = "anonymous",
+      )
+
+      val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
+      assertEquals(2, stats.totalRuns)
+      assertEquals(1, stats.blockedRuns)
+      assertEquals(1, stats.decomposedRuns)
+      assertEquals(1, stats.completionStatusCounts["blocked"])
+      assertEquals(1, stats.completionStatusCounts["decomposed_at_planning"])
+      assertEquals(1, stats.phaseOutcomeCounts["blocked"])
     }
   }
 }

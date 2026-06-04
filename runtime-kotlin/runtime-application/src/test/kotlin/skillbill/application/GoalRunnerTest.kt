@@ -48,7 +48,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.minutes
 
 class GoalRunnerTest {
   @Test
@@ -182,11 +181,13 @@ class GoalRunnerTest {
     assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
     assertEquals(1, stopped.stop.subtaskId)
     assertEquals("wfl-1", stopped.stop.workflowId)
+    assertContains(stopped.stop.blockedReason, "check provider limits")
+    assertContains(stopped.stop.blockedReason, "last_resumable_step")
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
     assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
     assertEquals(2, launcher.requests.size)
     assertEquals(null, launcher.requests.first().skillRunRequest.timeout)
-    assertEquals(30.minutes, launcher.requests.first().skillRunRequest.progressIdleTimeout)
+    assertEquals(null, launcher.requests.first().skillRunRequest.progressIdleTimeout)
     // SKILL-64 Subtask 3 (F-PF01): the legacy progress probe and the declared
     // probe now share one per-tick read. A fresh launch request (= a fresh
     // per-tick reader) resolves the current store state in a single read, so set
@@ -1273,6 +1274,7 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   val observabilityRecords: MutableList<GoalRunnerObservabilityRecordRequest> = mutableListOf()
   val workerSubtaskRequestOutcomes: MutableList<WorkerSubtaskRequestOutcomeRecord> = mutableListOf()
   val authoritativeOutcomesBySubtask: MutableMap<Int, GoalRunnerStoredOutcome> = mutableMapOf()
+  val recoveredMissingResultPrefixOutputs: MutableList<RecoveredMissingResultPrefixOutput> = mutableListOf()
   var observabilityRecordResult: Boolean = true
   var throwOnObservabilityRecord: Boolean = false
   var throwOnProgress: Boolean = false
@@ -1308,6 +1310,23 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = outcomes[workflowId]
+
+  override fun recoverMissingResultPrefixOutput(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    output: Map<String, Any?>,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? {
+    recoveredMissingResultPrefixOutputs += RecoveredMissingResultPrefixOutput(
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      output = output,
+      dbPathOverride = dbPathOverride,
+    )
+    return outcomes[workflowId]
+  }
 
   override fun markBlocked(
     workflowId: String,
@@ -1401,6 +1420,14 @@ internal data class BlockedWorkflow(
   val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
+internal data class RecoveredMissingResultPrefixOutput(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val output: Map<String, Any?>,
+  val dbPathOverride: String?,
+)
+
 internal data class ReconcileRequest(
   val issueKey: String,
   val activeWorkflowIds: Set<String>,
@@ -1439,6 +1466,9 @@ private class FixedBranchGitOperations(
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
+
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -1469,6 +1499,9 @@ private class FixedBranchGitOperations(
 private object StatusDiffGitOperations : WorkflowGitOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "main")
@@ -1512,6 +1545,9 @@ private class RecordingGitOperations(
     return checkoutError?.let { WorkflowGitOperationResult(status = "error", error = it) }
       ?: WorkflowGitOperationResult(status = "ok", value = branch)
   }
+
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = currentBranch)

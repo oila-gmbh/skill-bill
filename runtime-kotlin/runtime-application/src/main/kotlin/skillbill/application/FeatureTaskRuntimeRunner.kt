@@ -2,10 +2,15 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
+import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
+import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -16,6 +21,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -30,34 +37,235 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 class FeatureTaskRuntimeRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
+  private val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
+  private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val phaseGates: FeatureTaskRuntimePhaseGates,
 ) {
+  private val branchSetupRunner get() = phaseGates.branchSetupRunner
+  private val planningStopper get() = phaseGates.planningStopper
+  private val lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
+
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
-    val observability = FeatureTaskRuntimeRunObservability(recorder, request)
-    val state = RunState(recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride).orEmpty())
-    val orderedPhases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
-    for (phaseId in orderedPhases) {
-      if (state.isComplete(phaseId)) {
-        continue
-      }
-      val outcome = runPhase(phaseId, request, state, observability)
-      outcome.blockedReason?.let { reason ->
-        return FeatureTaskRuntimeRunReport.Blocked(
-          issueKey = request.issueKey,
-          workflowId = request.workflowId,
-          lastIncompletePhase = phaseId,
-          blockedReason = reason,
-          completedPhaseIds = state.completedPhaseIds(),
-        )
-      }
-      state.recordCompleted(requireNotNull(outcome.completedOutput))
-    }
-    return FeatureTaskRuntimeRunReport.Completed(
-      issueKey = request.issueKey,
+    val durableRunInvariants = runInvariantsStore.resolve(
       workflowId = request.workflowId,
-      completedPhaseIds = state.completedPhaseIds(),
+      dbOverride = request.dbPathOverride,
+      proposed = request.runInvariants,
+    ) ?: request.runInvariants
+    val runRequest = request.copy(runInvariants = durableRunInvariants)
+    persistGoalContinuationContext(goalContinuationRecorder, runRequest)
+    runRequest.eventSink.emit(
+      FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
     )
+    // Runtime-owned lifecycle telemetry: the runtime mints and emits the started/finished events from
+    // its own per-phase records (AC4), never the agent. Per-phase records and ledger remain the
+    // authoritative observability source and are unchanged; this telemetry is additive (AC6). Every
+    // telemetry call is failure-isolated (logged, never swallowed silently) so a telemetry fault can
+    // neither abort the run nor falsely-fail a successful run, and the run exception always propagates.
+    // The telemetry seam owns failure isolation: started/finished/finishedError each log on failure and
+    // never throw, so a telemetry fault can neither abort the run nor falsely-fail a successful run.
+    val telemetrySessionId = lifecycleTelemetry.started(runRequest)
+    val observability = FeatureTaskRuntimeRunObservability(recorder, runRequest)
+    // Best-effort per-phase outcomes for the finished events; resolved lazily inside the telemetry
+    // seam's failure isolation so even loading them cannot abort or falsely-fail the run.
+    val phaseOutcomes = {
+      recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride)
+        .orEmpty()
+        .mapValues { (_, record) -> record.status }
+    }
+    val report = runCatching {
+      val state = RunState(recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty())
+      val loop = RunLoop(runRequest, state, observability)
+      for (phaseId in phasesFor(runRequest)) {
+        if (loop.advance(phaseId)) {
+          break
+        }
+      }
+      loop.report()
+    }.onFailure { error ->
+      // An exception escaping the loop (recorder write, launcher RuntimeException, validator
+      // non-schema error) would otherwise leave a dangling started-but-never-finished session.
+      // Emit the error terminal from best-effort per-phase records, then rethrow the original.
+      lifecycleTelemetry.finishedError(telemetrySessionId, phaseOutcomes, runRequest.dbPathOverride)
+    }.getOrThrow()
+    val terminalReport = persistGoalContinuationOutcome(goalContinuationRecorder, recorder, runRequest, report)
+    lifecycleTelemetry.finished(telemetrySessionId, terminalReport, phaseOutcomes, runRequest.dbPathOverride)
+    return terminalReport
+  }
+
+  // Drives the ordered phase loop for one run, owning the run-scoped resolved branch so the loop
+  // body stays a single advance() call. The resolved branch is null until the first file-mutating
+  // phase forces setup, which re-attaches the persisted branch on resume (never force-switching) so
+  // a re-run never creates a second or divergent branch.
+  private inner class RunLoop(
+    private val request: FeatureTaskRuntimeRunRequest,
+    private val state: RunState,
+    private val observability: FeatureTaskRuntimeRunObservability,
+  ) {
+    private var resolvedBranch: String? = null
+    private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
+    private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
+
+    // Advances one phase: skips already-complete phases, guarantees the feature branch before a
+    // file-mutating phase (preplan/plan may precede setup), then launches the phase.
+    // Returns true when the run is now blocked, decomposed, or the loop must otherwise stop.
+    fun advance(phaseId: String): Boolean {
+      // For an already-complete PLAN, re-evaluate the decompose determination on resume before
+      // advancing, so a crash after PLAN persisted completed but before the decompose terminal was
+      // observed never silently advances to implement (AC2). Idempotent: a recorded terminal is
+      // reconstructed, never duplicate-written.
+      val reason = if (state.isComplete(phaseId)) {
+        state.outputFor(phaseId)
+          ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }
+          ?.let { applyPlanningStop(phaseId, it) }
+      } else {
+        establishBranchIfNeeded(phaseId) ?: runPhaseFor(phaseId)
+      }
+      return when {
+        decomposed != null -> true
+        reason != null -> blockAt(phaseId, reason)
+        else -> false
+      }
+    }
+
+    // Runs the phase and records its completed output; returns a blocked reason when it blocks.
+    private fun runPhaseFor(phaseId: String): String? {
+      val outcome = runPhase(phaseId, request, state, observability)
+      return outcome.blockedReason ?: run {
+        val completedOutput = requireNotNull(outcome.completedOutput)
+        state.recordCompleted(completedOutput)
+        applyPlanningStop(phaseId, completedOutput)
+      }
+    }
+
+    // Resolves the plan-phase stop for the given PLAN output, whether freshly completed or re-read on
+    // resume. Sets `decomposed` on a decompose terminal and persists a durable block on a malformed
+    // package; returns the blocked reason when the run must block, else null.
+    private fun applyPlanningStop(phaseId: String, planOutput: FeatureTaskRuntimePhaseOutput): String? {
+      if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) {
+        return null
+      }
+      return when (val decision = resolvePlanningStop(planOutput)) {
+        is FeatureTaskRuntimePlanningStopDecision.Proceed -> null
+        is FeatureTaskRuntimePlanningStopDecision.Decomposed -> {
+          decomposed = decision.report
+          null
+        }
+        is FeatureTaskRuntimePlanningStopDecision.Blocked -> {
+          persistPlanningStopBlock(phaseId, decision.reason)
+          decision.reason
+        }
+      }
+    }
+
+    private fun resolvePlanningStop(
+      planOutput: FeatureTaskRuntimePhaseOutput,
+    ): FeatureTaskRuntimePlanningStopDecision = planningStopper.resolve(
+      request = request,
+      completedOutput = planOutput,
+      completedPhaseIds = state.completedPhaseIds(),
+      resolvedBranch = resolvedBranch,
+    )
+
+    // Persists a durable terminal blocked record for the plan phase and emits the blocked
+    // observability/ledger event so a malformed-decompose block is visible to status and the audit
+    // trail, consistent with every other phase block, rather than living only in the in-memory report.
+    private fun persistPlanningStopBlock(phaseId: String, reason: String) {
+      val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
+        phaseId = phaseId,
+        assignment = request.agentAssignment,
+        invokedAgentId = request.invokedAgentId,
+      ).resolvedAgentId
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = request.workflowId,
+          phaseId = phaseId,
+          status = STATUS_BLOCKED,
+          attemptCount = 1,
+          resolvedAgentId = resolvedAgentId,
+          finished = false,
+          outputArtifact = null,
+          blockedReason = reason,
+        ),
+        request.dbPathOverride,
+      )
+      observability.blocked(phaseId, resolvedAgentId, 1, reason)
+    }
+
+    fun report(): FeatureTaskRuntimeRunReport {
+      val branch = resolvedBranch
+        ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
+      return decomposed ?: blocked ?: FeatureTaskRuntimeRunReport.Completed(
+        issueKey = request.issueKey,
+        workflowId = request.workflowId,
+        featureSize = request.runInvariants.featureSize.name,
+        completedPhaseIds = state.completedPhaseIds(),
+        resolvedBranch = branch,
+      )
+    }
+
+    // Returns a blocked reason when a file-mutating phase cannot get a feature branch, else null.
+    // A branch-setup block is made first-class and symmetric with the per-phase block path: it
+    // persists a durable blocked per-phase record and emits the typed branch-setup-blocked
+    // observability event + ledger entry so the failure is visible to status queries and the audit
+    // trail, not lost in the in-memory report alone.
+    private fun establishBranchIfNeeded(phaseId: String): String? {
+      if (!isFileMutating(phaseId)) {
+        return null
+      }
+      val setup = branchSetupRunner.ensureFeatureBranch(request, observability)
+      return setup.blockedReason?.also { reason -> persistBranchSetupBlock(phaseId, reason) } ?: run {
+        resolvedBranch = requireNotNull(setup.establishedBranch)
+        clearRecoveredBranchSetupBlock(phaseId)
+        null
+      }
+    }
+
+    // Branch setup recovered on resume (the operator fixed the transient git condition). A prior
+    // branch-setup-origin blocked record persisted under "implement" would otherwise be seen by
+    // preLaunchBlock and permanently re-block the phase without launching the agent. Clear it only
+    // in-memory so the stale durable block remains intact until the real phase launch atomically
+    // overwrites it with that phase agent's running record. Genuine phase-agent blocks are untouched.
+    private fun clearRecoveredBranchSetupBlock(phaseId: String) {
+      if (!state.hasBranchSetupBlock(phaseId)) {
+        return
+      }
+      state.clearBranchSetupBlock(phaseId)
+    }
+
+    // Mirrors blockAndPersist for the branch-setup step: persists a durable terminal blocked
+    // per-phase record (so blocked-ness survives ledger pruning and surfaces in status queries) and
+    // emits the typed branch-setup-blocked observability event plus its ledger entry.
+    private fun persistBranchSetupBlock(phaseId: String, reason: String) {
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = request.workflowId,
+          phaseId = phaseId,
+          status = STATUS_BLOCKED,
+          attemptCount = 1,
+          resolvedAgentId = BRANCH_SETUP_AGENT_ID,
+          finished = false,
+          outputArtifact = null,
+          blockedReason = reason,
+        ),
+        request.dbPathOverride,
+      )
+      observability.branchSetupBlocked(phaseId, BRANCH_SETUP_AGENT_ID, reason)
+    }
+
+    private fun blockAt(phaseId: String, reason: String): Boolean {
+      blocked = FeatureTaskRuntimeRunReport.Blocked(
+        issueKey = request.issueKey,
+        workflowId = request.workflowId,
+        featureSize = request.runInvariants.featureSize.name,
+        lastIncompletePhase = phaseId,
+        blockedReason = reason,
+        completedPhaseIds = state.completedPhaseIds(),
+        resolvedBranch = resolvedBranch,
+      )
+      return true
+    }
   }
 
   private fun runPhase(
@@ -68,7 +276,7 @@ class FeatureTaskRuntimeRunner(
   ): PhaseOutcome {
     val run = PhaseRun(
       phaseId = phaseId,
-      declaration = phaseDeclaration(phaseId),
+      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
       resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
         phaseId = phaseId,
         assignment = request.agentAssignment,
@@ -235,7 +443,11 @@ class FeatureTaskRuntimeRunner(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
-          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(run.request.issueKey, briefing),
+          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(
+            issueKey = run.request.issueKey,
+            briefing = briefing,
+            suppressDecomposition = isGoalContinuationRun(run.request),
+          ),
         ),
       ),
     )
@@ -306,22 +518,47 @@ class FeatureTaskRuntimeRunner(
   // records (not just outputs) are retained so the bounded fix loop resumes from the durable
   // attempt count rather than resetting to iteration 1 on resume/crash. Single-threaded.
   private class RunState(initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>) {
-    private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
-      initialRecords.values.mapNotNull(::recordToOutput).toMutableList()
+    // A legacy PLAN completed without its now-required PREPLAN predecessor is invalidated up front so
+    // the loop re-runs PLAN rather than honouring a pre-PREPLAN completion.
     private val completed: MutableSet<String> =
-      initialRecords.values.filter { it.status == STATUS_COMPLETED }.map { it.phaseId }.toMutableSet()
+      initialRecords.values
+        .filter { it.status == STATUS_COMPLETED }
+        .map { it.phaseId }
+        .toMutableSet()
+        .also(::invalidateLegacyPlanWithoutPreplan)
+    private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
+      initialRecords.values
+        .mapNotNull(::recordToOutput)
+        .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
+        .toMutableList()
     private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
 
     // Durable per-phase attempt count from the loaded record (0 when no record exists).
-    private val persistedAttemptCounts: Map<String, Int> =
-      initialRecords.mapValues { (_, record) -> record.attemptCount }
+    private val persistedAttemptCounts: MutableMap<String, Int> =
+      initialRecords.mapValues { (_, record) -> record.attemptCount }.toMutableMap()
 
-    // Phases already persisted with a durable terminal blocked record.
-    private val blockedRecords: Map<String, String> = initialRecords
-      .filterValues { it.status == STATUS_BLOCKED }
+    // Phases already persisted with a durable genuine-phase-agent blocked record. Branch-setup-origin
+    // blocked records (resolvedAgentId == BRANCH_SETUP_AGENT_ID) are deliberately excluded: branch
+    // setup is re-attemptable on resume, so a recoverable branch-setup failure must never short-circuit
+    // a real phase launch once setup succeeds. Genuine per-phase agent blocks still re-block on resume.
+    private val blockedRecords: MutableMap<String, String> = initialRecords
+      .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
       .mapValues { (_, record) -> record.blockedReason.orEmpty() }
+      .toMutableMap()
+
+    // Phases carrying a durable branch-setup-origin blocked record from a prior run. Tracked
+    // separately from blockedRecords (which only holds genuine phase-agent blocks) so the runner
+    // can supersede the stale durable record once branch setup recovers on resume.
+    private val branchSetupBlockedPhases: MutableSet<String> = initialRecords
+      .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID }
+      .keys
+      .toMutableSet()
 
     fun outputs(): List<FeatureTaskRuntimePhaseOutput> = outputs.toList()
+
+    // The latest validated output for the phase (highest iteration), or null when none is present.
+    fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
+      outputs.filter { it.phaseId == phaseId }.maxByOrNull { it.iteration }
 
     fun isComplete(phaseId: String): Boolean = phaseId in completed
 
@@ -330,6 +567,20 @@ class FeatureTaskRuntimeRunner(
     // The durable per-phase record's blocked reason, when the phase already exhausted its
     // budget on a prior run, so resume re-blocks immediately instead of relaunching the agent.
     fun persistedBlockedReason(phaseId: String): String? = blockedRecords[phaseId]
+
+    // True when the phase carries a stale branch-setup-origin blocked record from a prior run that
+    // must be superseded now that branch setup has recovered.
+    fun hasBranchSetupBlock(phaseId: String): Boolean = phaseId in branchSetupBlockedPhases
+
+    // Branch setup succeeded for the phase this run, so any prior branch-setup-origin block is
+    // recovered: forget it in-memory so the phase resumes normally. (The durable record is
+    // superseded back to a running state by the runner before the phase launches.)
+    fun clearBranchSetupBlock(phaseId: String) {
+      branchSetupBlockedPhases.remove(phaseId)
+      // The branch-setup block recorded an attemptCount but the phase agent never launched, so the
+      // phase must resume at iteration 1, not be charged for the branch-setup attempt.
+      persistedAttemptCounts.remove(phaseId)
+    }
 
     // Resume the bounded fix loop from durable state: the next attempt is one past the greater
     // of the persisted record's attempt count and the latest validated output iteration. A phase
@@ -355,6 +606,28 @@ class FeatureTaskRuntimeRunner(
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
 
+    // Branch setup is a distinct pre-implement step with no resolved phase agent; this sentinel
+    // attributes its durable blocked record and ledger entry rather than a real agent id.
+    const val BRANCH_SETUP_AGENT_ID = "branch-setup"
+
+    // Preplan and plan are non-file-mutating; every later phase mutates or depends on a working
+    // tree pinned to the feature branch.
+    fun isFileMutating(phaseId: String): Boolean = phaseId !in NON_FILE_MUTATING_PHASES
+
+    val NON_FILE_MUTATING_PHASES = setOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+    )
+
+    fun phasesFor(request: FeatureTaskRuntimeRunRequest): List<String> {
+      val phases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
+      return if (isGoalContinuationRun(request)) {
+        phases.takeWhile { it != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR }
+      } else {
+        phases
+      }
+    }
+
     // Bound on the validator detail appended to a persisted blocked reason so a pathological
     // multi-violation reason cannot bloat the durable record or the CLI progress line.
     const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
@@ -372,6 +645,107 @@ class FeatureTaskRuntimeRunner(
   }
 }
 
+private fun persistGoalContinuationContext(
+  recorder: FeatureTaskRuntimeGoalContinuationRecorder,
+  request: FeatureTaskRuntimeRunRequest,
+) {
+  val context = request.goalContinuation
+  if (context != null) {
+    recorder.recordGoalContinuationState(
+      workflowId = request.workflowId,
+      continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+        issueKey = context.parentIssueKey,
+        subtaskId = context.subtaskId,
+        suppressPr = context.suppressPr,
+        goalBranch = context.goalBranch,
+        parentWorkflowId = context.parentWorkflowId,
+      ),
+      dbOverride = request.dbPathOverride,
+    )
+  }
+}
+
+private fun persistGoalContinuationOutcome(
+  goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
+  phaseRecorder: FeatureTaskRuntimePhaseRecorder,
+  request: FeatureTaskRuntimeRunRequest,
+  report: FeatureTaskRuntimeRunReport,
+): FeatureTaskRuntimeRunReport {
+  val context = request.goalContinuation ?: return report
+  val outcome = goalContinuationOutcomeFor(phaseRecorder, request, context, report)
+  outcome?.let { terminal ->
+    goalContinuationRecorder.recordGoalContinuationState(
+      workflowId = request.workflowId,
+      outcome = FeatureTaskRuntimeGoalContinuationOutcome(
+        issueKey = terminal.issueKey,
+        subtaskId = terminal.subtaskId,
+        status = terminal.status,
+        workflowId = terminal.workflowId,
+        commitSha = terminal.commitSha,
+        blockedReason = terminal.blockedReason,
+        lastResumableStep = terminal.lastResumableStep,
+      ),
+      workflowStatus = if (terminal.status == "complete") "completed" else "blocked",
+      dbOverride = request.dbPathOverride,
+    )
+  }
+  return when {
+    report is FeatureTaskRuntimeRunReport.Completed && outcome != null -> report.copy(subtaskOutcome = outcome)
+    report is FeatureTaskRuntimeRunReport.Blocked && outcome != null -> report.copy(subtaskOutcome = outcome)
+    else -> report
+  }
+}
+
+private fun goalContinuationOutcomeFor(
+  recorder: FeatureTaskRuntimePhaseRecorder,
+  request: FeatureTaskRuntimeRunRequest,
+  context: FeatureTaskRuntimeGoalContinuationContext,
+  report: FeatureTaskRuntimeRunReport,
+): FeatureTaskRuntimeSubtaskOutcome? = when (report) {
+  is FeatureTaskRuntimeRunReport.Completed -> FeatureTaskRuntimeSubtaskOutcome(
+    issueKey = context.parentIssueKey,
+    subtaskId = context.subtaskId,
+    status = "complete",
+    commitSha = commitShaFromPhaseRecords(recorder, request),
+    workflowId = request.workflowId,
+    blockedReason = null,
+    lastResumableStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+  )
+  is FeatureTaskRuntimeRunReport.Blocked -> FeatureTaskRuntimeSubtaskOutcome(
+    issueKey = context.parentIssueKey,
+    subtaskId = context.subtaskId,
+    status = "blocked",
+    commitSha = null,
+    workflowId = request.workflowId,
+    blockedReason = report.blockedReason,
+    lastResumableStep = report.lastIncompletePhase,
+  )
+  is FeatureTaskRuntimeRunReport.Decomposed -> null
+}
+
+private fun commitShaFromPhaseRecords(
+  recorder: FeatureTaskRuntimePhaseRecorder,
+  request: FeatureTaskRuntimeRunRequest,
+): String? {
+  val commitOutput = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+    .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
+    ?.outputArtifact
+  val payload = commitOutput
+    ?.let(JsonSupport::parseObjectOrNull)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+  return payload?.commitShaFromPhasePayload()
+}
+
+private fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
+  val producedOutputs = JsonSupport.anyToStringAnyMap(this["produced_outputs"])
+  return (this["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
+    ?: (producedOutputs?.get("commit_push_result") as? Map<*, *>)?.get("commit_sha")?.toString()
+      ?.takeIf(String::isNotBlank)
+    ?: producedOutputs?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
+    ?: (this["commit_sha"]?.toString()?.takeIf(String::isNotBlank))
+}
+
 private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
   facts.spawnFailed ->
     "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
@@ -380,6 +754,16 @@ private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): Str
   facts.exitStatus != null && facts.exitStatus != 0 ->
     "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
   else -> null
+}
+
+// Drops a legacy PLAN completion that predates the now-required PREPLAN phase so the loop re-runs
+// PLAN rather than honouring a pre-PREPLAN completion.
+private fun invalidateLegacyPlanWithoutPreplan(completed: MutableSet<String>) {
+  val plan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+  val preplan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
+  if (plan in completed && preplan !in completed) {
+    completed.remove(plan)
+  }
 }
 
 private fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
@@ -391,9 +775,10 @@ private fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRu
     )
   }
 
-private fun phaseDeclaration(phaseId: String): FeatureTaskRuntimePhaseDeclaration =
-  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations[phaseId]
-    ?: error("No phase declaration for runtime phase '$phaseId'.")
+private fun phaseDeclaration(
+  phaseId: String,
+  featureSize: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize,
+): FeatureTaskRuntimePhaseDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize)
 
 private fun missingUpstream(
   declaration: FeatureTaskRuntimePhaseDeclaration,

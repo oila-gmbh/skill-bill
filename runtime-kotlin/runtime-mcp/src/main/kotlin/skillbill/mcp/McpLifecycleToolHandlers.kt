@@ -2,6 +2,8 @@ package skillbill.mcp
 
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -47,6 +49,31 @@ internal fun featureImplementFinished(arguments: Map<String, Any?>, context: Mcp
       boundaryHistoryValue = arguments.optionalString("boundary_history_value") ?: "none",
       planDeviationNotes = arguments.string("plan_deviation_notes"),
       childSteps = arguments.optionalListMap("child_steps").orEmpty(),
+    ),
+    context,
+  )
+
+internal fun featureTaskRuntimeStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
+  McpRuntime.featureTaskRuntimeStarted(
+    FeatureTaskRuntimeStartedRequest(
+      featureSize = arguments.string("feature_size"),
+      issueKey = arguments.string("issue_key"),
+      featureName = arguments.string("feature_name"),
+      sessionId = arguments.string("session_id"),
+    ),
+    context,
+  )
+
+internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
+  McpRuntime.featureTaskRuntimeFinished(
+    FeatureTaskRuntimeFinishedRequest(
+      sessionId = arguments.string("session_id"),
+      completionStatus = arguments.string("completion_status"),
+      completedPhaseIds = arguments.stringList("completed_phase_ids"),
+      phaseOutcomes = arguments.map("phase_outcomes").mapValues { (_, value) -> value?.toString().orEmpty() },
+      lastIncompletePhase = arguments.string("last_incomplete_phase"),
+      blockedReason = arguments.string("blocked_reason"),
+      resolvedBranch = arguments.string("resolved_branch"),
     ),
     context,
   )

@@ -2,7 +2,7 @@
 
 Parent: [SKILL-65.1 full parity](./spec.md)
 Issue key: SKILL-65.1
-Status: Draft
+Status: Complete
 
 ## Scope
 

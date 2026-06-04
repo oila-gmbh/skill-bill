@@ -47,6 +47,7 @@ import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
@@ -55,6 +56,8 @@ import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -1170,6 +1173,10 @@ private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
 
   override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) = Unit
 
+  override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) = Unit
+
+  override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) = Unit
+
   override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
 
   override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
@@ -1275,6 +1282,8 @@ private class FakeReviewRepository(
   override fun featureImplementStats(): FeatureImplementWorkflowStats = error("Unexpected featureImplementStats")
 
   override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
+
+  override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
 }
 
 private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {
@@ -1659,6 +1668,9 @@ private class FakeWorkflowGitOperations(
     checkouts += "$branch@${baseBranch.orEmpty()}"
     return WorkflowGitOperationResult(status = "ok", value = branch)
   }
+
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())

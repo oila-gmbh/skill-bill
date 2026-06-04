@@ -1,3 +1,71 @@
+## [2026-06-04] SKILL-65.1 subtask 7 goal-runner-cooperation-and-continuation
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-core, runtime-kotlin/ARCHITECTURE.md
+- Feature-task-runtime now accepts explicit goal-continuation context (parent issue, subtask id, goal branch, suppress PR), reuses the supplied branch, skips decompose, omits `pr`, and treats `commit_push` as terminal. reusable
+- Durable runtime goal-continuation artifacts mirror implement flow: `goal_continuation`, `goal_continuation_outcome`, and skipped `install_sync_result`; stdout stays diagnostic.
+- Goal-runner reconciliation now handles task-runtime workflow families, recovers missing-`RESULT:` prefix terminal JSON into durable artifacts, and records ledger diagnostics (`missing_result_prefix`, `malformed_result_json`, `no_terminal_workflow_state`, `child_process_failed`). reusable
+- Testing gotcha: keep one integration-style gate proving goal-continuation branch reuse/no PR/commit terminal and direct runtime branch creation/PR phase together; separate unit tests missed this AC6 gap.
+- Open-boundary gotcha: any new public raw-map recovery seam needs `@OpenBoundaryMap`, `RAW_MAP_OPEN_BOUNDARY_ALLOWLIST`, and `ARCHITECTURE.md` parity in the same change.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 6 lifecycle-telemetry-and-stats
+Areas: orchestration/contracts, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-ports
+- Feature-task-runtime now has additive lifecycle telemetry (`feature_task_runtime_started`/`finished`) plus stats/remote-stats surfaces; per-phase records and ledger remain the source of truth. reusable
+- Runtime-owned emission lives in `FeatureTaskRuntimeLifecycleTelemetry`: started is emitted at run open, finished/error derives completion status, completed phases, and phase outcomes from durable runtime phase records, never agent self-report. reusable
+- Persistence mirrors implement/verify lifecycle families through `LifecycleTelemetryService` -> `LifecycleTelemetryRepository` -> `LifecycleTelemetryStore` and idempotent SQLite save/emit support for `feature_task_runtime_sessions`. reusable
+- Stats pattern: add the family to MCP registry/dispatcher, CLI stats alias, `remoteStatsWorkflows`, `TelemetrySupport.mapWorkflow`, and focused MCP/CLI/runtime tests together to avoid a half-exposed surface.
+- No schema migration bump; `feature_task_runtime_sessions` remains part of idempotent base schema creation. Install sync skipped by goal-continuation rule.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 5 decomposition-mode-and-planning-stop
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-contracts
+- Feature-task-runtime `plan` phase can now emit a `mode: decompose` terminal outcome (typed via `FeatureTaskRuntimePlanOutcome`/`FeatureTaskRuntimePlanOutcomeDecoders`) that stops the run at planning (durable status `abandoned`, not `failed`) instead of advancing to implement. reusable
+- The stop writes parent `spec.md` + ordered `spec_subtask_*.md` + `decomposition-manifest.yaml` through the SHARED `FeatureSpecPreparationWriter` path (no one-off writer) and surfaces the terminal (subtask count + "work the first subtask first" guidance) in status/--monitor. reusable
+- Goal-continuation runs skip decomposition via a single shared `isGoalContinuationRun` predicate (`FeatureTaskRuntimeGoalContinuation.kt`) consumed by both the runner prompt `suppressDecomposition` flag and the stopper; keep it one source of truth to avoid drift. reusable
+- Resume gotcha: the decompose determination must be resume-safe. PLAN is durably persisted `completed` before the stop runs, so a PLAN-complete-on-entry resume must re-evaluate the stop (reconstructing the recorded terminal idempotently) or the run silently falls through to implement. reusable
+- Crash gotcha: guard the whole decompose parse+write path into a durable Blocked. Writer business-rule rejections (duplicate/descending subtask ids, bad depends_on) throw `InvalidFeatureSpecPreparationRequestError` which extends `SkillBillRuntimeException`, NOT `IllegalArgumentException`; catch the shared base + `IOException` or an invalid package crashes `run()`. reusable
+- No phase-output schema or `FEATURE_TASK_RUNTIME_CONTRACT_VERSION` bump; the decompose package rides inside the existing open `produced_outputs` under `status: completed`.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 4 size-assessment-and-ceremony-scaling
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Feature-task-runtime now resolves `feature_size` once from governed spec input, defaults omitted size to `MEDIUM`, persists run invariants in workflow artifacts, and reuses the durable value on resume. reusable
+- Ceremony scaling is definition-owned: SMALL maps to light preplan/current-unit review/light audit; MEDIUM/LARGE map to full preplan/branch-diff review/full per-criterion audit. Gates remain mandatory. reusable
+- Prompt/briefing/status/monitor outputs all carry `feature_size`; partial-resume tests prove a stored SMALL run launches review with `current_unit_of_work` even if the resumed request proposes LARGE.
+- Gotcha: explicit malformed `feature_size` must fail instead of defaulting, and malformed durable enum values must throw `InvalidWorkflowStateSchemaError`, not generic argument errors.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 3 post-validate-history-commit-pr-phases
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts
+- Feature-task-runtime phase DAG now runs through `write_history -> commit_push -> pr` after validate, with `pr` as `completedTerminalSummaryArtifact` and PR-derived diff context. reusable
+- Phase directives delegate boundary history, commit/push, and PR creation to the per-phase agent contract; `commit_push` is the durable suppress-PR hook for goal-continuation until subtask 7 wires policy. reusable
+- Workflow-state and telemetry step-id schemas mirror the new task-runtime phase ids; no phase-output schema or `FEATURE_TASK_RUNTIME_CONTRACT_VERSION` bump.
+- Gotcha: test doubles parsing phase headers must accept underscores for `write_history`/`commit_push`; keep phase-list assertions derived from the runtime definition where possible. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 2 preplan-phase
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-infra-fs, orchestration/contracts
+- Feature-task-runtime phase DAG now starts `preplan -> plan -> implement -> review -> audit -> validate`; `PHASE_PREPLAN` is the default initial step, non-file-mutating, has exact labels/resume action/schema enum parity, and `plan` consumes the preplan output. reusable
+- Prompt composer owns a preplan directive that produces a digest (scope, affected boundaries, risks/unknowns, rollout) and forbids repo edits; plan prompt explicitly uses the upstream preplan digest. reusable
+- Resume gotcha: legacy five-phase records with completed `plan` but no `preplan` must invalidate/re-run plan after preplan, not skip to implement with stale upstream context. reusable
+- Schema-gate gotcha: per-phase output validation must compare emitted `phase_id` with the executing source label after schema validation; otherwise a valid envelope can be persisted under the wrong runtime phase. reusable
+- MCP/CLI fixtures now model coherent preplan+plan completion before implement; test doubles read phase id from the delivered prompt so retry attempts cannot emit shifted phase ids.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-65.1 subtask 1 runtime-run-setup-and-feature-branch
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, runtime-kotlin/ARCHITECTURE.md
+- Feature-task-runtime now establishes a non-default feature branch before every file-mutating phase, persists the resolved branch in workflow artifacts, and reports it through run/resume/status/monitor output. reusable
+- Branch setup blocks remain durable as `branch-setup` records until the real phase launch overwrites them, so crash recovery does not erase blocked source-of-truth or consume phase attempts. reusable
+- `WorkflowGitOperations.branchExists` distinguishes absent branches from fatal git failures; resume reattaches to the persisted branch and refuses missing, protected, or unverifiable branches loudly. reusable
+- Runner revalidates/reattaches before each mutating phase so a prior agent leaving HEAD on `main` cannot make later phases edit the default branch.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-03] SKILL-65 subtask 5 comparison-harness-and-promote-kill-criteria
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/docs, runtime-kotlin/ARCHITECTURE.md, skills/bill-feature-task-runtime (docs only), .feature-specs/SKILL-65-*, agent/decisions.md, README.md
 - AC2 guardrail tests for feature-task-runtime: runtime-owned per-phase record fields (timestamps/agent-id/status asserted over runner-persisted `FeatureTaskRuntimePhaseRecord`, NOT hand-constructed values); a no-advance-without-validated-output regression over `FeatureTaskRuntimeFixLoopPolicy` Block paths (incl. the `require(currentIteration>=1)` floor and `MAX_FIX_LOOP_ITERATIONS=3` cap); and a per-phase handoff payload byte budget. reusable

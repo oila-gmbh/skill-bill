@@ -16,6 +16,7 @@ import skillbill.application.FeatureTaskRuntimeRunner
 import skillbill.application.FeatureTaskRuntimeStatusService
 import skillbill.application.WorkflowService
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
@@ -69,6 +70,30 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--phase-agent",
     help = "Per-phase agent assignment as phase=agent (e.g. --phase-agent plan=claude). Repeatable.",
   ).multiple()
+  protected val goalParentIssueKey by option(
+    "--goal-parent-issue-key",
+    help = "Parent decomposed issue key for non-interactive goal-continuation runtime runs.",
+  )
+  protected val goalSubtaskId by option(
+    "--goal-subtask-id",
+    help = "Subtask id for non-interactive goal-continuation runtime runs.",
+  ).int()
+  protected val goalBranch by option(
+    "--goal-branch",
+    help = "Pre-created goal branch to reuse for non-interactive goal-continuation runtime runs.",
+  )
+  protected val goalParentWorkflowId by option(
+    "--goal-parent-workflow-id",
+    help = "Optional parent workflow id for non-interactive goal-continuation runtime runs.",
+  )
+  protected val goalLastResumableStep by option(
+    "--goal-last-resumable-step",
+    help = "Optional durable resume step supplied by the goal runner.",
+  )
+  protected val suppressPr by option(
+    "--suppress-pr",
+    help = "Suppress the runtime PR phase. Required with goal-continuation options.",
+  ).flag(default = false)
 
   protected fun executeRuntimeRun(
     deps: FeatureTaskRuntimeRunDependencies,
@@ -92,11 +117,39 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
         timeout = maxWallClockMinutes?.minutes,
+        goalContinuation = parseGoalContinuationContext(),
         eventSink = runtimeRunEventSink(state, monitor),
       ),
     )
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
+  }
+
+  private fun parseGoalContinuationContext(): FeatureTaskRuntimeGoalContinuationContext? {
+    val supplied = listOf(goalParentIssueKey, goalSubtaskId, goalBranch).count { it != null } +
+      if (suppressPr) 1 else 0
+    if (supplied == 0) {
+      return null
+    }
+    val missing = goalContinuationMissingFields()
+    if (missing.isNotEmpty()) {
+      throw UsageError("${missing.joinToString()} required with goal-continuation options.")
+    }
+    return FeatureTaskRuntimeGoalContinuationContext(
+      parentIssueKey = requireNotNull(goalParentIssueKey),
+      subtaskId = requireNotNull(goalSubtaskId),
+      goalBranch = requireNotNull(goalBranch),
+      suppressPr = true,
+      parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
+      lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
+    )
+  }
+
+  private fun goalContinuationMissingFields(): List<String> = buildList {
+    if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")
+    if (goalSubtaskId == null) add("--goal-subtask-id is")
+    if (goalBranch.isNullOrBlank()) add("--goal-branch is")
+    if (!suppressPr) add("--suppress-pr is")
   }
 }
 
@@ -215,6 +268,12 @@ private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTa
 }
 
 private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
+  is FeatureTaskRuntimeRunEvent.RunStarted ->
+    "feature-task-runtime $workflowId: run started feature_size=$featureSize\n"
+  is FeatureTaskRuntimeRunEvent.BranchResolved ->
+    "feature-task-runtime $workflowId: branch ${if (reused) "reused" else "created"} $branch\n"
+  is FeatureTaskRuntimeRunEvent.BranchSetupBlocked ->
+    "feature-task-runtime $workflowId: branch setup blocked at phase $phaseId: $blockedReason\n"
   is FeatureTaskRuntimeRunEvent.PhaseStarted ->
     "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
       "agent=$resolvedAgentId attempt=$attemptCount\n"
@@ -224,6 +283,9 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
+  is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning ->
+    "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
+      "Work the first subtask first.\n"
 }
 
 private fun parsePhaseAgents(rawAssignments: List<String>): Map<String, String> {
@@ -257,27 +319,86 @@ private fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> 
     "status" to "complete",
     "issue_key" to issueKey,
     "workflow_id" to workflowId,
+    "feature_size" to featureSize,
+    "resolved_branch" to resolvedBranch,
     "completed_phases" to completedPhaseIds,
-  )
+  ).withSubtaskOutcome(subtaskOutcome)
   is FeatureTaskRuntimeRunReport.Blocked -> linkedMapOf(
     "status" to "blocked",
     "issue_key" to issueKey,
     "workflow_id" to workflowId,
+    "feature_size" to featureSize,
+    "resolved_branch" to resolvedBranch,
     "last_incomplete_phase" to lastIncompletePhase,
     "blocked_reason" to blockedReason,
     "completed_phases" to completedPhaseIds,
+  ).withSubtaskOutcome(subtaskOutcome)
+  is FeatureTaskRuntimeRunReport.Decomposed -> linkedMapOf(
+    "status" to "decomposed",
+    "issue_key" to issueKey,
+    "workflow_id" to workflowId,
+    "feature_size" to featureSize,
+    "resolved_branch" to resolvedBranch,
+    "reason" to reason,
+    "completed_phases" to completedPhaseIds,
+    "parent_spec_path" to parentSpecPath,
+    "decomposition_manifest_path" to decompositionManifestPath,
+    "subtask_spec_paths" to subtaskSpecPaths,
+    "subtask_count" to subtaskSpecPaths.size,
+    "guidance" to DECOMPOSE_GUIDANCE,
   )
 }
 
-private fun Map<String, Any?>.runtimeRunExitCode(): Int = if (this["status"] == "complete") 0 else 1
+private fun Map<String, Any?>.withSubtaskOutcome(
+  outcome: skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome?,
+): Map<String, Any?> = if (outcome == null) {
+  this
+} else {
+  LinkedHashMap(this).apply {
+    put(
+      "subtask_outcome",
+      linkedMapOf(
+        "issue_key" to outcome.issueKey,
+        "subtask_id" to outcome.subtaskId,
+        "status" to outcome.status,
+        "commit_sha" to outcome.commitSha,
+        "workflow_id" to outcome.workflowId,
+        "blocked_reason" to outcome.blockedReason,
+        "last_resumable_step" to outcome.lastResumableStep,
+      ),
+    )
+  }
+}
+
+private fun Map<String, Any?>.runtimeRunExitCode(): Int = if (isTerminalSuccessStatus()) 0 else 1
+
+private fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean = this["status"] in setOf("complete", "decomposed")
 
 private fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
   appendLine("feature-task-runtime: ${payload["issue_key"]}")
   appendLine("workflow_id: ${payload["workflow_id"]}")
   appendLine("status: ${payload["status"]}")
+  appendLine("feature_size: ${payload["feature_size"]}")
+  appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
   appendLine("completed_phases: ${(payload["completed_phases"] as? List<*>).orEmpty().joinToString()}")
   payload["last_incomplete_phase"]?.let { appendLine("last_incomplete_phase: $it") }
   payload["blocked_reason"]?.let { appendLine("blocked_reason: $it") }
+  (payload["subtask_outcome"] as? Map<*, *>)?.let { outcome ->
+    appendLine("subtask_outcome:")
+    appendLine("  issue_key: ${outcome["issue_key"]}")
+    appendLine("  subtask_id: ${outcome["subtask_id"]}")
+    appendLine("  status: ${outcome["status"]}")
+    appendLine("  commit_sha: ${outcome["commit_sha"] ?: "none"}")
+    appendLine("  workflow_id: ${outcome["workflow_id"]}")
+    appendLine("  last_resumable_step: ${outcome["last_resumable_step"]}")
+    outcome["blocked_reason"]?.let { appendLine("  blocked_reason: $it") }
+  }
+  payload["reason"]?.let { appendLine("decomposition_reason: $it") }
+  payload["subtask_count"]?.let { appendLine("subtask_count: $it") }
+  payload["parent_spec_path"]?.let { appendLine("parent_spec_path: $it") }
+  payload["decomposition_manifest_path"]?.let { appendLine("decomposition_manifest_path: $it") }
+  (payload["subtask_spec_paths"] as? List<*>).orEmpty().forEach { appendLine("subtask_spec_path: $it") }
+  payload["guidance"]?.let { appendLine("guidance: $it") }
 }
 
 private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId: String): Map<String, Any?> =
@@ -285,19 +406,34 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
     linkedMapOf<String, Any?>(
       "status" to "ok",
       "workflow_id" to it.workflowId,
+      "feature_size" to it.featureSize,
       "complete_count" to it.completeCount,
       "pending_count" to it.pendingCount,
       "blocked_count" to it.blockedCount,
       "current_phase" to it.currentPhaseId,
+      "resolved_branch" to it.resolvedBranch,
+      "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
+        linkedMapOf(
+          "reason" to terminal.reason,
+          "parent_spec_path" to terminal.parentSpecPath,
+          "decomposition_manifest_path" to terminal.decompositionManifestPath,
+          "subtask_spec_paths" to terminal.subtaskSpecPaths,
+          "subtask_count" to terminal.subtaskCount,
+          "guidance" to DECOMPOSE_GUIDANCE,
+        )
+      },
       "phases" to it.phases.map(FeatureTaskRuntimePhaseStatus::toRuntimePhaseStatusCliMap),
     )
   } ?: linkedMapOf(
     "status" to "not_found",
     "workflow_id" to workflowId,
+    "feature_size" to null,
     "complete_count" to 0,
     "pending_count" to 0,
     "blocked_count" to 0,
     "current_phase" to null,
+    "resolved_branch" to null,
+    "decompose_terminal" to null,
     "phases" to emptyList<Map<String, Any?>>(),
   )
 
@@ -314,10 +450,20 @@ private fun Map<String, Any?>.runtimeStatusExitCode(): Int = if (this["status"] 
 private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("feature-task-runtime: ${payload["workflow_id"]}")
   appendLine("status: ${payload["status"]}")
+  appendLine("feature_size: ${payload["feature_size"] ?: "unknown"}")
   appendLine("complete: ${payload["complete_count"]}")
   appendLine("pending: ${payload["pending_count"]}")
   appendLine("blocked: ${payload["blocked_count"]}")
   appendLine("current_phase: ${payload["current_phase"] ?: "none"}")
+  appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
+  (payload["decompose_terminal"] as? Map<*, *>)?.let { terminal ->
+    appendLine("decomposition_reason: ${terminal["reason"]}")
+    appendLine("subtask_count: ${terminal["subtask_count"]}")
+    appendLine("parent_spec_path: ${terminal["parent_spec_path"]}")
+    appendLine("decomposition_manifest_path: ${terminal["decomposition_manifest_path"]}")
+    (terminal["subtask_spec_paths"] as? List<*>).orEmpty().forEach { appendLine("subtask_spec_path: $it") }
+    appendLine("guidance: ${terminal["guidance"]}")
+  }
   (payload["phases"] as? List<*>).orEmpty().forEach { rawPhase ->
     val phase = rawPhase as? Map<*, *> ?: return@forEach
     appendLine(
@@ -329,3 +475,6 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
 
 // Last-resort default used only when no explicit flag, env, or detected invoking-agent context resolves.
 private const val DEFAULT_RUNTIME_AGENT = "codex"
+
+private const val DECOMPOSE_GUIDANCE: String =
+  "Work the first subtask first, then continue through the ordered spec_subtask_*.md files."

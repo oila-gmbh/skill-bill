@@ -23,6 +23,19 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
 )
 
+internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, String> =
+  GoalContinuationEnvironment + buildMap {
+    val context = request.goalContinuation
+    if (context != null) {
+      put("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", context.parentIssueKey)
+      put("SKILL_BILL_GOAL_SUBTASK_ID", context.subtaskId.toString())
+      put("SKILL_BILL_GOAL_BRANCH", context.goalBranch)
+      put("SKILL_BILL_SUPPRESS_PR", context.suppressPr.toString())
+      context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
+      context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
+    }
+  }
+
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
 
@@ -42,7 +55,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     stdinText = launchPrompt(request),
-    environment = GoalContinuationEnvironment,
+    environment = goalContinuationEnvironment(request),
   )
 }
 
@@ -62,7 +75,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     stdinText = launchPrompt(request),
-    environment = GoalContinuationEnvironment,
+    environment = goalContinuationEnvironment(request),
   )
 }
 
@@ -80,7 +93,7 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
-    environment = GoalContinuationEnvironment,
+    environment = goalContinuationEnvironment(request),
   )
 }
 
@@ -103,7 +116,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
     },
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
-    environment = GoalContinuationEnvironment,
+    environment = goalContinuationEnvironment(request),
   )
 }
 
@@ -116,6 +129,17 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
   val dbOption = request.dbPathOverride?.let { db -> " --db ${shellDisplay(db)}" }.orEmpty()
   val subtaskOption = request.subtaskId?.let { id -> " --subtask-id $id" }.orEmpty()
   val subtaskLine = request.subtaskId?.let { id -> "\nSubtask id: $id" }.orEmpty()
+  val runtimeContext = request.goalContinuation?.let { context ->
+    """
+    Runtime goal-continuation context:
+    parent_issue_key: ${context.parentIssueKey}
+    subtask_id: ${context.subtaskId}
+    goal_branch: ${context.goalBranch}
+    suppress_pr: ${context.suppressPr}
+    parent_workflow_id: ${context.parentWorkflowId.orEmpty()}
+    last_resumable_step: ${context.lastResumableStep.orEmpty()}
+    """.trimIndent()
+  }.orEmpty()
   // SKILL-64 Subtask 3 (AC1-AC3, AC12, AC13): the compact continuation output is
   // the normal activation contract. Still run `workflow continue` first (AC1);
   // do not imply reasoning over full workflow JSON by default (AC2); fetch the
@@ -128,6 +152,7 @@ internal fun continuationPrompt(request: SkillRunRequest): String {
     Issue key: ${request.issueKey}$subtaskLine
     Goal-continuation: enabled.
     suppress_pr: true.
+    $runtimeContext
 
     First execute this exact command from the repository root:
     `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption --format json`

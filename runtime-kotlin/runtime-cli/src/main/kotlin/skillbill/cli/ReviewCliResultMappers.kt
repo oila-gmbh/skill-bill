@@ -1,6 +1,7 @@
 package skillbill.cli
 
 import skillbill.application.model.FeatureImplementStatsResult
+import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
 import skillbill.application.model.ImportedReviewResult
 import skillbill.application.model.ReviewFeedbackResult
@@ -8,6 +9,7 @@ import skillbill.application.model.ReviewPreviewResult
 import skillbill.application.model.ReviewStatsResult
 import skillbill.application.model.TriageResult
 import skillbill.application.toFeatureImplementStatsPayload
+import skillbill.application.toFeatureTaskRuntimeStatsPayload
 import skillbill.application.toFeatureVerifyStatsPayload
 import skillbill.application.toImportedReviewContract
 import skillbill.application.toReviewFeedbackPayload
@@ -28,3 +30,6 @@ internal fun ReviewStatsResult.toCliMap(): Map<String, Any?> = toReviewStatsPayl
 internal fun FeatureImplementStatsResult.toCliMap(): Map<String, Any?> = toFeatureImplementStatsPayload().toPayload()
 
 internal fun FeatureVerifyStatsResult.toCliMap(): Map<String, Any?> = toFeatureVerifyStatsPayload().toPayload()
+
+internal fun FeatureTaskRuntimeStatsResult.toCliMap(): Map<String, Any?> =
+  toFeatureTaskRuntimeStatsPayload().toPayload()

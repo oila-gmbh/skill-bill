@@ -2,15 +2,13 @@ package skillbill.ports.persistence
 
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
-import skillbill.review.model.FeatureImplementWorkflowStats
-import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 
-interface ReviewRepository {
+interface ReviewRepository : WorkflowStatsRepository {
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 
   fun markOrchestrated(runId: String)
@@ -26,8 +24,4 @@ interface ReviewRepository {
   fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome?
 
   fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot
-
-  fun featureImplementStats(): FeatureImplementWorkflowStats
-
-  fun featureVerifyStats(): FeatureVerifyWorkflowStats
 }

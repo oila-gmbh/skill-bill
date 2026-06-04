@@ -6,7 +6,6 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import java.nio.file.Path
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 data class GoalRunnerRunRequest(
   val issueKey: String,
@@ -15,7 +14,7 @@ data class GoalRunnerRunRequest(
   val configuredAgentOverrideId: String? = null,
   val dbPathOverride: String? = null,
   val timeout: Duration? = null,
-  val progressIdleTimeout: Duration = DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT,
+  val progressIdleTimeout: Duration? = null,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
@@ -27,7 +26,9 @@ data class GoalRunnerRunRequest(
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
     }
-    require(progressIdleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
+    progressIdleTimeout?.let { idleTimeout ->
+      require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive when provided." }
+    }
     require(observabilitySequenceStart >= 0) { "observabilitySequenceStart must be non-negative." }
   }
 }
@@ -71,7 +72,6 @@ sealed interface GoalRunnerRunEvent {
   ) : GoalRunnerRunEvent
 }
 
-val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT: Duration = 30.minutes
 const val DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START: Int = 10_000
 
 // SKILL-64 Subtask 3 (AC16): goal_event: transition sequence space, distinct

@@ -2,6 +2,7 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureImplementStatsResult
+import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
 import skillbill.application.model.ImportedReviewResult
 import skillbill.application.model.ReviewFeedbackResult
@@ -18,6 +19,7 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.NumberedFinding
@@ -112,7 +114,7 @@ class ReviewService(
   } else {
     database.transaction(dbOverride) { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
-      val applied = applyTriageDecisions(unitOfWork.reviews, runId, numberedFindings, decisions)
+      val applied = applyTriageDecisions(settingsProvider, unitOfWork.reviews, runId, numberedFindings, decisions)
       TriageResult(
         kind = TriageResultKind.RECORDED,
         dbPath = unitOfWork.dbPath.toString(),
@@ -132,37 +134,41 @@ class ReviewService(
   fun featureVerifyStats(dbOverride: String?): FeatureVerifyStatsResult =
     featureVerifyStatsResult(database, dbOverride, ReviewRepository::featureVerifyStats)
 
-  private fun applyTriageDecisions(
-    reviewRepository: ReviewRepository,
-    runId: String,
-    numberedFindings: List<NumberedFinding>,
-    decisions: List<String>,
-  ): AppliedTriageDecisions {
-    val parsedDecisions = TriageDecisionParser.parseTriageDecisions(decisions, numberedFindings)
-    var telemetry: ReviewFinishedTelemetry? = null
-    parsedDecisions.forEach { decision ->
-      val returnedTelemetry =
-        reviewRepository.recordFeedback(
-          FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
-          feedbackTelemetryOptions(settingsProvider),
-        )
-      if (returnedTelemetry != null) {
-        telemetry = returnedTelemetry
-      }
+  fun featureTaskRuntimeStats(dbOverride: String?): FeatureTaskRuntimeStatsResult =
+    featureTaskRuntimeStatsResult(database, dbOverride, ReviewRepository::featureTaskRuntimeStats)
+}
+
+private fun applyTriageDecisions(
+  settingsProvider: TelemetrySettingsProvider,
+  reviewRepository: ReviewRepository,
+  runId: String,
+  numberedFindings: List<NumberedFinding>,
+  decisions: List<String>,
+): AppliedTriageDecisions {
+  val parsedDecisions = TriageDecisionParser.parseTriageDecisions(decisions, numberedFindings)
+  var telemetry: ReviewFinishedTelemetry? = null
+  parsedDecisions.forEach { decision ->
+    val returnedTelemetry =
+      reviewRepository.recordFeedback(
+        FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
+        feedbackTelemetryOptions(settingsProvider),
+      )
+    if (returnedTelemetry != null) {
+      telemetry = returnedTelemetry
     }
-    return AppliedTriageDecisions(
-      recorded =
-      parsedDecisions.map { decision ->
-        TriageDecision(
-          number = decision.number,
-          findingId = decision.findingId,
-          outcomeType = decision.outcomeType,
-          note = decision.note,
-        )
-      },
-      telemetry = telemetry,
-    )
   }
+  return AppliedTriageDecisions(
+    recorded =
+    parsedDecisions.map { decision ->
+      TriageDecision(
+        number = decision.number,
+        findingId = decision.findingId,
+        outcomeType = decision.outcomeType,
+        note = decision.note,
+      )
+    },
+    telemetry = telemetry,
+  )
 }
 
 private fun reviewStatsResult(
@@ -195,6 +201,17 @@ private fun featureVerifyStatsResult(
   statsBuilder: (ReviewRepository) -> FeatureVerifyWorkflowStats,
 ): FeatureVerifyStatsResult = database.read(dbOverride) { unitOfWork ->
   FeatureVerifyStatsResult(
+    dbPath = unitOfWork.dbPath.toString(),
+    stats = statsBuilder(unitOfWork.reviews),
+  )
+}
+
+private fun featureTaskRuntimeStatsResult(
+  database: DatabaseSessionFactory,
+  dbOverride: String?,
+  statsBuilder: (ReviewRepository) -> FeatureTaskRuntimeWorkflowStats,
+): FeatureTaskRuntimeStatsResult = database.read(dbOverride) { unitOfWork ->
+  FeatureTaskRuntimeStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     stats = statsBuilder(unitOfWork.reviews),
   )

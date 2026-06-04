@@ -56,6 +56,9 @@ object McpToolRegistry {
       "feature_verify_workflow_open",
       "feature_verify_workflow_resume",
       "feature_verify_workflow_update",
+      "feature_task_runtime_finished",
+      "feature_task_runtime_started",
+      "feature_task_runtime_stats",
       "feature_task_runtime_workflow_get",
       "feature_task_runtime_workflow_latest",
       "feature_task_runtime_workflow_list",
@@ -106,6 +109,9 @@ object McpToolRegistry {
       "feature_verify_workflow_resume" to "Summarize bill-feature-verify workflow resume state.",
       "feature_verify_workflow_update" to
         "Update durable bill-feature-verify workflow state and return a compact acknowledgement.",
+      "feature_task_runtime_finished" to "Record completion of an EXPERIMENTAL feature-task-runtime session.",
+      "feature_task_runtime_started" to "Record start of an EXPERIMENTAL feature-task-runtime session.",
+      "feature_task_runtime_stats" to "Show aggregate EXPERIMENTAL feature-task-runtime metrics.",
       "feature_task_runtime_workflow_continue" to
         "Continue durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
       "feature_task_runtime_workflow_get" to
@@ -299,6 +305,37 @@ object McpToolRegistry {
           "completeness_audit",
           "verdict",
           "finish",
+        ),
+      ),
+      "feature_task_runtime_started" to objectSchema(
+        required = listOf(
+          "feature_size",
+          "issue_key",
+          "feature_name",
+        ),
+        properties = mapOf(
+          "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
+          "issue_key" to stringSchema(),
+          "feature_name" to stringSchema(),
+          "session_id" to stringSchema(),
+        ),
+      ),
+      "feature_task_runtime_finished" to objectSchema(
+        required = listOf(
+          "session_id",
+          "completion_status",
+          "completed_phase_ids",
+        ),
+        properties = mapOf(
+          "session_id" to stringSchema(),
+          "completion_status" to stringSchema(
+            enum = listOf("completed", "blocked", "decomposed_at_planning", "error"),
+          ),
+          "completed_phase_ids" to arraySchema(stringSchema()),
+          "phase_outcomes" to freeObjectSchema,
+          "last_incomplete_phase" to stringSchema(),
+          "blocked_reason" to stringSchema(),
+          "resolved_branch" to stringSchema(),
         ),
       ),
       "feature_task_runtime_workflow_continue" to workflowIdSchema(),

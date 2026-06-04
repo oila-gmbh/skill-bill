@@ -3,6 +3,8 @@ package skillbill.db
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -21,6 +23,16 @@ class LifecycleTelemetryStore(
   override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) {
     saveFeatureImplementFinished(connection, record)
     emitFeatureImplementFinished(connection, record.sessionId, level)
+  }
+
+  override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
+    saveFeatureTaskRuntimeStarted(connection, record)
+    emitFeatureTaskRuntimeStarted(connection, record.sessionId, level)
+  }
+
+  override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) {
+    saveFeatureTaskRuntimeFinished(connection, record)
+    emitFeatureTaskRuntimeFinished(connection, record.sessionId, level)
   }
 
   override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) {
