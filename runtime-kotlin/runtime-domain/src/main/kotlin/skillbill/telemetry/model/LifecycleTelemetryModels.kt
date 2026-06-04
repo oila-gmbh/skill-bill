@@ -100,11 +100,6 @@ data class PrDescriptionGeneratedRecord(
   val prTitle: String,
 )
 
-// SKILL-66 Subtask 2: goal telemetry records mirror the Subtask 1 schema
-// branches (`goalStartedEvent`/`goalSubtaskFinishedEvent`/`goalFinishedEvent`)
-// field-for-field. `event_name`/`contract_version` are payload-layer constants
-// (mirroring the existing lifecycle records, which also omit them); `workflowId`
-// is the natural run identity, so there is no synthetic `sessionId`.
 data class GoalStartedRecord(
   val issueKey: String,
   val featureName: String,

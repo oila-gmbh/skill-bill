@@ -45,6 +45,7 @@ class FeatureTaskRuntimeRunner(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
+  private val specStatusProjector get() = phaseGates.specStatusProjector
 
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
@@ -121,7 +122,15 @@ class FeatureTaskRuntimeRunner(
           ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }
           ?.let { applyPlanningStop(phaseId, it) }
       } else {
-        establishBranchIfNeeded(phaseId) ?: runPhaseFor(phaseId)
+        establishBranchIfNeeded(phaseId) ?: run {
+          // Just before the commit phase launches, flip the run's spec-file status frontmatter to
+          // complete so the commit_push agent stages and commits it with the feature work, instead
+          // of leaving the spec stuck at "Pending" after the run finishes. Every preceding gate has
+          // passed by commit_push, so the spec is durably complete; the projector no-ops for any
+          // other phase and for goal-continuation children (the goal runner owns their status).
+          specStatusProjector.projectCompleteBeforeCommitPhase(phaseId, request)
+          runPhaseFor(phaseId)
+        }
       }
       return when {
         decomposed != null -> true

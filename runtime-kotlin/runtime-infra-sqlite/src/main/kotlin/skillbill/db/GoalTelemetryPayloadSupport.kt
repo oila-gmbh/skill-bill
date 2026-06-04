@@ -1,12 +1,5 @@
 package skillbill.db
 
-// SKILL-66 Subtask 2: outbox payload reconstruction for the goal telemetry
-// family. These mirror the existing lifecycle payload helpers: data fields only
-// (event name is the outbox column; envelope constants are added downstream),
-// with identifying/free-text fields gated behind the `full` level. Reads use
-// the permissive row accessors because the rows were just written by this
-// runtime — strict loud-fail parsing belongs to the stats read path (AC#5).
-
 fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
   "workflow_id" to row.stringOrEmpty("workflow_id"),
   "issue_key" to row.stringOrEmpty("issue_key"),
