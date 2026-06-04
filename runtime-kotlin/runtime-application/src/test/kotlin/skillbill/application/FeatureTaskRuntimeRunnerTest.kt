@@ -483,6 +483,60 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `each phase launch delivers the briefing and output contract as the prompt override`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+
+    harness.runner.run(harness.request())
+
+    assertEquals(ALL_PHASES.size, harness.launcher.requests.size)
+    harness.launcher.requests.zip(ALL_PHASES).forEach { (request, phaseId) ->
+      val prompt = requireNotNull(request.skillRunRequest.promptOverride) {
+        "phase '$phaseId' must launch with a prompt override, not the goal-continuation default"
+      }
+      assertContains(prompt, "# Feature-task-runtime phase briefing")
+      assertContains(prompt, "phase: $phaseId")
+      assertContains(prompt, SPEC_REFERENCE)
+      assertContains(prompt, "mandate-X")
+      assertContains(prompt, "Required final output")
+      assertContains(prompt, "\"phase_id\": must be \"$phaseId\"")
+      assertContains(prompt, "\"contract_version\": must be exactly \"0.1\"")
+      assertTrue(
+        !prompt.contains("goal-continuation mode") && !prompt.contains("First execute this exact command"),
+        "phase prompt for '$phaseId' must not instruct the goal-continuation flow",
+      )
+    }
+  }
+
+  @Test
+  fun `a terminal schema-gate block persists the validator's reason in the blocked reason`() {
+    val harness = runnerHarness(
+      validator = ThrowingValidator(failPhases = setOf("implement")),
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertContains(requireNotNull(implementRecord.blockedReason), "rejected by fake validator")
+  }
+
+  @Test
+  fun `an exhausted fix loop persists the last validator reason in the blocked reason`() {
+    val harness = runnerHarness(
+      validator = ThrowingValidator(failPhases = setOf("review")),
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+  }
+
+  @Test
   fun `per-phase records carry runtime-owned timestamps agent id and status`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
 

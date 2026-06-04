@@ -143,4 +143,70 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText("- just-a-list", "plan")
     }
   }
+
+  @Test
+  fun `raw json object passes validation`() {
+    val rawJson =
+      """{"contract_version":"0.1","phase_id":"plan","status":"completed",""" +
+        """"summary":"ok","produced_outputs":{"tasks":["task-1"]}}"""
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(rawJson, "plan")
+  }
+
+  @Test
+  fun `json inside a fenced json block passes validation`() {
+    val fenced =
+      """
+      Here is the plan output.
+
+      ```json
+      {"contract_version":"0.1","phase_id":"plan","status":"completed",
+       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+      ```
+
+      Done.
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(fenced, "plan")
+  }
+
+  @Test
+  fun `json with surrounding prose passes validation`() {
+    val withProse =
+      """
+      I planned the work as follows:
+      {"contract_version":"0.1","phase_id":"plan","status":"completed",
+       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+      Let me know if you need anything else.
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(withProse, "plan")
+  }
+
+  @Test
+  fun `the last fenced object wins over an earlier example`() {
+    val twoBlocks =
+      """
+      For reference the shape is:
+      ```json
+      {"contract_version":"0.1","phase_id":"plan","status":"blocked","summary":"example"}
+      ```
+      Here is the real output:
+      ```json
+      {"contract_version":"0.1","phase_id":"plan","status":"completed",
+       "summary":"real","produced_outputs":{"tasks":["task-1"]}}
+      ```
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoBlocks, "plan")
+  }
+
+  @Test
+  fun `prose with no json object still fails validation`() {
+    val proseOnly =
+      """
+      ## Implementation Plan
+      - **No existing injected clock seam**, so add one.
+      - Wire the repository through the service.
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(proseOnly, "plan")
+    }
+  }
 }

@@ -36,63 +36,53 @@ import kotlin.time.Duration.Companion.minutes
  * through the injected [FeatureTaskRuntimeRunInvariantsSource] port so this module performs no file IO.
  */
 @Inject
-class FeatureTaskRuntimeRunCommand(
-  private val runner: FeatureTaskRuntimeRunner,
-  private val workflowService: WorkflowService,
-  private val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
-  featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
-  featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
-  private val state: CliRunState,
-) : DocumentedCliCommand(
-  "feature-task-runtime",
-  "Run the EXPERIMENTAL runtime-driven feature-task phase loop in the foreground. Not a default path.",
-) {
-  private val issueKey by argument(help = "Issue key the experimental runtime run implements.").optional()
-  private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
-  private val repoRoot by option("--repo-root", help = "Repository root for phase agent runs.")
-  private val maxWallClockMinutes by option(
+data class FeatureTaskRuntimeRunDependencies(
+  val runner: FeatureTaskRuntimeRunner,
+  val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
+  val state: CliRunState,
+)
+
+abstract class FeatureTaskRuntimePhaseAgentCommand(
+  name: String,
+  help: String,
+) : DocumentedCliCommand(name, help) {
+  protected val repoRoot by option("--repo-root", help = "Repository root for phase agent runs.")
+  protected val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
     help = "Optional per-phase wall-clock cap in minutes (must be >= 1). Default is no wall-clock cap.",
   ).int().restrictTo(min = 1)
-  private val monitor by option(
+  protected val monitor by option(
     "--monitor",
     help = "Tee phase agent output and structured progress to this terminal.",
   ).flag(default = false)
-  private val agent by option(
+  protected val agent by option(
     "--agent",
     help = "Agent invoking bill-feature-task-runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_RUNTIME_AGENT).",
   )
-  private val agentOverride by option(
+  protected val agentOverride by option(
     "--agent-override",
     help = "Agent to use for every phase run instead of the invoking agent. Wins over --agent and per-phase agents.",
   )
-  private val phaseAgents by option(
+  protected val phaseAgents by option(
     "--phase-agent",
     help = "Per-phase agent assignment as phase=agent (e.g. --phase-agent plan=claude). Repeatable.",
   ).multiple()
 
-  override val invokeWithoutSubcommand: Boolean = true
-
-  init {
-    subcommands(featureTaskRuntimeStatusCommand, featureTaskRuntimeResumeCommand)
-  }
-
-  override fun run() {
-    if (currentContext.invokedSubcommand != null) {
-      return
-    }
-    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task-runtime run.")
-    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task-runtime run.")
-    val runInvariants = runInvariantsSource.read(Path.of(runSpecPath))
-    val workflowId = openRuntimeWorkflowId()
-    val report = runner.run(
+  protected fun executeRuntimeRun(
+    deps: FeatureTaskRuntimeRunDependencies,
+    issueKey: String,
+    specPath: String,
+    workflowId: String,
+  ) {
+    val state = deps.state
+    val report = deps.runner.run(
       FeatureTaskRuntimeRunRequest(
-        issueKey = runIssueKey,
+        issueKey = issueKey,
         workflowId = workflowId,
-        sessionId = "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$runIssueKey",
-        runInvariants = runInvariants,
+        sessionId = "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$issueKey",
+        runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
         invokedAgentId = resolveInvokedRuntimeAgentId(agent, state.environment),
         agentAssignment = FeatureTaskRuntimeAgentAssignment(
           perPhaseAgentIds = parsePhaseAgents(phaseAgents),
@@ -108,14 +98,67 @@ class FeatureTaskRuntimeRunCommand(
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
   }
+}
 
-  private fun openRuntimeWorkflowId(): String =
-    when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = state.dbOverride)) {
-      is WorkflowOpenResult.Ok -> opened.workflowId
-      is WorkflowOpenResult.Error -> throw UsageError(
-        "Could not open an experimental feature-task-runtime workflow: ${opened.error}",
-      )
+@Inject
+class FeatureTaskRuntimeRunCommand(
+  private val deps: FeatureTaskRuntimeRunDependencies,
+  private val workflowService: WorkflowService,
+  featureTaskRuntimeExplicitRunCommand: FeatureTaskRuntimeExplicitRunCommand,
+  featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
+  featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "feature-task-runtime",
+  "Run the EXPERIMENTAL runtime-driven feature-task phase loop in the foreground. Not a default path.",
+) {
+  private val issueKey by argument(help = "Issue key the experimental runtime run implements.").optional()
+  private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
+
+  override val invokeWithoutSubcommand: Boolean = true
+
+  init {
+    subcommands(featureTaskRuntimeExplicitRunCommand, featureTaskRuntimeStatusCommand, featureTaskRuntimeResumeCommand)
+  }
+
+  override fun run() {
+    if (currentContext.invokedSubcommand != null) {
+      return
     }
+    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task-runtime run.")
+    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task-runtime run.")
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = runIssueKey,
+      specPath = runSpecPath,
+      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+    )
+  }
+}
+
+/**
+ * Explicit `run` subcommand mirroring the documented `feature-task-runtime run <issue_key>
+ * <spec_path>` form. Without it, clikt silently consumes `run` as the optional issue-key
+ * positional of the parent command and misparses the remaining arguments.
+ */
+@Inject
+class FeatureTaskRuntimeExplicitRunCommand(
+  private val deps: FeatureTaskRuntimeRunDependencies,
+  private val workflowService: WorkflowService,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "run",
+  "Run the EXPERIMENTAL feature-task-runtime phase loop (explicit form of the parent command's default run).",
+) {
+  private val issueKey by argument(help = "Issue key the experimental runtime run implements.")
+  private val specPath by argument(help = "Path to the governed spec the run implements.")
+
+  override fun run() {
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = issueKey,
+      specPath = specPath,
+      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+    )
+  }
 }
 
 @Inject
@@ -136,60 +179,32 @@ class FeatureTaskRuntimeStatusCommand(
 
 @Inject
 class FeatureTaskRuntimeResumeCommand(
-  private val runner: FeatureTaskRuntimeRunner,
-  private val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
-  private val state: CliRunState,
-) : DocumentedCliCommand("resume", "Resume an EXPERIMENTAL feature-task-runtime run against an existing workflow id.") {
+  private val deps: FeatureTaskRuntimeRunDependencies,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "resume",
+  "Resume an EXPERIMENTAL feature-task-runtime run against an existing workflow id.",
+) {
   private val workflowId by argument(help = "Existing runtime workflow id to resume.")
   private val issueKey by argument(help = "Issue key the resumed runtime run implements.")
   private val specPath by argument(help = "Path to the governed spec the run implements.")
-  private val repoRoot by option("--repo-root", help = "Repository root for phase agent runs.")
-  private val maxWallClockMinutes by option(
-    "--max-wall-clock-minutes",
-    "--timeout-minutes",
-    help = "Optional per-phase wall-clock cap in minutes (must be >= 1). Default is no wall-clock cap.",
-  ).int().restrictTo(min = 1)
-  private val monitor by option(
-    "--monitor",
-    help = "Tee phase agent output and structured progress to this terminal.",
-  ).flag(default = false)
-  private val agent by option(
-    "--agent",
-    help = "Agent invoking bill-feature-task-runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
-      "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_RUNTIME_AGENT).",
-  )
-  private val agentOverride by option(
-    "--agent-override",
-    help = "Agent to use for every phase run instead of the invoking agent. Wins over --agent and per-phase agents.",
-  )
-  private val phaseAgents by option(
-    "--phase-agent",
-    help = "Per-phase agent assignment as phase=agent (e.g. --phase-agent plan=claude). Repeatable.",
-  ).multiple()
 
   override fun run() {
-    val report = runner.run(
-      FeatureTaskRuntimeRunRequest(
-        issueKey = issueKey,
-        workflowId = workflowId,
-        sessionId = "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$issueKey",
-        runInvariants = runInvariantsSource.read(Path.of(specPath)),
-        invokedAgentId = resolveInvokedRuntimeAgentId(agent, state.environment),
-        agentAssignment = FeatureTaskRuntimeAgentAssignment(
-          perPhaseAgentIds = parsePhaseAgents(phaseAgents),
-          override = agentOverride?.takeIf(String::isNotBlank),
-        ),
-        environment = state.environment,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
-        timeout = maxWallClockMinutes?.minutes,
-        eventSink = runtimeRunEventSink(state, monitor),
-      ),
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = issueKey,
+      specPath = specPath,
+      workflowId = workflowId,
     )
-    val payload = report.toRuntimeRunCliMap()
-    state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
   }
 }
+
+private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
+  when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = state.dbOverride)) {
+    is WorkflowOpenResult.Ok -> opened.workflowId
+    is WorkflowOpenResult.Error -> throw UsageError(
+      "Could not open an experimental feature-task-runtime workflow: ${opened.error}",
+    )
+  }
 
 private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {
   FeatureTaskRuntimeRunEventSink.NONE

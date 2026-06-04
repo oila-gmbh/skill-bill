@@ -41,7 +41,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
-    stdinText = continuationPrompt(request),
+    stdinText = launchPrompt(request),
     environment = GoalContinuationEnvironment,
   )
 }
@@ -61,7 +61,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
-    stdinText = continuationPrompt(request),
+    stdinText = launchPrompt(request),
     environment = GoalContinuationEnvironment,
   )
 }
@@ -76,7 +76,7 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
       "--dir",
       request.repoRoot.toString(),
       "--dangerously-skip-permissions",
-      continuationPrompt(request),
+      launchPrompt(request),
     ),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
@@ -99,13 +99,18 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("--timeout")
         add(timeout.toLong(DurationUnit.MILLISECONDS).toString())
       }
-      add(continuationPrompt(request))
+      add(launchPrompt(request))
     },
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     environment = GoalContinuationEnvironment,
   )
 }
+
+// A caller-supplied prompt override (e.g. a feature-task-runtime phase briefing) replaces the
+// default goal-continuation prompt wholesale; the delivery mechanics (stdin vs argv) stay
+// per-agent.
+internal fun launchPrompt(request: SkillRunRequest): String = request.promptOverride ?: continuationPrompt(request)
 
 internal fun continuationPrompt(request: SkillRunRequest): String {
   val dbOption = request.dbPathOverride?.let { db -> " --db ${shellDisplay(db)}" }.orEmpty()

@@ -51,10 +51,32 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     validate(parsed, sourceLabel)
   }
 
+  // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
+  // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Try the
+  // most-specific candidate first and fall back to the raw text so a genuinely payload-less or
+  // malformed output still surfaces the precise existing error rather than a misleading one.
   private fun readPhaseOutputObjectNode(phaseOutputText: String, sourceLabel: String): JsonNode {
+    phaseOutputObjectCandidates(phaseOutputText).forEach { candidate ->
+      tryParseObjectNode(candidate)?.let { return it }
+    }
+    return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
+  }
+
+  private fun tryParseObjectNode(candidate: String): JsonNode? = try {
+    yamlMapper.readTree(candidate)?.takeIf(JsonNode::isObject)
+  } catch (error: JsonProcessingException) {
+    featureTaskRuntimePhaseOutputLog.log(
+      Level.FINE,
+      "Phase-output candidate did not parse; trying the next one.",
+      error,
+    )
+    null
+  }
+
+  private fun parseObjectNodeStrict(text: String, sourceLabel: String): JsonNode {
     val node =
       try {
-        yamlMapper.readTree(phaseOutputText)
+        yamlMapper.readTree(text)
       } catch (error: JsonProcessingException) {
         throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
           sourceLabel = sourceLabel,
@@ -192,6 +214,24 @@ private fun readFeatureTaskRuntimePhaseOutputSchemaText(): String {
       "classpath at '$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_CLASSPATH_RESOURCE' or on disk under " +
       "'$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_REPO_RELATIVE_PATH' walked up from: $walkAnchor.",
   )
+}
+
+private val FENCED_BLOCK = Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
+
+// Ordered, de-duplicated candidates to try as the phase-output object: fenced blocks last-first
+// (the final fence is the most likely answer), then a first-`{`-to-last-`}` slice that strips
+// surrounding prose, then the raw text so clean JSON/YAML and genuine failures are unchanged.
+private fun phaseOutputObjectCandidates(raw: String): List<String> {
+  val trimmed = raw.trim()
+  return buildList {
+    FENCED_BLOCK.findAll(trimmed).map { it.groupValues[1].trim() }.toList().asReversed().forEach(::add)
+    val open = trimmed.indexOf('{')
+    val close = trimmed.lastIndexOf('}')
+    if (open in 0 until close) {
+      add(trimmed.substring(open, close + 1))
+    }
+    add(trimmed)
+  }.filter(String::isNotBlank).distinct()
 }
 
 fun featureTaskRuntimePhaseOutputDottedFieldPath(instanceLocation: String): String = when {

@@ -110,6 +110,32 @@ class AgentRunLauncherTest {
   }
 
   @Test
+  fun `a prompt override replaces the goal-continuation prompt for stdin-delivered agents`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = skillRunRequest().copy(promptOverride = PHASE_PROMPT)
+
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(request)
+
+    val captured = runner.requests.single()
+    assertEquals(PHASE_PROMPT, captured.stdinText)
+    assertFalse(requireNotNull(captured.stdinText).contains("goal-continuation mode"))
+    // Delivery mechanics are unchanged: stdin for claude, never a trailing argv token.
+    assertEquals("--add-dir", captured.command[captured.command.size - 2])
+  }
+
+  @Test
+  fun `a prompt override replaces the goal-continuation prompt for argv-delivered agents`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = skillRunRequest().copy(promptOverride = PHASE_PROMPT)
+
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
+
+    val captured = runner.requests.single()
+    assertEquals(PHASE_PROMPT, captured.command.last())
+    assertFalse(captured.command.any { value -> "Goal-continuation: enabled." in value })
+  }
+
+  @Test
   fun `junie adapter builds a current headless command`() {
     val runner = RecordingAgentRunProcessRunner()
     requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.JUNIE]).launch(skillRunRequest())
@@ -695,6 +721,10 @@ class AgentRunLauncherTest {
 
     assertNotEquals(initial, sourceChanged)
     assertEquals(sourceChanged, buildChanged)
+  }
+
+  private companion object {
+    const val PHASE_PROMPT = "Phase: plan\nTask: produce an ordered plan.\nRequired final output: one raw JSON object."
   }
 
   private fun skillRunRequest(issueKey: String = "SKILL-56"): SkillRunRequest = SkillRunRequest(

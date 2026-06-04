@@ -22,6 +22,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(help.stdout, "EXPERIMENTAL")
     assertContains(help.stdout, "status")
     assertContains(help.stdout, "resume")
+    // The documented explicit `run` form is a real subcommand, not a misparsed positional.
+    assertContains(help.stdout, "explicit form")
     assertContains(help.stdout, "--phase-agent")
     assertContains(help.stdout, "--agent-override")
     assertContains(help.stdout, "--monitor")
@@ -282,6 +284,36 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(status.stdout, "current_phase: implement")
     assertContains(status.stdout, "phase: id=plan status=completed")
     assertContains(status.stdout, "phase: id=implement status=blocked")
+  }
+
+  @Test
+  fun `feature-task-runtime explicit run subcommand completes every phase like the default run`() {
+    // The documented `feature-task-runtime run <issue_key> <spec_path>` form: without a real
+    // `run` subcommand, clikt silently consumes `run` as the optional issue-key positional and
+    // misparses the spec path as a subcommand.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task-runtime",
+        "run",
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertContains(result.stdout, "completed_phases: plan, implement, review, audit, validate")
+    assertEquals(5, launcher.requests.size)
   }
 
   @Test

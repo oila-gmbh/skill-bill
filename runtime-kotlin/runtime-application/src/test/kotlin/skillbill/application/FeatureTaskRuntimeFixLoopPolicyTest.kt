@@ -19,30 +19,28 @@ import kotlin.test.assertTrue
  */
 class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
-  fun `non-fix-loop phase blocks on first failed output without advancing`() {
-    val nonFixLoopPhases = listOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+  fun `the mutating implement phase blocks on first failed output without advancing`() {
+    val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      currentIteration = 1,
     )
-    nonFixLoopPhases.forEach { phaseId ->
-      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(phaseId, currentIteration = 1)
-      val blocked = assertIs<FeatureTaskRuntimeFixLoopDecision.Block>(
-        decision,
-        "non-fix-loop phase '$phaseId' must Block on a failed output, never advance",
-      )
-      assertTrue(
-        blocked.blockedReason.contains("does not participate in a fix loop"),
-        "block reason for '$phaseId' must name the no-fix-loop cause",
-      )
-    }
+    val blocked = assertIs<FeatureTaskRuntimeFixLoopDecision.Block>(
+      decision,
+      "the mutating implement phase must Block on a failed output, never advance",
+    )
+    assertTrue(
+      blocked.blockedReason.contains("does not participate in a fix loop"),
+      "block reason for implement must name the no-fix-loop cause",
+    )
   }
 
   @Test
   fun `fix-loop phase retries up to the cap then blocks instead of advancing`() {
     val fixLoopPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
     )
     fixLoopPhases.forEach { phaseId ->
       (1 until FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS).forEach { iteration ->

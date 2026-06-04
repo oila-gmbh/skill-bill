@@ -118,15 +118,20 @@ class FeatureTaskRuntimeRunner(
     observability.started(run.phaseId, agentId, iteration, iteration > 1 || state.hasPriorRecord(run.phaseId))
     var outcome: PhaseOutcome? = null
     while (outcome == null) {
-      outcome = attemptOnce(run, state, iteration, observability)
+      val attempt = attemptOnce(run, state, iteration, observability)
+      outcome = attempt.settledOutcome
         ?: when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration)) {
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration = decision.nextIteration
             observability.fixLoopIteration(run.phaseId, agentId, decision.nextIteration, decision.fixLoopIteration)
             null
           }
-          is FeatureTaskRuntimeFixLoopDecision.Block ->
-            blockAndPersist(run, iteration, decision.blockedReason, observability)
+          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersist(
+            run,
+            iteration,
+            withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
+            observability,
+          )
         }
     }
     return outcome
@@ -157,38 +162,41 @@ class FeatureTaskRuntimeRunner(
     return PhaseOutcome.blocked(reason)
   }
 
-  // Returns null only on schema-invalid output (caller consults the fix-loop policy). An
-  // infrastructure failure must block distinctly rather than be laundered through the schema
+  // Returns SchemaInvalid only on schema-invalid output (caller consults the fix-loop policy).
+  // An infrastructure failure must block distinctly rather than be laundered through the schema
   // gate, which would misreport it as bad output and burn the fix-loop budget on doomed retries.
   private fun attemptOnce(
     run: PhaseRun,
     state: RunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
-  ): PhaseOutcome? {
+  ): AttemptResult {
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
     val launch = launchAndCapture(run, state)
     launch.infraFailureReason?.let { reason ->
-      return blockAndPersist(run, iteration, reason, observability)
+      return AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
     }
-    return completedOutcomeOrNull(run, iteration, requireNotNull(launch.capturedStdout), observability)
+    return gateOutput(run, iteration, requireNotNull(launch.capturedStdout), observability)
   }
 
-  private fun completedOutcomeOrNull(
+  private fun gateOutput(
     run: PhaseRun,
     iteration: Int,
     outputText: String,
     observability: FeatureTaskRuntimeRunObservability,
-  ): PhaseOutcome? {
-    // Schema-invalid output returns null so the caller consults the fix-loop policy.
+  ): AttemptResult {
+    // Schema-invalid output carries the validator's reason out so a terminal block is
+    // diagnosable from the persisted blocked_reason, not only from transient JVM logs.
     try {
       outputValidator.validatePhaseOutputText(outputText, sourceLabel = run.phaseId)
-    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      return null
+    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      return AttemptResult.schemaInvalid(error.reason)
     }
     persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText))
+    return AttemptResult.settled(
+      PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
+    )
   }
 
   private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {
@@ -207,7 +215,9 @@ class FeatureTaskRuntimeRunner(
   }
 
   // Persist the briefing before launching so it is a durable handoff a consumer can read
-  // back, not dead computation thrown away after the launch.
+  // back, then deliver the same briefing to the agent as the launch prompt: the phase agent
+  // only ever sees what the prompt carries, so a persisted-but-undelivered briefing would
+  // leave it running the default goal-continuation flow and failing the schema gate.
   private fun launchAndCapture(run: PhaseRun, state: RunState): LaunchResult {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
@@ -225,6 +235,7 @@ class FeatureTaskRuntimeRunner(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
+          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(run.request.issueKey, briefing),
         ),
       ),
     )
@@ -257,6 +268,21 @@ class FeatureTaskRuntimeRunner(
     companion object {
       fun captured(stdout: String): LaunchResult = Captured(stdout)
       fun infraFailure(reason: String): LaunchResult = InfraFailure(reason)
+    }
+  }
+
+  // One launch attempt either settles the phase (completed or blocked) or fails the schema
+  // gate with the validator's reason, which the fix-loop caller threads into a terminal block.
+  private sealed interface AttemptResult {
+    private data class Settled(val outcome: PhaseOutcome) : AttemptResult
+    private data class SchemaInvalid(val validationReason: String) : AttemptResult
+
+    val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
+    val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
+
+    companion object {
+      fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
+      fun schemaInvalid(validationReason: String): AttemptResult = SchemaInvalid(validationReason)
     }
   }
 
@@ -328,6 +354,21 @@ class FeatureTaskRuntimeRunner(
     const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
+
+    // Bound on the validator detail appended to a persisted blocked reason so a pathological
+    // multi-violation reason cannot bloat the durable record or the CLI progress line.
+    const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
+
+    // Appends the schema validator's formatted reason (bounded) to the fix-loop policy's
+    // terminal block reason so a blocked run is diagnosable without access to transient JVM logs.
+    fun withSchemaGateDetail(policyReason: String, validationReason: String): String {
+      val bounded = if (validationReason.length <= SCHEMA_GATE_DETAIL_MAX_CHARS) {
+        validationReason
+      } else {
+        validationReason.take(SCHEMA_GATE_DETAIL_MAX_CHARS) + "… [truncated]"
+      }
+      return "$policyReason Last schema-gate failure: $bounded"
+    }
   }
 }
 

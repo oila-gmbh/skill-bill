@@ -4,17 +4,22 @@ import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
- * Pure bounded fix-loop policy. The `review` and `audit` phases re-run on a failed schema gate;
- * each re-run is a higher iteration so the latest output always wins. The loop is bounded by
- * [MAX_FIX_LOOP_ITERATIONS]. The first run is iteration 1; the fix-loop index is `iteration - 1`.
+ * Pure bounded fix-loop policy. Every non-mutating phase (`plan`, `review`, `audit`, `validate`)
+ * re-runs on a failed schema gate; each re-run is a higher iteration so the latest output always
+ * wins. Only `implement` is excluded: re-running it would re-apply non-idempotent repository
+ * mutations, so a schema-invalid implement output blocks immediately rather than retrying. The
+ * loop is bounded by [MAX_FIX_LOOP_ITERATIONS]. The first run is iteration 1; the fix-loop index
+ * is `iteration - 1`.
  */
 object FeatureTaskRuntimeFixLoopPolicy {
   /** A phase runs at most this many times total (1 initial attempt + 2 re-runs) before blocking. */
   const val MAX_FIX_LOOP_ITERATIONS: Int = 3
 
   private val FIX_LOOP_PHASES: Set<String> = setOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
   )
 
   fun participatesInFixLoop(phaseId: String): Boolean = phaseId in FIX_LOOP_PHASES

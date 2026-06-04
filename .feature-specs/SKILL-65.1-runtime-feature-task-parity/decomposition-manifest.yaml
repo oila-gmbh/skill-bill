@@ -1,0 +1,114 @@
+---
+contract_version: "0.2"
+issue_key: "SKILL-65.1"
+feature_name: "runtime-feature-task-parity"
+parent_spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec.md"
+status: "pending"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-65.1-runtime-feature-task-parity"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "start"
+subtasks:
+- id: 1
+  name: "runtime-run-setup-and-feature-branch"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_1_runtime-run-setup-and-feature-branch.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies: []
+- id: 2
+  name: "preplan-phase"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_2_preplan-phase.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies: []
+- id: 3
+  name: "post-validate-history-commit-pr-phases"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_3_post-validate-history-commit-pr-phases.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+- id: 4
+  name: "size-assessment-and-ceremony-scaling"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_4_size-assessment-and-ceremony-scaling.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 2
+    optional: false
+    skipped: false
+  - subtask_id: 3
+    optional: false
+    skipped: false
+- id: 5
+  name: "decomposition-mode-and-planning-stop"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_5_decomposition-mode-and-planning-stop.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 2
+    optional: false
+    skipped: false
+- id: 6
+  name: "lifecycle-telemetry-and-stats"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_6_lifecycle-telemetry-and-stats.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 3
+    optional: false
+    skipped: false
+  - subtask_id: 4
+    optional: false
+    skipped: false
+  - subtask_id: 5
+    optional: false
+    skipped: false
+- id: 7
+  name: "goal-runner-cooperation-and-continuation"
+  spec_path: ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_7_goal-runner-cooperation-and-continuation.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+  - subtask_id: 3
+    optional: false
+    skipped: false
+  - subtask_id: 5
+    optional: false
+    skipped: false
