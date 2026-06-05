@@ -3,6 +3,10 @@ package skillbill.application
 import skillbill.application.model.AddLearningInput
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalStartedRequest
+import skillbill.application.model.GoalStatsResult
+import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowGetResult
@@ -30,6 +34,7 @@ import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
@@ -51,6 +56,9 @@ import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
+import skillbill.review.model.GoalBlockedSubtaskSummary
+import skillbill.review.model.GoalRunSummary
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
@@ -60,6 +68,9 @@ import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
@@ -1133,6 +1144,210 @@ class ApplicationPersistencePortTest {
     assertEquals(true, sessionSummary["rollout_relevant"])
     assertEquals("Verify workflow runtime", sessionSummary["spec_summary"])
   }
+
+  @Test
+  fun `lifecycle telemetry port records goal events mapped from requests`() {
+    val repository = RecordingGoalLifecycleTelemetryRepository()
+
+    repository.goalStarted(goalStartedRequest().toRecord(), level = "full")
+    repository.goalSubtaskFinished(goalSubtaskFinishedRequest().toRecord(), level = "full")
+    repository.goalFinished(goalFinishedRequest().toRecord(), level = "full")
+
+    val started = repository.startedRecords.single()
+    assertEquals("SKILL-66", started.issueKey)
+    assertEquals("goal telemetry", started.featureName)
+    assertEquals("wf-goal-1", started.workflowId)
+    assertEquals(4, started.subtaskTotal)
+    assertTrue(started.resumed)
+    assertEquals("2026-06-04T10:00:00Z", started.startedAt)
+
+    val subtask = repository.subtaskRecords.single()
+    assertEquals(2, subtask.subtaskId)
+    assertEquals("persistence", subtask.subtaskName)
+    assertEquals("blocked", subtask.status)
+    assertEquals(240_000L, subtask.durationMs)
+    assertEquals(3, subtask.attemptCount)
+    assertEquals("validation failed", subtask.blockedReason)
+
+    val finished = repository.finishedRecords.single()
+    assertEquals("blocked", finished.status)
+    assertEquals(1_200_000L, finished.durationMs)
+    assertEquals(1, finished.subtasksComplete)
+    assertEquals(1, finished.subtasksBlocked)
+    assertEquals(0, finished.subtasksSkipped)
+  }
+
+  @Test
+  fun `workflow stats port exposes goal aggregate through its surface`() {
+    val expected =
+      GoalWorkflowStats(
+        totalRuns = 2,
+        finishedRuns = 1,
+        inProgressRuns = 1,
+        completionStatusCounts = mapOf("completed" to 1, "blocked" to 0),
+        completedRuns = 1,
+        completedRate = 1.0,
+        blockedRuns = 0,
+        blockedRate = 0.0,
+        subtaskOutcomeCounts = mapOf("complete" to 3, "blocked" to 0, "skipped" to 1),
+        totalSubtaskEvents = 4,
+        averageRunDurationMs = 5_460_000.0,
+        averageSubtaskDurationMs = 120_000.0,
+        averageAttemptCount = 1.25,
+        mostRecentRun =
+        GoalRunSummary(
+          workflowId = "wf-goal-9",
+          issueKey = "SKILL-66",
+          featureName = "goal telemetry",
+          status = "completed",
+          startedAt = "2026-06-04T10:00:00Z",
+          finishedAt = "2026-06-04T11:31:00Z",
+          durationMs = 5_460_000L,
+          resumed = false,
+          subtaskTotal = 4,
+        ),
+        topBlockedSubtasks = emptyList(),
+      )
+    val repository: WorkflowStatsRepository = FakeGoalStatsRepository(expected)
+
+    assertEquals(expected, repository.goalStats())
+    assertEquals("wf-goal-9", repository.goalStats().mostRecentRun?.workflowId)
+  }
+
+  @Test
+  fun `review service goalStats returns GoalStatsResult from seeded repository`() {
+    val blockedSummary = GoalBlockedSubtaskSummary(
+      subtaskId = 2,
+      subtaskName = "persistence",
+      issueKey = "SKILL-66",
+      blockedReason = "validation failed",
+      attemptCount = 3,
+    )
+    val seededStats = GoalWorkflowStats(
+      totalRuns = 1,
+      finishedRuns = 1,
+      inProgressRuns = 0,
+      completionStatusCounts = mapOf("completed" to 0, "blocked" to 1),
+      completedRuns = 0,
+      completedRate = 0.0,
+      blockedRuns = 1,
+      blockedRate = 1.0,
+      subtaskOutcomeCounts = mapOf("complete" to 0, "blocked" to 1, "skipped" to 0),
+      totalSubtaskEvents = 1,
+      averageRunDurationMs = 1_200_000.0,
+      averageSubtaskDurationMs = 240_000.0,
+      averageAttemptCount = 3.0,
+      mostRecentRun = null,
+      topBlockedSubtasks = listOf(blockedSummary),
+    )
+    val database = FakeDatabaseSessionFactory(reviews = FakeGoalStatsReviewRepository(seededStats))
+    val service = ReviewService(
+      RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-goal")),
+      database,
+      FakeTelemetrySettingsProvider(enabled = false),
+      FakeReviewInputSource,
+    )
+
+    val result: GoalStatsResult = service.goalStats(dbOverride = null)
+
+    assertEquals(listOf("read"), database.calls)
+    assertEquals("/fake/metrics.db", result.dbPath)
+    assertEquals(seededStats, result.stats)
+    assertEquals(1, result.stats.topBlockedSubtasks.size)
+    assertEquals("validation failed", result.stats.topBlockedSubtasks.single().blockedReason)
+  }
+
+  @Test
+  fun `goal stats all-blocked store has blocked rate 1 and non-empty topBlockedSubtasks`() {
+    val blockedEntry = GoalBlockedSubtaskSummary(
+      subtaskId = 1,
+      subtaskName = "implement",
+      issueKey = "SKILL-99",
+      blockedReason = "compile error",
+      attemptCount = 2,
+    )
+    val allBlockedStats = GoalWorkflowStats(
+      totalRuns = 1,
+      finishedRuns = 1,
+      inProgressRuns = 0,
+      completionStatusCounts = mapOf("completed" to 0, "blocked" to 1),
+      completedRuns = 0,
+      completedRate = 0.0,
+      blockedRuns = 1,
+      blockedRate = 1.0,
+      subtaskOutcomeCounts = mapOf("complete" to 0, "blocked" to 1, "skipped" to 0),
+      totalSubtaskEvents = 1,
+      averageRunDurationMs = 60_000.0,
+      averageSubtaskDurationMs = 60_000.0,
+      averageAttemptCount = 2.0,
+      mostRecentRun = null,
+      topBlockedSubtasks = listOf(blockedEntry),
+    )
+
+    assertEquals(1.0, allBlockedStats.blockedRate)
+    assertEquals(0.0, allBlockedStats.completedRate)
+    assertEquals(1, allBlockedStats.topBlockedSubtasks.size)
+    assertEquals("compile error", allBlockedStats.topBlockedSubtasks.single().blockedReason)
+  }
+
+  @Test
+  fun `goal stats all-skipped subtasks has empty topBlockedSubtasks`() {
+    val allSkippedStats = GoalWorkflowStats(
+      totalRuns = 1,
+      finishedRuns = 1,
+      inProgressRuns = 0,
+      completionStatusCounts = mapOf("completed" to 1, "blocked" to 0),
+      completedRuns = 1,
+      completedRate = 1.0,
+      blockedRuns = 0,
+      blockedRate = 0.0,
+      subtaskOutcomeCounts = mapOf("complete" to 0, "blocked" to 0, "skipped" to 3),
+      totalSubtaskEvents = 3,
+      averageRunDurationMs = 100_000.0,
+      averageSubtaskDurationMs = 0.0,
+      averageAttemptCount = 0.0,
+      mostRecentRun = null,
+      topBlockedSubtasks = emptyList(),
+    )
+
+    assertEquals(3, allSkippedStats.subtaskOutcomeCounts["skipped"])
+    assertTrue(allSkippedStats.topBlockedSubtasks.isEmpty())
+  }
+
+  @Test
+  fun `goal stats single-run store has non-null mostRecentRun and totalRuns equals 1`() {
+    val singleRunSummary = GoalRunSummary(
+      workflowId = "wf-single",
+      issueKey = "SKILL-1",
+      featureName = "single run feature",
+      status = "completed",
+      startedAt = "2026-06-05T10:00:00Z",
+      finishedAt = "2026-06-05T10:30:00Z",
+      durationMs = 1_800_000L,
+      resumed = false,
+      subtaskTotal = 2,
+    )
+    val singleRunStats = GoalWorkflowStats(
+      totalRuns = 1,
+      finishedRuns = 1,
+      inProgressRuns = 0,
+      completionStatusCounts = mapOf("completed" to 1, "blocked" to 0),
+      completedRuns = 1,
+      completedRate = 1.0,
+      blockedRuns = 0,
+      blockedRate = 0.0,
+      subtaskOutcomeCounts = mapOf("complete" to 2, "blocked" to 0, "skipped" to 0),
+      totalSubtaskEvents = 2,
+      averageRunDurationMs = 1_800_000.0,
+      averageSubtaskDurationMs = 900_000.0,
+      averageAttemptCount = 1.0,
+      mostRecentRun = singleRunSummary,
+      topBlockedSubtasks = emptyList(),
+    )
+
+    assertEquals(1, singleRunStats.totalRuns)
+    assertEquals("wf-single", requireNotNull(singleRunStats.mostRecentRun).workflowId)
+  }
 }
 
 private class FakeDatabaseSessionFactory(
@@ -1168,6 +1383,7 @@ private class FakeDatabaseSessionFactory(
   }
 }
 
+@Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
 private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) = Unit
 
@@ -1186,6 +1402,131 @@ private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = Unit
 
   override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = Unit
+
+  override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
+
+  override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
+
+  override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
+}
+
+private fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
+  issueKey = "SKILL-66",
+  featureName = "goal telemetry",
+  workflowId = "wf-goal-1",
+  subtaskTotal = 4,
+  resumed = true,
+  startedAt = "2026-06-04T10:00:00Z",
+)
+
+private fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubtaskFinishedRequest(
+  issueKey = "SKILL-66",
+  workflowId = "wf-goal-1",
+  subtaskId = 2,
+  subtaskName = "persistence",
+  status = "blocked",
+  startedAt = "2026-06-04T10:05:00Z",
+  finishedAt = "2026-06-04T10:09:00Z",
+  durationMs = 240_000L,
+  attemptCount = 3,
+  blockedReason = "validation failed",
+)
+
+private fun goalFinishedRequest(): GoalFinishedRequest = GoalFinishedRequest(
+  issueKey = "SKILL-66",
+  workflowId = "wf-goal-1",
+  status = "blocked",
+  startedAt = "2026-06-04T10:00:00Z",
+  finishedAt = "2026-06-04T10:20:00Z",
+  durationMs = 1_200_000L,
+  subtasksComplete = 1,
+  subtasksBlocked = 1,
+  subtasksSkipped = 0,
+)
+
+@Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
+private class RecordingGoalLifecycleTelemetryRepository : LifecycleTelemetryRepository {
+  val startedRecords = mutableListOf<GoalStartedRecord>()
+  val subtaskRecords = mutableListOf<GoalSubtaskFinishedRecord>()
+  val finishedRecords = mutableListOf<GoalFinishedRecord>()
+
+  override fun goalStarted(record: GoalStartedRecord, level: String) {
+    startedRecords += record
+  }
+
+  override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) {
+    subtaskRecords += record
+  }
+
+  override fun goalFinished(record: GoalFinishedRecord, level: String) {
+    finishedRecords += record
+  }
+
+  override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) = error("unused")
+
+  override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) = error("unused")
+
+  override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) = error("unused")
+
+  override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) = error("unused")
+
+  override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = error("unused")
+
+  override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = error("unused")
+
+  override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = error("unused")
+
+  override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = error("unused")
+
+  override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = error("unused")
+}
+
+private class FakeGoalStatsRepository(
+  private val stats: GoalWorkflowStats,
+) : WorkflowStatsRepository {
+  override fun featureImplementStats(): FeatureImplementWorkflowStats = error("Unexpected featureImplementStats")
+
+  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
+
+  override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
+
+  override fun goalStats(): GoalWorkflowStats = stats
+}
+
+private class FakeGoalStatsReviewRepository(
+  private val stats: GoalWorkflowStats,
+) : ReviewRepository {
+  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) = error("Unexpected saveImportedReview")
+
+  override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
+
+  override fun updateReviewFinishedTelemetryState(
+    runId: String,
+    enabled: Boolean,
+    level: String,
+  ): ReviewFinishedTelemetry? = error("Unexpected updateReviewFinishedTelemetryState")
+
+  override fun recordFeedback(
+    request: FeedbackRequest,
+    telemetryOptions: FeedbackTelemetryOptions,
+  ): ReviewFinishedTelemetry? = error("Unexpected recordFeedback")
+
+  override fun fetchNumberedFindings(runId: String): List<NumberedFinding> = error("Unexpected fetchNumberedFindings")
+
+  override fun findingExists(runId: String, findingId: String): Boolean = error("Unexpected findingExists")
+
+  override fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome? =
+    error("Unexpected latestRejectedLearningSourceOutcome")
+
+  override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot = error("Unexpected reviewStats")
+
+  override fun featureImplementStats(): FeatureImplementWorkflowStats = error("Unexpected featureImplementStats")
+
+  override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
+
+  override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
+
+  override fun goalStats(): GoalWorkflowStats = stats
 }
 
 private object FakeReviewInputSource : ReviewInputSource {
@@ -1284,6 +1625,8 @@ private class FakeReviewRepository(
   override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
 
   override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
+
+  override fun goalStats(): GoalWorkflowStats = error("Unexpected goalStats")
 }
 
 private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {

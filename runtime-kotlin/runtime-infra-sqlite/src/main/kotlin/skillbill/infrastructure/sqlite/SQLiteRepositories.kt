@@ -30,6 +30,7 @@ import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
@@ -57,6 +58,8 @@ class SQLiteWorkflowStatsRepository(
 
   override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats =
     ReviewStatsRuntime.featureTaskRuntimeStats(connection)
+
+  override fun goalStats(): GoalWorkflowStats = ReviewStatsRuntime.goalStats(connection)
 }
 
 class SQLiteReviewRepository(

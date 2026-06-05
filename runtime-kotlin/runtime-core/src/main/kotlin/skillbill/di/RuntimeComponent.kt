@@ -7,6 +7,7 @@ import skillbill.application.AgentRunService
 import skillbill.application.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.FeatureTaskRuntimeRunner
 import skillbill.application.FeatureTaskRuntimeStatusService
+import skillbill.application.GoalLifecycleTelemetryEmitter
 import skillbill.application.GoalRunner
 import skillbill.application.GoalRunnerStatusService
 import skillbill.application.InstallAgentService
@@ -208,6 +209,18 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun goalRunnerSubtaskLauncher(adapter: AgentRunGoalRunnerSubtaskLauncher): GoalRunnerSubtaskLauncher =
     adapter
+
+  // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
+  // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by
+  // LifecycleTelemetryService) and times every payload off this injected clock.
+  @Provides
+  @JvmSynthetic
+  internal fun goalLifecycleTelemetryEmitter(service: LifecycleTelemetryService): GoalLifecycleTelemetryEmitter =
+    service
+
+  @Provides
+  @JvmSynthetic
+  internal fun runtimeClock(): java.time.Clock = java.time.Clock.systemUTC()
 
   @Provides
   @JvmSynthetic

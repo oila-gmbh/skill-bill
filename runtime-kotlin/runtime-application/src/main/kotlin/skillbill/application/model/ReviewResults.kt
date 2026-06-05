@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
@@ -63,4 +64,9 @@ data class FeatureVerifyStatsResult(
 data class FeatureTaskRuntimeStatsResult(
   val dbPath: String,
   val stats: FeatureTaskRuntimeWorkflowStats,
+)
+
+data class GoalStatsResult(
+  val dbPath: String,
+  val stats: GoalWorkflowStats,
 )

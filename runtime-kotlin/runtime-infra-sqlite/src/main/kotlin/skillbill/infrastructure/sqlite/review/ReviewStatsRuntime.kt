@@ -5,6 +5,7 @@ import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FindingOutcomeRow
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
@@ -30,6 +31,11 @@ object ReviewStatsRuntime {
 
   fun featureTaskRuntimeStats(connection: Connection): FeatureTaskRuntimeWorkflowStats =
     buildFeatureTaskRuntimeStats(loadRows(connection, "feature_task_runtime_sessions"))
+
+  fun goalStats(connection: Connection): GoalWorkflowStats = buildGoalStats(
+    loadGoalRows(connection, "goal_run_sessions"),
+    loadGoalRows(connection, "goal_subtask_events"),
+  )
 
   fun clearReviewFinishedTelemetryState(connection: Connection, reviewRunId: String) {
     connection.prepareStatement(

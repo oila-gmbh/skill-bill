@@ -3,6 +3,8 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.application.specInputTypes
 import skillbill.contracts.JsonSupport
+import skillbill.db.DatabaseRuntime
+import skillbill.db.LifecycleTelemetryStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -14,6 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class McpStdioServerTest {
   @Test
   fun `initialize returns MCP server capabilities`() {
@@ -86,6 +89,7 @@ class McpStdioServerTest {
   }
 
   @Test
+  @Suppress("LongMethod")
   fun `strict schema coverage publishes required arguments and enums`() {
     val tools = toolsList()
 
@@ -126,12 +130,30 @@ class McpStdioServerTest {
     )
     tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
     assertEquals(
-      listOf("verify", "implement", "bill-feature-verify", "bill-feature-task", "feature-task-runtime"),
+      listOf(
+        "verify",
+        "implement",
+        "bill-feature-verify",
+        "bill-feature-task",
+        "feature-task-runtime",
+        "goal",
+        "bill-feature-goal",
+      ),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
     )
     assertEquals(
       listOf("", "day", "week"),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("group_by"),
+    )
+    assertEquals(false, tools.schemaFor("goal_stats")["additionalProperties"])
+    assertEquals(emptyList<String>(), tools.schemaFor("goal_stats")["required"])
+    assertEquals(
+      setOf("since", "date_from", "date_to", "group_by"),
+      tools.schemaFor("goal_stats").properties().keys,
+    )
+    assertEquals(
+      listOf("", "day", "week"),
+      tools.schemaFor("goal_stats").properties().enumFor("group_by"),
     )
     tools.schemaFor("new_skill_scaffold").assertRequired("payload")
     tools.schemaFor("import_review").assertRequired("review_text")
@@ -603,6 +625,53 @@ class McpStdioServerTest {
     assertFalse(serialized.contains("abc.def.ghi"), serialized)
     assertTrue(serialized.contains("[REDACTED]"), serialized)
   }
+
+  @Test
+  fun `goal_stats dispatch returns populated payload for a seeded store`() {
+    val tempDir = Files.createTempDirectory("skillbill-stdio-goal-stats-seeded")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+    seedGoalBlockedRun(tempDir.resolve("metrics.db"), workflowId = "wf-stdio-1")
+
+    val response = decodeResponse(
+      McpStdioServer.handleLine(
+        toolCallRequest(id = 1, name = "goal_stats", arguments = emptyMap()),
+        context,
+      ),
+    )
+    val result = response.map("result")
+    val payload = toolPayload(result)
+
+    assertEquals(false, result["isError"], payload.toString())
+    assertEquals("bill-goal-run", payload["workflow"])
+    assertEquals(1, payload["total_runs"])
+    assertEquals(1, payload["blocked_runs"])
+    val topBlocked = payload["top_blocked_subtasks"] as List<*>
+    assertEquals(1, topBlocked.size)
+    val blockedEntry = requireNotNull(JsonSupport.anyToStringAnyMap(topBlocked.first()))
+    assertEquals("test failure", blockedEntry["blocked_reason"])
+  }
+
+  @Test
+  fun `goal_stats dispatch returns zero-count payload for empty store`() {
+    val tempDir = Files.createTempDirectory("skillbill-stdio-goal-stats-empty")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val response = decodeResponse(
+      McpStdioServer.handleLine(
+        toolCallRequest(id = 1, name = "goal_stats", arguments = emptyMap()),
+        context,
+      ),
+    )
+    val result = response.map("result")
+    val payload = toolPayload(result)
+
+    assertEquals(false, result["isError"], payload.toString())
+    assertEquals("bill-goal-run", payload["workflow"])
+    assertEquals(0, payload["total_runs"])
+    assertEquals(null, payload["most_recent_run"])
+    val topBlocked = payload["top_blocked_subtasks"] as List<*>
+    assertTrue(topBlocked.isEmpty())
+  }
 }
 
 private val expectedToolInventory =
@@ -648,6 +717,7 @@ private val expectedToolInventory =
     "feature_task_runtime_workflow_open",
     "feature_task_runtime_workflow_resume",
     "feature_task_runtime_workflow_update",
+    "goal_stats",
     "import_review",
     "new_skill_scaffold",
     "pr_description_generated",
@@ -861,4 +931,50 @@ private fun decodeStdioJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
+}
+
+private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
+  DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+    val store = LifecycleTelemetryStore(connection)
+    store.goalStarted(
+      skillbill.telemetry.model.GoalStartedRecord(
+        issueKey = "SKILL-66",
+        featureName = "goal telemetry",
+        workflowId = workflowId,
+        subtaskTotal = 1,
+        resumed = false,
+        startedAt = "2026-06-05T10:00:00Z",
+      ),
+      level = "full",
+    )
+    store.goalSubtaskFinished(
+      skillbill.telemetry.model.GoalSubtaskFinishedRecord(
+        issueKey = "SKILL-66",
+        workflowId = workflowId,
+        subtaskId = 1,
+        subtaskName = "implement",
+        status = "blocked",
+        startedAt = "2026-06-05T10:00:00Z",
+        finishedAt = "2026-06-05T10:05:00Z",
+        durationMs = 300_000,
+        attemptCount = 1,
+        blockedReason = "test failure",
+      ),
+      "full",
+    )
+    store.goalFinished(
+      skillbill.telemetry.model.GoalFinishedRecord(
+        issueKey = "SKILL-66",
+        workflowId = workflowId,
+        status = "blocked",
+        startedAt = "2026-06-05T10:00:00Z",
+        finishedAt = "2026-06-05T10:10:00Z",
+        durationMs = 600_000,
+        subtasksComplete = 0,
+        subtasksBlocked = 1,
+        subtasksSkipped = 0,
+      ),
+      level = "full",
+    )
+  }
 }

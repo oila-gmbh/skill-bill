@@ -16,6 +16,7 @@ class FeatureStatsCommands(
   val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
   val featureTaskStatsCommand: FeatureTaskStatsCommand,
   val featureTaskRuntimeStatsCommand: FeatureTaskRuntimeStatsCommand,
+  val goalStatsCommand: GoalStatsCommand,
 ) {
   val commands =
     listOf(
@@ -23,6 +24,7 @@ class FeatureStatsCommands(
       featureVerifyStatsCommand,
       featureTaskStatsCommand,
       featureTaskRuntimeStatsCommand,
+      goalStatsCommand,
     )
 }
 
@@ -172,5 +174,17 @@ class FeatureTaskRuntimeStatsCommand(
         "Use feature-task-stats; behavior is unchanged.\n",
     )
     state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
+  }
+}
+
+@Inject
+class GoalStatsCommand(
+  private val service: ReviewService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("goal-stats", "Show aggregate decomposed-goal run metrics.") {
+  private val format by formatOption()
+
+  override fun run() {
+    state.complete(service.goalStats(state.dbOverride).toCliMap(), format)
   }
 }

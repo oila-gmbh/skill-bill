@@ -76,6 +76,7 @@ object McpToolRegistry {
       "feature_task_runtime_workflow_open",
       "feature_task_runtime_workflow_resume",
       "feature_task_runtime_workflow_update",
+      "goal_stats",
       "import_review",
       "new_skill_scaffold",
       "pr_description_generated",
@@ -163,6 +164,7 @@ object McpToolRegistry {
         "Deprecated alias for feature_task_workflow_resume. Use feature_task_workflow_resume.",
       "feature_task_runtime_workflow_update" to
         "Deprecated alias for feature_task_workflow_update. Use feature_task_workflow_update.",
+      "goal_stats" to "Show aggregate decomposed-goal runtime metrics.",
       "import_review" to "Import code review output into the local telemetry store.",
       "new_skill_scaffold" to "Scaffold a new skill from a validated payload.",
       "pr_description_generated" to "Record PR description generation telemetry.",
@@ -429,6 +431,7 @@ object McpToolRegistry {
         workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
         stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
+      "goal_stats" to goalStatsSchema(),
       "import_review" to objectSchema(
         required = listOf("review_text"),
         properties = mapOf(

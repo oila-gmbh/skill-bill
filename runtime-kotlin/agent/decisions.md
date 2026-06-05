@@ -354,3 +354,103 @@ carries the production `jackson.dataformat.yaml` dependency (relocated to
 method is `@OpenBoundaryMap`-annotated and documented in the allow-list +
 `open_extension` inventory because the raw-map architecture scanner walks
 `runtime-ports`.
+
+## 2026-06-04 — Goal telemetry: writes on LifecycleTelemetryRepository, goalStats() on WorkflowStatsRepository
+
+**Context.** SKILL-66 Subtask 2 adds persistence for the goal telemetry event
+family (`goal_started`, `goal_subtask_finished`, `goal_finished`). Acceptance
+criterion 1 reads literally as "`LifecycleTelemetryRepository` gains methods for
+the three goal events ... plus the read/aggregate queries needed for stats", which
+could be read as putting the aggregate read on the same port. But every existing
+lifecycle family keeps writes on `LifecycleTelemetryRepository` (write-only:
+`featureImplementStarted`, `featureVerifyStarted`, `featureTaskRuntimeStarted`,
+...) and puts the aggregate read on `WorkflowStatsRepository`
+(`featureImplementStats()`, `featureVerifyStats()`, `featureTaskRuntimeStats()`).
+
+**Decision.** Goal **writes** (`goalStarted`/`goalSubtaskFinished`/`goalFinished`)
+go on `LifecycleTelemetryRepository`; the aggregate **read** `goalStats()` goes on
+`WorkflowStatsRepository`. AC#1's own tiebreaker clause — "*following the interface
+style of the existing event methods*" — selects parity placement over literal
+single-port grouping. No existing family reads through
+`LifecycleTelemetryRepository`, and breaking that would split the read surface
+across two ports.
+
+**Reason.** Parity keeps the stats surface single-sourced on
+`WorkflowStatsRepository` (which Subtask 4's `goal_stats` tool reads), preserves
+the established write/read seam separation, and avoids leaking a read method onto
+the write-only telemetry port. The cost is that AC#1's literal "on
+`LifecycleTelemetryRepository`" wording is satisfied for writes only; the
+read lives one port over, exactly as `featureTaskRuntimeStats()` does.
+
+**Consumers.** Subtask 3 calls the three write methods from `GoalRunner`;
+Subtask 4 reads `goalStats()` for the `goal_stats` MCP tool and `goal-stats` CLI.
+
+## 2026-06-05 — Goal runtime telemetry: loud-fail, per-segment run-session id, and resume dedup (SKILL-66 Subtask 3)
+
+**Context.** SKILL-66 Subtask 3 wires goal lifecycle emission
+(`goal_started`/`goal_subtask_finished`/`goal_finished`) into `GoalRunner`. Four
+decisions had to be settled: how the runtime distinguishes per-segment run
+sessions from stable per-subtask children, how a resumed run avoids
+double-counting, what `attempt_count` means, and how a telemetry write failure is
+handled relative to the best-effort observability/ledger writes that surround it.
+
+**Decisions.**
+
+1. **Loud-fail, NOT best-effort.** Goal telemetry flows through a new
+   application seam `GoalLifecycleTelemetryEmitter`, implemented by
+   `LifecycleTelemetryService` via the existing `enabledStandaloneResult ->
+   database.transaction` path. When telemetry is **enabled**, a repository write
+   that throws propagates out of the emitter and out of `GoalRunner.run`, failing
+   the run (AC4, parent AC5). It is deliberately NOT wrapped in `runCatching`
+   like `GoalRunnerObservabilityEmitter`/`GoalRunnerLedgerRecorder`, whose writes
+   are best-effort by design. When telemetry is **disabled** the seam is a silent
+   no-op (no write, no throw), preserving the disabled-vs-enabled-failure
+   distinction. The default `GoalLifecycleTelemetryEmitter.NONE` keeps emission
+   purely additive so non-telemetry runs stay byte-equivalent (parent AC8).
+
+2. **(D1) Per-segment run-session `workflow_id`.** `goal_started`/`goal_finished`
+   carry `"<parentWorkflowId>:seg:<segmentStartedAt>"`, where `segmentStartedAt`
+   is captured once at loop start from the injected clock. It is deterministic
+   under a fake clock, unique per segment (the clock advances between resume
+   segments), and can never collide with the stable child `wfl-N` ids (which
+   never contain `:seg:`). This is what makes "exactly one per run segment" hold
+   across resumes.
+
+3. **(D2 + resume dedup) `goal_subtask_finished.workflow_id` = stable child id.**
+   Each `goal_subtask_finished` carries the subtask's durable child workflow id
+   (`wfl-N`); a never-launched terminal (a projection-driven skip) falls back to
+   a stable `"<issueKey>:subtask:<id>"`. Combined with the persistence-layer
+   dedup key `(issue_key, subtask_id, workflow_id)` (Subtask 2's
+   `ON CONFLICT DO NOTHING`), a subtask contributes at most one terminal event
+   across all segments. The runtime also snapshots `priorTerminal` (ids already
+   terminal at loop start) and only emits for subtasks reaching terminal status
+   *within the current segment*, so a resumed run never re-emits earlier
+   segments' work even before the DB dedup applies.
+
+4. **(D4) `attempt_count` is runtime-owned and per-segment.** It is the number of
+   times the subtask id appears in the runner-owned in-memory `attempted` list,
+   coerced to at least 1. Under the current one-attempt-per-subtask-per-segment
+   loop it resolves to 1; cross-segment accumulation is out of scope and the
+   dedup above prevents inflation. The child-progress `attemptCount` (reflects
+   child *step* retries, nullable, costs an extra read) and the durable ledger
+   (no per-subtask attempt count) were both rejected.
+
+5. **(D5) Centralized transition-detector for terminal emission.** A single
+   `sweepTerminal` pass over the manifest after each iteration (and once before
+   `goal_finished`) emits for each newly-terminal subtask. This uniformly covers
+   `complete`, `blocked`, AND `skipped` — the last is set only by external
+   manifest projection, never by the loop, so no per-emit-site hook could catch
+   it. `goal_finished` subtask counts are computed independently from the final
+   manifest (`count { status == ... }`), not from any merged report field.
+
+**Reason.** Telemetry that silently drops writes would make the goal stats
+surface (Subtask 4) untrustworthy, so the write failure is loud; the
+observability/ledger streams remain best-effort because they are diagnostic, not
+the metric of record. Splitting the per-segment session id from the per-subtask
+child id is what lets "exactly one per segment" and "never double-count on
+resume" both hold without a stateful cross-segment counter.
+
+**Consumers.** Subtask 4 stats expectations: `goal_subtask_finished` dedupes by
+`(issue_key, subtask_id, child workflow_id)`; `goal_started`/`goal_finished` are
+per-segment (distinct `:seg:` ids) and stats group by `issue_key`;
+`attempt_count` is per-segment (1 today).

@@ -37,6 +37,19 @@ import kotlin.test.fail
  */
 class TelemetryEventInputSchemaParityTest {
 
+  /**
+   * SKILL-66 Subtask 1: `goal_started`, `goal_subtask_finished`, and
+   * `goal_finished` are runtime-internal emission payload contracts —
+   * they are NOT MCP tools and are intentionally absent from
+   * `McpToolRegistry.toolNames`. Their per-event branches exist so
+   * the emission payloads are schema-validated, but they are exempt
+   * from the "every schema branch maps to a tool" direction. See
+   * `x-coherence-checks.goal-telemetry-emission-events` in
+   * `telemetry-event-schema.yaml`.
+   */
+  private val runtimeInternalEmissionEvents =
+    setOf("goal_started", "goal_subtask_finished", "goal_finished")
+
   private val schemaNode: JsonNode by lazy {
     val schemaFile = repoRootFromTest().resolve(TelemetryEventSchemaPaths.REPO_RELATIVE_PATH)
     assertTrue(Files.isRegularFile(schemaFile), "Canonical schema file is missing at $schemaFile.")
@@ -114,7 +127,7 @@ class TelemetryEventInputSchemaParityTest {
       }
       val branchEventName = defNode.path("properties").path("event_name").path("const").asText("")
       assertTrue(
-        branchEventName in knownEvents,
+        branchEventName in knownEvents || branchEventName in runtimeInternalEmissionEvents,
         "Telemetry parity: branch '$defName' pins event_name='$branchEventName' which is not in " +
           "McpToolRegistry.tools. Remove the branch or add the event name to McpToolRegistry.toolNames.",
       )

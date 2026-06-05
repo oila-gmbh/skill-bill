@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: Complete
 ---
 
 # SKILL-66 Subtask 4 - Goal Stats MCP and CLI Surface

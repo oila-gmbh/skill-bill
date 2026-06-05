@@ -135,6 +135,10 @@ oneOf:
   - $ref: "#/$defs/featureTaskStartedEvent"
   - $ref: "#/$defs/featureTaskFinishedEvent"
   - $ref: "#/$defs/featureTaskStatsEvent"
+  - $ref: "#/$defs/goalStartedEvent"
+  - $ref: "#/$defs/goalSubtaskFinishedEvent"
+  - $ref: "#/$defs/goalFinishedEvent"
+  - $ref: "#/$defs/goalStatsEvent"
   - $ref: "#/$defs/importReviewEvent"
   - $ref: "#/$defs/newSkillScaffoldEvent"
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
@@ -232,6 +236,22 @@ $defs:
       - failed
       - blocked
       - skipped
+  # SKILL-66 Subtask 1: terminal-status enums for the decomposed-goal
+  # telemetry family. Deliberately NOT reusing `workflowStepStatusEnum`:
+  # the goal subtask terminal set is `complete` (not `completed`),
+  # `blocked`, `skipped`, and the goal-run terminal set is `completed`
+  # (not `complete`) / `blocked`. Single-sourced here for Subtasks 2/3.
+  goalSubtaskStatusEnum:
+    type: string
+    enum:
+      - complete
+      - blocked
+      - skipped
+  goalFinishedStatusEnum:
+    type: string
+    enum:
+      - completed
+      - blocked
   freeObjectShape:
     type: object
   emptyObjectShape:
@@ -446,6 +466,8 @@ $defs:
           - bill-feature-verify
           - bill-feature-task
           - feature-task-runtime
+          - goal
+          - bill-feature-goal
       since:
         type: string
       date_from:
@@ -1290,6 +1312,184 @@ $defs:
       session_id:
         type: string
 
+  # SKILL-66 Subtask 1: decomposed-goal telemetry family.
+  #
+  # `goalStartedEvent`, `goalSubtaskFinishedEvent`, and
+  # `goalFinishedEvent` are RUNTIME-INTERNAL emission payload contracts:
+  # the `skill-bill goal` runtime emits them as it drives a decomposed
+  # goal, but they are intentionally ABSENT from `McpToolRegistry.toolNames`
+  # (they are not MCP tools). See `x-coherence-checks.goal-telemetry-emission-events`.
+  # `goalStatsEvent` IS a registered tool (`goal_stats`) and mirrors
+  # `McpToolRegistry.inputSchemas["goal_stats"]` (the `goalStatsSchema()`
+  # helper). Integer bounds mirror `stepUpdateTaskRuntimeShape.attempt_count`
+  # (int32); timestamps mirror the goal-observability `timestamp`
+  # convention (ISO-8601 string, minLength 1).
+  goalStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - issue_key
+      - feature_name
+      - workflow_id
+      - subtask_total
+      - resumed
+      - started_at
+    properties:
+      event_name:
+        const: goal_started
+      contract_version:
+        const: "1.0.0"
+      issue_key:
+        type: string
+      feature_name:
+        type: string
+      workflow_id:
+        type: string
+      subtask_total:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+      resumed:
+        type: boolean
+      started_at:
+        type: string
+        minLength: 1
+        description: ISO-8601 timestamp the goal run started at.
+
+  goalSubtaskFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - issue_key
+      - workflow_id
+      - subtask_id
+      - subtask_name
+      - status
+      - started_at
+      - finished_at
+      - duration_ms
+      - attempt_count
+      - blocked_reason
+    properties:
+      event_name:
+        const: goal_subtask_finished
+      contract_version:
+        const: "1.0.0"
+      issue_key:
+        type: string
+      workflow_id:
+        type: string
+      subtask_id:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+      subtask_name:
+        type: string
+      status:
+        $ref: "#/$defs/goalSubtaskStatusEnum"
+      started_at:
+        type: string
+        minLength: 1
+        description: ISO-8601 timestamp the subtask started at.
+      finished_at:
+        type: string
+        minLength: 1
+        description: ISO-8601 timestamp the subtask finished at.
+      duration_ms:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      attempt_count:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      blocked_reason:
+        type:
+          - string
+          - "null"
+        description: >
+          Free-text blocked reason when `status` is `blocked`; `null`
+          otherwise. Required key with a nullable value.
+
+  goalFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - issue_key
+      - workflow_id
+      - status
+      - started_at
+      - finished_at
+      - duration_ms
+      - subtasks_complete
+      - subtasks_blocked
+      - subtasks_skipped
+    properties:
+      event_name:
+        const: goal_finished
+      contract_version:
+        const: "1.0.0"
+      issue_key:
+        type: string
+      workflow_id:
+        type: string
+      status:
+        $ref: "#/$defs/goalFinishedStatusEnum"
+      started_at:
+        type: string
+        minLength: 1
+        description: ISO-8601 timestamp the goal run started at.
+      finished_at:
+        type: string
+        minLength: 1
+        description: ISO-8601 timestamp the goal run finished at.
+      duration_ms:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      subtasks_complete:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      subtasks_blocked:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      subtasks_skipped:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+
+  goalStatsEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: goal_stats
+      contract_version:
+        const: "1.0.0"
+      since:
+        type: string
+      date_from:
+        type: string
+      date_to:
+        type: string
+      group_by:
+        type: string
+        enum:
+          - ""
+          - day
+          - week
+
   importReviewEvent:
     type: object
     additionalProperties: false
@@ -1598,11 +1798,27 @@ x-coherence-checks:
   toolnames-membership:
     description: >
       Every `$defs.<branch>.properties.event_name.const` MUST appear in
-      `McpToolRegistry.toolNames` AND vice versa. Pinned by
+      `McpToolRegistry.toolNames` AND vice versa, EXCEPT for the
+      runtime-internal emission events enumerated in
+      `goal-telemetry-emission-events` below. Pinned by
       `TelemetryEventInputSchemaParityTest`, which walks the toolNames
       list and verifies both directions, so adding a new event name in
       Kotlin without authoring the YAML branch (or vice versa) fails
-      the build.
+      the build. The same test holds an explicit allow-list of the
+      runtime-internal emission events so their branches are exempt from
+      the "every branch maps to a tool" direction only.
+  goal-telemetry-emission-events:
+    description: >
+      `goal_started`, `goal_subtask_finished`, and `goal_finished` are
+      RUNTIME-INTERNAL emission payload contracts emitted by the
+      `skill-bill goal` runtime as it drives a decomposed goal. They are
+      intentionally ABSENT from `McpToolRegistry.toolNames` — they are
+      not MCP tools and have no dispatcher handler or input schema. Only
+      `goal_stats` is a registered tool in the decomposed-goal family.
+      `TelemetryEventInputSchemaParityTest` carries an explicit
+      allow-list (`runtimeInternalEmissionEvents`) matching these three
+      names so the "every schema branch maps to a tool" assertion skips
+      them; doc and enforcement stay in lockstep.
   inputschemas-structural-parity:
     description: >
       For every event with an entry in `McpToolRegistry.inputSchemas`,

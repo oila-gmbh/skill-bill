@@ -139,6 +139,9 @@ object McpRuntime {
   fun featureTaskRuntimeStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.featureTaskRuntimeStats(dbOverride = null).toMcpMap()
 
+  fun goalStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
+    services(context).reviewService.goalStats(dbOverride = null).toMcpMap()
+
   fun featureTaskRuntimeStarted(
     request: FeatureTaskRuntimeStartedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),

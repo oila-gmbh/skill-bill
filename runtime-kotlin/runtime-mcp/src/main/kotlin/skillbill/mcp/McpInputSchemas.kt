@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.mcp
 
 internal val emptyObjectSchema: Map<String, Any?> = McpToolSpec.strictObjectSchema()
@@ -9,7 +11,18 @@ internal val historySignalSchema: Map<String, Any?> =
 internal val qualityCheckScopeSchema: Map<String, Any?> =
   stringSchema(enum = listOf("files", "working_tree", "branch_diff", "repo"))
 internal val remoteStatsWorkflowSchema: Map<String, Any?> =
-  stringSchema(enum = listOf("verify", "implement", "bill-feature-verify", "bill-feature-task", "feature-task-runtime"))
+  stringSchema(
+    enum =
+    listOf(
+      "verify",
+      "implement",
+      "bill-feature-verify",
+      "bill-feature-task",
+      "feature-task-runtime",
+      "goal",
+      "bill-feature-goal",
+    ),
+  )
 
 internal fun objectSchema(
   required: List<String> = emptyList(),
@@ -59,6 +72,15 @@ internal fun remoteStatsSchema(): Map<String, Any?> = objectSchema(
   required = listOf("workflow"),
   properties = mapOf(
     "workflow" to remoteStatsWorkflowSchema,
+    "since" to stringSchema(),
+    "date_from" to stringSchema(),
+    "date_to" to stringSchema(),
+    "group_by" to stringSchema(enum = listOf("", "day", "week")),
+  ),
+)
+
+internal fun goalStatsSchema(): Map<String, Any?> = objectSchema(
+  properties = mapOf(
     "since" to stringSchema(),
     "date_from" to stringSchema(),
     "date_to" to stringSchema(),

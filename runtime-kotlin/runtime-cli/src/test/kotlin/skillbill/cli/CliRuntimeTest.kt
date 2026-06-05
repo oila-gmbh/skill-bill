@@ -2,6 +2,8 @@ package skillbill.cli
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
+import skillbill.db.DatabaseRuntime
+import skillbill.db.LifecycleTelemetryStore
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
@@ -16,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class CliRuntimeTest {
   @Test
   fun `import-review emits stable json payload`() {
@@ -682,6 +685,130 @@ class CliRuntimeTest {
     val unknownCommand = CliRuntime.run(listOf("unknown"))
     assertEquals(1, unknownCommand.exitCode)
     assertContains(unknownCommand.stdout, "no such subcommand")
+  }
+
+  @Test
+  fun `goal-stats --format json emits stable payload`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-goal-stats-json")
+    val dbPath = tempDir.resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalStarted(
+        skillbill.telemetry.model.GoalStartedRecord(
+          issueKey = "SKILL-66",
+          featureName = "goal telemetry",
+          workflowId = "wf-cli-1",
+          subtaskTotal = 1,
+          resumed = false,
+          startedAt = "2026-06-05T10:00:00Z",
+        ),
+        level = "full",
+      )
+      store.goalSubtaskFinished(
+        skillbill.telemetry.model.GoalSubtaskFinishedRecord(
+          issueKey = "SKILL-66",
+          workflowId = "wf-cli-1",
+          subtaskId = 1,
+          subtaskName = "implement",
+          status = "blocked",
+          startedAt = "2026-06-05T10:00:00Z",
+          finishedAt = "2026-06-05T10:05:00Z",
+          durationMs = 300_000,
+          attemptCount = 2,
+          blockedReason = "compile error",
+        ),
+        "full",
+      )
+      store.goalFinished(
+        skillbill.telemetry.model.GoalFinishedRecord(
+          issueKey = "SKILL-66",
+          workflowId = "wf-cli-1",
+          status = "blocked",
+          startedAt = "2026-06-05T10:00:00Z",
+          finishedAt = "2026-06-05T10:10:00Z",
+          durationMs = 600_000,
+          subtasksComplete = 0,
+          subtasksBlocked = 1,
+          subtasksSkipped = 0,
+        ),
+        level = "full",
+      )
+    }
+
+    val result = CliRuntime.run(
+      listOf("--db", dbPath.toString(), "goal-stats", "--format", "json"),
+      CliRuntimeContext(),
+    )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(0, result.exitCode)
+    assertEquals("bill-goal-run", payload["workflow"])
+    assertEquals(1, payload["total_runs"])
+    assertEquals(1.0, payload["blocked_rate"])
+    assertEquals(dbPath.toAbsolutePath().normalize().toString(), payload["db_path"])
+    val topBlocked = payload["top_blocked_subtasks"] as List<*>
+    assertEquals(1, topBlocked.size)
+  }
+
+  @Test
+  fun `goal-stats human-readable output includes key fields`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-goal-stats-human")
+    val dbPath = tempDir.resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalStarted(
+        skillbill.telemetry.model.GoalStartedRecord(
+          issueKey = "SKILL-66",
+          featureName = "goal telemetry",
+          workflowId = "wf-cli-human",
+          subtaskTotal = 1,
+          resumed = false,
+          startedAt = "2026-06-05T10:00:00Z",
+        ),
+        level = "full",
+      )
+      store.goalFinished(
+        skillbill.telemetry.model.GoalFinishedRecord(
+          issueKey = "SKILL-66",
+          workflowId = "wf-cli-human",
+          status = "completed",
+          startedAt = "2026-06-05T10:00:00Z",
+          finishedAt = "2026-06-05T10:30:00Z",
+          durationMs = 1_800_000,
+          subtasksComplete = 1,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+        ),
+        level = "full",
+      )
+    }
+
+    val result = CliRuntime.run(
+      listOf("--db", dbPath.toString(), "goal-stats"),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(0, result.exitCode)
+    assertContains(result.stdout, "total_runs")
+    assertContains(result.stdout, "blocked_rate")
+  }
+
+  @Test
+  fun `goal-stats empty store exits 0 with zero counts`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-goal-stats-empty")
+    val dbPath = tempDir.resolve("metrics.db")
+
+    val result = CliRuntime.run(
+      listOf("--db", dbPath.toString(), "goal-stats", "--format", "json"),
+      CliRuntimeContext(),
+    )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(0, result.exitCode)
+    assertEquals("bill-goal-run", payload["workflow"])
+    assertEquals(0, payload["total_runs"])
   }
 }
 

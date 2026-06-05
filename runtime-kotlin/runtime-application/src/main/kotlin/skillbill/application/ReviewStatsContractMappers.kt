@@ -1,13 +1,19 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.application
 
 import skillbill.application.model.FeatureImplementStatsResult
 import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
+import skillbill.application.model.GoalStatsResult
 import skillbill.application.model.ReviewStatsResult
 import skillbill.contracts.JsonPayloadContract
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
+import skillbill.review.model.GoalBlockedSubtaskSummary
+import skillbill.review.model.GoalRunSummary
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats
 
@@ -25,6 +31,9 @@ fun FeatureVerifyStatsResult.toFeatureVerifyStatsPayload(): JsonPayloadContract 
   MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
 
 fun FeatureTaskRuntimeStatsResult.toFeatureTaskRuntimeStatsPayload(): JsonPayloadContract =
+  MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
+
+fun GoalStatsResult.toGoalStatsPayload(): JsonPayloadContract =
   MapPayloadContract(LinkedHashMap(stats.toPayload()).apply { put("db_path", dbPath) })
 
 private class MapPayloadContract(
@@ -106,6 +115,45 @@ private fun FeatureTaskRuntimeWorkflowStats.toPayload(): Map<String, Any?> = lin
   "error_runs" to errorRuns,
   "error_rate" to errorRate,
   "average_completed_phase_count" to averageCompletedPhaseCount,
+)
+
+private fun GoalWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "workflow" to "bill-goal-run",
+  "total_runs" to totalRuns,
+  "finished_runs" to finishedRuns,
+  "in_progress_runs" to inProgressRuns,
+  "completion_status_counts" to completionStatusCounts,
+  "completed_runs" to completedRuns,
+  "completed_rate" to completedRate,
+  "blocked_runs" to blockedRuns,
+  "blocked_rate" to blockedRate,
+  "subtask_outcome_counts" to subtaskOutcomeCounts,
+  "total_subtask_events" to totalSubtaskEvents,
+  "average_run_duration_ms" to averageRunDurationMs,
+  "average_subtask_duration_ms" to averageSubtaskDurationMs,
+  "average_attempt_count" to averageAttemptCount,
+  "top_blocked_subtasks" to topBlockedSubtasks.map(GoalBlockedSubtaskSummary::toPayload),
+  "most_recent_run" to mostRecentRun?.toPayload(),
+)
+
+private fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(
+  "workflow_id" to workflowId,
+  "issue_key" to issueKey,
+  "feature_name" to featureName,
+  "status" to status,
+  "started_at" to startedAt,
+  "finished_at" to finishedAt,
+  "duration_ms" to durationMs,
+  "resumed" to resumed,
+  "subtask_total" to subtaskTotal,
+)
+
+private fun GoalBlockedSubtaskSummary.toPayload(): Map<String, Any?> = linkedMapOf(
+  "subtask_id" to subtaskId,
+  "subtask_name" to subtaskName,
+  "issue_key" to issueKey,
+  "blocked_reason" to blockedReason,
+  "attempt_count" to attemptCount,
 )
 
 private fun FeatureVerifyWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(
