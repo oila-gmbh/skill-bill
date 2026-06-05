@@ -1,7 +1,7 @@
 # SKILL-68 - goal-subtask commit-SHA completion handshake
 
 Created: 2026-06-05
-Status: Draft
+Status: Completed
 Issue key: SKILL-68
 Mode: single_spec
 Parent: fixes a goal-runner / feature-task-runtime completion-handshake defect surfaced while running SKILL-66 (`bill-feature-goal`); builds on SKILL-51/56/58/64/67 goal-runner work.
