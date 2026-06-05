@@ -1,4 +1,4 @@
-@file:Suppress("LongParameterList", "TooManyFunctions")
+@file:Suppress("LargeClass", "LongParameterList", "TooManyFunctions")
 
 package skillbill.application
 
