@@ -7,6 +7,9 @@ import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
+import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalStartedRequest
+import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
@@ -16,10 +19,11 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
+@Suppress("TooManyFunctions")
 class LifecycleTelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-) {
+) : GoalLifecycleTelemetryEmitter {
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureImplementStarted(request: FeatureImplementStartedRequest): Map<String, Any?> {
     val sessionId = generateLifecycleSessionId("fis")
@@ -134,6 +138,37 @@ class LifecycleTelemetryService(
             unitOfWork.lifecycleTelemetry.prDescriptionGenerated(request.toRecord(sessionId), settings.level)
           }
         }
+    }
+  }
+
+  // SKILL-66 Subtask 3 (AC3, AC4): goal lifecycle emission flows through the
+  // same enabledStandaloneResult -> database.transaction seam as every other
+  // family. When telemetry is enabled a repository write that throws propagates
+  // out of these methods, failing the goal run loudly (parent AC5); when
+  // disabled the seam is a silent no-op with no write and no throw. The Unit
+  // return keeps GoalRunner free of the MCP/CLI event bag and off the raw-map
+  // boundary surface. See decisions.md (2026-06-05).
+  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalStarted(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
+      }
     }
   }
 

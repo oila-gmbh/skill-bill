@@ -248,16 +248,24 @@ error; it is never swallowed.
 
 ## Open Questions
 
-- Should `goal_subtask_finished` also be emitted for subtasks completed in a
-  *previous* run segment when a blocked goal is resumed, or only for subtasks
-  reaching terminal state within the current process? (Leaning: only within
-  the current process — resume must not double-count; dedupe by
-  `(issue_key, subtask_id, workflow_id)`.)
-- Should `goal_finished` be emitted on a blocked outcome with
-  `status: "blocked"`, or should blocked runs emit only `goal_started` +
-  per-subtask events until a later segment finishes? (Leaning: emit
-  `goal_finished` per run segment with terminal status, and let stats group by
-  issue key; this keeps every segment accounted for.)
+- **RESOLVED (Subtask 3).** Should `goal_subtask_finished` also be emitted for
+  subtasks completed in a *previous* run segment when a blocked goal is resumed,
+  or only for subtasks reaching terminal state within the current process?
+  **Resolution: only within the current segment.** `GoalRunner` snapshots the
+  subtasks already terminal at loop start (`priorTerminal`) and emits one
+  `goal_subtask_finished` only for subtasks reaching terminal status within the
+  current segment. Cross-segment double-counting is additionally prevented at the
+  persistence layer by deduping on `(issue_key, subtask_id, workflow_id)`, where
+  `workflow_id` is the stable per-subtask child id (`wfl-N`).
+- **RESOLVED (Subtask 3).** Should `goal_finished` be emitted on a blocked
+  outcome with `status: "blocked"`, or should blocked runs emit only
+  `goal_started` + per-subtask events until a later segment finishes?
+  **Resolution: emit `goal_finished` per run segment with terminal status**
+  (`completed` or `blocked`) and subtask counts by terminal status, so every
+  segment is accounted for and stats group by issue key. `goal_started` and
+  `goal_finished` carry a per-segment run-session id
+  (`<parentWorkflowId>:seg:<segmentStartedAt>`), distinct from the per-subtask
+  child ids, so "exactly one per segment" holds across resumes.
 - Does `telemetry_proxy_capabilities` enumerate workflow families explicitly
   (requiring a change) or advertise capabilities generically (no change)?
   Subtask 5 resolves this from code, not assumption.

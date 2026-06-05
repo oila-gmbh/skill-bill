@@ -48,6 +48,10 @@ class GoalRunner(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val pullRequestPort: GoalPullRequestPort,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  // SKILL-66 Subtask 3: defaulted so the existing positional test constructors
+  // keep compiling and AC5 byte-equivalence holds for runs without telemetry.
+  private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
+  private val clock: java.time.Clock = java.time.Clock.systemUTC(),
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore)
@@ -59,8 +63,15 @@ class GoalRunner(
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, request)
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
-    if (terminalReport == null) {
+    // SKILL-66 Subtask 3 (AC1): construct the per-segment telemetry collaborator
+    // inside the same terminalReport == null gate as the Started event so a
+    // preflight-blocked run emits no goal telemetry, and emit goal_started right
+    // after the Started event so it pairs with that loop-start signal.
+    val telemetryEmitter = if (terminalReport == null) {
       request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
+      GoalRunnerTelemetryEmitter(telemetry, clock, state, request.dbPathOverride).also { it.goalStarted() }
+    } else {
+      null
     }
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
@@ -73,25 +84,36 @@ class GoalRunner(
               terminalReport = result.report
             }
         is GoalRunnerSelection.Run -> {
-          val result = runSelectedSubtask(state, selection, request, attempted, observability, ledger)
+          val result = runSelectedSubtask(state, selection, request, attempted, observability, ledger, telemetryEmitter)
           state = result.state
           terminalReport = result.report
         }
       }
+      // SKILL-66 Subtask 3 (AC1): emit goal_subtask_finished for any subtask that
+      // reached terminal status during this iteration.
+      telemetryEmitter?.sweepTerminal(state.manifest, attempted)
     }
-    if (terminalReport is GoalRunnerRunReport.Completed) {
+    val finalReport = terminalReport
+    // SKILL-66 Subtask 3 (AC1, AC4): a final sweep catches any terminal subtask
+    // not yet emitted, then goal_finished closes the segment. A telemetry write
+    // failure here propagates and fails the run loudly — it is not swallowed.
+    telemetryEmitter?.let { emitter ->
+      emitter.sweepTerminal(state.manifest, attempted)
+      emitter.goalFinished(state.manifest, finalReport)
+    }
+    if (finalReport is GoalRunnerRunReport.Completed) {
       request.eventSink.emit(
         GoalRunnerRunEvent.Completed(
-          issueKey = terminalReport.issueKey,
-          completedCount = terminalReport.subtasksCompleted,
-          pendingCount = terminalReport.subtasksPending,
-          blockedCount = terminalReport.subtasksBlocked,
-          pullRequestStatus = terminalReport.pullRequestStatus,
-          pullRequestUrl = terminalReport.pullRequestUrl,
+          issueKey = finalReport.issueKey,
+          completedCount = finalReport.subtasksCompleted,
+          pendingCount = finalReport.subtasksPending,
+          blockedCount = finalReport.subtasksBlocked,
+          pullRequestStatus = finalReport.pullRequestStatus,
+          pullRequestUrl = finalReport.pullRequestUrl,
         ),
       )
     }
-    return terminalReport
+    return finalReport
   }
 
   private fun blockedSelectionIteration(
@@ -157,6 +179,7 @@ class GoalRunner(
     attempted: MutableList<Int>,
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
+    telemetryEmitter: GoalRunnerTelemetryEmitter?,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
@@ -167,7 +190,7 @@ class GoalRunner(
       request.dbPathOverride,
     )
     attempted += subtaskId
-    emitSubtaskStarted(attemptedState, subtaskId, selection, request)
+    emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
     val launchOutcome = subtaskLauncher.launch(
       reconciler.subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
     )
@@ -220,7 +243,12 @@ class GoalRunner(
     subtaskId: Int,
     selection: GoalRunnerSelection.Run,
     request: GoalRunnerRunRequest,
+    telemetryEmitter: GoalRunnerTelemetryEmitter?,
   ) {
+    // SKILL-66 Subtask 3 (AC2): stamp the subtask launch time from the runtime
+    // clock seam so goal_subtask_finished.started_at/duration never derive from
+    // agent-supplied timing.
+    telemetryEmitter?.markSubtaskStarted(subtaskId)
     val currentStepId = attemptedState.manifest.subtasks
       .firstOrNull { it.id == subtaskId }
       ?.let { subtask ->

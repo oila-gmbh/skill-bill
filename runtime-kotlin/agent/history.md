@@ -45,6 +45,16 @@ Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/con
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 
+## [2026-06-05] SKILL-66 subtask 3 goal-runner-runtime-emission
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
+- `GoalRunner` now emits goal lifecycle telemetry via a per-run `GoalRunnerTelemetryEmitter` collaborator (beside `GoalRunnerObservabilityEmitter`/`GoalRunnerLedgerRecorder`): one `goal_started` at loop start (`resumed` from `subtasks.any{hasStarted()}`), one `goal_subtask_finished` per newly-terminal subtask in the segment, one `goal_finished` per segment with split terminal counts. reusable
+- Run-session identity pattern: per-segment id = `parentWorkflowId + ":seg:" + clock-derived segmentStartedAt`; a `priorTerminal` snapshot at loop start + `emittedThisSegment` guard make a centralized `sweepTerminal` transition-detector emit exactly once per subtask and never double-count subtasks finished in earlier segments. reusable
+- Application seam `GoalLifecycleTelemetryEmitter` (3 Unit methods + `NONE` no-op) keeps GoalRunner free of MCP/Clikt/JDBC; impl is `LifecycleTelemetryService` routing goal writes through the existing `enabledStandaloneResult -> database.transaction` path. RuntimeComponent binds the emitter + a `java.time.Clock`. reusable
+- All timing derives from the injected `Clock` seam (no agent-supplied timestamps); emission is purely additive behind `GoalLifecycleTelemetryEmitter.NONE` so existing GoalRunner behavior is byte-equivalent (AC5).
+- Loud-fail gotcha: enabled goal telemetry write failures propagate out of `GoalRunner.run` (no `runCatching` swallow, no silent retry/log downgrade); disabled is a silent no-op. Rationale recorded in `agent/decisions.md`. AC7 matrix in `GoalRunnerTelemetryTest` (fake launcher + fixed clock) locks exact event counts/payloads for clean/blocked/resumed/skipped/loud-fail/NONE.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-04] SKILL-66 subtask 2 goal-telemetry-persistence
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite
 - `LifecycleTelemetryRepository` gains 3 goal write methods (`goalStarted`/`goalSubtaskFinished`/`goalFinished`); the aggregate read lives on `WorkflowStatsRepository.goalStats()` (run/terminal-status counts, duration aggregates, per-subtask outcome breakdown, most-recent run) — D1 split recorded in `agent/decisions.md`. reusable
