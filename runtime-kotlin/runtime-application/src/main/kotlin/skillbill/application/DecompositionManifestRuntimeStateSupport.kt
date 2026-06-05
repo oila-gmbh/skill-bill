@@ -122,7 +122,18 @@ private fun prSuppressedCommitStatus(update: DecompositionManifestRuntimeUpdate)
   }
 }
 
-private fun commitShaFrom(artifacts: Map<String, Any?>): String? = (artifacts["commit_push_result"] as? Map<*, *>)
-  ?.get("commit_sha")
-  ?.toString()
-  ?.takeIf(String::isNotBlank)
+private fun commitShaFrom(artifacts: Map<String, Any?>): String? {
+  val fromCommitPush = (artifacts["commit_push_result"] as? Map<*, *>)
+    ?.get("commit_sha")?.toString()?.trim()?.takeIf(String::isNotBlank)
+  val fromOutcome = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.get("commit_sha")?.toString()?.trim()?.takeIf(String::isNotBlank)
+  if (fromCommitPush != null && fromOutcome != null && fromCommitPush != fromOutcome) {
+    val subtaskId = (artifacts["goal_continuation_outcome"] as? Map<*, *>)?.get("subtask_id")
+      ?: (artifacts["goal_continuation"] as? Map<*, *>)?.get("subtask_id")
+    error(
+      "Conflicting completing commit SHAs for subtask $subtaskId: " +
+        "commit_push_result.commit_sha=$fromCommitPush vs goal_continuation_outcome.commit_sha=$fromOutcome.",
+    )
+  }
+  return fromCommitPush ?: fromOutcome
+}

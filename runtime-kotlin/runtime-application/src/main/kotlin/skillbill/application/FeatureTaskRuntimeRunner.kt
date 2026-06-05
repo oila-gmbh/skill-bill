@@ -10,7 +10,6 @@ import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
-import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -18,6 +17,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -89,7 +89,8 @@ class FeatureTaskRuntimeRunner(
       // Emit the error terminal from best-effort per-phase records, then rethrow the original.
       lifecycleTelemetry.finishedError(telemetrySessionId, phaseOutcomes, runRequest.dbPathOverride)
     }.getOrThrow()
-    val terminalReport = persistGoalContinuationOutcome(goalContinuationRecorder, recorder, runRequest, report)
+    val terminalReport =
+      persistGoalContinuationOutcome(goalContinuationRecorder, recorder, phaseGates.gitOperations, runRequest, report)
     lifecycleTelemetry.finished(telemetrySessionId, terminalReport, phaseOutcomes, runRequest.dbPathOverride)
     return terminalReport
   }
@@ -668,11 +669,12 @@ private fun persistGoalContinuationContext(
 private fun persistGoalContinuationOutcome(
   goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   phaseRecorder: FeatureTaskRuntimePhaseRecorder,
+  gitOperations: WorkflowGitOperations,
   request: FeatureTaskRuntimeRunRequest,
   report: FeatureTaskRuntimeRunReport,
 ): FeatureTaskRuntimeRunReport {
   val context = request.goalContinuation ?: return report
-  val outcome = goalContinuationOutcomeFor(phaseRecorder, request, context, report)
+  val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)
   outcome?.let { terminal ->
     goalContinuationRecorder.recordGoalContinuationState(
       workflowId = request.workflowId,
@@ -698,19 +700,13 @@ private fun persistGoalContinuationOutcome(
 
 private fun goalContinuationOutcomeFor(
   recorder: FeatureTaskRuntimePhaseRecorder,
+  gitOperations: WorkflowGitOperations,
   request: FeatureTaskRuntimeRunRequest,
   context: FeatureTaskRuntimeGoalContinuationContext,
   report: FeatureTaskRuntimeRunReport,
 ): FeatureTaskRuntimeSubtaskOutcome? = when (report) {
-  is FeatureTaskRuntimeRunReport.Completed -> FeatureTaskRuntimeSubtaskOutcome(
-    issueKey = context.parentIssueKey,
-    subtaskId = context.subtaskId,
-    status = "complete",
-    commitSha = commitShaFromPhaseRecords(recorder, request),
-    workflowId = request.workflowId,
-    blockedReason = null,
-    lastResumableStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-  )
+  is FeatureTaskRuntimeRunReport.Completed ->
+    completedGoalContinuationOutcome(recorder, gitOperations, request, context)
   is FeatureTaskRuntimeRunReport.Blocked -> FeatureTaskRuntimeSubtaskOutcome(
     issueKey = context.parentIssueKey,
     subtaskId = context.subtaskId,
@@ -721,29 +717,6 @@ private fun goalContinuationOutcomeFor(
     lastResumableStep = report.lastIncompletePhase,
   )
   is FeatureTaskRuntimeRunReport.Decomposed -> null
-}
-
-private fun commitShaFromPhaseRecords(
-  recorder: FeatureTaskRuntimePhaseRecorder,
-  request: FeatureTaskRuntimeRunRequest,
-): String? {
-  val commitOutput = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
-    .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
-    ?.outputArtifact
-  val payload = commitOutput
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-  return payload?.commitShaFromPhasePayload()
-}
-
-private fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
-  val producedOutputs = JsonSupport.anyToStringAnyMap(this["produced_outputs"])
-  return (this["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
-    ?: (producedOutputs?.get("commit_push_result") as? Map<*, *>)?.get("commit_sha")?.toString()
-      ?.takeIf(String::isNotBlank)
-    ?: producedOutputs?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
-    ?: (this["commit_sha"]?.toString()?.takeIf(String::isNotBlank))
 }
 
 private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {

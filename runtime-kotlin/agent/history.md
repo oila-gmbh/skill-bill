@@ -1,3 +1,14 @@
+## [2026-06-05] SKILL-68 goal-subtask-commit-sha-completion
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports
+- New `FeatureTaskRuntimeGoalContinuationOutcomeSupport`: under `suppress_pr`, resolves commit SHA from `commit_push` phase payload first, then measures git HEAD once via `WorkflowGitOperations`; records `status=complete` iff non-blank SHA found, else `status=blocked` with explicit `blocked_reason` and `last_resumable_step=commit_push`. reusable
+- Defense-in-depth in `GoalRunnerWorkflowStores`: `terminalOutcomeFor` falls through on `complete`-without-SHA rows so the measure branch can heal them; `persistMeasuredCompletion` backfills SHA-less complete rows idempotently; `reconcileAuthoritativeOutcomes` gains nullable `repoRoot` and measures+backfills recoverable candidates. reusable
+- `GoalRunner.storedOutcome` no longer silently no-ops when `manifest.subtasks[id].workflowId` is null — falls back to manifest-workflowId-independent reconciliation. reusable
+- `DecompositionManifestRuntimeStateSupport.commitShaFrom` sources SHA from `commit_push_result.commit_sha` (preferred) or `goal_continuation_outcome.commit_sha`; loud-fail on genuine mismatch. reusable
+- `WorkflowGitOperations` port wired into `FeatureTaskRuntimePhaseGates` via DI; all new behavior gated on `suppress_pr` so non-goal-continuation and `STACKED_BRANCHES` runs are unaffected.
+- Four AC6 regression cases proven in `FeatureTaskRuntimeRunnerTest` (payload SHA / measured SHA / blocked no-SHA / pre-existing complete-without-SHA backfill).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-06-05] SKILL-67 validation-gate-rename-sweep
 Areas: runtime-cli, runtime-infra-fs/install, feature-task runtime tests
 - Added regression coverage that a goal-continuation `feature-task` child reports task-runtime status and resumes a completed child without relaunching phases.

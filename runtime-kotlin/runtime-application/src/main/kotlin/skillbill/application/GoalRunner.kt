@@ -443,6 +443,9 @@ class GoalRunner(
     outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = state.manifest.issueKey,
       activeWorkflowIds = emptySet(),
+      // SKILL-68: the command-path finalize supplies the repo root so a complete-without-SHA child
+      // is healed from measured HEAD and durably backfilled before the goal completes.
+      repoRoot = request.repoRoot,
       dbPathOverride = request.dbPathOverride,
     )
     // AC10/AC11: final reconciled outcome ledger entry at goal finalization,
@@ -852,19 +855,34 @@ internal class GoalRunnerLaunchReconciler(
     reconciled.reason == GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME &&
     shouldRetryNoTerminalOutcome(launchFacts)
 
-  private fun storedOutcome(state: GoalRunnerManifestState, subtaskId: Int, request: GoalRunnerRunRequest) =
-    state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId
+  private fun storedOutcome(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerStoredOutcome? {
+    val manifestWorkflowId = state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { workflowId ->
-        // Lets the store recover a dropped commit SHA from measured HEAD instead of blocking the subtask.
-        outcomeStore.recoverAndPersistTerminalOutcome(
-          workflowId = workflowId,
-          issueKey = state.manifest.issueKey,
-          subtaskId = subtaskId,
-          repoRoot = request.repoRoot,
-          dbPathOverride = request.dbPathOverride,
-        )
-      }
+    if (manifestWorkflowId != null) {
+      // Lets the store recover a dropped commit SHA from measured HEAD instead of blocking the subtask.
+      return outcomeStore.recoverAndPersistTerminalOutcome(
+        workflowId = manifestWorkflowId,
+        issueKey = state.manifest.issueKey,
+        subtaskId = subtaskId,
+        repoRoot = request.repoRoot,
+        dbPathOverride = request.dbPathOverride,
+      )
+    }
+    // SKILL-68 (AC3): the manifest may not yet carry the child workflowId (e.g. a crash before the
+    // advance persisted). Rather than silently no-op solely because the manifest field is null, fall
+    // back to the manifest-workflowId-independent reconciliation, which scans continuation children by
+    // issueKey+subtaskId and, given a repo root, measures HEAD + backfills a recoverable
+    // complete-without-SHA child before returning its authoritative outcome.
+    return outcomeStore.reconcileAuthoritativeOutcomes(
+      issueKey = state.manifest.issueKey,
+      repoRoot = request.repoRoot,
+      dbPathOverride = request.dbPathOverride,
+    )[subtaskId]
+  }
 
   private fun waitForLateTerminalOutcome(
     state: GoalRunnerManifestState,

@@ -510,7 +510,7 @@ class GoalRunnerStatusProjectionTest {
     assertEquals("complete", store.manifest.status)
     assertEquals("none", store.manifest.currentSubtaskIntent.action)
     assertEquals("complete", store.manifest.subtasks.single().status)
-    assertEquals(ReconcileRequest("SKILL-56", setOf("wfl-1"), false, null), outcomes.lastReconcileRequest)
+    assertEquals(ReconcileRequest("SKILL-56", setOf("wfl-1"), false, null, null), outcomes.lastReconcileRequest)
   }
 
   @Test
@@ -953,7 +953,7 @@ class GoalRunnerObservabilityTest {
     )
 
     requireNotNull(reset)
-    assertEquals(ReconcileRequest("SKILL-56", emptySet(), true, null), outcomes.lastReconcileRequest)
+    assertEquals(ReconcileRequest("SKILL-56", emptySet(), true, null, null), outcomes.lastReconcileRequest)
     assertEquals("pending", store.manifest.subtasks.single().status)
     assertEquals(null, store.manifest.subtasks.single().workflowId)
     assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "start"), store.manifest.currentSubtaskIntent)
@@ -1350,9 +1350,11 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     activeWorkflowIds: Set<String>,
     allowInactiveReconciliation: Boolean,
+    repoRoot: Path?,
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> {
-    lastReconcileRequest = ReconcileRequest(issueKey, activeWorkflowIds, allowInactiveReconciliation, dbPathOverride)
+    lastReconcileRequest =
+      ReconcileRequest(issueKey, activeWorkflowIds, allowInactiveReconciliation, repoRoot, dbPathOverride)
     return authoritativeOutcomesBySubtask.toMap()
   }
 
@@ -1492,6 +1494,7 @@ internal data class ReconcileRequest(
   val issueKey: String,
   val activeWorkflowIds: Set<String>,
   val allowInactiveReconciliation: Boolean,
+  val repoRoot: Path?,
   val dbPathOverride: String?,
 )
 

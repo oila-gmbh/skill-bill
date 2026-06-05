@@ -959,6 +959,7 @@ private class GoalFixtureAgentRunLauncher(
         WorkflowUpdateFixture(
           dbPath = dbPath,
           workflowId = workflowId,
+          workflowStatus = "completed",
           currentStep = "commit_push",
           stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
           artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),

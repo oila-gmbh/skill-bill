@@ -65,10 +65,14 @@ interface GoalRunnerTerminalOutcomeStore {
 }
 
 interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
+  // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
+  // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is
+  // durably backfilled. null keeps the read-only, no-measure behavior for pure status/read callers.
   fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String> = emptySet(),
     allowInactiveReconciliation: Boolean = true,
+    repoRoot: Path? = null,
     dbPathOverride: String? = null,
   ): Map<Int, GoalRunnerStoredOutcome>
 

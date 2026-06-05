@@ -254,15 +254,40 @@ class WorkflowGoalRunnerOutcomeStore(
     issueKey: String,
     activeWorkflowIds: Set<String>,
     allowInactiveReconciliation: Boolean,
+    repoRoot: Path?,
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> = database.transaction(dbPathOverride) { unitOfWork ->
     val normalizedIssueKey = issueKey.trim()
     val activeSet = activeWorkflowIds.map(String::trim).filter(String::isNotBlank).toSet()
-    val initialCandidates = loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey)
+    val initialCandidates = loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
+    // SKILL-68 (AC3/AC4 case 4): with a repo root, this is the manifest-workflowId-independent heal.
+    // A candidate that resolved COMPLETE via a measured HEAD SHA (its artifacts carried no SHA) is
+    // durably backfilled into its goal_continuation_outcome BEFORE the stale-running markBlocked pass,
+    // so the now-authoritative complete-with-SHA outcome masks the blocked workflow status on the
+    // re-read. persistMeasuredCompletion is idempotent: a candidate already carrying a SHA is a no-op.
+    if (repoRoot != null) {
+      initialCandidates
+        .filter { candidate -> candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE }
+        .forEach { candidate ->
+          persistMeasuredCompletion(
+            unitOfWork.workflowStates,
+            candidate.snapshot.workflowId,
+            candidate.goalContinuation.issueKey,
+            candidate.goalContinuation.subtaskId,
+            requireNotNull(candidate.outcome),
+          )
+        }
+    }
     val initialAuthoritative = initialCandidates.authoritativeOutcomesBySubtask()
     initialCandidates
       .filter { candidate ->
         if (candidate.snapshot.workflowStatus != "running") {
+          return@filter false
+        }
+        // SKILL-68: a candidate whose own resolved outcome is COMPLETE is done, not stale — never
+        // stale-block it. Blocking it would also re-save its pre-backfill snapshot and revert a
+        // just-measured commit SHA.
+        if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) {
           return@filter false
         }
         val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
@@ -290,7 +315,7 @@ class WorkflowGoalRunnerOutcomeStore(
           ),
         )
       }
-    loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey)
+    loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
       .authoritativeOutcomesBySubtask()
   }
 
@@ -393,7 +418,11 @@ class WorkflowGoalRunnerOutcomeStore(
       ?.takeIf { outcome.status == GoalRunnerTerminalStatus.COMPLETE && !outcome.commitSha.isNullOrBlank() }
     recordContext?.let { (family, record) ->
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val needsBackfill = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr) == null &&
+      // SKILL-68: also backfill a previously persisted complete-without-SHA outcome (not only a
+      // missing one), so a row stranded by the legacy SHA-less `complete` is healed once HEAD is
+      // measurable. The L393 guard keeps this one-shot: a row already carrying a SHA never re-fires.
+      val existingOutcome = goalContinuationOutcome(artifacts, issueKey, subtaskId, outcome.suppressPr)
+      val needsBackfill = (existingOutcome == null || existingOutcome.commitSha.isNullOrBlank()) &&
         commitShaFrom(artifacts).isNullOrBlank()
       if (needsBackfill) {
         val updated = engine.updateRecord(
@@ -659,6 +688,10 @@ class WorkflowGoalRunnerOutcomeStore(
   private fun loadContinuationCandidates(
     workflowStates: WorkflowStateRepository,
     issueKey: String,
+    // SKILL-68: when present, a complete-without-SHA candidate may recover its SHA from measured
+    // HEAD (the manifest-workflowId-independent heal). null keeps the read-only, no-measure path
+    // for pure status callers.
+    repoRoot: Path? = null,
   ): List<GoalContinuationCandidate> = listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).flatMap { family ->
     family.list(workflowStates, Int.MAX_VALUE).mapNotNull { snapshot ->
       engine.snapshotView(family.definition, snapshot)
@@ -671,7 +704,9 @@ class WorkflowGoalRunnerOutcomeStore(
         family = family,
         snapshot = snapshot,
         goalContinuation = goalContinuation,
-        outcome = terminalOutcomeFor(snapshot, artifacts, goalContinuation),
+        outcome = terminalOutcomeFor(snapshot, artifacts, goalContinuation) {
+          repoRoot?.let { root -> gitOperations.headCommitSha(root).measuredCommitSha() }
+        },
       )
     }
   }
@@ -786,7 +821,12 @@ private fun terminalOutcomeFor(
   issueKey = goalContinuation.issueKey,
   subtaskId = goalContinuation.subtaskId,
   suppressPr = goalContinuation.suppressPr,
-)?.copy(workflowId = snapshot.workflowId) ?: run {
+)
+  // SKILL-68: a stored complete-without-SHA outcome is NOT authoritative for the SHA decision; it
+  // falls through to the measure branch so the recovery path can heal it. Stored non-complete
+  // statuses and complete-WITH-SHA outcomes remain authoritative and short-circuit as before.
+  ?.takeUnless { it.status == GoalRunnerTerminalStatus.COMPLETE && it.commitSha.isNullOrBlank() }
+  ?.copy(workflowId = snapshot.workflowId) ?: run {
   val steps = decodeWorkflowSteps(snapshot.stepsJson)
   val commitSha = commitShaFrom(artifacts)
     ?: if (commitPushCompletedUnderSuppressPr(steps, goalContinuation.suppressPr)) measuredCommitSha() else null

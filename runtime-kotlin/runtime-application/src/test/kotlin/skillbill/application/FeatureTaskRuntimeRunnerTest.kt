@@ -891,6 +891,81 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `goal-continuation with payload commit sha completes without measuring git head`() {
+    // SKILL-68 AC6 case i (unchanged happy path): a commit_push payload SHA is authoritative and the
+    // runtime never falls back to measuring git HEAD.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-payload-sha")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = "measured-head-should-not-be-used" }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+
+    val report = harness.runner.run(harness.request())
+
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals("complete", completed.subtaskOutcome?.status)
+    assertEquals("commit-runtime-1", completed.subtaskOutcome?.commitSha)
+    assertEquals(0, git.headCommitShaCalls, "payload SHA present must not trigger a git HEAD measurement")
+    val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
+    assertEquals("complete", outcome["status"])
+    assertEquals("commit-runtime-1", outcome["commit_sha"])
+  }
+
+  @Test
+  fun `goal-continuation without payload sha completes with measured git head`() {
+    // SKILL-68 AC6 case ii: no payload SHA but a measurable HEAD -> complete with the measured SHA.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-measured-sha")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = "measured-head-sha" }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(COMMIT_PUSH_NO_SHA_OUTPUT))
+
+    val report = harness.runner.run(harness.request())
+
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals("complete", completed.subtaskOutcome?.status)
+    assertEquals("measured-head-sha", completed.subtaskOutcome?.commitSha)
+    assertTrue(git.headCommitShaCalls >= 1, "a missing payload SHA must trigger a git HEAD measurement")
+    val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
+    assertEquals("complete", outcome["status"])
+    assertEquals("measured-head-sha", outcome["commit_sha"])
+  }
+
+  @Test
+  fun `goal-continuation without payload sha and unmeasurable head blocks instead of completing`() {
+    // SKILL-68 AC6 case iii: no payload SHA and a blank HEAD -> blocked with an explicit reason and
+    // last_resumable_step=commit_push; the runtime must NOT record a SHA-less complete.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-sha")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(COMMIT_PUSH_NO_SHA_OUTPUT))
+
+    val report = harness.runner.run(harness.request())
+
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals("blocked", completed.subtaskOutcome?.status)
+    assertNull(completed.subtaskOutcome?.commitSha)
+    assertEquals("commit_push", completed.subtaskOutcome?.lastResumableStep)
+    assertContains(requireNotNull(completed.subtaskOutcome?.blockedReason), "no commit SHA")
+    val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
+    assertEquals("blocked", outcome["status"])
+    assertNull(outcome["commit_sha"], "a blocked SHA-less outcome must not record a commit_sha")
+  }
+
+  @Test
+  fun `non-goal-continuation run never measures git head for the outcome`() {
+    // SKILL-68 AC5 control: a normal (non-goal-continuation) run records no goal-continuation outcome
+    // and never measures git HEAD for it.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
+      .also { it.headCommitShaValue = "should-not-read" }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    harness.runner.run(harness.request())
+
+    assertEquals(0, git.headCommitShaCalls, "a non-goal-continuation run must not measure git HEAD for an outcome")
+  }
+
+  @Test
   fun `resume of a durably complete decompose plan reports decomposed without advancing to implement`() {
     // PC-F001 (resume fall-through): PLAN is durably completed as a non-goal-continuation decompose
     // outcome, but the process crashed before the decompose terminal was observed. A re-run must
@@ -1656,23 +1731,21 @@ private fun runnerHarness(
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
   val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
   val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
-  val decompositionPlanner = if (runtimeConfig.useRealDecompositionPlanner) {
-    testDecompositionPlanner()
-  } else {
-    noOpDecompositionPlanner()
-  }
-  val planningStopper = FeatureTaskRuntimePlanningStopper(
-    validator,
-    decompositionPlanner,
-    decomposeTerminalRecorder,
-  )
+  val decompositionPlanner =
+    if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
+  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
   val runner = FeatureTaskRuntimeRunner(
     launcher,
     recorder,
     goalContinuationRecorder,
     runInvariantsStore,
     validator,
-    FeatureTaskRuntimePhaseGates(branchSetupRunner, planningStopper, disabledRuntimeLifecycleTelemetry(database)),
+    FeatureTaskRuntimePhaseGates(
+      branchSetupRunner,
+      planningStopper,
+      disabledRuntimeLifecycleTelemetry(database),
+      runtimeConfig.branchSetup.gitOperations,
+    ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
@@ -1751,6 +1824,7 @@ private fun telemetryRunnerHarness(
       FeatureTaskRuntimeLifecycleTelemetry(
         LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
       ),
+      runtimeConfig.branchSetup.gitOperations,
     ),
   )
   val request = FeatureTaskRuntimeRunRequest(
@@ -1824,6 +1898,49 @@ private fun validProducedOutputs(phaseId: String): String = if (phaseId == "comm
 } else {
   """{"tasks": ["task-1"]}"""
 }
+
+// A commit_push phase output that completes without emitting a commit_sha, modelling the
+// goal-continuation SHA-drop the SKILL-68 capture-at-source path must recover from.
+private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
+  {
+    "contract_version": "0.1",
+    "phase_id": "commit_push",
+    "status": "completed",
+    "summary": "Phase produced a validated output.",
+    "produced_outputs": {"commit_push_result": {"status": "committed"}}
+  }
+""".trimIndent()
+
+// Launcher for a suppress_pr goal-continuation run: every phase returns a valid output, with the
+// commit_push phase returning the supplied payload so a test can vary whether a SHA is present.
+private fun goalContinuationLauncher(commitPushOutput: String): RuntimeRecordingLauncher =
+  RuntimeRecordingLauncher { request ->
+    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    facts(if (phaseId == "commit_push") commitPushOutput else validJsonOutput(phaseId))
+  }
+
+// Builds a suppress_pr goal-continuation harness with a caller-supplied git fake and launcher so a
+// test can seed the measurable/blank HEAD and the commit_push payload independently.
+private fun goalContinuationHarness(
+  repoRoot: Path,
+  git: RecordingWorkflowGitOperations,
+  launcher: RuntimeRecordingLauncher,
+): RunnerHarness = runnerHarness(
+  launcher = launcher,
+  agentAssignment = phasePerAgentAssignment(),
+  runtimeConfig = RuntimeHarnessConfig(
+    branchSetup = BranchSetupTestConfig(gitOperations = git),
+    repoRoot = repoRoot,
+    goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+      parentIssueKey = ISSUE_KEY,
+      subtaskId = 5,
+      goalBranch = "feat/existing-runtime-branch",
+      suppressPr = true,
+      parentWorkflowId = "wfl-parent",
+    ),
+    useRealDecompositionPlanner = true,
+  ),
+)
 
 private val DECOMPOSE_PLAN_OUTPUT: String = """
   {
@@ -2019,6 +2136,10 @@ private class RecordingWorkflowGitOperations(
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
 ) : WorkflowGitOperations {
+  // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
+  // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
+  var headCommitShaValue: String = ""
+  var headCommitShaResult: WorkflowGitOperationResult? = null
   data class CheckoutCall(val branch: String, val baseBranch: String?)
 
   val checkoutCalls = mutableListOf<CheckoutCall>()
@@ -2049,8 +2170,12 @@ private class RecordingWorkflowGitOperations(
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "recorded")
 
-  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+  var headCommitShaCalls: Int = 0
+
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult {
+    headCommitShaCalls++
+    return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
+  }
 
   override fun validateBranchBase(
     repoRoot: Path,

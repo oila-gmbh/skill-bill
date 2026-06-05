@@ -103,6 +103,10 @@ Keep live output enabled unless the user asks for quieter output.
 
 ## Watching Long Runs (orchestrator pattern)
 
+The user must see the goal progress, not wait in silence for a terminal result.
+Surfacing meaningful transitions inline as they arrive is a contract obligation
+of the invoking agent, not optional polish.
+
 Long goal runs may exceed a foreground command timeout. When that risk exists,
 run the driver detached and consume progress through read-only commands rather
 than holding the foreground call open:
@@ -147,7 +151,7 @@ and stderr remain explicit opt-in via `--debug-child-output`; default output
 keeps raw child streams hidden and surfaces only compact progress, observability,
 and transition lines.
 
-During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, do not continue the loop manually; summarize the stopped subtask, reason, workflow id when present, and resumable step.
+During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, surface it loudly and immediately, do not continue the loop manually, and summarize the stopped subtask, reason, workflow id when present, and resumable step. On a clean finish, report the terminal per-subtask summary — complete, pending, and blocked counts and the final outcome — from the authoritative workflow state.
 
 `skill-bill goal <issue_key>` remains consumer-only. It does not synthesize
 decomposition from prose and should loud-fail when the decomposition manifest is

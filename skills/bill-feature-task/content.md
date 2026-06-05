@@ -65,6 +65,27 @@ Do not ask the user to run this command manually. Keep the run in the foreground
 unless the user asks otherwise; pass `--monitor` to tee phase transitions to the
 terminal.
 
+### Live Observation
+
+The run is long-lived and the user must see it progress, not wait in silence for
+a terminal result. The invoking agent owns surfacing phase transitions in the
+conversation as they happen:
+
+- Always launch the driver with `--monitor` so the runtime tees its structured
+  per-phase progress.
+- When the run is executed in the background (for example because it can outlast
+  a single foreground shell window), attach a persistent, line-buffered observer
+  to the runtime's progress stream — tailing the run's output — filtered to phase
+  starts and completions, schema-gate results, retries, blocked phases, failures,
+  and run completion. Relay each event inline in plain language as it arrives.
+- Surface a blocked or failed gate loudly and immediately; never narrate a
+  blocked run as if it were progressing normally. On completion, report the
+  terminal per-phase summary.
+
+This is observation only: the agent reports what the runtime emits and never
+re-derives or re-orders the phase loop. The durable workflow state remains
+authoritative over any relayed line.
+
 The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the
 schema gate, persists per-phase state, and blocks loudly on a failed gate or a

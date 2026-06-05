@@ -846,6 +846,47 @@ class GoalRunnerCommitShaRecoveryTest {
     assertEquals("prefixless terminal json", outcome.blockedReason)
   }
 
+  @Test
+  fun `reconciliation backfills a pre-existing complete-without-sha outcome from measured git head`() {
+    // SKILL-68 AC6 case iv: a previously persisted complete-without-SHA store row is healed on the
+    // next reconciliation (manifest-workflowId-independent) — the measured HEAD SHA is durably
+    // backfilled and the subtask resolves COMPLETE.
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    val reconciled = store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1", repoRoot = Path.of("."))
+
+    val outcome = requireNotNull(reconciled[1])
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, outcome.status)
+    assertEquals("measured-head-sha", outcome.commitSha)
+    val durable = requireNotNull(store.terminalOutcome("wfl-child", "SKILL-52.1", 1))
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, durable.status)
+    assertEquals("measured-head-sha", durable.commitSha)
+  }
+
+  @Test
+  fun `reconciliation without a repo root leaves a complete-without-sha outcome unmeasured`() {
+    // SKILL-68 AC5 control: a pure read caller (repoRoot=null) never measures git HEAD, so a
+    // complete-without-SHA outcome is not silently healed by a status read.
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
+    )
+
+    store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1")
+    val durable = requireNotNull(store.terminalOutcome("wfl-child", "SKILL-52.1", 1))
+
+    assertNull(durable.commitSha, "a read-only reconciliation must not backfill a measured SHA")
+  }
+
   private fun commitPushCompletedWithoutCommitSha(workflowId: String): WorkflowStateRecord {
     val opened = testWorkflowEngine.openRecord(
       FeatureImplementWorkflowDefinition.definition,
@@ -868,6 +909,42 @@ class GoalRunnerCommitShaRecoveryTest {
           ),
         ),
         sessionId = "fis-no-sha",
+      ),
+    )
+    return completed.toRecord()
+  }
+
+  // A child stranded in the legacy bug state: commit_push completed under suppress_pr and a durable
+  // goal_continuation_outcome already records `complete`, but the SHA was dropped.
+  private fun completeWithoutShaOutcome(workflowId: String): WorkflowStateRecord {
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      workflowId,
+      "fis-stale-complete",
+      "preplan",
+    )
+    val completed = testWorkflowEngine.updateRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to workflowId,
+            "last_resumable_step" to "commit_push",
+          ),
+        ),
+        sessionId = "fis-stale-complete",
       ),
     )
     return completed.toRecord()
