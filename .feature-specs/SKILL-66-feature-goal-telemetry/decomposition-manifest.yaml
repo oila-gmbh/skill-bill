@@ -3,24 +3,26 @@ contract_version: "0.2"
 issue_key: "SKILL-66"
 feature_name: "feature-goal-telemetry"
 parent_spec_path: ".feature-specs/SKILL-66-feature-goal-telemetry/spec.md"
-status: "pending"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-66-feature-goal-telemetry"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "goal-telemetry-contract-and-schema"
   spec_path: ".feature-specs/SKILL-66-feature-goal-telemetry/spec_subtask_1_goal-telemetry-contract-and-schema.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "Subtask 1 finished without a terminal workflow-store outcome. This\
+    \ can happen when the agent reaches model or rate limits before writing the terminal\
+    \ outcome; check provider limits, then resume from last_resumable_step."
+  last_resumable_step: "preplan"
   dependencies: []
 - id: 2
   name: "goal-telemetry-persistence"
