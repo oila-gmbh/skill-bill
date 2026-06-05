@@ -56,6 +56,16 @@ object McpToolRegistry {
       "feature_verify_workflow_open",
       "feature_verify_workflow_resume",
       "feature_verify_workflow_update",
+      "feature_task_finished",
+      "feature_task_started",
+      "feature_task_stats",
+      "feature_task_workflow_get",
+      "feature_task_workflow_latest",
+      "feature_task_workflow_list",
+      "feature_task_workflow_continue",
+      "feature_task_workflow_open",
+      "feature_task_workflow_resume",
+      "feature_task_workflow_update",
       "feature_task_runtime_finished",
       "feature_task_runtime_started",
       "feature_task_runtime_stats",
@@ -87,17 +97,27 @@ object McpToolRegistry {
   private val descriptions: Map<String, String> =
     mapOf(
       "doctor" to "Check skill-bill installation health.",
-      "feature_implement_finished" to "Record completion of a feature-implement session.",
-      "feature_implement_stats" to "Show aggregate bill-feature-task metrics.",
-      "feature_implement_started" to "Record start of a feature-implement session.",
-      "feature_implement_workflow_continue" to "Continue durable bill-feature-task workflow state.",
-      "feature_implement_workflow_get" to "Fetch read-only full durable bill-feature-task workflow state.",
-      "feature_implement_workflow_latest" to "Fetch the latest bill-feature-task workflow.",
-      "feature_implement_workflow_list" to "List bill-feature-task workflows.",
-      "feature_implement_workflow_open" to "Open durable bill-feature-task workflow state.",
-      "feature_implement_workflow_resume" to "Summarize bill-feature-task workflow resume state.",
+      "feature_implement_finished" to
+        "Record completion of a feature-implement session. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_stats" to
+        "Show aggregate bill-feature-task metrics. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_started" to
+        "Record start of a feature-implement session. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_continue" to
+        "Continue durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_get" to
+        "Fetch read-only full durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_latest" to
+        "Fetch the latest bill-feature-task workflow. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_list" to
+        "List bill-feature-task workflows. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_open" to
+        "Open durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
+      "feature_implement_workflow_resume" to
+        "Summarize bill-feature-task workflow resume state. Deprecated: prefer the feature_task_* family.",
       "feature_implement_workflow_update" to
-        "Update durable bill-feature-task workflow state and return a compact acknowledgement.",
+        "Update durable bill-feature-task workflow state and return a compact acknowledgement. " +
+        "Deprecated: prefer the feature_task_* family.",
       "feature_verify_finished" to "Record completion of a feature-verify session.",
       "feature_verify_stats" to "Show aggregate bill-feature-verify metrics.",
       "feature_verify_started" to "Record start of a feature-verify session.",
@@ -109,20 +129,40 @@ object McpToolRegistry {
       "feature_verify_workflow_resume" to "Summarize bill-feature-verify workflow resume state.",
       "feature_verify_workflow_update" to
         "Update durable bill-feature-verify workflow state and return a compact acknowledgement.",
-      "feature_task_runtime_finished" to "Record completion of an EXPERIMENTAL feature-task-runtime session.",
-      "feature_task_runtime_started" to "Record start of an EXPERIMENTAL feature-task-runtime session.",
-      "feature_task_runtime_stats" to "Show aggregate EXPERIMENTAL feature-task-runtime metrics.",
+      "feature_task_finished" to "Record completion of a feature-task session.",
+      "feature_task_started" to "Record start of a feature-task session.",
+      "feature_task_stats" to "Show aggregate feature-task metrics.",
+      "feature_task_workflow_continue" to
+        "Continue durable bill-feature-task runtime workflow state.",
+      "feature_task_workflow_get" to
+        "Fetch read-only full durable bill-feature-task runtime workflow state.",
+      "feature_task_workflow_latest" to "Fetch the latest bill-feature-task runtime workflow.",
+      "feature_task_workflow_list" to "List bill-feature-task runtime workflows.",
+      "feature_task_workflow_open" to "Open durable bill-feature-task runtime workflow state.",
+      "feature_task_workflow_resume" to
+        "Summarize bill-feature-task runtime workflow resume state.",
+      "feature_task_workflow_update" to
+        "Update durable bill-feature-task runtime workflow state and return a compact acknowledgement.",
+      "feature_task_runtime_finished" to
+        "Deprecated alias for feature_task_finished. Use feature_task_finished.",
+      "feature_task_runtime_started" to
+        "Deprecated alias for feature_task_started. Use feature_task_started.",
+      "feature_task_runtime_stats" to
+        "Deprecated alias for feature_task_stats. Use feature_task_stats.",
       "feature_task_runtime_workflow_continue" to
-        "Continue durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
+        "Deprecated alias for feature_task_workflow_continue. Use feature_task_workflow_continue.",
       "feature_task_runtime_workflow_get" to
-        "Fetch read-only full durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
-      "feature_task_runtime_workflow_latest" to "Fetch the latest EXPERIMENTAL bill-feature-task-runtime workflow.",
-      "feature_task_runtime_workflow_list" to "List EXPERIMENTAL bill-feature-task-runtime workflows.",
-      "feature_task_runtime_workflow_open" to "Open durable EXPERIMENTAL bill-feature-task-runtime workflow state.",
+        "Deprecated alias for feature_task_workflow_get. Use feature_task_workflow_get.",
+      "feature_task_runtime_workflow_latest" to
+        "Deprecated alias for feature_task_workflow_latest. Use feature_task_workflow_latest.",
+      "feature_task_runtime_workflow_list" to
+        "Deprecated alias for feature_task_workflow_list. Use feature_task_workflow_list.",
+      "feature_task_runtime_workflow_open" to
+        "Deprecated alias for feature_task_workflow_open. Use feature_task_workflow_open.",
       "feature_task_runtime_workflow_resume" to
-        "Summarize EXPERIMENTAL bill-feature-task-runtime workflow resume state.",
+        "Deprecated alias for feature_task_workflow_resume. Use feature_task_workflow_resume.",
       "feature_task_runtime_workflow_update" to
-        "Update durable EXPERIMENTAL bill-feature-task-runtime workflow state and return a compact acknowledgement.",
+        "Deprecated alias for feature_task_workflow_update. Use feature_task_workflow_update.",
       "import_review" to "Import code review output into the local telemetry store.",
       "new_skill_scaffold" to "Scaffold a new skill from a validated payload.",
       "pr_description_generated" to "Record PR description generation telemetry.",
@@ -306,6 +346,47 @@ object McpToolRegistry {
           "verdict",
           "finish",
         ),
+      ),
+      "feature_task_started" to objectSchema(
+        required = listOf(
+          "feature_size",
+          "issue_key",
+          "feature_name",
+        ),
+        properties = mapOf(
+          "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
+          "issue_key" to stringSchema(),
+          "feature_name" to stringSchema(),
+          "session_id" to stringSchema(),
+        ),
+      ),
+      "feature_task_finished" to objectSchema(
+        required = listOf(
+          "session_id",
+          "completion_status",
+          "completed_phase_ids",
+        ),
+        properties = mapOf(
+          "session_id" to stringSchema(),
+          "completion_status" to stringSchema(
+            enum = listOf("completed", "blocked", "decomposed_at_planning", "error"),
+          ),
+          "completed_phase_ids" to arraySchema(stringSchema()),
+          "phase_outcomes" to freeObjectSchema,
+          "last_incomplete_phase" to stringSchema(),
+          "blocked_reason" to stringSchema(),
+          "resolved_branch" to stringSchema(),
+        ),
+      ),
+      "feature_task_workflow_continue" to workflowIdSchema(),
+      "feature_task_workflow_get" to workflowIdSchema(),
+      "feature_task_workflow_latest" to emptyObjectSchema,
+      "feature_task_workflow_list" to workflowListSchema(),
+      "feature_task_workflow_open" to workflowOpenSchema(),
+      "feature_task_workflow_resume" to workflowIdSchema(),
+      "feature_task_workflow_update" to workflowUpdateSchema(
+        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+        stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
       "feature_task_runtime_started" to objectSchema(
         required = listOf(

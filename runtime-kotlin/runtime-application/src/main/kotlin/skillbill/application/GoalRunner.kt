@@ -713,15 +713,20 @@ internal class GoalRunnerLaunchReconciler(
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
       ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
     val subtask = state.manifest.subtasks.firstOrNull { it.id == subtaskId }
-    return branch?.let {
+    val specPath = subtask?.specPath?.takeIf(String::isNotBlank)
+    return if (branch != null && subtask != null && specPath != null) {
       SkillRunGoalContinuationContext(
         parentIssueKey = issueKey,
         subtaskId = subtaskId,
-        goalBranch = it,
+        goalBranch = branch,
         suppressPr = true,
+        specPath = specPath,
         parentWorkflowId = state.parentWorkflowId,
-        lastResumableStep = subtask?.lastResumableStep?.takeIf(String::isNotBlank),
+        lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
+        childWorkflowId = state.manifest.workflowIdFor(subtaskId),
       )
+    } else {
+      null
     }
   }
 

@@ -9,6 +9,7 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.workflow.model.GoalProgressEvent
@@ -30,133 +31,32 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class AgentRunLauncherTest {
+  // A phase-briefing prompt override still drives the per-agent CLI directly (not the
+  // goal-continuation skill-bill command), with delivery mechanics unchanged per agent.
   @Test
-  fun `claude adapter builds a fresh inherited-config process command`() {
+  fun `a phase-briefing prompt override drives the per-agent CLI for stdin-delivered agents`() {
     val runner = RecordingAgentRunProcessRunner()
-    val outcome = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(skillRunRequest())
-
-    assertEquals(InstallAgent.CLAUDE, outcome.agent)
-    val request = runner.requests.single()
-    assertEquals("claude", request.command[0])
-    assertContains(request.command, "--print")
-    assertContains(request.command, "--dangerously-skip-permissions")
-    assertContains(request.command, "--add-dir")
-    // The prompt must be delivered via stdin, never as a trailing argv token:
-    // `--add-dir` is variadic and would otherwise consume the prompt as an extra
-    // directory, leaving `claude --print` with no input and hanging on stdin.
-    assertEquals("--add-dir", request.command[request.command.size - 2])
-    assertFalse(request.command.any { value -> "bill-feature-task" in value })
-    assertContains(requireNotNull(request.stdinText), "bill-feature-task")
-    assertContains(
-      requireNotNull(request.stdinText),
-      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
-    )
-    assertContains(requireNotNull(request.stdinText), "Return exactly the `RESULT:` block")
-    assertTrue(request.inheritEnvironment)
-    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
-  }
-
-  @Test
-  fun `codex adapter builds a non-interactive command with inherited shell environment`() {
-    val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
-
-    val request = runner.requests.single()
-    assertEquals(listOf("codex", "exec"), request.command.take(2))
-    assertContains(request.command, "--cd")
-    assertContains(request.command, "--dangerously-bypass-approvals-and-sandbox")
-    assertFalse("--ask-for-approval" in request.command)
-    assertContains(request.command, "shell_environment_policy.inherit=all")
-    assertFalse(request.command.any { value -> "First execute this exact command" in value })
-    assertContains(requireNotNull(request.stdinText), "First execute this exact command")
-    assertContains(requireNotNull(request.stdinText), "Return exactly the `RESULT:` block")
-    // SKILL-64 Subtask 3 (AC2/AC3/AC12/AC13): compact-first continuation prompt.
-    assertContains(
-      requireNotNull(request.stdinText),
-      "compact and is your normal activation contract",
-    )
-    assertContains(requireNotNull(request.stdinText), "workflow show SKILL-56 --format json")
-    assertContains(requireNotNull(request.stdinText), "Bound broad tool output by default")
-    assertContains(
-      requireNotNull(request.stdinText),
-      "Never call `workflow continue` a second time merely to inspect state",
-    )
-    assertContains(requireNotNull(request.stdinText), "must not be treated as a retry of the subtask")
-    assertContains(
-      requireNotNull(request.stdinText),
-      "Never call `skill-bill workflow update` just to mark blocked.",
-    )
-    assertContains(
-      requireNotNull(request.stdinText),
-      "Never run installer or uninstall flows during goal-continuation",
-    )
-    assertContains(requireNotNull(request.stdinText), "do not call `./install.sh`")
-    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
-    assertTrue(request.inheritEnvironment)
-  }
-
-  @Test
-  fun `opencode adapter builds a headless run command without disabling user config`() {
-    val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(skillRunRequest())
-
-    val request = runner.requests.single()
-    assertEquals(listOf("opencode", "run"), request.command.take(2))
-    assertContains(request.command, "--dir")
-    assertContains(request.command, "--dangerously-skip-permissions")
-    assertFalse("--pure" in request.command)
-    assertContains(request.command.last(), "Goal-continuation: enabled.")
-    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
-  }
-
-  @Test
-  fun `a prompt override replaces the goal-continuation prompt for stdin-delivered agents`() {
-    val runner = RecordingAgentRunProcessRunner()
-    val request = skillRunRequest().copy(promptOverride = PHASE_PROMPT)
+    val request = skillRunRequest(goalContinuation = null).copy(promptOverride = PHASE_PROMPT)
 
     requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(request)
 
     val captured = runner.requests.single()
+    assertEquals("claude", captured.command[0])
     assertEquals(PHASE_PROMPT, captured.stdinText)
-    assertFalse(requireNotNull(captured.stdinText).contains("goal-continuation mode"))
     // Delivery mechanics are unchanged: stdin for claude, never a trailing argv token.
     assertEquals("--add-dir", captured.command[captured.command.size - 2])
   }
 
   @Test
-  fun `a prompt override replaces the goal-continuation prompt for argv-delivered agents`() {
+  fun `a phase-briefing prompt override drives the per-agent CLI for argv-delivered agents`() {
     val runner = RecordingAgentRunProcessRunner()
-    val request = skillRunRequest().copy(promptOverride = PHASE_PROMPT)
+    val request = skillRunRequest(goalContinuation = null).copy(promptOverride = PHASE_PROMPT)
 
     requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
 
     val captured = runner.requests.single()
+    assertEquals(listOf("opencode", "run"), captured.command.take(2))
     assertEquals(PHASE_PROMPT, captured.command.last())
-    assertFalse(captured.command.any { value -> "Goal-continuation: enabled." in value })
-  }
-
-  @Test
-  fun `junie adapter builds a current headless command`() {
-    val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.JUNIE]).launch(skillRunRequest())
-
-    val request = runner.requests.single()
-    assertEquals("junie", request.command[0])
-    assertContains(request.command, "--project")
-    assertContains(request.command, "/tmp/skillbill-agent-run")
-    assertContains(request.command, "--output-format")
-    assertContains(request.command, "text")
-    assertContains(request.command, "--skip-update-check")
-    assertContains(request.command, "--timeout")
-    assertContains(request.command, "3000")
-    assertContains(request.command.last(), "First execute this exact command")
-    assertContains(request.command.last(), "Never run installer or uninstall flows during goal-continuation")
-    assertContains(
-      request.command.last(),
-      "skill-bill --db /tmp/skillbill-agent-run/metrics.db workflow continue SKILL-56 --subtask-id 2 --format json",
-    )
-    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
-    assertTrue(request.inheritEnvironment)
   }
 
   @Test
@@ -217,8 +117,14 @@ class AgentRunLauncherTest {
     val runner = RecordingAgentRunProcessRunner()
     val adapter = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX])
 
-    adapter.launch(skillRunRequest(issueKey = "SKILL-56"))
-    adapter.launch(skillRunRequest(issueKey = "SKILL-57"))
+    adapter.launch(
+      skillRunRequest(issueKey = "SKILL-56", goalContinuation = null)
+        .copy(promptOverride = "$PHASE_PROMPT\nIssue key: SKILL-56"),
+    )
+    adapter.launch(
+      skillRunRequest(issueKey = "SKILL-57", goalContinuation = null)
+        .copy(promptOverride = "$PHASE_PROMPT\nIssue key: SKILL-57"),
+    )
 
     assertEquals(2, runner.requests.size)
     assertContains(requireNotNull(runner.requests[0].stdinText), "SKILL-56")
@@ -727,13 +633,29 @@ class AgentRunLauncherTest {
     const val PHASE_PROMPT = "Phase: plan\nTask: produce an ordered plan.\nRequired final output: one raw JSON object."
   }
 
-  private fun skillRunRequest(issueKey: String = "SKILL-56"): SkillRunRequest = SkillRunRequest(
+  private fun skillRunRequest(
+    issueKey: String = "SKILL-56",
+    goalContinuation: SkillRunGoalContinuationContext? = goalContinuationContext(),
+  ): SkillRunRequest = SkillRunRequest(
     issueKey = issueKey,
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
     subtaskId = 2,
     dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
     timeout = 3.seconds,
+    goalContinuation = goalContinuation,
   )
+
+  private fun goalContinuationContext(childWorkflowId: String? = null): SkillRunGoalContinuationContext =
+    SkillRunGoalContinuationContext(
+      parentIssueKey = "SKILL-56",
+      subtaskId = 2,
+      goalBranch = "feat/SKILL-56-goal",
+      suppressPr = true,
+      specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+      parentWorkflowId = "wfl-parent",
+      lastResumableStep = "implement",
+      childWorkflowId = childWorkflowId,
+    )
 
   private fun repoRoot(): Path {
     var current: Path? = Path.of("").toAbsolutePath().normalize()
@@ -811,7 +733,7 @@ class SupervisorProcessLoopEndToEndTest {
   }
 }
 
-private class RecordingAgentRunProcessRunner(
+internal class RecordingAgentRunProcessRunner(
   private val result: AgentRunProcessResult = AgentRunProcessResult(
     exitStatus = 0,
     stdout = "ok",

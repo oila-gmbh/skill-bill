@@ -427,6 +427,15 @@ class GoalRunnerTest {
     assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
   }
 
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+class GoalRunnerStatusProjectionTest {
   @Test
   fun `status projection includes latest observability and requested diff stat when present`() {
     val store = InMemoryGoalManifestStore(

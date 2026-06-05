@@ -39,150 +39,147 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
 
-  override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-    // The prompt is delivered via stdin, not as a trailing argv token: `--add-dir`
-    // is variadic and would otherwise swallow the prompt as an extra directory,
-    // leaving `claude --print` with no input and blocking forever on stdin.
-    command = listOf(
-      "claude",
-      "--print",
-      "--output-format",
-      "text",
-      "--dangerously-skip-permissions",
-      "--add-dir",
-      request.repoRoot.toString(),
-    ),
-    workingDirectory = request.repoRoot,
-    timeout = request.timeout,
-    stdinText = launchPrompt(request),
-    environment = goalContinuationEnvironment(request),
-  )
+  override fun build(request: SkillRunRequest): AgentRunCommand =
+    goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      // The prompt is delivered via stdin, not as a trailing argv token: `--add-dir`
+      // is variadic and would otherwise swallow the prompt as an extra directory,
+      // leaving `claude --print` with no input and blocking forever on stdin.
+      command = listOf(
+        "claude",
+        "--print",
+        "--output-format",
+        "text",
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        request.repoRoot.toString(),
+      ),
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      stdinText = launchPrompt(request),
+      environment = goalContinuationEnvironment(request),
+    )
 }
 
 class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
 
-  override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-    command = listOf(
-      "codex",
-      "exec",
-      "--cd",
-      request.repoRoot.toString(),
-      "--dangerously-bypass-approvals-and-sandbox",
-      "--config",
-      "shell_environment_policy.inherit=all",
-    ),
-    workingDirectory = request.repoRoot,
-    timeout = request.timeout,
-    stdinText = launchPrompt(request),
-    environment = goalContinuationEnvironment(request),
-  )
+  override fun build(request: SkillRunRequest): AgentRunCommand =
+    goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = listOf(
+        "codex",
+        "exec",
+        "--cd",
+        request.repoRoot.toString(),
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--config",
+        "shell_environment_policy.inherit=all",
+      ),
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      stdinText = launchPrompt(request),
+      environment = goalContinuationEnvironment(request),
+    )
 }
 
 class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.OPENCODE
 
-  override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-    command = listOf(
-      "opencode",
-      "run",
-      "--dir",
-      request.repoRoot.toString(),
-      "--dangerously-skip-permissions",
-      launchPrompt(request),
-    ),
-    workingDirectory = request.repoRoot,
-    timeout = request.timeout,
-    environment = goalContinuationEnvironment(request),
-  )
+  override fun build(request: SkillRunRequest): AgentRunCommand =
+    goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = listOf(
+        "opencode",
+        "run",
+        "--dir",
+        request.repoRoot.toString(),
+        "--dangerously-skip-permissions",
+        launchPrompt(request),
+      ),
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      environment = goalContinuationEnvironment(request),
+    )
 }
 
 class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
 
-  override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-    command = buildList {
-      add("junie")
-      add("--project")
-      add(request.repoRoot.toString())
-      add("--output-format")
-      add("text")
-      add("--skip-update-check")
-      request.timeout?.let { timeout ->
-        add("--timeout")
-        add(timeout.toLong(DurationUnit.MILLISECONDS).toString())
-      }
-      add(launchPrompt(request))
-    },
-    workingDirectory = request.repoRoot,
-    timeout = request.timeout,
-    environment = goalContinuationEnvironment(request),
-  )
+  override fun build(request: SkillRunRequest): AgentRunCommand =
+    goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = buildList {
+        add("junie")
+        add("--project")
+        add(request.repoRoot.toString())
+        add("--output-format")
+        add("text")
+        add("--skip-update-check")
+        request.timeout?.let { timeout ->
+          add("--timeout")
+          add(timeout.toLong(DurationUnit.MILLISECONDS).toString())
+        }
+        add(launchPrompt(request))
+      },
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      environment = goalContinuationEnvironment(request),
+    )
 }
 
-// A caller-supplied prompt override (e.g. a feature-task-runtime phase briefing) replaces the
-// default goal-continuation prompt wholesale; the delivery mechanics (stdin vs argv) stay
-// per-agent.
-internal fun launchPrompt(request: SkillRunRequest): String = request.promptOverride ?: continuationPrompt(request)
-
-internal fun continuationPrompt(request: SkillRunRequest): String {
-  val dbOption = request.dbPathOverride?.let { db -> " --db ${shellDisplay(db)}" }.orEmpty()
-  val subtaskOption = request.subtaskId?.let { id -> " --subtask-id $id" }.orEmpty()
-  val subtaskLine = request.subtaskId?.let { id -> "\nSubtask id: $id" }.orEmpty()
-  val runtimeContext = request.goalContinuation?.let { context ->
-    """
-    Runtime goal-continuation context:
-    parent_issue_key: ${context.parentIssueKey}
-    subtask_id: ${context.subtaskId}
-    goal_branch: ${context.goalBranch}
-    suppress_pr: ${context.suppressPr}
-    parent_workflow_id: ${context.parentWorkflowId.orEmpty()}
-    last_resumable_step: ${context.lastResumableStep.orEmpty()}
-    """.trimIndent()
-  }.orEmpty()
-  // SKILL-64 Subtask 3 (AC1-AC3, AC12, AC13): the compact continuation output is
-  // the normal activation contract. Still run `workflow continue` first (AC1);
-  // do not imply reasoning over full workflow JSON by default (AC2); fetch the
-  // read-only full-state command only when compact output says required context
-  // is missing/truncated (AC3); bound broad tool output (AC13); and classify
-  // diagnostic/manual `continue` calls so they are not mistaken for retries (AC12).
-  return """
-    Use the installed `bill-feature-task` skill in non-interactive goal-continuation mode.
-
-    Issue key: ${request.issueKey}$subtaskLine
-    Goal-continuation: enabled.
-    suppress_pr: true.
-    $runtimeContext
-
-    First execute this exact command from the repository root:
-    `skill-bill$dbOption workflow continue ${shellDisplay(request.issueKey)}$subtaskOption --format json`
-
-    The continuation output is compact and is your normal activation contract. Act on the returned
-    `continuation_entry_prompt` directly. Do NOT inspect or reason over full workflow JSON by default, and do
-    NOT request the full durable state just to orient yourself.
-
-    Only if the compact continuation output explicitly reports that required context is missing or truncated,
-    fetch read-only full state once with:
-    `skill-bill$dbOption workflow show ${shellDisplay(request.issueKey)} --format json`
-    Never call `workflow continue` a second time merely to inspect state; a second `continue` is a retry of the
-    activation contract, not a read. Any diagnostic or manual-inspection `continue` you make is classified as
-    diagnostic and must not be treated as a retry of the subtask.
-
-    Bound broad tool output by default: prefer narrow, scoped follow-up reads over dumping large command output
-    into the conversation. Do not paste large file or command dumps into history; request the specific lines or
-    fields you need.
-
-    Then continue until the workflow store reaches a terminal goal-continuation outcome.
-    Do not force workflow state manually. Never call `skill-bill workflow update` just to mark blocked.
-    Never run installer or uninstall flows during goal-continuation: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This overrides repo instructions that normally ask for local install refresh after governed skill source edits; record skipped install-sync work in the result instead.
-    If the continuation command reports `continue_status=blocked` or `continue_status=done`, treat that durable state as authoritative and stop.
-    Treat durable workflow state as authoritative. Do not infer subtask success from stdout.
-    Return exactly the `RESULT:` block required by the bill-feature-task implementation subagent contract.
-  """.trimIndent()
+// A caller-supplied prompt override (e.g. a feature-task-runtime phase briefing) is delivered to
+// the per-agent CLI wholesale; the delivery mechanics (stdin vs argv) stay per-agent. The default
+// goal-continuation path no longer drives an agent at all — see goalContinuationCommand.
+internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
+  "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
 }
 
-private fun shellDisplay(value: String): String = if (value.all { char -> char.isLetterOrDigit() || char in "-_./:" }) {
-  value
-} else {
-  "'" + value.replace("'", "'\"'\"'") + "'"
+// SKILL-67 Subtask 3 (AC1, AC3, AC6): a goal-continuation child with no phase-briefing prompt
+// override runs `skill-bill feature-task run|resume` directly as the spawned process instead of an
+// agent CLI told to "use the bill-feature-task skill". Selecting `resume <workflow_id>` when the
+// subtask already has a child workflow id makes the runtime skip completed phases; `run` is used
+// for the first attempt. Returns null for phase-briefing runs so the per-agent agent command is
+// used instead.
+internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAgent): AgentRunCommand? {
+  val context = request.goalContinuation
+  return if (context == null || request.promptOverride != null) {
+    null
+  } else {
+    AgentRunCommand(
+      command = buildList {
+        add("skill-bill")
+        request.dbPathOverride?.let { db ->
+          add("--db")
+          add(db)
+        }
+        add("feature-task")
+        val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
+        if (childWorkflowId != null) {
+          add("resume")
+          add(childWorkflowId)
+        } else {
+          add("run")
+        }
+        add(request.issueKey)
+        add(context.specPath)
+        add("--goal-parent-issue-key")
+        add(context.parentIssueKey)
+        add("--goal-subtask-id")
+        add(context.subtaskId.toString())
+        add("--goal-branch")
+        add(context.goalBranch)
+        add("--suppress-pr")
+        context.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+          add("--goal-parent-workflow-id")
+          add(parentWorkflowId)
+        }
+        context.lastResumableStep?.takeIf(String::isNotBlank)?.let { step ->
+          add("--goal-last-resumable-step")
+          add(step)
+        }
+        add("--agent")
+        add(agent.id)
+      },
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      environment = goalContinuationEnvironment(request),
+    )
+  }
 }

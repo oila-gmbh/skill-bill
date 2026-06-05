@@ -308,6 +308,12 @@ that procedure (no gate weakened, model held constant for quality).
 evidence. No automated routing change is implied by this rule; promotion or
 retirement is an explicit maintainer action.
 
+**Promote Decision (Recorded).** On 2026-06-05, the skill-bill maintainer
+(repository owner) recorded the promote decision for `feature-task-runtime`.
+SKILL-67 executes that decision by promoting the runtime-backed path to canonical
+`bill-feature-task` and updating the legacy surfaces through its own scoped
+follow-up contract.
+
 **Promote** `feature-task-runtime` to replace the prose orchestrator only when
 the evidence shows ALL of:
 

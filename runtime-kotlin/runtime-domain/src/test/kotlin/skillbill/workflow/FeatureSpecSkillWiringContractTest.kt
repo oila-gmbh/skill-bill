@@ -36,8 +36,8 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `bill feature task content routes decomposition through shared preparation path`() {
-    val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
+  fun `bill feature task legacy content routes decomposition through shared preparation path`() {
+    val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-legacy/content.md"))
 
     assertContains(content, "## Shared Feature-Spec Preparation Path")
     assertContains(content, "invoke the shared feature-spec preparation path")

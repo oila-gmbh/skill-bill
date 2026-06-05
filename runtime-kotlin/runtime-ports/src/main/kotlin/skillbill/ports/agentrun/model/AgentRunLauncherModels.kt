@@ -40,15 +40,19 @@ data class SkillRunGoalContinuationContext(
   val subtaskId: Int,
   val goalBranch: String,
   val suppressPr: Boolean,
+  val specPath: String,
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
+  val childWorkflowId: String? = null,
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
     require(subtaskId > 0) { "subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "goalBranch is required." }
+    require(specPath.isNotBlank()) { "specPath is required." }
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
+    childWorkflowId?.let { require(it.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
   }
 }
 

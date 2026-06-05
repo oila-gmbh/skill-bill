@@ -43,6 +43,23 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.VERIFY, arguments, context) },
       "feature_verify_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.VERIFY, arguments, context) },
+      "feature_task_finished" to ::featureTaskRuntimeFinished,
+      "feature_task_started" to ::featureTaskRuntimeStarted,
+      "feature_task_stats" to { _, context -> McpRuntime.featureTaskRuntimeStats(context) },
+      "feature_task_workflow_continue" to
+        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_workflow_get" to
+        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_workflow_latest" to
+        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context) },
+      "feature_task_workflow_list" to
+        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_workflow_open" to
+        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_workflow_resume" to
+        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "feature_task_workflow_update" to
+        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "feature_task_runtime_finished" to ::featureTaskRuntimeFinished,
       "feature_task_runtime_started" to ::featureTaskRuntimeStarted,
       "feature_task_runtime_stats" to { _, context -> McpRuntime.featureTaskRuntimeStats(context) },

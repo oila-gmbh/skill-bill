@@ -574,6 +574,18 @@ class WorkflowServiceTest {
     )
   }
 
+  private fun newService(): WorkflowService {
+    val workflows = InMemoryWorkflowStates()
+    return WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+  }
+}
+
+class WorkflowGoalStatusProjectionTest {
   @Test
   fun `goal status omits stale active observability after terminal projection wins`() {
     val workflows = InMemoryWorkflowStates()
@@ -596,16 +608,6 @@ class WorkflowServiceTest {
     assertNull(projection.currentSubtaskId)
     assertNull(projection.latestObservabilityEvent)
     assertNull(projection.latestLivenessSignal)
-  }
-
-  private fun newService(): WorkflowService {
-    val workflows = InMemoryWorkflowStates()
-    return WorkflowService(
-      database = FakeDatabaseSessionFactory(workflows),
-      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-    )
   }
 
   private fun saveCompleteGoalParent(workflows: InMemoryWorkflowStates) {

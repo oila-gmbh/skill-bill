@@ -36,6 +36,7 @@ For `single_spec` output:
 
 - Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session.
 - Do not invoke `bill-feature-goal`.
+- Do not invoke `bill-feature-task-legacy`; it is a deprecated fallback, not a dispatch target.
 - Let `bill-feature-task` own implementation, review, validation, history, and PR description behavior.
 
 For `decomposed` output:

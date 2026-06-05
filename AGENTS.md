@@ -16,7 +16,12 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` is the flagship workflow: spec to plan, implementation, code review, quality check, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents.
+`bill-feature-task` is the canonical runtime-backed flagship workflow: spec to plan, implementation, code review, quality check, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents. `bill-feature-task-legacy` is deprecated; see the SKILL-67 parent spec for the authoritative deprecation-window source.
+
+Skill catalog status:
+
+- `bill-feature-task`: canonical runtime-backed feature-task workflow.
+- `bill-feature-task-legacy`: deprecated prose orchestrator retained only for the SKILL-67 deprecation window.
 
 Bundled skills and reference packs are useful defaults, not the framework boundary. Teams may delete, fork, or replace bundled workflows while retaining the governed contracts: source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
@@ -77,7 +82,7 @@ Product versus extension surface:
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
 
-`kmp` quality-check routing currently falls back to `kotlin`. `bill-feature-task` and `bill-feature-verify` remain pre-shell.
+`kmp` quality-check routing currently falls back to `kotlin`. `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 

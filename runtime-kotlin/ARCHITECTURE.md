@@ -521,30 +521,28 @@ skillbill.workflow.implement
 skillbill.workflow.verify
 ```
 
-## Feature-Task-Runtime Workflow Family (EXPERIMENTAL)
+## Feature-Task Workflow Family
 
-- `feature-task-runtime` (SKILL-65) is an **experimental** workflow family,
-  distinct from and additive to `bill-feature-task`. The Kotlin runtime owns its
-  phase loop (`plan -> implement -> review -> audit -> validate`) and launches
-  one agent per phase, reusing the goal-runner launcher and `WorkflowEngine`
-  rather than a second orchestration loop. Its definition is
+- `feature-task` is the canonical runtime-backed workflow family for
+  `bill-feature-task`. The Kotlin runtime owns its phase loop (`plan ->
+  implement -> review -> audit -> validate`) and launches one agent per phase,
+  reusing the goal-runner launcher and `WorkflowEngine` rather than a second
+  orchestration loop. Its definition is
   `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
-  (own skill/workflow name `feature-task-runtime`, id prefix `wftr`, contract
+  (durable workflow name `feature-task-runtime`, id prefix `wftr`, contract
   version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`), and its per-phase records and
   append-only ledger live in
   `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePersistenceModels`.
-- It is **experimental and must not destabilize or re-route `bill-feature-task`.**
-  It is not a default path and nothing auto-routes work to it; it stays opt-in
-  behind its own `skill-bill feature-task-runtime` command and the
-  `bill-feature-task-runtime` skill. `bill-feature-task`, its
-  `FeatureImplementWorkflowDefinition`, CLI, MCP tools, mappers, and tests are
-  unchanged by this family.
-- The same-spec evaluation procedure is documented in
-  [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md);
-  the authoritative promote/kill decision rule lives in the parent spec
-  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`. The
-  experiment cannot linger as permanent dual maintenance — it is promoted or
-  retired on the evidence that procedure produces.
+- The deprecated `feature-task-runtime` CLI / `feature_task_runtime_*` aliases
+  and the deprecated `bill-feature-task-legacy` / `feature_implement_*` surfaces
+  are compatibility surfaces only; `bill-feature` routes single-spec work to the
+  canonical `bill-feature-task` path. The authoritative recorded promote
+  decision lives in
+  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-67
+  owns the promotion execution and deprecation-window source.
+- The comparison procedure that produced the promotion evidence remains
+  documented in
+  [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md).
 
 ## Runtime Contract And Schema Seams
 

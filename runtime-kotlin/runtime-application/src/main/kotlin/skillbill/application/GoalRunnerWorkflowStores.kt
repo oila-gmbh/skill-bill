@@ -63,18 +63,24 @@ class WorkflowGoalRunnerManifestStore(
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
-    if (
-      stored != null &&
-      projected != null &&
-      projected.isCompleteGoalProjection() &&
-      !stored.manifest.isCompleteGoalProjection()
-    ) {
-      return saveWorkflowProjection(stored.copy(manifest = projected), dbPathOverride).state
+    if (shouldRefreshFromCompleteProjection(stored, projected)) {
+      return saveWorkflowProjection(
+        requireNotNull(stored).copy(manifest = requireNotNull(projected)),
+        dbPathOverride,
+      ).state
     }
     return stored ?: projected?.let { manifest ->
       importFromManifestProjection(manifest, dbPathOverride)
     }
   }
+
+  private fun shouldRefreshFromCompleteProjection(
+    stored: GoalRunnerManifestState?,
+    projected: DecompositionManifest?,
+  ): Boolean = stored != null &&
+    projected != null &&
+    projected.isCompleteGoalProjection() &&
+    !stored.manifest.isCompleteGoalProjection()
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
     val saved = saveWorkflowProjection(state, dbPathOverride)
@@ -594,7 +600,13 @@ class WorkflowGoalRunnerOutcomeStore(
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
     dbPathOverride: String?,
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId)
+    // SKILL-67 Subtask 3 (AC2, AC4): resolve the owning family so a TASK_RUNTIME
+    // child row is updated instead of no-op-returning false (which would trip
+    // workerRequestAuditFailureStop). Returns false only when no family owns the
+    // id, matching appendHistoryArtifact semantics.
+    val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val record = family.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existing = (artifacts[WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY] as? List<*>)
@@ -604,7 +616,7 @@ class WorkflowGoalRunnerOutcomeStore(
     val updatedOutcomes = (existing + outcomes.map(GoalRunnerWorkerSubtaskRequestOutcome::toArtifactMap))
       .takeLast(WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT)
     val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      family.definition,
       record,
       WorkflowUpdateInput(
         workflowStatus = record.workflowStatus,
@@ -614,7 +626,7 @@ class WorkflowGoalRunnerOutcomeStore(
         sessionId = record.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    family.save(unitOfWork.workflowStates, updated)
     true
   }
 

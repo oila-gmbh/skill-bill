@@ -30,7 +30,8 @@ class UtilityCliCommandGroup(
   workflowCommands: WorkflowTopLevelCommands,
   repoValidationCommands: RepoValidationCliCommands,
   goalRunCommand: GoalRunCommand,
-  featureTaskRuntimeRunCommand: FeatureTaskRuntimeRunCommand,
+  featureTaskRunCommand: FeatureTaskRuntimeRunCommand,
+  featureTaskRuntimeDeprecatedRunCommand: FeatureTaskRuntimeDeprecatedRunCommand,
   versionCommand: VersionCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
@@ -38,7 +39,8 @@ class UtilityCliCommandGroup(
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
       goalRunCommand,
-      featureTaskRuntimeRunCommand,
+      featureTaskRunCommand,
+      featureTaskRuntimeDeprecatedRunCommand,
       versionCommand,
       doctorCommand,
       removeCommand,

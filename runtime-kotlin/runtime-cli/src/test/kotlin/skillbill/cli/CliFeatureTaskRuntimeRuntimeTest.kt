@@ -18,16 +18,18 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 class CliFeatureTaskRuntimeRuntimeTest {
   @Test
-  fun `feature-task-runtime command registers run status and resume`() {
-    val help = CliRuntime.run(listOf("feature-task-runtime", "--help"), CliRuntimeContext())
+  fun `feature-task command registers run status and resume`() {
+    val help = CliRuntime.run(listOf("feature-task", "--help"), CliRuntimeContext())
 
     assertEquals(0, help.exitCode, help.stdout)
-    assertContains(help.stdout, "EXPERIMENTAL")
+    // AC5: canonical command help must contain no EXPERIMENTAL language.
+    assertFalse(help.stdout.contains("EXPERIMENTAL"), help.stdout)
     assertContains(help.stdout, "status")
     assertContains(help.stdout, "resume")
     // The documented explicit `run` form is a real subcommand, not a misparsed positional.
@@ -39,14 +41,100 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task-runtime is a hidden deprecated alias that works and emits a deprecation note`() {
+    // AC2: the deprecated alias still runs run/status/resume with identical behavior while emitting
+    // a deprecation note. The note goes to liveStderr so it never pollutes the structured stdout.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+    val stderr = StringBuilder()
+
+    val run = CliRuntime.run(
+      buildList {
+        add("--db")
+        add(fixture.dbPath.toString())
+        add("feature-task-runtime")
+        add("SKILL-650")
+        add(fixture.specPath.toString())
+        add("--repo-root")
+        add(fixture.tempDir.toString())
+        add("--agent")
+        add("codex")
+      },
+      fixture.context(launcher, liveStderr = { stderr.append(it) }),
+    )
+
+    assertEquals(0, run.exitCode, run.stdout)
+    assertContains(run.stdout, "status: complete")
+    assertContains(
+      run.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+    )
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
+    assertContains(stderr.toString(), "feature-task-runtime is a deprecated alias for feature-task")
+
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    val statusStderr = StringBuilder()
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher(), liveStderr = { statusStderr.append(it) }),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "status: ok")
+    assertContains(statusStderr.toString(), "feature-task-runtime is a deprecated alias for feature-task")
+  }
+
+  @Test
+  fun `feature-task and feature-task-runtime produce byte-identical stdout for the same run`() {
+    // AC2 "no behavioral difference": the deprecated alias must emit the SAME structured stdout as the
+    // canonical command. Run identical args through both, normalize only the non-deterministic
+    // workflow_id line, and assert the rest is byte-identical. The deprecation note lives on stderr and
+    // must never leak into stdout.
+    val canonicalFixture = runtimeFixture()
+    val canonicalStderr = StringBuilder()
+    val canonical = CliRuntime.run(
+      featureTaskCommand(canonicalFixture, command = "feature-task"),
+      canonicalFixture.context(RecordingPhaseLauncher(), liveStderr = { canonicalStderr.append(it) }),
+    )
+    assertEquals(0, canonical.exitCode, canonical.stdout)
+
+    val aliasFixture = runtimeFixture()
+    val aliasStderr = StringBuilder()
+    val alias = CliRuntime.run(
+      featureTaskCommand(aliasFixture, command = "feature-task-runtime"),
+      aliasFixture.context(RecordingPhaseLauncher(), liveStderr = { aliasStderr.append(it) }),
+    )
+    assertEquals(0, alias.exitCode, alias.stdout)
+
+    assertEquals(
+      normalizeRuntimeStdout(canonical.stdout),
+      normalizeRuntimeStdout(alias.stdout),
+    )
+    // The deprecation note is stderr-only on the alias; it must not appear in either stdout.
+    assertContains(aliasStderr.toString(), "feature-task-runtime is a deprecated alias for feature-task")
+    assertFalse(canonicalStderr.toString().contains("deprecated alias"), canonicalStderr.toString())
+    assertFalse(canonical.stdout.contains("deprecated alias"), canonical.stdout)
+    assertFalse(alias.stdout.contains("deprecated alias"), alias.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime alias is hidden from the top-level help while feature-task is shown`() {
+    val help = CliRuntime.run(listOf("--help"), CliRuntimeContext())
+
+    assertEquals(0, help.exitCode, help.stdout)
+    assertContains(help.stdout, "feature-task")
+    assertFalse(help.stdout.contains("feature-task-runtime"), help.stdout)
+  }
+
+  @Test
   fun `feature-task-runtime run requires issue key and spec path`() {
-    val missingArgs = CliRuntime.run(listOf("feature-task-runtime"), CliRuntimeContext())
+    val missingArgs = CliRuntime.run(listOf("feature-task"), CliRuntimeContext())
     assertEquals(1, missingArgs.exitCode, missingArgs.stdout)
     assertContains(missingArgs.stdout, "issue_key is required")
 
     val fixture = runtimeFixture()
     val missingSpec = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "SKILL-650"),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "SKILL-650"),
       fixture.context(RecordingPhaseLauncher()),
     )
     assertEquals(1, missingSpec.exitCode, missingSpec.stdout)
@@ -72,7 +160,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
       fixture.context(launcher),
     )
 
@@ -314,7 +402,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
       fixture.context(RecordingPhaseLauncher()),
     )
 
@@ -329,21 +417,20 @@ class CliFeatureTaskRuntimeRuntimeTest {
   fun `feature-task-runtime explicit goal-continuation skips decomposition and pr`() {
     val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
     val launcher = RecordingPhaseLauncher(decomposePlan = true)
+    val goalContinuationArgs = listOf(
+      "--agent",
+      "codex",
+      "--goal-parent-issue-key",
+      "SKILL-650",
+      "--goal-subtask-id",
+      "5",
+      "--goal-branch",
+      "feat/existing-runtime-branch",
+      "--suppress-pr",
+    )
 
     val result = CliRuntime.run(
-      fixture.runCommand(
-        extra = listOf(
-          "--agent",
-          "codex",
-          "--goal-parent-issue-key",
-          "SKILL-650",
-          "--goal-subtask-id",
-          "5",
-          "--goal-branch",
-          "feat/existing-runtime-branch",
-          "--suppress-pr",
-        ),
-      ),
+      fixture.runCommand(extra = goalContinuationArgs),
       fixture.context(launcher),
     )
 
@@ -354,6 +441,41 @@ class CliFeatureTaskRuntimeRuntimeTest {
       ALL_PHASES.filterNot { it == "pr" },
       launcher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
     )
+
+    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "feature-task-runtime: $workflowId")
+    assertContains(status.stdout, "status: ok")
+
+    val resumeLauncher = RecordingPhaseLauncher(decomposePlan = true)
+    val resume = CliRuntime.run(
+      buildList {
+        add("--db")
+        add(fixture.dbPath.toString())
+        add("feature-task")
+        add("resume")
+        add(workflowId)
+        add("SKILL-650")
+        add(fixture.specPath.toString())
+        add("--repo-root")
+        add(fixture.tempDir.toString())
+        addAll(goalContinuationArgs)
+      },
+      fixture.context(resumeLauncher),
+    )
+
+    assertEquals(0, resume.exitCode, resume.stdout)
+    assertContains(resume.stdout, "workflow_id: $workflowId")
+    assertContains(
+      resume.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push",
+    )
+    assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
 
   @Test
@@ -430,7 +552,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
       fixture.context(launcher),
     )
 
@@ -449,7 +571,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val fixture = runtimeFixture()
 
     val status = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", "wftr-missing"),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", "wftr-missing"),
       fixture.context(RecordingPhaseLauncher()),
     )
 
@@ -474,7 +596,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
-      listOf("--db", fixture.dbPath.toString(), "feature-task-runtime", "status", workflowId),
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
       fixture.context(launcher),
     )
 
@@ -500,7 +622,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       listOf(
         "--db",
         fixture.dbPath.toString(),
-        "feature-task-runtime",
+        "feature-task",
         "run",
         "SKILL-650",
         fixture.specPath.toString(),
@@ -536,7 +658,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       listOf(
         "--db",
         fixture.dbPath.toString(),
-        "feature-task-runtime",
+        "feature-task",
         "resume",
         workflowId,
         "SKILL-650",
@@ -564,6 +686,7 @@ private data class FeatureTaskRuntimeCliFixture(
     launcher: AgentRunLauncher,
     environment: Map<String, String> = emptyMap(),
     liveStdout: (String) -> Unit = {},
+    liveStderr: (String) -> Unit = {},
     // Defaults to an already-checked-out feature branch so the runtime reuses it (no checkout) and
     // existing completion/blocked expectations stand; branch-setup tests override this to start on
     // the default branch. The real git adapter is bypassed because the tempDir is not a git repo.
@@ -573,13 +696,14 @@ private data class FeatureTaskRuntimeCliFixture(
     agentRunLauncher = launcher,
     environment = environment,
     liveStdout = liveStdout,
+    liveStderr = liveStderr,
     workflowGitOperations = workflowGitOperations,
   )
 
   fun runCommand(extra: List<String> = emptyList()): List<String> = buildList {
     add("--db")
     add(dbPath.toString())
-    add("feature-task-runtime")
+    add("feature-task")
     add("SKILL-650")
     add(specPath.toString())
     add("--repo-root")
@@ -587,6 +711,26 @@ private data class FeatureTaskRuntimeCliFixture(
     addAll(extra)
   }
 }
+
+private fun featureTaskCommand(fixture: FeatureTaskRuntimeCliFixture, command: String): List<String> = listOf(
+  "--db",
+  fixture.dbPath.toString(),
+  command,
+  "SKILL-650",
+  fixture.specPath.toString(),
+  "--repo-root",
+  fixture.tempDir.toString(),
+  "--agent",
+  "codex",
+)
+
+// Replaces the only non-deterministic stdout line (the generated workflow_id) with a stable token so
+// canonical and alias stdout can be compared byte-for-byte.
+private fun normalizeRuntimeStdout(stdout: String): String = stdout
+  .lines()
+  .joinToString("\n") { line ->
+    if (line.startsWith("workflow_id:")) "workflow_id: <normalized>" else line
+  }
 
 private fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntimeCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-feature-task-runtime")

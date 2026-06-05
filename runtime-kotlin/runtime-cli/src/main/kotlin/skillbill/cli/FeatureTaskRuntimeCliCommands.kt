@@ -59,7 +59,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ).flag(default = false)
   protected val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-task-runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking bill-feature-task. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_RUNTIME_AGENT).",
   )
   protected val agentOverride by option(
@@ -161,10 +161,10 @@ class FeatureTaskRuntimeRunCommand(
   featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
   featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
 ) : FeatureTaskRuntimePhaseAgentCommand(
-  "feature-task-runtime",
-  "Run the EXPERIMENTAL runtime-driven feature-task phase loop in the foreground. Not a default path.",
+  "feature-task",
+  "Run the runtime-driven feature-task phase loop in the foreground.",
 ) {
-  private val issueKey by argument(help = "Issue key the experimental runtime run implements.").optional()
+  private val issueKey by argument(help = "Issue key the run implements.").optional()
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override val invokeWithoutSubcommand: Boolean = true
@@ -177,8 +177,8 @@ class FeatureTaskRuntimeRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
-    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task-runtime run.")
-    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task-runtime run.")
+    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
+    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task run.")
     executeRuntimeRun(
       deps = deps,
       issueKey = runIssueKey,
@@ -189,7 +189,7 @@ class FeatureTaskRuntimeRunCommand(
 }
 
 /**
- * Explicit `run` subcommand mirroring the documented `feature-task-runtime run <issue_key>
+ * Explicit `run` subcommand mirroring the documented `feature-task run <issue_key>
  * <spec_path>` form. Without it, clikt silently consumes `run` as the optional issue-key
  * positional of the parent command and misparses the remaining arguments.
  */
@@ -199,9 +199,9 @@ class FeatureTaskRuntimeExplicitRunCommand(
   private val workflowService: WorkflowService,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "run",
-  "Run the EXPERIMENTAL feature-task-runtime phase loop (explicit form of the parent command's default run).",
+  "Run the feature-task phase loop (explicit form of the parent command's default run).",
 ) {
-  private val issueKey by argument(help = "Issue key the experimental runtime run implements.")
+  private val issueKey by argument(help = "Issue key the run implements.")
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
@@ -218,7 +218,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
 class FeatureTaskRuntimeStatusCommand(
   private val statusService: FeatureTaskRuntimeStatusService,
   private val state: CliRunState,
-) : DocumentedCliCommand("status", "Show read-only EXPERIMENTAL feature-task-runtime phase status.") {
+) : DocumentedCliCommand("status", "Show read-only feature-task phase status.") {
   private val workflowId by argument(help = "Runtime workflow id whose phase status to show.")
 
   override fun run() {
@@ -235,10 +235,121 @@ class FeatureTaskRuntimeResumeCommand(
   private val deps: FeatureTaskRuntimeRunDependencies,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "resume",
-  "Resume an EXPERIMENTAL feature-task-runtime run against an existing workflow id.",
+  "Resume a feature-task run against an existing workflow id.",
 ) {
   private val workflowId by argument(help = "Existing runtime workflow id to resume.")
-  private val issueKey by argument(help = "Issue key the resumed runtime run implements.")
+  private val issueKey by argument(help = "Issue key the resumed run implements.")
+  private val specPath by argument(help = "Path to the governed spec the run implements.")
+
+  override fun run() {
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = issueKey,
+      specPath = specPath,
+      workflowId = workflowId,
+    )
+  }
+}
+
+private const val FEATURE_TASK_RUNTIME_DEPRECATION_NOTE: String =
+  "feature-task-runtime is a deprecated alias for feature-task. Use feature-task; behavior is unchanged.\n"
+
+/**
+ * SKILL-67 Subtask 1 (AC2): hidden deprecated alias for the canonical `feature-task`
+ * command. Reuses the same dependencies, services, and
+ * [FeatureTaskRuntimePhaseAgentCommand] base, so behavior is identical to the canonical
+ * command; the only difference is a stderr deprecation note emitted on every invocation
+ * (the parent `run()` always executes before any subcommand). Kept registered for the
+ * removal window.
+ */
+@Inject
+class FeatureTaskRuntimeDeprecatedRunCommand(
+  private val deps: FeatureTaskRuntimeRunDependencies,
+  private val workflowService: WorkflowService,
+  featureTaskRuntimeDeprecatedExplicitRunCommand: FeatureTaskRuntimeDeprecatedExplicitRunCommand,
+  featureTaskRuntimeDeprecatedStatusCommand: FeatureTaskRuntimeDeprecatedStatusCommand,
+  featureTaskRuntimeDeprecatedResumeCommand: FeatureTaskRuntimeDeprecatedResumeCommand,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "feature-task-runtime",
+  "Deprecated alias for feature-task. Use feature-task; behavior is unchanged.",
+) {
+  override val hiddenFromHelp: Boolean = true
+
+  private val issueKey by argument(help = "Issue key the run implements.").optional()
+  private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
+
+  override val invokeWithoutSubcommand: Boolean = true
+
+  init {
+    subcommands(
+      featureTaskRuntimeDeprecatedExplicitRunCommand,
+      featureTaskRuntimeDeprecatedStatusCommand,
+      featureTaskRuntimeDeprecatedResumeCommand,
+    )
+  }
+
+  override fun run() {
+    deps.state.liveStderr(FEATURE_TASK_RUNTIME_DEPRECATION_NOTE)
+    if (currentContext.invokedSubcommand != null) {
+      return
+    }
+    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
+    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task run.")
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = runIssueKey,
+      specPath = runSpecPath,
+      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+    )
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
+  private val deps: FeatureTaskRuntimeRunDependencies,
+  private val workflowService: WorkflowService,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "run",
+  "Run the feature-task phase loop (explicit form of the parent command's default run).",
+) {
+  private val issueKey by argument(help = "Issue key the run implements.")
+  private val specPath by argument(help = "Path to the governed spec the run implements.")
+
+  override fun run() {
+    executeRuntimeRun(
+      deps = deps,
+      issueKey = issueKey,
+      specPath = specPath,
+      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+    )
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeDeprecatedStatusCommand(
+  private val statusService: FeatureTaskRuntimeStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("status", "Show read-only feature-task phase status.") {
+  private val workflowId by argument(help = "Runtime workflow id whose phase status to show.")
+
+  override fun run() {
+    val projection = statusService.status(
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = state.dbOverride),
+    )
+    val payload = projection.toRuntimeStatusCliMap(workflowId)
+    state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeDeprecatedResumeCommand(
+  private val deps: FeatureTaskRuntimeRunDependencies,
+) : FeatureTaskRuntimePhaseAgentCommand(
+  "resume",
+  "Resume a feature-task run against an existing workflow id.",
+) {
+  private val workflowId by argument(help = "Existing runtime workflow id to resume.")
+  private val issueKey by argument(help = "Issue key the resumed run implements.")
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
@@ -255,7 +366,7 @@ private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRu
   when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = state.dbOverride)) {
     is WorkflowOpenResult.Ok -> opened.workflowId
     is WorkflowOpenResult.Error -> throw UsageError(
-      "Could not open an experimental feature-task-runtime workflow: ${opened.error}",
+      "Could not open a feature-task workflow: ${opened.error}",
     )
   }
 

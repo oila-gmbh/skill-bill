@@ -14,12 +14,14 @@ import skillbill.application.ReviewService
 class FeatureStatsCommands(
   val featureImplementStatsCommand: FeatureImplementStatsCommand,
   val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
+  val featureTaskStatsCommand: FeatureTaskStatsCommand,
   val featureTaskRuntimeStatsCommand: FeatureTaskRuntimeStatsCommand,
 ) {
   val commands =
     listOf(
       featureImplementStatsCommand,
       featureVerifyStatsCommand,
+      featureTaskStatsCommand,
       featureTaskRuntimeStatsCommand,
     )
 }
@@ -141,13 +143,34 @@ class FeatureVerifyStatsCommand(
 }
 
 @Inject
-class FeatureTaskRuntimeStatsCommand(
+class FeatureTaskStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
-) : DocumentedCliCommand("runtime-stats", "Show aggregate EXPERIMENTAL feature-task-runtime metrics.") {
+) : DocumentedCliCommand("feature-task-stats", "Show aggregate feature-task metrics.") {
   private val format by formatOption()
 
   override fun run() {
+    state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeStatsCommand(
+  private val service: ReviewService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "runtime-stats",
+  "Deprecated alias for feature-task-stats. Use feature-task-stats; behavior is unchanged.",
+) {
+  override val hiddenFromHelp: Boolean = true
+
+  private val format by formatOption()
+
+  override fun run() {
+    state.liveStderr(
+      "runtime-stats is a deprecated alias for feature-task-stats. " +
+        "Use feature-task-stats; behavior is unchanged.\n",
+    )
     state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
   }
 }

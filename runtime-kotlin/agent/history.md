@@ -1,3 +1,39 @@
+## [2026-06-05] SKILL-67 validation-gate-rename-sweep
+Areas: runtime-cli, runtime-infra-fs/install, feature-task runtime tests
+- Added regression coverage that a goal-continuation `feature-task` child reports task-runtime status and resumes a completed child without relaunching phases.
+- Added install cleanup coverage for the deprecated `bill-feature-task-runtime`/`mdp-feature-task-runtime` names while canonical `bill-feature-task` remains selected. reusable
+- Verified the closing gate without changing production review, audit, validation, schema, or installer behavior.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-06-05] SKILL-67.3 goal-runner-direct-runtime-coupling
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports
+- Goal child launches now bypass prose skill prompts and spawn `skill-bill feature-task run|resume <issue_key> <spec_path>` directly, always carrying `--goal-parent-issue-key`, `--goal-subtask-id`, `--goal-branch`, `--suppress-pr`, and the resolved `--agent`. reusable
+- `SkillRunGoalContinuationContext` now carries `specPath` and optional `childWorkflowId`; presence of the child workflow id selects runtime `resume`, so completed runtime phases are skipped by the runtime instead of re-entering `workflow continue`.
+- Goal outcome/progress/history seams resolve the owning workflow family (`IMPLEMENT` or `TASK_RUNTIME`) before reads/writes, so task-runtime child rows support terminal gating, worker-request audit artifacts, stale reconciliation, and status/watch projections. reusable
+- Prompt overrides remain the phase-agent path; only default goal-continuation child launches are converted to direct runtime commands.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-05] SKILL-67.2 skill-promotion-and-legacy-deprecation
+Areas: runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp
+- Promoted the runtime skill to canonical `bill-feature-task` and demoted the prose orchestrator to `bill-feature-task-legacy`; added `bill-feature-task-runtime`->`bill-feature-task` to `InstallLegacySkillNames.renamedSkillPairs` (priors retained). The alias value may equal a real installed skill — safe because `legacySkillBillCleanupNames` consumes only the oldName key. reusable
+- Validation-contract repointing pitfall: `RepoValidationRuntime.validateWorkflowContracts` and `FeatureSpecSkillWiringContractTest` are keyed by content-path. When the prose carrying `feature_implement_*` step-id markers ("Step id: `assess/implement/pr_description`") moves to the legacy file, both MUST be repointed there or validation/tests fail — the promoted thin trigger has none of those markers. reusable
+- `WorkflowEngine.CONTINUATION_CONTENT_PATHS` is a forward map keyed by definition.skillName; both `bill-feature-task` and `feature-task-runtime` now legitimately resolve to `skills/bill-feature-task/content.md` (no per-value uniqueness assumption). Update the matching golden `mcp-feature-task-runtime-workflow.json` continuation path in the same change. reusable
+- Two-parallel-arrays invariant for canonical renames: the Kotlin `renamedSkillPairs` and the bash `RENAMED_SKILL_PAIRS` in `uninstall.sh` must stay in sync.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask scope)
+
+## [2026-06-05] SKILL-67.1 canonical-runtime-cli-and-mcp-surface
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts
+- Renamed experimental surface to canonical: CLI `feature-task-runtime`->`feature-task` (run/status/resume) and 10 MCP tools `feature_task_runtime_*`->`feature_task_*`; old names kept as working deprecated aliases. Stats: canonical `feature-task-stats`/`feature_task_stats`, `runtime-stats` kept as alias.
+- New reusable pattern: working-deprecated-alias (first CLI/MCP precedent). CLI alias = hidden clikt subcommand emitting a stderr deprecation note via `state.liveStderr` so stdout stays byte-identical; MCP alias names re-point to the SAME TASK_RUNTIME handlers with 'deprecated' descriptions naming the canonical replacement. reusable
+- Durable-identity invariant when renaming a surface: `WorkflowFamily.TASK_RUNTIME.humanName` MUST stay literally 'feature-task-runtime' and `feature_task_runtime_phase` output schema `$id`/contract_version stay unchanged; only adapter names change. `feature_implement_*` family kept functional with deprecation notes (not retired).
+- Parity pitfalls: every `McpToolRegistry` tool name needs a matching `telemetry-event-schema.yaml` `$defs.<camelCase>Event` branch + top-level `oneOf` `$ref` (TelemetryEventInputSchemaParityTest is bidirectional); `McpStdioServerTest.expectedToolInventory` is an exact ordered list and `priorityStrictToolNames` + zero-arg latest list must all carry canonical+alias names. Add canonical branches without bumping contract_version.
+- Scope note: `FeatureTaskRuntimePhasePromptComposer` EXPERIMENTAL wording is agent-facing prompt text, intentionally left (out of help/description AC scope). Part of decomposed SKILL-67 (1/5); later subtasks reference these canonical names.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-04] SKILL-65.1 subtask 7 goal-runner-cooperation-and-continuation
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-core, runtime-kotlin/ARCHITECTURE.md
 - Feature-task-runtime now accepts explicit goal-continuation context (parent issue, subtask id, goal branch, suppress PR), reuses the supplied branch, skips decompose, omits `pr`, and treats `commit_push` as terminal. reusable

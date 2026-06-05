@@ -142,42 +142,26 @@ class GoalRunnerStatusService(
     authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   ): DecompositionManifest {
     val reconciledSubtasks = subtasks.map { subtask ->
-      val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
-      if (workflowId == null) {
-        return@map subtask
-      }
-      val preferredAuthoritative = authoritativeOutcomes[subtask.id]
-        ?.takeIf { outcome ->
-          // Do not let non-complete sibling outcomes overwrite an active retry workflow.
-          !(
-            subtask.status == "in_progress" &&
-              outcome.workflowId != workflowId &&
-              outcome.status != GoalRunnerTerminalStatus.COMPLETE
-            )
-        }
-      val outcome = preferredAuthoritative ?: workflowId.let { knownWorkflowId ->
-        outcomeStore.terminalOutcome(
-          workflowId = knownWorkflowId,
-          issueKey = issueKey,
-          subtaskId = subtask.id,
-          dbPathOverride = request.dbPathOverride,
-        )
-      } ?: return@map subtask
-      if (
-        subtask.status == "complete" &&
-        !subtask.commitSha.isNullOrBlank() &&
-        outcome.status != GoalRunnerTerminalStatus.COMPLETE
-      ) {
-        return@map subtask
-      }
-      val status = when (outcome.status) {
-        GoalRunnerTerminalStatus.COMPLETE -> "complete"
-        GoalRunnerTerminalStatus.BLOCKED,
-        GoalRunnerTerminalStatus.FAILED,
-        GoalRunnerTerminalStatus.TIMEOUT,
-        GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
-        -> "blocked"
-      }
+      reconciledSubtask(subtask, request, authoritativeOutcomes)
+    }
+    return copy(subtasks = reconciledSubtasks)
+      .withParentStatus()
+      .withDerivedCurrentIntent()
+  }
+
+  private fun DecompositionManifest.reconciledSubtask(
+    subtask: DecompositionSubtask,
+    request: GoalRunnerStatusRequest,
+    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
+  ): DecompositionSubtask {
+    val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
+    val outcome = workflowId?.let { id ->
+      preferredTerminalOutcome(subtask, id, request, authoritativeOutcomes)
+    }
+    return if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
+      subtask
+    } else {
+      val status = outcome.toManifestStatus()
       subtask.copy(
         status = status,
         workflowId = outcome.workflowId.takeIf(String::isNotBlank) ?: subtask.workflowId,
@@ -188,10 +172,45 @@ class GoalRunnerStatusService(
         lastResumableStep = outcome.lastResumableStep ?: subtask.lastResumableStep,
       )
     }
-    return copy(subtasks = reconciledSubtasks)
-      .withParentStatus()
-      .withDerivedCurrentIntent()
   }
+
+  private fun DecompositionManifest.preferredTerminalOutcome(
+    subtask: DecompositionSubtask,
+    workflowId: String,
+    request: GoalRunnerStatusRequest,
+    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
+  ): GoalRunnerStoredOutcome? = authoritativeOutcomes[subtask.id]
+    ?.takeIf { outcome -> canApplyAuthoritativeOutcome(subtask, workflowId, outcome) }
+    ?: outcomeStore.terminalOutcome(
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtask.id,
+      dbPathOverride = request.dbPathOverride,
+    )
+}
+
+private fun canApplyAuthoritativeOutcome(
+  subtask: DecompositionSubtask,
+  workflowId: String,
+  outcome: GoalRunnerStoredOutcome,
+): Boolean {
+  // Do not let non-complete sibling outcomes overwrite an active retry workflow.
+  val nonCompleteSibling = outcome.workflowId != workflowId && outcome.status != GoalRunnerTerminalStatus.COMPLETE
+  return subtask.status != "in_progress" || !nonCompleteSibling
+}
+
+private fun shouldPreserveCompletedSubtask(subtask: DecompositionSubtask, outcome: GoalRunnerStoredOutcome): Boolean =
+  subtask.status == "complete" &&
+    !subtask.commitSha.isNullOrBlank() &&
+    outcome.status != GoalRunnerTerminalStatus.COMPLETE
+
+private fun GoalRunnerStoredOutcome.toManifestStatus(): String = when (status) {
+  GoalRunnerTerminalStatus.COMPLETE -> "complete"
+  GoalRunnerTerminalStatus.BLOCKED,
+  GoalRunnerTerminalStatus.FAILED,
+  GoalRunnerTerminalStatus.TIMEOUT,
+  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
+  -> "blocked"
 }
 
 private fun DecompositionManifest.activeWorkflowIds(): Set<String> = subtasks
