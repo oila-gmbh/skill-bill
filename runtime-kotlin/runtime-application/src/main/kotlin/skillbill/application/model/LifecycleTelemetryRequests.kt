@@ -110,8 +110,6 @@ data class PrDescriptionGeneratedRequest(
   val orchestrated: Boolean,
 )
 
-// SKILL-66 Subtask 2: goal emission requests mirror the Subtask 1 schema branch
-// fields. Inert until Subtask 3 constructs them from GoalRunner.
 data class GoalStartedRequest(
   val issueKey: String,
   val featureName: String,

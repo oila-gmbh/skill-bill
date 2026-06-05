@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-66-feature-goal-telemetry"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -25,12 +25,12 @@ subtasks:
 - id: 2
   name: "goal-telemetry-persistence"
   spec_path: ".feature-specs/SKILL-66-feature-goal-telemetry/spec_subtask_2_goal-telemetry-persistence.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260605-185149-np6a"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies:
   - subtask_id: 1
     optional: false
