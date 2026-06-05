@@ -341,6 +341,7 @@ declare -a RENAMED_SKILL_PAIRS=(
   'bill-feature-implement:bill-feature-task'
   'bill-kotlin-feature-implement:bill-feature-task'
   'bill-feature-implement-agentic:bill-feature-task'
+  'bill-feature-task-runtime:bill-feature-task'
   'bill-kotlin-feature-verify:bill-feature-verify'
   'bill-quality-check:bill-code-check'
   'bill-code-quality-check:bill-code-check'

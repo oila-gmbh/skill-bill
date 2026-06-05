@@ -1,3 +1,12 @@
+## [2026-06-05] SKILL-67 subtask 2 skill-promotion-and-legacy-deprecation
+Areas: skills/bill-feature-task, skills/bill-feature-task-legacy, skills/bill-feature-task-runtime (removed), install.sh, uninstall.sh, README.md
+- Promoted `skills/bill-feature-task-runtime/content.md` to canonical `skills/bill-feature-task/content.md` (EXPERIMENTAL framing stripped, commands now `skill-bill feature-task`), git-moved the former prose orchestrator + its `native-agents/agents.yaml` to `skills/bill-feature-task-legacy/` with a loud DEPRECATED banner + canonical pointer + removal-window note, and removed the emptied runtime dir. reusable
+- Skill-relocation pattern: `install.sh` enumerates skills dynamically via `--skills "$SKILLS_DIR"`, so a new skill directory is auto-discovered as a real installed skill with no install.sh edit. Only canonical-NAME changes need the alias arrays (Kotlin `renamedSkillPairs` + bash `RENAMED_SKILL_PAIRS`, kept in sync). README catalog rows must be added/repurposed or `validate_agent_configs` fails. reusable
+- Frontmatter `name` must equal the directory name for both canonical and legacy skills (skill-bill validate enforces parity); legacy skill keeps the prose orchestrator body and `feature_implement_*` dependency intact (not deleted) for the deprecation window.
+- Goal-continuation: install/uninstall self-refuse with exit 64, so the install refresh that would let generated wrappers pick up the new catalog is deferred to after the goal run. Validators (skill-bill validate, validate_agent_configs, agnix --strict, gradle check on touched modules) all passed; install sync intentionally skipped.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask scope)
+
 ## [2026-06-01] SKILL-61 subtask 4 validation-docs-operator-scenarios
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, install.sh, uninstall.sh, docs, skills/bill-feature-goal
 - Added end-to-end goal observability coverage for interrupted resume, terminal cleanup, default progress, watch/status, diff stat, bounded hunks, and clean/dirty/renamed/deleted/untracked worktree activity. reusable

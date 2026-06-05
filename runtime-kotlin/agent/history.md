@@ -1,3 +1,12 @@
+## [2026-06-05] SKILL-67.2 skill-promotion-and-legacy-deprecation
+Areas: runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp
+- Promoted the runtime skill to canonical `bill-feature-task` and demoted the prose orchestrator to `bill-feature-task-legacy`; added `bill-feature-task-runtime`->`bill-feature-task` to `InstallLegacySkillNames.renamedSkillPairs` (priors retained). The alias value may equal a real installed skill — safe because `legacySkillBillCleanupNames` consumes only the oldName key. reusable
+- Validation-contract repointing pitfall: `RepoValidationRuntime.validateWorkflowContracts` and `FeatureSpecSkillWiringContractTest` are keyed by content-path. When the prose carrying `feature_implement_*` step-id markers ("Step id: `assess/implement/pr_description`") moves to the legacy file, both MUST be repointed there or validation/tests fail — the promoted thin trigger has none of those markers. reusable
+- `WorkflowEngine.CONTINUATION_CONTENT_PATHS` is a forward map keyed by definition.skillName; both `bill-feature-task` and `feature-task-runtime` now legitimately resolve to `skills/bill-feature-task/content.md` (no per-value uniqueness assumption). Update the matching golden `mcp-feature-task-runtime-workflow.json` continuation path in the same change. reusable
+- Two-parallel-arrays invariant for canonical renames: the Kotlin `renamedSkillPairs` and the bash `RENAMED_SKILL_PAIRS` in `uninstall.sh` must stay in sync.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask scope)
+
 ## [2026-06-05] SKILL-67.1 canonical-runtime-cli-and-mcp-surface
 Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts
 - Renamed experimental surface to canonical: CLI `feature-task-runtime`->`feature-task` (run/status/resume) and 10 MCP tools `feature_task_runtime_*`->`feature_task_*`; old names kept as working deprecated aliases. Stats: canonical `feature-task-stats`/`feature_task_stats`, `runtime-stats` kept as alias.

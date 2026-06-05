@@ -20,17 +20,17 @@ subtasks:
   commit_sha: null
   workflow_id: "wfl-20260605-072931-hqvn"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies: []
 - id: 2
   name: "skill-promotion-and-legacy-deprecation"
   spec_path: ".feature-specs/SKILL-67-promote-runtime-feature-task/spec_subtask_2_skill-promotion-and-legacy-deprecation.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-67-promote-runtime-feature-task"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260605-081446-ej3o"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies:
   - subtask_id: 1
     optional: false

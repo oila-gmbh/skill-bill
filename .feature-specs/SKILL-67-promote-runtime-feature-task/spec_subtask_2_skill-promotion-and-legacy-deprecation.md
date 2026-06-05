@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: Complete
 ---
 
 # SKILL-67 Subtask 2 - Skill Promotion and Legacy Deprecation

@@ -821,9 +821,9 @@ private const val COMPACT_ARTIFACT_INLINE_MAX_BYTES = 4096
 private const val COMPACT_ARTIFACT_PREVIEW_CHARS = 1024
 
 // Maps a definition's skillName to its resume content.md. feature-task-runtime needs
-// an explicit entry because its shipped skill dir (bill-feature-task-runtime) differs.
+// an explicit entry because its shipped skill dir (bill-feature-task) differs.
 private val CONTINUATION_CONTENT_PATHS: Map<String, String> = mapOf(
   "bill-feature-task" to "skills/bill-feature-task/content.md",
   "bill-feature-verify" to "skills/bill-feature-verify/content.md",
-  "feature-task-runtime" to "skills/bill-feature-task-runtime/content.md",
+  "feature-task-runtime" to "skills/bill-feature-task/content.md",
 )

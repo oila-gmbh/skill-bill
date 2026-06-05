@@ -25,6 +25,7 @@ private val renamedSkillPairs: List<Pair<String, String>> = listOf(
   "bill-feature-implement" to "bill-feature-task",
   "bill-kotlin-feature-implement" to "bill-feature-task",
   "bill-feature-implement-agentic" to "bill-feature-task",
+  "bill-feature-task-runtime" to "bill-feature-task",
   "bill-kotlin-feature-verify" to "bill-feature-verify",
   "bill-quality-check" to "bill-code-check",
   "bill-code-quality-check" to "bill-code-check",
