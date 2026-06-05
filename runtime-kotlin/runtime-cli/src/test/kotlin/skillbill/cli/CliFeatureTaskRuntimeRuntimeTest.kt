@@ -417,21 +417,20 @@ class CliFeatureTaskRuntimeRuntimeTest {
   fun `feature-task-runtime explicit goal-continuation skips decomposition and pr`() {
     val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
     val launcher = RecordingPhaseLauncher(decomposePlan = true)
+    val goalContinuationArgs = listOf(
+      "--agent",
+      "codex",
+      "--goal-parent-issue-key",
+      "SKILL-650",
+      "--goal-subtask-id",
+      "5",
+      "--goal-branch",
+      "feat/existing-runtime-branch",
+      "--suppress-pr",
+    )
 
     val result = CliRuntime.run(
-      fixture.runCommand(
-        extra = listOf(
-          "--agent",
-          "codex",
-          "--goal-parent-issue-key",
-          "SKILL-650",
-          "--goal-subtask-id",
-          "5",
-          "--goal-branch",
-          "feat/existing-runtime-branch",
-          "--suppress-pr",
-        ),
-      ),
+      fixture.runCommand(extra = goalContinuationArgs),
       fixture.context(launcher),
     )
 
@@ -442,6 +441,41 @@ class CliFeatureTaskRuntimeRuntimeTest {
       ALL_PHASES.filterNot { it == "pr" },
       launcher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
     )
+
+    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "feature-task-runtime: $workflowId")
+    assertContains(status.stdout, "status: ok")
+
+    val resumeLauncher = RecordingPhaseLauncher(decomposePlan = true)
+    val resume = CliRuntime.run(
+      buildList {
+        add("--db")
+        add(fixture.dbPath.toString())
+        add("feature-task")
+        add("resume")
+        add(workflowId)
+        add("SKILL-650")
+        add(fixture.specPath.toString())
+        add("--repo-root")
+        add(fixture.tempDir.toString())
+        addAll(goalContinuationArgs)
+      },
+      fixture.context(resumeLauncher),
+    )
+
+    assertEquals(0, resume.exitCode, resume.stdout)
+    assertContains(resume.stdout, "workflow_id: $workflowId")
+    assertContains(
+      resume.stdout,
+      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push",
+    )
+    assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
 
   @Test

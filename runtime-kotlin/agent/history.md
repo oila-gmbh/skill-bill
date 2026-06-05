@@ -1,3 +1,11 @@
+## [2026-06-05] SKILL-67 validation-gate-rename-sweep
+Areas: runtime-cli, runtime-infra-fs/install, feature-task runtime tests
+- Added regression coverage that a goal-continuation `feature-task` child reports task-runtime status and resumes a completed child without relaunching phases.
+- Added install cleanup coverage for the deprecated `bill-feature-task-runtime`/`mdp-feature-task-runtime` names while canonical `bill-feature-task` remains selected. reusable
+- Verified the closing gate without changing production review, audit, validation, schema, or installer behavior.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-06-05] SKILL-67.3 goal-runner-direct-runtime-coupling
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports
 - Goal child launches now bypass prose skill prompts and spawn `skill-bill feature-task run|resume <issue_key> <spec_path>` directly, always carrying `--goal-parent-issue-key`, `--goal-subtask-id`, `--goal-branch`, `--suppress-pr`, and the resolved `--agent`. reusable

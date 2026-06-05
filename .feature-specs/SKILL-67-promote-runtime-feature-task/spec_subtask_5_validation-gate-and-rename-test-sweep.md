@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: In Progress
 ---
 
 # SKILL-67 Subtask 5 - Validation Gate and Rename Test Sweep

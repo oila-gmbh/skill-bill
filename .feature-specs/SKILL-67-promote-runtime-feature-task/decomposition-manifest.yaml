@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-67-promote-runtime-feature-task"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 5
+  action: "start"
 subtasks:
 - id: 1
   name: "canonical-runtime-cli-and-mcp-surface"
@@ -70,12 +70,12 @@ subtasks:
 - id: 5
   name: "validation-gate-and-rename-test-sweep"
   spec_path: ".feature-specs/SKILL-67-promote-runtime-feature-task/spec_subtask_5_validation-gate-and-rename-test-sweep.md"
-  status: "pending"
-  branch: null
+  status: "in_progress"
+  branch: "feat/SKILL-67-promote-runtime-feature-task"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260605-094157-6fts"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies:
   - subtask_id: 1
     optional: false
