@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-67-promote-runtime-feature-task"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "start"
+  subtask_id: 0
+  action: "none"
 subtasks:
 - id: 1
   name: "canonical-runtime-cli-and-mcp-surface"
@@ -54,12 +54,12 @@ subtasks:
 - id: 4
   name: "dispatcher-docs-and-recorded-promote-decision"
   spec_path: ".feature-specs/SKILL-67-promote-runtime-feature-task/spec_subtask_4_dispatcher-docs-and-recorded-promote-decision.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-67-promote-runtime-feature-task"
   commit_sha: null
   workflow_id: "wfl-20260605-091934-fdsp"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   dependencies:
   - subtask_id: 2
     optional: false
