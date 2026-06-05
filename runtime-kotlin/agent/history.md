@@ -1,3 +1,13 @@
+## [2026-06-05] SKILL-67.1 canonical-runtime-cli-and-mcp-surface
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts
+- Renamed experimental surface to canonical: CLI `feature-task-runtime`->`feature-task` (run/status/resume) and 10 MCP tools `feature_task_runtime_*`->`feature_task_*`; old names kept as working deprecated aliases. Stats: canonical `feature-task-stats`/`feature_task_stats`, `runtime-stats` kept as alias.
+- New reusable pattern: working-deprecated-alias (first CLI/MCP precedent). CLI alias = hidden clikt subcommand emitting a stderr deprecation note via `state.liveStderr` so stdout stays byte-identical; MCP alias names re-point to the SAME TASK_RUNTIME handlers with 'deprecated' descriptions naming the canonical replacement. reusable
+- Durable-identity invariant when renaming a surface: `WorkflowFamily.TASK_RUNTIME.humanName` MUST stay literally 'feature-task-runtime' and `feature_task_runtime_phase` output schema `$id`/contract_version stay unchanged; only adapter names change. `feature_implement_*` family kept functional with deprecation notes (not retired).
+- Parity pitfalls: every `McpToolRegistry` tool name needs a matching `telemetry-event-schema.yaml` `$defs.<camelCase>Event` branch + top-level `oneOf` `$ref` (TelemetryEventInputSchemaParityTest is bidirectional); `McpStdioServerTest.expectedToolInventory` is an exact ordered list and `priorityStrictToolNames` + zero-arg latest list must all carry canonical+alias names. Add canonical branches without bumping contract_version.
+- Scope note: `FeatureTaskRuntimePhasePromptComposer` EXPERIMENTAL wording is agent-facing prompt text, intentionally left (out of help/description AC scope). Part of decomposed SKILL-67 (1/5); later subtasks reference these canonical names.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-04] SKILL-65.1 subtask 7 goal-runner-cooperation-and-continuation
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-core, runtime-kotlin/ARCHITECTURE.md
 - Feature-task-runtime now accepts explicit goal-continuation context (parent issue, subtask id, goal branch, suppress PR), reuses the supplied branch, skips decompose, omits `pr`, and treats `commit_push` as terminal. reusable

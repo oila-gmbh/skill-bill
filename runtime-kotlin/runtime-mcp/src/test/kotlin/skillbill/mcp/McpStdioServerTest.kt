@@ -145,6 +145,7 @@ class McpStdioServerTest {
     listOf(
       "feature_implement_workflow_latest",
       "feature_verify_workflow_latest",
+      "feature_task_workflow_latest",
       "feature_task_runtime_workflow_latest",
     ).forEach { toolName ->
       val schema = tools.schemaFor(toolName)
@@ -213,6 +214,184 @@ class McpStdioServerTest {
 
     assertEquals(true, result["isError"])
     assertContains(errorPayload["error"].toString(), "step_updates[0].unexpected")
+  }
+
+  @Test
+  fun `canonical feature_task tools dispatch to the task runtime family and validate payloads`() {
+    // AC3: canonical feature_task_* tools are registered, dispatch correctly, and validate payloads.
+    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val started =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 1,
+            name = "feature_task_started",
+            arguments = mapOf(
+              "feature_size" to "SMALL",
+              "issue_key" to "SKILL-650",
+              "feature_name" to "canonical runtime surface",
+            ),
+          ),
+          context,
+        ),
+      )
+    assertEquals(false, started.map("result")["isError"], started.toString())
+
+    // Missing-required payloads must fail validation exactly as before.
+    val invalid =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 2,
+            name = "feature_task_started",
+            arguments = mapOf("feature_size" to "SMALL"),
+          ),
+          context,
+        ),
+      )
+    assertEquals(true, invalid.map("result")["isError"], invalid.toString())
+  }
+
+  @Test
+  fun `feature_task_runtime aliases remain callable and dispatch identically to canonical tools`() {
+    // AC2 + AC3: the deprecated feature_task_runtime_* aliases stay callable with no behavioral
+    // difference (same TASK_RUNTIME family, same payload validation).
+    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-alias")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val started =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 1,
+            name = "feature_task_runtime_started",
+            arguments = mapOf(
+              "feature_size" to "SMALL",
+              "issue_key" to "SKILL-650",
+              "feature_name" to "deprecated alias surface",
+            ),
+          ),
+          context,
+        ),
+      )
+    assertEquals(false, started.map("result")["isError"], started.toString())
+
+    val invalid =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 2,
+            name = "feature_task_runtime_started",
+            arguments = mapOf("feature_size" to "SMALL"),
+          ),
+          context,
+        ),
+      )
+    assertEquals(true, invalid.map("result")["isError"], invalid.toString())
+  }
+
+  @Test
+  fun `canonical and alias task-runtime workflow tools land in the same family and round-trip lifecycle`() {
+    // F-T01 + F-T02: prove canonical feature_task_* and alias feature_task_runtime_* names share the
+    // SAME TASK_RUNTIME family/store (not just independently succeeding) by opening a workflow under
+    // one name and observing the SAME workflow id through the other name, in both directions. Then
+    // round-trip a workflow_* lifecycle (open -> update -> get) through canonical names and assert an
+    // externally meaningful persisted outcome (workflow_status + current_step_id), not telemetry.
+    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-parity")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    var nextId = 0
+    fun call(name: String, arguments: Map<String, Any?> = emptyMap()): Map<String, Any?> =
+      dispatchTool(id = ++nextId, name = name, arguments = arguments, context = context).also {
+        assertEquals("ok", it["status"], it.toString())
+      }
+
+    fun assertSameWorkflow(expectedId: String, name: String) {
+      val latest = call(name)
+      assertEquals(expectedId, latest["workflow_id"], latest.toString())
+      val byId = call(name.replace("_latest", "_get"), mapOf("workflow_id" to expectedId))
+      assertEquals(expectedId, byId["workflow_id"], byId.toString())
+    }
+
+    // Open via the alias, read the SAME workflow via the canonical latest + get; then the other direction.
+    val aliasOpenedId = call("feature_task_runtime_workflow_open")["workflow_id"].toString()
+    assertSameWorkflow(aliasOpenedId, "feature_task_workflow_latest")
+
+    val canonicalOpenedId = call("feature_task_workflow_open")["workflow_id"].toString()
+    assertSameWorkflow(canonicalOpenedId, "feature_task_runtime_workflow_latest")
+
+    // Round-trip a lifecycle through canonical names: update the canonical-opened workflow and confirm
+    // the persisted workflow_status + current_step_id are visible on a subsequent get.
+    val firstStep = featureTaskWorkflowStepIds().first()
+    call(
+      "feature_task_workflow_update",
+      mapOf(
+        "workflow_id" to canonicalOpenedId,
+        "workflow_status" to "running",
+        "current_step_id" to firstStep,
+        "step_updates" to listOf(
+          mapOf("step_id" to firstStep, "status" to "running", "attempt_count" to 1),
+        ),
+      ),
+    )
+
+    val afterUpdate = call("feature_task_workflow_get", mapOf("workflow_id" to canonicalOpenedId))
+    assertEquals("running", afterUpdate["workflow_status"], afterUpdate.toString())
+    assertEquals(firstStep, afterUpdate["current_step_id"], afterUpdate.toString())
+  }
+
+  @Test
+  fun `canonical and alias task-runtime input schemas are identical for every paired tool`() {
+    // F-A01 (test-only guard): the canonical feature_task_* and alias feature_task_runtime_* input
+    // schemas are hand-duplicated in the registry. Assert each canonical schema equals its alias schema
+    // so the "identical behavior" invariant cannot silently drift during the removal window.
+    val tools = toolsList()
+
+    canonicalTaskRuntimeToolNames.forEach { canonical ->
+      val alias = canonical.replaceFirst("feature_task_", "feature_task_runtime_")
+      assertEquals(tools.schemaFor(canonical), tools.schemaFor(alias), "$canonical vs $alias")
+    }
+  }
+
+  @Test
+  fun `canonical tool descriptions carry no EXPERIMENTAL language while aliases note deprecation`() {
+    // AC5 + AC2 + AC4: canonical feature_task_* descriptions are scrubbed of EXPERIMENTAL; the
+    // feature_task_runtime_* aliases and feature_implement_* family carry deprecation notes; the
+    // implement family stays registered.
+    val tools = toolsList()
+
+    val canonicalNames = listOf(
+      "feature_task_started",
+      "feature_task_finished",
+      "feature_task_stats",
+      "feature_task_workflow_get",
+      "feature_task_workflow_latest",
+      "feature_task_workflow_list",
+      "feature_task_workflow_continue",
+      "feature_task_workflow_open",
+      "feature_task_workflow_resume",
+      "feature_task_workflow_update",
+    )
+    canonicalNames.forEach { name ->
+      assertFalse(tools.descriptionFor(name).contains("EXPERIMENTAL"), name)
+    }
+
+    canonicalNames.forEach { canonical ->
+      val alias = canonical.replaceFirst("feature_task_", "feature_task_runtime_")
+      val aliasDescription = tools.descriptionFor(alias)
+      assertTrue(aliasDescription.contains("Deprecated"), alias)
+      // The deprecation note must name the exact canonical replacement it maps to so callers can
+      // migrate without guessing.
+      assertContains(aliasDescription, canonical)
+    }
+
+    assertNotNull(tools.toolNamedOrNull("feature_implement_started"))
+    assertTrue(
+      tools.descriptionFor("feature_implement_started").contains("Deprecated"),
+      tools.descriptionFor("feature_implement_started"),
+    )
   }
 
   @Test
@@ -449,6 +628,16 @@ private val expectedToolInventory =
     "feature_verify_workflow_open",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_update",
+    "feature_task_finished",
+    "feature_task_started",
+    "feature_task_stats",
+    "feature_task_workflow_get",
+    "feature_task_workflow_latest",
+    "feature_task_workflow_list",
+    "feature_task_workflow_continue",
+    "feature_task_workflow_open",
+    "feature_task_workflow_resume",
+    "feature_task_workflow_update",
     "feature_task_runtime_finished",
     "feature_task_runtime_started",
     "feature_task_runtime_stats",
@@ -481,6 +670,8 @@ private val priorityStrictToolNames =
   listOf(
     "feature_implement_started",
     "feature_implement_finished",
+    "feature_task_started",
+    "feature_task_finished",
     "feature_task_runtime_started",
     "feature_task_runtime_finished",
     "feature_verify_started",
@@ -505,6 +696,13 @@ private val priorityStrictToolNames =
     "feature_verify_workflow_latest",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_continue",
+    "feature_task_workflow_open",
+    "feature_task_workflow_update",
+    "feature_task_workflow_get",
+    "feature_task_workflow_list",
+    "feature_task_workflow_latest",
+    "feature_task_workflow_resume",
+    "feature_task_workflow_continue",
     "feature_task_runtime_workflow_open",
     "feature_task_runtime_workflow_update",
     "feature_task_runtime_workflow_get",
@@ -514,6 +712,33 @@ private val priorityStrictToolNames =
     "feature_task_runtime_workflow_continue",
     "new_skill_scaffold",
   )
+
+private val canonicalTaskRuntimeToolNames =
+  listOf(
+    "feature_task_started",
+    "feature_task_finished",
+    "feature_task_stats",
+    "feature_task_workflow_get",
+    "feature_task_workflow_latest",
+    "feature_task_workflow_list",
+    "feature_task_workflow_continue",
+    "feature_task_workflow_open",
+    "feature_task_workflow_resume",
+    "feature_task_workflow_update",
+  )
+
+private fun dispatchTool(
+  id: Int,
+  name: String,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> {
+  val response = decodeResponse(McpStdioServer.handleLine(toolCallRequest(id, name, arguments), context))
+  return toolPayload(response.map("result"))
+}
+
+private fun featureTaskWorkflowStepIds(): List<String> =
+  toolsList().schemaFor("feature_task_workflow_update").properties().enumFor("current_step_id").map { it.toString() }
 
 private fun toolsList(): List<*> {
   val response =
@@ -531,6 +756,13 @@ private fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
     requireNotNull(JsonSupport.anyToStringAnyMap(schema))
   }
 }
+
+private fun List<*>.toolNamedOrNull(toolName: String): Map<String, Any?>? =
+  firstOrNull { item -> JsonSupport.anyToStringAnyMap(item)?.get("name") == toolName }
+    ?.let { JsonSupport.anyToStringAnyMap(it) }
+
+private fun List<*>.descriptionFor(toolName: String): String =
+  requireNotNull(toolNamedOrNull(toolName))["description"].toString()
 
 private fun Map<String, Any?>.properties(): Map<String, Any?> =
   requireNotNull(JsonSupport.anyToStringAnyMap(this["properties"]))

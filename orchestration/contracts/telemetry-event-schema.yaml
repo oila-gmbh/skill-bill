@@ -125,6 +125,16 @@ oneOf:
   - $ref: "#/$defs/featureTaskRuntimeStartedEvent"
   - $ref: "#/$defs/featureTaskRuntimeFinishedEvent"
   - $ref: "#/$defs/featureTaskRuntimeStatsEvent"
+  - $ref: "#/$defs/featureTaskWorkflowGetEvent"
+  - $ref: "#/$defs/featureTaskWorkflowLatestEvent"
+  - $ref: "#/$defs/featureTaskWorkflowListEvent"
+  - $ref: "#/$defs/featureTaskWorkflowContinueEvent"
+  - $ref: "#/$defs/featureTaskWorkflowOpenEvent"
+  - $ref: "#/$defs/featureTaskWorkflowResumeEvent"
+  - $ref: "#/$defs/featureTaskWorkflowUpdateEvent"
+  - $ref: "#/$defs/featureTaskStartedEvent"
+  - $ref: "#/$defs/featureTaskFinishedEvent"
+  - $ref: "#/$defs/featureTaskStatsEvent"
   - $ref: "#/$defs/importReviewEvent"
   - $ref: "#/$defs/newSkillScaffoldEvent"
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
@@ -362,6 +372,21 @@ $defs:
     properties:
       event_name:
         const: feature_task_runtime_stats
+      contract_version:
+        const: "1.0.0"
+
+  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* stats branch mirroring
+  # featureTaskRuntimeStatsEvent. The runtime feature_task_runtime_stats alias
+  # remains for the removal window.
+  featureTaskStatsEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_stats
       contract_version:
         const: "1.0.0"
 
@@ -847,6 +872,71 @@ $defs:
       resolved_branch:
         type: string
 
+  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* started/finished branches
+  # mirroring featureTaskRuntimeStartedEvent / featureTaskRuntimeFinishedEvent.
+  featureTaskStartedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - feature_size
+      - issue_key
+      - feature_name
+    properties:
+      event_name:
+        const: feature_task_started
+      contract_version:
+        const: "1.0.0"
+      feature_size:
+        type: string
+        enum:
+          - SMALL
+          - MEDIUM
+          - LARGE
+      issue_key:
+        type: string
+      feature_name:
+        type: string
+      session_id:
+        type: string
+
+  featureTaskFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - session_id
+      - completion_status
+      - completed_phase_ids
+    properties:
+      event_name:
+        const: feature_task_finished
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      completion_status:
+        type: string
+        enum:
+          - completed
+          - blocked
+          - decomposed_at_planning
+          - error
+      completed_phase_ids:
+        type: array
+        items:
+          type: string
+      phase_outcomes:
+        $ref: "#/$defs/freeObjectShape"
+      last_incomplete_phase:
+        type: string
+      blocked_reason:
+        type: string
+      resolved_branch:
+        type: string
+
   featureVerifyWorkflowContinueEvent:
     type: object
     additionalProperties: false
@@ -1064,6 +1154,125 @@ $defs:
     properties:
       event_name:
         const: feature_task_runtime_workflow_update
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+      workflow_status:
+        $ref: "#/$defs/workflowTaskRuntimeStatusEnum"
+      current_step_id:
+        $ref: "#/$defs/workflowTaskRuntimeStepIdEnum"
+      step_updates:
+        type: array
+        items:
+          $ref: "#/$defs/stepUpdateTaskRuntimeShape"
+      artifacts_patch:
+        $ref: "#/$defs/freeObjectShape"
+      session_id:
+        type: string
+
+  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* workflow-family branches
+  # mirroring each featureTaskRuntimeWorkflow* branch. The runtime aliases stay
+  # registered for the removal window.
+  featureTaskWorkflowContinueEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_workflow_continue
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskWorkflowGetEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_workflow_get
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskWorkflowLatestEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_workflow_latest
+      contract_version:
+        const: "1.0.0"
+
+  featureTaskWorkflowListEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_workflow_list
+      contract_version:
+        const: "1.0.0"
+      limit:
+        type: integer
+
+  featureTaskWorkflowOpenEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: feature_task_workflow_open
+      contract_version:
+        const: "1.0.0"
+      session_id:
+        type: string
+      current_step_id:
+        type: string
+
+  featureTaskWorkflowResumeEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+    properties:
+      event_name:
+        const: feature_task_workflow_resume
+      contract_version:
+        const: "1.0.0"
+      workflow_id:
+        type: string
+
+  featureTaskWorkflowUpdateEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - workflow_status
+      - current_step_id
+    properties:
+      event_name:
+        const: feature_task_workflow_update
       contract_version:
         const: "1.0.0"
       workflow_id:
