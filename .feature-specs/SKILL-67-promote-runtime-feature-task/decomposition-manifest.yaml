@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-67-promote-runtime-feature-task"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 5
+  action: "start"
 subtasks:
 - id: 1
   name: "canonical-runtime-cli-and-mcp-surface"
