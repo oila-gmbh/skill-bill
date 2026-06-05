@@ -27,6 +27,7 @@ import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -892,8 +893,6 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `goal-continuation with payload commit sha completes without measuring git head`() {
-    // SKILL-68 AC6 case i (unchanged happy path): a commit_push payload SHA is authoritative and the
-    // runtime never falls back to measuring git HEAD.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-payload-sha")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = "measured-head-should-not-be-used" }
@@ -912,7 +911,6 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `goal-continuation without payload sha completes with measured git head`() {
-    // SKILL-68 AC6 case ii: no payload SHA but a measurable HEAD -> complete with the measured SHA.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-measured-sha")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = "measured-head-sha" }
@@ -931,8 +929,6 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `goal-continuation without payload sha and unmeasurable head blocks instead of completing`() {
-    // SKILL-68 AC6 case iii: no payload SHA and a blank HEAD -> blocked with an explicit reason and
-    // last_resumable_step=commit_push; the runtime must NOT record a SHA-less complete.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-sha")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(COMMIT_PUSH_NO_SHA_OUTPUT))
@@ -951,8 +947,6 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `non-goal-continuation run never measures git head for the outcome`() {
-    // SKILL-68 AC5 control: a normal (non-goal-continuation) run records no goal-continuation outcome
-    // and never measures git HEAD for it.
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
       .also { it.headCommitShaValue = "should-not-read" }
     val harness = runnerHarness(
@@ -963,6 +957,56 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     harness.runner.run(harness.request())
 
     assertEquals(0, git.headCommitShaCalls, "a non-goal-continuation run must not measure git HEAD for an outcome")
+  }
+
+  @Test
+  fun `standalone run flips its spec status to complete before commit_push so the commit includes it`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
+    var specAtCommitLaunch: String? = null
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "commit_push") {
+          specAtCommitLaunch = Files.readString(specPath)
+        }
+        facts(VALID_OUTPUT)
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertContains(requireNotNull(specAtCommitLaunch), "status: Complete")
+    assertContains(Files.readString(specPath), "status: Complete")
+  }
+
+  @Test
+  fun `goal-continuation run leaves its spec status for the goal runner manifest projection to own`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status-goal")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        repoRoot = repoRoot,
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertContains(Files.readString(specPath), "status: Pending")
   }
 
   @Test
@@ -1693,6 +1737,19 @@ private data class RuntimeHarnessConfig(
   val dbPathOverride: String? = null,
 )
 
+private fun runtimePhaseGates(
+  branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
+  planningStopper: FeatureTaskRuntimePlanningStopper,
+  lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
+  gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
+  branchSetupRunner,
+  planningStopper,
+  lifecycleTelemetry,
+  gitOperations,
+  FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
+)
+
 private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory): FeatureTaskRuntimeLifecycleTelemetry =
   FeatureTaskRuntimeLifecycleTelemetry(
     LifecycleTelemetryService(database, DisabledRuntimeTelemetrySettingsProvider),
@@ -1745,6 +1802,7 @@ private fun runnerHarness(
       planningStopper,
       disabledRuntimeLifecycleTelemetry(database),
       runtimeConfig.branchSetup.gitOperations,
+      FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
     ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
@@ -1818,7 +1876,7 @@ private fun telemetryRunnerHarness(
     goalContinuationRecorder,
     runInvariantsStore,
     validator,
-    FeatureTaskRuntimePhaseGates(
+    runtimePhaseGates(
       branchSetupRunner,
       planningStopper,
       FeatureTaskRuntimeLifecycleTelemetry(
@@ -2273,6 +2331,7 @@ private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvid
   )
 }
 
+@Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
 private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
@@ -2309,6 +2368,13 @@ private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposito
 
   override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
     error("unused")
+
+  override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = error("unused")
+
+  override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) =
+    error("unused")
+
+  override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = error("unused")
 }
 
 private class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {

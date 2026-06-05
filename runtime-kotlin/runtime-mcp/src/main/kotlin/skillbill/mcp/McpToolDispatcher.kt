@@ -77,6 +77,7 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "feature_task_runtime_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "goal_stats" to { _, context -> McpRuntime.goalStats(context) },
       "import_review" to ::importReview,
       "new_skill_scaffold" to ::newSkillScaffold,
       "pr_description_generated" to ::prDescriptionGenerated,
@@ -209,9 +210,11 @@ internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRunt
 private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"
   "implement" -> "bill-feature-task"
-  "bill-feature-verify", "bill-feature-task", "feature-task-runtime" -> workflow
+  "goal" -> "bill-feature-goal"
+  "bill-feature-verify", "bill-feature-task", "feature-task-runtime", "bill-feature-goal" -> workflow
   else -> throw IllegalArgumentException(
-    "workflow must be one of: verify, implement, bill-feature-verify, bill-feature-task, feature-task-runtime.",
+    "workflow must be one of: verify, implement, goal, " +
+      "bill-feature-verify, bill-feature-task, feature-task-runtime, bill-feature-goal.",
   )
 }
 

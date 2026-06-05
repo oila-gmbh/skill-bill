@@ -1,3 +1,18 @@
+## [2026-06-05] SKILL-66 subtask 5 remote-stats-integration-and-validation-gate
+Areas: runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-core, orchestration/contracts
+- Extended `McpToolDispatcher.mapRemoteStatsWorkflow` with `"goal" -> "bill-feature-goal"` mapping and `"bill-feature-goal"` passthrough; error message updated to enumerate all accepted values.
+- Extended `McpInputSchemas.remoteStatsWorkflowSchema` and `telemetry-event-schema.yaml` workflow enum atomically (bidirectional parity enforced by `TelemetryEventInputSchemaParityTest`).
+- Added `"bill-feature-goal"` to `TelemetryConstants.remoteStatsWorkflows` so `validateRemoteStatsRequest` accepts it after dispatcher mapping.
+- Added two new `McpTelemetryRuntimeTest` tests: `"goal"` alias maps to `"bill-feature-goal"` (verified in request body) and `"bill-feature-goal"` passes through unchanged; `goalAwareTelemetryRequester` helper added.
+- Updated `McpStdioServerTest` workflow enum assertion to include `"goal"` and `"bill-feature-goal"`.
+- Added `goalStarted`/`goalSubtaskFinished`/`goalFinished` to both `LifecycleTelemetryService` method lists in `ARCHITECTURE.md` and to `RAW_MAP_OPEN_BOUNDARY_ALLOWLIST` in `RuntimeArchitectureTest`.
+- Open question RESOLVED: `telemetry_proxy_capabilities` is generic — `validateRemoteStatsCapabilities` is driven entirely by the proxy HTTP response (`supportedWorkflows` from wire); no local family enumeration. No code change needed.
+- AC4 confirmed no-op: `TelemetrySyncRuntime.syncTelemetry`/`syncEnabledTelemetry` have no family-specific branching; goal events flow through the same outbox path as all lifecycle events.
+- Spec open questions marked RESOLVED in `.feature-specs/SKILL-66-feature-goal-telemetry/spec.md`.
+- Full validation gate: `skill-bill validate` pass, `./gradlew check` pass, `npx agnix --strict .` pass, `scripts/validate_agent_configs` pass.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-06-05] SKILL-68 goal-subtask-commit-sha-completion
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports
 - New `FeatureTaskRuntimeGoalContinuationOutcomeSupport`: under `suppress_pr`, resolves commit SHA from `commit_push` phase payload first, then measures git HEAD once via `WorkflowGitOperations`; records `status=complete` iff non-blank SHA found, else `status=blocked` with explicit `blocked_reason` and `last_resumable_step=commit_push`. reusable
@@ -8,6 +23,17 @@ Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports
 - Four AC6 regression cases proven in `FeatureTaskRuntimeRunnerTest` (payload SHA / measured SHA / blocked no-SHA / pre-existing complete-without-SHA backfill).
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
+
+## [2026-06-05] SKILL-66 subtask 4 goal-stats-mcp-and-cli-surface
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-core
+- Added `GoalBlockedSubtaskSummary` data class and `topBlockedSubtasks` field to `GoalWorkflowStats`; `GoalSubtaskRow` extended with `subtaskId`/`subtaskName`/`issueKey`/`blockedReason?` and `buildGoalStats()` populates the blocked summary from DB rows. reusable
+- Added `GoalStatsResult` application result and `ReviewService.goalStats()` method; `ReviewStatsContractMappers.toGoalStatsPayload()` serializes the full chain (GoalWorkflowStats → GoalRunSummary → GoalBlockedSubtaskSummary). reusable
+- Wired the full goal-stats surface: `McpRuntime.goalStats()`, `McpToolDispatcher` `"goal_stats"` entry, `GoalStatsCommand` CLI command added to `FeatureStatsCommands`; MCP and CLI mapper extensions follow the existing `implement_stats`/`verify_stats` conventions. reusable
+- CLI `goal-stats` follows the same `--format` option and human-readable/JSON discipline as `implement-stats`/`verify-stats`; graceful empty-store output matches existing commands' behavior (no fabricated zero-rates without a "no runs recorded" signal).
+- `@file:Suppress("TooManyFunctions")` added on `McpInputSchemas.kt` and `ReviewStatsContractMappers.kt` per existing project precedent — 11-function detekt limit breached at a pre-existing boundary condition.
+- Tests: 3 new `GoalTelemetryStoreTest` (topBlockedSubtasks assertions), 4 new `ApplicationPersistencePortTest` (service + all-blocked/all-skipped/single-run edge cases), 2 new `McpStdioServerTest` (`goal_stats` populated + empty), 3 new `CliRuntimeTest` (`goal-stats` human-readable + JSON + empty).
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
 
 ## [2026-06-05] SKILL-67 validation-gate-rename-sweep
 Areas: runtime-cli, runtime-infra-fs/install, feature-task runtime tests
@@ -42,6 +68,37 @@ Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/con
 - Durable-identity invariant when renaming a surface: `WorkflowFamily.TASK_RUNTIME.humanName` MUST stay literally 'feature-task-runtime' and `feature_task_runtime_phase` output schema `$id`/contract_version stay unchanged; only adapter names change. `feature_implement_*` family kept functional with deprecation notes (not retired).
 - Parity pitfalls: every `McpToolRegistry` tool name needs a matching `telemetry-event-schema.yaml` `$defs.<camelCase>Event` branch + top-level `oneOf` `$ref` (TelemetryEventInputSchemaParityTest is bidirectional); `McpStdioServerTest.expectedToolInventory` is an exact ordered list and `priorityStrictToolNames` + zero-arg latest list must all carry canonical+alias names. Add canonical branches without bumping contract_version.
 - Scope note: `FeatureTaskRuntimePhasePromptComposer` EXPERIMENTAL wording is agent-facing prompt text, intentionally left (out of help/description AC scope). Part of decomposed SKILL-67 (1/5); later subtasks reference these canonical names.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-05] SKILL-66 subtask 3 goal-runner-runtime-emission
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-core
+- `GoalRunner` now emits goal lifecycle telemetry via a per-run `GoalRunnerTelemetryEmitter` collaborator (beside `GoalRunnerObservabilityEmitter`/`GoalRunnerLedgerRecorder`): one `goal_started` at loop start (`resumed` from `subtasks.any{hasStarted()}`), one `goal_subtask_finished` per newly-terminal subtask in the segment, one `goal_finished` per segment with split terminal counts. reusable
+- Run-session identity pattern: per-segment id = `parentWorkflowId + ":seg:" + clock-derived segmentStartedAt`; a `priorTerminal` snapshot at loop start + `emittedThisSegment` guard make a centralized `sweepTerminal` transition-detector emit exactly once per subtask and never double-count subtasks finished in earlier segments. reusable
+- Application seam `GoalLifecycleTelemetryEmitter` (3 Unit methods + `NONE` no-op) keeps GoalRunner free of MCP/Clikt/JDBC; impl is `LifecycleTelemetryService` routing goal writes through the existing `enabledStandaloneResult -> database.transaction` path. RuntimeComponent binds the emitter + a `java.time.Clock`. reusable
+- All timing derives from the injected `Clock` seam (no agent-supplied timestamps); emission is purely additive behind `GoalLifecycleTelemetryEmitter.NONE` so existing GoalRunner behavior is byte-equivalent (AC5).
+- Loud-fail gotcha: enabled goal telemetry write failures propagate out of `GoalRunner.run` (no `runCatching` swallow, no silent retry/log downgrade); disabled is a silent no-op. Rationale recorded in `agent/decisions.md`. AC7 matrix in `GoalRunnerTelemetryTest` (fake launcher + fixed clock) locks exact event counts/payloads for clean/blocked/resumed/skipped/loud-fail/NONE.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-06-04] SKILL-66 subtask 2 goal-telemetry-persistence
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite
+- `LifecycleTelemetryRepository` gains 3 goal write methods (`goalStarted`/`goalSubtaskFinished`/`goalFinished`); the aggregate read lives on `WorkflowStatsRepository.goalStats()` (run/terminal-status counts, duration aggregates, per-subtask outcome breakdown, most-recent run) — D1 split recorded in `agent/decisions.md`. reusable
+- Records (`GoalStartedRecord`/`GoalSubtaskFinishedRecord`/`GoalFinishedRecord`) sit beside existing lifecycle records with `toRecord()` mappers in their own file (function budget); field-for-field with subtask-1 schema branches, `event_name`/`contract_version` omitted as payload-layer constants per the existing record convention. reusable
+- Migration v3 `add-goal-telemetry-tables` creates `goal_run_sessions` (PK `workflow_id`) + `goal_subtask_events` (composite PK `(issue_key,subtask_id,workflow_id)`); that PK IS the AC#4 resume dedupe identity. Base schema + migrations 1–2 byte-unchanged. reusable
+- Resume-safety pattern: idempotent save via `ON CONFLICT DO NOTHING` + emit-once outbox gated on `*_event_emitted_at` (no double-count, no re-emit on resume), mirroring the existing lifecycle store seams. reusable
+- Gotcha: stats read must strict-parse — `InvalidGoalTelemetryRowError` accessors are kept ISOLATED from the permissive map helpers so malformed rows loud-fail (AC#5); reusing the permissive path would silently truncate. reusable
+- Detekt `TooManyFunctions` on the legitimately-grown interface/store suppressed per existing project precedent; goal payload maps follow lifecycle convention (data-only, identifying/free-text gated behind level==full). Subtask 3 calls the writes from GoalRunner; subtask 4 reads `goalStats()` for the `goal_stats` MCP tool + CLI.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-06-04] SKILL-66 subtask 1 goal-telemetry-contract-and-schema
+Areas: orchestration/contracts, runtime-kotlin/runtime-mcp
+- `telemetry-event-schema.yaml` gains three strict runtime-internal emission branches (`goalStartedEvent`/`goalSubtaskFinishedEvent`/`goalFinishedEvent`) + a `goalStatsEvent`, following implement/verify field conventions: ISO-8601 `minLength:1` timestamps, bounded int32 counts/durations, two shared status enums (`goalSubtaskStatusEnum` complete/blocked/skipped, `goalFinishedStatusEnum` completed/blocked), `blocked_reason: type:[string,null]`. reusable
+- New family pattern: emission events are runtime-internal (NO tool/handler) and intentionally absent from `toolNames`; only `goal_stats` is a registered tool. Encode this carve-out in `x-coherence-checks` (amend `toolnames-membership` + add a `goal-telemetry-emission-events` entry) and in a `runtimeInternalEmissionEvents` allow-list relaxing the branch→tool parity assertion. reusable
+- `goal_stats` registered in `McpToolRegistry` toolNames/descriptions/inputSchemas with `goalStatsSchema()` (strict, no required, optional since/date_from/date_to/group_by[""/day/week]) mirroring `feature_implement_stats`/`feature_verify_stats`. No dispatcher handler — wiring deferred to subtask 4 (registry/dispatcher tests stay green with no handler since nativeHandlers is never cross-checked against toolNames). reusable
+- Per-family parity test precedent: new `GoalTelemetryEmissionEventParityTest` asserts branch shape/consts/required keysets, validates representative envelopes incl. `blocked_reason` null AND string (networknt Draft 2020-12 accepts the union), and locks the not-a-tool / is-a-tool invariants.
+- No `contract_version` / `TELEMETRY_EVENT_CONTRACT_VERSION` bump — additive branches need none under the schema's own rules. Gotcha: avoid `/*` inside Kotlin KDoc — block comments nest and break compilation.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 

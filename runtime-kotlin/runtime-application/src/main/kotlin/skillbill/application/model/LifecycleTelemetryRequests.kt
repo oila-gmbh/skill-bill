@@ -109,3 +109,37 @@ data class PrDescriptionGeneratedRequest(
   val prTitle: String,
   val orchestrated: Boolean,
 )
+
+data class GoalStartedRequest(
+  val issueKey: String,
+  val featureName: String,
+  val workflowId: String,
+  val subtaskTotal: Int,
+  val resumed: Boolean,
+  val startedAt: String,
+)
+
+data class GoalSubtaskFinishedRequest(
+  val issueKey: String,
+  val workflowId: String,
+  val subtaskId: Int,
+  val subtaskName: String,
+  val status: String,
+  val startedAt: String,
+  val finishedAt: String,
+  val durationMs: Long,
+  val attemptCount: Int,
+  val blockedReason: String?,
+)
+
+data class GoalFinishedRequest(
+  val issueKey: String,
+  val workflowId: String,
+  val status: String,
+  val startedAt: String,
+  val finishedAt: String,
+  val durationMs: Long,
+  val subtasksComplete: Int,
+  val subtasksBlocked: Int,
+  val subtasksSkipped: Int,
+)

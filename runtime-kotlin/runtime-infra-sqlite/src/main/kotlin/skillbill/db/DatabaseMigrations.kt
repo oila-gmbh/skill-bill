@@ -16,6 +16,11 @@ internal object DatabaseMigrations {
         name = "normalize-feedback-event-outcomes",
         operation = FeedbackEventMigration::apply,
       ),
+      DatabaseMigration(
+        version = 3,
+        name = "add-goal-telemetry-tables",
+        operation = GoalTelemetryMigration::apply,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

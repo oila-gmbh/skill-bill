@@ -80,7 +80,7 @@ class TelemetryStatsCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("stats", "Fetch aggregate org-wide workflow metrics from the telemetry proxy.") {
   private val workflow by argument(help = "Workflow family to query.")
-    .choice("verify", "implement", "feature-task-runtime")
+    .choice("verify", "implement", "feature-task-runtime", "goal")
   private val since by option("--since", help = "Relative lookback window in <days>d format.").default("")
   private val dateFrom by option("--date-from", help = "Inclusive start date in YYYY-MM-DD format.").default("")
   private val dateTo by option("--date-to", help = "Inclusive end date in YYYY-MM-DD format.").default("")

@@ -99,3 +99,37 @@ data class PrDescriptionGeneratedRecord(
   val prCreated: Boolean,
   val prTitle: String,
 )
+
+data class GoalStartedRecord(
+  val issueKey: String,
+  val featureName: String,
+  val workflowId: String,
+  val subtaskTotal: Int,
+  val resumed: Boolean,
+  val startedAt: String,
+)
+
+data class GoalSubtaskFinishedRecord(
+  val issueKey: String,
+  val workflowId: String,
+  val subtaskId: Int,
+  val subtaskName: String,
+  val status: String,
+  val startedAt: String,
+  val finishedAt: String,
+  val durationMs: Long,
+  val attemptCount: Int,
+  val blockedReason: String?,
+)
+
+data class GoalFinishedRecord(
+  val issueKey: String,
+  val workflowId: String,
+  val status: String,
+  val startedAt: String,
+  val finishedAt: String,
+  val durationMs: Long,
+  val subtasksComplete: Int,
+  val subtasksBlocked: Int,
+  val subtasksSkipped: Int,
+)

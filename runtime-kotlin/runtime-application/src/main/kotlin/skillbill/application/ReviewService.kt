@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureImplementStatsResult
 import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
+import skillbill.application.model.GoalStatsResult
 import skillbill.application.model.ImportedReviewResult
 import skillbill.application.model.ReviewFeedbackResult
 import skillbill.application.model.ReviewPreviewResult
@@ -22,10 +23,12 @@ import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
+import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
 
+@Suppress("TooManyFunctions")
 @Inject
 class ReviewService(
   private val context: RuntimeContext,
@@ -136,6 +139,9 @@ class ReviewService(
 
   fun featureTaskRuntimeStats(dbOverride: String?): FeatureTaskRuntimeStatsResult =
     featureTaskRuntimeStatsResult(database, dbOverride, ReviewRepository::featureTaskRuntimeStats)
+
+  fun goalStats(dbOverride: String?): GoalStatsResult =
+    goalStatsResult(database, dbOverride, ReviewRepository::goalStats)
 }
 
 private fun applyTriageDecisions(
@@ -212,6 +218,17 @@ private fun featureTaskRuntimeStatsResult(
   statsBuilder: (ReviewRepository) -> FeatureTaskRuntimeWorkflowStats,
 ): FeatureTaskRuntimeStatsResult = database.read(dbOverride) { unitOfWork ->
   FeatureTaskRuntimeStatsResult(
+    dbPath = unitOfWork.dbPath.toString(),
+    stats = statsBuilder(unitOfWork.reviews),
+  )
+}
+
+private fun goalStatsResult(
+  database: DatabaseSessionFactory,
+  dbOverride: String?,
+  statsBuilder: (ReviewRepository) -> GoalWorkflowStats,
+): GoalStatsResult = database.read(dbOverride) { unitOfWork ->
+  GoalStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     stats = statsBuilder(unitOfWork.reviews),
   )

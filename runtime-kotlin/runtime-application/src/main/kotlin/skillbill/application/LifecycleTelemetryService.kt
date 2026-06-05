@@ -7,6 +7,9 @@ import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
+import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalStartedRequest
+import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
@@ -16,10 +19,11 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
+@Suppress("TooManyFunctions")
 class LifecycleTelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-) {
+) : GoalLifecycleTelemetryEmitter {
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureImplementStarted(request: FeatureImplementStartedRequest): Map<String, Any?> {
     val sessionId = generateLifecycleSessionId("fis")
@@ -134,6 +138,30 @@ class LifecycleTelemetryService(
             unitOfWork.lifecycleTelemetry.prDescriptionGenerated(request.toRecord(sessionId), settings.level)
           }
         }
+    }
+  }
+
+  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalStarted(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.workflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
+      }
     }
   }
 
