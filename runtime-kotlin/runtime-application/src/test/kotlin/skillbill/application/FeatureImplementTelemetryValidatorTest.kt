@@ -24,8 +24,23 @@ class FeatureImplementTelemetryValidatorTest {
   @Test
   fun `finished telemetry validates known child step payload fields`() {
     assertEquals(
-      "child_steps rejected_findings is required.",
+      "child_steps total_findings is required.",
       validateFeatureImplementFinished(validFinishedRequest(childSteps = listOf(mapOf("skill" to "bill-code-review")))),
+    )
+    assertEquals(
+      "child_steps unresolved_findings is required.",
+      validateFeatureImplementFinished(
+        validFinishedRequest(
+          childSteps = listOf(
+            mapOf(
+              "skill" to "bill-code-review",
+              "total_findings" to 1,
+              "accepted_findings" to 1,
+              "rejected_findings" to 0,
+            ),
+          ),
+        ),
+      ),
     )
     assertEquals(
       "child_steps failing check details are required for bill-code-check.",

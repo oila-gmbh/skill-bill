@@ -67,12 +67,65 @@ class ReviewStatsRuntimeTest {
       assertEquals(0.25, health.rejectedRate)
       assertEquals(0.25, health.unresolvedRate)
       assertEquals(2, health.severityCounts["Major"])
-      assertEquals(1, health.confidenceCounts["high"])
+      assertEquals(2, health.confidenceCounts["High"])
+      assertEquals(2, health.latestOutcomeCounts["finding_accepted"])
       assertEquals(1, health.latestOutcomeCounts["fix_rejected"])
       assertEquals(1, health.issueCategoryCounts["testing"])
       assertEquals(2, health.platformCounts["kotlin"])
       assertEquals(1, health.scopeCounts["branch_diff"])
       assertEquals(mapOf("standalone" to 1, "embedded" to 1, "malformed" to 1), health.sourceCounts)
+
+      val runHealth = ReviewStatsRuntime.statsSnapshot(connection, review.reviewRunId).health
+      assertEquals(1, runHealth.totalReviewPayloadRecords)
+      assertEquals(1, runHealth.includedReviewPayloadRecords)
+      assertEquals(0, runHealth.malformedReviewPayloadRecords)
+      assertEquals(mapOf("standalone" to 1, "embedded" to 0, "malformed" to 0), runHealth.sourceCounts)
+    }
+  }
+
+  @Test
+  fun `statsSnapshot derives missing latest outcome counts from finding details`() {
+    val (_, connection) = tempDbConnection("review-health-detail-outcomes")
+    connection.use {
+      TelemetryOutboxStore(connection).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "review_run_id" to "rvw-detail-outcomes",
+            "platform_slug" to "kotlin",
+            "scope_type" to "branch_diff",
+            "total_findings" to 2,
+            "accepted_findings" to 1,
+            "rejected_findings" to 1,
+            "unresolved_findings" to 0,
+            "accepted_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-001",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "Medium",
+                "outcome_type" to "fix_applied",
+              ),
+            ),
+            "rejected_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-002",
+                "issue_category" to "testing_quality_gate",
+                "severity" to "Minor",
+                "confidence" to "Low",
+                "outcome_type" to "false_positive",
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val health = ReviewStatsRuntime.statsSnapshot(connection, reviewRunId = null).health
+
+      assertEquals(1, health.latestOutcomeCounts["fix_applied"])
+      assertEquals(1, health.latestOutcomeCounts["false_positive"])
+      assertEquals(0, health.latestOutcomeCounts["finding_accepted"])
+      assertEquals(0, health.latestOutcomeCounts["fix_rejected"])
     }
   }
 
@@ -273,7 +326,7 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
-  fun `feature implement duplicate terminal calls increment accounting without duplicate outbox events`() {
+  fun `feature implement duplicate terminal calls emit updated duplicate accounting`() {
     val (_, connection) = tempDbConnection("feature-implement-duplicate-terminal")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
@@ -300,12 +353,50 @@ class ReviewStatsRuntimeTest {
 
       val pending = outbox.listPending(limit = null)
       assertEquals(
-        listOf("skillbill_feature_implement_started", "skillbill_feature_implement_finished"),
+        listOf(
+          "skillbill_feature_implement_started",
+          "skillbill_feature_implement_finished",
+          "skillbill_feature_implement_finished",
+        ),
         pending.map { it.eventName },
       )
+      val duplicatePayload = telemetryPayloads(pending, "skillbill_feature_implement_finished").last()
+      assertEquals(1, duplicatePayload["duplicate_terminal_finished_events"])
       val stats = ReviewStatsRuntime.featureImplementStats(connection)
       assertEquals(1, stats.duplicateTerminalFinishedEvents)
       assertEquals(2, stats.dataQualityDebtRuns)
+    }
+  }
+
+  @Test
+  fun `feature implement finished preserves started source when finish omits source`() {
+    val (_, connection) = tempDbConnection("feature-implement-source-preserved")
+    connection.use {
+      val store = LifecycleTelemetryStore(connection)
+      store.featureImplementStarted(
+        FeatureImplementStartedRecord(
+          sessionId = "fis-source",
+          source = "test",
+          issueKeyProvided = true,
+          issueKeyType = "other",
+          specInputTypes = listOf("raw_text"),
+          specWordCount = 100,
+          featureSize = "SMALL",
+          featureName = "source-preserved",
+          rolloutNeeded = false,
+          acceptanceCriteriaCount = 1,
+          openQuestionsCount = 0,
+          specSummary = "Source preservation test.",
+        ),
+        level = "anonymous",
+      )
+      store.featureImplementFinished(featureImplementFinishedRecord("fis-source"), level = "anonymous")
+
+      val stats = ReviewStatsRuntime.featureImplementStats(connection)
+
+      assertEquals(0, stats.validHealthDenominatorRuns)
+      assertEquals(0, stats.sourceCounts["production"])
+      assertEquals(1, stats.sourceCounts["test"])
     }
   }
 
@@ -459,6 +550,16 @@ private fun recordFindingOutcome(
     ),
     telemetryOptions = FeedbackTelemetryOptions(enabled = false, level = "anonymous"),
   )
+}
+
+private fun telemetryPayloads(
+  records: List<skillbill.ports.persistence.model.TelemetryOutboxRecord>,
+  eventName: String,
+): List<Map<String, Any?>> = records.filter { it.eventName == eventName }.map { record ->
+  JsonSupport.parseObjectOrNull(record.payloadJson)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: emptyMap()
 }
 
 private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: String, reviewSessionId: String) {

@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-69 Subtask 3 - Stats, Remote Query Guidance, and Docs

@@ -495,7 +495,7 @@ Mirror to local stats:
 
 ### Health stat defaults
 
-Local health views use a rolling last-60-days window when a date range is not supplied by the caller. They exclude `source = test` and `source = synthetic` telemetry from health denominators by default. Excluded and malformed records are still reported as data-quality debt so dashboards do not hide instrumentation problems.
+Local health views use the rows available in the local telemetry database. They exclude `source = test` and `source = synthetic` telemetry from health denominators by default. Excluded and malformed records are still reported as data-quality debt so dashboards do not hide instrumentation problems.
 
 Review health combines two review payload sources:
 

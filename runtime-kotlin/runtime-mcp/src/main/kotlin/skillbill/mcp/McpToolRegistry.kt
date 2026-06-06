@@ -259,7 +259,7 @@ object McpToolRegistry {
           "feature_flag_pattern" to stringSchema(enum = listOf("simple_conditional", "di_switch", "legacy", "none")),
           "boundary_history_value" to stringSchema(enum = listOf("none", "irrelevant", "low", "medium", "high")),
           "plan_deviation_notes" to stringSchema(),
-          "child_steps" to arraySchema(freeObjectSchema),
+          "child_steps" to arraySchema(featureImplementChildStepSchema()),
         ),
       ),
       "feature_implement_workflow_continue" to objectSchema(

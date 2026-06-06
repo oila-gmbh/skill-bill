@@ -4,7 +4,7 @@ import skillbill.review.model.ReviewHealthStats
 import java.sql.Connection
 
 val reviewHealthSeverities = listOf("Blocker", "Major", "Minor")
-val reviewHealthConfidences = listOf("high", "medium", "low")
+val reviewHealthConfidences = listOf("High", "Medium", "Low")
 val reviewHealthScopes = listOf("branch_diff", "unstaged_changes", "working_tree", "unknown")
 
 data class ReviewHealthPayload(
@@ -14,7 +14,13 @@ data class ReviewHealthPayload(
 
 fun buildReviewHealthStats(connection: Connection, reviewRunId: String?): ReviewHealthStats {
   val parsedPayloads = loadStandaloneReviewPayloads(connection) + loadEmbeddedReviewPayloads(connection)
-  val malformedRecords = parsedPayloads.count { it.payload.isEmpty() }
+  val scopedPayloads =
+    if (reviewRunId == null) {
+      parsedPayloads
+    } else {
+      parsedPayloads.filter { it.payload.stringHealthValue("review_run_id") == reviewRunId }
+    }
+  val malformedRecords = scopedPayloads.count { it.payload.isEmpty() }
   val includedPayloads = parsedPayloads
     .filter { it.payload.isNotEmpty() }
     .filter { reviewRunId == null || it.payload.stringHealthValue("review_run_id") == reviewRunId }
@@ -24,10 +30,10 @@ fun buildReviewHealthStats(connection: Connection, reviewRunId: String?): Review
   val unresolvedFindings = includedPayloads.sumOf { it.payload.healthInt("unresolved_findings") }
   val totalFindings = acceptedFindings + rejectedFindings + unresolvedFindings
   return ReviewHealthStats(
-    totalReviewPayloadRecords = parsedPayloads.size,
+    totalReviewPayloadRecords = scopedPayloads.size,
     includedReviewPayloadRecords = includedPayloads.size,
-    standaloneReviewPayloadRecords = parsedPayloads.count { it.source == "standalone" },
-    embeddedReviewPayloadRecords = parsedPayloads.count { it.source == "embedded" },
+    standaloneReviewPayloadRecords = scopedPayloads.count { it.source == "standalone" },
+    embeddedReviewPayloadRecords = scopedPayloads.count { it.source == "embedded" },
     malformedReviewPayloadRecords = malformedRecords,
     dataQualityDebtRecords = malformedRecords,
     totalFindings = totalFindings,

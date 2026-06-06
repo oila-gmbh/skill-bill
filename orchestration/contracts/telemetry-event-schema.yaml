@@ -254,6 +254,124 @@ $defs:
       - blocked
   freeObjectShape:
     type: object
+  reviewChildStep:
+    type: object
+    additionalProperties: true
+    required:
+      - skill
+      - total_findings
+      - accepted_findings
+      - rejected_findings
+      - unresolved_findings
+      - accepted_rate
+      - rejected_rate
+    properties:
+      skill:
+        type: string
+      total_findings:
+        type: integer
+      accepted_findings:
+        type: integer
+      rejected_findings:
+        type: integer
+      unresolved_findings:
+        type: integer
+      accepted_rate:
+        type: number
+      rejected_rate:
+        type: number
+      accepted_finding_details:
+        type: array
+        items:
+          $ref: "#/$defs/reviewChildFindingDetail"
+      rejected_finding_details:
+        type: array
+        items:
+          $ref: "#/$defs/reviewChildFindingDetail"
+  reviewChildFindingDetail:
+    type: object
+    additionalProperties: true
+    required:
+      - issue_category
+      - severity
+      - confidence
+      - outcome_type
+    properties:
+      issue_category:
+        type: string
+      severity:
+        type: string
+        enum:
+          - Blocker
+          - Major
+          - Minor
+      confidence:
+        type: string
+        enum:
+          - High
+          - Medium
+          - Low
+          - high
+          - medium
+          - low
+      outcome_type:
+        type: string
+        enum:
+          - finding_accepted
+          - fix_applied
+          - finding_edited
+          - fix_rejected
+          - false_positive
+  qualityCheckChildStep:
+    type: object
+    additionalProperties: true
+    required:
+      - skill
+      - result
+      - iterations
+      - initial_failure_count
+      - final_failure_count
+    properties:
+      skill:
+        type: string
+      result:
+        type: string
+        enum:
+          - pass
+          - fail
+          - skipped
+          - unsupported_stack
+      iterations:
+        type: integer
+      initial_failure_count:
+        type: integer
+      final_failure_count:
+        type: integer
+      failing_check_names:
+        type: array
+        items:
+          type: string
+      failing_check_details:
+        type: array
+        items:
+          $ref: "#/$defs/freeObjectShape"
+  prDescriptionChildStep:
+    type: object
+    additionalProperties: true
+    required:
+      - skill
+      - pr_created
+      - commit_count
+      - files_changed_count
+    properties:
+      skill:
+        type: string
+      pr_created:
+        type: boolean
+      commit_count:
+        type: integer
+      files_changed_count:
+        type: integer
   emptyObjectShape:
     type: object
     additionalProperties: false
@@ -641,7 +759,10 @@ $defs:
       child_steps:
         type: array
         items:
-          $ref: "#/$defs/freeObjectShape"
+          oneOf:
+            - $ref: "#/$defs/reviewChildStep"
+            - $ref: "#/$defs/qualityCheckChildStep"
+            - $ref: "#/$defs/prDescriptionChildStep"
 
   featureImplementWorkflowContinueEvent:
     type: object

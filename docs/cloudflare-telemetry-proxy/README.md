@@ -100,7 +100,7 @@ The Worker `/stats` route returns compact remote workflow summaries. Rich review
 
 Use the same filtering rules in PostHog dashboards:
 
-- default health window: last 60 days
+- choose an explicit health window, commonly the last 60 days
 - health denominators: production telemetry with valid `fis-*` session ids for feature-implement stats
 - excluded rows: `source = test` and `source = synthetic`
 - data-quality debt: malformed session ids, unknown sources, duplicate terminal events, invalid/long-running durations, malformed child steps, and malformed review payloads

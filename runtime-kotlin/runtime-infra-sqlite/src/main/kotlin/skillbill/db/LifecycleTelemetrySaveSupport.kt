@@ -36,17 +36,18 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
   }
 }
 
-fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord) {
+fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): Boolean {
   val childStepsJson = listJson(record.childSteps)
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
     if (featureImplementAlreadyFinished(connection, record.sessionId)) {
       incrementDuplicateFeatureImplementFinished(connection, record.sessionId)
-      return
+      return true
     }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
     insertFeatureImplementFinished(connection, record, childStepsJson)
   }
+  return false
 }
 
 fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedRecord) {
@@ -151,7 +152,6 @@ private fun updateFeatureImplementFinished(
     """
     UPDATE feature_implement_sessions SET
       completion_status = ?,
-      source = ?,
       plan_correction_count = ?,
       plan_task_count = ?,
       plan_phase_count = ?,
@@ -174,7 +174,7 @@ private fun updateFeatureImplementFinished(
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
-      featureImplementFinishedValues(record, childStepsJson, includeSessionFirst = false),
+      featureImplementFinishedValues(record, childStepsJson, includeSessionFirst = false, includeSource = false),
     )
     statement.executeUpdate()
   }

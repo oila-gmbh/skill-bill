@@ -17,7 +17,11 @@ private fun validateFeatureImplementChildStep(childStep: Map<String, Any?>): Str
 }
 
 private fun validateReviewChildStep(childStep: Map<String, Any?>): String? = listOfNotNull(
+  validatePresent(childStep, "total_findings"),
+  validatePresent(childStep, "accepted_findings"),
   validatePresent(childStep, "rejected_findings"),
+  validatePresent(childStep, "unresolved_findings"),
+  validatePresent(childStep, "accepted_rate"),
   validatePresent(childStep, "rejected_rate"),
   validateFindingIssueCategories(childStep, "accepted_finding_details"),
   validateFindingIssueCategories(childStep, "rejected_finding_details"),

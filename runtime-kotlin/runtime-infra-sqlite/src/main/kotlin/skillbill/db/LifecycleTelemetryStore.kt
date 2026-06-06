@@ -28,8 +28,8 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) {
-    saveFeatureImplementFinished(connection, record)
-    emitFeatureImplementFinished(connection, record.sessionId, level)
+    val duplicateTerminalEvent = saveFeatureImplementFinished(connection, record)
+    emitFeatureImplementFinished(connection, record.sessionId, level, duplicateTerminalEvent)
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {

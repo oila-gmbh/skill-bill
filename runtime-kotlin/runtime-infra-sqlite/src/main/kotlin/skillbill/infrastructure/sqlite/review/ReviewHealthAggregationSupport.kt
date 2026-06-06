@@ -9,8 +9,9 @@ fun aggregateLatestOutcomeCounts(payloads: List<ReviewHealthPayload>): Map<Strin
   payloads.forEach { payload ->
     val latestOutcomeCounts = payload.payload["latest_outcome_counts"] as? Map<*, *>
     if (latestOutcomeCounts == null) {
-      addOutcomeCount(counts, "finding_accepted", payload.payload.healthInt("accepted_findings"))
-      addOutcomeCount(counts, "fix_rejected", payload.payload.healthInt("rejected_findings"))
+      reviewFindingDetails(payload.payload).forEach { detail ->
+        addOutcomeCount(counts, detail["outcome_type"]?.toString().orEmpty(), 1)
+      }
     } else {
       latestOutcomeCounts.forEach { (key, value) -> addOutcomeCount(counts, key?.toString().orEmpty(), value.asInt()) }
     }
@@ -26,7 +27,7 @@ fun aggregateFindingDetailCounts(
   val counts = expectedValues.associateWith { 0 }.toMutableMap()
   payloads.forEach { payload ->
     reviewFindingDetails(payload.payload).forEach { detail ->
-      val value = detail[fieldName]?.toString().orEmpty()
+      val value = normalizeFindingDetailValue(fieldName, detail[fieldName]?.toString().orEmpty())
       if (value.isNotBlank()) {
         counts[value] = counts.getOrDefault(value, 0) + 1
       }
@@ -65,6 +66,16 @@ private fun addOutcomeCount(counts: MutableMap<String, Int>, key: String, count:
 private fun reviewFindingDetails(payload: Map<String, Any?>): List<Map<*, *>> =
   (payload["accepted_finding_details"] as? List<*>).orEmpty().filterIsInstance<Map<*, *>>() +
     (payload["rejected_finding_details"] as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()
+
+private fun normalizeFindingDetailValue(fieldName: String, value: String): String = when (fieldName) {
+  "confidence" -> when (value.lowercase()) {
+    "high" -> "High"
+    "medium" -> "Medium"
+    "low" -> "Low"
+    else -> value
+  }
+  else -> value
+}
 
 private fun Any?.asInt(): Int = when (this) {
   is Number -> toInt()
