@@ -110,6 +110,12 @@ class McpRuntimeTest {
     assertEquals(mapOf("SMALL" to 0, "MEDIUM" to 1, "LARGE" to 0), implementStats["feature_size_counts"])
     assertEquals(0.0, implementStats["pr_created_rate"])
     assertEquals(4.0, implementStats["average_tasks_completed"])
+    assertTrue("child_step_coverage" in implementStats)
+    assertTrue("feature_size_outcome_stats" in implementStats)
+    assertTrue("large_feature_health" in implementStats)
+    val childStepCoverage = implementStats["child_step_coverage"] as Map<*, *>
+    assertEquals(1, childStepCoverage["runs_with_child_steps"])
+    assertEquals(1, childStepCoverage["quality_check_child_step_runs"])
     val implementCompletionStatusCounts = implementStats["completion_status_counts"] as Map<*, *>
     assertEquals(1, implementCompletionStatusCounts["completed"])
     assertEquals(0, implementCompletionStatusCounts["error"])
@@ -393,6 +399,10 @@ class McpRuntimeTest {
     val payload = triageResult["telemetry_payload"] as Map<*, *>
     assertEquals("bill-code-review", payload["skill"])
     assertEquals(2, payload["total_findings"])
+    assertEquals(0, payload["rejected_findings"])
+    assertEquals(0.0, payload["rejected_rate"])
+    assertEquals("kotlin", payload["platform_slug"])
+    assertEquals("unstaged_changes", payload["scope_type"])
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val outboxCount =
@@ -948,7 +958,15 @@ private fun recordFeatureImplementLifecycle(context: McpRuntimeContext) {
       featureFlagPattern = "none",
       boundaryHistoryValue = "medium",
       planDeviationNotes = "",
-      childSteps = listOf(mapOf("skill" to "bill-code-check", "result" to "pass")),
+      childSteps = listOf(
+        mapOf(
+          "skill" to "bill-code-check",
+          "result" to "pass",
+          "iterations" to 1,
+          "initial_failure_count" to 0,
+          "final_failure_count" to 0,
+        ),
+      ),
     ),
     context,
   )
@@ -1119,6 +1137,30 @@ private fun featureImplementStatsKeys(): Set<String> = setOf(
   "total_runs",
   "finished_runs",
   "in_progress_runs",
+  "raw_run_count",
+  "source_counts",
+  "valid_health_denominator_runs",
+  "data_quality_debt_runs",
+  "malformed_session_id_runs",
+  "unknown_source_runs",
+  "duplicate_terminal_finished_events",
+  "open_runs",
+  "completed_runs",
+  "completed_rate",
+  "abandoned_at_planning_runs",
+  "abandoned_at_implementation_runs",
+  "abandoned_at_review_runs",
+  "error_runs",
+  "error_rate",
+  "normal_duration_runs",
+  "synthetic_zero_duration_runs",
+  "long_running_duration_runs",
+  "invalid_duration_runs",
+  "median_duration_seconds",
+  "p90_duration_seconds",
+  "child_step_coverage",
+  "feature_size_outcome_stats",
+  "large_feature_health",
   "feature_size_counts",
   "completion_status_counts",
   "audit_result_counts",

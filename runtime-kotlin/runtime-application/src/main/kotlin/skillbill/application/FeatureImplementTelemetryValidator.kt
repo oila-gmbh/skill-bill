@@ -5,11 +5,14 @@ import skillbill.application.model.FeatureImplementStartedRequest
 
 private val auditResults = listOf("all_pass", "had_gaps", "skipped")
 private val validationResults = listOf("pass", "fail", "skipped")
+private val featureImplementSources = listOf("production", "test", "synthetic", "unknown")
+private val featureImplementSessionIdPattern = Regex("""^fis-[A-Za-z0-9][A-Za-z0-9_-]*$""")
 private val completionStatuses =
   listOf("completed", "abandoned_at_planning", "abandoned_at_implementation", "abandoned_at_review", "error")
 
 fun validateFeatureImplementStarted(request: FeatureImplementStartedRequest): String? = listOfNotNull(
   validateEnum(request.featureSize, featureSizes, "feature_size"),
+  validateEnum(request.source, featureImplementSources, "source"),
   validateEnum(request.issueKeyType, issueKeyTypes, "issue_key_type"),
   validateNonBlank(request.featureName, "feature_name"),
   validateNonBlank(request.issueKey, "issue_key"),
@@ -22,13 +25,22 @@ fun validateFeatureImplementStarted(request: FeatureImplementStartedRequest): St
 ).firstOrNull()
 
 fun validateFeatureImplementFinished(request: FeatureImplementFinishedRequest): String? = listOfNotNull(
+  validateFeatureImplementSessionId(request.sessionId),
+  validateEnum(request.source, featureImplementSources, "source"),
   validateEnum(request.completionStatus, completionStatuses, "completion_status"),
   validateEnum(request.featureFlagPattern, featureFlagPatterns, "feature_flag_pattern"),
   validateEnum(request.auditResult, auditResults, "audit_result"),
   validateEnum(request.validationResult, validationResults, "validation_result"),
   validateEnum(request.boundaryHistoryValue, historySignalValues, "boundary_history_value"),
+  validateFeatureImplementChildSteps(request.childSteps),
   validateCompletedFeatureImplementFinished(request),
 ).firstOrNull()
+
+private fun validateFeatureImplementSessionId(sessionId: String): String? = when {
+  sessionId.isBlank() -> "session_id must not be blank."
+  !sessionId.matches(featureImplementSessionIdPattern) -> "session_id must be a feature-implement session id."
+  else -> null
+}
 
 private fun validateCompletedFeatureImplementFinished(request: FeatureImplementFinishedRequest): String? {
   if (request.completionStatus != "completed") {

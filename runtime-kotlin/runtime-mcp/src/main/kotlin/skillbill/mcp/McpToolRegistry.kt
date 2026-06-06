@@ -200,6 +200,7 @@ object McpToolRegistry {
         ),
         properties = mapOf(
           "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
+          "source" to stringSchema(enum = listOf("production", "test", "synthetic", "unknown")),
           "acceptance_criteria_count" to integerSchema,
           "open_questions_count" to integerSchema,
           "spec_input_types" to arraySchema(stringSchema(enum = specInputTypes)),
@@ -232,6 +233,7 @@ object McpToolRegistry {
         ),
         properties = mapOf(
           "session_id" to stringSchema(),
+          "source" to stringSchema(enum = listOf("production", "test", "synthetic", "unknown")),
           "completion_status" to stringSchema(
             enum = listOf(
               "completed",
@@ -257,7 +259,7 @@ object McpToolRegistry {
           "feature_flag_pattern" to stringSchema(enum = listOf("simple_conditional", "di_switch", "legacy", "none")),
           "boundary_history_value" to stringSchema(enum = listOf("none", "irrelevant", "low", "medium", "high")),
           "plan_deviation_notes" to stringSchema(),
-          "child_steps" to arraySchema(freeObjectSchema),
+          "child_steps" to arraySchema(featureImplementChildStepSchema()),
         ),
       ),
       "feature_implement_workflow_continue" to objectSchema(

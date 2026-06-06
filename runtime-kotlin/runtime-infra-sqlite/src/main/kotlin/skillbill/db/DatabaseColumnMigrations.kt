@@ -8,6 +8,7 @@ internal object DatabaseColumnMigrations {
   fun apply(connection: Connection) {
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
+    ensureFindingColumns(connection)
     backfillReviewSessionIds(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
@@ -61,6 +62,15 @@ internal object DatabaseColumnMigrations {
     )
   }
 
+  private fun ensureFindingColumns(connection: Connection) {
+    ensureColumn(
+      connection = connection,
+      tableName = "findings",
+      columnName = "issue_category",
+      definition = "TEXT NOT NULL DEFAULT 'other'",
+    )
+  }
+
   private fun backfillReviewSessionIds(connection: Connection) {
     connection.prepareStatement(
       """
@@ -77,6 +87,12 @@ internal object DatabaseColumnMigrations {
     ensureColumn(
       connection = connection,
       tableName = "feature_implement_sessions",
+      columnName = "source",
+      definition = "TEXT NOT NULL DEFAULT 'production'",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_implement_sessions",
       columnName = "boundary_history_value",
       definition = "TEXT NOT NULL DEFAULT 'none'",
     )
@@ -85,6 +101,12 @@ internal object DatabaseColumnMigrations {
       tableName = "feature_implement_sessions",
       columnName = "child_steps_json",
       definition = "TEXT NOT NULL DEFAULT ''",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_implement_sessions",
+      columnName = "duplicate_terminal_finished_events",
+      definition = "INTEGER NOT NULL DEFAULT 0",
     )
   }
 

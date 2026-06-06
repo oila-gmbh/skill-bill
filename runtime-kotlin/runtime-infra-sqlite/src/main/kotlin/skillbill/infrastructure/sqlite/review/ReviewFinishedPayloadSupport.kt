@@ -10,6 +10,8 @@ import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewLearningEntry
 import skillbill.review.model.ReviewLearningsSummary
 import skillbill.review.model.ReviewSummary
+import skillbill.review.normalizePlatformSlug
+import skillbill.review.normalizeScopeType
 import java.sql.Connection
 
 fun reviewFinishedPayload(
@@ -28,6 +30,8 @@ fun reviewFinishedPayload(
     reviewSubskills = parseSpecialistReviews(reviewSummary.specialistReviewsRaw),
     reviewScope = normalizeReviewScope(reviewSummary.detectedScope),
     reviewPlatform = reviewSummary.detectedStack,
+    platformSlug = reviewPlatformSlug(reviewSummary.detectedStack, reviewSummary.routedSkill),
+    scopeType = normalizeScopeType(reviewSummary.detectedScope),
     executionMode = reviewSummary.executionMode,
     reviewFinishedAt = reviewSummary.reviewFinishedAt,
     learnings = learningsSection,
@@ -38,8 +42,10 @@ fun filterReviewFinishedSummary(summary: ReviewFindingStats, level: String): Rev
   ReviewFinishedFindingStats(
     totalFindings = summary.totalFindings,
     acceptedFindings = summary.acceptedFindings,
+    rejectedFindings = summary.rejectedFindings,
     unresolvedFindings = summary.unresolvedFindings,
     acceptedRate = summary.acceptedRate,
+    rejectedRate = summary.rejectedRate,
     acceptedFindingDetails = reviewFindingDetails(summary.acceptedFindingDetails, level == "full"),
     rejectedFindingDetails = reviewFindingDetails(summary.rejectedFindingDetails, level == "full"),
   )
@@ -111,6 +117,15 @@ fun parseSpecialistReviews(rawValue: String?): List<String> =
   rawValue.orEmpty().split(",").map(String::trim).filter(String::isNotEmpty)
 
 fun normalizeReviewScope(detectedScope: String?): String = detectedScope.orEmpty().substringBefore("(").trim()
+
+fun reviewPlatformSlug(detectedStack: String?, routedSkill: String?): String {
+  val normalizedDetectedStack = normalizePlatformSlug(detectedStack)
+  return if (normalizedDetectedStack != "unknown") {
+    normalizedDetectedStack
+  } else {
+    platformSlugFromRoutedSkill(routedSkill)
+  }
+}
 
 private fun fetchSessionLearnings(connection: Connection, reviewSessionId: String): Map<String, Any?>? {
   val rawJson =

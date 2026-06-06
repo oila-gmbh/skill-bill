@@ -8,17 +8,22 @@ import skillbill.application.model.FeatureVerifyStatsResult
 import skillbill.application.model.GoalStatsResult
 import skillbill.application.model.ReviewStatsResult
 import skillbill.contracts.JsonPayloadContract
+import skillbill.review.model.FeatureImplementChildStepCoverageStats
 import skillbill.review.model.FeatureImplementWorkflowStats
+import skillbill.review.model.FeatureSizeOutcomeStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalBlockedSubtaskSummary
 import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
+import skillbill.review.model.LargeFeatureHealthStats
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats
+import skillbill.review.model.ReviewHealthStats
 
 fun ReviewStatsResult.toReviewStatsPayload(): JsonPayloadContract = MapPayloadContract(
   LinkedHashMap(stats.toPayload()).apply {
+    put("health", health.toPayload())
     put("review_run_id", reviewRunId)
     put("db_path", dbPath)
   },
@@ -58,8 +63,35 @@ private fun ReviewFindingStats.toPayload(): Map<String, Any?> = linkedMapOf(
   "rejected_finding_details" to rejectedFindingDetails.map(ReviewFindingDetail::toPayload),
 )
 
+private fun ReviewHealthStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "total_review_payload_records" to totalReviewPayloadRecords,
+  "included_review_payload_records" to includedReviewPayloadRecords,
+  "standalone_review_payload_records" to standaloneReviewPayloadRecords,
+  "embedded_review_payload_records" to embeddedReviewPayloadRecords,
+  "malformed_review_payload_records" to malformedReviewPayloadRecords,
+  "data_quality_debt_records" to dataQualityDebtRecords,
+  "total_findings" to totalFindings,
+  "average_findings" to averageFindings,
+  "median_findings" to medianFindings,
+  "p90_findings" to p90Findings,
+  "accepted_findings" to acceptedFindings,
+  "rejected_findings" to rejectedFindings,
+  "unresolved_findings" to unresolvedFindings,
+  "accepted_rate" to acceptedRate,
+  "rejected_rate" to rejectedRate,
+  "unresolved_rate" to unresolvedRate,
+  "severity_counts" to severityCounts,
+  "confidence_counts" to confidenceCounts,
+  "latest_outcome_counts" to latestOutcomeCounts,
+  "issue_category_counts" to issueCategoryCounts,
+  "platform_counts" to platformCounts,
+  "scope_counts" to scopeCounts,
+  "source_counts" to sourceCounts,
+)
+
 private fun ReviewFindingDetail.toPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
   "finding_id" to findingId,
+  "issue_category" to issueCategory,
   "severity" to severity,
   "confidence" to confidence,
   "location" to location,
@@ -74,6 +106,30 @@ private fun FeatureImplementWorkflowStats.toPayload(): Map<String, Any?> = linke
   "total_runs" to totalRuns,
   "finished_runs" to finishedRuns,
   "in_progress_runs" to inProgressRuns,
+  "raw_run_count" to rawRunCount,
+  "source_counts" to sourceCounts,
+  "valid_health_denominator_runs" to validHealthDenominatorRuns,
+  "data_quality_debt_runs" to dataQualityDebtRuns,
+  "malformed_session_id_runs" to malformedSessionIdRuns,
+  "unknown_source_runs" to unknownSourceRuns,
+  "duplicate_terminal_finished_events" to duplicateTerminalFinishedEvents,
+  "open_runs" to openRuns,
+  "completed_runs" to completedRuns,
+  "completed_rate" to completedRate,
+  "abandoned_at_planning_runs" to abandonedAtPlanningRuns,
+  "abandoned_at_implementation_runs" to abandonedAtImplementationRuns,
+  "abandoned_at_review_runs" to abandonedAtReviewRuns,
+  "error_runs" to errorRuns,
+  "error_rate" to errorRate,
+  "normal_duration_runs" to normalDurationRuns,
+  "synthetic_zero_duration_runs" to syntheticZeroDurationRuns,
+  "long_running_duration_runs" to longRunningDurationRuns,
+  "invalid_duration_runs" to invalidDurationRuns,
+  "median_duration_seconds" to medianDurationSeconds,
+  "p90_duration_seconds" to p90DurationSeconds,
+  "child_step_coverage" to childStepCoverage.toPayload(),
+  "feature_size_outcome_stats" to featureSizeOutcomeStats.mapValues { (_, value) -> value.toPayload() },
+  "large_feature_health" to largeFeatureHealth.toPayload(),
   "feature_size_counts" to featureSizeCounts,
   "completion_status_counts" to completionStatusCounts,
   "audit_result_counts" to auditResultCounts,
@@ -96,6 +152,45 @@ private fun FeatureImplementWorkflowStats.toPayload(): Map<String, Any?> = linke
   "average_files_modified" to averageFilesModified,
   "average_tasks_completed" to averageTasksCompleted,
   "average_duration_seconds" to averageDurationSeconds,
+)
+
+private fun FeatureImplementChildStepCoverageStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "runs_with_child_steps" to runsWithChildSteps,
+  "review_child_step_runs" to reviewChildStepRuns,
+  "quality_check_child_step_runs" to qualityCheckChildStepRuns,
+  "pr_description_child_step_runs" to prDescriptionChildStepRuns,
+  "malformed_child_step_runs" to malformedChildStepRuns,
+  "child_step_coverage_rate" to childStepCoverageRate,
+)
+
+private fun FeatureSizeOutcomeStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "total_runs" to totalRuns,
+  "completed_runs" to completedRuns,
+  "completed_rate" to completedRate,
+  "abandoned_at_planning_runs" to abandonedAtPlanningRuns,
+  "abandoned_at_planning_rate" to abandonedAtPlanningRate,
+  "abandoned_at_implementation_runs" to abandonedAtImplementationRuns,
+  "abandoned_at_implementation_rate" to abandonedAtImplementationRate,
+  "abandoned_at_review_runs" to abandonedAtReviewRuns,
+  "abandoned_at_review_rate" to abandonedAtReviewRate,
+  "error_runs" to errorRuns,
+  "error_rate" to errorRate,
+  "open_runs" to openRuns,
+  "average_duration_seconds" to averageDurationSeconds,
+  "median_duration_seconds" to medianDurationSeconds,
+  "p90_duration_seconds" to p90DurationSeconds,
+)
+
+private fun LargeFeatureHealthStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "denominator_runs" to denominatorRuns,
+  "completed_runs" to completedRuns,
+  "abandoned_runs" to abandonedRuns,
+  "error_runs" to errorRuns,
+  "unhealthy_runs" to unhealthyRuns,
+  "unhealthy_rate" to unhealthyRate,
+  "overall_unhealthy_rate" to overallUnhealthyRate,
+  "recommendation_threshold" to recommendationThreshold,
+  "recommendation" to recommendation,
 )
 
 private fun FeatureTaskRuntimeWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(

@@ -84,6 +84,38 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `ensureDatabase adds missing finding issue category column with default`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-findings.db")
+    createLegacyFeedbackEventsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "findings")
+
+      assertTrue("issue_category" in columns)
+      assertEquals("other", findingIssueCategory(connection, "rvw-legacy-002", "F-001"))
+    }
+  }
+
+  @Test
+  fun `ensureDatabase creates feature implement telemetry health columns with defaults`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("feature-implement-health.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "feature_implement_sessions")
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-defaults')")
+      }
+
+      assertTrue("source" in columns)
+      assertTrue("child_steps_json" in columns)
+      assertTrue("duplicate_terminal_finished_events" in columns)
+      assertEquals("production", featureImplementColumnValue(connection, "source"))
+      assertEquals("", featureImplementColumnValue(connection, "child_steps_json"))
+      assertEquals(0, featureImplementColumnValue(connection, "duplicate_terminal_finished_events"))
+    }
+  }
+
+  @Test
   fun `ensureDatabase migrates legacy feedback event values to current schema`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-feedback-events.db")
     createLegacyFeedbackEventsDatabase(dbPath)
@@ -243,6 +275,36 @@ class DatabaseMigrationsTest {
       statement.executeQuery().use { resultSet ->
         resultSet.next()
         resultSet.getString(1)
+      }
+    }
+
+  private fun findingIssueCategory(connection: java.sql.Connection, reviewRunId: String, findingId: String): String =
+    connection.prepareStatement(
+      """
+      SELECT issue_category
+      FROM findings
+      WHERE review_run_id = ? AND finding_id = ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, reviewRunId)
+      statement.setString(2, findingId)
+      statement.executeQuery().use { resultSet ->
+        resultSet.next()
+        resultSet.getString(1)
+      }
+    }
+
+  private fun featureImplementColumnValue(connection: java.sql.Connection, columnName: String): Any =
+    connection.prepareStatement(
+      """
+      SELECT $columnName
+      FROM feature_implement_sessions
+      WHERE session_id = 'fis-defaults'
+      """.trimIndent(),
+    ).use { statement ->
+      statement.executeQuery().use { resultSet ->
+        resultSet.next()
+        resultSet.getObject(1)
       }
     }
 

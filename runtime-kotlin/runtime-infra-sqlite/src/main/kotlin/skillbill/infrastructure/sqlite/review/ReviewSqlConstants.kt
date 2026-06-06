@@ -29,7 +29,7 @@ val reviewSummarySql =
 
 val importedFindingsSql =
   """
-  SELECT finding_id, severity, confidence, location, description, finding_text
+  SELECT finding_id, severity, confidence, issue_category, location, description, finding_text
   FROM findings
   WHERE review_run_id = ?
   ORDER BY finding_id

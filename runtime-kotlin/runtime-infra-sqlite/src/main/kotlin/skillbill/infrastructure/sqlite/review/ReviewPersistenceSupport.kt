@@ -78,19 +78,21 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
         finding_id,
         severity,
         confidence,
+        issue_category,
         location,
         description,
         finding_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(PARAM_ONE, review.reviewRunId)
       statement.setString(PARAM_TWO, finding.findingId)
       statement.setString(PARAM_THREE, finding.severity)
       statement.setString(PARAM_FOUR, finding.confidence)
-      statement.setString(PARAM_FIVE, finding.location)
-      statement.setString(PARAM_SIX, finding.description)
-      statement.setString(PARAM_SEVEN, finding.findingText)
+      statement.setString(PARAM_FIVE, finding.issueCategory)
+      statement.setString(PARAM_SIX, finding.location)
+      statement.setString(PARAM_SEVEN, finding.description)
+      statement.setString(PARAM_EIGHT, finding.findingText)
       statement.executeUpdate()
     }
   }
@@ -100,6 +102,7 @@ fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
   findingId = getString("finding_id"),
   severity = getString("severity"),
   confidence = getString("confidence"),
+  issueCategory = getString("issue_category"),
   location = getString("location"),
   description = getString("description"),
   findingText = getString("finding_text"),

@@ -20,6 +20,7 @@ object ReviewStatsRuntime {
     return ReviewRepositoryStatsSnapshot(
       reviewRunId = reviewRunId,
       stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)),
+      health = buildReviewHealthStats(connection, reviewRunId),
     )
   }
 

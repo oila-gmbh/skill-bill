@@ -22,6 +22,7 @@ import skillbill.telemetry.model.QualityCheckStartedRecord
 fun FeatureImplementStartedRequest.toRecord(sessionId: String): FeatureImplementStartedRecord =
   FeatureImplementStartedRecord(
     sessionId = sessionId,
+    source = source,
     issueKeyProvided = issueKey.isNotBlank(),
     issueKeyType = issueKeyType,
     specInputTypes = specInputTypes,
@@ -36,6 +37,7 @@ fun FeatureImplementStartedRequest.toRecord(sessionId: String): FeatureImplement
 
 fun FeatureImplementFinishedRequest.toRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
   sessionId = sessionId,
+  source = source,
   completionStatus = completionStatus,
   planCorrectionCount = planCorrectionCount,
   planTaskCount = planTaskCount,

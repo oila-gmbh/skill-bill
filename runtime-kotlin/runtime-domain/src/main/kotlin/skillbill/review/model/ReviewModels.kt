@@ -7,6 +7,7 @@ data class ImportedFinding(
   val location: String,
   val description: String,
   val findingText: String,
+  val issueCategory: String = ReviewIssueCategory.OTHER.wireValue,
 )
 
 data class ImportedReview(
@@ -73,6 +74,7 @@ data class FindingOutcomeRow(
   val findingId: String,
   val severity: String,
   val confidence: String,
+  val issueCategory: String,
   val location: String,
   val description: String,
   val outcomeType: String,

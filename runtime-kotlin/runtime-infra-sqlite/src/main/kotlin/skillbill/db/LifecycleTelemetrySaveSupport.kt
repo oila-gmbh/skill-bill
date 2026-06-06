@@ -12,14 +12,15 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
   connection.prepareStatement(
     """
     INSERT INTO feature_implement_sessions (
-      session_id, issue_key_provided, issue_key_type, spec_input_types,
+      session_id, source, issue_key_provided, issue_key_type, spec_input_types,
       spec_word_count, feature_size, feature_name, rollout_needed,
       acceptance_criteria_count, open_questions_count, spec_summary
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
       record.sessionId,
+      record.source,
       record.issueKeyProvided.toSqlInt(),
       record.issueKeyType,
       listJson(record.specInputTypes),
@@ -35,13 +36,18 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
   }
 }
 
-fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord) {
+fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): Boolean {
   val childStepsJson = listJson(record.childSteps)
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
+    if (featureImplementAlreadyFinished(connection, record.sessionId)) {
+      incrementDuplicateFeatureImplementFinished(connection, record.sessionId)
+      return true
+    }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
     insertFeatureImplementFinished(connection, record, childStepsJson)
   }
+  return false
 }
 
 fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedRecord) {
@@ -168,7 +174,7 @@ private fun updateFeatureImplementFinished(
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
-      featureImplementFinishedValues(record, childStepsJson, includeSessionFirst = false),
+      featureImplementFinishedValues(record, childStepsJson, includeSessionFirst = false, includeSource = false),
     )
     statement.executeUpdate()
   }
@@ -182,7 +188,7 @@ private fun insertFeatureImplementFinished(
   connection.prepareStatement(
     """
     INSERT INTO feature_implement_sessions (
-      session_id, completion_status, plan_correction_count,
+      session_id, source, completion_status, plan_correction_count,
       plan_task_count, plan_phase_count, feature_flag_used,
       feature_flag_pattern, files_created, files_modified,
       tasks_completed, review_iterations, audit_result,
@@ -190,7 +196,7 @@ private fun insertFeatureImplementFinished(
       boundary_history_value, pr_created, plan_deviation_notes,
       child_steps_json, finished_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       CURRENT_TIMESTAMP
     )
     """.trimIndent(),

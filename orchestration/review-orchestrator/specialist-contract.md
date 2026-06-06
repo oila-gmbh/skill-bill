@@ -17,6 +17,8 @@ Do not reference this repo-relative path directly from installable skills — us
 - Ignore style-only nits, formatting preferences, and naming bikeshedding
 - Evidence is mandatory: include `file:line` and a short description
 - Include the user-visible or externally observable consequence for each finding
+- Report `Minor` findings, or `Medium`/`Low` confidence findings, only when they tie to an explicit contract violation, user-visible bug, regression risk, quality gate failure, or persisted learning
+- Always report evidence-backed `Blocker` and `Major` findings. Do not suppress concrete correctness, security, persistence, lifecycle, testing, accessibility, or contract defects because they fall outside the low-value reporting threshold
 - Severity: `Blocker | Major | Minor`
 - Confidence: `High | Medium | Low`
 - Keep each specialist review pass to at most 7 findings

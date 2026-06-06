@@ -7,6 +7,7 @@ import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewHealthStats
 import skillbill.review.model.TriageDecision
 
 data class ReviewPreviewResult(
@@ -49,6 +50,7 @@ data class ReviewStatsResult(
   val dbPath: String,
   val reviewRunId: String?,
   val stats: ReviewFindingStats,
+  val health: ReviewHealthStats,
 )
 
 data class FeatureImplementStatsResult(

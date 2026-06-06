@@ -20,6 +20,8 @@ private class ReviewFinishedTelemetryPayloadContract(
     put("review_subskills", telemetry.reviewSubskills)
     put("review_scope", telemetry.reviewScope)
     put("review_platform", telemetry.reviewPlatform)
+    put("platform_slug", telemetry.platformSlug)
+    put("scope_type", telemetry.scopeType)
     put("execution_mode", telemetry.executionMode)
     put("review_finished_at", telemetry.reviewFinishedAt)
     put("learnings", telemetry.learnings.toPayload())
@@ -29,14 +31,17 @@ private class ReviewFinishedTelemetryPayloadContract(
 private fun ReviewFinishedFindingStats.toPayload(): Map<String, Any?> = linkedMapOf(
   "total_findings" to totalFindings,
   "accepted_findings" to acceptedFindings,
+  "rejected_findings" to rejectedFindings,
   "unresolved_findings" to unresolvedFindings,
   "accepted_rate" to acceptedRate,
+  "rejected_rate" to rejectedRate,
   "accepted_finding_details" to acceptedFindingDetails.map(ReviewFindingDetail::toReviewFinishedPayload),
   "rejected_finding_details" to rejectedFindingDetails.map(ReviewFindingDetail::toReviewFinishedPayload),
 )
 
 private fun ReviewFindingDetail.toReviewFinishedPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
   "finding_id" to findingId,
+  "issue_category" to issueCategory,
   "severity" to severity,
   "confidence" to confidence,
   "outcome_type" to outcomeType,

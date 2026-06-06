@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 
 data class FeatureImplementStartedRequest(
   val featureSize: String,
+  val source: String = "production",
   val acceptanceCriteriaCount: Int,
   val openQuestionsCount: Int,
   val specInputTypes: List<String>,
@@ -17,6 +18,7 @@ data class FeatureImplementStartedRequest(
 
 data class FeatureImplementFinishedRequest(
   val sessionId: String,
+  val source: String = "production",
   val completionStatus: String,
   val planCorrectionCount: Int,
   val planTaskCount: Int,

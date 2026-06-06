@@ -1,3 +1,34 @@
+## [2026-06-06] SKILL-69 stats-remote-query-guidance-and-docs
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, docs
+- Review stats now aggregate standalone review-finished telemetry plus embedded feature-implement review payloads, with source breakdowns and malformed/excluded payload debt.
+- Feature-implement health stats now report production valid-session rates, deduped terminal metrics, child-step coverage, duration percentiles, and feature-size segmentation. reusable
+- New SQLite support helpers split payload loading, health aggregation, percentiles, child-step stats, and size-health stats to keep stats surfaces composable. reusable
+- CLI/MCP JSON mapping carries the additive health fields through shared application payload contracts; focused runtime, CLI, and MCP tests cover the new shape.
+- Docs add production-filter defaults, data-quality debt guidance, large-feature health recommendations, and PostHog-ready HogQL query patterns without requiring copied exploratory SQL.
+- Known limitation: validate passed executable gates, but prior audit output still reported A-001 through A-004 acceptance gaps for downstream routing.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented per implement phase; audit caveat above
+
+## [2026-06-06] SKILL-69 feature-implement-lifecycle-telemetry-health
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts
+- Feature-implement lifecycle telemetry now persists source classification so stats can filter synthetic/test runs by default without hard-coded install/session ids.
+- Health stats dedupe terminal finished events by `session_id`, flag duplicate terminal emissions, exclude malformed or blank session ids from rates, and count them as data-quality debt. reusable
+- Duration reporting separates normal, synthetic zero-duration, and resumed/long-running buckets; open started-only sessions remain open instead of being counted as failed.
+- Child-step validation enforces canonical non-blank skills and complete review, quality-check, and PR-description payload fields under telemetry-level rules. reusable
+- SQLite schema/migrations, MCP payload threading, contract schema, and regression tests cover source classes, duplicate terminals, malformed ids, open sessions, duration buckets, and required child-step fields.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-06-06] SKILL-69 review-telemetry-contract-and-categories
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-ports, docs, orchestration/telemetry-contract
+- Review telemetry now carries terminal rejected finding counts/rate, platform/scope dimensions, and category-aware accepted/rejected finding details instead of deriving rejected counts from remote-query complement math.
+- New `ReviewIssueCategory` taxonomy resolves categories from explicit finding data, routed specialist/area labels, and fallback classifier paths; persist the category with findings so standalone/orchestrated finished payloads share one source. reusable
+- Review stats/payload mapping preserves full/anonymous/off level behavior while allowing anonymous-safe category data; platform/scope labels normalize known values and pass custom labels without hard-coded rejection.
+- SQLite review persistence adds category storage and migration coverage; MCP golden/runtime tests exercise orchestrated payload shape.
+- Known limitation: validate phase has not passed yet; detekt failures and audit gaps for AC4/AC5 remain for downstream phases to resolve before commit/PR.
+Feature flag: N/A
+Acceptance criteria: 4/6 implemented
+
 ## [2026-06-05] SKILL-66 subtask 5 remote-stats-integration-and-validation-gate
 Areas: runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-core, orchestration/contracts
 - Extended `McpToolDispatcher.mapRemoteStatsWorkflow` with `"goal" -> "bill-feature-goal"` mapping and `"bill-feature-goal"` passthrough; error message updated to enumerate all accepted values.

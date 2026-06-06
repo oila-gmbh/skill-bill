@@ -7,9 +7,13 @@ fun featureImplementFinishedValues(
   record: FeatureImplementFinishedRecord,
   childStepsJson: String,
   includeSessionFirst: Boolean,
+  includeSource: Boolean = true,
 ): List<Any?> = buildList {
   if (includeSessionFirst) {
     add(record.sessionId)
+  }
+  if (includeSource) {
+    add(record.source)
   }
   add(record.completionStatus)
   add(record.planCorrectionCount)

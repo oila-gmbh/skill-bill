@@ -133,8 +133,14 @@ class CliRuntimeTest {
   fun `review commands cover list stats feedback and aliases`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-review")
     val dbPath = tempDir.resolve("metrics.db")
+    val configPath = writeTelemetryConfig(tempDir, "anonymous")
+    val context =
+      CliRuntimeContext(
+        environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()),
+        userHome = tempDir,
+      )
 
-    importSampleReview(dbPath)
+    importSampleReview(dbPath, context)
 
     val listPayload =
       runJson(
@@ -146,6 +152,7 @@ class CliRuntimeTest {
         "--list",
         "--format",
         "json",
+        context = context,
       )
     assertEquals(2, (listPayload["findings"] as List<*>).size)
 
@@ -162,21 +169,13 @@ class CliRuntimeTest {
         "F-001",
         "--format",
         "json",
+        context = context,
       )
     assertEquals("fix_applied", feedbackPayload["outcome_type"])
     assertEquals(1, feedbackPayload["recorded_findings"])
 
-    val statsPayload = runJson("--db", dbPath.toString(), "stats", "--run-id", "rvw-20260402-001", "--format", "json")
-    assertEquals(2, statsPayload["total_findings"])
-    assertEquals(1, statsPayload["accepted_findings"])
-    assertEquals(1, statsPayload["unresolved_findings"])
-
-    val implementAliasPayload =
-      runJson("--db", dbPath.toString(), "feature-implement-stats", "--format", "json")
-    val verifyAliasPayload =
-      runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json")
-    assertEquals("bill-feature-task", implementAliasPayload["workflow"])
-    assertEquals("bill-feature-verify", verifyAliasPayload["workflow"])
+    assertReviewStatsPayload(dbPath, context)
+    assertFeatureStatsAliases(dbPath, context)
   }
 
   @Test
@@ -882,13 +881,47 @@ private fun seedLearningScenario(dbPath: Path) {
   )
 }
 
-private fun importSampleReview(dbPath: Path) {
+private fun importSampleReview(dbPath: Path, context: CliRuntimeContext = CliRuntimeContext()) {
   val result =
     CliRuntime.run(
       listOf("--db", dbPath.toString(), "import-review", "-", "--format", "json"),
-      CliRuntimeContext(stdinText = SAMPLE_REVIEW.trimIndent()),
+      context.copy(stdinText = SAMPLE_REVIEW.trimIndent()),
     )
   assertEquals(0, result.exitCode, result.stdout)
+}
+
+private fun assertReviewStatsPayload(dbPath: Path, context: CliRuntimeContext) {
+  val statsPayload =
+    runJson(
+      "--db",
+      dbPath.toString(),
+      "stats",
+      "--run-id",
+      "rvw-20260402-001",
+      "--format",
+      "json",
+      context = context,
+    )
+  assertEquals(2, statsPayload["total_findings"])
+  assertEquals(1, statsPayload["accepted_findings"])
+  assertEquals(1, statsPayload["unresolved_findings"])
+  val reviewHealth = statsPayload["health"] as Map<*, *>
+  assertEquals(1, reviewHealth["total_review_payload_records"])
+  assertEquals(mapOf("standalone" to 1, "embedded" to 0, "malformed" to 0), reviewHealth["source_counts"])
+}
+
+private fun assertFeatureStatsAliases(dbPath: Path, context: CliRuntimeContext) {
+  val implementAliasPayload =
+    runJson("--db", dbPath.toString(), "feature-implement-stats", "--format", "json", context = context)
+  val verifyAliasPayload =
+    runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json", context = context)
+
+  assertEquals("bill-feature-task", implementAliasPayload["workflow"])
+  assertEquals(0.0, implementAliasPayload["median_duration_seconds"])
+  assertTrue("child_step_coverage" in implementAliasPayload)
+  assertTrue("feature_size_outcome_stats" in implementAliasPayload)
+  assertTrue("large_feature_health" in implementAliasPayload)
+  assertEquals("bill-feature-verify", verifyAliasPayload["workflow"])
 }
 
 private fun writeTelemetryConfig(tempDir: Path, level: String): Path {

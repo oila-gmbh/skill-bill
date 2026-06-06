@@ -21,6 +21,7 @@ class ReviewRuntimeTest {
     assertEquals(2, review.findings.size)
     assertEquals("F-001", review.findings.first().findingId)
     assertEquals("High", review.findings.first().confidence)
+    assertEquals("behavior_correctness", review.findings.first().issueCategory)
   }
 
   @Test
@@ -39,8 +40,29 @@ class ReviewRuntimeTest {
       assertEquals("F-001", numberedFindings[0].findingId)
       assertEquals("Major", numberedFindings[0].severity)
       assertEquals("ViewModel.kt:147-152", numberedFindings[0].location)
+      assertEquals("behavior_correctness", review.findings[0].issueCategory)
       assertEquals("Minor", numberedFindings[1].severity)
+      assertEquals("ux_accessibility", review.findings[1].issueCategory)
       assertNull(summary.reviewFinishedAt)
     }
+  }
+
+  @Test
+  fun `parseReview assigns fallback classifier category when routing is generic`() {
+    val review = ReviewParser.parseReview(
+      """
+      Routed to: bill-code-review
+      Review session ID: rvs-20260402-security
+      Review run ID: rvw-20260402-security
+      Detected review scope: branch diff
+      Detected stack: unknown
+      Execution mode: inline
+
+      ### 2. Risk Register
+      - [F-001] Major | High | Auth.kt:12 | Token is logged with sensitive user data.
+      """.trimIndent(),
+    )
+
+    assertEquals("security_privacy", review.findings.single().issueCategory)
   }
 }

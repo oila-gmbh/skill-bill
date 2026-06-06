@@ -1,6 +1,7 @@
 package skillbill.review
 
 import skillbill.review.model.ImportedReview
+import skillbill.review.model.ReviewIssueCategory
 
 object ReviewParser {
   fun parseReview(text: String): ImportedReview {
@@ -16,16 +17,28 @@ object ReviewParser {
         text,
         "Review output is missing 'Review session ID: <review-session-id>'.",
       )
+    val routedSkill = extractSummaryValue(text, "routed_skill")
+    val specialistReviews = extractSpecialistReviews(text)
     return ImportedReview(
       reviewRunId = reviewRunId,
       reviewSessionId = reviewSessionId,
       rawText = text,
-      routedSkill = extractSummaryValue(text, "routed_skill"),
+      routedSkill = routedSkill,
       detectedScope = extractSummaryValue(text, "detected_scope"),
       detectedStack = extractSummaryValue(text, "detected_stack"),
       executionMode = extractSummaryValue(text, "execution_mode"),
-      specialistReviews = extractSpecialistReviews(text),
-      findings = parseReviewFindings(text),
+      specialistReviews = specialistReviews,
+      findings = parseReviewFindings(text).map { finding ->
+        finding.copy(
+          issueCategory =
+          resolveReviewIssueCategory(
+            explicitCategory = finding.issueCategory.takeUnless { it == ReviewIssueCategory.OTHER.wireValue },
+            routedSkill = routedSkill,
+            specialistReviews = specialistReviews,
+            finding = finding,
+          ),
+        )
+      },
     )
   }
 }

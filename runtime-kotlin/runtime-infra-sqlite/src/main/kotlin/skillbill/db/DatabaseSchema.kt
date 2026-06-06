@@ -67,6 +67,7 @@ internal object DatabaseSchema {
         finding_id TEXT NOT NULL,
         severity TEXT NOT NULL,
         confidence TEXT NOT NULL,
+        issue_category TEXT NOT NULL DEFAULT 'other',
         location TEXT NOT NULL,
         description TEXT NOT NULL,
         finding_text TEXT NOT NULL,
@@ -173,6 +174,7 @@ internal object DatabaseSchema {
       """
       CREATE TABLE IF NOT EXISTS feature_implement_sessions (
         session_id TEXT PRIMARY KEY,
+        source TEXT NOT NULL DEFAULT 'production',
         issue_key_provided INTEGER NOT NULL DEFAULT 0,
         issue_key_type TEXT NOT NULL DEFAULT 'none',
         spec_input_types TEXT NOT NULL DEFAULT '',
@@ -202,6 +204,8 @@ internal object DatabaseSchema {
         boundary_history_value TEXT NOT NULL DEFAULT 'none',
         pr_created INTEGER,
         plan_deviation_notes TEXT NOT NULL DEFAULT '',
+        child_steps_json TEXT NOT NULL DEFAULT '',
+        duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )

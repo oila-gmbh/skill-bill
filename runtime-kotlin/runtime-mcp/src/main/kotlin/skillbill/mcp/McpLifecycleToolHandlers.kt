@@ -14,6 +14,7 @@ internal fun featureImplementStarted(arguments: Map<String, Any?>, context: McpR
   McpRuntime.featureImplementStarted(
     FeatureImplementStartedRequest(
       featureSize = arguments.string("feature_size"),
+      source = arguments.optionalString("source") ?: "production",
       acceptanceCriteriaCount = arguments.int("acceptance_criteria_count", 0),
       openQuestionsCount = arguments.int("open_questions_count", 0),
       specInputTypes = arguments.stringList("spec_input_types"),
@@ -31,6 +32,7 @@ internal fun featureImplementFinished(arguments: Map<String, Any?>, context: Mcp
   McpRuntime.featureImplementFinished(
     FeatureImplementFinishedRequest(
       sessionId = arguments.string("session_id"),
+      source = arguments.optionalString("source") ?: "production",
       completionStatus = arguments.string("completion_status"),
       planCorrectionCount = arguments.int("plan_correction_count", 0),
       planTaskCount = arguments.int("plan_task_count", 0),

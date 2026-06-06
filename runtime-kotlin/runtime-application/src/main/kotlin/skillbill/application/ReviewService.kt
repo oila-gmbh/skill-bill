@@ -187,6 +187,7 @@ private fun reviewStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     reviewRunId = snapshot.reviewRunId,
     stats = snapshot.stats,
+    health = snapshot.health,
   )
 }
 

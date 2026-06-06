@@ -91,6 +91,8 @@ The review layer that owns the final merged review output for the current review
 - If this review owns the final merged review output for the current review lifecycle, call the `import_review` MCP tool:
   - `review_text`: the complete review output (Section 1 through Section 4)
 
+Review finished payloads, whether emitted standalone or returned through `telemetry_payload`, include terminal latest-outcome counts and rates: `total_findings`, `accepted_findings`, `rejected_findings`, `unresolved_findings`, `accepted_rate`, and `rejected_rate`. They also include the original `review_platform` / `review_scope` labels plus normalized `platform_slug` and `scope_type` dimensions. Accepted and rejected finding details include `issue_category`, `severity`, `confidence`, and `outcome_type`; anonymous telemetry keeps those fields but redacts file locations, descriptions, rejection notes, and learning text.
+
 ## Triage Ownership
 
 The same parent review owns triage recording after the user responds to findings so the review lifecycle can complete and the finished telemetry event can fire.

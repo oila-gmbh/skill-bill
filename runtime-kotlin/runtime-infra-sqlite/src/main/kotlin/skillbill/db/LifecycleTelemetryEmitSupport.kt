@@ -11,12 +11,21 @@ fun emitFeatureImplementStarted(connection: Connection, sessionId: String, level
   ) { featureImplementStartedPayload(row, level) }
 }
 
-fun emitFeatureImplementFinished(connection: Connection, sessionId: String, level: String) {
+fun emitFeatureImplementFinished(
+  connection: Connection,
+  sessionId: String,
+  level: String,
+  duplicateTerminalEvent: Boolean = false,
+) {
   val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
-  emitOnce(
-    LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
-    "skillbill_feature_implement_finished",
-  ) { featureImplementFinishedPayload(row, level) }
+  if (duplicateTerminalEvent) {
+    enqueueTelemetry(connection, "skillbill_feature_implement_finished", featureImplementFinishedPayload(row, level))
+  } else {
+    emitOnce(
+      LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
+      "skillbill_feature_implement_finished",
+    ) { featureImplementFinishedPayload(row, level) }
+  }
 }
 
 fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, level: String) {

@@ -6,6 +6,7 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 fun featureImplementStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
     "session_id" to row.stringOrEmpty("session_id"),
+    "source" to row.stringOrEmpty("source").ifBlank { "production" },
     "issue_key_provided" to row.booleanFromInt("issue_key_provided"),
     "issue_key_type" to row.stringOrEmpty("issue_key_type"),
     "spec_input_types" to JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("spec_input_types")),
@@ -41,6 +42,7 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
     put("pr_created", row.booleanFromInt("pr_created"))
     put("duration_seconds", durationSeconds(row))
     put("child_steps", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("child_steps_json")))
+    put("duplicate_terminal_finished_events", row.intOrZero("duplicate_terminal_finished_events"))
     if (level == "full") {
       put("plan_deviation_notes", row.stringOrEmpty("plan_deviation_notes"))
     }

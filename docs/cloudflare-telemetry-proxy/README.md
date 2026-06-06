@@ -94,6 +94,19 @@ skill-bill telemetry stats verify --since 30d --group-by day
 skill-bill telemetry stats implement --since 30d --group-by week
 ```
 
+## Health dashboard guidance
+
+The Worker `/stats` route returns compact remote workflow summaries. Rich review-health and feature-implement-health views remain backend-agnostic in the CLI/MCP local stats contract and are documented as PostHog/HogQL dashboard patterns in `../review-telemetry.md`.
+
+Use the same filtering rules in PostHog dashboards:
+
+- choose an explicit health window, commonly the last 60 days
+- health denominators: production telemetry with valid `fis-*` session ids for feature-implement stats
+- excluded rows: `source = test` and `source = synthetic`
+- data-quality debt: malformed session ids, unknown sources, duplicate terminal events, invalid/long-running durations, malformed child steps, and malformed review payloads
+- review health sources: standalone `skillbill_review_finished` plus embedded code-review entries in `skillbill_feature_implement_finished.child_steps`
+- large-feature guidance: report `LARGE` completion, abandonment, and error separately, and recommend decomposition or earlier blocking when large-feature unhealthy rate is non-zero and at least the overall unhealthy rate
+
 ## Notes
 
 - This example is intentionally minimal; it protects the PostHog project key, not the endpoint itself.

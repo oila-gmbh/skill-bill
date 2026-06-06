@@ -19,17 +19,21 @@
   "telemetry_payload": {
     "total_findings": 2,
     "accepted_findings": 2,
+    "rejected_findings": 0,
     "unresolved_findings": 0,
     "accepted_rate": 1.0,
+    "rejected_rate": 0.0,
     "accepted_finding_details": [
       {
         "finding_id": "F-001",
+        "issue_category": "behavior_correctness",
         "severity": "Major",
         "confidence": "High",
         "outcome_type": "fix_applied"
       },
       {
         "finding_id": "F-002",
+        "issue_category": "behavior_correctness",
         "severity": "Minor",
         "confidence": "Medium",
         "outcome_type": "fix_applied"
@@ -45,6 +49,8 @@
     ],
     "review_scope": "unstaged changes",
     "review_platform": "kotlin",
+    "platform_slug": "kotlin",
+    "scope_type": "unstaged_changes",
     "execution_mode": "inline",
     "review_finished_at": "<REVIEW_FINISHED_AT>",
     "learnings": {
