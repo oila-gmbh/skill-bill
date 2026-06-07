@@ -1,3 +1,13 @@
+## [2026-06-07] SKILL-71 subtask 2 persisted-spec-source-contract
+Areas: orchestration/contracts, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-domain
+- decomposition-manifest schema gains optional top-level `spec_source` (`$defs.specSource` enum local|linear, default local) + optional per-subtask `linear_issue_id` ([string,null], minLength 1); both non-required so existing 0.2-era manifests stay valid; `additionalProperties:false` preserved at both levels. reusable
+- contract_version bumped 0.2->0.3 in BOTH the schema const and `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` (DecompositionManifestSchemaPaths.kt) in lockstep; `DecompositionManifestSchemaContractVersionTest` enforces parity — bump both or it fails. reusable
+- Codec decode resolves absent/null `spec_source` -> LOCAL and loud-fails an invalid value via `InvalidDecompositionManifestSchemaError`; WireMap now ALWAYS emits `spec_source` + per-subtask `linear_issue_id` keys, so any future golden/exact-key serialization assertion must account for the two new keys. reusable
+- New pure `SpecSourceSpecReader` (runtime-domain) parses the single_spec `spec.md` `spec_source` line, mirroring the feature-size line reader: absent -> LOCAL, invalid -> loud `IllegalArgumentException`. reusable
+- spec_source/linear_issue_id are parsed + round-tripped only; NOT yet consumed by any phase-loop/handoff/schema-gate behavior (consumption is later SKILL-71 subtasks); `spec_path` resolution and all other fields unchanged.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-07] SKILL-71 subtask 1 repo-local-config-foundation
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
 - Domain-owned `RepoLocalConfigPort` (runtime-ports, domain-only deps) + `FileSystemRepoLocalConfig` adapter reads `.skill-bill/config.yaml`; app code does no raw file IO, no Clikt/MCP/JDBC on the boundary; DI bound in `RuntimeComponent`. reusable

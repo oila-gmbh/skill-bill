@@ -7,6 +7,7 @@ fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
   "issue_key" to issueKey,
   "feature_name" to featureName,
   "parent_spec_path" to parentSpecPath,
+  "spec_source" to specSource.wireValue,
   "status" to status,
   "execution_model" to executionModel.wireValue,
   "base_branch" to baseBranch,
@@ -33,6 +34,7 @@ fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
       "workflow_id" to subtask.workflowId,
       "blocked_reason" to subtask.blockedReason,
       "last_resumable_step" to subtask.lastResumableStep,
+      "linear_issue_id" to subtask.linearIssueId,
       "dependencies" to subtask.dependencies.map { dependency ->
         linkedMapOf(
           "subtask_id" to dependency.subtaskId,

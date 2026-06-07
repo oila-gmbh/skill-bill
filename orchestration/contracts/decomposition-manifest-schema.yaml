@@ -45,6 +45,12 @@ $defs:
       - same_branch_commit_per_subtask
       - stacked_branches
     default: same_branch_commit_per_subtask
+  specSource:
+    type: string
+    enum:
+      - local
+      - linear
+    default: local
   subtaskId:
     type: integer
     minimum: 1
@@ -121,6 +127,11 @@ $defs:
           - string
           - "null"
         minLength: 1
+      linear_issue_id:
+        type:
+          - string
+          - "null"
+        minLength: 1
       dependencies:
         type: array
         items:
@@ -173,7 +184,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.2"
+    const: "0.3"
   issue_key:
     type: string
     minLength: 1
@@ -183,6 +194,8 @@ properties:
   parent_spec_path:
     type: string
     minLength: 1
+  spec_source:
+    $ref: "#/$defs/specSource"
   status:
     $ref: "#/$defs/subtaskStatus"
   execution_model:
@@ -212,6 +225,11 @@ x-coherence-checks:
       Writers that omit an explicit execution model must persist
       same_branch_commit_per_subtask. Schema default documents the
       contract; Kotlin applies the runtime default before validation.
+  spec-source-default:
+    description: >
+      Manifests that omit an explicit spec_source resolve to local.
+      Schema default documents the contract; Kotlin applies absent->local
+      at the read/write seams.
   same-branch-feature-branch:
     description: >
       same_branch_commit_per_subtask manifests require feature_branch

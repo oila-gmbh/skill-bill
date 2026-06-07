@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Complete
 ---
 
 # SKILL-71 Subtask 1 - Repo-Local Config Foundation and Install Scaffolding

@@ -3,24 +3,24 @@ contract_version: "0.2"
 issue_key: "SKILL-71"
 feature_name: "local-config-and-linear-spec-mode"
 parent_spec_path: ".feature-specs/SKILL-71-local-config-and-linear-spec-mode/spec.md"
-status: "pending"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-71-local-config-and-linear-spec-mode"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "start"
 subtasks:
 - id: 1
   name: "repo-local-config-foundation"
   spec_path: ".feature-specs/SKILL-71-local-config-and-linear-spec-mode/spec_subtask_1_repo-local-config-foundation.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260607-171630-fc8e"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies: []
 - id: 2
   name: "persisted-spec-source-contract"

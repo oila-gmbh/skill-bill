@@ -4,6 +4,7 @@ import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.SpecSource
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -17,6 +18,48 @@ class DecompositionManifestCodecTest {
     val decoded = DecompositionManifestCodec.decodeMap(manifest.toWireMap())
 
     assertEquals(manifest.copy(featureBranch = null), decoded)
+  }
+
+  @Test
+  fun `codec round-trips spec_source and per-subtask linear_issue_id`() {
+    val manifest = validManifest().copy(
+      specSource = SpecSource.LINEAR,
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "Foundation",
+          specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
+          linearIssueId = "SKILL-512",
+        ),
+      ),
+    )
+
+    val decoded = DecompositionManifestCodec.decodeMap(manifest.toWireMap())
+
+    assertEquals(manifest, decoded)
+    assertEquals(SpecSource.LINEAR, decoded.specSource)
+    assertEquals("SKILL-512", decoded.subtasks.single().linearIssueId)
+  }
+
+  @Test
+  fun `codec defaults absent spec_source to local`() {
+    val wireMap = validManifest().toWireMap().toMutableMap()
+    wireMap.remove("spec_source")
+
+    val decoded = DecompositionManifestCodec.decodeMap(wireMap)
+
+    assertEquals(SpecSource.LOCAL, decoded.specSource)
+  }
+
+  @Test
+  fun `codec rejects unsupported spec_source value`() {
+    val wireMap = validManifest().toWireMap().toMutableMap()
+    wireMap["spec_source"] = "github"
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      DecompositionManifestCodec.decodeMap(wireMap, "codec-spec-source")
+    }
+    assertContains(error.reason, "spec_source 'github' is not supported")
   }
 
   @Test
