@@ -20,6 +20,8 @@ data class FeatureTaskRuntimeRunRequest(
   val repoRoot: Path,
   /** Optional per-phase wall-clock cap forwarded to each phase agent launch. */
   val timeout: Duration? = null,
+  /** When set, the review phase runs `bill-code-review parallel:<agent>` alongside the primary review. */
+  val parallelReviewAgent: String? = null,
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
   val eventSink: FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink.NONE,

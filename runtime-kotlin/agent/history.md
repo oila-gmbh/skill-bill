@@ -1,3 +1,24 @@
+## [2026-06-07] SKILL-70.1 parallel-review-large-diff
+Areas: runtime-kotlin/runtime-domain, skills/bill-code-review
+- `ParallelReviewMerger` now coalesces findings by same file path (from location, `substringBeforeLast(':')`) AND Jaccard token-overlap of descriptions, replacing the exact `location|description` key. reusable
+- Fuzzy threshold is the named constant `FUZZY_DEDUP_THRESHOLD = 0.6` (strict `>`); helpers `tokens`/`jaccard` document both-empty=>1.0 and union-empty=>0.0; clustering is insertion-order greedy so output is map-iteration-order independent. reusable
+- Severity resolution, sort, `F-NNN` renumber, and formatting are untouched, so higher-severity-wins and all prior exact-match behavior are preserved.
+- `bill-code-review` skill content adds a routing capability table (per-agent stdin-pipe flag + `LANE2_DIFF_BYTE_THRESHOLD = 200 KB`) and a size guard: over-threshold or non-stdin agents (opencode/copilot/junie) delegate to `skill-bill code-review-parallel`; within-threshold stdin agents (claude/codex) keep the stdin-pipe path. reusable
+- Threshold and stdin flags live in skill content as single source of truth, updatable without touching routing logic.
+- Known limitation (carried from SKILL-70, still open): merger ignores `findings` field / re-parses `rawOutput`; `FileSystemDiffResolver` subprocess has no timeout.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
+## [2026-06-07] SKILL-70 parallel-code-review-runtime
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports
+- `ParallelCodeReviewRunner` runs two `GoalRunnerSubtaskLauncher` lanes via a fixed 2-thread executor; both receive the same diff+prompt, results merged after both complete. reusable
+- `ParallelReviewMerger` coalesces findings by exact `location|description` key (case-insensitive); higher severity wins on disagreement; coalesced findings sort before single-lane within same tier. reusable
+- `DiffResolverPort` / `FileSystemDiffResolver` owns git/gh subprocess invocation; scope (staged/unstaged/branch/pr) and stack (manifest-driven) resolved in runner before prompt assembly.
+- Known limitation: merger re-parses `rawOutput` and ignores `findings` field — failed-lane suppression is broken. Fix in SKILL-70.1.
+- Known limitation: `FileSystemDiffResolver.runProcess` has no subprocess timeout; stalled git/gh outlives executor interrupt. Fix in SKILL-70.1.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented (parallel review is additive beyond SKILL-70 spec scope)
+
 ## [2026-06-06] SKILL-69 stats-remote-query-guidance-and-docs
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, docs
 - Review stats now aggregate standalone review-finished telemetry plus embedded feature-implement review payloads, with source breakdowns and malformed/excluded payload debt.

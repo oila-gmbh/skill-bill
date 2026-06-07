@@ -26,6 +26,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -90,6 +91,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--goal-last-resumable-step",
     help = "Optional durable resume step supplied by the goal runner.",
   )
+  protected val parallelReviewAgent by option(
+    "--parallel-review-agent",
+    help = "Run the review phase with a second parallel agent lane. " +
+      "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
+  )
   protected val suppressPr by option(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
@@ -117,6 +123,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
         timeout = maxWallClockMinutes?.minutes,
+        parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
         goalContinuation = parseGoalContinuationContext(),
         eventSink = runtimeRunEventSink(state, monitor),
       ),

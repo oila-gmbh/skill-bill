@@ -14,6 +14,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.GovernedAddonFile
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Path
@@ -62,6 +63,8 @@ interface ScaffoldCatalogGateway {
   fun scaffoldPayloadVersion(): String
 
   fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection>
+
+  fun discoverPlatformManifests(packsRoot: Path): List<PlatformManifest>
 
   fun discoverBaselineReviewCatalog(packsRoot: Path): BaselineReviewCatalog
 }

@@ -1,3 +1,13 @@
+## [2026-06-07] SKILL-70 feature-task-mode-router
+Areas: skills/bill-feature-task, skills/bill-feature-task-prose, skills/bill-feature-task-runtime, skills/bill-feature, skills/bill-code-review, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application
+- Split the feature-task skill surface into router/prose/runtime tiers: `bill-feature-task` accepts `mode:prose` (default) or `mode:runtime`, `bill-feature-task-prose` owns the prose orchestrator, `bill-feature-task-runtime` owns the thin runtime-backed skill. reusable
+- Relocation pattern: prose `native-agents/agents.yaml` moved byte-for-byte, legacy source directory removed, install/validation references retargeted; keep historical references only in history entries. reusable
+- Parallel review runtime added: `skill-bill code-review-parallel` runs two agent lanes concurrently on the same diff; `skill-bill code-review-merge` coalesces findings with provenance labels. reusable
+- CLI-to-domain boundary rule: CLI commands must route through an application service layer (e.g. `ParallelCodeReviewMergeService`), never import domain types (`skillbill.review.*`) directly — enforced by Detekt architecture rule.
+- Large-diff safety: codex lane uses `codex exec - < file` (stdin pipe) not `$(cat file)` arg expansion to avoid ARG_MAX; SKILL-70.1 specced for full threshold-based CLI delegation.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-06-05] SKILL-67 subtask 4 dispatcher-docs-and-recorded-promote-decision
 Areas: skills/bill-feature, README.md, AGENTS.md, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-65-*, .feature-specs/SKILL-67-*, agent/decisions.md
 - `bill-feature` now explicitly dispatches single-spec work only to canonical runtime-backed `bill-feature-task`, dispatches decomposed work to `bill-feature-goal`, and names `bill-feature-task-legacy` as non-dispatch fallback. reusable

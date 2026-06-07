@@ -1,23 +1,11 @@
 ---
-name: bill-feature-task-legacy
-description: DEPRECATED prose orchestrator for end-to-end feature implementation. Superseded by the runtime-backed `bill-feature-task` skill. Retained only for fallback during the removal window; do not route new feature work here.
+name: bill-feature-task-prose
+description: First-class prose orchestrator for end-to-end feature implementation, running entirely within the invoking agent session. Handles the full phase loop (assess, branch, preplan, plan, implement, review, audit, validate, history, commit, PR) without delegating to an external runtime. Use when user mentions implement feature, build feature, or feature from design doc, and prose in-session orchestration is preferred over the runtime-backed mode.
 ---
 
-> # ⚠️ DEPRECATED — DO NOT USE FOR NEW WORK
-> This skill is the **legacy prose orchestrator** for feature-task work. It has
-> been **superseded by the runtime-backed `bill-feature-task` skill**, which
-> drives the governed phase loop through the foreground `skill-bill feature-task`
-> runtime.
->
-> **Use `bill-feature-task` instead** for all feature implementation work.
->
-> **Removal window:** this skill is retained only as a temporary fallback and is
-> scheduled for removal in a future release. Do not build new automation on top
-> of it and migrate any remaining references to `bill-feature-task`.
+# Feature Task Prose Content
 
-# Feature Task Content (LEGACY)
-
-This file is the author-owned execution body for `bill-feature-task-legacy`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.
+This file is the author-owned execution body for `bill-feature-task-prose`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.
 
 ## Workflow State
 
@@ -210,7 +198,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally.
+Run `bill-code-review` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review` with `parallel:<agent>` so a second review lane runs alongside the primary review.
 
 Review loop:
 

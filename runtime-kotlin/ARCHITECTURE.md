@@ -526,23 +526,25 @@ skillbill.workflow.verify
 
 ## Feature-Task Workflow Family
 
-- `feature-task` is the canonical runtime-backed workflow family for
-  `bill-feature-task`. The Kotlin runtime owns its phase loop (`plan ->
+- `feature-task` is the runtime-backed workflow family behind
+  `bill-feature-task-runtime`. The Kotlin runtime owns its phase loop (`plan ->
   implement -> review -> audit -> validate`) and launches one agent per phase,
   reusing the goal-runner launcher and `WorkflowEngine` rather than a second
-  orchestration loop. Its definition is
+  orchestration loop. `bill-feature-task` is the router entry point and defaults
+  single-spec work to the first-class prose orchestrator,
+  `bill-feature-task-prose`, unless `mode:runtime` is selected. Its definition is
   `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
   (durable workflow name `feature-task-runtime`, id prefix `wftr`, contract
   version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`), and its per-phase records and
   append-only ledger live in
   `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePersistenceModels`.
 - The deprecated `feature-task-runtime` CLI / `feature_task_runtime_*` aliases
-  and the deprecated `bill-feature-task-legacy` / `feature_implement_*` surfaces
-  are compatibility surfaces only; `bill-feature` routes single-spec work to the
-  canonical `bill-feature-task` path. The authoritative recorded promote
-  decision lives in
-  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-67
-  owns the promotion execution and deprecation-window source.
+  are compatibility surfaces only; `feature_implement_*` now belongs to the
+  first-class prose mode. `bill-feature` routes single-spec work to the
+  canonical `bill-feature-task` router without hardcoding a mode. The
+  authoritative recorded promote decision lives in
+  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-70
+  owns the router/prose/runtime split.
 - The comparison procedure that produced the promotion evidence remains
   documented in
   [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md).

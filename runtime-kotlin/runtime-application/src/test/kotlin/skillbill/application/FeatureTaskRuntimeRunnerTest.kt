@@ -77,6 +77,29 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `blocked phase output stops the run and does not advance to pr`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("commit_push", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "Validation failed before commit.")
+    assertTrue(harness.launchedPhaseOrder().none { it == "pr" })
+    assertTrue(
+      harness.events.any { event ->
+        event is FeatureTaskRuntimeRunEvent.PhaseBlocked && event.phaseId == "commit_push"
+      },
+    )
+  }
+
+  @Test
   fun `runtime emits started on open and finished completed from its own per-phase records`() {
     val harness = telemetryRunnerHarness()
 
@@ -1966,6 +1989,22 @@ private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
     "status": "completed",
     "summary": "Phase produced a validated output.",
     "produced_outputs": {"commit_push_result": {"status": "committed"}}
+  }
+""".trimIndent()
+
+private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
+  {
+    "contract_version": "0.1",
+    "phase_id": "commit_push",
+    "status": "blocked",
+    "summary": "Validation failed before commit.",
+    "produced_outputs": {
+      "commit_push_result": {
+        "commit_sha": null,
+        "pushed_status": "not_attempted"
+      },
+      "blocking_reasons": ["Working tree contains unrelated changes."]
+    }
   }
 """.trimIndent()
 

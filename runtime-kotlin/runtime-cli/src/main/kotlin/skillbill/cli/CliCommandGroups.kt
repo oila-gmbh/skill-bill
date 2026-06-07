@@ -35,6 +35,8 @@ class UtilityCliCommandGroup(
   versionCommand: VersionCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
+  codeReviewParallelCommand: CodeReviewParallelCommand,
+  codeReviewMergeCommand: CodeReviewMergeCommand,
 ) {
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
@@ -44,6 +46,8 @@ class UtilityCliCommandGroup(
       versionCommand,
       doctorCommand,
       removeCommand,
+      codeReviewParallelCommand,
+      codeReviewMergeCommand,
     )
 }
 

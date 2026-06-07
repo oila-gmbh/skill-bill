@@ -16,12 +16,13 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` is the canonical runtime-backed flagship workflow: spec to plan, implementation, code review, quality check, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents. `bill-feature-task-legacy` is deprecated; see the SKILL-67 parent spec for the authoritative deprecation-window source.
+`bill-feature-task` is the router entry point for feature-task work: it accepts `mode:prose` (default) or `mode:runtime` and delegates to the appropriate implementation mode. `bill-feature-task-prose` is the first-class prose orchestrator that runs the full phase loop in-session. `bill-feature-task-runtime` is the runtime-backed skill that drives the phase loop through the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
 
 Skill catalog status:
 
-- `bill-feature-task`: canonical runtime-backed feature-task workflow.
-- `bill-feature-task-legacy`: deprecated prose orchestrator retained only for the SKILL-67 deprecation window.
+- `bill-feature-task`: router that accepts `mode:prose` (default) or `mode:runtime`, presents one confirmation gate, then delegates.
+- `bill-feature-task-prose`: first-class prose orchestrator for end-to-end feature implementation running entirely within the invoking agent session.
+- `bill-feature-task-runtime`: runtime-backed skill that launches the `skill-bill feature-task` foreground driver.
 
 Bundled skills and reference packs are useful defaults, not the framework boundary. Teams may delete, fork, or replace bundled workflows while retaining the governed contracts: source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 

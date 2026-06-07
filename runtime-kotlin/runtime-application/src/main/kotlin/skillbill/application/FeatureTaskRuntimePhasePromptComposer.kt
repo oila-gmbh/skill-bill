@@ -16,12 +16,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     issueKey: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
+    parallelReviewAgent: String? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
       ceremonyDirective(briefing),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
+      parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
       briefing.briefingText,
       outputContract(briefing.phaseId),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
@@ -86,6 +88,16 @@ object FeatureTaskRuntimePhasePromptComposer {
       phases
     No other top-level fields are allowed.
   """.trimIndent()
+
+  private fun parallelReviewDirective(phaseId: String, parallelReviewAgent: String?): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || parallelReviewAgent.isNullOrBlank()) {
+      return ""
+    }
+    return """
+      ## Parallel review lane
+      Run the review using `bill-code-review parallel:$parallelReviewAgent` so a second lane from $parallelReviewAgent reviews the same diff concurrently. Findings from both lanes are merged with provenance labels.
+    """.trimIndent()
+  }
 
   private fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): String {
     if (!suppressDecomposition || phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) {

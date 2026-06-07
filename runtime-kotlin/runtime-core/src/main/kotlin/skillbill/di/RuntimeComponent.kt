@@ -16,6 +16,7 @@ import skillbill.application.LearningService
 import skillbill.application.LifecycleTelemetryService
 import skillbill.application.McpRegistrationService
 import skillbill.application.NativeAgentInstallService
+import skillbill.application.ParallelCodeReviewRunner
 import skillbill.application.RepoSourceDiscoveryService
 import skillbill.application.RepoValidationService
 import skillbill.application.ReviewService
@@ -33,6 +34,7 @@ import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -69,6 +71,7 @@ import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.FileSystemAgentRunLauncher
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -287,6 +290,10 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun diffResolverPort(adapter: FileSystemDiffResolver): DiffResolverPort = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun repoSourceDiscoveryGateway(gateway: FileSystemRepoSourceDiscoveryGateway): RepoSourceDiscoveryGateway =
     gateway
 
@@ -360,6 +367,7 @@ abstract class RuntimeComponent(
   internal fun goalProgressEventValidator(adapter: GoalProgressEventValidatorAdapter): GoalProgressEventValidator =
     adapter
 
+  abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
   abstract val installService: InstallService
   abstract val agentRunService: AgentRunService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder

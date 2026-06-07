@@ -266,7 +266,7 @@ Supported install targets today:
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
 
-Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-task-legacy` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-legacy/content.md`.
+Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-task-prose` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-prose/content.md`.
 
 ## Desktop App
 
@@ -369,14 +369,16 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
 | `/bill-code-check` | Stable quality-check entry point that routes to the matching checker |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack |
+| `/bill-code-review-parallel` | Run two review agents in parallel on the same diff and merge their findings |
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
-| `/bill-feature-task` | Canonical runtime-backed trigger that runs a governed spec through the `skill-bill feature-task` phase loop |
+| `/bill-feature-task` | Router skill that accepts `mode:prose` (default) or `mode:runtime` and delegates to the appropriate feature-task implementation mode |
+| `/bill-feature-task-prose` | First-class prose orchestrator for end-to-end feature implementation, running entirely within the invoking agent session |
+| `/bill-feature-task-runtime` | Runtime-backed trigger that runs a governed spec through the `skill-bill feature-task` phase loop |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-feature-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
-| `/bill-feature-task-legacy` | DEPRECATED prose orchestrator superseded by `bill-feature-task`; see the SKILL-67 parent spec for the authoritative deprecation-window source |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |

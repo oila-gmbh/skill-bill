@@ -170,6 +170,8 @@ class FileSystemScaffoldCatalogGateway : ScaffoldCatalogGateway {
       PilotedPlatformPackProjection(slug = pack.slug, displayName = pack.displayName)
     }
 
+  override fun discoverPlatformManifests(packsRoot: Path) = ScaffoldCatalog.discoverPilotedPlatformPacks(packsRoot)
+
   override fun discoverBaselineReviewCatalog(packsRoot: Path) = ScaffoldCatalog.discoverBaselineReviewCatalog(packsRoot)
 }
 

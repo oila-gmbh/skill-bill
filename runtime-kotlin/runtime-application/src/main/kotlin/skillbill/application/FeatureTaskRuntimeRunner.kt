@@ -27,6 +27,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
+private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
+private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
+
 /**
  * Runs the feature-task-runtime phase loop deterministically: for each ordered phase it
  * resolves the agent, assembles and persists the handoff, launches one agent synchronously,
@@ -405,16 +408,20 @@ class FeatureTaskRuntimeRunner(
   ): AttemptResult {
     // Schema-invalid output carries the validator's reason out so a terminal block is
     // diagnosable from the persisted blocked_reason, not only from transient JVM logs.
-    try {
-      outputValidator.validatePhaseOutputText(outputText, sourceLabel = run.phaseId)
+    return try {
+      val outputMap = outputValidator.validateAndReadPhaseOutput(outputText, sourceLabel = run.phaseId)
+      terminalBlockedReasonFrom(outputMap)?.let { reason ->
+        AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
+      } ?: run {
+        persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
+        observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+        AttemptResult.settled(
+          PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
+        )
+      }
     } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      return AttemptResult.schemaInvalid(error.reason)
+      AttemptResult.schemaInvalid(error.reason)
     }
-    persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    return AttemptResult.settled(
-      PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
-    )
   }
 
   private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {
@@ -457,6 +464,8 @@ class FeatureTaskRuntimeRunner(
             issueKey = run.request.issueKey,
             briefing = briefing,
             suppressDecomposition = isGoalContinuationRun(run.request),
+            parallelReviewAgent = run.request.parallelReviewAgent
+              ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
           ),
         ),
       ),
@@ -653,6 +662,28 @@ class FeatureTaskRuntimeRunner(
       return "$policyReason Last schema-gate failure: $bounded"
     }
   }
+}
+
+private fun terminalBlockedReasonFrom(outputMap: Map<String, Any?>): String? {
+  val status = outputMap["status"] as? String
+  if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
+    return null
+  }
+  val summary = (outputMap["summary"] as? String).orEmpty().trim()
+  val blockingReasons = (outputMap["produced_outputs"] as? Map<*, *>)
+    ?.get("blocking_reasons")
+    ?.let { value ->
+      when (value) {
+        is List<*> -> value.mapNotNull { it as? String }
+        is String -> listOf(value)
+        else -> emptyList()
+      }
+    }
+    .orEmpty()
+  val detail = (listOf(summary) + blockingReasons)
+    .filter(String::isNotBlank)
+    .joinToString("; ")
+  return "Phase output reported status '$status'." + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
 }
 
 private fun persistGoalContinuationContext(
