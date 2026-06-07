@@ -350,6 +350,11 @@ class ReviewStatsRuntimeTest {
       val finished = featureImplementFinishedRecord("fis-duplicate")
       store.featureImplementFinished(finished, level = "anonymous")
       store.featureImplementFinished(finished, level = "anonymous")
+      connection.createStatement().use { stmt ->
+        stmt.executeUpdate(
+          "UPDATE feature_implement_sessions SET started_at = finished_at WHERE session_id = 'fis-duplicate'",
+        )
+      }
 
       val pending = outbox.listPending(limit = null)
       assertEquals(
