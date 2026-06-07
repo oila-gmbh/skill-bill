@@ -5,7 +5,7 @@ import skillbill.review.model.ParallelReviewSeverity
 
 object ParallelReviewFindingParser {
   val parallelFindingPattern: Regex = Regex(
-    "^\\s*-\\s+\\[(?<findingId>F-\\d{3})]\\s+" +
+    "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
       "(?<severity>Blocker|Critical|Major|Minor|Nit)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
       "(?<location>[^|]+?)\\s+\\|\\s+" +

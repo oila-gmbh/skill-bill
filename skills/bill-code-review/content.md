@@ -31,8 +31,8 @@ agent gains stdin support.
 
 | Agent      | stdin-pipe supported? | Within-threshold path                 |
 | ---------- | --------------------- | ------------------------------------- |
-| `claude`   | yes                   | `claude -p < /tmp/lane2-prompt.txt`   |
-| `codex`    | yes                   | `codex exec - < /tmp/lane2-prompt.txt`|
+| `claude`   | yes                   | `claude -p < <lane2-prompt-path>`     |
+| `codex`    | yes                   | `codex exec - < <lane2-prompt-path>`  |
 | `opencode` | no                    | CLI delegation (always)               |
 | `copilot`  | no                    | CLI delegation (always)               |
 | `junie`    | no                    | CLI delegation (always)               |
@@ -118,28 +118,41 @@ Run all six subagents, collect their output, concatenate all findings, and emit 
 Before emitting, normalise every finding line so it starts with `- [F-NNN]`. If a subagent omitted the leading `- `, prepend it. Do not alter anything else.
 ```
 
-Write the prompt to a temp file first — many agent CLIs check for an interactive terminal and
-reject piped stdin:
+Create per-run scratch files with `mktemp` first. Do **not** use fixed, predictable `/tmp` paths:
+the lane prompt holds the full diff, which may contain secrets or unreleased code, and a fixed
+world-readable path on a shared host leaks it to other local users and is open to symlink clobber.
+`mktemp` gives owner-only (`0600`), unpredictable names. Shell variables do **not** persist across
+separate Bash invocations, so run this once, note the three printed absolute paths, and reuse those
+literal paths verbatim in every later command:
 
 ```bash
-cat > /tmp/lane2-prompt.txt << 'PROMPT_EOF'
+mktemp   # lane-2 prompt   -> reuse as <lane2-prompt-path>
+mktemp   # lane-2 review   -> reuse as <lane2-review-path>
+mktemp   # lane-1 review   -> reuse as <lane1-review-path>
+```
+
+Write the prompt to the lane-2 prompt file (many agent CLIs check for an interactive terminal and
+reject piped stdin):
+
+```bash
+cat > <lane2-prompt-path> << 'PROMPT_EOF'
 <LANE_2_PROMPT>
 PROMPT_EOF
 ```
 
 Then launch lane 2 in the background using the Bash tool with `run_in_background: true`,
-redirecting output to a temp file:
+redirecting output to the lane-2 review file:
 
 #### claude
 ```bash
-claude -p [--model <lane2Model>] < /tmp/lane2-prompt.txt > /tmp/lane2-review.txt 2>&1
+claude -p [--model <lane2Model>] < <lane2-prompt-path> > <lane2-review-path> 2>&1
 ```
 
 Omit `--model` when `lane2Model` is empty.
 
 #### codex
 ```bash
-codex exec [--model <lane2Model>] - < /tmp/lane2-prompt.txt > /tmp/lane2-review.txt 2>&1
+codex exec [--model <lane2Model>] - < <lane2-prompt-path> > <lane2-review-path> 2>&1
 ```
 
 Omit `--model` when `lane2Model` is empty.
@@ -151,7 +164,7 @@ the prompt as a positional argument instead: `<agent> "<prompt>"`. If the agent 
 
 ## Lane 1: Routed Review
 
-While lane 2 runs in the background, run the normal routed stack-specific review in this session, following all standard shell-contract steps. This is the full routed review, **not** a single in-thread read of the diff: route to the dominant stack's pack and execute it exactly as a non-parallel `/bill-code-review` would, including spawning that pack's specialist subagents (and its baseline review layer) and applying its execution-mode selection. Collect every specialist's risk register into the routed review output, then capture that full output to `/tmp/lane1-review.txt`.
+While lane 2 runs in the background, run the normal routed stack-specific review in this session, following all standard shell-contract steps. This is the full routed review, **not** a single in-thread read of the diff: route to the dominant stack's pack and execute it exactly as a non-parallel `/bill-code-review` would, including spawning that pack's specialist subagents (and its baseline review layer) and applying its execution-mode selection. Collect every specialist's risk register into the routed review output, then capture that full output to the lane-1 review file (`<lane1-review-path>`).
 
 ## Merge
 
@@ -160,12 +173,14 @@ Once both lanes finish, merge findings:
 ```bash
 skill-bill code-review-merge \
   --lane1-agent <invoking-agent-id> \
-  --lane1 /tmp/lane1-review.txt \
+  --lane1 <lane1-review-path> \
   --lane2-agent <parallel-agent-id> \
-  --lane2 /tmp/lane2-review.txt
+  --lane2 <lane2-review-path>
 ```
 
 The CLI parses both outputs, coalesces findings that share the same root cause and location, and emits a single risk register with provenance labels. Display the merged output as the final review result.
+
+Once the merged result is displayed, delete the scratch files: `rm -f <lane2-prompt-path> <lane2-review-path> <lane1-review-path>`.
 
 ## Parallel Output Format
 

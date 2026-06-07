@@ -1,6 +1,7 @@
 package skillbill.install
 
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.OrchestrationLinkStatus
 import java.nio.file.Files
@@ -120,7 +121,7 @@ class InstallApplyOrchestrationLinksTest : InstallApplyTestSupport() {
     assertEquals(OrchestrationLinkStatus.FAILED, result.orchestrationLinks.single().status)
     assertTrue(Files.isDirectory(orchestrationDir, LinkOption.NOFOLLOW_LINKS), "non-symlink dir should be preserved")
     assertTrue(
-      result.warnings.any { warning -> warning.kind == skillbill.install.model.InstallApplyIssueKind.ORCHESTRATION_LINK_FAILED },
+      result.warnings.any { warning -> warning.kind == InstallApplyIssueKind.ORCHESTRATION_LINK_FAILED },
     )
     assertFalse(Files.isSymbolicLink(orchestrationDir), "non-symlink dir should not be replaced")
   }

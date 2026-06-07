@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 class CliCodeReviewParallelRuntimeTest {
   @Test
@@ -111,6 +112,35 @@ class CliCodeReviewParallelRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(2, launcher.launchCount)
+    assertContains(result.stdout, "A.kt:1")
+    assertContains(result.stdout, "[claude")
+  }
+
+  @Test
+  fun `code-review-parallel passes model2 override to the alternative lane only`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val launcher = RecordingParallelLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1",
+        "claude",
+        "--agent2",
+        "codex",
+        "--model2",
+        "gpt-5.3-codex-spark",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("gpt-5.3-codex-spark", launcher.modelsByAgent["codex"])
+    assertNull(launcher.modelsByAgent["claude"])
   }
 
   @Test
@@ -134,6 +164,34 @@ class CliCodeReviewParallelRuntimeTest {
     )
 
     assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Lane status")
+    assertContains(result.stdout, "claude: failed (agent timed out)")
+    assertContains(result.stdout, "codex: ok")
+  }
+
+  @Test
+  fun `code-review-parallel exits 1 when both lanes fail and emits both failure labels`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val launcher = BothFailLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1",
+        "claude",
+        "--agent2",
+        "codex",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "claude: failed")
+    assertContains(result.stdout, "codex: failed")
   }
 
   @Test
@@ -255,12 +313,11 @@ private class ParallelReviewSuccessLauncher : AgentRunLauncher {
 }
 
 private class ParallelReviewFailFirstLaneLauncher : AgentRunLauncher {
-  private var callCount = 0
-
+  // Route the failure by agent id, not call order: the two lanes launch concurrently, so a
+  // call-count check is nondeterministic. agent1 (claude) is the failing lane.
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-    callCount++
     val agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId")
-    return if (callCount == 1) {
+    return if (request.agentId == "claude") {
       AgentRunLaunchFacts(
         agent = agent,
         exitStatus = null,
@@ -282,11 +339,28 @@ private class ParallelReviewFailFirstLaneLauncher : AgentRunLauncher {
   }
 }
 
+private class BothFailLauncher : AgentRunLauncher {
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
+    agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
+    exitStatus = null,
+    stdout = "",
+    stderr = "",
+    timedOut = true,
+    spawnFailed = false,
+  )
+}
+
 private class RecordingParallelLauncher : AgentRunLauncher {
+  private val lock = Any()
   val agentIds: MutableList<String> = mutableListOf()
+  val modelsByAgent: MutableMap<String, String?> = mutableMapOf()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-    agentIds += request.agentId
+    // Lanes launch on concurrent threads; guard the recording collections.
+    synchronized(lock) {
+      agentIds += request.agentId
+      modelsByAgent[request.agentId] = request.skillRunRequest.modelOverride
+    }
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,

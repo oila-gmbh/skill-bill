@@ -49,7 +49,10 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("--print")
         add("--output-format")
         add("text")
-        request.modelOverride?.let { add("--model"); add(it) }
+        request.modelOverride?.let {
+          add("--model")
+          add(it)
+        }
         add("--dangerously-skip-permissions")
         add("--add-dir")
         add(request.repoRoot.toString())
@@ -74,7 +77,10 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("--dangerously-bypass-approvals-and-sandbox")
         add("--config")
         add("shell_environment_policy.inherit=all")
-        request.modelOverride?.let { add("--model"); add(it) }
+        request.modelOverride?.let {
+          add("--model")
+          add(it)
+        }
       },
       workingDirectory = request.repoRoot,
       timeout = request.timeout,

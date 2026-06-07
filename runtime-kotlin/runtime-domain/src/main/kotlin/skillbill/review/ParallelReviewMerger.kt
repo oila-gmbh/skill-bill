@@ -8,36 +8,44 @@ import skillbill.review.model.ParallelReviewSeverity
 
 object ParallelReviewMerger {
   fun merge(lane1: ParallelReviewLaneResult, lane2: ParallelReviewLaneResult): ParallelReviewMergeResult {
-    val findings1 = ParallelReviewFindingParser.parse(lane1.rawOutput)
-    val findings2 = ParallelReviewFindingParser.parse(lane2.rawOutput)
-
+    // Findings are the single source of truth: callers gate them on lane success, so a failed lane
+    // contributes an empty list here and never leaks into the merged register.
     val allEntries = mutableListOf<FindingEntry>()
-    findings1.forEachIndexed { i, f -> allEntries += FindingEntry(f, lane1.agentId, i) }
-    findings2.forEachIndexed { i, f -> allEntries += FindingEntry(f, lane2.agentId, i) }
+    var appearanceOrder = 0
+    lane1.findings.forEach { f -> allEntries += FindingEntry(f, lane1.agentId, appearanceOrder++) }
+    lane2.findings.forEach { f -> allEntries += FindingEntry(f, lane2.agentId, appearanceOrder++) }
 
     // Deterministic greedy single pass in insertion order (lane1 entries first, then lane2).
     // Each entry joins the first existing cluster whose first-inserted representative shares the
     // same file path AND clears the Jaccard token-overlap threshold; otherwise it opens a new
-    // cluster. First-inserted representative + insertion order make the result independent of map
-    // iteration order.
-    val clusters = mutableListOf<MutableList<FindingEntry>>()
+    // cluster. The representative's file path and tokens are cached in ClusterHead to avoid
+    // O(N²) recomputation of tokens() on each probe.
+    val clusters = mutableListOf<ClusterHead>()
     allEntries.forEach { entry ->
-      val cluster = clusters.firstOrNull { existing ->
-        val representative = existing.first().finding
-        filePathOf(representative.location) == filePathOf(entry.finding.location) &&
-          jaccard(tokens(representative.description), tokens(entry.finding.description)) > FUZZY_DEDUP_THRESHOLD
+      val entryFilePath = filePathOf(entry.finding.location)
+      val entryTokens = tokens(entry.finding.description)
+      val cluster = clusters.firstOrNull { head ->
+        head.representativeFilePath == entryFilePath &&
+          jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
       }
-      if (cluster != null) cluster += entry else clusters += mutableListOf(entry)
+      if (cluster != null) cluster.entries += entry
+      else clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
     }
 
-    val candidates = clusters.map { entries ->
+    val candidates = clusters.map { head ->
+      val entries = head.entries
       val coalesced = entries.map { it.agentId }.distinct().size > 1
-      val highestSeverity = entries.minByOrNull { it.finding.severity.ordinal }!!.finding.severity
+      // Severity and confidence travel together: both come from the most-severe assessment (ties
+      // broken by earliest appearance) so the reported confidence describes the reported severity,
+      // never a severity from one finding paired with the confidence of a lower-severity one.
+      val primary = entries.minWith(
+        compareBy({ it.finding.severity.ordinal }, { it.appearanceOrder }),
+      )
       val firstEntry = entries.minByOrNull { it.appearanceOrder }!!
       MergedCandidate(
         agentIds = entries.map { it.agentId }.distinct(),
-        severity = highestSeverity,
-        confidence = firstEntry.finding.confidence,
+        severity = primary.finding.severity,
+        confidence = primary.finding.confidence,
         location = firstEntry.finding.location,
         description = firstEntry.finding.description,
         isCoalesced = coalesced,
@@ -83,9 +91,13 @@ object ParallelReviewMerger {
   // themselves. Lower-cased so path comparison is case-insensitive.
   private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim().lowercase()
 
+  // Splits a description into word tokens on any non-alphanumeric run. Hoisted to a constant so the
+  // pattern is compiled once, not per pairwise comparison during clustering.
+  private val TOKEN_DELIMITER = Regex("[^a-z0-9]+")
+
   // Word set of a description: lower-cased, split on any non-alphanumeric run, empties dropped.
   private fun tokens(description: String): Set<String> =
-    description.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
+    description.lowercase().split(TOKEN_DELIMITER).filter { it.isNotEmpty() }.toSet()
 
   // Jaccard similarity = |intersection| / |union|. Empty union means both sets are empty, which
   // returns 1.0 so identical/empty descriptions on the same file still coalesce (preserving
@@ -100,6 +112,12 @@ object ParallelReviewMerger {
     val finding: ParallelReviewRawFinding,
     val agentId: String,
     val appearanceOrder: Int,
+  )
+
+  private data class ClusterHead(
+    val entries: MutableList<FindingEntry>,
+    val representativeFilePath: String,
+    val representativeTokens: Set<String>,
   )
 
   private data class MergedCandidate(

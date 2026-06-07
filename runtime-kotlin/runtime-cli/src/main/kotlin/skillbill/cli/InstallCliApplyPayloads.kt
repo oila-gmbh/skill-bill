@@ -9,8 +9,8 @@ import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallSkillStagingOutcome
 import skillbill.install.model.InstallTelemetryApplyOutcome
-import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.NativeAgentApplyOutcome
+import skillbill.install.model.OrchestrationLinkOutcome
 import skillbill.install.model.WindowsSymlinkApplyOutcome
 
 internal fun installApplyPayload(
@@ -21,6 +21,7 @@ internal fun installApplyPayload(
   "status" to result.status.name.lowercase(),
   "skills" to result.skills.map(::appliedSkillPayload),
   "native_agents" to result.nativeAgents.map(::nativeAgentPayload),
+  "orchestration_links" to result.orchestrationLinks.map(::orchestrationLinkPayload),
   "telemetry" to telemetryPayload(result.telemetryOutcome),
   "mcp_registration" to applyMcpRegistrationPayload(result),
   "warnings" to result.warnings.map(::issuePayload),
@@ -55,6 +56,15 @@ private fun agentSkillLinkPayload(link: InstallAgentSkillLinkOutcome): Map<Strin
   "issue" to link.issue?.let(::issuePayload),
 )
 
+private fun orchestrationLinkPayload(link: OrchestrationLinkOutcome): Map<String, Any?> = mapOf(
+  "agent" to link.agent.id,
+  "link_path" to link.linkPath.toString(),
+  "link_target" to link.linkTarget.toString(),
+  "status" to link.status.name.lowercase(),
+  "message" to link.message,
+  "issue" to link.issue?.let(::issuePayload),
+)
+
 private fun nativeAgentPayload(native: NativeAgentApplyOutcome): Map<String, Any?> = mapOf(
   "provider" to native.provider.id,
   "agent" to native.agent.id,
@@ -77,16 +87,16 @@ private fun applyMcpRegistrationPayload(result: InstallApplyResult): Map<String,
   "register" to result.mcpRegistrationIntent.register,
   "runtime_mcp_bin" to result.mcpRegistrationIntent.runtimeMcpBin?.toString(),
   "agents" to result.mcpRegistrationIntent.agents.map(InstallAgent::id),
-  "outcomes" to result.mcpRegistrationOutcomes.map(::mcpRegistrationOutcomePayload),
-)
-
-private fun mcpRegistrationOutcomePayload(outcome: McpRegistrationApplyOutcome): Map<String, Any?> = mapOf(
-  "agent" to outcome.agent.id,
-  "status" to outcome.status.name.lowercase(),
-  "config_path" to outcome.configPath?.toString(),
-  "changed" to outcome.changed,
-  "message" to outcome.message,
-  "issue" to outcome.issue?.let(::issuePayload),
+  "outcomes" to result.mcpRegistrationOutcomes.map { outcome ->
+    mapOf(
+      "agent" to outcome.agent.id,
+      "status" to outcome.status.name.lowercase(),
+      "config_path" to outcome.configPath?.toString(),
+      "changed" to outcome.changed,
+      "message" to outcome.message,
+      "issue" to outcome.issue?.let(::issuePayload),
+    )
+  },
 )
 
 private fun windowsOutcomePayload(outcome: WindowsSymlinkApplyOutcome): Map<String, Any?> = mapOf(

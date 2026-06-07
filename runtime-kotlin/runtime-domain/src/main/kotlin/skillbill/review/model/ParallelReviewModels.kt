@@ -17,7 +17,6 @@ data class ParallelReviewRawFinding(
 data class ParallelReviewLaneResult(
   val agentId: String,
   val findings: List<ParallelReviewRawFinding>,
-  val rawOutput: String,
 )
 
 data class ParallelReviewMergedFinding(

@@ -43,11 +43,8 @@ internal fun applyInstallPlan(
   }
   val platformManifests = discoverPlatformManifests(plan.installationTargetPaths.platformPacksRoot)
   cleanupExistingSkillBillLinks(plan, platformManifests, failures)
-  val appliedSkills = applyPlannedSkills(
-    plan = plan,
-    platformManifests = platformManifests,
-    failures = failures,
-  )
+  val appliedSkills = applyPlannedSkills(plan, platformManifests, failures)
+  val orchestrationLinks = applyOrchestrationLinks(plan, warnings)
   val nativeAgents = if (failures.isEmpty()) {
     applyNativeAgents(
       plan = plan,
@@ -72,6 +69,7 @@ internal fun applyInstallPlan(
     status = aggregateApplyStatus(warnings, failures),
     skills = appliedSkills,
     nativeAgents = nativeAgents,
+    orchestrationLinks = orchestrationLinks,
     telemetryOutcome = telemetryOutcome,
     mcpRegistrationOutcomes = mcpRegistrationOutcomes,
     warnings = warnings,

@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class ParallelReviewMergerTest {
   private fun laneResult(agentId: String, rawOutput: String) =
-    ParallelReviewLaneResult(agentId = agentId, findings = emptyList(), rawOutput = rawOutput)
+    ParallelReviewLaneResult(agentId = agentId, findings = ParallelReviewFindingParser.parse(rawOutput))
 
   private fun finding(
     id: String = "F-001",
@@ -261,5 +261,54 @@ class ParallelReviewMergerTest {
       "- [F-001] [claude, codex] Major | High | Auth.kt:10 | Token logged",
       result.formattedOutput,
     )
+  }
+
+  @Test
+  fun `coalesced confidence tracks the higher severity, not first appearance`() {
+    // lane1 (first) is Minor|High; lane2 is Major|Low. The merged finding must report the more
+    // severe assessment's severity AND its confidence (Major|Low), never Major|High.
+    val location = "Auth.kt:42"
+    val description = "token exposed in logs"
+    val lane1Output = "- [F-001] Minor | High | $location | $description"
+    val lane2Output = "- [F-001] Major | Low | $location | $description"
+
+    val result = ParallelReviewMerger.merge(
+      laneResult("claude", lane1Output),
+      laneResult("codex", lane2Output),
+    )
+
+    assertEquals(1, result.findings.size)
+    assertEquals(ParallelReviewSeverity.MAJOR, result.findings[0].severity)
+    assertEquals("Low", result.findings[0].confidence)
+  }
+
+  @Test
+  fun `same file with token overlap exactly at threshold is not coalesced`() {
+    // tokens {alpha,beta,gamma,delta} vs {alpha,beta,gamma,epsilon} -> 3/5 = 0.6, not strictly above.
+    val lane1Output = "- [F-001] Major | High | Auth.kt:7 | alpha beta gamma delta"
+    val lane2Output = "- [F-001] Major | High | Auth.kt:7 | alpha beta gamma epsilon"
+
+    val result = ParallelReviewMerger.merge(
+      laneResult("claude", lane1Output),
+      laneResult("codex", lane2Output),
+    )
+
+    assertEquals(2, result.findings.size)
+    assertEquals(1, result.findings[0].agentIds.size, "finding at threshold must not be spuriously coalesced")
+    assertEquals(1, result.findings[1].agentIds.size, "finding at threshold must not be spuriously coalesced")
+  }
+
+  @Test
+  fun `findings without leading dash are parsed and coalesced with dash-prefixed findings`() {
+    val withDash = "- [F-001] Major | High | Auth.kt:10 | Token logged"
+    val withoutDash = "[F-001] Major | High | Auth.kt:10 | Token logged"
+
+    val result = ParallelReviewMerger.merge(
+      laneResult("claude", withDash),
+      laneResult("codex", withoutDash),
+    )
+
+    assertEquals(1, result.findings.size)
+    assertEquals(listOf("claude", "codex"), result.findings[0].agentIds)
   }
 }

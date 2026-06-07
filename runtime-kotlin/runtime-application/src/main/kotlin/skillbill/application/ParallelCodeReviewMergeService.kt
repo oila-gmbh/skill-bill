@@ -13,12 +13,10 @@ class ParallelCodeReviewMergeService {
     val lane1 = ParallelReviewLaneResult(
       agentId = request.lane1AgentId,
       findings = ParallelReviewFindingParser.parse(request.lane1RawOutput),
-      rawOutput = request.lane1RawOutput,
     )
     val lane2 = ParallelReviewLaneResult(
       agentId = request.lane2AgentId,
       findings = ParallelReviewFindingParser.parse(request.lane2RawOutput),
-      rawOutput = request.lane2RawOutput,
     )
     val mergeResult = ParallelReviewMerger.merge(lane1, lane2)
     return ParallelCodeReviewMergeResult(formattedOutput = mergeResult.formattedOutput)

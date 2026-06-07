@@ -4,21 +4,27 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
+import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.ReviewRubricPort
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.model.ParallelReviewLaneResult
 import java.nio.file.Path
 import java.util.concurrent.Callable
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
 
@@ -42,38 +48,68 @@ class ParallelCodeReviewRunner(
     val stack = detectStack(diffText, request.repoRoot)
     val prompt = buildPrompt(stack, diffText)
 
-    val timeoutSec = (request.timeoutMinutes ?: DEFAULT_TIMEOUT_MINUTES) * SECONDS_PER_MINUTE
+    val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val executor = Executors.newFixedThreadPool(2)
-    val (outcome1, outcome2) = try {
-      val future1 = executor.submit(Callable { launchLane(agent1.id, prompt, request) })
-      val future2 = executor.submit(Callable { launchLane(agent2.id, prompt, request, request.agent2Model) })
-      val startMs = System.currentTimeMillis()
-      val o1 = future1.get(timeoutSec + TIMEOUT_BUFFER_SECONDS, TimeUnit.SECONDS)
-      val elapsedSec = (System.currentTimeMillis() - startMs) / MILLIS_PER_SECOND
-      val remaining = maxOf(1L, timeoutSec - elapsedSec) + TIMEOUT_BUFFER_SECONDS
-      val o2 = future2.get(remaining, TimeUnit.SECONDS)
-      Pair(o1, o2)
+    var outcome1 = LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while waiting for lanes")
+    var outcome2 = LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while waiting for lanes")
+    try {
+      // invokeAll gives both lanes the full shared budget and avoids the sequential-await timing
+      // problem where lane 2 inherits only the leftover time after lane 1 finishes.
+      val futures = executor.invokeAll(
+        listOf(
+          Callable { launchLane(agent1.id, prompt, request) },
+          Callable { launchLane(agent2.id, prompt, request, request.agent2Model) },
+        ),
+        timeoutSec + TIMEOUT_BUFFER_SECONDS,
+        TimeUnit.SECONDS,
+      )
+      outcome1 = resultFromFuture(futures[0])
+      outcome2 = resultFromFuture(futures[1])
+    } catch (@Suppress("SwallowedException") e: InterruptedException) {
+      Thread.currentThread().interrupt()
     } finally {
       executor.shutdownNow()
+      try {
+        executor.awaitTermination(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+      } catch (@Suppress("SwallowedException") _: InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
     }
 
     val lane1Result = ParallelReviewLaneResult(
       agentId = agent1.id,
       findings = if (outcome1.success) ParallelReviewFindingParser.parse(outcome1.rawOutput) else emptyList(),
-      rawOutput = outcome1.rawOutput,
     )
     val lane2Result = ParallelReviewLaneResult(
       agentId = agent2.id,
       findings = if (outcome2.success) ParallelReviewFindingParser.parse(outcome2.rawOutput) else emptyList(),
-      rawOutput = outcome2.rawOutput,
     )
 
     val mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result)
     return ParallelCodeReviewResult(
       mergeResult = mergeResult,
-      lane1Success = outcome1.success,
-      lane2Success = outcome2.success,
+      lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason),
+      lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason),
     )
+  }
+
+  // Collects one lane's result from a future that invokeAll has already settled. No blocking occurs
+  // here; the only exception paths are CancellationException (shared budget exhausted) and
+  // ExecutionException (unexpected throw inside the lane callable).
+  private fun resultFromFuture(future: Future<LaneOutcome>): LaneOutcome = try {
+    future.get()
+  } catch (@Suppress("SwallowedException") e: CancellationException) {
+    LaneOutcome(success = false, rawOutput = "", failureReason = "lane timed out (cancelled by shared budget)")
+  } catch (e: ExecutionException) {
+    val cause = e.cause ?: e
+    LaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "lane launch threw ${cause::class.simpleName}: ${cause.message ?: "no detail"}",
+    )
+  } catch (@Suppress("SwallowedException") e: InterruptedException) {
+    Thread.currentThread().interrupt()
+    LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while collecting lane result")
   }
 
   private fun resolveAgent(agentId: String, label: String): InstallAgent {
@@ -125,14 +161,23 @@ class ParallelCodeReviewRunner(
 
   private fun detectStack(diffText: String, repoRoot: Path): String? {
     val packsRoot = repoRoot.resolve("platform-packs")
+    // A missing platform-packs directory yields an empty list (no exception) and degrades to a
+    // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
+    // invalid composition) throws; surface that loudly instead of silently dropping the
+    // stack-specific specialists, per the shell's "never silently fall back" contract.
     val manifests = try {
       scaffoldCatalogService.discoverPlatformManifests(packsRoot)
-    } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
-      emptyList()
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+      val displayPath = runCatching { repoRoot.relativize(packsRoot) }.getOrDefault(packsRoot)
+      throw StackDetectionException(
+        "Platform pack discovery failed for $displayPath: ${e.message ?: e.javaClass.simpleName}. " +
+          "Repair the platform pack before running parallel review.",
+        e,
+      )
     }
     if (manifests.isEmpty()) return null
 
-    val diffPaths = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
+    val diffPaths = DIFF_PATH_PATTERN
       .findAll(diffText)
       .map { it.groupValues[1] }
       .toList()
@@ -188,27 +233,49 @@ class ParallelCodeReviewRunner(
         skillRunRequest = SkillRunRequest(
           issueKey = "code-review-parallel",
           repoRoot = request.repoRoot,
-          timeout = request.timeoutMinutes?.minutes,
+          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
           promptOverride = prompt,
           modelOverride = modelOverride,
         ),
       ),
     )
     return when (outcome) {
-      is AgentRunLaunchFacts -> LaneOutcome(
-        success = outcome.exitStatus == 0 && !outcome.timedOut && !outcome.spawnFailed && !outcome.interrupted,
-        rawOutput = outcome.stdout,
-      )
-      else -> LaneOutcome(success = false, rawOutput = "")
+      is AgentRunLaunchFacts -> {
+        val reason = laneFailureReason(outcome)
+        LaneOutcome(success = reason == null, rawOutput = outcome.stdout, failureReason = reason)
+      }
+      is UnsupportedAgentRunLaunch ->
+        LaneOutcome(success = false, rawOutput = "", failureReason = "unsupported agent: ${outcome.reason}")
     }
   }
 
-  private data class LaneOutcome(val success: Boolean, val rawOutput: String)
+  // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.
+  // timedOut/spawnFailed/interrupted are checked first because they leave exitStatus null.
+  // The null == exitStatus guard closes the degenerate case where all flags are false but
+  // exitStatus is also null — a combination the init requires prevent but that would otherwise
+  // fall through to else->null and silently report an empty-findings lane as succeeded.
+  private fun laneFailureReason(facts: AgentRunLaunchFacts): String? = when {
+    facts.timedOut -> "agent timed out"
+    facts.spawnFailed -> "agent process failed to spawn"
+    facts.interrupted -> "agent was interrupted"
+    facts.exitStatus == null -> "agent exited with unknown status"
+    facts.exitStatus != 0 -> buildString {
+      append("agent exited with status ${facts.exitStatus}")
+      facts.stderr.trim().lineSequence().firstOrNull { it.isNotBlank() }?.let { line ->
+        append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
+      }
+    }
+    else -> null
+  }
+
+  private data class LaneOutcome(val success: Boolean, val rawOutput: String, val failureReason: String? = null)
 
   private companion object {
     const val DEFAULT_TIMEOUT_MINUTES = 30L
     const val TIMEOUT_BUFFER_SECONDS = 30L
     const val SECONDS_PER_MINUTE = 60L
-    const val MILLIS_PER_SECOND = 1000L
+    const val DESTROY_WAIT_TIMEOUT_MILLIS = 5_000L
+    const val STDERR_EXCERPT_MAX_LENGTH = 120
+    val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
   }
 }

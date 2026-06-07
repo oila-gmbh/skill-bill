@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.review.model.ParallelReviewMergeResult
 import java.nio.file.Path
+import kotlin.time.Duration
 
 enum class ParallelReviewScope { STAGED, UNSTAGED, BRANCH, PR }
 
@@ -11,13 +12,19 @@ data class ParallelCodeReviewRequest(
   val agent2Model: String? = null,
   val scope: ParallelReviewScope,
   val repoRoot: Path,
-  val timeoutMinutes: Long?,
+  val timeout: Duration?,
 )
 
 data class ParallelCodeReviewResult(
   val mergeResult: ParallelReviewMergeResult,
-  val lane1Success: Boolean,
-  val lane2Success: Boolean,
+  val lane1: ParallelReviewLaneStatus,
+  val lane2: ParallelReviewLaneStatus,
+)
+
+data class ParallelReviewLaneStatus(
+  val agentId: String,
+  val success: Boolean,
+  val failureReason: String? = null,
 )
 
 data class ParallelCodeReviewMergeRequest(
@@ -34,3 +41,5 @@ data class ParallelCodeReviewMergeResult(
 class DiffResolutionException(message: String) : RuntimeException(message)
 
 class UsageValidationException(message: String) : RuntimeException(message)
+
+class StackDetectionException(message: String, cause: Throwable) : RuntimeException(message, cause)

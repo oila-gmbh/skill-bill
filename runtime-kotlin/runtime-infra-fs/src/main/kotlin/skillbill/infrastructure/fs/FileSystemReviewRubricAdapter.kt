@@ -3,7 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.model.RuntimeContext
 import skillbill.ports.review.ReviewRubricPort
-import skillbill.ports.review.ReviewSpecialistRubric
+import skillbill.ports.review.model.ReviewSpecialistRubric
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -40,18 +40,26 @@ class FileSystemReviewRubricAdapter(
   }
 
   private fun extractNameFromFrontmatter(text: String): String? {
-    if (!text.startsWith("---")) return null
-    val end = text.indexOf("\n---", 3)
-    if (end == -1) return null
-    return text.substring(3, end).lines()
-      .firstOrNull { it.trimStart().startsWith("name:") }
-      ?.substringAfter("name:")
-      ?.trim()
+    if (!text.startsWith(FRONTMATTER_FENCE)) return null
+    val end = text.indexOf(CLOSING_FENCE, FRONTMATTER_FENCE.length)
+    return if (end == -1) {
+      null
+    } else {
+      text.substring(FRONTMATTER_FENCE.length, end).lines()
+        .firstOrNull { it.trimStart().startsWith("name:") }
+        ?.substringAfter("name:")
+        ?.trim()
+    }
   }
 
   private fun stripFrontmatter(text: String): String {
-    if (!text.startsWith("---")) return text
-    val end = text.indexOf("\n---", 3)
-    return if (end == -1) text else text.substring(end + 4).trimStart('\n')
+    if (!text.startsWith(FRONTMATTER_FENCE)) return text
+    val end = text.indexOf(CLOSING_FENCE, FRONTMATTER_FENCE.length)
+    return if (end == -1) text else text.substring(end + CLOSING_FENCE.length).trimStart('\n')
+  }
+
+  private companion object {
+    const val FRONTMATTER_FENCE = "---"
+    const val CLOSING_FENCE = "\n---"
   }
 }

@@ -9,12 +9,15 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.ParallelCodeReviewRunner
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
+import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.cli.models.CliExecutionResult
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.minutes
 
 @Inject
 class CodeReviewParallelCommand(
@@ -50,6 +53,7 @@ class CodeReviewParallelCommand(
     help = "Optional per-lane wall-clock cap in minutes.",
   ).long()
 
+
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
     val resolvedAgent2 = agent2?.takeIf(String::isNotBlank)
@@ -73,18 +77,31 @@ class CodeReviewParallelCommand(
           agent2Model = model2?.takeIf(String::isNotBlank),
           scope = resolvedScope,
           repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
-          timeoutMinutes = timeoutMinutes,
+          timeout = timeoutMinutes?.minutes,
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
       throw UsageError(e.message.orEmpty())
     } catch (@Suppress("SwallowedException") e: DiffResolutionException) {
       throw UsageError(e.message.orEmpty())
+    } catch (@Suppress("SwallowedException") e: StackDetectionException) {
+      throw UsageError(e.message.orEmpty())
     }
 
-    val output = result.mergeResult.formattedOutput
-    val exitCode = if (result.lane1Success && result.lane2Success) 0 else 1
+    val lanes = listOf(result.lane1, result.lane2)
+    val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
+    val output = laneStatusOutput(lanes, result.mergeResult.formattedOutput)
     state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
+  }
+
+  // On any lane failure, prepend a single status line naming which lane failed and why. The line is
+  // not in `- [F-NNN]` form, so the finding parser ignores it; the merged register stays intact.
+  private fun laneStatusOutput(lanes: List<ParallelReviewLaneStatus>, register: String): String {
+    if (lanes.all(ParallelReviewLaneStatus::success)) return register
+    val summary = lanes.joinToString(" | ") { lane ->
+      if (lane.success) "${lane.agentId}: ok" else "${lane.agentId}: failed (${lane.failureReason ?: "unknown reason"})"
+    }
+    return "# Lane status — $summary\n$register"
   }
 
   private fun resolveAgent1(): String = agent1?.takeIf(String::isNotBlank)
