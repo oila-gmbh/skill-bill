@@ -35,6 +35,7 @@ import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
+import skillbill.infrastructure.fs.FileSystemReviewRubricAdapter
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -87,6 +88,7 @@ import skillbill.ports.install.plan.InstallStagingIntentPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ReviewInputSource
+import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -291,6 +293,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun diffResolverPort(adapter: FileSystemDiffResolver): DiffResolverPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewRubricPort(adapter: FileSystemReviewRubricAdapter): ReviewRubricPort = adapter
 
   @Provides
   @JvmSynthetic

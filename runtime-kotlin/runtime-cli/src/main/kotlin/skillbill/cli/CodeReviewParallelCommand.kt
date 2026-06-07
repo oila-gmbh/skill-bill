@@ -33,6 +33,10 @@ class CodeReviewParallelCommand(
     "--agent2",
     help = "Agent for the alternative lane. Required. Supported: ${InstallAgent.supportedIds.joinToString()}.",
   )
+  private val model2 by option(
+    "--model2",
+    help = "Model override for the alternative lane agent (e.g. claude-opus-4-8, o3). Optional.",
+  )
   private val scope by option(
     "--scope",
     help = "Diff scope: staged, unstaged, branch (default), or pr.",
@@ -66,6 +70,7 @@ class CodeReviewParallelCommand(
         ParallelCodeReviewRequest(
           agent1Id = resolvedAgent1,
           agent2Id = resolvedAgent2,
+          agent2Model = model2?.takeIf(String::isNotBlank),
           scope = resolvedScope,
           repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
           timeoutMinutes = timeoutMinutes,

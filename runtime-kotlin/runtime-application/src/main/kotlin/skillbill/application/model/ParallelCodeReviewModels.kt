@@ -8,6 +8,7 @@ enum class ParallelReviewScope { STAGED, UNSTAGED, BRANCH, PR }
 data class ParallelCodeReviewRequest(
   val agent1Id: String,
   val agent2Id: String,
+  val agent2Model: String? = null,
   val scope: ParallelReviewScope,
   val repoRoot: Path,
   val timeoutMinutes: Long?,

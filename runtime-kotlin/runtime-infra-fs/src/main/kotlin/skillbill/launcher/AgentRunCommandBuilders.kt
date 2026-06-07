@@ -44,15 +44,16 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       // The prompt is delivered via stdin, not as a trailing argv token: `--add-dir`
       // is variadic and would otherwise swallow the prompt as an extra directory,
       // leaving `claude --print` with no input and blocking forever on stdin.
-      command = listOf(
-        "claude",
-        "--print",
-        "--output-format",
-        "text",
-        "--dangerously-skip-permissions",
-        "--add-dir",
-        request.repoRoot.toString(),
-      ),
+      command = buildList {
+        add("claude")
+        add("--print")
+        add("--output-format")
+        add("text")
+        request.modelOverride?.let { add("--model"); add(it) }
+        add("--dangerously-skip-permissions")
+        add("--add-dir")
+        add(request.repoRoot.toString())
+      },
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
@@ -65,15 +66,16 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand =
     goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = listOf(
-        "codex",
-        "exec",
-        "--cd",
-        request.repoRoot.toString(),
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--config",
-        "shell_environment_policy.inherit=all",
-      ),
+      command = buildList {
+        add("codex")
+        add("exec")
+        add("--cd")
+        add(request.repoRoot.toString())
+        add("--dangerously-bypass-approvals-and-sandbox")
+        add("--config")
+        add("shell_environment_policy.inherit=all")
+        request.modelOverride?.let { add("--model"); add(it) }
+      },
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),

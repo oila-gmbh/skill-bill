@@ -11,6 +11,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
@@ -26,6 +27,7 @@ class ParallelCodeReviewRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
+  private val rubricPort: ReviewRubricPort,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -44,7 +46,7 @@ class ParallelCodeReviewRunner(
     val executor = Executors.newFixedThreadPool(2)
     val (outcome1, outcome2) = try {
       val future1 = executor.submit(Callable { launchLane(agent1.id, prompt, request) })
-      val future2 = executor.submit(Callable { launchLane(agent2.id, prompt, request) })
+      val future2 = executor.submit(Callable { launchLane(agent2.id, prompt, request, request.agent2Model) })
       val startMs = System.currentTimeMillis()
       val o1 = future1.get(timeoutSec + TIMEOUT_BUFFER_SECONDS, TimeUnit.SECONDS)
       val elapsedSec = (System.currentTimeMillis() - startMs) / MILLIS_PER_SECOND
@@ -145,21 +147,40 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun buildPrompt(stack: String?, diffText: String): String {
-    val stackContext = if (stack != null) "You are reviewing $stack code." else "You are reviewing code."
-    return buildString {
-      appendLine(stackContext)
-      appendLine(
-        "Produce a risk register in F-XXX bullet format: " +
-          "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
-      )
+  private fun buildPrompt(stack: String?, diffText: String): String = buildString {
+    appendLine(
+      "You are driving one lane of a parallel code review. Apply all of the following specialist " +
+        "review rubrics to the diff below and return a single consolidated Risk Register. " +
+        "Do not use parallel mode.",
+    )
+    appendLine()
+    val rubrics = if (stack != null) rubricPort.loadSpecialistRubrics(stack) else emptyList()
+    if (rubrics.isNotEmpty()) {
+      rubrics.forEach { rubric ->
+        appendLine("## Specialist: ${rubric.skillName}")
+        appendLine(rubric.content)
+        appendLine()
+      }
+    } else {
+      if (stack != null) appendLine("The dominant stack is $stack.")
+      appendLine("Review for architecture, correctness, testing, performance, and reliability risks.")
       appendLine()
-      appendLine("Diff:")
-      append(diffText)
     }
+    appendLine(
+      "Return only a risk register in F-XXX bullet format, one finding per line: " +
+        "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
+    )
+    appendLine()
+    appendLine("Diff:")
+    append(diffText)
   }
 
-  private fun launchLane(agentId: String, prompt: String, request: ParallelCodeReviewRequest): LaneOutcome {
+  private fun launchLane(
+    agentId: String,
+    prompt: String,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String? = null,
+  ): LaneOutcome {
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -169,6 +190,7 @@ class ParallelCodeReviewRunner(
           repoRoot = request.repoRoot,
           timeout = request.timeoutMinutes?.minutes,
           promptOverride = prompt,
+          modelOverride = modelOverride,
         ),
       ),
     )

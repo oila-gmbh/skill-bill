@@ -1,0 +1,57 @@
+package skillbill.infrastructure.fs
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.model.RuntimeContext
+import skillbill.ports.review.ReviewRubricPort
+import skillbill.ports.review.ReviewSpecialistRubric
+import java.nio.file.Files
+import java.nio.file.Path
+
+@Inject
+class FileSystemReviewRubricAdapter(
+  private val context: RuntimeContext,
+) : ReviewRubricPort {
+  override fun loadSpecialistRubrics(stackSlug: String): List<ReviewSpecialistRubric> {
+    val skillsRoot = context.userHome.resolve(".skill-bill/installed-skills")
+    val prefix = "bill-$stackSlug-code-review-"
+    return try {
+      Files.newDirectoryStream(skillsRoot).use { stream ->
+        stream
+          .filter { dir ->
+            Files.isDirectory(dir) &&
+              dir.fileName.toString().let { name ->
+                name.startsWith(prefix) && name.removePrefix(prefix).contains('-')
+              }
+          }
+          .mapNotNull { loadRubric(it) }
+          .sortedBy { it.skillName }
+      }
+    } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
+      emptyList()
+    }
+  }
+
+  private fun loadRubric(dir: Path): ReviewSpecialistRubric? {
+    val contentFile = dir.resolve("content.md")
+    if (!Files.exists(contentFile)) return null
+    val text = Files.readString(contentFile)
+    val name = extractNameFromFrontmatter(text) ?: dir.fileName.toString()
+    return ReviewSpecialistRubric(skillName = name, content = stripFrontmatter(text))
+  }
+
+  private fun extractNameFromFrontmatter(text: String): String? {
+    if (!text.startsWith("---")) return null
+    val end = text.indexOf("\n---", 3)
+    if (end == -1) return null
+    return text.substring(3, end).lines()
+      .firstOrNull { it.trimStart().startsWith("name:") }
+      ?.substringAfter("name:")
+      ?.trim()
+  }
+
+  private fun stripFrontmatter(text: String): String {
+    if (!text.startsWith("---")) return text
+    val end = text.indexOf("\n---", 3)
+    return if (end == -1) text else text.substring(end + 4).trimStart('\n')
+  }
+}

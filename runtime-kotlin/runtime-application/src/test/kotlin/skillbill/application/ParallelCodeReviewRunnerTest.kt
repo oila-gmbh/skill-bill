@@ -8,6 +8,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
@@ -197,10 +198,12 @@ class ParallelCodeReviewRunnerTest {
     launcher: GoalRunnerSubtaskLauncher,
     catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
     diffResolver: DiffResolverPort = RealProcessDiffResolver(),
+    rubricPort: ReviewRubricPort = ReviewRubricPort { emptyList() },
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
     subtaskLauncher = launcher,
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
+    rubricPort = rubricPort,
   )
 
   private fun baseRequest(
