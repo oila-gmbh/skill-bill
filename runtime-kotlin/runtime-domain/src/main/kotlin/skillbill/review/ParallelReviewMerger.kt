@@ -81,8 +81,7 @@ object ParallelReviewMerger {
   // File-path portion of a location field ("file:line" -> "file"). Kotlin's substringBeforeLast
   // returns the whole string when there is no colon, so colon-less locations fall back to
   // themselves. Lower-cased so path comparison is case-insensitive.
-  private fun filePathOf(location: String): String =
-    location.substringBeforeLast(":").trim().lowercase()
+  private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim().lowercase()
 
   // Word set of a description: lower-cased, split on any non-alphanumeric run, empties dropped.
   private fun tokens(description: String): Set<String> =
