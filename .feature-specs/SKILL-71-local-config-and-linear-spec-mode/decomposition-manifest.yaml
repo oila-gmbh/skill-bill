@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-71-local-config-and-linear-spec-mode"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
+  subtask_id: 6
   action: "start"
 subtasks:
 - id: 1
@@ -67,12 +67,12 @@ subtasks:
 - id: 5
   name: "code-review-config-fallback"
   spec_path: ".feature-specs/SKILL-71-local-config-and-linear-spec-mode/spec_subtask_5_code-review-config-fallback.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: null
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   dependencies:
   - subtask_id: 1
     optional: false
