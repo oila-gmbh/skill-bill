@@ -46,6 +46,7 @@ Acceptance criteria: <count>/<count> implemented
 ## File Rules
 
 - File path: `<primary-boundary>/agent/history.md`.
+- **Exception — skill source directories:** if the primary boundary is a skill source directory (`skills/<skill-name>/`), write to `skills/agent/history.md` instead. Skill source directories may contain only `content.md` and `native-agents/`; placing `agent/` inside them fails `validateAgentConfigs`.
 - If the file does not exist, create it along with any missing parent directories.
 - Newest entry first.
 - Max 15 lines per entry.
