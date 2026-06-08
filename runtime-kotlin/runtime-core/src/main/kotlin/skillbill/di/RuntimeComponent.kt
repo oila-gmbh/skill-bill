@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.AgentRunService
+import skillbill.application.ConfigResolutionService
 import skillbill.application.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.FeatureTaskRuntimeRunner
 import skillbill.application.FeatureTaskRuntimeStatusService
@@ -45,6 +46,7 @@ import skillbill.infrastructure.fs.FileSystemInstallPlatformSkillMaterialization
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
+import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
@@ -57,6 +59,7 @@ import skillbill.infrastructure.fs.FileSystemScaffoldManifestPersistence
 import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
 import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
+import skillbill.infrastructure.fs.FileSystemSpecScratchStore
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
@@ -72,6 +75,7 @@ import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.FileSystemAgentRunLauncher
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
@@ -107,6 +111,7 @@ import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.validation.RepoValidationGateway
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
@@ -250,6 +255,10 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun repoLocalConfigPort(adapter: FileSystemRepoLocalConfig): RepoLocalConfigPort = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun scaffoldGateway(gateway: FileSystemScaffoldGateway): ScaffoldGateway = gateway
 
   // SKILL-52.1 subtask 2: typed capability ports for the scaffold pipeline. These are wired
@@ -332,6 +341,10 @@ abstract class RuntimeComponent(
     store: FileSystemDecompositionManifestFileStore,
   ): DecompositionManifestFileStore = store
 
+  @Provides
+  @JvmSynthetic
+  internal fun specScratchStore(store: FileSystemSpecScratchStore): SpecScratchStore = store
+
   // SKILL-52.3 Subtask 1: validator ports now bind to infra-fs adapters
   // (the module that owns the concrete networknt + Jackson schema
   // validators). `runtime-domain` install policy and the application
@@ -374,6 +387,10 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
+
+  // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
+  // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.
+  abstract val configResolutionService: ConfigResolutionService
   abstract val installService: InstallService
   abstract val agentRunService: AgentRunService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder

@@ -41,10 +41,13 @@ import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.model.SpecSource
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -427,12 +430,190 @@ class GoalRunnerTest {
     assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
   }
 
+  @Test
+  fun `decomposed linear run deletes each subtask spec after its commit and the dir after the final pr`() {
+    val repoRoot = Files.createTempDirectory("goal-linear-cleanup")
+    val specDir = repoRoot.resolve(".feature-specs/SKILL-56-goal")
+    Files.createDirectories(specDir)
+    Files.writeString(specDir.resolve("spec.md"), "# Parent\n")
+    val sub1 = specDir.resolve("spec_subtask_1.md").also { Files.writeString(it, "# 1\n") }
+    val sub2 = specDir.resolve("spec_subtask_2.md").also { Files.writeString(it, "# 2\n") }
+    Files.writeString(specDir.resolve("decomposition-manifest.yaml"), "x")
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val scratch = RecordingSpecScratchStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+
+    val report = runner.run(linearRunRequest(repoRoot))
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    // Each subtask spec is deleted after its own commit; the parent + manifest only via the final
+    // directory deletion — and every subtask spec deletion precedes that directory deletion.
+    assertEquals(listOf(sub1, sub2), scratch.deletedFiles)
+    assertEquals(listOf(specDir), scratch.deletedDirectories)
+    assertEquals(listOf(sub1, sub2, specDir), scratch.deletions)
+    assertFalse(Files.exists(specDir), "linear goal scratch dir must be gone on success")
+  }
+
+  @Test
+  fun `decomposed linear run that stops mid-goal leaves remaining scratch and manifest intact`() {
+    val repoRoot = Files.createTempDirectory("goal-linear-abort")
+    val specDir = repoRoot.resolve(".feature-specs/SKILL-56-goal")
+    Files.createDirectories(specDir)
+    val parentSpec = specDir.resolve("spec.md").also { Files.writeString(it, "# Parent\n") }
+    val sub1 = specDir.resolve("spec_subtask_1.md").also { Files.writeString(it, "# 1\n") }
+    val sub2 = specDir.resolve("spec_subtask_2.md").also { Files.writeString(it, "# 2\n") }
+    val manifestFile = specDir.resolve("decomposition-manifest.yaml").also { Files.writeString(it, "x") }
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR))
+    val outcomes = RecordingOutcomeStore()
+    // Subtask 1 records a terminal outcome; subtask 2 launches but never produces one, so the goal
+    // stops before finalize.
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      if (subtaskId == 1) {
+        outcomes["wfl-1"] = completeOutcome(1)
+      }
+      launchFacts()
+    }
+    val scratch = RecordingSpecScratchStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+
+    assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
+
+    // Only the completed subtask's spec is deleted; nothing else and no directory deletion.
+    assertEquals(listOf(sub1), scratch.deletedFiles)
+    assertTrue(scratch.deletedDirectories.isEmpty(), "a stopped goal must not delete the scratch dir")
+    assertTrue(Files.exists(sub2), "the incomplete subtask spec must survive")
+    assertTrue(Files.exists(parentSpec), "the parent spec must survive a stopped goal")
+    assertTrue(Files.exists(manifestFile), "the manifest must survive a stopped goal")
+  }
+
+  @Test
+  fun `local decomposed run deletes nothing`() {
+    val repoRoot = Files.createTempDirectory("goal-local-no-delete")
+    val specDir = repoRoot.resolve(".feature-specs/SKILL-56-goal")
+    Files.createDirectories(specDir)
+    Files.writeString(specDir.resolve("spec.md"), "# Parent\n")
+    Files.writeString(specDir.resolve("spec_subtask_1.md"), "# 1\n")
+    Files.writeString(specDir.resolve("spec_subtask_2.md"), "# 2\n")
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val scratch = RecordingSpecScratchStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+
+    assertTrue(scratch.deletions.isEmpty(), "local mode must not delete any spec scratch")
+    assertTrue(Files.exists(specDir.resolve("spec.md")), "local mode keeps the committed parent spec")
+  }
+
+  @Test
+  fun `linear finalize does not flag the untracked manifest as a blocking projection delta`() {
+    val repoRoot = Files.createTempDirectory("goal-linear-finalize")
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(specSource = SpecSource.LINEAR),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = DirtyManifestGitOperations(".feature-specs/SKILL-56-goal/decomposition-manifest.yaml"),
+    )
+
+    // The manifest is reported dirty, but in linear mode it is never staged, so finalize must not
+    // block on it — the goal completes and opens its PR.
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+  }
+
+  @Test
+  fun `local finalize still blocks on an uncommitted manifest projection delta`() {
+    val repoRoot = Files.createTempDirectory("goal-local-finalize")
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = DirtyManifestGitOperations(".feature-specs/SKILL-56-goal/decomposition-manifest.yaml"),
+    )
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "uncommitted decomposition projection delta")
+  }
+
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
     dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
+
+  private fun linearRunRequest(repoRoot: Path): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = repoRoot,
+    invokedAgentId = "claude",
+    dbPathOverride = null,
+  )
+}
+
+// Reports the decomposition manifest as a dirty worktree path so finalizationError's manifest-delta
+// guard can be exercised; everything else returns ok.
+private class DirtyManifestGitOperations(
+  private val dirtyManifestPath: String,
+) : WorkflowGitOperations {
+  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "true")
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "feat/SKILL-56-goal")
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = " M $dirtyManifestPath")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
+    WorkflowWorktreeActivityResult(status = "ok")
+
+  override fun selectedDiffHunks(
+    repoRoot: Path,
+    request: WorkflowSelectedDiffHunksRequest,
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 }
 
 class GoalRunnerStatusProjectionTest {

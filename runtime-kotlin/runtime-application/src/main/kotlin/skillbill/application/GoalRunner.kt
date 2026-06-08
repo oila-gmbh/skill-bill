@@ -35,11 +35,14 @@ import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.SpecScratchStore
+import skillbill.ports.workflow.UnavailableSpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.SpecSource
 
 @Inject
 class GoalRunner(
@@ -47,12 +50,14 @@ class GoalRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val pullRequestPort: GoalPullRequestPort,
+  private val specScratchStore: SpecScratchStore = UnavailableSpecScratchStore,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
   private val clock: java.time.Clock = java.time.Clock.systemUTC(),
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore)
+  private val log: java.util.logging.Logger = java.util.logging.Logger.getLogger(GoalRunner::class.java.name)
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -425,6 +430,11 @@ class GoalRunner(
       state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
       request.dbPathOverride,
     )
+    // Linear mode: the subtask's spec scratch is excluded from the commit, so once its commit is
+    // durable (commitSha recorded above) delete that subtask's spec file. The manifest survives — it
+    // is live runtime state for the remaining subtasks and is removed only at finalize. Local mode
+    // keeps the spec on disk (it was committed). Deletion is failure-isolated and idempotent.
+    deleteCompletedSubtaskSpecScratch(completed.manifest, subtaskId, request)
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskCompleted(
         issueKey = completed.manifest.issueKey,
@@ -495,10 +505,14 @@ class GoalRunner(
     }
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
-      is GoalPullRequestResult.Opened ->
+      is GoalPullRequestResult.Opened -> {
+        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
         completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "opened")
-      is GoalPullRequestResult.Existing ->
+      }
+      is GoalPullRequestResult.Existing -> {
+        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
         completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "existing")
+      }
       is GoalPullRequestResult.Failed -> stopped(
         issueKey = finalState.manifest.issueKey,
         attempted = attempted,
@@ -517,14 +531,55 @@ class GoalRunner(
     if (!worktreeStatus.ok) {
       return "Goal finalization could not verify worktree cleanliness: ${worktreeStatus.error}"
     }
-    val dirtyPaths = parseGitPorcelainPaths(worktreeStatus.value.orEmpty())
+    // In linear mode the manifest is never staged (it is excluded from the commit and deleted on
+    // success), so an untracked/uncommitted manifest is expected, not a blocking projection delta.
+    // Only local mode commits the manifest, so only local mode flags a dirty manifest here.
     val manifestPath = manifest.parentSpecPath.substringBeforeLast("/") + "/decomposition-manifest.yaml"
-    return if (dirtyPaths.any { path -> path == manifestPath }) {
+    val manifestProjectionDirty = manifest.specSource == SpecSource.LOCAL &&
+      parseGitPorcelainPaths(worktreeStatus.value.orEmpty()).any { path -> path == manifestPath }
+    return if (manifestProjectionDirty) {
       "Goal finalization detected an uncommitted decomposition projection delta at '$manifestPath'. " +
         "Commit/push the projection or resolve the write before opening the final PR."
     } else {
       null
     }
+  }
+
+  // Deletes one completed subtask's local spec file in linear mode. No-op in local mode and for a
+  // missing/blank spec path; failure-isolated so a delete fault cannot falsely-fail a good subtask.
+  private fun deleteCompletedSubtaskSpecScratch(
+    manifest: DecompositionManifest,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ) {
+    if (manifest.specSource != SpecSource.LINEAR) return
+    val specPath = manifest.subtasks.firstOrNull { it.id == subtaskId }?.specPath?.takeIf(String::isNotBlank)
+      ?: return
+    val resolved = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(specPath))
+    runCatching { specScratchStore.deleteFileIfExists(resolved) }
+      .onFailure { error ->
+        log.log(java.util.logging.Level.WARNING, error) {
+          "Goal linear-mode subtask spec scratch deletion at '$resolved' failed; the completed " +
+            "subtask is unaffected and the scratch can be cleaned up manually."
+        }
+      }
+  }
+
+  // Deletes the parent spec + manifest (the whole decomposition scratch dir) after the goal reaches
+  // terminal success — every subtask complete and the final PR opened/existing. The on-disk manifest
+  // is no longer needed (the PR request was already built from the in-memory manifest) and the
+  // individual subtask specs were already removed incrementally. Linear mode only; failure-isolated.
+  private fun deleteGoalSpecScratchOnSuccess(manifest: DecompositionManifest, request: GoalRunnerRunRequest) {
+    if (manifest.specSource != SpecSource.LINEAR) return
+    val parentSpec = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(manifest.parentSpecPath))
+    val specDir = parentSpec.parent ?: return
+    runCatching { specScratchStore.deleteDirectoryIfExists(specDir) }
+      .onFailure { error ->
+        log.log(java.util.logging.Level.WARNING, error) {
+          "Goal linear-mode spec scratch deletion at '$specDir' failed; the completed goal is " +
+            "unaffected and the scratch can be cleaned up manually."
+        }
+      }
   }
 
   private fun preflightPolicyBlockedReport(

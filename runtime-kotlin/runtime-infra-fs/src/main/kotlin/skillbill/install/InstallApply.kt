@@ -46,11 +46,8 @@ internal fun applyInstallPlan(
   val appliedSkills = applyPlannedSkills(plan, platformManifests, failures)
   val orchestrationLinks = applyOrchestrationLinks(plan, warnings)
   val nativeAgents = if (failures.isEmpty()) {
-    applyNativeAgents(
-      plan = plan,
-      platformManifests = platformManifests,
-      failures = failures,
-    )
+    applyRepoLocalConfigScaffold(plan, warnings)
+    applyNativeAgents(plan, platformManifests, failures)
   } else {
     emptyList()
   }

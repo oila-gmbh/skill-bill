@@ -28,30 +28,14 @@ object ParallelReviewMerger {
         head.representativeFilePath == entryFilePath &&
           jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
       }
-      if (cluster != null) cluster.entries += entry
-      else clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
+      if (cluster != null) {
+        cluster.entries += entry
+      } else {
+        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
+      }
     }
 
-    val candidates = clusters.map { head ->
-      val entries = head.entries
-      val coalesced = entries.map { it.agentId }.distinct().size > 1
-      // Severity and confidence travel together: both come from the most-severe assessment (ties
-      // broken by earliest appearance) so the reported confidence describes the reported severity,
-      // never a severity from one finding paired with the confidence of a lower-severity one.
-      val primary = entries.minWith(
-        compareBy({ it.finding.severity.ordinal }, { it.appearanceOrder }),
-      )
-      val firstEntry = entries.minByOrNull { it.appearanceOrder }!!
-      MergedCandidate(
-        agentIds = entries.map { it.agentId }.distinct(),
-        severity = primary.finding.severity,
-        confidence = primary.finding.confidence,
-        location = firstEntry.finding.location,
-        description = firstEntry.finding.description,
-        isCoalesced = coalesced,
-        firstAppearance = firstEntry.appearanceOrder,
-      )
-    }
+    val candidates = clusters.map(::toCandidate)
 
     val sorted = candidates.sortedWith(
       compareBy<MergedCandidate> { it.severity.ordinal }
@@ -78,6 +62,27 @@ object ParallelReviewMerger {
     return ParallelReviewMergeResult(
       findings = mergedFindings,
       formattedOutput = formattedOutput,
+    )
+  }
+
+  private fun toCandidate(head: ClusterHead): MergedCandidate {
+    val entries = head.entries
+    val coalesced = entries.map { it.agentId }.distinct().size > 1
+    // Severity and confidence travel together: both come from the most-severe assessment (ties
+    // broken by earliest appearance) so the reported confidence describes the reported severity,
+    // never a severity from one finding paired with the confidence of a lower-severity one.
+    val primary = entries.minWith(
+      compareBy({ it.finding.severity.ordinal }, { it.appearanceOrder }),
+    )
+    val firstEntry = entries.minByOrNull { it.appearanceOrder }!!
+    return MergedCandidate(
+      agentIds = entries.map { it.agentId }.distinct(),
+      severity = primary.finding.severity,
+      confidence = primary.finding.confidence,
+      location = firstEntry.finding.location,
+      description = firstEntry.finding.description,
+      isCoalesced = coalesced,
+      firstAppearance = firstEntry.appearanceOrder,
     )
   }
 

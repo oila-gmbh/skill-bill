@@ -10,4 +10,5 @@ class FeatureTaskRuntimePhaseGates(
   val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   val gitOperations: WorkflowGitOperations,
   val specStatusProjector: FeatureTaskRuntimeSpecStatusProjector,
+  val specGate: FeatureTaskRuntimeSpecGate,
 )

@@ -81,6 +81,7 @@ Goal-continuation rules:
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
 - To explain why a subtask retried, stopped, or blocked, read the append-only attempt ledger (`goal_attempt_ledger`) on the child workflow via read-only `workflow show`; its `action`, `blocked_reason`, `stop_reason`, and `final_reconciled_result` fields are sufficient without scraping any provider session log. Caveat (not a Skill Bill contract): provider-reported total token counts can be dominated by cached input replay, so treat them as a diagnostic signal — Skill Bill optimizes payload size and session behavior, not provider cache accounting. See `orchestration/workflow-contract/PLAYBOOK.md` for detail.
 - Interactive `bill-feature-task` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
+- The `bill-feature-goal` `mode:prose` orchestrator is the loop driver that enters this worker contract per subtask via `skill-bill workflow continue <issue_key> --subtask-id <id>` / `feature_implement_workflow_continue`.
 
 ## Shared Feature-Spec Preparation Path
 
@@ -91,6 +92,34 @@ reused by `bill-feature-goal`.
 Do not bypass this shared path with one-off decomposition writing logic in this
 skill. The shared path owns parent/spec-subtask writing and decomposition
 manifest validation.
+
+## Spec Source Mode (local vs linear)
+
+The feature's spec source is an artifact stamp, never a config lookup. Read it
+from the artifact only and default to `local` when absent:
+
+- decomposed: `decomposition-manifest.yaml` field `spec_source`;
+- single_spec: the `spec_source:` line in `spec.md`;
+- absent or unreadable: `local`.
+
+For `spec_source: local` (the default) everything below is skipped — specs are
+staged and committed exactly as before, nothing is deleted, and no Linear MCP
+call is made.
+
+For `spec_source: linear`:
+
+- **Rehydrate before any read.** Before reading the local spec (resume,
+  goal-continuation, or any step that needs the spec) check whether the file at
+  the needed `spec_path` exists. If it is missing (it was deleted on a prior
+  terminal success), rehydrate first: fetch the parent issue by `issue_key` and
+  each needed subtask by its `linear_issue_id` via the Linear MCP, rewrite the
+  local spec files, then read the working tree as usual. A still-present spec is
+  read directly with no MCP call.
+- **Commit exclusion.** The local spec scratch is never committed (see Step 8).
+- **Delete on terminal success.** The local spec scratch is deleted only on
+  terminal success (see the terminal cleanup note after Step 9). An aborted,
+  blocked, or otherwise non-terminal-success run leaves the scratch intact and
+  resumable.
 
 ## Orchestrator vs Subagent Split
 
@@ -265,8 +294,8 @@ Step id: `commit_push`
 
 Reserved artifact name: `commit_push_result`
 
-1. If this run is a goal-continuation subtask with `goal_continuation.suppress_pr=true`, persist a pre-commit projection before staging: update workflow state with `current_step_id=commit_push`, a running `commit_push` step update, and `artifacts_patch.commit_push_result.pre_commit_projection=true`. This writes the git-tracked decomposition manifest and subtask status files as complete before the commit, while leaving the runtime-only commit SHA unset.
-2. Stage all new and modified files from this feature, including any updated `decomposition-manifest.yaml` and subtask spec status files (do not use `git add -A`).
+1. If this run is a goal-continuation subtask with `goal_continuation.suppress_pr=true`, persist a pre-commit projection before staging: update workflow state with `current_step_id=commit_push`, a running `commit_push` step update, and `artifacts_patch.commit_push_result.pre_commit_projection=true`. In `spec_source: local` this writes the git-tracked decomposition manifest and subtask status files as complete before the commit, while leaving the runtime-only commit SHA unset. In `spec_source: linear` the manifest and spec files are excluded from the commit (next item), so skip writing a git-tracked manifest/spec projection delta here — keep the projection in durable runtime state only, not on the working tree.
+2. Stage the new and modified files from this feature. In `spec_source: local`, include any updated `decomposition-manifest.yaml` and subtask spec status files. In `spec_source: linear`, stage by explicit enumerated path and exclude the entire `.feature-specs/{ISSUE_KEY}-{feature-name}/` directory (parent spec, every subtask spec, and `decomposition-manifest.yaml`) so the committed tree contains nothing spec-related. In both modes, do not use `git add -A` or `git add .`.
 3. Commit with message format `feat: <concise description>` (omit the issue key — the branch name already carries it).
 4. Persist the terminal Step 8 artifact after the commit: update workflow state with a completed `commit_push` step and `artifacts_patch.commit_push_result.commit_sha=<HEAD sha>`. The commit SHA is runtime-only and must not create another git-tracked manifest delta.
 5. Push the branch to the remote with `-u` to set upstream tracking.
@@ -280,6 +309,17 @@ Primary artifact: `pr_result`
 Spawn a subagent with the PR-description briefing defined in the inline reference sections below under `PR-description subagent briefing`. The subagent invokes `bill-pr-description` via the Skill tool (do not search the filesystem to locate skill files), creates the PR, and must call `pr_description_generated` with `orchestrated=true` itself. The subagent returns: PR URL, PR title, and the `telemetry_payload` returned by `pr_description_generated`.
 
 The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `pr_result`, then advance to `finish`.
+
+## Step 9b: Terminal-Success Spec Cleanup (orchestrator, linear mode only)
+
+For `spec_source: local` this step is a no-op — nothing is deleted.
+
+For `spec_source: linear`, after the run terminally succeeds, delete the local spec scratch (it was never committed and is rehydrated from Linear on demand):
+
+- single_spec: after the PR is created, delete the `.feature-specs/{ISSUE_KEY}-{feature-name}/` directory.
+- goal-continuation (decomposed) subtask: after this subtask's `commit_push` is durable, delete that subtask's spec file; the parent spec + `decomposition-manifest.yaml` are deleted only after the final subtask completes (the manifest is live runtime state until then). The goal runner owns parent + manifest deletion.
+
+Delete only on terminal success. If the run aborted, blocked, or stopped before its terminal success signal, leave the entire scratch intact so it stays resumable.
 
 ## Telemetry: Record Finished
 

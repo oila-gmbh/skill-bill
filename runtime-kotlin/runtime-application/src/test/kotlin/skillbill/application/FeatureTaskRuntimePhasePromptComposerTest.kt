@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -7,6 +8,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -103,6 +105,50 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertTrue(!prompt.contains("goal-continuation mode"))
     assertTrue(!prompt.contains("First execute this exact command"))
     assertContains(prompt, "do not call `skill-bill workflow continue`")
+  }
+
+  @Test
+  fun `linear commit_push prompt carries the spec-exclusion directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LINEAR,
+    )
+
+    assertContains(prompt, "Linear-mode commit exclusion")
+    assertContains(prompt, ".feature-specs/$ISSUE_KEY/")
+    assertContains(prompt, "never run `git add -A`")
+    assertContains(prompt, "decomposition-manifest.yaml")
+  }
+
+  @Test
+  fun `local commit_push prompt omits the spec-exclusion directive and matches the default`() {
+    val linear = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LINEAR,
+    )
+    val local = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LOCAL,
+    )
+    val default = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("commit_push"))
+
+    assertEquals(default, local, "the spec_source default must be LOCAL (byte-for-byte unchanged)")
+    assertTrue(!local.contains("Linear-mode commit exclusion"), "local mode must not carry the exclusion")
+    assertTrue(local != linear, "linear mode must add the exclusion section")
+  }
+
+  @Test
+  fun `linear spec-exclusion is absent on non-commit phases`() {
+    val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      specSource = SpecSource.LINEAR,
+    )
+
+    assertTrue(!implementPrompt.contains("Linear-mode commit exclusion"))
   }
 
   @Test

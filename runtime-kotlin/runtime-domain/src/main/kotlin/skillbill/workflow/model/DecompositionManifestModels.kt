@@ -12,6 +12,16 @@ enum class DecompositionExecutionModel(val wireValue: String) {
   }
 }
 
+enum class SpecSource(val wireValue: String) {
+  LOCAL("local"),
+  LINEAR("linear"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): SpecSource? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
 data class DecompositionSubtask(
   val id: Int,
   val name: String,
@@ -22,6 +32,7 @@ data class DecompositionSubtask(
   val workflowId: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
+  val linearIssueId: String? = null,
   val dependencies: List<DecompositionDependency> = emptyList(),
 ) {
   fun hasStarted(): Boolean = status != "pending" ||
@@ -54,6 +65,7 @@ data class DecompositionManifest(
   val issueKey: String,
   val featureName: String,
   val parentSpecPath: String,
+  val specSource: SpecSource = SpecSource.LOCAL,
   val status: String = "pending",
   val executionModel: DecompositionExecutionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
   val baseBranch: String,

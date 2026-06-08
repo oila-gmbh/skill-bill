@@ -7,6 +7,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionStackBranch
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.SpecSource
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -21,6 +22,11 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
   val executionModel =
     DecompositionExecutionModel.fromWireValue(executionModelValue)
       ?: invalidDecompositionManifest(sourceLabel, "execution_model '$executionModelValue' is not supported.")
+  val specSource = when (val rawSpecSource = nullableStringValue("spec_source", sourceLabel)) {
+    null -> SpecSource.LOCAL
+    else -> SpecSource.fromWireValue(rawSpecSource)
+      ?: invalidDecompositionManifest(sourceLabel, "spec_source '$rawSpecSource' is not supported.")
+  }
   val subtasks = listValue("subtasks").mapIndexed { index, raw ->
     val item = raw.asMap(sourceLabel, "subtasks[$index]")
     DecompositionSubtask(
@@ -33,6 +39,7 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
       workflowId = item.nullableStringValue("workflow_id", sourceLabel),
       blockedReason = item.nullableStringValue("blocked_reason", sourceLabel),
       lastResumableStep = item.nullableStringValue("last_resumable_step", sourceLabel),
+      linearIssueId = item.nullableStringValue("linear_issue_id", sourceLabel),
       dependencies = item.listValue("dependencies").mapIndexed { depIndex, dep ->
         val dependency = dep.asMap(sourceLabel, "subtasks[$index].dependencies[$depIndex]")
         DecompositionDependency(
@@ -49,6 +56,7 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
     issueKey = stringValue("issue_key", sourceLabel),
     featureName = stringValue("feature_name", sourceLabel),
     parentSpecPath = stringValue("parent_spec_path", sourceLabel),
+    specSource = specSource,
     status = nullableStringValue("status", sourceLabel) ?: "pending",
     executionModel = executionModel,
     baseBranch = stringValue("base_branch", sourceLabel),

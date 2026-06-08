@@ -58,6 +58,14 @@ Accept the task spec as pasted text, a file path, a directory, or another readab
 
 The success artifact for this step is `input_context`: the normalized spec source, the verify target, and any user clarifications that later steps need.
 
+## Step 1b: Rehydrate a Missing Linear-Mode Spec (before any spec read)
+
+Determine the verify target's spec source from the artifact, not config: decomposed → the `decomposition-manifest.yaml` `spec_source` field; single_spec → the `spec_source:` line in `spec.md`; absent or unreadable → `local`.
+
+For `spec_source: local`, the spec is committed in the PR's tree — read it directly; no rehydrate, no Linear MCP call.
+
+For `spec_source: linear`, the committed tree carries no spec or manifest (they are deleted on terminal success), so the normalized spec source may point to a missing file. Before Step 2 reads the spec, rehydrate it: derive the `issue_key` from the branch/PR, fetch the parent issue by `issue_key` from Linear, and enumerate its sub-issues from Linear as the source of truth for sub-issue enumeration (the manifest is gone, so Linear — not the deleted manifest — drives enumeration). Fetch each sub-issue by its `linear_issue_id`, rewrite the parent spec + subtask specs locally, then extract acceptance criteria as usual. Rehydrate is agent-side MCP only.
+
 ## Step 2: Extract Acceptance Criteria
 
 Step id: `extract_criteria`

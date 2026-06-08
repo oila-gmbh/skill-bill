@@ -188,6 +188,39 @@ class MalformedInstallSelectionRecordError(
   cause,
 )
 
+/**
+ * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
+ * exists but cannot be read (IO/permission failure). The message names the
+ * offending file path so config-load failures fail loudly at the read seam.
+ * Mirrors [UnreadableInstallSelectionRecordError]; the dedicated subclass keeps
+ * repo-local config failures distinguishable from install-selection failures.
+ */
+class UnreadableRepoLocalConfigError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Repo-local config at '${path.ifBlank { "<unknown>" }}' cannot be read.",
+  cause,
+)
+
+/**
+ * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
+ * is malformed YAML, or carries an unknown/invalid value for a known key. The
+ * composed message names the file path AND the offending key/value so callers
+ * and tests can pinpoint the regression without guessing which key failed.
+ */
+class MalformedRepoLocalConfigError(
+  val path: String,
+  val key: String,
+  val value: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Repo-local config at '${path.ifBlank { "<unknown>" }}' is malformed: " +
+    "key '${key.ifBlank { "<root>" }}' value '$value' $reason",
+  cause,
+)
+
 class ContractVersionMismatchError(
   message: String,
   cause: Throwable? = null,

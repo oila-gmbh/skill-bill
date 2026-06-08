@@ -1,6 +1,6 @@
 ---
 name: bill-feature-goal
-description: Use when a decomposed feature goal is ready to run through one confirmation gate and the foreground `skill-bill goal` runtime.
+description: Use when a decomposed feature goal is ready to run through one confirmation gate. Accepts `mode:runtime` (default), which drives the foreground `skill-bill goal` runtime, or `mode:prose`, which drives an in-session subtask loop, mirroring bill-feature-task's argument convention.
 ---
 
 # Feature Goal Content
@@ -13,6 +13,24 @@ durable state; `skill-bill goal` remains the runtime driver.
 `bill-feature-goal` does not own spec-writing logic. When decomposition artifacts are
 missing, it must reuse the shared feature-spec preparation path exposed through
 `bill-feature-spec`.
+
+## Modes
+
+`bill-feature-goal` accepts a `mode:` argument, mirroring `bill-feature-task`'s
+convention:
+
+- `mode:runtime` (default) drives the foreground `skill-bill goal` runtime
+  documented in the existing sections below. This is the documented default when
+  no `mode:` argument is supplied.
+- `mode:prose` drives the in-session subtask loop documented in the
+  `## Mode: Prose Goal Orchestration (in-session loop)` section near the end of
+  this file.
+
+Both modes share the same intake, decomposition-readiness checks, and the single
+confirmation gate defined in `## Decomposition Proposal`. They differ only in how
+confirmed subtasks are executed: `mode:runtime` hands off to the foreground
+runtime driver, while `mode:prose` loops the subtasks in the current agent
+session.
 
 ## Intake
 
@@ -90,6 +108,22 @@ foreground driver directly in the current agent session, always passing
 ```bash
 skill-bill goal <issue_key> --agent <currently-executing-agent>
 ```
+
+### Rehydrate a missing linear-mode spec before launch/resume
+
+The goal's spec source is an artifact stamp read from the
+`decomposition-manifest.yaml` `spec_source` field, defaulting to `local`. For
+`spec_source: local`, no rehydrate is needed and no Linear MCP call is made.
+
+For `spec_source: linear`, linear-mode goals delete each subtask's spec scratch
+incrementally on success (subtask spec after its commit, parent spec + manifest
+after the final subtask), so on a resume an earlier-subtask spec being absent is
+normal and healthy — do not rehydrate it. Before launching/resuming, only when a
+*still-needed* spec (the parent spec or a not-yet-complete subtask's spec) is
+missing, rehydrate it first: fetch the parent issue by `issue_key` and each
+needed subtask by its `linear_issue_id` via the Linear MCP, rewrite those local
+files, then launch. Rehydrate is agent-side MCP only; the `skill-bill goal`
+runtime gains no Linear dependency.
 
 Always pass `--agent` set to the agent currently running this skill (for example
 `claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the
@@ -213,3 +247,83 @@ selected_diff_hunks: count=1 truncated=false
 selected_diff_hunk: hunk_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false header=@@_-10,+10_@@ line_count=4 truncated=false
 selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=-old
 ```
+
+## Mode: Prose Goal Orchestration (in-session loop)
+
+This section documents `mode:prose`. Everything above this section is the
+`mode:runtime` default. The prose loop reuses the SAME single confirmation gate
+already defined in `## Decomposition Proposal` — it does not introduce a second
+confirmation prompt. The decomposition-readiness checks, the proposal contents,
+and that single gate are shared verbatim across both modes.
+
+After the user confirms at that single gate, `mode:prose` does NOT launch
+`skill-bill goal`. Instead, the invoking agent loops the decomposed subtasks in
+dependency order entirely within the current session, entering EACH subtask
+through the existing continuation contract:
+
+```bash
+skill-bill workflow continue <issue_key> --subtask-id <id>
+```
+
+or the MCP tool `feature_implement_workflow_continue` with the decomposed parent
+`issue_key` and an integer `subtask_id`. This is the same non-interactive
+worker contract documented in `bill-feature-task-prose` under
+`## Goal-Continuation Entry (non-interactive)`. The prose loop NEVER synthesizes
+a second record-writing path: the worker (`bill-feature-task-prose`) writes the
+durable subtask outcome, and the prose loop only enters and observes that
+contract.
+
+Selection semantics follow the runtime DecompositionWorkflowContinuation
+selector: resume the in-progress subtask; else start the first pending subtask
+whose dependencies are complete; else report blocked or all-complete. Prefer
+letting `workflow continue` perform the selection rather than computing the next
+subtask in prose, so the prose loop cannot drift from runtime ordering. When a
+`subtask_id` is passed, treat it as a constraint on the next runnable subtask,
+never a way to skip dependencies.
+
+Per-subtask runs keep `suppress_pr=true` (`goal_continuation.suppress_pr=true`)
+so each subtask commits but does not open its own PR; the whole goal opens
+exactly one parent PR on clean completion.
+
+### Terminal-outcome verification and durable authority
+
+After each subtask, confirm the durable terminal outcome BEFORE advancing to the
+next subtask. The prose transcript is never proof of progress. Verify through a
+read-only inspection — `skill-bill workflow show <id> --format json`,
+`feature_implement_workflow_get`, or `skill-bill goal status <issue_key>` —
+never by trusting in-session narration.
+
+The structured outcome fields are `issue_key`, `subtask_id`, `status`,
+`commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`.
+
+Each completed subtask leaves a durable terminal outcome (`status`,
+`commit_sha`, `workflow_id`) so `skill-bill goal status` reflects it with NO
+hand-repair. The runtime workflow store is the single authority: there is no
+second authoritative store and no hand-written DB rows. The DB-to-disk
+reconciliation (the `decomposition-manifest.yaml` projection) is read-only-safe
+and must never be hand-edited to force progress.
+
+### Blocked or failed subtask: stop loudly
+
+If any subtask returns blocked or failed — anything other than a terminal
+success — STOP the loop loudly and immediately. Do NOT continue to the next
+subtask manually and do NOT attempt a hand-written continuation. Surface the
+subtask id, the reason (`blocked_reason`), the workflow id, and the resumable
+step (`last_resumable_step`), leaving resumable durable state in place so a later
+resume (by the runtime or a later prose continuation) can pick up exactly where
+it stopped. This mirrors the `mode:runtime` stop-loudly contract: blocked state
+is sticky and is never silently skipped.
+
+### Clean completion: convergence, parent PR, agent-agnosticism
+
+On clean completion the durable store, the on-disk
+`decomposition-manifest.yaml` projection, and git history all agree, and EXACTLY
+ONE parent PR is opened for the whole goal (per-subtask runs keep
+`suppress_pr=true`). The parent PR is produced via the standard
+`bill-pr-description` plus `gh` path; there is no reusable skill-bill parent-PR
+command.
+
+This is governed skill content that installs for all supported agents. Only the
+entry and launch mechanics differ per agent; no agent-specific orchestration is
+hardcoded — the invoking agent drives the loop through the same continuation
+contract regardless of which agent runs it.

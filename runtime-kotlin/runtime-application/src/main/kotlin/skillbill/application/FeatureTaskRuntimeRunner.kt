@@ -19,6 +19,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -49,6 +50,7 @@ class FeatureTaskRuntimeRunner(
   private val planningStopper get() = phaseGates.planningStopper
   private val lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
   private val specStatusProjector get() = phaseGates.specStatusProjector
+  private val specSourceResolver get() = phaseGates.specGate.specSourceResolver
 
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
@@ -58,6 +60,14 @@ class FeatureTaskRuntimeRunner(
       proposed = request.runInvariants,
     ) ?: request.runInvariants
     val runRequest = request.copy(runInvariants = durableRunInvariants)
+    // Resolve the persisted spec_source stamp once per run (artifact-only, additive — never config).
+    // It gates the commit-exclusion directive and terminal-success scratch deletion; local-mode
+    // resolves to LOCAL and keeps every path byte-for-byte unchanged.
+    val specSource = specSourceResolver.resolve(
+      repoRoot = runRequest.repoRoot,
+      specReference = runRequest.runInvariants.specReference,
+      isGoalContinuation = isGoalContinuationRun(runRequest),
+    )
     persistGoalContinuationContext(goalContinuationRecorder, runRequest)
     runRequest.eventSink.emit(
       FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
@@ -80,7 +90,7 @@ class FeatureTaskRuntimeRunner(
     }
     val report = runCatching {
       val state = RunState(recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty())
-      val loop = RunLoop(runRequest, state, observability)
+      val loop = RunLoop(runRequest, state, observability, specSource)
       for (phaseId in phasesFor(runRequest)) {
         if (loop.advance(phaseId)) {
           break
@@ -95,6 +105,7 @@ class FeatureTaskRuntimeRunner(
     }.getOrThrow()
     val terminalReport =
       persistGoalContinuationOutcome(goalContinuationRecorder, recorder, phaseGates.gitOperations, runRequest, report)
+    phaseGates.specGate.deleteSingleSpecScratchOnTerminalSuccess(runRequest, terminalReport, specSource)
     lifecycleTelemetry.finished(telemetrySessionId, terminalReport, phaseOutcomes, runRequest.dbPathOverride)
     return terminalReport
   }
@@ -107,6 +118,7 @@ class FeatureTaskRuntimeRunner(
     private val request: FeatureTaskRuntimeRunRequest,
     private val state: RunState,
     private val observability: FeatureTaskRuntimeRunObservability,
+    private val specSource: SpecSource,
   ) {
     private var resolvedBranch: String? = null
     private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
@@ -131,7 +143,7 @@ class FeatureTaskRuntimeRunner(
           // of leaving the spec stuck at "Pending" after the run finishes. Every preceding gate has
           // passed by commit_push, so the spec is durably complete; the projector no-ops for any
           // other phase and for goal-continuation children (the goal runner owns their status).
-          specStatusProjector.projectCompleteBeforeCommitPhase(phaseId, request)
+          specStatusProjector.projectCompleteBeforeCommitPhase(phaseId, request, specSource)
           runPhaseFor(phaseId)
         }
       }
@@ -144,7 +156,7 @@ class FeatureTaskRuntimeRunner(
 
     // Runs the phase and records its completed output; returns a blocked reason when it blocks.
     private fun runPhaseFor(phaseId: String): String? {
-      val outcome = runPhase(phaseId, request, state, observability)
+      val outcome = runPhase(phaseId, request, state, observability, specSource)
       return outcome.blockedReason ?: run {
         val completedOutput = requireNotNull(outcome.completedOutput)
         state.recordCompleted(completedOutput)
@@ -286,6 +298,7 @@ class FeatureTaskRuntimeRunner(
     request: FeatureTaskRuntimeRunRequest,
     state: RunState,
     observability: FeatureTaskRuntimeRunObservability,
+    specSource: SpecSource,
   ): PhaseOutcome {
     val run = PhaseRun(
       phaseId = phaseId,
@@ -296,6 +309,7 @@ class FeatureTaskRuntimeRunner(
         invokedAgentId = request.invokedAgentId,
       ),
       request = request,
+      specSource = specSource,
     )
     // Pre-launch blocks: a phase already durably blocked on a prior run (the record survives ledger
     // pruning, so the budget is never silently reset), or a missing required upstream (never launch
@@ -466,6 +480,7 @@ class FeatureTaskRuntimeRunner(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
+            specSource = run.specSource,
           ),
         ),
       ),
@@ -487,6 +502,7 @@ class FeatureTaskRuntimeRunner(
     val declaration: FeatureTaskRuntimePhaseDeclaration,
     val resolvedAgent: FeatureTaskRuntimeResolvedPhaseAgent,
     val request: FeatureTaskRuntimeRunRequest,
+    val specSource: SpecSource,
   )
 
   private sealed interface LaunchResult {

@@ -117,3 +117,18 @@ Resume re-runs the runtime phase loop, which deterministically skips
 already-complete phases from the durable per-phase records. If the runtime blocks
 a phase, summarize the blocked phase and reason rather than continuing the loop
 manually.
+
+### Rehydrate a missing linear-mode spec before resume
+
+The spec source is an artifact stamp (decomposed → `decomposition-manifest.yaml`
+`spec_source`; single_spec → the `spec_source:` line in `spec.md`), defaulting to
+`local`. For `spec_source: local`, resume needs no extra step.
+
+For `spec_source: linear`, the local spec scratch is deleted on terminal success,
+so before calling `resume` check whether the file at `<spec_path>` (or a needed
+subtask spec) exists. If it is missing, rehydrate it first: fetch the parent
+issue by `issue_key` and the subtask by its `linear_issue_id` via the Linear MCP,
+rewrite the local spec file(s), and only then call `resume`. The runtime read
+path is unchanged — it still reads `<spec_path>` once and freezes invariants;
+rehydrate only guarantees the file is present first. Rehydrate is agent-side MCP
+only; the runtime gains no Linear dependency.

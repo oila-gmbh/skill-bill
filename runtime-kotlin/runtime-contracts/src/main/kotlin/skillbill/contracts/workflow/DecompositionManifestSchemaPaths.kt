@@ -6,7 +6,7 @@ package skillbill.contracts.workflow
  * constant and the schema's `properties.contract_version.const`
  * diverge. To bump the contract, edit BOTH sites in the same change.
  */
-const val DECOMPOSITION_MANIFEST_CONTRACT_VERSION: String = "0.2"
+const val DECOMPOSITION_MANIFEST_CONTRACT_VERSION: String = "0.3"
 
 /**
  * Single source of truth for where the canonical decomposition

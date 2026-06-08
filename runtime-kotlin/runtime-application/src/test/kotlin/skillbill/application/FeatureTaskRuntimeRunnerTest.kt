@@ -28,6 +28,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -54,6 +55,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1033,6 +1035,92 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `single_spec linear run deletes the spec scratch dir on terminal success`() {
+    // AC2: a single_spec linear-mode run deletes the local spec scratch only on terminal success.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-linear-delete")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(listOf(specPath.parent), harness.specScratchStore.deletedDirectories)
+    assertFalse(Files.exists(specPath.parent), "linear single_spec scratch must be deleted on success")
+  }
+
+  @Test
+  fun `single_spec linear run that blocks leaves the spec scratch intact`() {
+    // AC3: an aborted/blocked linear run leaves the scratch intact and resumable.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-linear-block")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertTrue(harness.specScratchStore.deletions.isEmpty(), "a blocked run must not delete the scratch")
+    assertTrue(Files.exists(specPath), "blocked linear run leaves the spec scratch intact")
+  }
+
+  @Test
+  fun `local-mode run never deletes the spec scratch`() {
+    // AC6: local mode (default, no spec_source line) keeps the committed spec and deletes nothing.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-local-no-delete")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertTrue(harness.specScratchStore.deletions.isEmpty(), "local mode must not delete the scratch")
+    assertTrue(Files.exists(specPath), "local mode keeps the committed spec on disk")
+  }
+
+  @Test
+  fun `goal-continuation linear subtask run leaves spec deletion to the goal runner`() {
+    // AC2 ownership: the runner deletes only single_spec scratch; decomposed deletion is the goal
+    // runner's responsibility, so a goal-continuation subtask run must not delete its spec.
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-linear-goalcont")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        repoRoot = repoRoot,
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertTrue(harness.specScratchStore.deletions.isEmpty(), "the goal runner owns goal-continuation deletion")
+    assertTrue(Files.exists(specPath), "goal-continuation run must leave the subtask spec for the goal runner")
+  }
+
+  @Test
   fun `resume of a durably complete decompose plan reports decomposed without advancing to implement`() {
     // PC-F001 (resume fall-through): PLAN is durably completed as a non-goal-continuation decompose
     // outcome, but the process crashed before the decompose terminal was observed. A re-run must
@@ -1658,6 +1746,7 @@ private class RunnerHarness(
   val runner: FeatureTaskRuntimeRunner,
   val events: MutableList<FeatureTaskRuntimeRunEvent>,
   private val runRequest: FeatureTaskRuntimeRunRequest,
+  val specScratchStore: RecordingSpecScratchStore,
 ) {
   val recorder: FeatureTaskRuntimePhaseRecorder get() = io.recorder
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder get() = io.decomposeTerminalRecorder
@@ -1760,17 +1849,22 @@ private data class RuntimeHarnessConfig(
   val dbPathOverride: String? = null,
 )
 
+private fun runtimeSpecSourceResolver(): SpecSourceResolver =
+  SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
+
 private fun runtimePhaseGates(
   branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
   planningStopper: FeatureTaskRuntimePlanningStopper,
   lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
   FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
+  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore),
 )
 
 private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory): FeatureTaskRuntimeLifecycleTelemetry =
@@ -1802,6 +1896,7 @@ private fun runnerHarness(
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
+  specScratchStore: RecordingSpecScratchStore = RecordingSpecScratchStore(),
 ): RunnerHarness {
   val repository = InMemoryRuntimeWorkflowRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -1820,12 +1915,12 @@ private fun runnerHarness(
     goalContinuationRecorder,
     runInvariantsStore,
     validator,
-    FeatureTaskRuntimePhaseGates(
+    runtimePhaseGates(
       branchSetupRunner,
       planningStopper,
       disabledRuntimeLifecycleTelemetry(database),
       runtimeConfig.branchSetup.gitOperations,
-      FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
+      specScratchStore,
     ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
@@ -1859,7 +1954,7 @@ private fun runnerHarness(
     repository,
     runtimeConfig.branchSetup.gitOperations,
   )
-  return RunnerHarness(launcher, io, runner, captured, runRequest)
+  return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }
 
 private class TelemetryRunnerHarness(

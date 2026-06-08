@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 
@@ -17,6 +18,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
+    specSource: SpecSource = SpecSource.LOCAL,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -24,6 +26,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ceremonyDirective(briefing),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
+      commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       briefing.briefingText,
       outputContract(briefing.phaseId),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
@@ -99,6 +102,25 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
+  // Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
+  // (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
+  // explicit enumeration and exclude the whole `.feature-specs/{KEY}/` tree. For local mode (default)
+  // the section is empty, leaving the commit prompt byte-for-byte unchanged (AC6).
+  private fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH || specSource != SpecSource.LINEAR) {
+      return ""
+    }
+    return """
+      ## Linear-mode commit exclusion
+      This feature's spec_source is `linear`: the local spec scratch is NOT committed. Stage every
+      changed path by explicit enumeration and never run `git add -A` / `git add .`. Exclude the
+      entire `.feature-specs/$issueKey/` directory from staging — the parent spec, every subtask
+      spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
+      or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
+      Linear when a later resume or verify needs it.
+    """.trimIndent()
+  }
+
   private fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): String {
     if (!suppressDecomposition || phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) {
       return ""
@@ -137,7 +159,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       "history was written or skipped and the affected path when written.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
       "Stage and commit the implemented, reviewed, audited, validated, and history-updated " +
-      "changes on the resolved feature branch, then push the branch. Emit commit_push_result " +
+      "changes on the resolved feature branch, then push the branch. Stage by explicit enumerated " +
+      "path; never run `git add -A` or `git add .`. Emit commit_push_result " +
       "with the commit SHA, branch name, and pushed status. If goal-continuation suppresses PR, " +
       "this successful phase is the terminal success signal for the goal subtask.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to

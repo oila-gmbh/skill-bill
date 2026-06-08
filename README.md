@@ -378,7 +378,7 @@ Routing, validation, and installation are manifest-driven, so the system accepts
 | `/bill-feature-task-runtime` | Runtime-backed trigger that runs a governed spec through the `skill-bill feature-task` phase loop |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
-| `/bill-feature-goal` | Trigger surface for runtime goal-loop behavior with durable workflow state |
+| `/bill-feature-goal` | Decomposed-goal trigger surface; `mode:runtime` (default) drives the durable `skill-bill goal` loop, `mode:prose` drives an in-session subtask loop |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |

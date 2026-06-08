@@ -53,7 +53,6 @@ class CodeReviewParallelCommand(
     help = "Optional per-lane wall-clock cap in minutes.",
   ).long()
 
-
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
     val resolvedAgent2 = agent2?.takeIf(String::isNotBlank)

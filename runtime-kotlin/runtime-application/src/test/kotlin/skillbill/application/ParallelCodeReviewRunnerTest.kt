@@ -238,15 +238,21 @@ class ParallelCodeReviewRunnerTest {
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
       if (request.invokedAgentId == "claude") {
         AgentRunLaunchFacts(
-          agent = agent, exitStatus = null,
+          agent = agent,
+          exitStatus = null,
           stdout = "- [F-001] Major | High | Foo.kt:1 | Should not appear in merge",
-          stderr = "", timedOut = true, spawnFailed = false,
+          stderr = "",
+          timedOut = true,
+          spawnFailed = false,
         )
       } else {
         AgentRunLaunchFacts(
-          agent = agent, exitStatus = 0,
+          agent = agent,
+          exitStatus = 0,
           stdout = "- [F-001] Minor | Low | Bar.kt:2 | Lane 2 finding",
-          stderr = "", timedOut = false, spawnFailed = false,
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
         )
       }
     }
@@ -264,12 +270,15 @@ class ParallelCodeReviewRunnerTest {
   fun `launcher exception produces ExecutionException outcome without killing sibling lane`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       if (request.invokedAgentId == "claude") {
-        throw RuntimeException("internal failure in launcher")
+        error("internal failure in launcher")
       }
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0, stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
-        stderr = "", timedOut = false, spawnFailed = false,
+        exitStatus = 0,
+        stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
       )
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
@@ -277,9 +286,13 @@ class ParallelCodeReviewRunnerTest {
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
-    assertContains(result.lane1.failureReason.orEmpty(), "RuntimeException")
+    assertContains(result.lane1.failureReason.orEmpty(), "IllegalStateException")
     assertTrue(result.lane2.success)
-    assertEquals(1, result.mergeResult.findings.size, "sibling lane finding must survive an exception in the other lane")
+    assertEquals(
+      1,
+      result.mergeResult.findings.size,
+      "sibling lane finding must survive an exception in the other lane",
+    )
   }
 
   @Test
@@ -292,7 +305,11 @@ class ParallelCodeReviewRunnerTest {
       }
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0, stdout = "", stderr = "", timedOut = false, spawnFailed = false,
+        exitStatus = 0,
+        stdout = "",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
       )
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
@@ -314,7 +331,12 @@ class ParallelCodeReviewRunnerTest {
         UnsupportedAgentRunLaunch(agent = agent, reason = "not configured for this repo")
       } else {
         AgentRunLaunchFacts(
-          agent = agent, exitStatus = 0, stdout = "", stderr = "", timedOut = false, spawnFailed = false,
+          agent = agent,
+          exitStatus = 0,
+          stdout = "",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
         )
       }
     }
@@ -331,8 +353,11 @@ class ParallelCodeReviewRunnerTest {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 1, stdout = "", stderr = "Error: command failed with detail",
-        timedOut = false, spawnFailed = false,
+        exitStatus = 1,
+        stdout = "",
+        stderr = "Error: command failed with detail",
+        timedOut = false,
+        spawnFailed = false,
       )
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))

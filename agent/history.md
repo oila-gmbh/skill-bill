@@ -1,3 +1,13 @@
+## [2026-06-08] SKILL-71.1 prose-goal-orchestrator
+Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, README.md
+- Added `mode:prose` to `bill-feature-goal` (mirrors SKILL-70 `mode:runtime`/`mode:prose` convention): mode:runtime (default) drives the foreground `skill-bill goal` runtime; mode:prose loops decomposed subtasks in-session through the existing continuation seam. reusable
+- Structure decision: documented mode:prose INLINE in the single `bill-feature-goal/content.md` (no router file-split, no sibling -prose/-runtime skills) — spec Design Notes mandate one orchestrator file; only the `mode:` argument convention is reused from bill-feature-task. reusable
+- Prose subtask entry is `skill-bill workflow continue <issue_key> --subtask-id <id>` / MCP `feature_implement_workflow_continue` with integer `subtask_id`; durable outcome is written by the existing bill-feature-task-prose goal-continuation worker (no second record-writing path/store). reusable
+- Flag-name pitfall: CLI flag is `--subtask-id`, not `--subtask` — verify continuation flag names against `WorkflowCliCommands.kt`, not spec prose. reusable
+- Load-bearing test: `FeatureSpecSkillWiringContractTest.kt:47-57` asserts exact substrings in bill-feature-goal/content.md AND `Ask one confirmation question` exactly once — both goal modes must share the single confirmation gate; preserve those strings when editing. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-07] SKILL-70 feature-task-mode-router
 Areas: skills/bill-feature-task, skills/bill-feature-task-prose, skills/bill-feature-task-runtime, skills/bill-feature, skills/bill-code-review, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application
 - Split the feature-task skill surface into router/prose/runtime tiers: `bill-feature-task` accepts `mode:prose` (default) or `mode:runtime`, `bill-feature-task-prose` owns the prose orchestrator, `bill-feature-task-runtime` owns the thin runtime-backed skill. reusable

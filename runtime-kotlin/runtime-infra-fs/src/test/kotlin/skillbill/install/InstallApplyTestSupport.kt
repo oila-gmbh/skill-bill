@@ -59,6 +59,11 @@ open class InstallApplyTestSupport {
       .associate { path ->
         root.relativize(path).toString().replace(java.io.File.separatorChar, '/') to Files.readString(path)
       }
+      // SKILL-71: install legitimately scaffolds repo-local config outputs under
+      // `.skill-bill/` and the root `.gitignore`. snapshotSource still guards the
+      // skill *source* tree (skills/, platform-packs/) against mutation, so the
+      // intended scaffold writes are excluded rather than flagged as regressions.
+      .filterKeys { relativePath -> !relativePath.startsWith(".skill-bill/") && relativePath != ".gitignore" }
   }
 
   protected fun assertSourceUnchanged(root: Path, before: Map<String, String>) {
