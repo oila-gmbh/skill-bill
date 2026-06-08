@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-71 Subtask 6 - Validation Gate and Back-Compatibility Sweep

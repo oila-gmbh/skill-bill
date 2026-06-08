@@ -52,6 +52,21 @@ class DecompositionManifestCodecTest {
   }
 
   @Test
+  fun `codec loads a 0_2-era manifest without spec_source, preserving the version and defaulting local`() {
+    // SKILL-71 back-compatibility sweep: a manifest written before the spec_source contract bump
+    // carries contract_version "0.2" and no spec_source. The load path must still decode it,
+    // preserve the recorded version verbatim (no silent rewrite), and resolve spec_source to local.
+    val wireMap = validManifest().toWireMap().toMutableMap()
+    wireMap["contract_version"] = "0.2"
+    wireMap.remove("spec_source")
+
+    val decoded = DecompositionManifestCodec.decodeMap(wireMap, "0.2-era-manifest")
+
+    assertEquals("0.2", decoded.contractVersion)
+    assertEquals(SpecSource.LOCAL, decoded.specSource)
+  }
+
+  @Test
   fun `codec rejects unsupported spec_source value`() {
     val wireMap = validManifest().toWireMap().toMutableMap()
     wireMap["spec_source"] = "github"
