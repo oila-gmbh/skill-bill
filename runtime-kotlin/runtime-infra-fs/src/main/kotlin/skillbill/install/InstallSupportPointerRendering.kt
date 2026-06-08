@@ -1,6 +1,6 @@
 package skillbill.install
 
-import skillbill.scaffold.normalizePointerPath
+import skillbill.scaffold.normalizeMarkdownLineEndings
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -28,7 +28,9 @@ internal fun writeRenderedSupportPointerFiles(
   require(resolvedSource.resolve(pointer.name).normalize() != targetFile) {
     "Supporting pointer '${pointer.name}' resolves to itself at '$targetFile'."
   }
-  val rendered = normalizePointerPath(resolvedSource.relativize(targetFile).toString())
+  // Inline the canonical doc instead of a repo-relative path: the installed-skills cache is detached
+  // from the repo, so a relative pointer dangles when an agent resolves it from the cache location.
+  val rendered = normalizeMarkdownLineEndings(Files.readString(targetFile)).trimEnd() + "\n"
   Files.write(pointerFile, rendered.toByteArray(StandardCharsets.UTF_8))
   pointerFile
 }

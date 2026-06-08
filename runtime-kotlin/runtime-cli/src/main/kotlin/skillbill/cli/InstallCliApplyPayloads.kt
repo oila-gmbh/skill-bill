@@ -10,7 +10,6 @@ import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallSkillStagingOutcome
 import skillbill.install.model.InstallTelemetryApplyOutcome
 import skillbill.install.model.NativeAgentApplyOutcome
-import skillbill.install.model.OrchestrationLinkOutcome
 import skillbill.install.model.WindowsSymlinkApplyOutcome
 
 internal fun installApplyPayload(
@@ -21,7 +20,6 @@ internal fun installApplyPayload(
   "status" to result.status.name.lowercase(),
   "skills" to result.skills.map(::appliedSkillPayload),
   "native_agents" to result.nativeAgents.map(::nativeAgentPayload),
-  "orchestration_links" to result.orchestrationLinks.map(::orchestrationLinkPayload),
   "telemetry" to telemetryPayload(result.telemetryOutcome),
   "mcp_registration" to applyMcpRegistrationPayload(result),
   "warnings" to result.warnings.map(::issuePayload),
@@ -49,15 +47,6 @@ private fun stagingOutcomePayload(staging: InstallSkillStagingOutcome): Map<Stri
 private fun agentSkillLinkPayload(link: InstallAgentSkillLinkOutcome): Map<String, Any?> = mapOf(
   "agent" to link.agent.id,
   "target_dir" to link.targetDir.toString(),
-  "link_path" to link.linkPath.toString(),
-  "link_target" to link.linkTarget.toString(),
-  "status" to link.status.name.lowercase(),
-  "message" to link.message,
-  "issue" to link.issue?.let(::issuePayload),
-)
-
-private fun orchestrationLinkPayload(link: OrchestrationLinkOutcome): Map<String, Any?> = mapOf(
-  "agent" to link.agent.id,
   "link_path" to link.linkPath.toString(),
   "link_target" to link.linkTarget.toString(),
   "status" to link.status.name.lowercase(),

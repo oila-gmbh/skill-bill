@@ -151,9 +151,10 @@ internal fun computeInstallContentHash(
   generatedSupportPointers
     .sortedBy { it.name }
     .forEach { pointer ->
-      val target = sourceSkillDir.relativize(pointer.target).toString().replace(File.separatorChar, '/')
-      val line = "${pointer.name}|$target"
-      digest.update(line.toByteArray(StandardCharsets.UTF_8))
+      // Hash the inlined canonical content, not the target path, so editing the orchestration doc
+      // invalidates the cache and re-inlines on the next install.
+      digest.update("${pointer.name}|".toByteArray(StandardCharsets.UTF_8))
+      digest.update(Files.readAllBytes(pointer.target))
       digest.update(newline)
     }
   val hashBytes = digest.digest()

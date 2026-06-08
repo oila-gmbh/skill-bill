@@ -92,6 +92,7 @@ object RepoValidationRuntime {
         "(?:\\+(?<build>[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$",
     )
   private val skillReferencePattern = Regex("""(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])""")
+  private val orchestrationPathPattern = Regex("""orchestration/[\w/.-]+""")
   private val readmeSkillRowPattern = Regex("""^\| `/(bill-[a-z0-9-]+)` \|""")
   private val overrideSectionPattern = Regex("""^## (bill-[a-z0-9-]+)$""")
   private val addonSlugPattern = Regex("""^[a-z0-9]+(?:-[a-z0-9]+)*$""")
@@ -149,6 +150,7 @@ object RepoValidationRuntime {
     issues += validatePointerTargetParityIssues(root)
     issues += validateGovernedSkillDrift(root).issues
     issues += validateGeneratedArtifactGuard(root).issues
+    validateNoOrchestrationPathsInSkillBodies(root, skillFiles, platformSkillFiles, issues)
 
     return RepoValidationReport(
       issues = issues.sorted(),
@@ -683,5 +685,20 @@ object RepoValidationRuntime {
       )
     }
     return false
+  }
+
+  private fun validateNoOrchestrationPathsInSkillBodies(
+    root: Path,
+    skillFiles: Map<String, Path>,
+    platformSkillFiles: Map<String, Path>,
+    issues: MutableList<String>,
+  ) {
+    (skillFiles.values + platformSkillFiles.values).forEach { contentFile ->
+      if (!contentFile.isRegularFile()) return@forEach
+      val text = Files.readString(contentFile)
+      orchestrationPathPattern.findAll(text).forEach { match ->
+        issues += "${contentFile.relativeTo(root)}: must not reference bare orchestration path '${match.value}'"
+      }
+    }
   }
 }

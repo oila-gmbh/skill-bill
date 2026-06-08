@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class RepoValidationRuntimeTest {
   @Test
   fun `release refs preserve semver metadata`() {
@@ -627,6 +628,52 @@ class RepoValidationRuntimeTest {
         it.contains("junie-agents/bill-code-review-worker.md") &&
           it.contains("must not be checked in")
       },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects bare orchestration path token in skill content_md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-orchestration-path-in-skill")
+    createRepoValidationSkillFixture(repoRoot)
+    val contentFile = repoRoot.resolve("skills/bill-code-review/content.md")
+    Files.writeString(
+      contentFile,
+      """
+      ---
+      name: bill-code-review
+      description: Review code.
+      ---
+
+      # Code Review Content
+
+      Authored review guidance.
+
+      See `orchestration/contracts/some-schema.yaml` for detail.
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("skills/bill-code-review/content.md") &&
+          it.contains("orchestration/contracts/some-schema.yaml")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation passes when skill content_md contains no bare orchestration paths`() {
+    val repoRoot = Files.createTempDirectory("skillbill-no-orchestration-path-in-skill")
+    createRepoValidationSkillFixture(repoRoot)
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(
+      report.issues.any { it.contains("must not reference bare orchestration path") },
       report.issues.joinToString("\n"),
     )
   }

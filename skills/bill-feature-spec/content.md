@@ -116,7 +116,7 @@ For `decomposed`:
 - write or update parent `spec.md`
 - write two or more ordered `spec_subtask_*.md` files
 - write or update `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`
-- validate the manifest against `orchestration/contracts/decomposition-manifest-schema.yaml`
+- the manifest is validated against the decomposition manifest schema contract by the runtime
 
 Each subtask spec must contain scope, acceptance criteria, non-goals, dependency notes, validation strategy, and next path.
 

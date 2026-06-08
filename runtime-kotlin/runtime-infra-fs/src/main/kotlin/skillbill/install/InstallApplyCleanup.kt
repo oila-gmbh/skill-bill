@@ -5,7 +5,6 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanSkill
 import skillbill.scaffold.model.PlatformManifest
-import java.nio.file.Files
 
 internal fun cleanupExistingSkillBillLinks(
   plan: InstallPlan,
@@ -40,24 +39,4 @@ internal fun cleanupExistingSkillBillLinks(
       )
     }
   }
-  plan.agents
-    .distinctBy { agentTarget -> agentTarget.path.toAbsolutePath().normalize().parent }
-    .forEach { agentTarget ->
-      val orchestrationLink = agentTarget.path.toAbsolutePath().normalize().parent.resolve("orchestration")
-      runCatching {
-        if (Files.isSymbolicLink(orchestrationLink)) {
-          Files.deleteIfExists(orchestrationLink)
-        }
-      }.getOrElse { error ->
-        failures.add(
-          InstallApplyIssue(
-            kind = InstallApplyIssueKind.ORCHESTRATION_LINK_FAILED,
-            message = error.message.orEmpty(),
-            agent = agentTarget.agent,
-            path = orchestrationLink,
-            causeClass = error::class.qualifiedName,
-          ),
-        )
-      }
-    }
 }

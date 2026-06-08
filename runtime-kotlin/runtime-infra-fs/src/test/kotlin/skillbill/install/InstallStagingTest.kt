@@ -3,7 +3,6 @@ package skillbill.install
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.RenderedSkill
-import skillbill.scaffold.normalizePointerPath
 import skillbill.scaffold.renderPointer
 import skillbill.scaffold.renderWrapper
 import skillbill.scaffold.requiredSupportingFilesForSkill
@@ -113,8 +112,9 @@ class InstallStagingTest {
       val staged = rendered.stagingDir.resolve(fileName)
       assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing staged $fileName")
       val target = supportingFileTargets(repoRoot).getValue(fileName)
-      val expected = normalizePointerPath(skillDir.relativize(target).toString())
-      assertEquals(expected, Files.readString(staged), "wrong generated pointer for $fileName")
+      val expected = Files.readString(target).trimEnd() + "\n"
+      assertEquals(expected, Files.readString(staged), "support sidecar must inline canonical content for $fileName")
+      assertFalse(Files.readString(staged).contains("../"), "inlined sidecar must not carry a dangling relative path")
     }
   }
 
@@ -286,6 +286,34 @@ class InstallStagingTest {
       Files.isDirectory(first.stagingDir, LinkOption.NOFOLLOW_LINKS),
       "expected prior same-slug staging dir ${first.stagingDir} to be pruned by ${second.stagingDir}",
     )
+  }
+
+  @Test
+  fun `content hash changes when support pointer target bytes change and stabilises without mutation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-hash-invalidation-repo").also(tempDirs::add)
+    val home = Files.createTempDirectory("skillbill-hash-invalidation-home").also(tempDirs::add)
+    val skillDir = repoRoot.resolve("skills/bill-code-review")
+    Files.createDirectories(skillDir)
+    seedTopLevelSkillContent(skillDir)
+    SkillClassFixtures.seedShippedSkillClasses(repoRoot)
+    val targets = supportingFileTargets(repoRoot)
+    requiredSupportingFilesForSkill("bill-code-review", repoRoot).map(targets::getValue).forEach { target ->
+      Files.createDirectories(target.parent)
+      Files.writeString(target, "original content\n")
+    }
+    val pointers = applicablePointers(repoRoot, skillDir)
+    val supportPointers = generatedSupportPointersFor(repoRoot, skillDir, "bill-code-review")
+    val authored = authoredFilesFor(skillDir, pointers, supportPointers)
+
+    val hashBefore = computeInstallContentHash(skillDir, authored, pointers, supportPointers)
+    val firstTarget = supportPointers.first().target
+    Files.writeString(firstTarget, "mutated content\n")
+    val hashAfterMutation = computeInstallContentHash(skillDir, authored, pointers, supportPointers)
+    Files.writeString(firstTarget, "original content\n")
+    val hashAfterRestore = computeInstallContentHash(skillDir, authored, pointers, supportPointers)
+
+    assertTrue(hashBefore != hashAfterMutation, "hash must change when support pointer target bytes change")
+    assertEquals(hashBefore, hashAfterRestore, "hash must stabilise after restoring target bytes")
   }
 
   @Test

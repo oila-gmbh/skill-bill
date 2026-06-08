@@ -902,7 +902,6 @@ private fun singleCodexApplyGoldenPayload(fixture: InstallPlanApplyFixture): Map
     "status" to "success",
     "skills" to appliedSkillsGoldenPayload(paths),
     "native_agents" to nativeAgentsGoldenPayload(),
-    "orchestration_links" to emptyList<Map<String, Any?>>(),
     "telemetry" to telemetryGoldenPayload(paths),
     "mcp_registration" to applyMcpRegistrationGoldenPayload(),
     "warnings" to emptyList<Map<String, Any?>>(),
