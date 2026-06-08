@@ -90,9 +90,9 @@ Run when the resolved spec-source mode is `local` (no config, `spec_type: local`
 
 ## Shared Preparation Path
 
-Always route preparation through the shared feature-spec preparation runtime path. Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.
+Always route preparation through the shared feature-spec preparation path. Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.
 
-The shared path is responsible for writing the governed artifacts and enforcing loud-fail validation behavior.
+The agent writes all governed artifacts directly: parent `spec.md`, ordered `spec_subtask_*.md` files, and — for decomposed features — `decomposition-manifest.yaml` using the template in the decomposed Output Rules section above. No CLI call or MCP tool routes the manifest write; the agent fills the template from the planning subagent's decomposition RESULT and writes the file to disk. Schema validation happens when the runtime first reads the manifest, not at write time.
 
 ## single_spec Output Rules
 
@@ -116,7 +116,51 @@ For `decomposed`:
 - write or update parent `spec.md`
 - write two or more ordered `spec_subtask_*.md` files
 - write or update `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`
-- the manifest is validated against the decomposition manifest schema contract by the runtime
+
+Write the manifest file directly from the template below. Fill every placeholder with values from the planning subagent's decomposition RESULT; do not leave any placeholder literal in the written file.
+
+```yaml
+contract_version: "0.3"
+issue_key: "ISSUE-KEY"          # string, required
+feature_name: "feature-name"    # string, required
+parent_spec_path: ".feature-specs/ISSUE-KEY-feature-name/spec.md"  # string, required
+spec_source: local               # local | linear; omit for local (runtime default)
+execution_model: same_branch_commit_per_subtask  # same_branch_commit_per_subtask | stacked_branches
+base_branch: main                # string, required
+feature_branch: feat/ISSUE-KEY-feature-name  # string|null; non-null for same_branch_commit_per_subtask
+stack_branches: []               # array; empty for same_branch_commit_per_subtask
+current_subtask_intent:
+  subtask_id: 1                  # integer >= 0; 0 when no subtask is active yet (action: none)
+  action: start                  # start | resume | blocked | none
+subtasks:
+  - id: 1                        # integer >= 1
+    name: "Subtask name"         # string, required
+    spec_path: ".feature-specs/ISSUE-KEY-feature-name/spec_subtask_1_slug.md"  # string, required
+    status: pending              # pending | in_progress | blocked | complete | skipped
+    branch: null                 # string|null; null until the runtime assigns one
+    commit_sha: null             # string|null; null until the subtask commits
+    workflow_id: null            # string|null; null until the runtime opens a workflow
+    blocked_reason: null         # string|null; null unless status is blocked
+    last_resumable_step: null    # string|null; null unless the subtask was interrupted
+    linear_issue_id: null        # string|null; null for local spec_source
+    dependencies: []             # array of {subtask_id, optional, skipped}
+  - id: 2
+    name: "Subtask name"
+    spec_path: ".feature-specs/ISSUE-KEY-feature-name/spec_subtask_2_slug.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    dependencies:
+      - subtask_id: 1            # must reference an earlier subtask id
+        optional: false
+        skipped: false
+```
+
+The manifest is validated against the decomposition manifest schema contract when the runtime first reads it.
 
 Each subtask spec must contain scope, acceptance criteria, non-goals, dependency notes, validation strategy, and next path.
 
