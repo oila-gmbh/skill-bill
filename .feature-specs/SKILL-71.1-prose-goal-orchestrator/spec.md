@@ -1,7 +1,7 @@
 # SKILL-71.1 - Prose goal orchestrator for decomposed feature goals
 
 Created: 2026-06-08
-Status: Draft
+Status: Complete
 Issue key: SKILL-71.1
 Parent: follow-up to SKILL-71 (local config and Linear spec mode). Adds the
 prose-mode counterpart to the runtime `skill-bill goal` loop so a decomposed
@@ -115,8 +115,8 @@ No runtime/Kotlin change is required.
 - A maintainer whose runtime goal loop is unavailable runs
   `bill-feature-goal <issue_key> mode:prose`. After the single decomposition
   confirmation gate, the orchestrator: reads the manifest, and for each runnable
-  subtask calls `skill-bill workflow continue <issue_key> --subtask <id>` (or the
-  MCP equivalent), re-enters `bill-feature-task-prose` with the returned
+  subtask calls `skill-bill workflow continue <issue_key> --subtask-id <id>` (or
+  the MCP equivalent), re-enters `bill-feature-task-prose` with the returned
   continuation payload, lets the worker run and record its terminal outcome,
   surfaces the transition, and advances.
 - When every subtask is complete, the orchestrator opens one parent PR and
@@ -194,13 +194,32 @@ No runtime/Kotlin change is required.
   intact.
 - Regression: `mode:runtime` (default) behavior is unchanged.
 
-## Open Questions
+## Open Questions (Resolved)
 
-- Does the prose orchestrator open the parent PR via `bill-pr-description` + `gh`,
-  or should a `skill-bill` parent-PR command be reused for exact parity with the
-  runtime's `GoalPullRequestPort`? Default to `bill-pr-description` + `gh` unless a
-  reusable command already exists.
-- Should `mode:prose` be selectable mid-goal as a fallback when `mode:runtime`
-  blocks on infrastructure (e.g. a child-agent spawn failure), or only chosen up
-  front at the confirmation gate? Default to up-front selection for this spec;
-  mid-goal handoff can be a later increment.
+- Parent PR path — **Resolved: `bill-pr-description` + `gh`.** No reusable
+  `skill-bill` parent-PR command exists for prose use (the runtime's
+  `GoalPullRequestPort` is runtime-internal and not exposed as a prose-callable
+  command), so the documented flow opens the single parent PR via the standard
+  `bill-pr-description` + `gh` path.
+- Mid-goal `mode:prose` selection — **Resolved: up-front only.** `mode:prose` is
+  chosen at the confirmation gate; mid-goal handoff from `mode:runtime` when
+  infrastructure blocks is deferred to a later increment and is not part of this
+  spec.
+
+## Implementation Notes
+
+Delivered as skill-content only (no runtime/Kotlin change), on branch
+`feat/SKILL-71-local-config-and-linear-spec-mode` (PR #164):
+
+- `skills/bill-feature-goal/content.md` — extended frontmatter `description:`;
+  added a `## Modes` section and a `## Mode: Prose Goal Orchestration (in-session
+  loop)` section. The prose loop reuses the single existing confirmation gate
+  (the runtime `mode:runtime` default flow is unchanged).
+- `skills/bill-feature-task-prose/content.md` — one-line cross-reference naming
+  the `mode:prose` orchestrator as the loop driver into the existing
+  goal-continuation worker (no new worker behavior).
+- `README.md` — catalog row reflects both modes.
+
+Correction carried into this spec: the continuation flag is `--subtask-id`
+(verified in `WorkflowCliCommands.kt`), not `--subtask`; the MCP arg is
+`subtask_id`.
