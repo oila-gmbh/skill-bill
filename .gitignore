@@ -5,4 +5,4 @@
 .env.*
 docs/cloudflare-telemetry-proxy/.wrangler/
 _migration_backup/
-/.skill-bill
+/.skill-bill/
