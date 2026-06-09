@@ -720,6 +720,7 @@ Decomposition rules:
 - Prefer 2-4 subtasks. Each subtask should be small enough for one independent feature-task run.
 - Order subtasks by dependency and identify the first subtask to run.
 - The decomposition manifest uses `execution_model: same_branch_commit_per_subtask` by default with one parent feature branch and no stack branches. Use `execution_model: stacked_branches` only as an explicit opt-in and then declare one stack branch per subtask in subtask order. Return enough manifest metadata for the shared path to emit those fields.
+- The orchestrator writes `decomposition-manifest.yaml` directly from the template in `bill-feature-spec`. Your decomposition RESULT must include all fields required to fill that template. Required top-level fields: `contract_version` (always `"0.3"`), `issue_key`, `feature_name`, `parent_spec_path`, `execution_model`, `base_branch`, `feature_branch` (non-null string for same-branch, null for stacked), `stack_branches` (empty array for same-branch, one entry per subtask for stacked), `current_subtask_intent` (`subtask_id` and `action`). Optional top-level fields: `spec_source` (omit for local). Required per-subtask fields: `id`, `name`, `spec_path`, `status` (always `pending` on creation), `branch` (null), `commit_sha` (null), `workflow_id` (null), `blocked_reason` (null), `last_resumable_step` (null), `dependencies` (array of `{subtask_id, optional, skipped}`). Optional per-subtask fields: `linear_issue_id` (null unless spec_source is linear).
 - Same-branch decompositions advance one subtask at a time on the parent feature
   branch. Each completed subtask gets an individual commit before the next
   pending dependency-complete subtask starts.
@@ -769,11 +770,27 @@ RESULT:
   "decomposition_reason": "<why this is too large for one reliable feature-task execution>",
   "parent_spec_path": "<path to spec.md>",
   "recommended_first_subtask_id": 1,
+  "execution_model": "same_branch_commit_per_subtask",
+  "base_branch": "<base branch name, e.g. main>",
+  "feature_branch": "<feat/{issue_key}-{feature_name} or null for stacked>",
+  "stack_branches": [],
+  "current_subtask_intent": {
+    "subtask_id": 1,
+    "action": "start"
+  },
   "subtasks": [
     {
       "id": 1,
       "name": "<short dependency-ordered name>",
       "spec_path": ".feature-specs/{issue_key}-{feature_name}/spec_subtask_1_<slug>.md",
+      "status": "pending",
+      "branch": null,
+      "commit_sha": null,
+      "workflow_id": null,
+      "blocked_reason": null,
+      "last_resumable_step": null,
+      "linear_issue_id": null,
+      "dependencies": [],
       "depends_on": [],
       "dependency_reason": "<why this comes first, or empty for the first subtask>",
       "scope": "<what this subtask owns>",
