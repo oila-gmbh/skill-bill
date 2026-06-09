@@ -505,7 +505,10 @@ build_legacy_skill_names
 info "Removing Skill Bill installs from supported agent paths."
 
 remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
-remove_from_agent_dir "claude" "$HOME/.claude/commands"
+# Honor CLAUDE_CONFIG_DIR the same way Claude Code (and the runtime installer) does, so a named
+# profile (e.g. ~/.claude-work via `cc work`) is cleaned from the same root it was installed into.
+CLAUDE_CONFIG_ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+remove_from_agent_dir "claude" "$CLAUDE_CONFIG_ROOT/commands"
 # TODO(SKILL-34-followup): remove GLM cleanup branch on or after 2026-08-02 (one deprecation window).
 info "GLM is no longer a first-class supported agent. If you used Skill Bill with GLM as a model inside Claude Code, your skills are unaffected — they live under the Claude Code commands directory."
 remove_from_agent_dir "glm" "$HOME/.glm/commands"

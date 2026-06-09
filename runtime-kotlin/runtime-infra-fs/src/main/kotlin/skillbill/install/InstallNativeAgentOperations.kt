@@ -37,7 +37,7 @@ object InstallNativeAgentOperations {
     request = request,
     detectTarget = { resolvedHome ->
       val targetPath = NativeAgentProvider.Claude.homeAgentDirs(resolvedHome).first()
-      if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".claude"))) {
+      if (Files.exists(targetPath) || Files.exists(claudeConfigRoot(resolvedHome))) {
         AgentTarget(CLAUDE_AGENTS_KIND, targetPath)
       } else {
         null

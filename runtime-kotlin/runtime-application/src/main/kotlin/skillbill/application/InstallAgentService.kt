@@ -31,12 +31,14 @@ class InstallAgentService(
     skillNames: List<String>,
     legacyNames: List<String>,
     managedInstallMarker: String,
+    home: Path? = null,
   ) = agentTargetPort.cleanupAgentTarget(
     InstallAgentTargetCleanupRequest(
       targetDir = targetDir,
       skillNames = skillNames,
       legacyNames = legacyNames,
       managedInstallMarker = managedInstallMarker,
+      home = home,
     ),
   ).cleanup
 

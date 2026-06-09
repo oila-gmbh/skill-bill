@@ -6,6 +6,7 @@ import skillbill.install.InstallNativeAgentOperations
 import skillbill.install.InstallOperations
 import skillbill.install.buildInstallStagingIntent
 import skillbill.install.collectInstallPlanningFacts
+import skillbill.install.installedSkillsCacheRoot
 import skillbill.install.materializeSelectedPlatformSkills
 import skillbill.launcher.McpRegistrationOperations
 import skillbill.ports.install.agent.InstallAgentTargetPort
@@ -126,6 +127,7 @@ class FileSystemInstallAgentTargets : InstallAgentTargetPort {
       skillNames = request.skillNames,
       legacyNames = request.legacyNames,
       managedInstallMarker = request.managedInstallMarker,
+      installedSkillsRoot = request.home?.let { installedSkillsCacheRoot(it) },
     )
     return InstallAgentTargetCleanupResult(
       cleanup = InstallCleanupResult(removed = removed, skipped = skipped),

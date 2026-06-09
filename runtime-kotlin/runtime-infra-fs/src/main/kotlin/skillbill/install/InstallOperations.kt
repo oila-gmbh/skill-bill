@@ -15,20 +15,21 @@ object InstallOperations {
   fun applyInstall(plan: InstallPlan, telemetryLevelMutator: TelemetryLevelMutator? = null): InstallApplyResult =
     applyInstallPlan(plan, telemetryLevelMutator)
 
-  fun agentPath(agent: String, home: Path? = null): Path {
+  fun agentPath(agent: String, home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
     require(agent in SUPPORTED_AGENTS) {
       "Unknown agent '$agent'. Supported agents: ${SUPPORTED_AGENTS.joinToString(", ")}."
     }
-    return agentPaths(home).getValue(agent)
+    return agentPaths(home, environment).getValue(agent)
   }
 
-  fun detectAgentTargets(home: Path? = null): List<AgentTarget> = detectAgents(home)
+  fun detectAgentTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> =
+    detectAgents(home, environment)
 
   fun codexAgentsPath(home: Path? = null): Path = skillbill.install.codexAgentsPath(home)
 
-  fun claudeAgentsPath(home: Path? = null): Path {
+  fun claudeAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    return resolvedHome.resolve(".claude/agents")
+    return claudeConfigRoot(resolvedHome, environment).resolve("agents")
   }
 
   fun opencodeAgentsPath(home: Path? = null): Path = skillbill.install.opencodeAgentsPath(home)

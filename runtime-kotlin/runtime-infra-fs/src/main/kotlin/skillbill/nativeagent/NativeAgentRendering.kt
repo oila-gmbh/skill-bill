@@ -2,6 +2,7 @@
 
 package skillbill.nativeagent
 
+import skillbill.install.claudeConfigRoot
 import java.nio.file.Path
 
 enum class NativeAgentProvider(
@@ -10,7 +11,7 @@ enum class NativeAgentProvider(
 ) {
   Claude("claude-agents", "md") {
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
-    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".claude/agents"))
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(claudeConfigRoot(home).resolve("agents"))
   },
   Codex("codex-agents", "toml") {
     override fun render(source: NativeAgentSource): String = renderCodexAgentToml(source)

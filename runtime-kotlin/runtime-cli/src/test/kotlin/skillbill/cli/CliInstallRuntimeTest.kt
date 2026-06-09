@@ -358,6 +358,52 @@ class CliInstallRuntimeTest {
   }
 
   @Test
+  fun `cleanup command prunes orphan staging links not named on the command line`() {
+    val home = Files.createTempDirectory("skillbill-cli-install-cleanup-orphan")
+    val targetDir = home.resolve("agent-skills")
+    Files.createDirectories(targetDir)
+    val stagingRoot = home.resolve(".skill-bill/installed-skills")
+    Files.createDirectories(stagingRoot)
+
+    // A current skill whose staging dir still exists and whose name is passed.
+    val currentStaging = stagingRoot.resolve("bill-current-deadbeefdeadbeef")
+    Files.createDirectories(currentStaging)
+    Files.createSymbolicLink(targetDir.resolve("bill-current"), currentStaging)
+
+    // An orphan from a removed/renamed skill: its staging dir is gone (dangling
+    // link) and its name is NOT passed on the command line.
+    Files.createSymbolicLink(
+      targetDir.resolve("bill-go-code-review"),
+      stagingRoot.resolve("bill-go-code-review-0123456789abcdef"),
+    )
+
+    // A user-owned symlink pointing elsewhere must be preserved.
+    val userTarget = home.resolve("user-thing")
+    Files.createDirectories(userTarget)
+    Files.createSymbolicLink(targetDir.resolve("user-link"), userTarget)
+
+    val cleanup =
+      CliRuntime.run(
+        listOf(
+          "--home",
+          home.toString(),
+          "install",
+          "cleanup-agent-target",
+          "--target-dir",
+          targetDir.toString(),
+          "--skill-name",
+          "bill-current",
+        ),
+        installCliContext(home),
+      )
+
+    assertEquals(0, cleanup.exitCode, cleanup.stdout)
+    assertFalse(Files.isSymbolicLink(targetDir.resolve("bill-current")))
+    assertFalse(Files.isSymbolicLink(targetDir.resolve("bill-go-code-review")))
+    assertTrue(Files.isSymbolicLink(targetDir.resolve("user-link")))
+  }
+
+  @Test
   fun `global home option supports paths with spaces`() {
     val home = Files.createTempDirectory("skillbill cli home with spaces")
     Files.createDirectories(home.resolve(".codex"))

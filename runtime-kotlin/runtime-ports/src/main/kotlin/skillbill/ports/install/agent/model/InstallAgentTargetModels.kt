@@ -35,6 +35,7 @@ data class InstallAgentTargetCleanupRequest(
   val skillNames: List<String>,
   val legacyNames: List<String>,
   val managedInstallMarker: String,
+  val home: Path? = null,
 )
 
 data class InstallAgentTargetCleanupResult(

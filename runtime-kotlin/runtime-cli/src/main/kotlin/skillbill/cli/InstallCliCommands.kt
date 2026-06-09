@@ -396,6 +396,7 @@ class InstallCleanupAgentTargetCommand(
       skillNames = skillNames,
       legacyNames = legacyNames,
       managedInstallMarker = marker,
+      home = state.userHome,
     )
     state.completeText(
       (

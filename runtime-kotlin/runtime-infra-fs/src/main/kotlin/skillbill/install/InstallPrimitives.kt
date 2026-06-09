@@ -14,11 +14,11 @@ internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
 
-internal fun agentPaths(home: Path? = null): Map<String, Path> {
+internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return mapOf(
     "copilot" to resolvedHome.resolve(".copilot/skills"),
-    "claude" to resolvedHome.resolve(".claude/commands"),
+    "claude" to claudeConfigRoot(resolvedHome, environment).resolve("commands"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
     "codex" to codexPath(resolvedHome),
@@ -41,11 +41,11 @@ internal fun opencodeAgentsPath(home: Path? = null): Path {
   return resolvedHome.resolve(".config/opencode/agents")
 }
 
-internal fun detectAgents(home: Path? = null): List<AgentTarget> {
+internal fun detectAgents(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return SUPPORTED_AGENTS.mapNotNull { agent ->
-    val path = agentPaths(resolvedHome).getValue(agent)
-    if (agentIsPresent(resolvedHome, agent, path)) {
+    val path = agentPaths(resolvedHome, environment).getValue(agent)
+    if (agentIsPresent(resolvedHome, agent, path, environment)) {
       AgentTarget(agent, path)
     } else {
       null
@@ -129,13 +129,18 @@ private fun codexPath(home: Path): Path {
   return if (Files.exists(codexRoot) || Files.exists(codexSkills)) codexSkills else home.resolve(".agents/skills")
 }
 
-private fun agentIsPresent(home: Path, agent: String, installPath: Path): Boolean {
+private fun agentIsPresent(
+  home: Path,
+  agent: String,
+  installPath: Path,
+  environment: Map<String, String> = System.getenv(),
+): Boolean {
   if (Files.exists(installPath)) {
     return true
   }
   val roots = when (agent) {
     "copilot" -> listOf(home.resolve(".copilot"))
-    "claude" -> listOf(home.resolve(".claude"))
+    "claude" -> listOf(claudeConfigRoot(home, environment))
     "opencode" -> listOf(home.resolve(".config/opencode"))
     "junie" -> listOf(home.resolve(".junie"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
