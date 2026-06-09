@@ -10,6 +10,8 @@ import skillbill.install.installedSkillsCacheRoot
 import skillbill.install.materializeSelectedPlatformSkills
 import skillbill.launcher.McpRegistrationOperations
 import skillbill.ports.install.agent.InstallAgentTargetPort
+import skillbill.ports.install.agent.model.ClaudeConfigRootsRequest
+import skillbill.ports.install.agent.model.ClaudeConfigRootsResult
 import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.install.agent.model.DetectInstallAgentTargetsResult
 import skillbill.ports.install.agent.model.InstallAgentDirectoryRequest
@@ -109,6 +111,9 @@ class FileSystemInstallAgentTargets : InstallAgentTargetPort {
 
   override fun detectAgentTargets(request: DetectInstallAgentTargetsRequest): DetectInstallAgentTargetsResult =
     DetectInstallAgentTargetsResult(InstallOperations.detectAgentTargets(request.home))
+
+  override fun claudeConfigRoots(request: ClaudeConfigRootsRequest): ClaudeConfigRootsResult =
+    ClaudeConfigRootsResult(InstallOperations.claudeRoots(request.home, request.environment))
 
   override fun agentDirectory(request: InstallAgentDirectoryRequest): InstallAgentDirectoryResult =
     InstallAgentDirectoryResult(

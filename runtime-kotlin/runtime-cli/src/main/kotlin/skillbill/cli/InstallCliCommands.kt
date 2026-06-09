@@ -409,6 +409,20 @@ class InstallCleanupAgentTargetCommand(
 }
 
 @Inject
+class InstallClaudeRootsCommand(
+  private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
+) : DocumentedCliCommand("claude-roots", "Print every resolved Claude config root, one per line.") {
+  override fun run() {
+    val roots = installAgentService.claudeRoots(state.userHome, state.environment)
+    state.completeText(
+      roots.joinToString("\n") { root -> root.toString() },
+      mapOf("roots" to roots.map(Path::toString)),
+    )
+  }
+}
+
+@Inject
 class InstallCodexAgentsPathCommand(
   private val state: CliRunState,
   private val installAgentService: InstallAgentService,

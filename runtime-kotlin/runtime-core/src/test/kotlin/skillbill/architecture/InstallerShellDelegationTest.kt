@@ -89,8 +89,6 @@ class InstallerShellDelegationTest {
         "copilot=${run.home.resolve("agent-targets/copilot")}",
         "--agent",
         "claude",
-        "--agent-target",
-        "claude=${run.home.resolve("agent-targets/claude")}",
         "--agent",
         "codex",
         "--agent-target",
@@ -427,10 +425,14 @@ class InstallerShellDelegationTest {
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
       |  exit 0
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -545,11 +547,17 @@ class InstallerShellDelegationTest {
       |    printf 'ARG\t%s\n' "${'$'}arg"
       |  done
       |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
+      |home="${'$'}{HOME:-}"
       |if [[ "${'$'}{1:-}" == "--home" ]]; then
+      |  home="${'$'}2"
       |  shift 2
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac

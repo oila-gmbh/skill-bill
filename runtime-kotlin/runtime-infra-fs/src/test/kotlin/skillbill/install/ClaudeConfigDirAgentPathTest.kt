@@ -3,7 +3,6 @@ package skillbill.install
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class ClaudeConfigDirAgentPathTest {
   @Test
@@ -53,9 +52,13 @@ class ClaudeConfigDirAgentPathTest {
     Files.createDirectories(workConfig)
     val env = mapOf("CLAUDE_CONFIG_DIR" to workConfig.toString())
 
-    val claudeTarget = InstallOperations.detectAgentTargets(home, environment = env)
-      .firstOrNull { it.name == "claude" }
-    assertTrue(claudeTarget != null, "claude should be detected under its work profile")
-    assertEquals(workConfig.resolve("commands"), claudeTarget.path)
+    // Multi-root detection (SKILL-74): the default ~/.claude is always first, then the explicit
+    // CLAUDE_CONFIG_DIR work profile. Both are detected so skills install into each root.
+    val claudeTargets = InstallOperations.detectAgentTargets(home, environment = env)
+      .filter { it.name == "claude" }
+    assertEquals(
+      listOf(home.resolve(".claude/commands"), workConfig.resolve("commands")),
+      claudeTargets.map { it.path },
+    )
   }
 }

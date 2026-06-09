@@ -1801,7 +1801,11 @@ build_runtime_install_args() {
   if [[ "$AGENT_SELECTION_MODE" == "manual" && ${#AGENT_NAMES[@]} -gt 0 ]]; then
     for i in "${!AGENT_NAMES[@]}"; do
       RUNTIME_INSTALL_ARGS+=(--agent "${AGENT_NAMES[$i]}")
-      RUNTIME_INSTALL_ARGS+=(--agent-target "${AGENT_NAMES[$i]}=${AGENT_PATHS[$i]}")
+      # claude pins no single --agent-target so the runtime fans skills across every discovered
+      # config root (~/.claude plus ~/.claude-<name> profiles); other agents keep their single path.
+      if [[ "${AGENT_NAMES[$i]}" != "claude" ]]; then
+        RUNTIME_INSTALL_ARGS+=(--agent-target "${AGENT_NAMES[$i]}=${AGENT_PATHS[$i]}")
+      fi
     done
   fi
 
@@ -1822,6 +1826,16 @@ apply_runtime_install() {
     return "$status"
   fi
   ok "Runtime install apply completed"
+}
+
+print_claude_roots_summary() {
+  local roots root
+  roots="$(run_runtime_cli install claude-roots 2>/dev/null)" || return 0
+  [[ -z "$roots" ]] && return 0
+  while IFS= read -r root; do
+    [[ -z "$root" ]] && continue
+    info "Claude config root: $root"
+  done <<< "$roots"
 }
 
 selected_agent_label() {
@@ -1979,6 +1993,8 @@ run_full_install() {
   else
     info "Installed agents were resolved by runtime detection."
   fi
+
+  print_claude_roots_summary
 
   print_desktop_unsigned_hint
 

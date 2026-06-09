@@ -43,12 +43,20 @@ internal fun opencodeAgentsPath(home: Path? = null): Path {
 
 internal fun detectAgents(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  return SUPPORTED_AGENTS.mapNotNull { agent ->
-    val path = agentPaths(resolvedHome, environment).getValue(agent)
-    if (agentIsPresent(resolvedHome, agent, path, environment)) {
-      AgentTarget(agent, path)
+  return SUPPORTED_AGENTS.flatMap { agent ->
+    if (agent == "claude") {
+      if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
+        claudeCommandTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path) }
+      } else {
+        emptyList()
+      }
     } else {
-      null
+      val path = agentPaths(resolvedHome, environment).getValue(agent)
+      if (agentIsPresent(resolvedHome, agent, path, environment)) {
+        listOf(AgentTarget(agent, path))
+      } else {
+        emptyList()
+      }
     }
   }
 }
@@ -140,7 +148,7 @@ private fun agentIsPresent(
   }
   val roots = when (agent) {
     "copilot" -> listOf(home.resolve(".copilot"))
-    "claude" -> listOf(claudeConfigRoot(home, environment))
+    "claude" -> claudeConfigRoots(home, environment)
     "opencode" -> listOf(home.resolve(".config/opencode"))
     "junie" -> listOf(home.resolve(".junie"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))

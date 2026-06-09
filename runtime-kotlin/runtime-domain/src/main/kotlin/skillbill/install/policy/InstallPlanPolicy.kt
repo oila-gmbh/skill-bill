@@ -225,19 +225,24 @@ private fun resolveDetectionDerivedTargets(input: InstallPolicyInput): List<Inst
 }
 
 private fun resolveManualTargets(input: InstallPolicyInput): List<InstallAgentTarget> {
-  val explicitTargets = input.request.targetPaths.agentTargets.associateBy(InstallAgentTarget::agent)
-  val defaultTargets = input.defaultAgentTargets.associate { target -> target.agent to target.path }
-  val manualAgents = input.request.agentSelection.manualAgents.ifEmpty { explicitTargets.keys }
+  // Group (not associateBy) so a multi-root agent like claude keeps every default/explicit row;
+  // collapsing to one per agent would silently drop all but the last profile root.
+  val explicitTargets = input.request.targetPaths.agentTargets.groupBy(InstallAgentTarget::agent)
+  val defaultTargets = input.defaultAgentTargets.groupBy { target -> target.agent }
+  val manualAgents = input.request.agentSelection.manualAgents
+    .ifEmpty { explicitTargets.keys }
   return manualAgents
     .sortedBy(InstallAgent::id)
-    .map { agent ->
-      explicitTargets[agent]?.copy(source = InstallAgentTargetSource.MANUAL)
-        ?: InstallAgentTarget(
-          agent = agent,
-          path = defaultTargets[agent]
-            ?: error("Manual agent '${agent.id}' has no explicit or default target path."),
-          source = InstallAgentTargetSource.MANUAL,
-        )
+    .flatMap { agent ->
+      explicitTargets[agent]?.map { target -> target.copy(source = InstallAgentTargetSource.MANUAL) }
+        ?: (defaultTargets[agent] ?: error("Manual agent '${agent.id}' has no explicit or default target path."))
+          .map { default ->
+            InstallAgentTarget(
+              agent = agent,
+              path = default.path,
+              source = InstallAgentTargetSource.MANUAL,
+            )
+          }
     }
 }
 

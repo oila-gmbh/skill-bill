@@ -26,6 +26,15 @@ data class InstallAgentDirectoryRequest(
   val home: Path?,
 )
 
+data class ClaudeConfigRootsRequest(
+  val home: Path?,
+  val environment: Map<String, String>,
+)
+
+data class ClaudeConfigRootsResult(
+  val roots: List<Path>,
+)
+
 data class InstallAgentDirectoryResult(
   val path: Path,
 )
