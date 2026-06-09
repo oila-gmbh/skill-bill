@@ -32,18 +32,22 @@ data class NativeAgentLinkRequest(
 )
 
 object InstallNativeAgentOperations {
-  fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
-    provider = NativeAgentProvider.Claude,
-    request = request,
-    detectTarget = { resolvedHome ->
-      val targetPath = NativeAgentProvider.Claude.homeAgentDirs(resolvedHome).first()
-      if (Files.exists(targetPath) || Files.exists(claudeConfigRoot(resolvedHome))) {
-        AgentTarget(CLAUDE_AGENTS_KIND, targetPath)
-      } else {
-        null
-      }
-    },
-  )
+  fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
+    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
+    val agentDirs = NativeAgentProvider.Claude.homeAgentDirs(resolvedHome)
+    val linked = mutableListOf<Path>()
+    val skipped = mutableListOf<NativeAgentSkippedLink>()
+    agentDirs.forEach { agentDir ->
+      val outcome = linkProviderAgents(
+        provider = NativeAgentProvider.Claude,
+        request = request,
+        detectTarget = { AgentTarget(CLAUDE_AGENTS_KIND, agentDir) },
+      )
+      linked.addAll(outcome.linked)
+      skipped.addAll(outcome.skipped)
+    }
+    return NativeAgentLinkOutcome(linked, skipped)
+  }
 
   fun unlinkClaudeAgents(request: NativeAgentLinkRequest): List<Path> = unlinkProviderAgents(
     provider = NativeAgentProvider.Claude,

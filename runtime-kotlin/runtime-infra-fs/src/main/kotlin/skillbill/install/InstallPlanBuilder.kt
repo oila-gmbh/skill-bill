@@ -79,12 +79,7 @@ private fun buildInstallPolicyInput(
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = agentPaths(request.home).map { (agentId, path) ->
-      InstallAgentDefaultTarget(
-        agent = InstallAgent.fromId(agentId),
-        path = path,
-      )
-    },
+    defaultAgentTargets = claudeMultiRootDefaultTargets(request.home),
   )
 }
 
@@ -101,12 +96,7 @@ internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPl
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = agentPaths(request.home).map { (agentId, path) ->
-      InstallAgentDefaultTarget(
-        agent = InstallAgent.fromId(agentId),
-        path = path,
-      )
-    },
+    defaultAgentTargets = claudeMultiRootDefaultTargets(request.home),
   )
 }
 
@@ -221,6 +211,20 @@ private fun validatePointerInputs(
     }
   }
 }
+
+/**
+ * Default agent targets, expanding claude into one row per discovered config root so install/apply
+ * fans skill links across every profile while other agents keep their single default path.
+ */
+private fun claudeMultiRootDefaultTargets(home: Path): List<InstallAgentDefaultTarget> =
+  agentPaths(home).flatMap { (agentId, path) ->
+    val agent = InstallAgent.fromId(agentId)
+    if (agentId == "claude") {
+      claudeCommandTargets(home).map { commandPath -> InstallAgentDefaultTarget(agent = agent, path = commandPath) }
+    } else {
+      listOf(InstallAgentDefaultTarget(agent = agent, path = path))
+    }
+  }
 
 private fun List<PlatformManifest>.toDiscoverySnapshots(): List<InstallPlatformPackDiscoverySnapshot> =
   map { manifest ->

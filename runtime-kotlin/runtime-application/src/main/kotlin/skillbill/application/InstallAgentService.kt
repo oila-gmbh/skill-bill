@@ -2,6 +2,7 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.install.agent.InstallAgentTargetPort
+import skillbill.ports.install.agent.model.ClaudeConfigRootsRequest
 import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.install.agent.model.InstallAgentDirectoryRequest
 import skillbill.ports.install.agent.model.InstallAgentPathRequest
@@ -17,6 +18,9 @@ class InstallAgentService(
 
   fun detectAgentTargets(home: Path? = null) =
     agentTargetPort.detectAgentTargets(DetectInstallAgentTargetsRequest(home)).targets
+
+  fun claudeRoots(home: Path? = null, environment: Map<String, String>): List<Path> =
+    agentTargetPort.claudeConfigRoots(ClaudeConfigRootsRequest(home = home, environment = environment)).roots
 
   fun codexAgentsPath(home: Path? = null): Path = agentDirectory("codex", home)
 

@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-74 - auto-detect claude profiles
@@ -133,18 +133,20 @@ configuration file are required: the filesystem is the source of truth.
   `CLAUDE_CONFIG_DIR`.
 - Desktop app or first-run wizard changes.
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Marker strictness.** Criterion 3 requires a marker to treat a
-   `~/.claude-<name>` directory as a profile. Confirm the exact marker set during
-   planning (candidate markers: `.claude.json`, `.credentials.json`, `commands/`,
-   `agents/`). Too strict risks missing a freshly created profile; too loose risks
-   clobbering an unrelated directory.
-2. **Fan-out seam.** The runtime owns discovery (criterion 10). Confirm whether
-   `apply` resolves the root set internally and fans out, or exposes a roots-list
-   command that `install.sh` loops over as `--agent-target claude=<root>/commands`.
-   Prefer apply-internal fan-out so uninstall, detection, and any future desktop
-   install share one path.
+1. **Marker strictness.** Resolved: the marker set is `.claude.json`,
+   `.credentials.json`, `commands/`, `agents/`, and `history.jsonl` (a
+   `~/.claude-<name>` dir qualifies if it contains ANY of these). The default
+   `~/.claude` and any explicit `CLAUDE_CONFIG_DIR` root bypass the marker test
+   entirely. Implemented in `ClaudeConfigPaths.claudeConfigRoots`.
+2. **Fan-out seam.** Resolved: apply-internal fan-out. The runtime resolver
+   (`claudeConfigRoots`) expands the single claude target into one
+   `<root>/commands` (and `<root>/agents`) target per resolved root inside the
+   plan-builder/policy and native-agent operations. `install.sh` drops the pinned
+   `--agent-target claude=<path>` so the runtime fans out; both shells consume the
+   `install claude-roots` command for summary/uninstall rather than re-globbing
+   `$HOME`.
 
 ## Validation Strategy
 

@@ -25,6 +25,11 @@ object InstallOperations {
   fun detectAgentTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> =
     detectAgents(home, environment)
 
+  fun claudeRoots(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return claudeConfigRoots(resolvedHome, environment)
+  }
+
   fun codexAgentsPath(home: Path? = null): Path = skillbill.install.codexAgentsPath(home)
 
   fun claudeAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path {

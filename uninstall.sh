@@ -507,10 +507,19 @@ build_legacy_skill_names
 info "Removing Skill Bill installs from supported agent paths."
 
 remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
-# Honor CLAUDE_CONFIG_DIR the same way Claude Code (and the runtime installer) does, so a named
-# profile (e.g. ~/.claude-work via `cc work`) is cleaned from the same root it was installed into.
-CLAUDE_CONFIG_ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-remove_from_agent_dir "claude" "$CLAUDE_CONFIG_ROOT/commands"
+# Clean skill links from every Claude config root the runtime discovers (default ~/.claude, named
+# ~/.claude-<name> profiles, and CLAUDE_CONFIG_DIR), not just one pinned root, so multi-profile
+# installs are fully removed.
+remove_from_claude_command_roots() {
+  local roots root
+  roots="$(run_runtime_cli install claude-roots 2>/dev/null)" || return 0
+  [[ -z "$roots" ]] && return 0
+  while IFS= read -r root; do
+    [[ -n "$root" ]] || continue
+    remove_from_agent_dir "claude" "$root/commands"
+  done <<< "$roots"
+}
+remove_from_claude_command_roots
 # TODO(SKILL-34-followup): remove GLM cleanup branch on or after 2026-08-02 (one deprecation window).
 info "GLM is no longer a first-class supported agent. If you used Skill Bill with GLM as a model inside Claude Code, your skills are unaffected — they live under the Claude Code commands directory."
 remove_from_agent_dir "glm" "$HOME/.glm/commands"
@@ -538,6 +547,28 @@ remove_codex_agents_tomls() {
     ok "  removed $(basename "$link_path")"
   done <<< "$output"
 }
+
+remove_claude_agent_mds() {
+  # Uninstall Claude native subagent markdown symlinks from every discovered config root's agents/
+  # directory (~/.claude/agents plus ~/.claude-<name>/agents and CLAUDE_CONFIG_DIR/agents). The
+  # runtime resolver fans the unlink across all roots; install historically never removed these.
+  local output
+  output="$(run_runtime_cli install unlink-claude-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"
+  if [[ -z "$output" ]]; then
+    info "  nothing to remove"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    REMOVED_TARGETS+=("$link_path")
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
+info "Removing Claude subagent markdown installs."
+remove_claude_agent_mds
 
 info "Removing Codex subagent TOML installs."
 remove_codex_agents_tomls
