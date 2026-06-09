@@ -417,6 +417,60 @@ class CliInstallRuntimeTest {
     assertEquals(home.resolve(".codex/skills").toString(), result.stdout.trim())
   }
 
+  @Test
+  fun `claude-roots prints every resolved config root one per line`() {
+    val home = Files.createTempDirectory("skillbill-cli-claude-roots")
+    Files.createDirectories(home.resolve(".claude"))
+    val work = home.resolve(".claude-work")
+    Files.createDirectories(work)
+    Files.createFile(work.resolve(".claude.json"))
+
+    val result = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "claude-roots"),
+      installCliContext(home),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val lines = result.stdout.trim().lines().filter(String::isNotBlank)
+    assertEquals(
+      listOf(home.resolve(".claude").toString(), work.toString()),
+      lines,
+    )
+  }
+
+  @Test
+  fun `claude-roots exposes a roots json payload`() {
+    val home = Files.createTempDirectory("skillbill-cli-claude-roots-json")
+    Files.createDirectories(home.resolve(".claude"))
+
+    val result = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "claude-roots"),
+      installCliContext(home),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    @Suppress("UNCHECKED_CAST")
+    val roots = result.payload?.get("roots") as List<String>
+    assertEquals(listOf(home.resolve(".claude").toString()), roots)
+  }
+
+  @Test
+  fun `agent-path stays single active root even with named profiles present`() {
+    val home = Files.createTempDirectory("skillbill-cli-agent-path-single")
+    Files.createDirectories(home.resolve(".claude"))
+    val work = home.resolve(".claude-work")
+    Files.createDirectories(work)
+    Files.createFile(work.resolve(".claude.json"))
+
+    val result = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "agent-path", "claude"),
+      installCliContext(home),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(home.resolve(".claude/commands").toString(), result.stdout.trim())
+  }
+
   private fun runInstall(fixture: InstallFixture, command: String, vararg extraArgs: String): CliExecutionResult =
     CliRuntime.run(
       listOf(

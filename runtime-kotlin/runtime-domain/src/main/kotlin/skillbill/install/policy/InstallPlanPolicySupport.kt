@@ -1,29 +1,31 @@
 package skillbill.install.policy
 
-import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPolicyInput
 import java.nio.file.Path
 
 internal fun requireNoDuplicateDefaultTargets(input: InstallPolicyInput) {
+  // Keyed by (agent, normalized path) so a multi-root agent (e.g. claude across several profile
+  // roots) emits several legal rows, while a true same-(agent,path) collision still fails.
   val duplicates = input.defaultAgentTargets
-    .groupBy { target -> target.agent }
+    .groupBy { target -> target.agent to target.path.toAbsolutePath().normalize() }
     .filterValues { targets -> targets.size > 1 }
     .keys
   require(duplicates.isEmpty()) {
-    "Default agent target snapshots contain duplicate agent(s): " +
-      duplicates.map(InstallAgent::id).sorted().joinToString(", ") + "."
+    "Default agent target snapshots contain duplicate (agent, path): " +
+      duplicates.map { (agent, path) -> "${agent.id} at $path" }.sorted().joinToString(", ") + "."
   }
 }
 
 internal fun requireNoDuplicateAgentTargets(label: String, targets: List<InstallAgentTarget>) {
   val duplicates = targets
-    .groupBy(InstallAgentTarget::agent)
+    .groupBy { target -> target.agent to target.path.toAbsolutePath().normalize() }
     .filterValues { matchingTargets -> matchingTargets.size > 1 }
     .keys
   require(duplicates.isEmpty()) {
-    "$label contains duplicate agent target(s): ${duplicates.map(InstallAgent::id).sorted().joinToString(", ")}."
+    "$label contains duplicate agent target(s): " +
+      duplicates.map { (agent, path) -> "${agent.id} at $path" }.sorted().joinToString(", ") + "."
   }
 }
 
