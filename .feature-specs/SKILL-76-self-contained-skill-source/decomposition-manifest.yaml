@@ -10,29 +10,29 @@ base_branch: "main"
 feature_branch: "feat/SKILL-76-self-contained-skill-source"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "resume"
+  subtask_id: 2
+  action: "start"
 subtasks:
 - id: 1
   name: "copyin-repoint-foundation"
   spec_path: ".feature-specs/SKILL-76-self-contained-skill-source/spec_subtask_1_copyin-repoint-foundation.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-76-self-contained-skill-source"
   commit_sha: null
   workflow_id: "wfl-20260610-110446-7of0"
   blocked_reason: null
-  last_resumable_step: "preplan"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies: []
 - id: 2
   name: "baseline-reconciliation"
   spec_path: ".feature-specs/SKILL-76-self-contained-skill-source/spec_subtask_2_baseline-reconciliation.md"
-  status: "pending"
-  branch: null
+  status: "in_progress"
+  branch: "feat/SKILL-76-self-contained-skill-source"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260610-114358-11u2"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies:
   - subtask_id: 1

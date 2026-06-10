@@ -79,6 +79,7 @@ class InstallServiceTest {
         platformSkillMaterializationPort = SnapshotAssertingMaterializationPort(platformManifests),
         stagingIntentPort = SnapshotAssertingStagingIntentPort(home, platformManifests),
       ),
+      reconcilePorts = unsupportedReconcilePorts,
       applyExecutionPort = UnsupportedApplyExecutionPort,
       skillLinkPort = UnsupportedSkillLinkPort,
       installSelectionPersistencePort = NoopInstallSelectionPersistencePort,
@@ -297,6 +298,7 @@ class InstallServiceTest {
       platformSkillMaterializationPort = UnsupportedPlatformSkillMaterializationPort,
       stagingIntentPort = UnsupportedStagingIntentPort,
     ),
+    reconcilePorts = unsupportedReconcilePorts,
     applyExecutionPort = StaticApplyExecutionPort(result),
     skillLinkPort = UnsupportedSkillLinkPort,
     installSelectionPersistencePort = selectionPort,
@@ -506,5 +508,39 @@ class InstallServiceTest {
   ) : InstallApplyExecutionPort {
     override fun applyInstall(request: InstallApplyExecutionRequest): InstallApplyExecutionResult =
       InstallApplyExecutionResult(result)
+  }
+
+  private object UnsupportedInstallReconcilePort : skillbill.ports.install.reconcile.InstallReconcilePort {
+    override fun reconcile(
+      request: skillbill.ports.install.reconcile.model.InstallReconcileRequest,
+    ): skillbill.ports.install.reconcile.model.InstallReconcileResult = error("reconcile is not part of this test")
+  }
+
+  private object UnsupportedInstallReconcileApplyPort : skillbill.ports.install.reconcile.InstallReconcileApplyPort {
+    override fun apply(
+      request: skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest,
+    ): skillbill.ports.install.reconcile.model.InstallReconcileApplyResult =
+      error("reconcile apply is not part of this test")
+  }
+
+  private object UnsupportedBaselineManifestPersistencePort :
+    skillbill.ports.install.baseline.BaselineManifestPersistencePort {
+    override fun readBaseline(
+      request: skillbill.ports.install.baseline.model.ReadBaselineManifestRequest,
+    ): skillbill.ports.install.baseline.model.ReadBaselineManifestResult =
+      error("readBaseline is not part of this test")
+
+    override fun writeBaseline(
+      request: skillbill.ports.install.baseline.model.WriteBaselineManifestRequest,
+    ): skillbill.ports.install.baseline.model.WriteBaselineManifestResult =
+      error("writeBaseline is not part of this test")
+  }
+
+  private companion object {
+    val unsupportedReconcilePorts = skillbill.application.install.InstallReconcilePorts(
+      reconcilePort = UnsupportedInstallReconcilePort,
+      reconcileApplyPort = UnsupportedInstallReconcileApplyPort,
+      baselineManifestPersistencePort = UnsupportedBaselineManifestPersistencePort,
+    )
   }
 }

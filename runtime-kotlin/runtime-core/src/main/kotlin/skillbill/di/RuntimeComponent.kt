@@ -34,6 +34,7 @@ import skillbill.application.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
@@ -43,6 +44,8 @@ import skillbill.infrastructure.fs.FileSystemInstallMcpRegistration
 import skillbill.infrastructure.fs.FileSystemInstallNativeAgentLinks
 import skillbill.infrastructure.fs.FileSystemInstallPlanningFacts
 import skillbill.infrastructure.fs.FileSystemInstallPlatformSkillMaterialization
+import skillbill.infrastructure.fs.FileSystemInstallReconcile
+import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
@@ -83,12 +86,15 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.apply.InstallApplyExecutionPort
+import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.link.InstallSkillLinkPort
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.install.plan.InstallPlanningFactsPort
 import skillbill.ports.install.plan.InstallPlatformSkillMaterializationPort
 import skillbill.ports.install.plan.InstallStagingIntentPort
+import skillbill.ports.install.reconcile.InstallReconcileApplyPort
+import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ReviewInputSource
@@ -191,6 +197,22 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun installApplyExecutionPort(adapter: FileSystemInstallApplyExecution): InstallApplyExecutionPort = adapter
+
+  // SKILL-76 Subtask 2: reconcile-compute + baseline manifest persistence ports,
+  // bound to their infra-fs adapters exactly like every other install adapter.
+  @Provides
+  @JvmSynthetic
+  internal fun installReconcilePort(adapter: FileSystemInstallReconcile): InstallReconcilePort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun installReconcileApplyPort(adapter: FileSystemInstallReconcileApply): InstallReconcileApplyPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun baselineManifestPersistencePort(
+    adapter: FileSystemBaselineManifestPersistence,
+  ): BaselineManifestPersistencePort = adapter
 
   @Provides
   @JvmSynthetic

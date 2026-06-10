@@ -2,8 +2,10 @@ package skillbill.application
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.InstallPlanningPorts
+import skillbill.application.install.InstallReconcilePorts
 import skillbill.application.install.toPolicyInput
 import skillbill.application.install.validatedInstallPlan
+import skillbill.install.model.BaselineManifest
 import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallPlan
@@ -11,17 +13,24 @@ import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
+import skillbill.install.model.InstallReconcileApplyOutcome
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
+import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SharedInstallSelection
+import skillbill.install.model.SkillReconciliationOutcome
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
+import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
+import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
 import skillbill.ports.install.link.InstallSkillLinkPort
 import skillbill.ports.install.link.model.InstallSkillLinkRequest
 import skillbill.ports.install.plan.model.InstallPlanningFactsRequest
 import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPortRequest
 import skillbill.ports.install.plan.model.InstallStagingIntentRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -30,6 +39,7 @@ import java.nio.file.Path
 @Inject
 class InstallService(
   private val planningPorts: InstallPlanningPorts,
+  private val reconcilePorts: InstallReconcilePorts,
   private val applyExecutionPort: InstallApplyExecutionPort,
   private val skillLinkPort: InstallSkillLinkPort,
   private val installSelectionPersistencePort: InstallSelectionPersistencePort,
@@ -64,6 +74,68 @@ class InstallService(
       ),
     ).staging
     return validatedInstallPlan(draft, staging, installPlanWireValidator)
+  }
+
+  /**
+   * SKILL-76 Subtask 2: compute the per-skill reconciliation plan for a reinstall.
+   * Pure compute — no FS mutation. The CLI renders the result as a machine-readable
+   * report and install.sh drives the stage -> reconcile -> swap sequence and the
+   * interactive conflict prompt from it (AC-5..AC-9).
+   */
+  fun reconcile(request: InstallReconcileRequest): ReconciliationPlan =
+    reconcilePorts.reconcilePort.reconcile(request).plan
+
+  /**
+   * SKILL-76 Subtask 2: runtime-owned per-skill APPLY. The infra-fs adapter recomputes
+   * the plan from the same inputs, gates on conflicts (refusing loudly when conflicts
+   * remain and accept-conflicts is unset), and replaces ONLY the changed skill dirs in
+   * the live tree from upstream — keep-local and locally-authored skills are preserved by
+   * construction. The baseline is then refreshed from the SAME returned plan via
+   * [refreshBaselineFromPlan] (single refresh-eligibility rule, the domain
+   * [ReconciliationPlan.baselineRefreshPaths]). Returns the plan, the installed paths,
+   * and whether the baseline was rewritten.
+   */
+  fun applyReconcile(request: InstallReconcileApplyRequest): InstallReconcileApplyOutcome {
+    val applied = reconcilePorts.reconcileApplyPort.apply(request)
+    val before = reconcilePorts.baselineManifestPersistencePort
+      .readBaseline(ReadBaselineManifestRequest(installHome = request.home))
+      .manifest
+    val updated = refreshBaselineFromPlan(request.home, applied.plan)
+    return InstallReconcileApplyOutcome(
+      plan = applied.plan,
+      installedPaths = applied.installedPaths,
+      refreshed = updated != before,
+    )
+  }
+
+  /**
+   * Refresh the baseline manifest after a successful, accepted apply. Adopt,
+   * new-upstream, and (accepted) conflict skills baseline to their UPSTREAM hash;
+   * keep-local and locally-authored skills are left untouched so a user edit is
+   * never silently re-baselined. Idempotent: a no-change reinstall produces only
+   * keep-local outcomes, so the overlay is empty and the manifest is unchanged
+   * (no baseline churn).
+   */
+  fun refreshBaselineFromPlan(home: Path, plan: ReconciliationPlan): BaselineManifest {
+    val current = reconcilePorts.baselineManifestPersistencePort
+      .readBaseline(ReadBaselineManifestRequest(installHome = home))
+      .manifest
+    val overlay = plan.outcomes.mapNotNull { outcome ->
+      when (outcome) {
+        is SkillReconciliationOutcome.Adopt -> outcome.skillRelativePath to outcome.upstreamHash
+        is SkillReconciliationOutcome.NewUpstream -> outcome.skillRelativePath to outcome.upstreamHash
+        is SkillReconciliationOutcome.Conflict -> outcome.skillRelativePath to outcome.upstreamHash
+        is SkillReconciliationOutcome.KeepLocal -> null
+        is SkillReconciliationOutcome.LocallyAuthored -> null
+      }
+    }.toMap()
+    val updated = current.withEntries(overlay)
+    if (updated != current) {
+      reconcilePorts.baselineManifestPersistencePort.writeBaseline(
+        WriteBaselineManifestRequest(installHome = home, manifest = updated),
+      )
+    }
+    return updated
   }
 
   fun applyInstall(plan: InstallPlan, telemetryLevelMutator: TelemetryLevelMutator? = null): InstallApplyResult {

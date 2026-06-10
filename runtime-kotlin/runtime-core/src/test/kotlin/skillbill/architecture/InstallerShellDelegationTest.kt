@@ -732,7 +732,76 @@ class InstallerShellDelegationTest {
 // standalone object so InstallerShellDelegationTest stays under detekt's LargeClass
 // threshold (mirroring PrebuiltReleaseStager). These helpers are pure: they only write
 // fixture files under the caller-provided paths and never touch test instance state.
-private object InstallerShellFixtures {
+internal object InstallerShellFixtures {
+  // SKILL-76 subtask 2: the installer drives `install reconcile` (compute) then
+  // `install reconcile --apply`. The fake CLI cannot compute real hashes, so it emits the
+  // controlled LINE-ORIENTED machine report install.sh consumes, and on --apply performs a
+  // faithful per-skill copy from the staged candidate into the live skills/ tree. Env knobs:
+  //   SKILL_BILL_FAKE_RECONCILE_CONFLICTS=<path> -> report a both-changed conflict.
+  //   SKILL_BILL_FAKE_KEEPLOCAL=<path>           -> classify that path keep-local (apply
+  //     leaves the live skill untouched, preserving the user edit).
+  // Extracted to a constant so seedInstallerRuntime stays under detekt's LongMethod limit.
+  private val reconcileFakeCliBlock: String =
+    """
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  applying=0
+    |  accept_conflicts=0
+    |  if printf '%s ' "${'$'}@" | grep -q -- '--apply'; then applying=1; fi
+    |  if printf '%s ' "${'$'}@" | grep -q -- '--accept-conflicts'; then accept_conflicts=1; fi
+    |  cand_skills="${'$'}home/.skill-bill/.candidate-source/skills"
+    |  cand_packs="${'$'}home/.skill-bill/.candidate-source/platform-packs"
+    |  live_skills="${'$'}home/.skill-bill/skills"
+    |  live_packs="${'$'}home/.skill-bill/platform-packs"
+    |  conflict="${'$'}{SKILL_BILL_FAKE_RECONCILE_CONFLICTS:-}"
+    |  keeplocal="${'$'}{SKILL_BILL_FAKE_KEEPLOCAL:-}"
+    |  if [[ "${'$'}applying" -eq 1 ]]; then
+    |    if [[ -n "${'$'}conflict" && "${'$'}accept_conflicts" -ne 1 ]]; then
+    |      printf 'reconcile apply refused: unresolved conflict %s\n' "${'$'}conflict" >&2
+    |      exit 1
+    |    fi
+    |    if [[ -d "${'$'}cand_skills" ]]; then
+    |      mkdir -p "${'$'}live_skills"
+    |      for sd in "${'$'}cand_skills"/*/; do
+    |        [[ -d "${'$'}sd" ]] || continue
+    |        name="${'$'}(basename "${'$'}sd")"
+    |        if [[ "skills/${'$'}name" == "${'$'}keeplocal" ]]; then continue; fi
+    |        rm -rf "${'$'}live_skills/${'$'}name"
+    |        cp -R "${'$'}sd" "${'$'}live_skills/${'$'}name"
+    |      done
+    |    fi
+    |    # Mirror the real apply: it is the SOLE writer of the live platform-packs tree, so
+    |    # adopt the candidate pack files (the fixture packs carry only non-skill metadata).
+    |    if [[ -d "${'$'}cand_packs" ]]; then
+    |      mkdir -p "${'$'}live_packs"
+    |      cp -R "${'$'}cand_packs/." "${'$'}live_packs/"
+    |    fi
+    |    printf '%s\n' '{"version":"1.0"}' > "${'$'}home/.skill-bill/baseline-manifest.json"
+    |    if [[ -n "${'$'}conflict" ]]; then
+    |      printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
+    |      printf 'reconcile_summary: applied=true has_conflicts=true conflict_count=1 baseline_refreshed=true installed_count=1\n'
+    |    elif [[ -n "${'$'}keeplocal" ]]; then
+    |      printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
+    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |    else
+    |      printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=true installed_count=1\n'
+    |    fi
+    |    exit 0
+    |  fi
+    |  if [[ -n "${'$'}conflict" ]]; then
+    |    printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
+    |    printf 'reconcile_summary: applied=false has_conflicts=true conflict_count=1 baseline_refreshed=false installed_count=0\n'
+    |  elif [[ -n "${'$'}keeplocal" ]]; then
+    |    printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
+    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  else
+    |    printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  fi
+    |  exit 0
+    |fi
+    """.trimMargin()
+
   fun seedInstallerRuntime(repoRoot: Path) {
     val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
     val mcpBin = repoRoot.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp")
@@ -765,6 +834,7 @@ private object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/.claude"
       |  exit 0
       |fi
+      |$reconcileFakeCliBlock
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
@@ -832,6 +902,14 @@ private object InstallerShellFixtures {
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
       |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
+      |# SKILL-76 subtask 2: whitelist `install reconcile` here too (BOTH stubs) so an
+      |# unexpected reconcile call returns a clean LINE-ORIENTED report instead of the
+      |# catch-all exit 2. The uninstaller path never drives reconcile, but the whitelist
+      |# keeps the stubs symmetric.
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+      |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
@@ -953,7 +1031,7 @@ private data class UninstallerShellRun(
   val output: String,
 )
 
-private data class DesktopInstallFixture(
+internal data class DesktopInstallFixture(
   val appTarget: Path,
   val launcherPath: Path,
 )
@@ -1155,6 +1233,10 @@ private object PrebuiltReleaseStager {
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
+    |  exit 0
+    |fi
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
     |  exit 0
     |fi
     |exit 0

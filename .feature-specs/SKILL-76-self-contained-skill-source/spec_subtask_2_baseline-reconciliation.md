@@ -1,5 +1,5 @@
 ---
-status: pending
+status: In Progress
 parent_spec: ./spec.md
 subtask_id: 2
 ---

@@ -14,6 +14,7 @@ import skillbill.application.McpRegistrationService
 import skillbill.application.NativeAgentInstallService
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.error.ReconciliationApplyRefusedError
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -27,6 +28,7 @@ import skillbill.install.model.InstallationTargetPaths
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
+import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
@@ -35,6 +37,8 @@ import skillbill.model.RuntimeContext
 import skillbill.ports.install.model.NativeAgentLinkOutcome
 import skillbill.ports.install.model.NativeAgentLinkProvider
 import skillbill.ports.install.model.NativeAgentLinkRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -86,6 +90,115 @@ class InstallPlanCommand(
   override fun run() {
     val plan = installService.planInstall(toRequest(state))
     state.complete(installPlanPayload(plan, installService), format)
+  }
+}
+
+@Inject
+class InstallReconcileCommand(
+  private val state: CliRunState,
+  private val installService: InstallService,
+) : InstallRequestCommand(
+  "reconcile",
+  "Reconcile a reinstall: compare upstream/local/baseline per-skill hashes and emit a machine-readable plan.",
+) {
+  // --repo-root/--skills/--platform-packs (inherited) describe the LOCAL copied
+  // source under ~/.skill-bill. The upstream/candidate clone source is supplied
+  // explicitly so reconciliation runs against a staged candidate BEFORE any swap.
+  private val upstreamRepoRoot by option(
+    "--upstream-repo-root",
+    help = "Upstream/candidate repo root containing skills/ and platform-packs/ to reconcile against the local copy.",
+  ).required()
+  private val upstreamSkillsRoot by option(
+    "--upstream-skills",
+    help = "Upstream/candidate skills root. Defaults to <upstream-repo-root>/skills.",
+  )
+  private val upstreamPlatformPacksRoot by option(
+    "--upstream-platform-packs",
+    help = "Upstream/candidate platform-packs root. Defaults to <upstream-repo-root>/platform-packs.",
+  )
+
+  // SKILL-76 Subtask 2: APPLY mode. When set, the runtime performs the per-skill FILE
+  // operations + baseline refresh from a SINGLE computed plan (no shell whole-tree swap).
+  private val apply by option(
+    "--apply",
+    help = "Apply the computed plan: install changed upstream skills into the live tree and refresh the baseline.",
+  ).flag(default = false)
+  private val acceptConflicts by option(
+    "--accept-conflicts",
+    help = "With --apply, overwrite both-changed conflicting skills with upstream. " +
+      "Without it, apply refuses on conflict.",
+  ).flag(default = false)
+
+  override fun run() {
+    val localRequest = toRequest(state)
+    val resolvedUpstreamRepoRoot = Path.of(upstreamRepoRoot).toAbsolutePath().normalize()
+    val resolvedUpstreamSkills = upstreamSkillsRoot?.let(Path::of) ?: resolvedUpstreamRepoRoot.resolve("skills")
+    val resolvedUpstreamPacks =
+      upstreamPlatformPacksRoot?.let(Path::of) ?: resolvedUpstreamRepoRoot.resolve("platform-packs")
+
+    if (apply) {
+      // Apply is a durable mutation; gate it behind the goal-continuation refusal.
+      if (state.refuseInstallMutationDuringGoalContinuation("reconcile")) {
+        return
+      }
+      try {
+        val outcome = installService.applyReconcile(
+          InstallReconcileApplyRequest(
+            home = state.userHome,
+            upstreamRepoRoot = resolvedUpstreamRepoRoot,
+            upstreamSkillsRoot = resolvedUpstreamSkills,
+            upstreamPlatformPacksRoot = resolvedUpstreamPacks,
+            localRepoRoot = localRequest.repoRoot,
+            localSkillsRoot = localRequest.targetPaths.skillsRoot,
+            localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
+            acceptConflicts = acceptConflicts,
+          ),
+        )
+        completeReconcile(
+          outcome.plan,
+          refreshed = outcome.refreshed,
+          applied = true,
+          installedPaths = outcome.installedPaths,
+        )
+      } catch (error: ReconciliationApplyRefusedError) {
+        // Conflict gating: apply refused and changed nothing. Surface the typed message
+        // as a non-zero exit so the shell aborts the install.
+        state.completeText(
+          "${error.message.orEmpty()}\n",
+          mapOf("status" to "error", "error" to error.message),
+          exitCode = 1,
+        )
+      }
+      return
+    }
+
+    val plan = installService.reconcile(
+      InstallReconcileRequest(
+        home = state.userHome,
+        upstreamRepoRoot = resolvedUpstreamRepoRoot,
+        upstreamSkillsRoot = resolvedUpstreamSkills,
+        upstreamPlatformPacksRoot = resolvedUpstreamPacks,
+        localRepoRoot = localRequest.repoRoot,
+        localSkillsRoot = localRequest.targetPaths.skillsRoot,
+        localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
+      ),
+    )
+    completeReconcile(plan, refreshed = false, applied = false, installedPaths = emptyList())
+  }
+
+  // Emit the STABLE line-oriented machine report as stdout (install.sh consumes it
+  // line-by-line, FAIL-CLOSED on a missing/unparseable summary), while keeping the
+  // structured payload for JSON consumers.
+  private fun completeReconcile(
+    plan: ReconciliationPlan,
+    refreshed: Boolean,
+    applied: Boolean,
+    installedPaths: List<String>,
+  ) {
+    state.completeText(
+      reconcileMachineReport(plan, refreshed = refreshed, applied = applied, installedPaths = installedPaths),
+      reconcilePayload(plan, refreshed = refreshed, applied = applied, installedPaths = installedPaths),
+    )
   }
 }
 

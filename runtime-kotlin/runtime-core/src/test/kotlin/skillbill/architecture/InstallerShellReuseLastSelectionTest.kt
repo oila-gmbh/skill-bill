@@ -165,6 +165,10 @@ class InstallerShellReuseLastSelectionTest {
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
     |  exit 0
     |fi
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  exit 0
+    |fi
     |exit 2
     |
   """.trimMargin()

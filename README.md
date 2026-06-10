@@ -249,6 +249,40 @@ agents, optional platform packs, telemetry level (`anonymous`, `full`, or
 native-agent output, telemetry configuration, MCP registration, and Windows
 symlink preflight outcomes.
 
+### Self-contained source copy, reinstall reconciliation, and the baseline manifest
+
+`install.sh` copies the authored skill source (`skills/`, `platform-packs/`, and
+the whole `orchestration/` tree) into `~/.skill-bill/` as **real files**, and the
+runtime is repointed at that copy. This makes the install self-contained: once an
+install succeeds you can delete the clone and Skill Bill keeps resolving from the
+copy under `~/.skill-bill/` — the clone is **not required** at runtime.
+
+On a **reinstall**, the installer never blindly overwrites your copy. It first
+stages the clone's source into candidate dirs, then runs `skill-bill install
+reconcile` to compare three content hashes per skill — the **upstream** candidate,
+your **local** copy under `~/.skill-bill/`, and the **baseline** (the last-copied-in
+hash recorded in `~/.skill-bill/baseline-manifest.json`, which survives the
+pre-install wipe). Each skill resolves to one outcome:
+
+- **adopt** — you did not edit the skill (local == baseline) and upstream changed:
+  take the new upstream and refresh the baseline.
+- **keep-local** — you edited the skill (local != baseline) and upstream did not
+  change: your edit is kept and the baseline is left untouched.
+- **new-upstream** — no baseline entry yet (first install, or a newly shipped
+  skill): copy it in and write a baseline entry.
+- **locally-authored** — a skill with no upstream counterpart: preserved (never
+  deleted) and reported.
+- **conflict** — both your local copy and upstream changed. The installer **warns
+  and prompts** (`accept` overwrites your local copy with upstream and refreshes the
+  baseline; `abort` stops the whole install and changes nothing). With **no TTY**
+  (CI / piped install) any conflict **aborts with a clear message** rather than
+  guessing. The conflict detection and the accept/abort decision happen **before**
+  the atomic source swap, so an abort leaves the existing install fully intact. All
+  conflicts are listed in the install summary (no sidecar file).
+
+A no-change reinstall is **idempotent**: every skill resolves to keep-local, no
+conflicts are raised, and the baseline manifest is left byte-identical.
+
 Install source and release flags:
 
 - `--from-source` — build the runtime (and desktop app) from source with Gradle instead of fetching prebuilt artifacts. Requires a JDK. Ignores `--release` and is the automatic fallback when no prebuilt asset matches your host.

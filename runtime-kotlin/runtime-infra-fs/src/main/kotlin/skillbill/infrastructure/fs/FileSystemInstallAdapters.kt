@@ -4,8 +4,11 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.install.InstallCleanupOperations
 import skillbill.install.InstallNativeAgentOperations
 import skillbill.install.InstallOperations
+import skillbill.install.ReconcileSourceRoots
+import skillbill.install.applyReconciliation
 import skillbill.install.buildInstallStagingIntent
 import skillbill.install.collectInstallPlanningFacts
+import skillbill.install.computeReconciliationPlan
 import skillbill.install.installedSkillsCacheRoot
 import skillbill.install.materializeSelectedPlatformSkills
 import skillbill.launcher.McpRegistrationOperations
@@ -23,6 +26,8 @@ import skillbill.ports.install.agent.model.InstallAgentTargetCleanupResult
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.apply.model.InstallApplyExecutionResult
+import skillbill.ports.install.baseline.BaselineManifestPersistencePort
+import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
 import skillbill.ports.install.link.InstallSkillLinkPort
 import skillbill.ports.install.link.model.InstallSkillLinkRequest
 import skillbill.ports.install.link.model.InstallSkillLinkResult
@@ -48,6 +53,12 @@ import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPor
 import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPortResult
 import skillbill.ports.install.plan.model.InstallStagingIntentRequest
 import skillbill.ports.install.plan.model.InstallStagingIntentResult
+import skillbill.ports.install.reconcile.InstallReconcileApplyPort
+import skillbill.ports.install.reconcile.InstallReconcilePort
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
+import skillbill.ports.install.reconcile.model.InstallReconcileRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileResult
 import skillbill.install.NativeAgentLinkOverrides as FsNativeAgentLinkOverrides
 import skillbill.install.NativeAgentLinkRequest as FsNativeAgentLinkRequest
 
@@ -81,6 +92,66 @@ class FileSystemInstallStagingIntent : InstallStagingIntentPort {
         platformManifests = request.platformManifests,
       ),
     )
+}
+
+@Inject
+class FileSystemInstallReconcile(
+  private val baselineManifestPersistence: BaselineManifestPersistencePort,
+) : InstallReconcilePort {
+  override fun reconcile(request: InstallReconcileRequest): InstallReconcileResult {
+    val baseline = baselineManifestPersistence
+      .readBaseline(ReadBaselineManifestRequest(installHome = request.home))
+      .manifest
+    return InstallReconcileResult(
+      plan = computeReconciliationPlan(
+        upstream = ReconcileSourceRoots(
+          repoRoot = request.upstreamRepoRoot,
+          skillsRoot = request.upstreamSkillsRoot,
+          platformPacksRoot = request.upstreamPlatformPacksRoot,
+        ),
+        local = ReconcileSourceRoots(
+          repoRoot = request.localRepoRoot,
+          skillsRoot = request.localSkillsRoot,
+          platformPacksRoot = request.localPlatformPacksRoot,
+        ),
+        home = request.home,
+        baseline = baseline,
+      ),
+    )
+  }
+}
+
+@Inject
+class FileSystemInstallReconcileApply(
+  private val baselineManifestPersistence: BaselineManifestPersistencePort,
+) : InstallReconcileApplyPort {
+  override fun apply(request: InstallReconcileApplyRequest): InstallReconcileApplyResult {
+    val baseline = baselineManifestPersistence
+      .readBaseline(ReadBaselineManifestRequest(installHome = request.home))
+      .manifest
+    // Per-skill FILE operations against the live tree (gated on conflicts inside the
+    // policy). The baseline refresh derives from the SAME returned plan, in the
+    // application overlay, so the refresh-eligibility rule lives in ONE place.
+    val output = applyReconciliation(
+      upstream = ReconcileSourceRoots(
+        repoRoot = request.upstreamRepoRoot,
+        skillsRoot = request.upstreamSkillsRoot,
+        platformPacksRoot = request.upstreamPlatformPacksRoot,
+      ),
+      local = ReconcileSourceRoots(
+        repoRoot = request.localRepoRoot,
+        skillsRoot = request.localSkillsRoot,
+        platformPacksRoot = request.localPlatformPacksRoot,
+      ),
+      home = request.home,
+      baseline = baseline,
+      acceptConflicts = request.acceptConflicts,
+    )
+    return InstallReconcileApplyResult(
+      plan = output.plan,
+      installedPaths = output.installedPaths,
+    )
+  }
 }
 
 @Inject
