@@ -189,6 +189,58 @@ class MalformedInstallSelectionRecordError(
 )
 
 /**
+ * SKILL-76 Subtask 2: surfaced when the durable baseline manifest at
+ * `~/.skill-bill/baseline-manifest.json` exists but cannot be read or parsed
+ * (IO/permission failure, malformed JSON, unknown/blank keys, or an unsupported
+ * contract version). The message names the offending path so reconciliation
+ * fails loudly at the read seam instead of silently falling back. Mirrors
+ * [UnreadableInstallSelectionRecordError]; the dedicated subclass keeps baseline
+ * read failures distinguishable from install-selection failures.
+ */
+class UnreadableBaselineManifestError(
+  val path: String,
+  val reason: String? = null,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Baseline manifest at '${path.ifBlank { "<unknown>" }}' cannot be read" +
+    (reason?.let { ": $it." } ?: "."),
+  cause,
+)
+
+/**
+ * SKILL-76 Subtask 2: surfaced when per-skill reconciliation classification cannot
+ * be completed loudly — e.g. an upstream/local source root that is required for a
+ * computed outcome is unreadable, or a reconciliation invariant is violated. The
+ * message names the offending skill-relative path and the failure reason so the
+ * shell aborts the whole install with a clear message rather than half-applying.
+ */
+class ReconciliationConflictError(
+  val skillRelativePath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Reconciliation failed for skill '${skillRelativePath.ifBlank { "<unknown>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-76 Subtask 2: surfaced when the runtime-owned per-skill reconcile APPLY is
+ * invoked while the computed plan still has unresolved both-changed conflicts and the
+ * caller did NOT pass `--accept-conflicts`. Apply refuses and changes NOTHING on disk,
+ * so AC-7 "abort changes nothing" holds even if the shell mis-calls. The message lists
+ * the conflicting skill-relative paths so the failure is actionable.
+ */
+class ReconciliationApplyRefusedError(
+  val conflictPaths: List<String>,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Refusing to apply reconciliation: ${conflictPaths.size} unresolved both-changed conflict(s) " +
+    "(${conflictPaths.joinToString(", ").ifBlank { "<none>" }}) and --accept-conflicts was not set. " +
+    "Nothing was changed.",
+  cause,
+)
+
+/**
  * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
  * exists but cannot be read (IO/permission failure). The message names the
  * offending file path so config-load failures fail loudly at the read seam.

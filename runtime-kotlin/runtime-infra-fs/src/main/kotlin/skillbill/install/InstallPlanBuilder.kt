@@ -8,7 +8,6 @@ import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
-import skillbill.install.model.InstallPlatformPackDiscoverySnapshot
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
 import skillbill.install.model.InstallPolicyInput
@@ -81,6 +80,20 @@ private fun buildInstallPolicyInput(
     },
     defaultAgentTargets = claudeMultiRootDefaultTargets(request.home),
   )
+}
+
+/**
+ * SKILL-76 Subtask 2: enumerate every install-plan skill (base + all materialized
+ * platform-pack skills) for [request]. Lives in the approved builder seam so the
+ * reconcile policy can reuse skill enumeration WITHOUT referencing the domain
+ * `InstallPlanPolicy` directly (InstallPolicyOwnershipArchitectureTest restricts
+ * policy callers to this file). Returns the same `draft.skills` the staging-intent
+ * builder consumes.
+ */
+internal fun enumerateInstallPlanSkills(request: InstallPlanRequest): List<InstallPlanSkill> {
+  requireSupportedAgentContract()
+  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
+  return InstallPlanPolicy.buildPlanDraft(buildInstallPolicyInput(request, platformManifests)).skills
 }
 
 internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPlanningFacts {
@@ -224,12 +237,4 @@ private fun claudeMultiRootDefaultTargets(home: Path): List<InstallAgentDefaultT
     } else {
       listOf(InstallAgentDefaultTarget(agent = agent, path = path))
     }
-  }
-
-private fun List<PlatformManifest>.toDiscoverySnapshots(): List<InstallPlatformPackDiscoverySnapshot> =
-  map { manifest ->
-    InstallPlatformPackDiscoverySnapshot(
-      slug = manifest.slug,
-      packRoot = manifest.packRoot,
-    )
   }

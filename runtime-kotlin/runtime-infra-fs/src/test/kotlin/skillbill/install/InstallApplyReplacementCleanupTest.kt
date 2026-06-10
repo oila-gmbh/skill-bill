@@ -79,6 +79,52 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `apply migrates a clone-pointing managed link onto the copy with no dangling clone link`() {
+    // SKILL-76 AC-10: a pre-existing repo-symlinked install points its managed agent links into the
+    // fetched CLONE (a path OUTSIDE ~/.skill-bill). The first copied-source install must repoint that
+    // link UNDER the copied repoRoot's staging cache and leave NO symlink still resolving into the
+    // clone. The clone here is a sibling dir that is never injected as repoRoot, modelling the real
+    // "clone deleted after install" guarantee: nothing may keep pointing at it.
+    val fixture = setupApplyFixture()
+    val clone = Files.createTempDirectory("skillbill-install-apply-clone").also(tempDirs::add)
+    seedBaseSkill(clone, "bill-code-review")
+    val targetDir = fixture.home.resolve("agent-skill-targets/codex")
+    Files.createDirectories(targetDir)
+    val cloneManagedLink = targetDir.resolve("bill-code-review")
+    createSymlinkOrSkip(cloneManagedLink, clone.resolve("skills/bill-code-review"))
+
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        agents = setOf(InstallAgent.CODEX),
+        replaceExistingSkillBillLinks = true,
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertTrue(Files.isSymbolicLink(cloneManagedLink), "managed link must survive as a symlink")
+    val repointed = readSymlinkTarget(cloneManagedLink)
+    assertTrue(
+      repointed.startsWith(fixture.home.resolve(".skill-bill/installed-skills")),
+      "managed link must repoint under the copied repoRoot staging cache, was $repointed",
+    )
+    assertFalse(
+      repointed.startsWith(clone.toAbsolutePath().normalize()),
+      "managed link must NOT keep resolving into the clone, was $repointed",
+    )
+    // No surviving link anywhere in the agent target dir resolves into the clone.
+    val cloneRoot = clone.toAbsolutePath().normalize()
+    val danglingIntoClone = Files.list(targetDir).use { stream ->
+      stream
+        .filter { entry -> Files.isSymbolicLink(entry) }
+        .filter { entry -> readSymlinkTarget(entry).startsWith(cloneRoot) }
+        .toList()
+    }
+    assertTrue(danglingIntoClone.isEmpty(), "no symlink may still point into the clone: $danglingIntoClone")
+  }
+
+  @Test
   fun `apply replacement removes legacy renamed Skill Bill links`() {
     val fixture = setupApplyFixture()
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")

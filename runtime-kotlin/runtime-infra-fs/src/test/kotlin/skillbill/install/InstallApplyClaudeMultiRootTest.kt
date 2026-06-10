@@ -6,6 +6,7 @@ import skillbill.install.model.InstallAgentLinkStatus
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
 import java.nio.file.Files
@@ -34,6 +35,112 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
         targetPaths = base.targetPaths.copy(agentTargets = emptyList()),
       )
     }
+
+  /**
+   * SKILL-76 AC-11: build a fixture whose `repoRoot` (and the derived skills/platform-packs roots)
+   * is the COPY under `~/.skill-bill`, not the fetched clone. This is what subtask 1 repoints
+   * `--repo-root` at. Returns a fixture sharing the original `home` so claude multi-root discovery,
+   * the staging cache, and MCP config all resolve under the same home while the SOURCE location has
+   * moved to the copy. Locks that the SKILL-74 fan-out + SKILL-75 MCP wiring are source-location
+   * agnostic.
+   */
+  private fun copiedSourceFixture(seed: ApplyFixture): ApplyFixture {
+    val copyRoot = seed.home.resolve(".skill-bill/source")
+    Files.createDirectories(copyRoot)
+    Files.walk(seed.repoRoot).use { stream ->
+      stream.forEach { src ->
+        val relative = seed.repoRoot.relativize(src)
+        val dest = copyRoot.resolve(relative.toString())
+        if (Files.isDirectory(src)) {
+          Files.createDirectories(dest)
+        } else {
+          Files.createDirectories(dest.parent)
+          Files.copy(src, dest)
+        }
+      }
+    }
+    return ApplyFixture(copyRoot, seed.home)
+  }
+
+  @Test
+  fun `multi-root fan-out and per-profile MCP still resolve against the copied repoRoot`() {
+    // SKILL-76 AC-11: with --repo-root pointing at the COPY under ~/.skill-bill, the SKILL-74
+    // claude multi-profile fan-out still targets every resolved root's commands dir, every link
+    // resolves into the shared staging cache (keyed off the copy, never the clone), and the
+    // SKILL-75 per-profile MCP registration is unaffected (it keys off home, not the source).
+    val seed = setupApplyFixture()
+    val fixture = copiedSourceFixture(seed)
+    assertTrue(
+      fixture.repoRoot.startsWith(fixture.home.resolve(".skill-bill")),
+      "guard: repoRoot must be the copy under ~/.skill-bill, was ${fixture.repoRoot}",
+    )
+    val defaultRoot = fixture.home.resolve(".claude").also { Files.createDirectories(it) }
+    val workRoot = markClaudeProfile(fixture.home, ".claude-work")
+
+    val plan = InstallOperations.planInstall(claudeMultiRootRequest(fixture))
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
+
+    // (a) Fan-out: every selected skill links into BOTH resolved roots' commands dirs.
+    val expectedCommandDirs = setOf(defaultRoot.resolve("commands"), workRoot.resolve("commands"))
+      .map { it.toAbsolutePath().normalize() }
+      .toSet()
+    result.skills.forEach { skill ->
+      val linkedParents = skill.links
+        .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
+        .map { link -> link.linkPath.parent.toAbsolutePath().normalize() }
+        .toSet()
+      assertEquals(expectedCommandDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
+    }
+
+    // Symlink targets resolve into the staging cache under home, NOT back into the copied source.
+    val stagedTargets = result.skills.flatMap { skill ->
+      skill.links
+        .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
+        .map { link -> readSymlinkTarget(link.linkPath) }
+    }
+    stagedTargets.forEach { target ->
+      assertTrue(
+        target.startsWith(fixture.home.resolve(".skill-bill/installed-skills")),
+        "link did not resolve into the staging cache: $target",
+      )
+      assertFalse(
+        target.startsWith(fixture.repoRoot.toAbsolutePath().normalize()),
+        "link must not resolve back into the copied source: $target",
+      )
+    }
+
+    // (b) Per-profile MCP registration: unaffected by the source move; every claude outcome succeeds
+    // and targets the home claude config (resolved off home, never off --repo-root/the copy).
+    val claudeMcpOutcomes = result.mcpRegistrationOutcomes.filter { it.agent == InstallAgent.CLAUDE }
+    assertTrue(claudeMcpOutcomes.isNotEmpty(), "claude MCP registration must be attempted")
+    claudeMcpOutcomes.forEach { outcome ->
+      assertEquals(McpRegistrationApplyStatus.SUCCESS, outcome.status, "claude MCP registration must succeed")
+      assertEquals(
+        fixture.home.resolve(".claude.json").toAbsolutePath().normalize(),
+        outcome.configPath?.toAbsolutePath()?.normalize(),
+        "MCP registration must target the home claude config, independent of --repo-root",
+      )
+    }
+  }
+
+  @Test
+  fun `CLAUDE_CONFIG_DIR resolves the command target independent of the copied repoRoot`() {
+    // SKILL-76 AC-11: CLAUDE_CONFIG_DIR honoring is source-location agnostic. Moving --repo-root to
+    // the copy must not change which root the command target resolves to.
+    val seed = setupApplyFixture()
+    val fixture = copiedSourceFixture(seed)
+    val workConfig = fixture.home.resolve(".claude-work")
+    val env = mapOf(CLAUDE_CONFIG_DIR_ENV to workConfig.toString())
+
+    assertEquals(
+      workConfig.resolve("commands"),
+      InstallOperations.agentPath("claude", fixture.home, environment = env),
+      "CLAUDE_CONFIG_DIR must still resolve the command target after --repo-root moved to the copy",
+    )
+  }
 
   @Test
   fun `apply links skills into every resolved claude root's commands using one shared staging cache`() {

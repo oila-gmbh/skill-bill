@@ -104,6 +104,101 @@ class InstallerShellDelegationTest {
       ),
       run.applyArgs,
     )
+    assertCopyInPopulatedRealFiles(run)
+  }
+
+  @Test
+  fun `installer copy-in materializes self-contained source so deleting the clone keeps skills resolving`() {
+    // SKILL-76 AC-1/AC-3: copy_in_authored_source copies skills/, platform-packs/, and the
+    // WHOLE orchestration/ tree into $HOME/.skill-bill as REAL files BEFORE skill linking.
+    // After a successful install, deleting the clone must leave the copied source resolvable.
+    val run = runInstallerShell(input = "1\ncopilot\nbase only\noff\nskip\n")
+
+    assertCopyInPopulatedRealFiles(run)
+    // The repoint args already point at the copy (asserted elsewhere). Now prove AC-3:
+    // wipe the clone and confirm the copied skill content.md still resolves from the copy.
+    Files.walk(run.repoRoot).use { stream ->
+      stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+    assertFalse(Files.exists(run.repoRoot), "clone should be deleted for the AC-3 check")
+    val copiedSkill = run.home.resolve(".skill-bill/skills/bill-sample/content.md")
+    assertTrue(
+      Files.isRegularFile(copiedSkill),
+      "AC-3: copied skill content.md must survive clone deletion at $copiedSkill",
+    )
+    assertTrue(
+      Files.isRegularFile(run.home.resolve(".skill-bill/orchestration/review-orchestrator/PLAYBOOK.md")),
+      "AC-3: copied orchestration playbook must survive clone deletion",
+    )
+  }
+
+  private fun assertCopyInPopulatedRealFiles(run: InstallerShellRun) {
+    val stateDir = run.home.resolve(".skill-bill")
+    val skills = stateDir.resolve("skills")
+    val packs = stateDir.resolve("platform-packs")
+    val orchestration = stateDir.resolve("orchestration")
+    listOf(skills, packs, orchestration).forEach { dir ->
+      assertTrue(Files.isDirectory(dir), "copy-in must create real directory $dir")
+      assertFalse(Files.isSymbolicLink(dir), "copy-in must create REAL files, not a symlink: $dir")
+    }
+    assertTrue(
+      Files.isRegularFile(skills.resolve("bill-sample/content.md")),
+      "copy-in must materialize skill content.md under the copy",
+    )
+    assertTrue(
+      Files.isRegularFile(orchestration.resolve("review-orchestrator/PLAYBOOK.md")),
+      "copy-in must materialize the WHOLE orchestration tree under the copy",
+    )
+  }
+
+  @Test
+  fun `pre-install wipe preserves copied source and reserved baseline but clears runtime installed-skills and dbs`() {
+    // SKILL-76 AC-5: when install.sh execs uninstall.sh as the pre-install step it sets
+    // SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1. uninstall.sh must then PRESERVE skills/,
+    // platform-packs/, orchestration/ and the reserved baseline-manifest path, while still
+    // clearing runtime/, installed-skills/, and *.db state DBs.
+    val fixtures = seedStateDirForWipe()
+    val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = false)
+
+    assertEquals(0, run.exitCode, run.output)
+    // Preserved self-contained source set.
+    assertTrue(Files.isRegularFile(fixtures.skillContent), "skills/ must be preserved under preserve-wipe")
+    assertTrue(Files.isRegularFile(fixtures.packYaml), "platform-packs/ must be preserved under preserve-wipe")
+    assertTrue(Files.isRegularFile(fixtures.orchestrationPlaybook), "orchestration/ must be preserved")
+    assertTrue(Files.isRegularFile(fixtures.baselineManifest), "reserved baseline-manifest path must be preserved")
+    // Cleared runtime/install state.
+    assertFalse(Files.exists(fixtures.runtimeBin), "runtime/ must be cleared under preserve-wipe")
+    assertFalse(Files.exists(fixtures.installedSkill), "installed-skills/ must be cleared under preserve-wipe")
+    assertFalse(Files.exists(fixtures.stateDb), "*.db state DBs must be cleared under preserve-wipe")
+  }
+
+  @Test
+  fun `goal continuation exit-64 guard preserves the entire state dir including the active goal db`() {
+    // SKILL-76 AC-5 guard: the SKILL_BILL_GOAL_CONTINUATION=1 exit-64 guard is the PRIMARY
+    // protection for the active workflow/review-metrics DB — uninstall.sh refuses to run at all,
+    // so NOTHING under ~/.skill-bill is touched, regardless of the preserve flag. This test pins
+    // that guard (must not be altered) and confirms the active *.db is untouched.
+    val fixtures = seedStateDirForWipe()
+    val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = true)
+
+    assertEquals(64, run.exitCode, run.output)
+    assertContains(run.output, "Refusing to run uninstall.sh during skill-bill goal-continuation")
+    assertTrue(
+      Files.isRegularFile(fixtures.stateDb),
+      "active goal *.db must survive untouched when the exit-64 guard fires",
+    )
+    assertTrue(Files.isRegularFile(fixtures.runtimeBin), "exit-64 guard must abort before any removal")
+  }
+
+  @Test
+  fun `explicit uninstall fully removes the state dir even with copied source present`() {
+    // SKILL-76 AC-5: an explicit ./uninstall.sh (preserve flag UNSET) must still fully remove
+    // ~/.skill-bill, including the copied-in source.
+    val fixtures = seedStateDirForWipe()
+    val run = runUninstaller(fixtures, preserveSource = false, goalContinuation = false)
+
+    assertEquals(0, run.exitCode, run.output)
+    assertFalse(Files.exists(fixtures.stateDir), "explicit uninstall must fully remove ~/.skill-bill")
   }
 
   @Test
@@ -317,11 +412,13 @@ class InstallerShellDelegationTest {
     val logPath = Files.createTempFile("skillbill-installer-shell-runtime", ".log")
     Files.writeString(repoRoot.resolve("install.sh"), Files.readString(runtimeRoot.parent.resolve("install.sh")))
     repoRoot.resolve("install.sh").toFile().setExecutable(true)
-    Files.createDirectories(repoRoot.resolve("skills"))
-    seedInstallerPlatformPack(repoRoot, "kmp")
-    seedInstallerPlatformPack(repoRoot, "kotlin")
-    seedInstallerPlatformPack(repoRoot, "python")
-    seedInstallerRuntime(repoRoot)
+    // SKILL-76: copy_in_authored_source needs real skills/, platform-packs/, and the
+    // WHOLE orchestration/ tree to exist in the clone so it can copy them into the COPY.
+    InstallerShellFixtures.seedAuthoredSource(repoRoot)
+    InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kmp")
+    InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kotlin")
+    InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "python")
+    InstallerShellFixtures.seedInstallerRuntime(repoRoot)
 
     val command = mutableListOf("bash", repoRoot.resolve("install.sh").toString())
     if (fromSource) {
@@ -366,12 +463,14 @@ class InstallerShellDelegationTest {
     expected.run.home.toString(),
     "install",
     "apply",
+    // SKILL-76 AC-2: --repo-root/--skills/--platform-packs point at the COPY under
+    // $HOME/.skill-bill that copy_in_authored_source materialized, NOT the clone.
     "--repo-root",
-    expected.run.repoRoot.toString(),
+    expected.run.home.resolve(".skill-bill").toString(),
     "--skills",
-    expected.run.repoRoot.resolve("skills").toString(),
+    expected.run.home.resolve(".skill-bill/skills").toString(),
     "--platform-packs",
-    expected.run.repoRoot.resolve("platform-packs").toString(),
+    expected.run.home.resolve(".skill-bill/platform-packs").toString(),
     "--agent-mode",
     expected.agentMode,
     "--platform-mode",
@@ -397,67 +496,6 @@ class InstallerShellDelegationTest {
     expected.run.home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp").toString(),
   )
 
-  private fun seedInstallerRuntime(repoRoot: Path) {
-    val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
-    val mcpBin = repoRoot.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp")
-    Files.createDirectories(cliBin.parent)
-    Files.createDirectories(mcpBin.parent)
-    Files.writeString(
-      cliBin,
-      """
-      |#!/usr/bin/env bash
-      |set -euo pipefail
-      |{
-      |  echo CALL
-      |  for arg in "${'$'}@"; do
-      |    printf 'ARG\t%s\n' "${'$'}arg"
-      |  done
-      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
-      |home=""
-      |if [[ "${'$'}{1:-}" == "--home" ]]; then
-      |  home="${'$'}2"
-      |  shift 2
-      |fi
-      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "agent-path" ]]; then
-      |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
-      |  exit 0
-      |fi
-      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
-      |  exit 0
-      |fi
-      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
-      |  printf '%s\n' "${'$'}home/.claude"
-      |  exit 0
-      |fi
-      |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
-      |# answer them with empty output + success so the clean slate reset succeeds.
-      |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
-      |    exit 0
-      |    ;;
-      |esac
-      |exit 2
-      |
-      """.trimMargin(),
-    )
-    Files.writeString(
-      mcpBin,
-      """
-      |#!/usr/bin/env bash
-      |exit 0
-      |
-      """.trimMargin(),
-    )
-    cliBin.toFile().setExecutable(true)
-    mcpBin.toFile().setExecutable(true)
-  }
-
-  private fun seedInstallerPlatformPack(repoRoot: Path, slug: String) {
-    val packRoot = repoRoot.resolve("platform-packs/$slug")
-    Files.createDirectories(packRoot)
-    Files.writeString(packRoot.resolve("platform.yaml"), "platform: \"$slug\"\n")
-  }
-
   private fun runUninstallerShellWithDesktopInstall(seedRuntime: Boolean = true): UninstallerShellRun {
     val repoRoot = Files.createTempDirectory("skillbill-uninstaller-shell-repo")
     val home = Files.createTempDirectory("skillbill-uninstaller-shell-home")
@@ -468,12 +506,12 @@ class InstallerShellDelegationTest {
     repoRoot.resolve("uninstall.sh").toFile().setExecutable(true)
     Files.createDirectories(repoRoot.resolve("skills/bill-test"))
     Files.writeString(repoRoot.resolve("skills/bill-test/content.md"), "# Test\n")
-    seedInstallerPlatformPack(repoRoot, "kotlin")
+    InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kotlin")
     if (seedRuntime) {
-      seedUninstallerRuntime(repoRoot)
+      InstallerShellFixtures.seedUninstallerRuntime(repoRoot)
     }
 
-    val desktopInstall = seedDesktopInstall(desktopRoot, binDir)
+    val desktopInstall = InstallerShellFixtures.seedDesktopInstall(desktopRoot, binDir)
 
     val process = ProcessBuilder(
       "bash",
@@ -503,79 +541,75 @@ class InstallerShellDelegationTest {
     )
   }
 
-  private fun seedDesktopInstall(desktopRoot: Path, binDir: Path): DesktopInstallFixture {
-    val os = currentDesktopOs()
-    val appTarget = when (os) {
-      "macos" -> desktopRoot.resolve("SkillBill.app")
-      else -> desktopRoot.resolve("SkillBill")
-    }
-    val executable = when (os) {
-      "macos" -> appTarget.resolve("Contents/MacOS/SkillBill")
-      "windows" -> appTarget.resolve("bin/SkillBill.bat")
-      else -> appTarget.resolve("bin/SkillBill")
-    }
-    Files.createDirectories(executable.parent)
-    Files.writeString(executable, "")
-    executable.toFile().setExecutable(true)
-    return DesktopInstallFixture(appTarget, seedDesktopLauncher(os, binDir, executable))
-  }
+  // Seed a populated ~/.skill-bill that mixes the copied-in self-contained source set
+  // (skills/, platform-packs/, orchestration/, reserved baseline-manifest.json) with
+  // runtime/installed-skills/*.db state that the pre-install wipe must clear.
+  private fun seedStateDirForWipe(): WipeFixtures {
+    val home = Files.createTempDirectory("skillbill-wipe-home")
+    val binDir = Files.createTempDirectory("skillbill-wipe-bin")
+    val logPath = Files.createTempFile("skillbill-wipe-runtime", ".log")
+    val repoRoot = Files.createTempDirectory("skillbill-wipe-repo")
+    Files.writeString(repoRoot.resolve("uninstall.sh"), Files.readString(runtimeRoot.parent.resolve("uninstall.sh")))
+    repoRoot.resolve("uninstall.sh").toFile().setExecutable(true)
+    InstallerShellFixtures.seedUninstallerRuntime(repoRoot)
 
-  private fun seedDesktopLauncher(os: String, binDir: Path, executable: Path): Path = when (os) {
-    "windows" -> {
-      val launcher = binDir.resolve("skillbill-desktop.cmd")
-      Files.writeString(launcher, "@echo off\ncall \"${executable}\" %*\n")
-      launcher
-    }
-    else -> {
-      val launcher = binDir.resolve("skillbill-desktop")
-      Files.createSymbolicLink(launcher, executable)
-      launcher
-    }
-  }
-
-  private fun seedUninstallerRuntime(repoRoot: Path) {
-    val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
-    Files.createDirectories(cliBin.parent)
-    Files.writeString(
-      cliBin,
-      """
-      |#!/usr/bin/env bash
-      |set -euo pipefail
-      |{
-      |  echo CALL
-      |  for arg in "${'$'}@"; do
-      |    printf 'ARG\t%s\n' "${'$'}arg"
-      |  done
-      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
-      |home="${'$'}{HOME:-}"
-      |if [[ "${'$'}{1:-}" == "--home" ]]; then
-      |  home="${'$'}2"
-      |  shift 2
-      |fi
-      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
-      |  printf '%s\n' "${'$'}home/.claude"
-      |  exit 0
-      |fi
-      |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
-      |    exit 0
-      |    ;;
-      |esac
-      |exit 2
-      |
-      """.trimMargin(),
+    val stateDir = home.resolve(".skill-bill")
+    val skillContent = stateDir.resolve("skills/bill-sample/content.md")
+    val packYaml = stateDir.resolve("platform-packs/kotlin/platform.yaml")
+    val orchestrationPlaybook = stateDir.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
+    val baselineManifest = stateDir.resolve("baseline-manifest.json")
+    val runtimeBin = stateDir.resolve("runtime/runtime-cli/bin/runtime-cli")
+    val installedSkill = stateDir.resolve("installed-skills/bill-sample-deadbeef/SKILL.md")
+    val stateDb = stateDir.resolve("review-metrics.db")
+    listOf(skillContent, packYaml, orchestrationPlaybook, baselineManifest, runtimeBin, installedSkill, stateDb)
+      .forEach { path ->
+        Files.createDirectories(path.parent)
+        Files.writeString(path, "seed\n")
+      }
+    return WipeFixtures(
+      repoRoot = repoRoot,
+      home = home,
+      binDir = binDir,
+      logPath = logPath,
+      stateDir = stateDir,
+      skillContent = skillContent,
+      packYaml = packYaml,
+      orchestrationPlaybook = orchestrationPlaybook,
+      baselineManifest = baselineManifest,
+      runtimeBin = runtimeBin,
+      installedSkill = installedSkill,
+      stateDb = stateDb,
     )
-    cliBin.toFile().setExecutable(true)
   }
 
-  private fun currentDesktopOs(): String {
-    val osName = System.getProperty("os.name").lowercase()
-    return when {
-      osName.contains("mac") -> "macos"
-      osName.contains("win") -> "windows"
-      osName.contains("linux") -> "linux"
-      else -> "unknown"
-    }
+  private fun runUninstaller(
+    fixtures: WipeFixtures,
+    preserveSource: Boolean,
+    goalContinuation: Boolean,
+  ): UninstallRun {
+    val process = ProcessBuilder("bash", fixtures.repoRoot.resolve("uninstall.sh").toString())
+      .directory(fixtures.repoRoot.toFile())
+      .redirectErrorStream(true)
+      .apply {
+        environment()["HOME"] = fixtures.home.toString()
+        environment()["SKILL_BILL_BIN_DIR"] = fixtures.binDir.toString()
+        environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
+        environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = fixtures.logPath.toString()
+        if (preserveSource) {
+          environment()["SKILL_BILL_PRESERVE_SOURCE_ON_WIPE"] = "1"
+        } else {
+          environment().remove("SKILL_BILL_PRESERVE_SOURCE_ON_WIPE")
+        }
+        if (goalContinuation) {
+          environment()["SKILL_BILL_GOAL_CONTINUATION"] = "1"
+        } else {
+          environment().remove("SKILL_BILL_GOAL_CONTINUATION")
+        }
+      }
+      .start()
+    val output = process.inputStream.bufferedReader().readText()
+    val exitCode = process.waitFor()
+    return UninstallRun(exitCode = exitCode, output = output)
   }
 
   // Drive install.sh over a STAGED RELEASE directory (SKILL_BILL_RELEASE_DIR) with
@@ -652,29 +686,15 @@ class InstallerShellDelegationTest {
     repoRoot.resolve("install.sh").toFile().setExecutable(true)
     Files.writeString(repoRoot.resolve("uninstall.sh"), Files.readString(runtimeRoot.parent.resolve("uninstall.sh")))
     repoRoot.resolve("uninstall.sh").toFile().setExecutable(true)
-    Files.createDirectories(repoRoot.resolve("skills"))
+    // SKILL-76: copy_in_authored_source needs real skills/, platform-packs/, and the
+    // WHOLE orchestration/ tree present in the clone to copy into the COPY.
+    InstallerShellFixtures.seedAuthoredSource(repoRoot)
     // The full flow + pre-install uninstall expect the build-dir runtime + a Gradle
     // wrapper (the latter only used on the auto-fallback path). Seed both plus the
     // desktop icon install_linux_desktop_entry copies.
-    seedInstallerRuntime(repoRoot)
-    seedFakeGradlew(repoRoot)
-    seedDesktopIcon(repoRoot)
-  }
-
-  // A no-op Gradle wrapper. The prebuilt path never calls it; the auto-fallback
-  // path does, and seedInstallerRuntime already left the build-dir runtime in
-  // place for build_kotlin_runtime_distributions to copy.
-  private fun seedFakeGradlew(repoRoot: Path) {
-    val gradlew = repoRoot.resolve("runtime-kotlin/gradlew")
-    Files.createDirectories(gradlew.parent)
-    Files.writeString(gradlew, "#!/usr/bin/env bash\nexit 0\n")
-    gradlew.toFile().setExecutable(true)
-  }
-
-  private fun seedDesktopIcon(repoRoot: Path) {
-    val icon = repoRoot.resolve("runtime-kotlin/runtime-desktop/icons/icon.png")
-    Files.createDirectories(icon.parent)
-    Files.write(icon, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+    InstallerShellFixtures.seedInstallerRuntime(repoRoot)
+    InstallerShellFixtures.seedFakeGradlew(repoRoot)
+    InstallerShellFixtures.seedDesktopIcon(repoRoot)
   }
 
   // Stage a fake GitHub release directory for SKILL_BILL_RELEASE_DIR. Runtime images
@@ -705,60 +725,336 @@ class InstallerShellDelegationTest {
     }
     return calls
   }
-
-  private data class ExpectedApply(
-    val run: InstallerShellRun,
-    val agentMode: String,
-    val platformMode: String,
-    val telemetry: String,
-    val mcp: String,
-  )
-
-  private data class InstallerShellRun(
-    val repoRoot: Path,
-    val home: Path,
-    val binDir: Path,
-    val applyArgs: List<String>,
-    val output: String,
-  )
-
-  private data class PrebuiltReuse(
-    val home: Path,
-    val binDir: Path,
-    val desktopDir: Path,
-  )
-
-  // Optional knobs for the prebuilt flow. `desktopInput` is the answer fed to the
-  // desktop-app prompt (e.g. "skip", "" for Enter); `interactiveTty` runs the
-  // installer under a real PTY so the interactive (non-piped) prompt branch executes.
-  private data class PrebuiltOptions(
-    val omitRuntimeAssets: Boolean = false,
-    val skipPreinstallUninstall: Boolean = true,
-    val desktopInput: String = "skip",
-    val interactiveTty: Boolean = false,
-  )
-
-  private data class PrebuiltInstallerRun(
-    val home: Path,
-    val binDir: Path,
-    val desktopDir: Path,
-    val exitCode: Int,
-    val output: String,
-    val runtimeLog: String,
-  )
-
-  private data class UninstallerShellRun(
-    val appTarget: Path,
-    val launcherPath: Path,
-    val exitCode: Int,
-    val output: String,
-  )
-
-  private data class DesktopInstallFixture(
-    val appTarget: Path,
-    val launcherPath: Path,
-  )
 }
+
+// Cohesive fixture-seeding helpers for the installer/uninstaller shell tests: runtime
+// stubs, platform packs, authored source, and desktop-install fixtures. Extracted to a
+// standalone object so InstallerShellDelegationTest stays under detekt's LargeClass
+// threshold (mirroring PrebuiltReleaseStager). These helpers are pure: they only write
+// fixture files under the caller-provided paths and never touch test instance state.
+internal object InstallerShellFixtures {
+  // SKILL-76 subtask 2: the installer drives `install reconcile` (compute) then
+  // `install reconcile --apply`. The fake CLI cannot compute real hashes, so it emits the
+  // controlled LINE-ORIENTED machine report install.sh consumes, and on --apply performs a
+  // faithful per-skill copy from the staged candidate into the live skills/ tree. Env knobs:
+  //   SKILL_BILL_FAKE_RECONCILE_CONFLICTS=<path> -> report a both-changed conflict.
+  //   SKILL_BILL_FAKE_KEEPLOCAL=<path>           -> classify that path keep-local (apply
+  //     leaves the live skill untouched, preserving the user edit).
+  // Extracted to a constant so seedInstallerRuntime stays under detekt's LongMethod limit.
+  private val reconcileFakeCliBlock: String =
+    """
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  applying=0
+    |  accept_conflicts=0
+    |  if printf '%s ' "${'$'}@" | grep -q -- '--apply'; then applying=1; fi
+    |  if printf '%s ' "${'$'}@" | grep -q -- '--accept-conflicts'; then accept_conflicts=1; fi
+    |  cand_skills="${'$'}home/.skill-bill/.candidate-source/skills"
+    |  cand_packs="${'$'}home/.skill-bill/.candidate-source/platform-packs"
+    |  live_skills="${'$'}home/.skill-bill/skills"
+    |  live_packs="${'$'}home/.skill-bill/platform-packs"
+    |  conflict="${'$'}{SKILL_BILL_FAKE_RECONCILE_CONFLICTS:-}"
+    |  keeplocal="${'$'}{SKILL_BILL_FAKE_KEEPLOCAL:-}"
+    |  if [[ "${'$'}applying" -eq 1 ]]; then
+    |    if [[ -n "${'$'}conflict" && "${'$'}accept_conflicts" -ne 1 ]]; then
+    |      printf 'reconcile apply refused: unresolved conflict %s\n' "${'$'}conflict" >&2
+    |      exit 1
+    |    fi
+    |    if [[ -d "${'$'}cand_skills" ]]; then
+    |      mkdir -p "${'$'}live_skills"
+    |      for sd in "${'$'}cand_skills"/*/; do
+    |        [[ -d "${'$'}sd" ]] || continue
+    |        name="${'$'}(basename "${'$'}sd")"
+    |        if [[ "skills/${'$'}name" == "${'$'}keeplocal" ]]; then continue; fi
+    |        rm -rf "${'$'}live_skills/${'$'}name"
+    |        cp -R "${'$'}sd" "${'$'}live_skills/${'$'}name"
+    |      done
+    |    fi
+    |    # Mirror the real apply: it is the SOLE writer of the live platform-packs tree, so
+    |    # adopt the candidate pack files (the fixture packs carry only non-skill metadata).
+    |    if [[ -d "${'$'}cand_packs" ]]; then
+    |      mkdir -p "${'$'}live_packs"
+    |      cp -R "${'$'}cand_packs/." "${'$'}live_packs/"
+    |    fi
+    |    printf '%s\n' '{"version":"1.0"}' > "${'$'}home/.skill-bill/baseline-manifest.json"
+    |    if [[ -n "${'$'}conflict" ]]; then
+    |      printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
+    |      printf 'reconcile_summary: applied=true has_conflicts=true conflict_count=1 baseline_refreshed=true installed_count=1\n'
+    |    elif [[ -n "${'$'}keeplocal" ]]; then
+    |      printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
+    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |    else
+    |      printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=true installed_count=1\n'
+    |    fi
+    |    exit 0
+    |  fi
+    |  if [[ -n "${'$'}conflict" ]]; then
+    |    printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
+    |    printf 'reconcile_summary: applied=false has_conflicts=true conflict_count=1 baseline_refreshed=false installed_count=0\n'
+    |  elif [[ -n "${'$'}keeplocal" ]]; then
+    |    printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
+    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  else
+    |    printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  fi
+    |  exit 0
+    |fi
+    """.trimMargin()
+
+  fun seedInstallerRuntime(repoRoot: Path) {
+    val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
+    val mcpBin = repoRoot.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp")
+    Files.createDirectories(cliBin.parent)
+    Files.createDirectories(mcpBin.parent)
+    Files.writeString(
+      cliBin,
+      """
+      |#!/usr/bin/env bash
+      |set -euo pipefail
+      |{
+      |  echo CALL
+      |  for arg in "${'$'}@"; do
+      |    printf 'ARG\t%s\n' "${'$'}arg"
+      |  done
+      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
+      |home=""
+      |if [[ "${'$'}{1:-}" == "--home" ]]; then
+      |  home="${'$'}2"
+      |  shift 2
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "agent-path" ]]; then
+      |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
+      |$reconcileFakeCliBlock
+      |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
+      |# answer them with empty output + success so the clean slate reset succeeds.
+      |case "${'$'}{1:-} ${'$'}{2:-}" in
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |    exit 0
+      |    ;;
+      |esac
+      |exit 2
+      |
+      """.trimMargin(),
+    )
+    Files.writeString(
+      mcpBin,
+      """
+      |#!/usr/bin/env bash
+      |exit 0
+      |
+      """.trimMargin(),
+    )
+    cliBin.toFile().setExecutable(true)
+    mcpBin.toFile().setExecutable(true)
+  }
+
+  fun seedInstallerPlatformPack(repoRoot: Path, slug: String) {
+    val packRoot = repoRoot.resolve("platform-packs/$slug")
+    Files.createDirectories(packRoot)
+    Files.writeString(packRoot.resolve("platform.yaml"), "platform: \"$slug\"\n")
+  }
+
+  // SKILL-76: seed real authored source so copy_in_authored_source can copy
+  // skills/, platform-packs/, and the WHOLE orchestration/ tree into the COPY under
+  // $HOME/.skill-bill. content.md is the only authored source; no SKILL.md wrappers.
+  // All three source roots must exist or install_packaged_runtime_distribution errors.
+  fun seedAuthoredSource(repoRoot: Path) {
+    val skillDir = repoRoot.resolve("skills/bill-sample")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      "---\nname: bill-sample\ndescription: Sample skill.\n---\n\nBody.\n",
+    )
+    seedInstallerPlatformPack(repoRoot, "kotlin")
+    val orchestrationDir = repoRoot.resolve("orchestration/review-orchestrator")
+    Files.createDirectories(orchestrationDir)
+    Files.writeString(orchestrationDir.resolve("PLAYBOOK.md"), "# Review orchestrator\n")
+  }
+
+  fun seedUninstallerRuntime(repoRoot: Path) {
+    val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
+    Files.createDirectories(cliBin.parent)
+    Files.writeString(
+      cliBin,
+      """
+      |#!/usr/bin/env bash
+      |set -euo pipefail
+      |{
+      |  echo CALL
+      |  for arg in "${'$'}@"; do
+      |    printf 'ARG\t%s\n' "${'$'}arg"
+      |  done
+      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
+      |home="${'$'}{HOME:-}"
+      |if [[ "${'$'}{1:-}" == "--home" ]]; then
+      |  home="${'$'}2"
+      |  shift 2
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
+      |# SKILL-76 subtask 2: whitelist `install reconcile` here too (BOTH stubs) so an
+      |# unexpected reconcile call returns a clean LINE-ORIENTED report instead of the
+      |# catch-all exit 2. The uninstaller path never drives reconcile, but the whitelist
+      |# keeps the stubs symmetric.
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+      |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+      |  exit 0
+      |fi
+      |case "${'$'}{1:-} ${'$'}{2:-}" in
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |    exit 0
+      |    ;;
+      |esac
+      |exit 2
+      |
+      """.trimMargin(),
+    )
+    cliBin.toFile().setExecutable(true)
+  }
+
+  // A no-op Gradle wrapper. The prebuilt path never calls it; the auto-fallback
+  // path does, and seedInstallerRuntime already left the build-dir runtime in
+  // place for build_kotlin_runtime_distributions to copy.
+  fun seedFakeGradlew(repoRoot: Path) {
+    val gradlew = repoRoot.resolve("runtime-kotlin/gradlew")
+    Files.createDirectories(gradlew.parent)
+    Files.writeString(gradlew, "#!/usr/bin/env bash\nexit 0\n")
+    gradlew.toFile().setExecutable(true)
+  }
+
+  fun seedDesktopIcon(repoRoot: Path) {
+    val icon = repoRoot.resolve("runtime-kotlin/runtime-desktop/icons/icon.png")
+    Files.createDirectories(icon.parent)
+    Files.write(icon, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+  }
+
+  fun seedDesktopInstall(desktopRoot: Path, binDir: Path): DesktopInstallFixture {
+    val os = currentDesktopOs()
+    val appTarget = when (os) {
+      "macos" -> desktopRoot.resolve("SkillBill.app")
+      else -> desktopRoot.resolve("SkillBill")
+    }
+    val executable = when (os) {
+      "macos" -> appTarget.resolve("Contents/MacOS/SkillBill")
+      "windows" -> appTarget.resolve("bin/SkillBill.bat")
+      else -> appTarget.resolve("bin/SkillBill")
+    }
+    Files.createDirectories(executable.parent)
+    Files.writeString(executable, "")
+    executable.toFile().setExecutable(true)
+    return DesktopInstallFixture(appTarget, seedDesktopLauncher(os, binDir, executable))
+  }
+
+  private fun seedDesktopLauncher(os: String, binDir: Path, executable: Path): Path = when (os) {
+    "windows" -> {
+      val launcher = binDir.resolve("skillbill-desktop.cmd")
+      Files.writeString(launcher, "@echo off\ncall \"${executable}\" %*\n")
+      launcher
+    }
+    else -> {
+      val launcher = binDir.resolve("skillbill-desktop")
+      Files.createSymbolicLink(launcher, executable)
+      launcher
+    }
+  }
+
+  private fun currentDesktopOs(): String {
+    val osName = System.getProperty("os.name").lowercase()
+    return when {
+      osName.contains("mac") -> "macos"
+      osName.contains("win") -> "windows"
+      osName.contains("linux") -> "linux"
+      else -> "unknown"
+    }
+  }
+}
+
+// Pure DTOs for the installer/uninstaller shell tests. Hoisted to file scope (still
+// file-private) to keep InstallerShellDelegationTest under detekt's LargeClass threshold.
+private data class ExpectedApply(
+  val run: InstallerShellRun,
+  val agentMode: String,
+  val platformMode: String,
+  val telemetry: String,
+  val mcp: String,
+)
+
+private data class InstallerShellRun(
+  val repoRoot: Path,
+  val home: Path,
+  val binDir: Path,
+  val applyArgs: List<String>,
+  val output: String,
+)
+
+private data class PrebuiltReuse(
+  val home: Path,
+  val binDir: Path,
+  val desktopDir: Path,
+)
+
+// Optional knobs for the prebuilt flow. `desktopInput` is the answer fed to the
+// desktop-app prompt (e.g. "skip", "" for Enter); `interactiveTty` runs the
+// installer under a real PTY so the interactive (non-piped) prompt branch executes.
+private data class PrebuiltOptions(
+  val omitRuntimeAssets: Boolean = false,
+  val skipPreinstallUninstall: Boolean = true,
+  val desktopInput: String = "skip",
+  val interactiveTty: Boolean = false,
+)
+
+private data class PrebuiltInstallerRun(
+  val home: Path,
+  val binDir: Path,
+  val desktopDir: Path,
+  val exitCode: Int,
+  val output: String,
+  val runtimeLog: String,
+)
+
+private data class UninstallerShellRun(
+  val appTarget: Path,
+  val launcherPath: Path,
+  val exitCode: Int,
+  val output: String,
+)
+
+internal data class DesktopInstallFixture(
+  val appTarget: Path,
+  val launcherPath: Path,
+)
+
+private data class WipeFixtures(
+  val repoRoot: Path,
+  val home: Path,
+  val binDir: Path,
+  val logPath: Path,
+  val stateDir: Path,
+  val skillContent: Path,
+  val packYaml: Path,
+  val orchestrationPlaybook: Path,
+  val baselineManifest: Path,
+  val runtimeBin: Path,
+  val installedSkill: Path,
+  val stateDb: Path,
+)
+
+private data class UninstallRun(
+  val exitCode: Int,
+  val output: String,
+)
 
 // Builds a fake GitHub-release directory (for SKILL_BILL_RELEASE_DIR) carrying real
 // runtime-cli/runtime-mcp image zips, a per-host desktop installer, and matching
@@ -937,6 +1233,10 @@ private object PrebuiltReleaseStager {
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
+    |  exit 0
+    |fi
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
     |  exit 0
     |fi
     |exit 0

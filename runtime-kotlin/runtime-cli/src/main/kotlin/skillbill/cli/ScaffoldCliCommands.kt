@@ -74,6 +74,7 @@ class ScaffoldTopLevelCommands(
 class InstallTopLevelCommands(
   planCommand: InstallPlanCommand,
   applyCommand: InstallApplyCommand,
+  reconcileCommand: InstallReconcileCommand,
   replayLastSelectionCommand: InstallReplayLastSelectionCommand,
   agentPathCommand: InstallAgentPathCommand,
   detectAgentsCommand: InstallDetectAgentsCommand,
@@ -103,6 +104,7 @@ class InstallTopLevelCommands(
       .subcommands(
         planCommand,
         applyCommand,
+        reconcileCommand,
         replayLastSelectionCommand,
         agentPathCommand,
         detectAgentsCommand,
