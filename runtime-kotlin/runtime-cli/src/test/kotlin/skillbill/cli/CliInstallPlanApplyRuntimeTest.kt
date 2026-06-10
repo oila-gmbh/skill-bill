@@ -967,6 +967,7 @@ private fun applyMcpRegistrationGoldenPayload(): Map<String, Any?> = mapOf(
       "changed" to false,
       "message" to "MCP registration not requested.",
       "issue" to null,
+      "profiles" to emptyList<Map<String, Any?>>(),
     ),
   ),
 )

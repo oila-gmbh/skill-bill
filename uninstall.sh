@@ -620,8 +620,18 @@ remove_junie_agent_mds
 
 info "Removing MCP server registrations."
 for agent in claude copilot codex glm opencode junie; do
-  if run_runtime_cli install unregister-mcp "$agent" >/dev/null 2>&1; then
+  if mcp_output="$(run_runtime_cli install unregister-mcp "$agent" 2>/dev/null)"; then
     ok "  removed skill-bill MCP server ($agent)"
+    while IFS= read -r profile_path; do
+      [[ -n "$profile_path" ]] || continue
+      info "    $profile_path"
+    done <<< "$mcp_output"
+  elif [[ -n "$mcp_output" ]]; then
+    warn "  partially removed skill-bill MCP server ($agent); manual check may be needed"
+    while IFS= read -r profile_path; do
+      [[ -n "$profile_path" ]] || continue
+      info "    $profile_path"
+    done <<< "$mcp_output"
   else
     warn "  could not remove skill-bill MCP server ($agent)"
   fi
