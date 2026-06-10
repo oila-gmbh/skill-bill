@@ -22,6 +22,9 @@ DESKTOP_APP_LAUNCHER_PATH=""
 # When the prebuilt path extracts a desktop app payload it records the extracted
 # app tree here; install_desktop_app honors it instead of the Gradle build dir.
 DESKTOP_APP_PREBUILT_SOURCE_PATH=""
+# SKILL-76 subtask 2: space-separated skill-relative paths whose both-changed
+# reconcile conflict the user accepted (overwrote). Surfaced in the install summary.
+RECONCILE_CONFLICT_PATHS=""
 
 # Prebuilt-first install source. Default is to fetch + verify the prebuilt
 # release artifacts; --from-source restores today's Gradle build path.
@@ -278,7 +281,22 @@ cleanup_prebuilt_work_dir() {
     rm -rf "$PREBUILT_WORK_DIR"
   fi
 }
-trap cleanup_prebuilt_work_dir EXIT
+
+# SKILL-76 subtask 2 (F-006): the staged reconcile candidate dirs (~/.skill-bill/
+# .candidate-*) must ALWAYS be reaped on crash/signal, not only on the happy path.
+# Composed into the single EXIT trap below so it never clobbers the prebuilt-work-dir
+# cleanup. Guarded (discard_authored_candidates is a no-op when the dirs are absent),
+# and it only ever removes the .candidate-* staging dirs, never a mid-commit live tree
+# (the runtime apply moves into the live skills/ dir, which is not a candidate path).
+cleanup_install_exit() {
+  cleanup_prebuilt_work_dir
+  # discard_authored_candidates is defined later in this file; on an early-exit before
+  # its definition the candidate dirs do not exist yet, so guard the call.
+  if declare -f discard_authored_candidates >/dev/null 2>&1; then
+    discard_authored_candidates
+  fi
+}
+trap cleanup_install_exit EXIT
 
 # Create the shared download work dir once, in the PARENT shell, before any
 # command-substitution helper needs it. Idempotent.
@@ -621,7 +639,12 @@ run_pre_install_uninstall() {
   printf "${CYAN}━━━ Pre-install cleanup ━━━${NC}\n"
   echo ""
   info "Running uninstall.sh first so every install starts from a clean slate."
-  bash "$uninstall_script"
+  # PRESERVE the copied-in self-contained source (skills/, platform-packs/,
+  # orchestration/ + the reserved baseline-manifest path) across the pre-install
+  # wipe, while still clearing runtime/, installed-skills/, and *.db state DBs.
+  # This flag is ONLY set for the install-driven pre-install uninstall; an
+  # explicit ./uninstall.sh (flag unset) still fully removes ~/.skill-bill.
+  SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1 bash "$uninstall_script"
 }
 
 locate_packaged_runtime_bin() {
@@ -649,6 +672,235 @@ install_packaged_runtime_distribution() {
   cp -R "$source_dir" "$tmp_dir"
   rm -rf "$target_dir"
   mv "$tmp_dir" "$target_dir"
+}
+
+# Copy the clone's authored skill/platform/orchestration source into the
+# Skill Bill state dir as REAL files (not symlinks) BEFORE any skill linking,
+# so that deleting the clone after a successful install leaves a fully
+# functional install. Uses the same atomic copy idiom as
+# install_packaged_runtime_distribution (rm -rf tmp; cp -R src tmp; rm -rf
+# target; mv tmp target). Only authored source lives in these trees:
+# content.md, native-agents/, platform.yaml. Generated SKILL.md wrappers and
+# support pointers are render OUTPUT into installed-skills staging and never
+# appear under the clone's skills/, so an unfiltered cp -R is source-safe.
+# SKILL-76 subtask 2 candidate paths: the clone source is staged into these
+# .candidate dirs FIRST (no swap), reconciled against the existing copy + baseline,
+# and only swapped into place once the conflict decision is accept/no-conflict. An
+# abort discards the candidates and leaves the existing install fully intact.
+# SKILL-76 subtask 2: the candidate clone source is staged into a SINGLE candidate
+# REPO ROOT containing skills/ + platform-packs/, so reconcile --upstream-repo-root,
+# --upstream-skills, and --upstream-platform-packs all point at the same staged tree
+# (F-008: support-pointer source and skill source come from one tree). orchestration/
+# is staged as a sibling because it is not skill-keyed.
+SKILL_BILL_CANDIDATE_ROOT="$SKILL_BILL_STATE_DIR/.candidate-source"
+SKILL_BILL_CANDIDATE_SKILLS="$SKILL_BILL_CANDIDATE_ROOT/skills"
+SKILL_BILL_CANDIDATE_PLATFORM_PACKS="$SKILL_BILL_CANDIDATE_ROOT/platform-packs"
+SKILL_BILL_CANDIDATE_ORCHESTRATION="$SKILL_BILL_STATE_DIR/.candidate-orchestration"
+SKILL_BILL_BASELINE_MANIFEST="$SKILL_BILL_STATE_DIR/baseline-manifest.json"
+
+# Stage one source tree into a candidate dir without touching the live target.
+stage_authored_candidate() {
+  local source_dir="$1"
+  local candidate_dir="$2"
+  local label="$3"
+  if [[ ! -d "$source_dir" ]]; then
+    err "Missing authored $label source: $source_dir"
+    return 1
+  fi
+  rm -rf "$candidate_dir"
+  mkdir -p "$(dirname "$candidate_dir")"
+  cp -R "$source_dir" "$candidate_dir"
+}
+
+# Reap the staged candidate dirs. Guarded so it is safe to call from the EXIT trap
+# (no-op when the dirs are already gone). Never touches the live source trees.
+discard_authored_candidates() {
+  rm -rf \
+    "$SKILL_BILL_CANDIDATE_ROOT" \
+    "$SKILL_BILL_CANDIDATE_ORCHESTRATION"
+}
+
+# Step 1 (decision strictly BEFORE any live-tree mutation): stage the clone's
+# authored source into candidate dirs. No live tree is mutated here.
+copy_in_authored_source() {
+  info "Staging authored skill source candidates under: $SKILL_BILL_STATE_DIR"
+  mkdir -p "$SKILL_BILL_CANDIDATE_ROOT"
+  stage_authored_candidate "$SKILLS_DIR" "$SKILL_BILL_CANDIDATE_SKILLS" "skills source"
+  stage_authored_candidate "$PLATFORM_PACKS_DIR" "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS" "platform-packs source"
+  stage_authored_candidate "$PLUGIN_DIR/orchestration" "$SKILL_BILL_CANDIDATE_ORCHESTRATION" "orchestration source"
+  ok "Authored source candidates staged under $SKILL_BILL_STATE_DIR"
+}
+
+# Adopt-always non-skill-keyed trees from the candidate into the live state dir.
+# orchestration/ is NOT part of the per-skill baseline in this subtask (it is shared
+# source, not a skill), so it is replaced wholesale from the candidate every install.
+#
+# The platform-packs tree is intentionally NOT copied here. The runtime `install reconcile
+# --apply` is the SOLE writer of ALL reconciled skill dirs in BOTH skills/ AND
+# platform-packs/, and it also adopts the non-skill platform-pack files (platform.yaml,
+# addon markdown, pack-level metadata) from upstream. Blanket-copying the pack tree here
+# would clobber per-skill pack content BEFORE the apply classifies it, silently defeating
+# keep-local/conflict for platform-pack skills.
+adopt_non_skill_source_trees() {
+  # orchestration: wholesale atomic replace.
+  if [[ -d "$SKILL_BILL_CANDIDATE_ORCHESTRATION" ]]; then
+    rm -rf "$SKILL_BILL_STATE_DIR/orchestration"
+    mv "$SKILL_BILL_CANDIDATE_ORCHESTRATION" "$SKILL_BILL_STATE_DIR/orchestration"
+  fi
+}
+
+# Parse the line-oriented machine report (mirrors the SKILL-74 line protocol) into the
+# RECONCILE_* shell state. FAIL-CLOSED: if the `reconcile_summary:` line is absent the
+# caller MUST abort. Sets RECONCILE_HAS_CONFLICTS / RECONCILE_CONFLICT_COUNT and appends
+# conflicting paths to RECONCILE_CONFLICT_PATHS. Each per-outcome line is
+# `reconcile_outcome: kind=<k> [upstream_hash=<hex>] path=<p>` with `path` LAST so a path
+# containing spaces survives the trailing-remainder extraction.
+RECONCILE_HAS_CONFLICTS=""
+RECONCILE_CONFLICT_COUNT=""
+parse_reconcile_report() {
+  local report="$1"
+  RECONCILE_HAS_CONFLICTS=""
+  RECONCILE_CONFLICT_COUNT=""
+  RECONCILE_CONFLICT_PATHS=""
+  local summary_line conflict_lines line
+  summary_line="$( { printf '%s\n' "$report" | grep -m1 '^reconcile_summary:'; } || true )"
+  if [[ -z "$summary_line" ]]; then
+    return 1
+  fi
+  # Extract has_conflicts / conflict_count from the summary key=value tokens.
+  RECONCILE_HAS_CONFLICTS="$( { printf '%s' "$summary_line" | grep -o 'has_conflicts=[a-z]*' | cut -d= -f2; } || true )"
+  RECONCILE_CONFLICT_COUNT="$( { printf '%s' "$summary_line" | grep -o 'conflict_count=[0-9]*' | cut -d= -f2; } || true )"
+  if [[ -z "$RECONCILE_HAS_CONFLICTS" || -z "$RECONCILE_CONFLICT_COUNT" ]]; then
+    return 1
+  fi
+  # Collect conflicting skill paths from the per-outcome lines. `kind` is anchored as the
+  # first token so this filter cannot collide with a path that contains "kind=conflict",
+  # and `path=` is the LAST token so the trailing-remainder extraction below keeps paths
+  # that contain spaces intact (no [^ ]* truncation).
+  conflict_lines="$( { printf '%s\n' "$report" | grep '^reconcile_outcome: kind=conflict '; } || true )"
+  if [[ -n "$conflict_lines" ]]; then
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      local p
+      p="$( { printf '%s' "$line" | sed -n 's/^.* path=//p'; } || true )"
+      [[ -n "$p" ]] && RECONCILE_CONFLICT_PATHS+="$p "
+    done <<< "$conflict_lines"
+  fi
+  return 0
+}
+
+# Step 2-4: reconcile the staged candidate against the existing local copy + the
+# baseline manifest, drive the interactive conflict decision, and ONLY then call the
+# runtime per-skill APPLY (which owns the per-skill file ops + baseline refresh). Runs
+# AFTER the runtime CLI is installed so run_runtime_cli is available.
+#
+# - First install (no existing skills copy, no baseline): every skill is new-upstream
+#   → apply installs them all, refreshes baseline, no prompt.
+# - keep-local: a user edit survives (local!=baseline, upstream==baseline) — apply
+#   leaves the live skill untouched.
+# - adopt: an untouched local adopts new upstream + refreshes baseline.
+# - locally-authored: a skill with no upstream counterpart is NEVER deleted.
+# - conflict (both changed): TTY → WARN + prompt accept/abort; NO-TTY → abort with a
+#   clear message. accept → apply --accept-conflicts; abort → discard, change nothing.
+#   ALL conflicts are reported in the install summary. No sidecar.
+#
+# The shell performs NO whole-tree rm/mv swap of skills/ — the runtime per-skill apply
+# is the sole writer of the live skill dirs.
+reconcile_and_commit_authored_source() {
+  local report status accept_conflicts=0
+  info "Reconciling staged source against existing copy and baseline manifest..."
+  # Compute the per-skill plan against UPSTREAM=candidate, LOCAL=existing copy. The
+  # upstream repo root, skills, and platform-packs all come from the one staged
+  # candidate tree (F-008). No mutation here.
+  report="$(run_runtime_cli install reconcile \
+    --repo-root "$SKILL_BILL_STATE_DIR" \
+    --skills "$SKILL_BILL_STATE_DIR/skills" \
+    --platform-packs "$SKILL_BILL_STATE_DIR/platform-packs" \
+    --upstream-repo-root "$SKILL_BILL_CANDIDATE_ROOT" \
+    --upstream-skills "$SKILL_BILL_CANDIDATE_SKILLS" \
+    --upstream-platform-packs "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS")" || status=$?
+  if [[ -n "${status:-}" ]]; then
+    err "Reconciliation failed; leaving the existing install untouched."
+    discard_authored_candidates
+    return 1
+  fi
+
+  # FAIL-CLOSED: a missing/unparseable summary line aborts the install rather than
+  # treating the absence of conflicts as "no conflicts".
+  if ! parse_reconcile_report "$report"; then
+    err "Could not parse the reconcile machine report; aborting the install. Nothing was changed."
+    discard_authored_candidates
+    return 1
+  fi
+
+  if [[ "$RECONCILE_HAS_CONFLICTS" == "true" || "${RECONCILE_CONFLICT_COUNT:-0}" -ne 0 ]]; then
+    warn "Reconcile conflict: both upstream and your local copy changed for:"
+    local p
+    for p in $RECONCILE_CONFLICT_PATHS; do
+      warn "  conflict: $p"
+    done
+    local answer=""
+    # TEST-ONLY SEAM: SKILL_BILL_RECONCILE_CONFLICT_CHOICE supplies the conflict decision
+    # (accept/abort) and bypasses ONLY the TTY check, so integration tests can drive the
+    # accept branch under piped stdin (where [[ ! -t 0 ]] would otherwise abort). When the
+    # env var is UNSET/empty, production behavior is byte-for-byte unchanged: TTY -> prompt,
+    # no-TTY -> abort. Mirrors the SKILL_BILL_SKIP_PREINSTALL_UNINSTALL opt-out style.
+    if [[ -n "${SKILL_BILL_RECONCILE_CONFLICT_CHOICE:-}" ]]; then
+      answer="$SKILL_BILL_RECONCILE_CONFLICT_CHOICE"
+      info "Using SKILL_BILL_RECONCILE_CONFLICT_CHOICE=$answer for the conflict decision (test seam)."
+    elif [[ ! -t 0 ]]; then
+      err "Conflicting skills changed both upstream and locally, and no TTY is attached to prompt."
+      err "Aborting the whole install; nothing was changed. Resolve the conflicts under"
+      err "$SKILL_BILL_STATE_DIR/skills and re-run ./install.sh from a terminal to choose."
+      discard_authored_candidates
+      return 1
+    else
+      printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [accept/abort]: "
+      if ! read -r answer; then
+        answer="abort"
+      fi
+    fi
+    case "${answer,,}" in
+      accept|a|yes|y)
+        info "Accepting upstream for conflicting skills; your local edits will be overwritten."
+        accept_conflicts=1
+        ;;
+      *)
+        err "Aborting the whole install at your request; nothing was changed."
+        discard_authored_candidates
+        return 1
+        ;;
+    esac
+  fi
+
+  # Decision is accept / no-conflict. Place the orchestration tree (shared, non-skill
+  # source) first, then hand the per-skill file ops to the runtime apply. The runtime is
+  # the SOLE writer of the live skill dirs in BOTH skills/ AND platform-packs/ (and of the
+  # non-skill platform-pack files): keep-local + locally-authored skills are preserved by
+  # construction.
+  adopt_non_skill_source_trees
+  local apply_args=(
+    install reconcile --apply
+    --repo-root "$SKILL_BILL_STATE_DIR"
+    --skills "$SKILL_BILL_STATE_DIR/skills"
+    --platform-packs "$SKILL_BILL_STATE_DIR/platform-packs"
+    --upstream-repo-root "$SKILL_BILL_CANDIDATE_ROOT"
+    --upstream-skills "$SKILL_BILL_CANDIDATE_SKILLS"
+    --upstream-platform-packs "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS"
+  )
+  if [[ "$accept_conflicts" -eq 1 ]]; then
+    apply_args+=(--accept-conflicts)
+  fi
+  if ! run_runtime_cli "${apply_args[@]}" >/dev/null; then
+    err "Runtime reconcile apply failed; some skills may not have been updated."
+    discard_authored_candidates
+    return 1
+  fi
+  # RESERVED SEAM (subtask 2): the baseline manifest lives at
+  # "$SKILL_BILL_BASELINE_MANIFEST" and is part of the preserved self-contained source
+  # set (uninstall.sh preserve-mode). The runtime apply already refreshed it.
+  discard_authored_candidates
+  ok "Authored source reconciled and committed into $SKILL_BILL_STATE_DIR"
 }
 
 install_packaged_runtime_distributions() {
@@ -1781,9 +2033,9 @@ build_runtime_install_args() {
   RUNTIME_INSTALL_ARGS=(
     install
     apply
-    --repo-root "$PLUGIN_DIR"
-    --skills "$SKILLS_DIR"
-    --platform-packs "$PLATFORM_PACKS_DIR"
+    --repo-root "$SKILL_BILL_STATE_DIR"
+    --skills "$SKILL_BILL_STATE_DIR/skills"
+    --platform-packs "$SKILL_BILL_STATE_DIR/platform-packs"
     --agent-mode "$AGENT_SELECTION_MODE"
     --platform-mode "$PLATFORM_SELECTION_MODE"
     --telemetry "$TELEMETRY_LEVEL"
@@ -1927,7 +2179,9 @@ run_full_install() {
     replay_last_install_selection
   fi
   run_pre_install_uninstall
+  copy_in_authored_source
   install_runtime_distributions
+  reconcile_and_commit_authored_source
   if [[ "$REUSE_LAST_SELECTION" -ne 1 ]]; then
     build_platform_packages
   fi
@@ -1970,6 +2224,15 @@ run_full_install() {
   echo ""
   info "Source of truth: $PLUGIN_DIR/skills/"
   info "Staging cache:   $SKILL_BILL_STATE_DIR/installed-skills"
+  # SKILL-76 AC-7: report every reconcile conflict that was accepted (overwritten)
+  # in the install summary. No sidecar file; the summary is the single record.
+  if [[ -n "${RECONCILE_CONFLICT_PATHS:-}" ]]; then
+    info "Reconcile:       overwrote local edits with upstream for conflicting skills:"
+    local conflict_path
+    for conflict_path in $RECONCILE_CONFLICT_PATHS; do
+      info "  conflict:      $conflict_path"
+    done
+  fi
   info "Platforms:       $SELECTED_PLATFORM_LABEL"
   info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
   info "Telemetry:       $TELEMETRY_LEVEL"

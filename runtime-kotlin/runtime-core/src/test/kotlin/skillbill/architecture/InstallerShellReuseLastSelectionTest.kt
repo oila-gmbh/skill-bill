@@ -102,12 +102,23 @@ class InstallerShellReuseLastSelectionTest {
   private fun seedRepo(testRepo: Path) {
     Files.writeString(testRepo.resolve("install.sh"), Files.readString(repoRoot.resolve("install.sh")))
     testRepo.resolve("install.sh").toFile().setExecutable(true)
-    Files.createDirectories(testRepo.resolve("skills"))
+    // SKILL-76: copy_in_authored_source copies skills/, platform-packs/, and the WHOLE
+    // orchestration/ tree into $HOME/.skill-bill as REAL files before linking. All three
+    // source roots must exist (non-empty) or install_packaged_runtime_distribution errors.
+    val skillDir = testRepo.resolve("skills/bill-sample")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      "---\nname: bill-sample\ndescription: Sample skill.\n---\n\nBody.\n",
+    )
     listOf("kotlin", "python").forEach { slug ->
       val packRoot = testRepo.resolve("platform-packs/$slug")
       Files.createDirectories(packRoot)
       Files.writeString(packRoot.resolve("platform.yaml"), "platform: \"$slug\"\n")
     }
+    val orchestrationDir = testRepo.resolve("orchestration/review-orchestrator")
+    Files.createDirectories(orchestrationDir)
+    Files.writeString(orchestrationDir.resolve("PLAYBOOK.md"), "# Review orchestrator\n")
     val cliBin = testRepo.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
     val mcpBin = testRepo.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp")
     Files.createDirectories(cliBin.parent)
@@ -154,6 +165,10 @@ class InstallerShellReuseLastSelectionTest {
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
     |  exit 0
     |fi
+    |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  exit 0
+    |fi
     |exit 2
     |
   """.trimMargin()
@@ -178,12 +193,14 @@ class InstallerShellReuseLastSelectionTest {
     run.home.toString(),
     "install",
     "apply",
+    // SKILL-76 AC-2: --repo-root/--skills/--platform-packs point at the COPY under
+    // $HOME/.skill-bill that copy_in_authored_source materialized, NOT the clone.
     "--repo-root",
-    run.repoRoot.toString(),
+    run.home.resolve(".skill-bill").toString(),
     "--skills",
-    run.repoRoot.resolve("skills").toString(),
+    run.home.resolve(".skill-bill/skills").toString(),
     "--platform-packs",
-    run.repoRoot.resolve("platform-packs").toString(),
+    run.home.resolve(".skill-bill/platform-packs").toString(),
     "--agent-mode",
     "manual",
     "--platform-mode",
