@@ -326,6 +326,121 @@ class CliInstallRuntimeTest {
   }
 
   @Test
+  fun `claude mcp registration fans into every resolved profile and summary reports them`() {
+    val home = Files.createTempDirectory("skillbill-cli-mcp-claude-multi")
+    Files.createDirectories(home.resolve(".claude"))
+    val work = home.resolve(".claude-work")
+    Files.createDirectories(work)
+    Files.writeString(work.resolve(".claude.json"), "{\n  \"theme\": \"work\"\n}\n")
+    val defaultConfig = home.resolve(".claude.json")
+    val workConfig = work.resolve(".claude.json")
+    val context = installCliContext(home)
+
+    val register = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "register-mcp", "claude", "--runtime-mcp-bin", "/tmp/runtime-mcp"),
+      context,
+    )
+
+    assertEquals(0, register.exitCode, register.stdout)
+    assertContains(register.stdout, defaultConfig.toString())
+    assertContains(register.stdout, workConfig.toString())
+    assertEquals(
+      setOf(defaultConfig.toString(), workConfig.toString()),
+      mcpProfileConfigPaths(register).toSet(),
+    )
+    assertTrue(mcpProfileEntries(register).all { entry -> entry["changed"] == true })
+    listOf(defaultConfig, workConfig).forEach { path ->
+      val servers = decodeJsonObject(Files.readString(path))["mcpServers"] as Map<*, *>
+      val skillBill = servers["skill-bill"] as Map<*, *>
+      assertEquals("stdio", skillBill["type"])
+      assertEquals("/tmp/runtime-mcp", skillBill["command"])
+    }
+    assertEquals("work", decodeJsonObject(Files.readString(workConfig))["theme"])
+
+    val unregister = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "unregister-mcp", "claude"),
+      context,
+    )
+
+    assertEquals(0, unregister.exitCode, unregister.stdout)
+    assertContains(unregister.stdout, defaultConfig.toString())
+    assertContains(unregister.stdout, workConfig.toString())
+    assertEquals(
+      setOf(defaultConfig.toString(), workConfig.toString()),
+      mcpProfileConfigPaths(unregister).toSet(),
+    )
+    assertTrue(mcpProfileEntries(unregister).all { entry -> entry["changed"] == true })
+    listOf(defaultConfig, workConfig).forEach { path ->
+      assertFalse(
+        "skill-bill" in (decodeJsonObject(Files.readString(path))["mcpServers"] as? Map<*, *> ?: emptyMap<Any, Any>()),
+      )
+    }
+    assertEquals("work", decodeJsonObject(Files.readString(workConfig))["theme"])
+  }
+
+  @Test
+  fun `claude mcp registration preserves other servers and fails loudly for a malformed profile`() {
+    val home = Files.createTempDirectory("skillbill-cli-mcp-claude-malformed")
+    Files.createDirectories(home.resolve(".claude"))
+    val defaultConfig = home.resolve(".claude.json")
+    Files.writeString(defaultConfig, "{\n  \"mcpServers\": {\"other\": {\"command\": \"other\"}}\n}\n")
+    val work = home.resolve(".claude-work")
+    Files.createDirectories(work)
+    val malformed = work.resolve(".claude.json")
+    Files.writeString(malformed, "{ not valid json")
+    val context = installCliContext(home)
+
+    val register = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "register-mcp", "claude", "--runtime-mcp-bin", "/tmp/runtime-mcp"),
+      context,
+    )
+
+    assertEquals(1, register.exitCode)
+    assertContains(register.stdout, malformed.toString())
+    assertEquals("{ not valid json", Files.readString(malformed))
+    val servers = decodeJsonObject(Files.readString(defaultConfig))["mcpServers"] as Map<*, *>
+    assertTrue("other" in servers)
+    assertTrue("skill-bill" in servers)
+  }
+
+  @Test
+  fun `claude mcp unregister fails loudly yet surfaces profiles it already removed`() {
+    val home = Files.createTempDirectory("skillbill-cli-mcp-claude-partial-unregister")
+    Files.createDirectories(home.resolve(".claude"))
+    val work = home.resolve(".claude-work")
+    Files.createDirectories(work)
+    Files.createFile(work.resolve(".claude.json"))
+    val defaultConfig = home.resolve(".claude.json")
+    val workConfig = work.resolve(".claude.json")
+    val liveStdout = StringBuilder()
+    val context = installCliContext(home).copy(liveStdout = { liveStdout.append(it) })
+
+    val register = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "register-mcp", "claude", "--runtime-mcp-bin", "/tmp/runtime-mcp"),
+      context,
+    )
+    assertEquals(0, register.exitCode, register.stdout)
+
+    Files.writeString(workConfig, "{ not valid json")
+
+    val unregister = CliRuntime.run(
+      listOf("--home", home.toString(), "install", "unregister-mcp", "claude"),
+      context,
+    )
+
+    assertEquals(1, unregister.exitCode)
+    assertContains(liveStdout.toString(), defaultConfig.toString())
+    assertFalse(
+      "skill-bill" in (
+        decodeJsonObject(
+          Files.readString(defaultConfig),
+        )["mcpServers"] as? Map<*, *> ?: emptyMap<Any, Any>()
+        ),
+    )
+    assertEquals("{ not valid json", Files.readString(workConfig))
+  }
+
+  @Test
   fun `cleanup command removes skill bill links and reports user paths as skipped`() {
     val home = Files.createTempDirectory("skillbill-cli-install-cleanup")
     val targetDir = home.resolve("agent-skills")
@@ -699,3 +814,9 @@ private fun mcpJsonCase(
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> =
   JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
     ?: emptyMap()
+
+private fun mcpProfileEntries(result: CliExecutionResult): List<Map<*, *>> =
+  (result.payload?.get("profiles") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()
+
+private fun mcpProfileConfigPaths(result: CliExecutionResult): List<String> =
+  mcpProfileEntries(result).mapNotNull { entry -> entry["config_path"] as? String }

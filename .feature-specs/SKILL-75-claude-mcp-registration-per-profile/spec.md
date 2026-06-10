@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-75 - claude MCP registration per profile
@@ -113,18 +113,18 @@ Questions).
 
 ## Open Questions
 
-1. **Default-profile config path.** Confirm during planning that the default
-   profile's MCP config is `$HOME/.claude.json` (sibling to `~/.claude/`) and named
-   profiles use `<root>/.claude.json`. Verify against Claude Code's documented
-   resolution and the on-disk evidence (`~/.claude.json` vs
-   `~/.claude-work/.claude.json`). If Claude Code accepts `~/.claude/.claude.json`
-   for the default too, decide which path install should own to match what the agent
-   reads.
-2. **Shell vs runtime fan-out seam.** Prefer the runtime owning the per-profile MCP
-   registration loop (consistent with SKILL-74's apply-internal fan-out) so install
-   and uninstall share one path, rather than looping in `install.sh`/`uninstall.sh`.
-   Confirm whether the existing `install register-mcp` / `unregister-mcp` CLI
-   commands should fan out internally or accept the resolved root list.
+1. **Default-profile config path.** RESOLVED: the default profile root `~/.claude`
+   maps to `$HOME/.claude.json` (sibling to `~/.claude/`, the existing
+   single-profile path), and each named / `CLAUDE_CONFIG_DIR` root maps to
+   `<root>/.claude.json`. `McpRegistrationOperations.claudeProfileConfigPaths`
+   resolves this mapping; the default-only case stays byte-for-byte identical to the
+   prior single-profile behavior.
+2. **Shell vs runtime fan-out seam.** RESOLVED: the runtime owns the per-profile MCP
+   registration loop. `McpRegistrationOperations.register/unregister` fan out
+   internally across `claudeConfigRoots(home, environment)` for the CLAUDE branch;
+   the `install register-mcp` / `unregister-mcp` CLI command surface and the
+   `install.sh` / `uninstall.sh` argv are unchanged. `uninstall.sh` captures the
+   per-profile stdout to report removed paths without a shell-side loop.
 
 ## Validation Strategy
 

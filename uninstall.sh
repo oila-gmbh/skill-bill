@@ -620,8 +620,18 @@ remove_junie_agent_mds
 
 info "Removing MCP server registrations."
 for agent in claude copilot codex glm opencode junie; do
-  if run_runtime_cli install unregister-mcp "$agent" >/dev/null 2>&1; then
+  if mcp_output="$(run_runtime_cli install unregister-mcp "$agent" 2>/dev/null)"; then
     ok "  removed skill-bill MCP server ($agent)"
+    while IFS= read -r profile_path; do
+      [[ -n "$profile_path" ]] || continue
+      info "    $profile_path"
+    done <<< "$mcp_output"
+  elif [[ -n "$mcp_output" ]]; then
+    warn "  partially removed skill-bill MCP server ($agent); manual check may be needed"
+    while IFS= read -r profile_path; do
+      [[ -n "$profile_path" ]] || continue
+      info "    $profile_path"
+    done <<< "$mcp_output"
   else
     warn "  could not remove skill-bill MCP server ($agent)"
   fi
@@ -629,10 +639,70 @@ done
 
 remove_runtime_launchers
 
-if [[ -d "$SKILL_BILL_STATE_DIR" ]]; then
-  info "Removing skill-bill state directory."
-  rm -rf "$SKILL_BILL_STATE_DIR"
-  ok "  removed $SKILL_BILL_STATE_DIR"
+remove_state_dir_full() {
+  if [[ -d "$SKILL_BILL_STATE_DIR" ]]; then
+    info "Removing skill-bill state directory."
+    rm -rf "$SKILL_BILL_STATE_DIR"
+    ok "  removed $SKILL_BILL_STATE_DIR"
+  fi
+}
+
+# Pre-install wipe (SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1, set only by
+# install.sh's run_pre_install_uninstall): clear runtime binaries,
+# installed-skills staging, and *.db state DBs so generator changes land on the
+# next install, while PRESERVING the copied-in self-contained source set:
+#   - skills/, platform-packs/, orchestration/
+#   - the RESERVED baseline-manifest path (subtask-2 seam) below
+# An explicit ./uninstall.sh leaves this flag unset and fully removes
+# ~/.skill-bill via remove_state_dir_full.
+remove_state_dir_preserving_source() {
+  if [[ ! -d "$SKILL_BILL_STATE_DIR" ]]; then
+    return 0
+  fi
+  info "Clearing skill-bill runtime/install state (preserving copied-in source)."
+
+  # RESERVED SEAM (subtask 2): baseline-manifest.json is part of the preserved
+  # self-contained source set and must survive the pre-install wipe.
+  local preserved=(
+    "skills"
+    "platform-packs"
+    "orchestration"
+    "baseline-manifest.json"
+  )
+
+  local is_preserved entry name keep
+  for entry in "$SKILL_BILL_STATE_DIR"/* "$SKILL_BILL_STATE_DIR"/.[!.]* "$SKILL_BILL_STATE_DIR"/..?*; do
+    [[ -e "$entry" || -L "$entry" ]] || continue
+    name="$(basename "$entry")"
+    is_preserved=0
+    for keep in "${preserved[@]}"; do
+      if [[ "$name" == "$keep" ]]; then
+        is_preserved=1
+        break
+      fi
+    done
+    if [[ "$is_preserved" -eq 1 ]]; then
+      continue
+    fi
+    # Defensive-dead under the current entrypoints: the top-of-script exit-64
+    # guard in both install.sh and uninstall.sh already aborts any
+    # goal-continuation run before this preserve-mode loop is reached, so the
+    # actual protection against wiping the live workflow / review-metrics DBs
+    # is that guard, not this inner check. This branch is kept only as
+    # belt-and-suspenders in case a future caller ever reaches preserve-mode
+    # with SKILL_BILL_GOAL_CONTINUATION=1 set.
+    if [[ "${SKILL_BILL_GOAL_CONTINUATION:-}" == "1" && "$name" == *.db ]]; then
+      continue
+    fi
+    rm -rf "$entry"
+  done
+  ok "  cleared runtime/install state under $SKILL_BILL_STATE_DIR (source preserved)"
+}
+
+if [[ "${SKILL_BILL_PRESERVE_SOURCE_ON_WIPE:-}" == "1" ]]; then
+  remove_state_dir_preserving_source
+else
+  remove_state_dir_full
 fi
 
 echo ""

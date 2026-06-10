@@ -1,3 +1,14 @@
+## [2026-06-10] SKILL-76.1 copyin-repoint-foundation
+Areas: install.sh, uninstall.sh, runtime-kotlin/runtime-infra-fs (tests), runtime-kotlin/runtime-core (tests)
+- Copy-in pattern: `install.sh` `copy_in_authored_source()` reuses the `install_packaged_runtime_distribution` atomic idiom (rm tmp; cp -R; rm target; mv) to copy `skills/` + `platform-packs/` + the WHOLE `orchestration/` tree into `$SKILL_BILL_STATE_DIR` as REAL files before any skill linking, then repoints `--repo-root`/`--skills`/`--platform-packs` at that copy. reusable
+- AC-2/AC-4 are a PURE SHELL repoint — zero Kotlin change: `InstallStaging.resolveStagedSymlinkTarget`, `ScaffoldSupport.supportingFileTargets`, `SkillClassLoader` all resolve relative to the injected `repoRoot`; cp -R MUST produce real files because `InstallPlanBuilder.validatePointerInputs` require()s `toRealPath().startsWith(realRepoRoot)` containment (a symlink to the clone fails). reusable
+- Wipe-exemption pattern: `install.sh` sets `SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1` ONLY on the pre-install uninstall exec; `uninstall.sh` split into `remove_state_dir_full()` (explicit uninstall → full `rm -rf ~/.skill-bill`) vs `remove_state_dir_preserving_source()` (preserves {skills, platform-packs, orchestration, baseline-manifest.json}, clears runtime/ + installed-skills/ + *.db). reusable
+- Reserved seam for subtask 2: the baseline manifest path is `$SKILL_BILL_STATE_DIR/baseline-manifest.json` — already a live preserve-list entry so a future manifest survives the pre-install wipe. reusable
+- Pitfall: changing install.sh copy-in/argv breaks SIBLING installer-shell tests — must update BOTH `InstallerShellDelegationTest` AND `InstallerShellReuseLastSelectionTest` `expectedApplyArgs` and seed real skills/+platform-packs/+orchestration/ content (all three source roots must exist or `install_packaged_runtime_distribution` errors under `set -e`). reusable
+- `orchestration/` is now a hard install-time dependency (copied whole; `orchestration/contracts/*.yaml` unneeded — loaded as classpath resources).
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask-local ACs; AC-3 reinstall-without-clone + edit-preservation deferred to subtask 2)
+
 ## [2026-06-08] SKILL-71.1 prose-goal-orchestrator
 Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, README.md
 - Added `mode:prose` to `bill-feature-goal` (mirrors SKILL-70 `mode:runtime`/`mode:prose` convention): mode:runtime (default) drives the foreground `skill-bill goal` runtime; mode:prose loops decomposed subtasks in-session through the existing continuation seam. reusable

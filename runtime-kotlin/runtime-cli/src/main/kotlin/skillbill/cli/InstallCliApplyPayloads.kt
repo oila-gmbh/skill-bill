@@ -84,6 +84,12 @@ private fun applyMcpRegistrationPayload(result: InstallApplyResult): Map<String,
       "changed" to outcome.changed,
       "message" to outcome.message,
       "issue" to outcome.issue?.let(::issuePayload),
+      "profiles" to outcome.profiles.map { profile ->
+        mapOf(
+          "config_path" to profile.configPath.toString(),
+          "changed" to profile.changed,
+        )
+      },
     )
   },
 )
