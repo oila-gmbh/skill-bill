@@ -1080,6 +1080,7 @@ class SkillBillViewModelScaffoldTest {
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+    installedWorkspaceGitProvisioner = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner(),
   )
 
   private fun defaultTree(): List<SkillBillTreeItem> = listOf(

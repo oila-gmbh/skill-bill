@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-77-desktop-installed-workspace"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 4
+  action: "start"
 subtasks:
 - id: 1
   name: "Installed-workspace resolution seam"
@@ -41,12 +41,12 @@ subtasks:
 - id: 3
   name: "Git provisioning and graceful degradation"
   spec_path: ".feature-specs/SKILL-77-desktop-installed-workspace/spec_subtask_3_git-init-installed-workspace.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-77-desktop-installed-workspace"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260610-174245-jvdo"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies:
   - subtask_id: 1

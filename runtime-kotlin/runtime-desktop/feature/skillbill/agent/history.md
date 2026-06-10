@@ -1,5 +1,14 @@
 # SkillBill desktop feature — history
 
+## [2026-06-10] SKILL-77 git provisioning and graceful degradation (subtask 3)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain
+- SkillBillViewModel.init provisions git for the installed workspace by calling InstalledWorkspaceGitProvisioner.provision() immediately after InstalledWorkspaceLocator.locate() resolves a root; GitUnavailable or Failed sets changesSnapshot.errorMessage and still opens the session (AC4 degraded mode). Known limitation: both calls block the UI thread at construction time; async follow-up deferred.
+- finishGitRefresh preserves installedWorkspaceProvisionErrorMessage when isInstalledWorkspaceRoot so the AC4 error overlay survives the auto-refresh launched by the route LaunchedEffect after openRepo. Without this guard the error was silently overwritten. reusable
+- pushStatusErrorMessage is null for the installed workspace when pushTarget == null; clone sessions with remotes keep push working (AC5). Derived via isInstalledWorkspaceRoot in createState().
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+
 ## [2026-06-10] SKILL-77 default-open installed workspace + picker coexistence (subtask 2)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain
 - App now default-opens the installed workspace at startup: `SkillBillViewModel.init` consults `InstalledWorkspaceLocator` first and `openRepo`s `~/.skill-bill` when available, else falls back to the existing recent-path branch (AC2 unchanged). Installed-open wins over a set recent path.

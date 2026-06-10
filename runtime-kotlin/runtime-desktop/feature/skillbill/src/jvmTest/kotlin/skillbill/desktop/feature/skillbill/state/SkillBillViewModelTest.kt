@@ -39,6 +39,7 @@ import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
+import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner
 import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator
 import skillbill.desktop.feature.skillbill.ui.CommandPaletteActions
 import skillbill.desktop.feature.skillbill.ui.executeCommandPaletteResult
@@ -347,7 +348,8 @@ class SkillBillViewModelTest {
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
       skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
-      installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
 
     val state = viewModel.selectRepoPath("/not-skill-bill")
@@ -385,7 +387,8 @@ class SkillBillViewModelTest {
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
       skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
-      installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
     viewModel.selectRepoPath("/repo")
     skillTreeService.items =
@@ -2004,8 +2007,8 @@ class SkillBillViewModelTest {
     desktopPreferenceStore: skillbill.desktop.core.datastore.DesktopPreferenceStore = completedFirstRunStore(),
     skillRemoveGateway: skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway =
       skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
-    installedWorkspaceLocator: skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator =
-      skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+    installedWorkspaceLocator: FakeInstalledWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+    installedWorkspaceGitProvisioner: FakeInstalledWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -2020,6 +2023,7 @@ class SkillBillViewModelTest {
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillRemoveGateway,
     installedWorkspaceLocator = installedWorkspaceLocator,
+    installedWorkspaceGitProvisioner = installedWorkspaceGitProvisioner,
   )
 }
 

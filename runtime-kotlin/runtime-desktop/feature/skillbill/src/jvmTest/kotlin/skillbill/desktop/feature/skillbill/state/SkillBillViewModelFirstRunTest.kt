@@ -285,6 +285,7 @@ class SkillBillViewModelFirstRunTest {
     desktopPreferenceStore = preferenceStore,
     skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+    installedWorkspaceGitProvisioner = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner(),
   )
 }
 

@@ -35,6 +35,7 @@ import skillbill.desktop.core.domain.model.GitPushTarget
 import skillbill.desktop.core.domain.model.PostPublishReinstallState
 import skillbill.desktop.core.domain.model.PrPublishingRequest
 import skillbill.desktop.core.domain.model.PrPublishingResult
+import skillbill.desktop.core.domain.model.ProvisionResult
 import skillbill.desktop.core.domain.model.PublishLink
 import skillbill.desktop.core.domain.model.PublishLinkKind
 import skillbill.desktop.core.domain.model.RenderBlock
@@ -63,6 +64,7 @@ import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.GitGateway
+import skillbill.desktop.core.domain.service.InstalledWorkspaceGitProvisioner
 import skillbill.desktop.core.domain.service.InstalledWorkspaceLocator
 import skillbill.desktop.core.domain.service.PrPublishingGateway
 import skillbill.desktop.core.domain.service.RecentRepoRepository
@@ -90,6 +92,7 @@ class SkillBillViewModel(
   private val desktopPreferenceStore: DesktopPreferenceStore,
   private val skillRemoveGateway: RuntimeSkillRemoveGateway,
   private val installedWorkspaceLocator: InstalledWorkspaceLocator,
+  private val installedWorkspaceGitProvisioner: InstalledWorkspaceGitProvisioner,
 ) {
   private val installedWorkspaceRoot: String? =
     installedWorkspaceLocator.locate().takeIf { it.availability }?.path?.takeIf { it.isNotBlank() }
@@ -182,11 +185,36 @@ class SkillBillViewModel(
   private var activeFirstRunToken: Long = 0L
   private var postPublishReinstall: PostPublishReinstallState? = null
   private var activePostPublishReinstallToken: Long = 0L
+
+  // AC4: when git provisioning cannot locate the git binary, we surface a non-null error message
+  // via the changes snapshot so the session still opens and the editor still works.
+  private var installedWorkspaceProvisionErrorMessage: String? = null
+
   private var currentState = createState()
 
   init {
     if (installedWorkspaceRoot != null) {
+      // NOTE(F-CRITICAL-1): provision() runs synchronously here. In the AlreadyProvisioned fast
+      // path (rev-parse exits 0 and top-level == root) this completes in < 100 ms. In the
+      // first-open path, up to 6 sequential git sub-processes (each with a 5-second timeout) are
+      // executed — worst-case ~30 s. The VM has no coroutine scope at construction time (it is
+      // created synchronously by the DI graph before the Compose route is attached), so there is
+      // no safe async entry point here. This known limitation is tracked for a follow-up refactor
+      // that will move provisioning to a LaunchedEffect on the route.
+      val provisionResult = installedWorkspaceGitProvisioner.provision(installedWorkspaceRoot)
       currentState = openRepo(installedWorkspaceRoot, preserveSelection = false)
+      // AC4: apply the provision error AFTER openRepo so the repo-load reset does not clobber it.
+      // The error is surfaced via changesSnapshot.errorMessage; the session and editor still work.
+      val provisionError = when (provisionResult) {
+        is ProvisionResult.GitUnavailable -> provisionResult.errorMessage
+        is ProvisionResult.Failed -> provisionResult.errorMessage
+        else -> null
+      }
+      if (provisionError != null) {
+        installedWorkspaceProvisionErrorMessage = provisionError
+        changesSnapshot = ChangesSnapshot(files = emptyList(), errorMessage = provisionError)
+        currentState = createState()
+      }
     } else if (repoPathText.isNotBlank()) {
       currentState = openRepo(repoPathText, preserveSelection = false)
     }
@@ -662,7 +690,14 @@ class SkillBillViewModel(
       compareUrl = publishingStatus.compareUrl,
       pushBusy = pushBusy,
       pushErrorMessage = pushErrorMessage,
-      pushStatusErrorMessage = publishingStatus.errorMessage,
+      // AC5: when the installed workspace has no remote, suppress the "No Git remotes are
+      // configured." error from the push surface. The affordance is hidden (pushTarget == null)
+      // which is sufficient — surfacing an error on top would be confusing for a local workspace.
+      pushStatusErrorMessage = if (publishingStatus.pushTarget == null && isInstalledWorkspaceRoot(session?.repoPath)) {
+        null
+      } else {
+        publishingStatus.errorMessage
+      },
       canonicalPushConfirmationRequired = canonicalPushConfirmationRequired,
       canReturnToInstalledWorkspace =
       installedWorkspaceRoot != null && !isInstalledWorkspaceRoot(session?.repoPath),
@@ -1458,7 +1493,16 @@ class SkillBillViewModel(
       currentState = createState()
       return currentState
     }
-    changesSnapshot = result.snapshot
+    // F-MAJOR-1: if a provision error was recorded for the installed workspace (AC4 — git binary
+    // unavailable), preserve it in the snapshot so the error message is not silently overwritten by
+    // the git-refresh result. A quiet refresh after openRepo would otherwise replace changesSnapshot
+    // with an empty-or-real snapshot, losing the user-visible error from provisioning.
+    val provisionError = installedWorkspaceProvisionErrorMessage
+    changesSnapshot = if (provisionError != null && isInstalledWorkspaceRoot(currentSession?.repoPath)) {
+      result.snapshot.copy(errorMessage = provisionError)
+    } else {
+      result.snapshot
+    }
     reconcilePublishSelection(result.snapshot)
     invalidateFailedValidationOverrideIfStagedAuthoredChanged()
     result.publishingStatus?.let { replacePublishingStatus(it, clearConfirmation = true) }
