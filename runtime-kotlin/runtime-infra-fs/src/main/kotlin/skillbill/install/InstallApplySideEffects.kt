@@ -1,6 +1,7 @@
 package skillbill.install
 
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssue
 import skillbill.install.model.InstallApplyIssueKind
@@ -178,19 +179,31 @@ private fun registerMcpAgent(
     status = McpRegistrationApplyStatus.SUCCESS,
     configPath = result.configPath,
     changed = result.changed,
-    message = if (result.changed) {
-      "MCP registration updated."
-    } else {
-      "MCP registration already up to date."
-    },
+    message = mcpRegistrationMessage(result),
+    profiles = result.profiles,
   )
 }.getOrElse { error ->
+  val succeeded = (error as? ClaudeMcpProfileFailure)?.succeeded.orEmpty()
   failedMcpRegistrationOutcome(
     agent = agent,
-    message = error.message.orEmpty(),
+    message = if (succeeded.isEmpty()) {
+      error.message.orEmpty()
+    } else {
+      "${error.message.orEmpty()}. Already updated: ${succeeded.joinToString(", ") { it.configPath.toString() }}"
+    },
     warnings = warnings,
     error = error,
+    profiles = succeeded,
   )
+}
+
+private fun mcpRegistrationMessage(result: skillbill.install.model.McpMutationResult): String {
+  val base = if (result.changed) "MCP registration updated." else "MCP registration already up to date."
+  if (result.profiles.size <= 1) {
+    return base
+  }
+  val paths = result.profiles.joinToString(", ") { it.configPath.toString() }
+  return "$base Profiles (${result.profiles.size}): $paths"
 }
 
 private fun failedMcpRegistrationOutcome(
@@ -198,6 +211,7 @@ private fun failedMcpRegistrationOutcome(
   message: String,
   warnings: MutableList<InstallApplyIssue>,
   error: Throwable? = null,
+  profiles: List<skillbill.install.model.McpProfileOutcome> = emptyList(),
 ): McpRegistrationApplyOutcome {
   val issue = InstallApplyIssue(
     kind = InstallApplyIssueKind.MCP_REGISTRATION_FAILED,
@@ -209,7 +223,8 @@ private fun failedMcpRegistrationOutcome(
   return McpRegistrationApplyOutcome(
     agent = agent,
     status = McpRegistrationApplyStatus.FAILED,
-    message = "MCP registration failed.",
+    message = if (profiles.isEmpty()) "MCP registration failed." else message,
     issue = issue,
+    profiles = profiles,
   )
 }

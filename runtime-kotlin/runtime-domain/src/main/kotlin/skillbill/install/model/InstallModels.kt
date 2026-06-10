@@ -225,10 +225,18 @@ data class InstallTransaction(
   val createdSymlinks: MutableList<Path> = mutableListOf(),
 )
 
+data class McpProfileOutcome(val configPath: Path, val changed: Boolean)
+
+class ClaudeMcpProfileFailure(
+  message: String,
+  val succeeded: List<McpProfileOutcome>,
+) : IllegalArgumentException(message)
+
 data class McpMutationResult(
   val agent: String,
   val configPath: Path,
   val changed: Boolean,
+  val profiles: List<McpProfileOutcome> = emptyList(),
 )
 
 /**
@@ -409,6 +417,7 @@ data class McpRegistrationApplyOutcome(
   val changed: Boolean = false,
   val message: String = "",
   val issue: InstallApplyIssue? = null,
+  val profiles: List<McpProfileOutcome> = emptyList(),
 )
 
 data class InstallApplyResult(
