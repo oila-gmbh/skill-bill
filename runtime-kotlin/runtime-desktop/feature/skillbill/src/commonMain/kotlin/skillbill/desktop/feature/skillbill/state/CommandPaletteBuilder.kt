@@ -40,8 +40,7 @@ internal fun buildCommandPaletteState(
 }
 
 private fun commandPaletteCandidates(state: SkillBillState): List<PaletteCandidate> {
-  val publishingBusy = state.publishBusy || state.commitBusy || state.commitValidationRunning || state.pushBusy
-  val blockedByBusy = busyDisabledReason(state.busyOperation, publishingBusy)
+  val blockedByBusy = busyDisabledReason(state.busyOperation)
   return commandCandidates(state, blockedByBusy) + treeCandidates(state, blockedByBusy)
 }
 
@@ -82,92 +81,6 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
     ),
     PaletteCandidate(
       result = CommandPaletteResult(
-        id = "command.validate",
-        title = "Validate all",
-        subtitle = "Run full Skill Bill repository validation",
-        marker = "ok",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.VALIDATE,
-        disabledReason = blockedByBusy ?: validateDisabledReason(state),
-        acceleratorLabel = SkillBillAcceleratorLabels.VALIDATE,
-      ),
-      keywords = listOf("validate", "validation", "check", "contract"),
-      baseRank = COMMAND_BASE_RANK - 1,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.validate-selected",
-        title = "Validate selected",
-        subtitle = "Run validation for the current skill",
-        marker = "vs",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.VALIDATE_SELECTED,
-        disabledReason = blockedByBusy ?: validateSelectedDisabledReason(state),
-      ),
-      keywords = listOf("validate", "validation", "selected", "skill", "check", "contract"),
-      baseRank = COMMAND_BASE_RANK - 2,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.render",
-        title = "Render selected",
-        subtitle = "Render generated runtime artifacts for the current selection",
-        marker = "rc",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.RENDER,
-        disabledReason = blockedByBusy ?: renderDisabledReason(state),
-        acceleratorLabel = SkillBillAcceleratorLabels.RENDER,
-      ),
-      keywords = listOf("render", "console", "generated", "artifact", "check"),
-      baseRank = COMMAND_BASE_RANK - 3,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.render-all",
-        title = "Render all",
-        subtitle = "Render generated runtime artifacts for every renderable source",
-        marker = "ra",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.RENDER_ALL,
-        disabledReason = blockedByBusy ?: renderAllDisabledReason(state),
-      ),
-      keywords = listOf("render", "all", "full", "repo", "repository", "console", "generated", "artifact", "check"),
-      baseRank = COMMAND_BASE_RANK - 4,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.show-changes",
-        title = "Show changes",
-        subtitle = "Open the source-control changes dock",
-        marker = "chg",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.SHOW_CHANGES,
-        disabledReason = blockedByBusy ?: dockDisabledReason(state),
-      ),
-      keywords = listOf("show", "changes", "source", "control", "dock", "git", "status"),
-      baseRank = COMMAND_BASE_RANK - 5,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.show-history",
-        title = "Show history",
-        subtitle = "Open the commit history dock",
-        marker = "hst",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.SHOW_HISTORY,
-        disabledReason = blockedByBusy ?: dockDisabledReason(state),
-      ),
-      keywords = listOf("show", "history", "commits", "dock", "git", "log"),
-      baseRank = COMMAND_BASE_RANK - 6,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
         id = "command.save",
         title = "Save",
         subtitle = "Save the authored content editor",
@@ -179,20 +92,6 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: String?): Li
       ),
       keywords = listOf("save", "editor", "authored", "content", "draft"),
       baseRank = COMMAND_BASE_RANK - 3,
-      sortGroup = 0,
-    ),
-    PaletteCandidate(
-      result = CommandPaletteResult(
-        id = "command.refresh-git",
-        title = "Refresh Git status",
-        subtitle = "Reload changes, branch, and publishing status",
-        marker = "git",
-        kind = CommandPaletteResultKind.COMMAND,
-        action = CommandPaletteAction.REFRESH_GIT_STATUS,
-        disabledReason = blockedByBusy ?: gitRefreshDisabledReason(state),
-      ),
-      keywords = listOf("git", "status", "changes", "source", "control", "refresh"),
-      baseRank = COMMAND_BASE_RANK - 4,
       sortGroup = 0,
     ),
     PaletteCandidate(
@@ -308,38 +207,8 @@ private fun treeCandidates(state: SkillBillState, blockedByBusy: String?): List<
     )
   }
 
-private fun busyDisabledReason(busyOperation: SkillBillBusyOperation?, publishingBusy: Boolean): String? = when {
+private fun busyDisabledReason(busyOperation: SkillBillBusyOperation?): String? = when {
   busyOperation != null -> "Wait for ${busyOperation.label()} to finish."
-  publishingBusy -> "Wait for the publishing operation to finish."
-  else -> null
-}
-
-private fun validateDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  else -> null
-}
-
-private fun validateSelectedDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  state.selectedTreeItemId == null -> "Select a skill first."
-  !state.treeItems.isSelectedSkill(state.selectedTreeItemId) -> "The current selection is not a skill."
-  else -> null
-}
-
-private fun renderDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  state.selectedTreeItemId == null -> "Select a renderable skill, add-on, or native agent first."
-  !state.renderable -> "The current selection cannot be rendered."
-  else -> null
-}
-
-private fun renderAllDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  !state.treeItems.hasRenderableTreeItem() -> "No renderable skills, add-ons, or native agents were found."
   else -> null
 }
 
@@ -347,20 +216,6 @@ private fun saveDisabledReason(state: SkillBillState): String? = when {
   !state.editor.editable -> "Select editable authored content first."
   !state.editor.dirty -> "Make an editor change before saving."
   state.editor.saveInProgress -> "Wait for the current save to finish."
-  state.changesBusy -> "Wait for Git status refresh to finish."
-  else -> null
-}
-
-private fun dockDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  else -> null
-}
-
-private fun gitRefreshDisabledReason(state: SkillBillState): String? = when {
-  state.selectedRepoPath == null -> "Open a Skill Bill repository first."
-  state.repoStatus.state != RepoLoadState.LOADED -> "Open a valid Skill Bill repository first."
-  state.changesBusy -> "Wait for Git status refresh to finish."
   else -> null
 }
 
@@ -441,38 +296,15 @@ private fun SkillBillBusyOperation.label(): String = when (this) {
   SkillBillBusyOperation.OPEN_REPO -> "repository open"
   SkillBillBusyOperation.REFRESH -> "refresh"
   SkillBillBusyOperation.CHOOSE_DIRECTORY -> "directory selection"
-  SkillBillBusyOperation.VALIDATE -> "validation"
-  SkillBillBusyOperation.RENDER -> "render"
   SkillBillBusyOperation.SAVE -> "save"
   SkillBillBusyOperation.SCAFFOLD -> "scaffold"
   SkillBillBusyOperation.FIRST_RUN_SETUP -> "setup"
   SkillBillBusyOperation.DELETE -> "delete"
   SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "validate agent configs"
-  SkillBillBusyOperation.REINSTALL -> "reinstall"
 }
 
 private fun List<SkillBillTreeItem>.flattenPaletteTree(): List<SkillBillTreeItem> =
   flatMap { item -> listOf(item) + item.children.flattenPaletteTree() }
-
-private fun List<SkillBillTreeItem>.hasRenderableTreeItem(): Boolean =
-  any { item -> item.kind.isRenderableTreeItemKind() || item.children.hasRenderableTreeItem() }
-
-private fun List<SkillBillTreeItem>.isSelectedSkill(selectedTreeItemId: String?): Boolean = any { item ->
-  (item.id == selectedTreeItemId && item.kind == TreeItemKind.SKILL) ||
-    item.children.isSelectedSkill(selectedTreeItemId)
-}
-
-private fun TreeItemKind.isRenderableTreeItemKind(): Boolean = when (this) {
-  TreeItemKind.SKILL,
-  TreeItemKind.ADD_ON,
-  TreeItemKind.NATIVE_AGENT,
-  -> true
-  TreeItemKind.GROUP,
-  TreeItemKind.PLATFORM_PACK,
-  TreeItemKind.GENERATED_ARTIFACT,
-  TreeItemKind.PLACEHOLDER,
-  -> false
-}
 
 private data class PaletteCandidate(
   val result: CommandPaletteResult,

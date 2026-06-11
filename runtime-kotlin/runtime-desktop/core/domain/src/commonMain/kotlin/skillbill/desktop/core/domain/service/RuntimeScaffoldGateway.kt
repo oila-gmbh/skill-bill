@@ -6,8 +6,7 @@ import skillbill.desktop.core.domain.model.ScaffoldPayload
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
 
 /**
- * Desktop-facing seam over the runtime scaffolder. Mirrors the sibling-gateway pattern of
- * `RuntimeGitGateway` and `RenderGateway`: a thin, suspend-friendly interface whose
+ * Desktop-facing seam over the runtime scaffolder: a thin, suspend-friendly interface whose
  * implementations adapt the synchronous runtime entry point (`skillbill.scaffold.scaffold`) into
  * sealed result variants the view model can consume without throwing across coroutine boundaries.
  */

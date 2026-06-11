@@ -1,5 +1,6 @@
 package skillbill.desktop.feature.skillbill.ui
 
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -9,6 +10,7 @@ import java.nio.file.Files
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 class RepoFileChangeObserverTest {
   @Test
@@ -27,8 +29,29 @@ class RepoFileChangeObserverTest {
   }
 
   @Test
-  fun `observer emits when git index changes`() = runBlocking {
-    val repo = Files.createTempDirectory("skill-bill-repo-watch-git")
+  fun `observer does not emit for git directory changes`() = runBlocking {
+    val repo = Files.createTempDirectory("skill-bill-repo-watch-git-only")
+    Files.createDirectories(repo.resolve(".git"))
+    val event = async {
+      withTimeout(1_500) {
+        observeRepoFileChanges(repo.toString()).first()
+      }
+    }
+
+    delay(250)
+    repo.resolve(".git").resolve("index").writeText("index\n")
+
+    try {
+      val emitted = event.await()
+      fail("Expected no emission for .git-only changes, but observed $emitted")
+    } catch (_: TimeoutCancellationException) {
+      // Expected: a write confined to .git must never produce a RepoSnapshot.
+    }
+  }
+
+  @Test
+  fun `observer emits for tracked file changes even when a git directory exists`() = runBlocking {
+    val repo = Files.createTempDirectory("skill-bill-repo-watch-git-and-tracked")
     Files.createDirectories(repo.resolve(".git"))
     val event = async {
       withTimeout(5_000) {
@@ -37,8 +60,8 @@ class RepoFileChangeObserverTest {
     }
 
     delay(250)
-    repo.resolve(".git").resolve("index").writeText("index\n")
+    repo.resolve("content.md").writeText("changed\n")
 
-    assertEquals(RepoFileChangeKind.GitStatus, event.await())
+    assertEquals(RepoFileChangeKind.RepoSnapshot, event.await())
   }
 }

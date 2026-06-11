@@ -983,7 +983,6 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
         fontSize = 11.sp,
       )
     }
-    // Console-styled exception block matches DockTab.Console: monospace, horizontalScroll-friendly.
     Box(
       modifier = Modifier
         .fillMaxWidth()

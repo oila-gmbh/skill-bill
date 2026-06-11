@@ -5,18 +5,9 @@ import skillbill.desktop.core.domain.model.TreeItemKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SkillBillFrameDockBadgeTest {
-  @Test
-  fun `dock badge count preserves two digit counts and caps large counts`() {
-    assertNull(dockBadgeCountText(0))
-    assertEquals("9", dockBadgeCountText(9))
-    assertEquals("10", dockBadgeCountText(10))
-    assertEquals("99+", dockBadgeCountText(100))
-  }
-
   @Test
   fun `selected navigation node expands and collapses from keyboard command`() {
     val treeItems = listOf(

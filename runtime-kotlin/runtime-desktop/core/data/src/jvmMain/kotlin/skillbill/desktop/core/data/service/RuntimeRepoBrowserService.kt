@@ -4,34 +4,23 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.data.service.mapper.authoredSkillEntries
-import skillbill.desktop.core.data.service.mapper.toSelectedValidationSummary
-import skillbill.desktop.core.data.service.mapper.toValidationSummary
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.AuthoringSaveResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
-import skillbill.desktop.core.domain.model.RenderBlock
-import skillbill.desktop.core.domain.model.RenderRunState
-import skillbill.desktop.core.domain.model.RenderSummary
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
 import skillbill.desktop.core.domain.model.TreeItemKind
-import skillbill.desktop.core.domain.model.ValidationRunState
-import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceBaselineService
-import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
-import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.scaffold.model.NativeAgentSourceProjection
-import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
-import skillbill.ports.validation.model.RepoValidationReport
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -48,22 +37,10 @@ class RuntimeRepoBrowserService(
 ) :
   RepoSessionService,
   SkillTreeService,
-  AuthoringGateway,
-  ValidationGateway,
-  RenderGateway {
+  AuthoringGateway {
   private val scaffoldService get() = runtimeServices.scaffoldService
   private val repoSourceDiscoveryService get() = runtimeServices.repoSourceDiscoveryService
   private val repoValidationService get() = runtimeServices.repoValidationService
-
-  // F-107: validator is a functional seam tests can swap to drive the onFailure branch of validate()
-  // without needing to physically corrupt a repo on disk.
-  internal var validator: (Path) -> RepoValidationReport = { root -> repoValidationService.validateRepo(root) }
-
-  // Mirror of F-107 for render. Tests swap this to drive the runtime-failure branch of render()
-  // without needing to physically corrupt the on-disk source.
-  internal var renderer: (Path, String) -> ScaffoldRenderResult = { root, skillName ->
-    scaffoldService.render(root, skillName)
-  }
 
   // SKILL-52.2 subtask 5: returns the typed `ScaffoldSaveExactContentResult`
   // instead of reaching into its `.payload` raw map. The actual return value is
@@ -191,159 +168,6 @@ class RuntimeRepoBrowserService(
     }.getOrElse { error ->
       AuthoringSaveResult.failed(runtimeMessage(error))
     }
-  }
-
-  override fun validate(session: RepoSession?): ValidationSummary {
-    if (session == null || !session.isRecognizedSkillBillRepo) {
-      return ValidationSummary.unavailable
-    }
-    val root = resolveRepoPath(session.repoPath) ?: return ValidationSummary.unavailable
-    return runCatching { validator(root) }
-      .fold(
-        onSuccess = { report -> report.toValidationSummary(root) },
-        onFailure = { error ->
-          ValidationSummary(
-            state = ValidationRunState.FAILED,
-            issues = emptyList(),
-            runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
-            runtimeExceptionMessage = error.message,
-          )
-        },
-      )
-  }
-
-  override fun validateSelected(session: RepoSession?, treeItemId: String): ValidationSummary {
-    if (session == null || !session.isRecognizedSkillBillRepo) {
-      return ValidationSummary.unavailable
-    }
-    val capturedSnapshot = snapshot
-    val root = capturedSnapshot.repoRoot ?: return ValidationSummary.unavailable
-    if (root.toString() != session.repoPath) {
-      return ValidationSummary.unavailable
-    }
-    val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
-      ?: return ValidationSummary.unavailable
-    val skillName = detail.skillName ?: return ValidationSummary.unavailable
-    return runCatching { scaffoldService.validate(root, listOf(skillName)).toSelectedValidationSummary(root) }
-      .getOrElse { error ->
-        ValidationSummary(
-          state = ValidationRunState.FAILED,
-          issues = emptyList(),
-          runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
-          runtimeExceptionMessage = error.message,
-        )
-      }
-  }
-
-  override fun render(session: RepoSession?, treeItemId: String): RenderSummary {
-    if (session == null || !session.isRecognizedSkillBillRepo) {
-      return RenderSummary.unavailable
-    }
-    // F-201: capture the snapshot reference once so we get a consistent view across reads even if
-    // open()/refresh() rewrites `snapshot` from another thread mid-render.
-    val capturedSnapshot = snapshot
-    val root = capturedSnapshot.repoRoot ?: return RenderSummary.unavailable
-    if (root.toString() != session.repoPath) {
-      return RenderSummary.unavailable
-    }
-    val detail = capturedSnapshot.selections[treeItemId]?.takeIf { it.repoToken == capturedSnapshot.repoToken }
-      ?: return RenderSummary.unavailable
-    val start = System.nanoTime()
-    return runCatching { renderDetail(root, detail) }
-      .fold(
-        onSuccess = { (blocks, artifacts) ->
-          RenderSummary(
-            state = RenderRunState.PASSED,
-            blocks = blocks,
-            generatedArtifacts = artifacts,
-            durationMillis = elapsedMillis(start),
-          )
-        },
-        onFailure = { error ->
-          RenderSummary(
-            state = RenderRunState.FAILED,
-            blocks = emptyList(),
-            generatedArtifacts = emptyList(),
-            durationMillis = elapsedMillis(start),
-            runtimeExceptionName = error::class.simpleName ?: error::class.qualifiedName,
-            runtimeExceptionMessage = error.message,
-          )
-        },
-      )
-  }
-
-  private fun renderDetail(root: Path, detail: SelectionDetail): RenderOutcome = when (detail.kind) {
-    "horizontal skill", "platform pack skill" -> renderSkill(root, detail)
-    "native agent" -> renderNativeAgent(root, detail)
-    "add-on" -> renderAddon(root, detail)
-    else -> error("Render is not supported for selection kind '${detail.kind ?: "unknown"}'.")
-  }
-
-  private fun renderSkill(root: Path, detail: SelectionDetail): RenderOutcome {
-    val skillName = detail.skillName ?: error("Skill selection is missing a skill name.")
-    val result = renderer(root, skillName)
-    val blocks = result.blocks.map { block ->
-      RenderBlock(
-        header = block.header,
-        content = block.content,
-      )
-    }
-    val artifacts = blocks.mapNotNull { block -> generatedArtifactFromHeader(block.header) }
-    return RenderOutcome(blocks = blocks, generatedArtifacts = artifacts)
-  }
-
-  private fun renderNativeAgent(root: Path, detail: SelectionDetail): RenderOutcome {
-    val contentFile = detail.contentFile
-      ?: error("Native agent selection is missing a content file.")
-    val relative = relativePath(root, contentFile.toString())
-    detail.contentOverride?.let { content ->
-      return RenderOutcome(
-        blocks = listOf(
-          RenderBlock(
-            header = "===== native-agent: $relative:${detail.title} =====",
-            content = content,
-          ),
-        ),
-        generatedArtifacts = emptyList(),
-      )
-    }
-    val agents = repoSourceDiscoveryService.parseNativeAgentSourceFile(contentFile)
-    val blocks = agents.map { agent ->
-      RenderBlock(
-        header = "===== native-agent: $relative:${agent.name} =====",
-        content = repoSourceDiscoveryService.renderNativeAgentSource(agent),
-      )
-    }
-    return RenderOutcome(blocks = blocks, generatedArtifacts = emptyList())
-  }
-
-  private fun renderAddon(root: Path, detail: SelectionDetail): RenderOutcome {
-    val contentFile = detail.contentFile
-      ?: error("Add-on selection is missing a content file.")
-    val relative = relativePath(root, contentFile.toString())
-    val content = Files.readString(contentFile)
-    return RenderOutcome(
-      blocks = listOf(RenderBlock(header = "===== addon: $relative =====", content = content)),
-      generatedArtifacts = emptyList(),
-    )
-  }
-
-  override fun resolveTreeItemIdForSource(session: RepoSession?, sourcePath: String): String? {
-    if (session?.isRecognizedSkillBillRepo != true) {
-      return null
-    }
-    val expectedRepoPath = snapshot.repoRoot?.toString()
-    if (expectedRepoPath != session.repoPath) {
-      return null
-    }
-    val root = snapshot.repoRoot ?: return null
-    val normalized = normalizeSourcePath(root, sourcePath)
-    if (normalized.isBlank()) {
-      return null
-    }
-    return snapshot.selections.entries
-      .firstOrNull { (_, detail) -> matchesSourcePath(detail.authoredPath, normalized) }
-      ?.key
   }
 
   override fun resolveGeneratedArtifactTreeItemId(session: RepoSession?, artifactPath: String): String? {
@@ -779,11 +603,6 @@ class RuntimeRepoBrowserService(
       }
   }
 
-  private data class RenderOutcome(
-    val blocks: List<RenderBlock>,
-    val generatedArtifacts: List<GeneratedArtifactDetail>,
-  )
-
   private data class RepoBrowserSnapshot(
     val repoRoot: Path? = null,
     val repoToken: String? = null,
@@ -1005,22 +824,6 @@ private fun normalizeSourcePath(root: Path, sourcePath: String): String {
   }.getOrDefault(trimmed.replace('\\', '/'))
 }
 
-private val RENDER_ARTIFACT_HEADER_REGEX = Regex("^===== (SKILL\\.md|pointer): (.+) =====$")
-
-private fun generatedArtifactFromHeader(header: String): GeneratedArtifactDetail? {
-  val match = RENDER_ARTIFACT_HEADER_REGEX.matchEntire(header) ?: return null
-  val kind = match.groupValues[1]
-  val path = match.groupValues[2]
-  val reason = when (kind) {
-    "SKILL.md" -> "Generated runtime wrapper"
-    "pointer" -> "Generated pointer"
-    else -> "Generated artifact"
-  }
-  return GeneratedArtifactDetail(path = path, reason = reason)
-}
-
-private fun elapsedMillis(startNanos: Long): Long = (System.nanoTime() - startNanos).coerceAtLeast(0L) / 1_000_000L
-
 private fun runtimeMessage(error: Throwable): String {
   val message = error.message
   return when {
@@ -1039,17 +842,3 @@ private fun isInstallCachePath(path: Path?): Boolean = path
   ?.windowed(2)
   ?.any { parts -> parts[0] == ".skill-bill" && parts[1] == "installed-skills" }
   ?: false
-
-private fun matchesSourcePath(authoredPath: String?, sourcePath: String): Boolean {
-  if (authoredPath.isNullOrBlank() || sourcePath.isBlank()) {
-    return false
-  }
-  val normalizedAuthored = authoredPath.replace('\\', '/')
-  if (normalizedAuthored == sourcePath) {
-    return true
-  }
-  // Allow matching on the parent directory of an authored file (e.g. content.md path vs SKILL.md sibling).
-  val authoredDir = normalizedAuthored.substringBeforeLast('/', missingDelimiterValue = "")
-  val sourceDir = sourcePath.substringBeforeLast('/', missingDelimiterValue = "")
-  return authoredDir.isNotEmpty() && sourceDir.isNotEmpty() && authoredDir == sourceDir
-}

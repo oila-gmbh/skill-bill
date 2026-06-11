@@ -14,16 +14,11 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.testing.FakeAuthoringGateway
-import skillbill.desktop.core.testing.FakeGitGateway
-import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
-import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
-import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway
 import skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway
-import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner
 import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator
 
 /**
@@ -184,10 +179,6 @@ class SkillBillViewModelDeleteTest {
       repoSessionService = FakeRepoSessionService(),
       skillTreeService = skillTreeService,
       authoringGateway = FakeAuthoringGateway(),
-      gitGateway = FakeGitGateway(),
-      prPublishingGateway = FakePrPublishingGateway(),
-      validationGateway = FakeValidationGateway(),
-      renderGateway = FakeRenderGateway(),
       recentRepoRepository = FakeRecentRepoRepository(),
       scaffoldGateway = FakeScaffoldGateway(),
       firstRunGateway = defaultDeleteTestFirstRunGateway(),
@@ -196,7 +187,6 @@ class SkillBillViewModelDeleteTest {
       ),
       skillRemoveGateway = skillRemoveGateway,
       installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
-      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
     viewModel.selectRepoPath("/repo")
     return viewModel

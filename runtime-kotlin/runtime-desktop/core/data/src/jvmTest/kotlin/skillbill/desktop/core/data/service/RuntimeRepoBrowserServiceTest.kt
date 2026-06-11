@@ -1,10 +1,8 @@
 package skillbill.desktop.core.data.service
 
-import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
-import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.error.SkillBillRuntimeException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
@@ -467,82 +465,6 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
-  fun `validate returns unavailable when no session is open`() {
-    val service = RuntimeRepoBrowserService()
-    val summary = service.validate(session = null)
-
-    assertEquals(ValidationRunState.UNAVAILABLE, summary.state)
-  }
-
-  @Test
-  fun `validate returns failed with structured issues for a non-passing repo`() {
-    val repo = seedRepo("validate-failed")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-
-    val summary = service.validate(session)
-
-    // Seeded repo is missing README, override files, etc., so validation must fail.
-    assertEquals(ValidationRunState.FAILED, summary.state)
-    assertTrue(summary.issues.isNotEmpty())
-    // At least one issue should be tied to an actual source path under skills/ or platform-packs/.
-    val pathBearingIssue = summary.issues.firstOrNull { issue ->
-      !issue.sourcePath.isNullOrBlank()
-    }
-    assertNotNull(pathBearingIssue, "Expected at least one issue with a source path")
-  }
-
-  @Test
-  fun `validate maps unrecognized session to unavailable`() {
-    val service = RuntimeRepoBrowserService()
-    val missing = Files.createTempDirectory("skillbill-desktop-validate-missing").resolve("nope")
-    val invalidSession = service.open(missing.toString())
-
-    val summary = service.validate(invalidSession)
-
-    assertEquals(ValidationRunState.UNAVAILABLE, summary.state)
-  }
-
-  @Test
-  fun `resolveTreeItemIdForSource maps known authored path to its selection id`() {
-    val repo = seedRepo("validate-resolve")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val skillTreeId = service.treeForSessionLocalId(session, "skill:bill-alpha")
-
-    val resolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/content.md")
-
-    assertEquals(skillTreeId, resolved)
-  }
-
-  @Test
-  fun `resolveTreeItemIdForSource returns null for unknown source paths`() {
-    val repo = seedRepo("validate-resolve-unknown")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-
-    val resolved = service.resolveTreeItemIdForSource(session, "skills/does-not-exist/content.md")
-
-    assertNull(resolved)
-  }
-
-  @Test
-  fun `resolveTreeItemIdForSource matches SKILL md sibling against authored content md`() {
-    // F-108: validation reports often surface the generated SKILL.md path even though the
-    // authored selection lives next to it as content.md. The parent-directory fallback must
-    // make those two paths resolve to the same tree item.
-    val repo = seedRepo("validate-resolve-parent")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-
-    val contentResolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/content.md")
-    val siblingResolved = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/SKILL.md")
-
-    assertNotNull(contentResolved)
-    assertEquals(contentResolved, siblingResolved)
-  }
-
-  @Test
   fun `resolveGeneratedArtifactTreeItemId matches exact generated artifact tree id from snapshot`() {
     val repo = seedRepo("generated-artifact-resolve")
     val service = RuntimeRepoBrowserService()
@@ -555,20 +477,6 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
-  fun `resolveGeneratedArtifactTreeItemId does not use source sibling remapping`() {
-    val repo = seedRepo("generated-artifact-no-source-remap")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val authoredId = service.resolveTreeItemIdForSource(session, "skills/bill-alpha/SKILL.md")
-    val generatedId = service.resolveGeneratedArtifactTreeItemId(session, "skills/bill-alpha/SKILL.md")
-
-    assertNotNull(authoredId)
-    assertNotNull(generatedId)
-    assertTrue(generatedId != authoredId)
-    assertNull(service.resolveGeneratedArtifactTreeItemId(session, "skills/bill-alpha/content.md"))
-  }
-
-  @Test
   fun `resolveGeneratedArtifactTreeItemId returns null for unknown artifact path`() {
     val repo = seedRepo("generated-artifact-resolve-unknown")
     val service = RuntimeRepoBrowserService()
@@ -577,94 +485,6 @@ class RuntimeRepoBrowserServiceTest {
     val resolved = service.resolveGeneratedArtifactTreeItemId(session, "skills/does-not-exist/SKILL.md")
 
     assertNull(resolved)
-  }
-
-  @Test
-  fun `validate failure inside runtime is surfaced as FAILED with runtime exception fields`() {
-    // F-107: when the underlying validation runtime throws, the service must report a FAILED
-    // summary that carries the runtime exception name and message so the UI can render the
-    // failure without losing the cause.
-    val repo = seedRepo("validate-runtime-failure")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    service.validator = { _ -> error("simulated runtime crash") }
-
-    val summary = service.validate(session)
-
-    assertEquals(ValidationRunState.FAILED, summary.state)
-    assertNotNull(summary.runtimeExceptionName)
-    assertNotNull(summary.runtimeExceptionMessage)
-    assertTrue(summary.runtimeExceptionMessage!!.contains("simulated runtime crash"))
-    assertTrue(summary.issues.isEmpty())
-  }
-
-  @Test
-  fun `render returns unavailable when session is null`() {
-    val service = RuntimeRepoBrowserService()
-    val summary = service.render(session = null, treeItemId = "anything")
-
-    assertEquals(RenderRunState.UNAVAILABLE, summary.state)
-  }
-
-  @Test
-  fun `render returns unavailable for invalid session`() {
-    val service = RuntimeRepoBrowserService()
-    val missing = Files.createTempDirectory("skillbill-desktop-render-missing").resolve("nope")
-    val invalidSession = service.open(missing.toString())
-
-    val summary = service.render(invalidSession, "any")
-
-    assertEquals(RenderRunState.UNAVAILABLE, summary.state)
-  }
-
-  @Test
-  fun `render returns unavailable for unknown tree item id`() {
-    val repo = seedRepo("render-unknown")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-
-    val summary = service.render(session, "missing-id")
-
-    assertEquals(RenderRunState.UNAVAILABLE, summary.state)
-  }
-
-  @Test
-  fun `render passes for an authored skill and derives generated artifacts from block headers`() {
-    val repo = seedRepo("render-skill-pass")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
-
-    val summary = service.render(session, skillId)
-
-    assertEquals(RenderRunState.PASSED, summary.state)
-    assertTrue(summary.blocks.isNotEmpty())
-    val wrapper = summary.blocks.first()
-    assertTrue(wrapper.header.startsWith("===== SKILL.md:"))
-    assertTrue(summary.generatedArtifacts.any { it.path == "skills/bill-alpha/SKILL.md" })
-    assertTrue(summary.durationMillis >= 0L)
-  }
-
-  @Test
-  fun `render passes for a native agent selection`() {
-    val repo = seedRepo("render-native-agent")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val flattened = service.treeFor(session).flatten()
-    val agentItem = flattened.first {
-      it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent"
-    }
-
-    val summary = service.render(session, agentItem.id)
-
-    assertEquals(RenderRunState.PASSED, summary.state)
-    assertEquals(1, summary.blocks.size)
-    val block = summary.blocks.single()
-    assertTrue(block.header.startsWith("===== native-agent:"))
-    assertTrue(block.header.endsWith(":alpha-agent ====="))
-    assertTrue(block.content.contains("name: alpha-agent"))
-    // Native agents do not emit generated artifacts in the desktop render preview.
-    assertTrue(summary.generatedArtifacts.isEmpty())
   }
 
   @Test
@@ -732,59 +552,6 @@ class RuntimeRepoBrowserServiceTest {
     assertTrue(document.text.contains("name: bill-kotlin-code-review-architecture"))
     assertFalse(document.text.contains("compose: governed-content"))
     assertTrue(document.text.contains("Architecture guidance."))
-  }
-
-  @Test
-  fun `render passes for an add-on selection by reading content file`() {
-    val repo = seedRepo("render-addon")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val addonItem = service.treeFor(session).flatten()
-      .first { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" }
-
-    val summary = service.render(session, addonItem.id)
-
-    assertEquals(RenderRunState.PASSED, summary.state)
-    assertEquals(1, summary.blocks.size)
-    val block = summary.blocks.single()
-    assertTrue(block.header.startsWith("===== addon:"))
-    assertTrue(block.content.contains("Tracing"))
-  }
-
-  @Test
-  fun `render returns failed with runtime exception fields when renderer throws`() {
-    val repo = seedRepo("render-runtime-failure")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
-    service.renderer = { _, _ -> error("simulated render crash") }
-
-    val summary = service.render(session, skillId)
-
-    assertEquals(RenderRunState.FAILED, summary.state)
-    assertNotNull(summary.runtimeExceptionName)
-    assertNotNull(summary.runtimeExceptionMessage)
-    assertTrue(summary.runtimeExceptionMessage!!.contains("simulated render crash"))
-    assertTrue(summary.blocks.isEmpty())
-  }
-
-  @Test
-  fun `render is dry-run and does not modify repository files`() {
-    val repo = seedRepo("render-dry-run")
-    val service = RuntimeRepoBrowserService()
-    val session = service.open(repo.toString())
-    val before = repoFileSnapshot(repo)
-    val skillId = service.treeForSessionLocalId(session, "skill:bill-alpha")
-    val agentItem = service.treeFor(session).flatten()
-      .first { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" }
-    val addonItem = service.treeFor(session).flatten()
-      .first { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" }
-
-    service.render(session, skillId)
-    service.render(session, agentItem.id)
-    service.render(session, addonItem.id)
-
-    assertEquals(before, repoFileSnapshot(repo))
   }
 
   @Test

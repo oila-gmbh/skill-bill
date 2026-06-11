@@ -1,5 +1,13 @@
 # core/data — history
 
+## [2026-06-11] SKILL-79 git/validate/render gateway impls deleted
+Areas: runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
+- Deleted RuntimeGitGateway (~1564 lines), RuntimePrPublishingGateway, JvmInstalledWorkspaceGitProvisioner, mapper/ValidationSummaryMapper, and their tests; dropped all four gateway/provisioner @Provides bindings from JvmDataBindings and the matching fakes from core/testing FakeSkillBillServices (FakeInstalledWorkspaceGitProvisioner removed).
+- RuntimeRepoBrowserService no longer takes a `validator: (Path) -> RepoValidationReport` seam; it calls repoValidationService.validateRepo(root) directly. The git/validate provisioning hardening constants documented in the SKILL-77 entry below went with RuntimeGitGateway.
+- Cross-module guard: runtime-core RuntimeDesktopGatewayPolicyTest whitelists desktop mappers that must exist — when you delete a mapper here, update that whitelist or its test fails. reusable
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-06-10] SKILL-77 git provisioning and graceful degradation (subtask 3)
 Areas: runtime-desktop/core/data, runtime-desktop/core/domain, runtime-desktop/core/testing
 - JvmInstalledWorkspaceGitProvisioner: provisions git for ~/.skill-bill via git rev-parse --show-toplevel detection (AlreadyProvisioned if own root; init if not), writes scoped .gitignore, stages skills/ + platform-packs/, creates initial commit. Returns ProvisionResult sealed class. @Inject @SingleIn(UserScope::class), bound via @Provides in JvmDataBindings.

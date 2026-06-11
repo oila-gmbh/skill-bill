@@ -94,7 +94,7 @@ private class JvmRepoFileChangeObserver(
       if (event.kind() == ENTRY_CREATE && Files.isDirectory(changedPath)) {
         registerCreatedDirectory(changedPath)
       }
-      emit(changeKindFor(changedPath))
+      emit(RepoFileChangeKind.RepoSnapshot)
     }
   }
 
@@ -145,35 +145,14 @@ private class JvmRepoFileChangeObserver(
       return true
     }
     val names = (0 until relative.nameCount).map { index -> relative.getName(index).name }
-    val first = names.first()
-    if (first == ".git") {
-      return shouldObserveGitPath(names)
-    }
     return names.none { name -> name in ignoredDirectoryNames }
-  }
-
-  private fun shouldObserveGitPath(names: List<String>): Boolean {
-    if (names.size == 1) {
-      return true
-    }
-    if (names.size == 2 && names[1] in gitControlFiles) {
-      return true
-    }
-    return names[1] == "refs"
-  }
-
-  private fun changeKindFor(path: Path): RepoFileChangeKind {
-    val relative = runCatching { root.relativize(path) }.getOrNull() ?: return RepoFileChangeKind.RepoSnapshot
-    if (relative.nameCount > 0 && relative.getName(0).name == ".git") {
-      return RepoFileChangeKind.GitStatus
-    }
-    return RepoFileChangeKind.RepoSnapshot
   }
 
   private fun WatchEvent<*>.contextPath(): Path = context() as Path
 }
 
 private val ignoredDirectoryNames = setOf(
+  ".git",
   ".gradle",
   ".idea",
   ".kotlin",
@@ -183,11 +162,4 @@ private val ignoredDirectoryNames = setOf(
   "node_modules",
   "out",
   "target",
-)
-
-private val gitControlFiles = setOf(
-  "HEAD",
-  "config",
-  "index",
-  "packed-refs",
 )

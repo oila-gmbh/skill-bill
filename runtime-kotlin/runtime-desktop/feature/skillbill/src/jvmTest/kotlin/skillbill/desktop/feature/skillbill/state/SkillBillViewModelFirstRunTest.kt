@@ -22,13 +22,9 @@ import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeDesktopPreferenceStore
-import skillbill.desktop.core.testing.FakeGitGateway
-import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
-import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
-import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.core.testing.install.FakeDesktopFirstRunGateway
 import skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway
 import kotlin.test.Test
@@ -275,17 +271,12 @@ class SkillBillViewModelFirstRunTest {
       listOf(SkillBillTreeItem(id = "skills", label = "Skills", kind = TreeItemKind.GROUP)),
     ),
     authoringGateway = FakeAuthoringGateway(),
-    gitGateway = FakeGitGateway(),
-    prPublishingGateway = FakePrPublishingGateway(),
-    validationGateway = FakeValidationGateway(),
-    renderGateway = FakeRenderGateway(),
     recentRepoRepository = FakeRecentRepoRepository(),
     scaffoldGateway = FakeScaffoldGateway(),
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = preferenceStore,
     skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
-    installedWorkspaceGitProvisioner = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner(),
   )
 }
 

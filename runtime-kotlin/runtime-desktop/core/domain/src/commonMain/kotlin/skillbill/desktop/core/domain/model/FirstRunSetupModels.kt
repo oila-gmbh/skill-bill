@@ -182,20 +182,3 @@ data class FirstRunSetupState(
     platformSelectionMode = platformSelectionMode,
   )
 }
-
-data class PostPublishReinstallState(
-  val selectedAgentIds: Set<String>,
-  val selectedPlatformSlugs: Set<String>,
-  val telemetryLevel: FirstRunTelemetryLevel,
-  val registerMcp: Boolean,
-  val platformSelectionMode: FirstRunPlatformSelectionMode = if (selectedPlatformSlugs.isEmpty()) {
-    FirstRunPlatformSelectionMode.NONE
-  } else {
-    FirstRunPlatformSelectionMode.SELECTED
-  },
-  val busy: Boolean = false,
-  val outcome: FirstRunInstallOutcome? = null,
-) {
-  val hasFinished: Boolean
-    get() = outcome != null
-}

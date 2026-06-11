@@ -2,11 +2,8 @@ package skillbill.desktop.feature.skillbill.ui
 
 internal enum class KeyboardAcceleratorAction {
   OPEN_REPOSITORY_PATH,
-  COMMIT,
   SAVE,
   REFRESH,
-  RENDER,
-  VALIDATE,
   OPEN_COMMAND_PALETTE,
 }
 
@@ -18,7 +15,6 @@ internal enum class KeyboardAcceleratorKey {
   P,
   R,
   S,
-  V,
 }
 
 internal data class KeyboardAcceleratorEvent(
@@ -29,24 +25,18 @@ internal data class KeyboardAcceleratorEvent(
 
 internal data class SkillBillAcceleratorPredicates(
   val busyOperationActive: Boolean,
-  val publishingBusy: Boolean,
   val saveEnabled: Boolean,
   val refreshEnabled: Boolean,
-  val renderEnabled: Boolean,
-  val validateEnabled: Boolean,
-  val commitEnabled: Boolean,
   val repoOpenEnabled: Boolean,
 ) {
   val globallyEnabled: Boolean
-    get() = !busyOperationActive && !publishingBusy
+    get() = !busyOperationActive
 }
 
 internal data class FrameKeyboardAcceleratorCallbacks(
   val openCommandPalette: () -> Unit,
   val save: () -> Unit,
   val refresh: () -> Unit,
-  val render: () -> Unit,
-  val validate: () -> Unit,
 )
 
 internal fun dispatchFrameKeyboardAccelerator(
@@ -64,14 +54,6 @@ internal fun dispatchFrameKeyboardAccelerator(
   }
   KeyboardAcceleratorAction.REFRESH -> {
     callbacks.refresh()
-    true
-  }
-  KeyboardAcceleratorAction.RENDER -> {
-    callbacks.render()
-    true
-  }
-  KeyboardAcceleratorAction.VALIDATE -> {
-    callbacks.validate()
     true
   }
   else -> false
@@ -97,40 +79,8 @@ internal fun resolveFrameKeyboardAccelerator(
     event.key == KeyboardAcceleratorKey.R &&
       !event.shiftPressed &&
       predicates.refreshEnabled -> KeyboardAcceleratorAction.REFRESH
-    event.key == KeyboardAcceleratorKey.R &&
-      event.shiftPressed &&
-      predicates.renderEnabled -> KeyboardAcceleratorAction.RENDER
-    event.key == KeyboardAcceleratorKey.V &&
-      event.shiftPressed &&
-      predicates.validateEnabled -> KeyboardAcceleratorAction.VALIDATE
     else -> null
   }
-}
-
-internal fun dispatchCommitKeyboardAccelerator(
-  event: KeyboardAcceleratorEvent,
-  predicates: SkillBillAcceleratorPredicates,
-  onCommit: () -> Unit,
-): Boolean = if (resolveCommitKeyboardAccelerator(event, predicates) == KeyboardAcceleratorAction.COMMIT) {
-  onCommit()
-  true
-} else {
-  false
-}
-
-internal fun resolveCommitKeyboardAccelerator(
-  event: KeyboardAcceleratorEvent,
-  predicates: SkillBillAcceleratorPredicates,
-): KeyboardAcceleratorAction? = if (
-  event.commandPressed &&
-  !event.shiftPressed &&
-  (event.key == KeyboardAcceleratorKey.ENTER || event.key == KeyboardAcceleratorKey.NUMPAD_ENTER) &&
-  predicates.globallyEnabled &&
-  predicates.commitEnabled
-) {
-  KeyboardAcceleratorAction.COMMIT
-} else {
-  null
 }
 
 internal fun dispatchRepositoryPathKeyboardAccelerator(

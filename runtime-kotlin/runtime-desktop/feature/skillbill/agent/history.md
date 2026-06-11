@@ -1,5 +1,16 @@
 # SkillBill desktop feature — history
 
+## [2026-06-11] SKILL-79 desktop installed-content editor (git/repo chrome removed)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data
+- The app is now a content.md editor over the installed skill tree, not a git-repo dev tool. All Changes/History/Console/Validate/Render dock tabs, the publish flow, and their toolbar buttons are gone; ~2500 lines removed from SkillBillFrame.kt. Toolbar is Refresh/Install/Open-installed/New-scaffold only.
+- SkillBillViewModel lost every git/validate/render begin/run/finish triplet (~1788 lines). If you need the old provisioning/push/validation surfaces, they were deleted, not hidden — do not look for GitGateway/ValidationGateway/RenderGateway state here.
+- RepoFileChangeObserver narrowed to watch the install root and ignore `.git`; RepoFileChangeKind collapsed to a single `RepoSnapshot` variant and `mergeRepoFileChangeKind` is `current ?: next`. Auto-refresh in SkillBillRoute now drives off RepoSnapshot only. reusable
+- RepoSession narrowed to (repoPath, isRecognizedSkillBillRepo, loadStatus) — no branch/staged/dirty/working-tree fields.
+- Editor save flow (RuntimeRepoBrowserService.loadDocument/saveDocument → authoringSaver/sourceFileSaver) is the retained core path and stayed intact through the strip. reusable
+- Known follow-ups (out of SKILL-79 scope): SKILL-46 validateAgentConfigsSummary state stays wired but lost its dock surface; pre-existing RepoFileChangeObserver channelFlow is not closed on a transient FS error.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-06-10] SKILL-77 first-run handoff and end-to-end validation (subtask 5)
 Areas: runtime-desktop/feature/skillbill
 - `finishFirstRunSetup` on success now calls `installedWorkspaceLocator.locate()` once when `installedWorkspaceRoot == null` (the install ran AFTER VM construction, so the construction-time val was null), then updates `installedWorkspaceRoot` and `normalizedInstalledWorkspaceRoot` vars before calling `openRepo`. If the locate result is still null, falls back to `createState()` unchanged. reusable

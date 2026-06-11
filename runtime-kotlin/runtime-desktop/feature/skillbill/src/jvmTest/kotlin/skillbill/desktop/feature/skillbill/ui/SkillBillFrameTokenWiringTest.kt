@@ -17,16 +17,6 @@ import kotlin.test.assertNotEquals
 class SkillBillFrameTokenWiringTest {
 
   @Test
-  fun `diff line classification maps unified diff prefixes to feature UI tokens`() {
-    assertEquals(DiffLineRole.Metadata, diffRoleForLine("+++ b/file.kt"))
-    assertEquals(DiffLineRole.Metadata, diffRoleForLine("--- a/file.kt"))
-    assertEquals(DiffLineRole.Hunk, diffRoleForLine("@@ -1 +1 @@"))
-    assertEquals(DiffLineRole.Addition, diffRoleForLine("+added"))
-    assertEquals(DiffLineRole.Deletion, diffRoleForLine("-removed"))
-    assertEquals(DiffLineRole.Context, diffRoleForLine(" unchanged"))
-  }
-
-  @Test
   fun `code pane colors pair light tokens with light pane background`() = runComposeUiTest {
     var colors: CodePaneColors? = null
 
@@ -39,7 +29,6 @@ class SkillBillFrameTokenWiringTest {
     waitForIdle()
 
     val paneColors = colors ?: error("Code pane colors were not captured.")
-    assertEquals(SkillBillLightThemeTokens.diff, paneColors.diff)
     assertEquals(SkillBillLightThemeTokens.syntax.yaml, paneColors.yaml)
   }
 
@@ -56,7 +45,6 @@ class SkillBillFrameTokenWiringTest {
     waitForIdle()
 
     val paneColors = colors ?: error("Code pane colors were not captured.")
-    assertEquals(SkillBillDarkThemeTokens.diff, paneColors.diff)
     assertEquals(SkillBillDarkThemeTokens.syntax.yaml, paneColors.yaml)
   }
 

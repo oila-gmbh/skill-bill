@@ -1,9 +1,6 @@
 package skillbill.desktop.feature.skillbill.state
 
 import kotlinx.coroutines.runBlocking
-import skillbill.desktop.core.domain.model.ChangedFile
-import skillbill.desktop.core.domain.model.ChangedFileGroup
-import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.FirstRunAgentOption
 import skillbill.desktop.core.domain.model.FirstRunApplyResult
 import skillbill.desktop.core.domain.model.FirstRunDiscoveryResult
@@ -19,17 +16,12 @@ import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeDesktopPreferenceStore
-import skillbill.desktop.core.testing.FakeGitGateway
-import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
-import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
-import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.core.testing.install.FakeDesktopFirstRunGateway
 import skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway
 import skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway
-import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner
 import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -102,7 +94,7 @@ class SkillBillViewModelFirstRunHandoffTest {
   }
 
   @Test
-  fun `post-wizard session supports file selection, editor save, and git change tracking`() = runBlocking {
+  fun `post-wizard session supports file selection and editor save`() = runBlocking {
     val installedRoot = "/home/user/.skill-bill/installed-skills"
     val locator = FakeInstalledWorkspaceLocator(
       result = InstalledWorkspaceAvailability(path = installedRoot, availability = true),
@@ -110,14 +102,6 @@ class SkillBillViewModelFirstRunHandoffTest {
     val authoringGateway = FakeAuthoringGateway().apply {
       putDocument("skill-content", "original content\n")
     }
-    val changedFile = ChangedFile(
-      path = "skills/skill-content/content.md",
-      group = ChangedFileGroup.UNSTAGED,
-      statusCode = "M",
-    )
-    val gitGateway = FakeGitGateway(
-      initialSnapshot = ChangesSnapshot(files = listOf(changedFile)),
-    )
     val skillTree = listOf(
       SkillBillTreeItem(
         id = "skills",
@@ -139,7 +123,6 @@ class SkillBillViewModelFirstRunHandoffTest {
       ),
       skillTreeService = FakeSkillTreeService(skillTree),
       authoringGateway = authoringGateway,
-      gitGateway = gitGateway,
     )
 
     val discoveryRequest = assertNotNull(viewModel.beginFirstRunDiscovery())
@@ -160,12 +143,6 @@ class SkillBillViewModelFirstRunHandoffTest {
     val saved = viewModel.finishSaveEditor(viewModel.runSaveEditor(saveRequest))
     assertFalse(saved.editor.dirty)
     assertEquals("updated content\n", saved.editor.draftContent)
-
-    val refreshRequest = viewModel.beginGitRefresh()
-    val refreshed = viewModel.finishGitRefresh(viewModel.runGitRefresh(refreshRequest))
-    assertNull(refreshed.changes.errorMessage)
-    assertEquals(1, refreshed.changes.files.size)
-    assertEquals("skills/skill-content/content.md", refreshed.changes.files.single().path)
   }
 
   @Test
@@ -226,22 +203,16 @@ class SkillBillViewModelFirstRunHandoffTest {
       listOf(SkillBillTreeItem(id = "skills", label = "Skills", kind = TreeItemKind.GROUP)),
     ),
     authoringGateway: FakeAuthoringGateway = FakeAuthoringGateway(),
-    gitGateway: FakeGitGateway = FakeGitGateway(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = FakeRepoSessionService(),
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
-    gitGateway = gitGateway,
-    prPublishingGateway = FakePrPublishingGateway(),
-    validationGateway = FakeValidationGateway(),
-    renderGateway = FakeRenderGateway(),
     recentRepoRepository = FakeRecentRepoRepository(),
     scaffoldGateway = FakeScaffoldGateway(),
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = FakeDesktopPreferenceStore(),
     skillRemoveGateway = FakeSkillRemoveGateway(),
     installedWorkspaceLocator = installedWorkspaceLocator,
-    installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
   )
 }
 

@@ -6,7 +6,6 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillState
-import skillbill.desktop.core.domain.model.SourceControlStatus
 import skillbill.desktop.feature.skillbill.state.buildCommandPaletteState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,30 +46,6 @@ class KeyboardAcceleratorsTest {
   }
 
   @Test
-  fun `commit accelerator requires command Enter and commit enabled`() {
-    assertEquals(
-      KeyboardAcceleratorAction.COMMIT,
-      resolveCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER, commandPressed = true),
-        predicates = enabledPredicates(commitEnabled = true),
-      ),
-    )
-    assertNull(
-      resolveCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER),
-        predicates = enabledPredicates(commitEnabled = true),
-      ),
-      "Plain Enter must remain available to the text field for newline input.",
-    )
-    assertNull(
-      resolveCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER, commandPressed = true),
-        predicates = enabledPredicates(commitEnabled = false),
-      ),
-    )
-  }
-
-  @Test
   fun `save accelerator requires command S and save enabled`() {
     assertEquals(
       KeyboardAcceleratorAction.SAVE,
@@ -105,58 +80,18 @@ class KeyboardAcceleratorsTest {
   }
 
   @Test
-  fun `render accelerator requires command shift R and render enabled`() {
-    assertEquals(
-      KeyboardAcceleratorAction.RENDER,
-      resolveFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.R, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(renderEnabled = true),
-      ),
-    )
-    assertNull(
-      resolveFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.R, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(renderEnabled = false),
-      ),
-    )
-  }
-
-  @Test
-  fun `validate accelerator requires command shift V and validate enabled`() {
-    assertEquals(
-      KeyboardAcceleratorAction.VALIDATE,
-      resolveFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.V, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(validateEnabled = true),
-      ),
-    )
-    assertNull(
-      resolveFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.V, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(validateEnabled = false),
-      ),
-    )
-  }
-
-  @Test
-  fun `global busy and publishing states block accelerators except command palette`() {
+  fun `global busy state blocks accelerators except command palette`() {
     assertNull(
       resolveFrameKeyboardAccelerator(
         event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.S, commandPressed = true),
         predicates = enabledPredicates(saveEnabled = true).copy(busyOperationActive = true),
       ),
     )
-    assertNull(
-      resolveCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER, commandPressed = true),
-        predicates = enabledPredicates(commitEnabled = true).copy(publishingBusy = true),
-      ),
-    )
     assertEquals(
       KeyboardAcceleratorAction.OPEN_COMMAND_PALETTE,
       resolveFrameKeyboardAccelerator(
         event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.K, commandPressed = true),
-        predicates = enabledPredicates(saveEnabled = true).copy(busyOperationActive = true, publishingBusy = true),
+        predicates = enabledPredicates(saveEnabled = true).copy(busyOperationActive = true),
       ),
     )
     assertEquals(
@@ -186,32 +121,12 @@ class KeyboardAcceleratorsTest {
     )
     assertEquals(SkillBillAcceleratorLabels.REFRESH, palette.command(CommandPaletteAction.REFRESH).acceleratorLabel)
     assertEquals(SkillBillAcceleratorLabels.SAVE, palette.command(CommandPaletteAction.SAVE).acceleratorLabel)
-    assertEquals(SkillBillAcceleratorLabels.RENDER, palette.command(CommandPaletteAction.RENDER).acceleratorLabel)
-    assertEquals(SkillBillAcceleratorLabels.VALIDATE, palette.command(CommandPaletteAction.VALIDATE).acceleratorLabel)
-  }
-
-  @Test
-  fun `command palette disables repo commands while publish is busy`() {
-    val palette = buildCommandPaletteState(
-      state = paletteState().copy(publishBusy = true),
-      open = true,
-      query = "",
-      selectedResultIndex = 0,
-    )
-
-    assertEquals(
-      "Wait for the publishing operation to finish.",
-      palette.command(CommandPaletteAction.REFRESH).disabledReason,
-    )
   }
 
   @Test
   fun `accelerator labels advertise command and control modifiers`() {
     assertEquals("Cmd/Ctrl S", SkillBillAcceleratorLabels.SAVE)
     assertEquals("Cmd/Ctrl R", SkillBillAcceleratorLabels.REFRESH)
-    assertEquals("Cmd/Ctrl Shift R", SkillBillAcceleratorLabels.RENDER)
-    assertEquals("Cmd/Ctrl Shift V", SkillBillAcceleratorLabels.VALIDATE)
-    assertEquals("Cmd/Ctrl Enter", SkillBillAcceleratorLabels.COMMIT)
     assertEquals("Cmd/Ctrl K", SkillBillAcceleratorLabels.COMMAND_PALETTE)
   }
 
@@ -243,25 +158,11 @@ class KeyboardAcceleratorsTest {
         callbacks = callbacks.asCallbacks(),
       ),
     )
-    assertTrue(
-      dispatchFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.R, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(renderEnabled = true),
-        callbacks = callbacks.asCallbacks(),
-      ),
-    )
-    assertTrue(
-      dispatchFrameKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.V, commandPressed = true, shiftPressed = true),
-        predicates = enabledPredicates(validateEnabled = true),
-        callbacks = callbacks.asCallbacks(),
-      ),
-    )
-    assertEquals(listOf("save", "refresh", "render", "validate"), callbacks.calls)
+    assertEquals(listOf("save", "refresh"), callbacks.calls)
   }
 
   @Test
-  fun `repository and commit accelerator dispatch use callback fakes only when enabled`() {
+  fun `repository accelerator dispatch uses callback fakes only when enabled`() {
     val callbackCalls = mutableListOf<String>()
     assertTrue(
       dispatchRepositoryPathKeyboardAccelerator(
@@ -277,38 +178,17 @@ class KeyboardAcceleratorsTest {
         onOpenRepositoryPath = { callbackCalls += "repo" },
       ),
     )
-    assertTrue(
-      dispatchCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER, commandPressed = true),
-        predicates = enabledPredicates(commitEnabled = true),
-        onCommit = { callbackCalls += "commit" },
-      ),
-    )
-    assertFalse(
-      dispatchCommitKeyboardAccelerator(
-        event = KeyboardAcceleratorEvent(KeyboardAcceleratorKey.ENTER, commandPressed = true),
-        predicates = enabledPredicates(commitEnabled = true).copy(publishingBusy = true),
-        onCommit = { callbackCalls += "commit" },
-      ),
-    )
-    assertEquals(listOf("repo", "commit"), callbackCalls)
+    assertEquals(listOf("repo"), callbackCalls)
   }
 
   private fun enabledPredicates(
     saveEnabled: Boolean = false,
     refreshEnabled: Boolean = false,
-    renderEnabled: Boolean = false,
-    validateEnabled: Boolean = false,
-    commitEnabled: Boolean = false,
     repoOpenEnabled: Boolean = false,
   ): SkillBillAcceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = false,
-    publishingBusy = false,
     saveEnabled = saveEnabled,
     refreshEnabled = refreshEnabled,
-    renderEnabled = renderEnabled,
-    validateEnabled = validateEnabled,
-    commitEnabled = commitEnabled,
     repoOpenEnabled = repoOpenEnabled,
   )
 
@@ -327,8 +207,6 @@ class KeyboardAcceleratorsTest {
       draftContent = "after",
       dirty = true,
     ),
-    sourceControl = SourceControlStatus.empty,
-    renderable = true,
   )
 
   private fun skillbill.desktop.core.domain.model.CommandPaletteState.command(action: CommandPaletteAction) =
@@ -341,8 +219,6 @@ class KeyboardAcceleratorsTest {
       openCommandPalette = { calls += "palette" },
       save = { calls += "save" },
       refresh = { calls += "refresh" },
-      render = { calls += "render" },
-      validate = { calls += "validate" },
     )
   }
 }

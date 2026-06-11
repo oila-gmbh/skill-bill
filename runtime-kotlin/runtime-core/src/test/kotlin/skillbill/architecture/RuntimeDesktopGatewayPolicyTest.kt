@@ -18,11 +18,10 @@ import kotlin.test.assertTrue
  *
  * SKILL-52.3 subtask 3 retired the last `@OpenBoundaryMap` `payload` fields on
  * the scaffold result DTOs (`ScaffoldListResult`, `ScaffoldValidateResult`,
- * etc.). The desktop mappers (`ScaffoldListResultMapper`,
- * `ValidationSummaryMapper`) now consume the typed fields directly, so the
- * historical mapper-file exemption for `.payload[` reads is gone: the scan
- * forbids raw-map `payload` access across the ENTIRE jvmMain service tree,
- * mappers included.
+ * etc.). The desktop mapper (`ScaffoldListResultMapper`) now consumes the typed
+ * fields directly, so the historical mapper-file exemption for `.payload[` reads
+ * is gone: the scan forbids raw-map `payload` access across the ENTIRE jvmMain
+ * service tree, mappers included.
  *
  * Detection strategy:
  *  - Walk the jvmMain service source tree (no file exemptions).
@@ -65,7 +64,6 @@ class RuntimeDesktopGatewayPolicyTest {
    */
   private val mapperFileNames: Set<String> =
     setOf(
-      "ValidationSummaryMapper.kt",
       "ScaffoldListResultMapper.kt",
     )
 

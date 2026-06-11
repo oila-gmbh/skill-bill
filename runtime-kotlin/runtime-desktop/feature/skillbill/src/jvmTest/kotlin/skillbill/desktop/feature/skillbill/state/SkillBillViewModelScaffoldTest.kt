@@ -5,9 +5,6 @@ import skillbill.desktop.core.domain.model.BaselineReviewCompositionEdge
 import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
 import skillbill.desktop.core.domain.model.BaselineReviewPackOption
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
-import skillbill.desktop.core.domain.model.ChangedFile
-import skillbill.desktop.core.domain.model.ChangedFileGroup
-import skillbill.desktop.core.domain.model.ChangesSnapshot
 import skillbill.desktop.core.domain.model.ManifestEditPreview
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
@@ -23,19 +20,12 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.service.AuthoringGateway
-import skillbill.desktop.core.domain.service.GitGateway
-import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
-import skillbill.desktop.core.domain.service.ValidationGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
-import skillbill.desktop.core.testing.FakeGitGateway
-import skillbill.desktop.core.testing.FakePrPublishingGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
-import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
-import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,48 +59,6 @@ class SkillBillViewModelScaffoldTest {
     assertEquals(ScaffoldKind.HORIZONTAL_SKILL, wizard.kind)
     assertEquals(listOf("security"), wizard.optionCatalog.approvedCodeReviewAreas)
     assertEquals(1, gateway.catalogCallCount)
-  }
-
-  @Test
-  fun `dirty-repo warning surfaces when non-generated changes are pending`() = runBlocking {
-    val gitGateway = FakeGitGateway(
-      initialSnapshot = ChangesSnapshot(
-        files = listOf(
-          ChangedFile(path = "skills/a/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
-        ),
-      ),
-    )
-    val viewModel = newViewModel(gitGateway = gitGateway)
-    viewModel.selectRepoPath("/repo")
-    viewModel.refreshGit()
-
-    val state = openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
-    val wizard = assertNotNull(state.scaffoldWizard)
-    assertTrue(wizard.dirtyRepoWarning)
-    assertFalse(wizard.runEnabled)
-  }
-
-  @Test
-  fun `dirty-repo warning suppressed when only generated files differ`() = runBlocking {
-    val gitGateway = FakeGitGateway(
-      initialSnapshot = ChangesSnapshot(
-        files = listOf(
-          ChangedFile(
-            path = "skills/a/SKILL.md",
-            group = ChangedFileGroup.GENERATED,
-            statusCode = "M",
-            isGenerated = true,
-          ),
-        ),
-      ),
-    )
-    val viewModel = newViewModel(gitGateway = gitGateway)
-    viewModel.selectRepoPath("/repo")
-    viewModel.refreshGit()
-
-    val state = openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
-    val wizard = assertNotNull(state.scaffoldWizard)
-    assertFalse(wizard.dirtyRepoWarning)
   }
 
   @Test
@@ -474,55 +422,6 @@ class SkillBillViewModelScaffoldTest {
       ),
       addon,
     )
-  }
-
-  @Test
-  fun `dirty-repo override unlocks Run after plan`() = runBlocking {
-    val gitGateway = FakeGitGateway(
-      initialSnapshot = ChangesSnapshot(
-        files = listOf(
-          ChangedFile(path = "skills/a/content.md", group = ChangedFileGroup.UNSTAGED, statusCode = "M"),
-        ),
-      ),
-    )
-    val scaffoldGateway = FakeScaffoldGateway().apply {
-      scriptDryRun(
-        ScaffoldKind.HORIZONTAL_SKILL,
-        ScaffoldRunResult.Preview(
-          planned = ScaffoldPlan(
-            kind = "horizontal",
-            skillName = "bill-foo",
-            skillPath = "/repo/skills/bill-foo",
-          ),
-        ),
-      )
-    }
-    val viewModel = newViewModel(gitGateway = gitGateway, scaffoldGateway = scaffoldGateway)
-    viewModel.selectRepoPath("/repo")
-    viewModel.refreshGit()
-    openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
-    viewModel.updateScaffoldForm { it.copy(name = "bill-foo") }
-    val request = assertNotNull(viewModel.beginScaffoldDryRun())
-    val finalState = viewModel.finishScaffoldDryRun(request, viewModel.runScaffoldDryRun(request))
-
-    val beforeOverride = assertNotNull(finalState.scaffoldWizard)
-    assertTrue(beforeOverride.dirtyRepoWarning)
-    assertFalse(beforeOverride.runEnabled)
-
-    val afterOverride = viewModel.setScaffoldDirtyOverride(true)
-    val afterWizard = assertNotNull(afterOverride.scaffoldWizard)
-    assertTrue(afterWizard.runEnabled)
-  }
-
-  @Test
-  fun `busy-gate blocks scaffold open while another operation is running`() = runBlocking {
-    val viewModel = newViewModel()
-    viewModel.selectRepoPath("/repo")
-    viewModel.beginValidate()
-    assertEquals(SkillBillBusyOperation.VALIDATE, viewModel.state().busyOperation)
-
-    val state = openWizard(viewModel, ScaffoldKind.HORIZONTAL_SKILL)
-    assertNull(state.scaffoldWizard, "scaffold wizard must not open while another op is in-flight")
   }
 
   @Test
@@ -1043,10 +942,6 @@ class SkillBillViewModelScaffoldTest {
     repoSessionService: RepoSessionService = FakeRepoSessionService(),
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultTree()),
     authoringGateway: AuthoringGateway = FakeAuthoringGateway(),
-    gitGateway: GitGateway = FakeGitGateway(),
-    prPublishingGateway: skillbill.desktop.core.domain.service.PrPublishingGateway = FakePrPublishingGateway(),
-    validationGateway: ValidationGateway = FakeValidationGateway(),
-    renderGateway: RenderGateway = FakeRenderGateway(),
     recentRepoRepository: FakeRecentRepoRepository = FakeRecentRepoRepository(),
     scaffoldGateway: FakeScaffoldGateway = FakeScaffoldGateway(),
     firstRunGateway: skillbill.desktop.core.domain.service.DesktopFirstRunGateway =
@@ -1070,17 +965,12 @@ class SkillBillViewModelScaffoldTest {
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
     authoringGateway = authoringGateway,
-    gitGateway = gitGateway,
-    prPublishingGateway = prPublishingGateway,
-    validationGateway = validationGateway,
-    renderGateway = renderGateway,
     recentRepoRepository = recentRepoRepository,
     scaffoldGateway = scaffoldGateway,
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
-    installedWorkspaceGitProvisioner = skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner(),
   )
 
   private fun defaultTree(): List<SkillBillTreeItem> = listOf(
