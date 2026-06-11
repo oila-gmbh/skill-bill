@@ -35,6 +35,7 @@ object RuntimeModule {
       "skillbill.application",
       "skillbill.boundary",
       "skillbill.cli",
+      "skillbill.config",
       "skillbill.desktop",
       "skillbill.di",
       "skillbill.launcher",
@@ -54,6 +55,8 @@ object RuntimeModule {
       "skillbill.install",
       "skillbill.nativeagent",
       "skillbill.error",
+      "skillbill.featurespec",
+      "skillbill.goalrunner",
       "skillbill.skillremove",
       "skillbill.workflow",
     )

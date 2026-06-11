@@ -152,6 +152,8 @@ runtime-ports
 - `skillbill.application.model`: public application input/result models.
 - `skillbill.model`: shared runtime model types that are not owned by a
   narrower area, currently `RuntimeContext`.
+- `skillbill.config.*`: repo-local configuration domain models and resolution
+  policy owned by `runtime-domain`.
 - `skillbill.boundary`: cross-area marker types that do not fit a single
   module's `model` package. Currently owns
   `skillbill.boundary.OpenBoundaryMap`, the annotation that callers in
@@ -178,6 +180,12 @@ runtime-ports
 - `skillbill.workflow` and `skillbill.workflow.model`: pure workflow engine,
   workflow definitions, decomposition manifest codec, wire-map conversion, and
   workflow/decomposition models owned by `runtime-domain`.
+- `skillbill.goalrunner` and `skillbill.goalrunner.model`: pure goal-runner
+  liveness policy, worker-subtask parsing, status projection, accounting, and
+  attempt-ledger models owned by `runtime-domain`.
+- `skillbill.featurespec` and `skillbill.featurespec.model`: feature-spec
+  preparation policy and typed preparation/write models owned by
+  `runtime-domain`.
 - `skillbill.workflow.implement` and `skillbill.workflow.verify`: active
   workflow runtime-surface metadata owned by `runtime-application`.
 - `skillbill.install.model`: install-plan and install-apply domain models plus
@@ -264,8 +272,10 @@ runtime-ports
 
     **Raw Map Boundary Rule (SKILL-52.1):** public declarations on
     `runtime-application`, `runtime-domain`, and `runtime-ports` MUST NOT
-    return or accept `Map<String, Any?>`, `Map<String, *>`, or
-    `MutableMap<String, Any?>` unless they are either (a) listed by FQN
+    return or accept `Map<String, Any?>`, `Map<String, Any>`,
+    `Map<String, *>`, string-keyed `MutableMap`, `HashMap`, or
+    `LinkedHashMap` variants, or type aliases to those shapes unless
+    they are either (a) listed by FQN
     in the curated allow-list section below (and mirrored in the
     `RAW_MAP_OPEN_BOUNDARY_ALLOWLIST` constant in
     `runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt`),
@@ -481,6 +491,13 @@ runtime-ports
     applies prospectively: new public declarations cannot join the
     legacy raw-map surface without being added to both the allow-list
     constant and this section in the same change.
+    Inner-layer test sources in `runtime-application`, `runtime-domain`, and
+    `runtime-ports` are also part of this boundary: their `src/test/kotlin`,
+    `src/jvmTest/kotlin`, and `src/commonTest/kotlin` roots must not import
+    `skillbill.infrastructure.*`, `skillbill.cli.*`, `skillbill.mcp.*`, or
+    `skillbill.desktop.*`. Adapter, infrastructure, and desktop test trees,
+    including `runtime-desktop/core/data/src/jvmTest`, are outside that
+    inner-layer scan.
 12. `java.nio.file.Path` is allowed in application, domain, and port public
     models and contracts only as an inert value type: callers may carry,
     compare, resolve, normalize, and render path values as data. Filesystem IO,
@@ -501,12 +518,15 @@ The subsystem package set is:
 skillbill.application
 skillbill.boundary
 skillbill.cli
+skillbill.config
 skillbill.contracts
 skillbill.db
 skillbill.desktop
 skillbill.di
 skillbill.domain.skillremove
 skillbill.error
+skillbill.featurespec
+skillbill.goalrunner
 skillbill.install
 skillbill.infrastructure
 skillbill.launcher

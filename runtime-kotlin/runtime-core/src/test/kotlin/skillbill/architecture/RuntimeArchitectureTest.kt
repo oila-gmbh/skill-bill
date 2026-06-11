@@ -1,5 +1,6 @@
 package skillbill.architecture
 
+import skillbill.RuntimeModule
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1240,28 +1241,111 @@ class RuntimeArchitectureTest {
       relativePath = "test-fixture/Fake.kt",
       packageName = "skillbill.application",
       imports = emptyList(),
-      source =
-      """
-      package skillbill.application
-
-      class Fake {
-        public fun foo(): Map<String, Any?> = emptyMap()
-
-        fun bar(): Map<String, *> = emptyMap<String, Any?>()
-
-        fun baz(input: MutableMap<String, Any?>) { input.clear() }
-
-        fun multiLine(
-          first: String,
-        ): Map<String, Any?> = emptyMap()
-      }
-      """.trimIndent(),
+      source = rawMapViolationFixtureSource(),
     )
     val violations = findRawMapViolations(fixture)
     val violatingNames = violations.map { it.substringAfter("public `").substringBefore('`') }
     assertEquals(
-      listOf("foo", "bar", "baz", "multiLine").sorted(),
+      expectedRawMapViolationFixtureNames(),
       violatingNames.sorted(),
+    )
+  }
+
+  private fun rawMapViolationFixtureSource(): String = """
+    package skillbill.application
+
+    typealias AnyMapAlias = Map<String, Any>
+    typealias HashMapAlias = HashMap<String, Any?>
+
+    class Fake {
+      public fun foo(): Map<String, Any?> = emptyMap()
+
+      public fun nonNullMap(): Map<String, Any> = emptyMap()
+
+      fun bar(): Map<String, *> = emptyMap<String, Any?>()
+
+      fun baz(input: MutableMap<String, Any?>) { input.clear() }
+
+      fun mutableNonNull(input: MutableMap<String, Any>) { input.clear() }
+
+      fun mutableStar(input: MutableMap<String, *>) {}
+
+      fun hashMap(input: HashMap<String, Any?>) { input.clear() }
+
+      fun hashMapNonNull(input: HashMap<String, Any>) { input.clear() }
+
+      fun hashMapStar(input: HashMap<String, *>) {}
+
+      fun linkedHashMap(input: LinkedHashMap<String, Any?>) { input.clear() }
+
+      fun linkedHashMapNonNull(input: LinkedHashMap<String, Any>) { input.clear() }
+
+      fun linkedHashMapStar(input: LinkedHashMap<String, *>) {}
+
+      fun aliasMap(input: AnyMapAlias) {}
+
+      fun aliasHashMap(): HashMapAlias = hashMapOf()
+
+      fun multiLine(
+        first: String,
+      ): Map<String, Any?> = emptyMap()
+    }
+  """.trimIndent()
+
+  private fun expectedRawMapViolationFixtureNames(): List<String> = listOf(
+    "aliasHashMap",
+    "aliasMap",
+    "bar",
+    "baz",
+    "foo",
+    "hashMap",
+    "hashMapNonNull",
+    "hashMapStar",
+    "linkedHashMap",
+    "linkedHashMapNonNull",
+    "linkedHashMapStar",
+    "multiLine",
+    "mutableNonNull",
+    "mutableStar",
+    "nonNullMap",
+  ).sorted()
+
+  @Test
+  fun `every main source package is declared under an owned subsystem`() {
+    val ownershipPrefixes = RuntimeModule.declaredSubsystemPackages.sortedByDescending(String::length)
+    val unowned = declaredMainSourceFiles()
+      .filter { file -> file.packageName.isNotBlank() }
+      .filterNot { file -> file.packageName == "skillbill" }
+      .filterNot { file ->
+        ownershipPrefixes.any { prefix -> file.packageName == prefix || file.packageName.startsWith("$prefix.") }
+      }
+      .map { file -> "${file.packageName} in ${file.relativePath}" }
+      .distinct()
+      .sorted()
+    assertEquals(
+      emptyList(),
+      unowned,
+      "Every real main-source package must be owned by RuntimeModule.declaredSubsystemPackages.",
+    )
+  }
+
+  @Test
+  fun `inner layer test sources do not import adapters infrastructure or desktop packages`() {
+    val forbiddenPrefixes = listOf(
+      "skillbill.infrastructure.",
+      "skillbill.cli.",
+      "skillbill.mcp.",
+      "skillbill.desktop.",
+    )
+    val violations = innerLayerTestSourceFiles().flatMap { file ->
+      file.imports
+        .filter { importedName -> forbiddenPrefixes.any(importedName::startsWith) }
+        .map { importedName -> "${file.relativePath} imports $importedName" }
+    }
+    assertEquals(
+      emptyList(),
+      violations.sorted(),
+      "Inner-layer tests must use application/domain/port-facing seams instead of adapter packages.",
     )
   }
 
@@ -1293,8 +1377,22 @@ class RuntimeArchitectureTest {
   @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements", "NestedBlockDepth", "LongMethod")
   private fun findRawMapViolations(file: SourceFile): List<String> {
     val bannedShapes =
-      listOf("Map<String, Any?>", "Map<String, *>", "MutableMap<String, Any?>")
+      listOf(
+        "Map<String, Any?>",
+        "Map<String, Any>",
+        "Map<String, *>",
+        "HashMap<String, Any?>",
+        "HashMap<String, Any>",
+        "HashMap<String, *>",
+        "LinkedHashMap<String, Any?>",
+        "LinkedHashMap<String, Any>",
+        "LinkedHashMap<String, *>",
+        "MutableMap<String, Any?>",
+        "MutableMap<String, Any>",
+        "MutableMap<String, *>",
+      )
     val lines = file.source.lines()
+    val bannedTypeAliases = rawMapTypeAliases(file.source, bannedShapes)
     val violations = mutableListOf<String>()
     val tracker = ScopeTracker()
     val allowlistSet = RAW_MAP_OPEN_BOUNDARY_ALLOWLIST.toSet()
@@ -1342,7 +1440,8 @@ class RuntimeArchitectureTest {
         if (j - index > 30) break
       }
       val sigText = signature.toString()
-      val containsBanned = bannedShapes.any { shape -> shape in sigText }
+      val containsBanned = bannedShapes.any { shape -> shape in sigText } ||
+        bannedTypeAliases.any { alias -> Regex("""\b${Regex.escape(alias)}\b""").containsMatchIn(sigText) }
       if (!containsBanned) return@forEachIndexed
       val precedingLines = lines.subList(maxOf(0, index - 4), index)
       // Only consider preceding lines that look like annotation continuations
@@ -1366,6 +1465,26 @@ class RuntimeArchitectureTest {
       }
     }
     return violations
+  }
+
+  private fun rawMapTypeAliases(source: String, bannedShapes: List<String>): Set<String> {
+    val directAliases = mutableMapOf<String, String>()
+    val aliasPattern = Regex("""^typealias\s+([A-Za-z0-9_]+)\s*=\s*(.+)$""", RegexOption.MULTILINE)
+    aliasPattern.findAll(source).forEach { match ->
+      directAliases[match.groupValues[1]] = match.groupValues[2].trim()
+    }
+    val bannedAliases = mutableSetOf<String>()
+    var changed = true
+    while (changed) {
+      changed = false
+      directAliases.forEach { (alias, target) ->
+        if (alias !in bannedAliases && (bannedShapes.any { shape -> shape in target } || target in bannedAliases)) {
+          bannedAliases += alias
+          changed = true
+        }
+      }
+    }
+    return bannedAliases
   }
 
   /**
@@ -1618,12 +1737,41 @@ class RuntimeArchitectureTest {
   }
 
   private fun sourceFiles(): List<SourceFile> = sourceRoots.flatMap { sourceRoot ->
-    Files.walk(sourceRoot).use { stream ->
+    sourceFilesIn(sourceRoot)
+  }
+
+  private fun declaredMainSourceFiles(): List<SourceFile> = RuntimeModule.declaredGradleModules
+    .flatMap { moduleName -> mainSourceRoots(moduleName) }
+    .flatMap { sourceRoot -> sourceFilesIn(sourceRoot) }
+
+  private fun innerLayerTestSourceFiles(): List<SourceFile> =
+    listOf("runtime-application", "runtime-domain", "runtime-ports")
+      .flatMap { moduleName ->
+        listOf("src/test/kotlin", "src/jvmTest/kotlin", "src/commonTest/kotlin")
+          .map { sourceSet -> runtimeRoot.resolve(moduleName.replace(':', '/')).resolve(sourceSet) }
+          .filter(Files::isDirectory)
+      }
+      .flatMap { sourceRoot -> sourceFilesIn(sourceRoot) }
+
+  private fun mainSourceRoots(moduleName: String): List<Path> {
+    val sourceRoot = runtimeRoot.resolve(moduleName.replace(':', '/')).resolve("src")
+    if (!Files.isDirectory(sourceRoot)) return emptyList()
+    return Files.list(sourceRoot).use { stream ->
       stream
-        .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
-        .map(::sourceFile)
+        .filter(Files::isDirectory)
+        .filter { path -> path.fileName.toString() == "main" || path.fileName.toString().endsWith("Main") }
+        .map { path -> path.resolve("kotlin") }
+        .filter(Files::isDirectory)
         .toList()
+        .sorted()
     }
+  }
+
+  private fun sourceFilesIn(sourceRoot: Path): List<SourceFile> = Files.walk(sourceRoot).use { stream ->
+    stream
+      .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+      .map(::sourceFile)
+      .toList()
   }
 
   private fun sourceFile(path: Path): SourceFile {

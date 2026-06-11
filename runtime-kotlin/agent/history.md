@@ -1,3 +1,13 @@
+## [2026-06-11] SKILL-52.4 enforcement-gates
+Areas: runtime-kotlin/runtime-core, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-mcp, runtime-kotlin/ARCHITECTURE.md
+- Runtime package ownership is now complete-enforced: every declared main Kotlin source root must map to `RuntimeModule.declaredSubsystemPackages`; keep `RuntimeModule`, `RuntimeArchitectureDocumentationTest`, MCP smoke literals, and ARCHITECTURE package blocks in lockstep. reusable
+- Raw-map public-boundary scanning now catches `Map<String, Any>`, string-keyed `HashMap`/`LinkedHashMap`/`MutableMap` variants, star variants, and file-local typealias laundering; new exceptions require the existing three-place allow-list/doc/test parity. reusable
+- Inner-layer test roots for application/domain/ports now reject imports from infrastructure, CLI, MCP, and desktop packages so tests exercise inward-facing seams instead of adapter internals. reusable
+- Main-source Gradle project dependency allow-lists now cover all declared runtime modules, not just adapters; new project edges must be intentional and reflected in the per-module test allow-list.
+- Known limitation: red-first `skillbill.goalrunner` failure was identified but not preserved as a separate failing-run artifact; final enforcing gates and full validation passed.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-11] SKILL-78 feature-task-mode-workflow-table
 Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, orchestration/contracts, skills/bill-feature-task*
 - Feature-task prose and runtime workflows now persist in one `feature_task_workflows` table with `workflow_name=bill-feature-task`, explicit `mode=prose|runtime`, and `implementation_skill` for the selected implementation. reusable
