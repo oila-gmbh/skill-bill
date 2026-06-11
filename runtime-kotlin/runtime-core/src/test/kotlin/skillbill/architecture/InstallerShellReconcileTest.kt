@@ -105,8 +105,8 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `TTY-bypass accept overwrites the conflicting skill and reports it in the summary (AC-7 accept)`() {
-    // SKILL-76 AC-7 accept branch: a both-changed conflict driven through the TEST-ONLY
-    // SKILL_BILL_RECONCILE_CONFLICT_CHOICE=accept seam must overwrite the live skill with
+    // SKILL-76 AC-7 y branch: a both-changed conflict driven through the TEST-ONLY
+    // SKILL_BILL_RECONCILE_CONFLICT_CHOICE=y seam must overwrite the live skill with
     // upstream, refresh the baseline, and report the overwritten conflict path in the
     // install summary (the dead summary block is now exercised).
     val first = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n", conflictPath = null)
@@ -118,10 +118,10 @@ class InstallerShellReconcileTest {
       input = "1\ncopilot\nbase only\noff\nskip\n",
       conflictPath = "skills/bill-sample",
       reuse = first,
-      scenario = ReconcileScenario(conflictChoice = "accept"),
+      scenario = ReconcileScenario(conflictChoice = "y"),
     )
     assertEquals(0, second.exitCode, "AC-7 accept must complete the install. Output:\n${second.output}")
-    // The accept branch applied upstream: the live skill no longer holds the local edit.
+    // The y branch applied upstream: the live skill no longer holds the local edit.
     assertFalse(
       Files.readString(liveSkill).contains("LOCAL EDIT BEFORE ACCEPT"),
       "AC-7 accept must overwrite the local edit with upstream",
