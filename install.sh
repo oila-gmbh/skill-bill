@@ -801,8 +801,8 @@ parse_reconcile_report() {
 #   leaves the live skill untouched.
 # - adopt: an untouched local adopts new upstream + refreshes baseline.
 # - locally-authored: a skill with no upstream counterpart is NEVER deleted.
-# - conflict (both changed): TTY → WARN + prompt accept/abort; NO-TTY → abort with a
-#   clear message. accept → apply --accept-conflicts; abort → discard, change nothing.
+# - conflict (both changed): TTY → WARN + prompt y/n; NO-TTY → abort with a
+#   clear message. y → apply --accept-conflicts; n → discard, change nothing.
 #   ALL conflicts are reported in the install summary. No sidecar.
 #
 # The shell performs NO whole-tree rm/mv swap of skills/ — the runtime per-skill apply
@@ -842,8 +842,8 @@ reconcile_and_commit_authored_source() {
     done
     local answer=""
     # TEST-ONLY SEAM: SKILL_BILL_RECONCILE_CONFLICT_CHOICE supplies the conflict decision
-    # (accept/abort) and bypasses ONLY the TTY check, so integration tests can drive the
-    # accept branch under piped stdin (where [[ ! -t 0 ]] would otherwise abort). When the
+    # (y/n) and bypasses ONLY the TTY check, so integration tests can drive the
+    # y branch under piped stdin (where [[ ! -t 0 ]] would otherwise abort). When the
     # env var is UNSET/empty, production behavior is byte-for-byte unchanged: TTY -> prompt,
     # no-TTY -> abort. Mirrors the SKILL_BILL_SKIP_PREINSTALL_UNINSTALL opt-out style.
     if [[ -n "${SKILL_BILL_RECONCILE_CONFLICT_CHOICE:-}" ]]; then
@@ -856,13 +856,13 @@ reconcile_and_commit_authored_source() {
       discard_authored_candidates
       return 1
     else
-      printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [accept/abort]: "
+      printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
       if ! read -r answer; then
-        answer="abort"
+        answer="n"
       fi
     fi
     case "${answer,,}" in
-      accept|a|yes|y)
+      yes|y)
         info "Accepting upstream for conflicting skills; your local edits will be overwritten."
         accept_conflicts=1
         ;;
