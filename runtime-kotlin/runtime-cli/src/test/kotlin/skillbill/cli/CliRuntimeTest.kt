@@ -436,7 +436,7 @@ class CliRuntimeTest {
     assertEquals(0, detectAgentsResult.exitCode, detectAgentsResult.stdout)
     assertEquals(
       """
-      claude	${tempDir.resolve(".claude/commands")}
+      claude	${tempDir.resolve(".claude/skills")}
       junie	${tempDir.resolve(".junie/skills")}
       """.trimIndent(),
       detectAgentsResult.stdout.trim(),
@@ -464,7 +464,7 @@ class CliRuntimeTest {
     assertEquals(
       """
       copilot	${tempDir.resolve(".copilot/skills")}
-      claude	${tempDir.resolve(".claude/commands")}
+      claude	${tempDir.resolve(".claude/skills")}
       codex	${tempDir.resolve(".codex/skills")}
       opencode	${tempDir.resolve(".config/opencode/skills")}
       junie	${tempDir.resolve(".junie/skills")}

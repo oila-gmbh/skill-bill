@@ -233,7 +233,7 @@ private fun claudeMultiRootDefaultTargets(home: Path): List<InstallAgentDefaultT
   agentPaths(home).flatMap { (agentId, path) ->
     val agent = InstallAgent.fromId(agentId)
     if (agentId == "claude") {
-      claudeCommandTargets(home).map { commandPath -> InstallAgentDefaultTarget(agent = agent, path = commandPath) }
+      claudeSkillTargets(home).map { skillPath -> InstallAgentDefaultTarget(agent = agent, path = skillPath) }
     } else {
       listOf(InstallAgentDefaultTarget(agent = agent, path = path))
     }

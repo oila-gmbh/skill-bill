@@ -18,7 +18,7 @@ internal fun agentPaths(home: Path? = null, environment: Map<String, String> = S
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return mapOf(
     "copilot" to resolvedHome.resolve(".copilot/skills"),
-    "claude" to claudeConfigRoot(resolvedHome, environment).resolve("commands"),
+    "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
     "codex" to codexPath(resolvedHome),
@@ -46,7 +46,7 @@ internal fun detectAgents(home: Path? = null, environment: Map<String, String> =
   return SUPPORTED_AGENTS.flatMap { agent ->
     if (agent == "claude") {
       if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
-        claudeCommandTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path) }
+        claudeSkillTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path) }
       } else {
         emptyList()
       }

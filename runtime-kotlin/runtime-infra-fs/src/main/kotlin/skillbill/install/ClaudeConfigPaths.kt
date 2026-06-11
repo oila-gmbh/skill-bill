@@ -67,9 +67,9 @@ internal fun claudeConfigRoots(home: Path, environment: Map<String, String> = Sy
   return ordered
 }
 
-internal fun claudeCommandTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
+internal fun claudeSkillTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  return claudeConfigRoots(resolvedHome, environment).map { root -> root.resolve("commands") }
+  return claudeConfigRoots(resolvedHome, environment).map { root -> root.resolve("skills") }
 }
 
 private fun hasClaudeProfileMarker(root: Path): Boolean =

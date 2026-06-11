@@ -6,10 +6,10 @@ import kotlin.test.assertEquals
 
 class ClaudeConfigDirAgentPathTest {
   @Test
-  fun `claude skill path falls back to dot-claude commands when CLAUDE_CONFIG_DIR is unset`() {
+  fun `claude skill path falls back to dot-claude skills when CLAUDE_CONFIG_DIR is unset`() {
     val home = Files.createTempDirectory("skillbill-claude-config-default")
     assertEquals(
-      home.resolve(".claude/commands"),
+      home.resolve(".claude/skills"),
       InstallOperations.agentPath("claude", home, environment = emptyMap()),
     )
   }
@@ -21,7 +21,7 @@ class ClaudeConfigDirAgentPathTest {
     val env = mapOf("CLAUDE_CONFIG_DIR" to workConfig.toString())
 
     assertEquals(
-      workConfig.resolve("commands"),
+      workConfig.resolve("skills"),
       InstallOperations.agentPath("claude", home, environment = env),
     )
     // Native subagents follow the same profile root.
@@ -40,7 +40,7 @@ class ClaudeConfigDirAgentPathTest {
   fun `blank CLAUDE_CONFIG_DIR falls back to the default root`() {
     val home = Files.createTempDirectory("skillbill-claude-config-blank")
     assertEquals(
-      home.resolve(".claude/commands"),
+      home.resolve(".claude/skills"),
       InstallOperations.agentPath("claude", home, environment = mapOf("CLAUDE_CONFIG_DIR" to "  ")),
     )
   }
@@ -57,7 +57,7 @@ class ClaudeConfigDirAgentPathTest {
     val claudeTargets = InstallOperations.detectAgentTargets(home, environment = env)
       .filter { it.name == "claude" }
     assertEquals(
-      listOf(home.resolve(".claude/commands"), workConfig.resolve("commands")),
+      listOf(home.resolve(".claude/skills"), workConfig.resolve("skills")),
       claudeTargets.map { it.path },
     )
   }
