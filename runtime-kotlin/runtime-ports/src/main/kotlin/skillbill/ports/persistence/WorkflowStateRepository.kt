@@ -1,6 +1,7 @@
 package skillbill.ports.persistence
 
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 
@@ -10,11 +11,56 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
  * threshold. This remains the single port adapters implement.
  */
 interface WorkflowStateRepository :
+  FeatureTaskWorkflowStateRepository,
   FeatureImplementWorkflowStateRepository,
   FeatureVerifyWorkflowStateRepository,
   FeatureTaskRuntimeWorkflowStateRepository
 
+interface FeatureTaskWorkflowStateRepository {
+  fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
+    when (mode) {
+      FeatureTaskWorkflowMode.PROSE ->
+        (this as FeatureImplementWorkflowStateRepository).saveFeatureImplementWorkflow(row)
+      FeatureTaskWorkflowMode.RUNTIME ->
+        (this as FeatureTaskRuntimeWorkflowStateRepository).saveFeatureTaskRuntimeWorkflow(row)
+    }
+  }
+
+  fun getFeatureTaskWorkflow(workflowId: String): WorkflowStateRecord? =
+    (this as FeatureImplementWorkflowStateRepository).getFeatureImplementWorkflow(workflowId)
+      ?: (this as FeatureTaskRuntimeWorkflowStateRepository).getFeatureTaskRuntimeWorkflow(workflowId)
+
+  fun getFeatureTaskWorkflowAsMode(workflowId: String, mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
+    when (mode) {
+      FeatureTaskWorkflowMode.PROSE -> (this as FeatureImplementWorkflowStateRepository).getFeatureImplementWorkflow(
+        workflowId,
+      )
+      FeatureTaskWorkflowMode.RUNTIME ->
+        (this as FeatureTaskRuntimeWorkflowStateRepository).getFeatureTaskRuntimeWorkflow(workflowId)
+    }
+
+  fun listFeatureTaskWorkflows(mode: FeatureTaskWorkflowMode, limit: Int = 20): List<WorkflowStateRecord> =
+    when (mode) {
+      FeatureTaskWorkflowMode.PROSE -> (this as FeatureImplementWorkflowStateRepository).listFeatureImplementWorkflows(
+        limit,
+      )
+      FeatureTaskWorkflowMode.RUNTIME ->
+        (this as FeatureTaskRuntimeWorkflowStateRepository).listFeatureTaskRuntimeWorkflows(limit)
+    }
+
+  fun latestFeatureTaskWorkflow(mode: FeatureTaskWorkflowMode): WorkflowStateRecord? = when (mode) {
+    FeatureTaskWorkflowMode.PROSE ->
+      (this as FeatureImplementWorkflowStateRepository).latestFeatureImplementWorkflow()
+    FeatureTaskWorkflowMode.RUNTIME ->
+      (this as FeatureTaskRuntimeWorkflowStateRepository).latestFeatureTaskRuntimeWorkflow()
+  }
+}
+
 interface FeatureImplementWorkflowStateRepository {
+  /**
+   * Compatibility alias for bill-feature-task mode=prose. Authoritative
+   * implementations should store the row in the shared feature-task workflow store.
+   */
   fun saveFeatureImplementWorkflow(row: WorkflowStateRecord)
 
   fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord?
@@ -44,6 +90,10 @@ interface FeatureVerifyWorkflowStateRepository {
  * artifacts envelope; there is intentionally no session-summary method.
  */
 interface FeatureTaskRuntimeWorkflowStateRepository {
+  /**
+   * Compatibility alias for bill-feature-task mode=runtime. Authoritative
+   * implementations should store the row in the shared feature-task workflow store.
+   */
   fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord)
 
   fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord?

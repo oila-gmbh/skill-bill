@@ -715,7 +715,8 @@ class McpFeatureTaskRuntimeWorkflowTest {
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals(workflowId, got["workflow_id"])
-    assertEquals("feature-task-runtime", got["workflow_name"])
+    assertEquals("bill-feature-task", got["workflow_name"])
+    assertEquals("runtime", got["mode"])
   }
 }
 

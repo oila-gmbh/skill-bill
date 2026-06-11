@@ -278,7 +278,8 @@ class ApplicationPersistencePortTest {
     val listed = service.list(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = null)
     val latest = service.latest(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = null) as WorkflowLatestResult.Ok
 
-    assertEquals("feature-task-runtime", got.snapshot.workflowName)
+    assertEquals("bill-feature-task", got.snapshot.workflowName)
+    assertEquals("runtime", got.snapshot.mode)
     assertEquals(2, listed.workflowCount)
     assertEquals(second.workflowId, latest.summary.workflowId)
     assertEquals(0, service.list(WorkflowFamilyKind.IMPLEMENT, dbOverride = null).workflowCount)

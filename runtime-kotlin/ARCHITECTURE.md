@@ -526,22 +526,28 @@ skillbill.workflow.verify
 
 ## Feature-Task Workflow Family
 
-- `feature-task` is the runtime-backed workflow family behind
-  `bill-feature-task-runtime`. The Kotlin runtime owns its phase loop (`plan ->
-  implement -> review -> audit -> validate`) and launches one agent per phase,
-  reusing the goal-runner launcher and `WorkflowEngine` rather than a second
-  orchestration loop. `bill-feature-task` is the router entry point and defaults
-  single-spec work to the first-class prose orchestrator,
-  `bill-feature-task-prose`, unless `mode:runtime` is selected. Its definition is
-  `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
-  (durable workflow name `feature-task-runtime`, id prefix `wftr`, contract
-  version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`), and its per-phase records and
-  append-only ledger live in
-  `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePersistenceModels`.
-- The deprecated `feature-task-runtime` CLI / `feature_task_runtime_*` aliases
-  are compatibility surfaces only; `feature_implement_*` now belongs to the
-  first-class prose mode. `bill-feature` routes single-spec work to the
-  canonical `bill-feature-task` router without hardcoding a mode. The
+- `bill-feature-task` is the public workflow identity for both implementation
+  modes. Prose runs persist as `mode=prose` and runtime-backed runs persist as
+  `mode=runtime` in the shared `feature_task_workflows` store. Feature-verify
+  remains a distinct workflow family and store.
+- `bill-feature-task-runtime` is the runtime-backed trigger surface. The Kotlin
+  runtime owns its phase loop (`plan -> implement -> review -> audit ->
+  validate`) and launches one agent per phase, reusing the goal-runner launcher
+  and `WorkflowEngine` rather than a second prose orchestration loop. Its
+  definition is `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
+  (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
+  persisted rows use `workflow_name=bill-feature-task`, `mode=runtime`, and
+  `implementation_skill=bill-feature-task-runtime`.
+- `bill-feature-task-prose` is the first-class prose mode. Persisted rows use
+  `workflow_name=bill-feature-task`, `mode=prose`, and
+  `implementation_skill=bill-feature-task-prose`; its stable prose step ids and
+  artifact names remain unchanged.
+- The `feature_task_runtime_*` and `feature_implement_*` CLI/MCP names are
+  compatibility aliases to `bill-feature-task mode=runtime` and
+  `bill-feature-task mode=prose` respectively. They are not separate
+  authoritative workflow stores. `bill-feature`
+  routes single-spec work to the canonical `bill-feature-task` router without
+  hardcoding a mode. The
   authoritative recorded promote decision lives in
   `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-70
   owns the router/prose/runtime split.

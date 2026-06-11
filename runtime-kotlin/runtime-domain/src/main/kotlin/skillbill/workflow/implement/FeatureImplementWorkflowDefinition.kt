@@ -194,5 +194,6 @@ object FeatureImplementWorkflowDefinition {
     continuationArtifactOrder = listOf("assessment", "branch"),
     openPriorStepsCompleted = false,
     completedTerminalSummaryArtifact = "pr_result",
+    workflowMode = "prose",
   )
 }

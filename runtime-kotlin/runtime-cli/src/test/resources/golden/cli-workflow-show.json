@@ -4,6 +4,7 @@
   "current_step_id": "assess",
   "db_path": "<DB_PATH>",
   "finished_at": "",
+  "mode": "prose",
   "session_id": "fis-20260425-000001-test",
   "started_at": "<STARTED_AT>",
   "status": "ok",

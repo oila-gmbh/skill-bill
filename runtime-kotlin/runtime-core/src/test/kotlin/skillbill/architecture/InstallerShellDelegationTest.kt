@@ -152,11 +152,11 @@ class InstallerShellDelegationTest {
   }
 
   @Test
-  fun `pre-install wipe preserves copied source and reserved baseline but clears runtime installed-skills and dbs`() {
+  fun `pre-install wipe preserves copied source reserved baseline and state dbs`() {
     // SKILL-76 AC-5: when install.sh execs uninstall.sh as the pre-install step it sets
     // SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1. uninstall.sh must then PRESERVE skills/,
-    // platform-packs/, orchestration/ and the reserved baseline-manifest path, while still
-    // clearing runtime/, installed-skills/, and *.db state DBs.
+    // platform-packs/, orchestration/, durable *.db state, and the reserved
+    // baseline-manifest path, while still clearing runtime/ and installed-skills/.
     val fixtures = seedStateDirForWipe()
     val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = false)
 
@@ -169,7 +169,7 @@ class InstallerShellDelegationTest {
     // Cleared runtime/install state.
     assertFalse(Files.exists(fixtures.runtimeBin), "runtime/ must be cleared under preserve-wipe")
     assertFalse(Files.exists(fixtures.installedSkill), "installed-skills/ must be cleared under preserve-wipe")
-    assertFalse(Files.exists(fixtures.stateDb), "*.db state DBs must be cleared under preserve-wipe")
+    assertTrue(Files.isRegularFile(fixtures.stateDb), "*.db state DBs must be preserved under preserve-wipe")
   }
 
   @Test

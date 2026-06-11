@@ -10,11 +10,13 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   private val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
 
   @Test
-  fun `definition is independent from the implement workflow definition`() {
+  fun `definition shares public feature task identity and uses runtime mode`() {
     val implement = FeatureImplementWorkflowDefinition.definition
-    assertTrue(definition.workflowName != implement.workflowName)
+    assertEquals(implement.workflowName, definition.workflowName)
+    assertEquals("runtime", definition.workflowMode)
+    assertEquals("prose", implement.workflowMode)
     assertTrue(definition.workflowIdPrefix != implement.workflowIdPrefix)
-    assertEquals("feature-task-runtime", definition.skillName)
+    assertEquals("bill-feature-task", definition.skillName)
     assertEquals("wftr", definition.workflowIdPrefix)
   }
 

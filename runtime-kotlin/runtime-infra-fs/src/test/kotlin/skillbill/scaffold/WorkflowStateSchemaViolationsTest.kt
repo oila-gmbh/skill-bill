@@ -140,7 +140,7 @@ class WorkflowStateSchemaViolationsTest {
       put("rogue_field", "x")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "feature-task-runtime")
+      validator.validate(snapshot, "bill-feature-task")
     }
     assertContains(error.message.orEmpty(), "rogue_field")
   }
@@ -163,7 +163,7 @@ class WorkflowStateSchemaViolationsTest {
       )
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      validator.validate(snapshot, "feature-task-runtime")
+      validator.validate(snapshot, "bill-feature-task")
     }
     assertContains(error.message.orEmpty(), "rogue_step_field")
   }
@@ -171,7 +171,8 @@ class WorkflowStateSchemaViolationsTest {
   private fun baseTaskRuntimeSnapshot(): Map<String, Any?> = linkedMapOf(
     "workflow_id" to "wftr-19700101-000000-aaaa",
     "session_id" to "",
-    "workflow_name" to "feature-task-runtime",
+    "workflow_name" to "bill-feature-task",
+    "mode" to "runtime",
     "contract_version" to "0.1",
     "workflow_status" to "running",
     "current_step_id" to "plan",
@@ -192,6 +193,7 @@ class WorkflowStateSchemaViolationsTest {
     "workflow_id" to "wfl-19700101-000000-aaaa",
     "session_id" to "",
     "workflow_name" to "bill-feature-task",
+    "mode" to "prose",
     "contract_version" to "0.1",
     "workflow_status" to "running",
     "current_step_id" to "assess",

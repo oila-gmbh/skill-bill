@@ -10,6 +10,10 @@ description: Router skill for feature-task implementation. Accepts `mode:prose` 
 - **prose** (default) — delegates to `bill-feature-task-prose`, which orchestrates the full phase loop in-session without an external runtime.
 - **runtime** — delegates to `bill-feature-task-runtime`, which launches the `skill-bill feature-task` foreground driver.
 
+Both modes persist under the public workflow identity `bill-feature-task` in the
+shared feature-task workflow store: prose records use `mode=prose`, and runtime
+records use `mode=runtime`.
+
 ## Intake
 
 Gather enough to identify and confirm the run:

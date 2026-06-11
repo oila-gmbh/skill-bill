@@ -64,7 +64,9 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       "started_at" to record.startedAt.orEmpty(),
       "updated_at" to record.updatedAt.orEmpty(),
       "finished_at" to record.finishedAt.orEmpty(),
-    )
+    ).apply {
+      record.mode?.let { mode -> put("mode", mode) }
+    }
     schemaValidator.validate(snapshot, definition.workflowName)
     return snapshot
   }
@@ -87,6 +89,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       startedAt = null,
       updatedAt = null,
       finishedAt = null,
+      mode = definition.workflowMode,
     )
     // SKILL-48 Subtask 2a: validate the freshly-opened snapshot against the
     // canonical schema. A malformed snapshot escaping `openRecord` would
@@ -136,6 +139,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       workflowId = map["workflow_id"] as String,
       sessionId = map["session_id"] as String,
       workflowName = map["workflow_name"] as String,
+      mode = map["mode"] as? String,
       contractVersion = map["contract_version"] as String,
       workflowStatus = map["workflow_status"] as String,
       currentStepId = map["current_step_id"] as String,
@@ -336,6 +340,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         "workflow_id" to view.workflowId,
         "session_id" to view.sessionId,
         "workflow_name" to view.workflowName,
+        "mode" to view.mode,
         "contract_version" to view.contractVersion,
         "workflow_status" to view.workflowStatus,
         "current_step_id" to view.currentStepId,
@@ -353,6 +358,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         "workflow_id" to view.workflowId,
         "session_id" to view.sessionId,
         "workflow_name" to view.workflowName,
+        "mode" to view.mode,
         "contract_version" to view.contractVersion,
         "workflow_status" to view.workflowStatus,
         "current_step_id" to view.currentStepId,
@@ -456,6 +462,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         workflowId = map["workflow_id"] as String,
         sessionId = map["session_id"] as String,
         workflowName = map["workflow_name"] as String,
+        mode = map["mode"] as? String,
         contractVersion = map["contract_version"] as String,
         workflowStatus = map["workflow_status"] as String,
         currentStepId = map["current_step_id"] as String,

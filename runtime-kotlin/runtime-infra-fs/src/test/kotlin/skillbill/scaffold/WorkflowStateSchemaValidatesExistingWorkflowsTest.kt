@@ -165,6 +165,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       "workflow_id",
       "session_id",
       "workflow_name",
+      "mode",
       "contract_version",
       "workflow_status",
       "current_step_id",

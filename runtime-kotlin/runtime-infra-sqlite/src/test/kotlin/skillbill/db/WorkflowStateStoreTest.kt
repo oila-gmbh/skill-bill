@@ -1,10 +1,13 @@
 package skillbill.db
 
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
+import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -54,6 +57,9 @@ class WorkflowStateStoreTest {
 
       val saved = assertNotNull(store.getFeatureImplementWorkflow("wfl-001"))
       assertEquals(DbConstants.FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION, saved.contractVersion)
+      assertEquals("bill-feature-task", saved.workflowName)
+      assertEquals(FeatureTaskWorkflowMode.PROSE, saved.mode)
+      assertEquals("bill-feature-task-prose", saved.implementationSkill)
       assertEquals("completed", saved.workflowStatus)
       assertEquals("finish", saved.currentStepId)
       assertEquals("""{"implementation_summary":{"files_created":7}}""", saved.artifactsJson)
@@ -168,7 +174,8 @@ class WorkflowStateStoreTest {
         WorkflowStateRow(
           workflowId = "wftr-001",
           sessionId = "ftr-001",
-          workflowName = "feature-task-runtime",
+          workflowName = "bill-feature-task",
+          mode = FeatureTaskWorkflowMode.RUNTIME,
           contractVersion = "",
           workflowStatus = "running",
           currentStepId = "plan",
@@ -183,12 +190,17 @@ class WorkflowStateStoreTest {
 
       val saved = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-001"))
       assertEquals(DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION, saved.contractVersion)
-      assertEquals("feature-task-runtime", saved.workflowName)
+      assertEquals("bill-feature-task", saved.workflowName)
+      assertEquals(FeatureTaskWorkflowMode.RUNTIME, saved.mode)
+      assertEquals("bill-feature-task-runtime", saved.implementationSkill)
       assertEquals("plan", saved.currentStepId)
       assertEquals(artifactsJson, saved.artifactsJson)
 
-      assertEquals(null, store.getFeatureImplementWorkflow("wftr-001"))
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        store.getFeatureImplementWorkflow("wftr-001")
+      }
       assertEquals(null, store.getFeatureVerifyWorkflow("wftr-001"))
+      assertEquals(FeatureTaskWorkflowMode.RUNTIME, store.getFeatureTaskWorkflow("wftr-001")?.mode)
     }
   }
 
@@ -202,8 +214,9 @@ class WorkflowStateStoreTest {
         workflowRow(
           workflowId = "wftr-started",
           sessionId = "ftr-started",
-          workflowName = "feature-task-runtime",
+          workflowName = "bill-feature-task",
           currentStepId = "plan",
+          mode = FeatureTaskWorkflowMode.RUNTIME,
         )
 
       store.saveFeatureTaskRuntimeWorkflow(initialRow)
@@ -234,8 +247,9 @@ class WorkflowStateStoreTest {
           workflowRow(
             workflowId = workflowId,
             sessionId = "ftr-00$index",
-            workflowName = "feature-task-runtime",
+            workflowName = "bill-feature-task",
             currentStepId = "plan",
+            mode = FeatureTaskWorkflowMode.RUNTIME,
           ),
         )
       }
@@ -363,6 +377,7 @@ private fun workflowRow(
   sessionId: String,
   workflowName: String,
   currentStepId: String,
+  mode: FeatureTaskWorkflowMode? = null,
 ): WorkflowStateRow = WorkflowStateRow(
   workflowId = workflowId,
   sessionId = sessionId,
@@ -375,4 +390,5 @@ private fun workflowRow(
   startedAt = null,
   updatedAt = null,
   finishedAt = null,
+  mode = mode,
 )

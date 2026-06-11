@@ -646,10 +646,11 @@ remove_state_dir_full() {
 }
 
 # Pre-install wipe (SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1, set only by
-# install.sh's run_pre_install_uninstall): clear runtime binaries,
-# installed-skills staging, and *.db state DBs so generator changes land on the
-# next install, while PRESERVING the copied-in self-contained source set:
+# install.sh's run_pre_install_uninstall): clear runtime binaries and
+# installed-skills staging so generator changes land on the next install, while
+# PRESERVING the copied-in self-contained source set and durable state DBs:
 #   - skills/, platform-packs/, orchestration/
+#   - *.db workflow / telemetry / review stores
 #   - the RESERVED baseline-manifest path (subtask-2 seam) below
 # An explicit ./uninstall.sh leaves this flag unset and fully removes
 # ~/.skill-bill via remove_state_dir_full.
@@ -672,6 +673,9 @@ remove_state_dir_preserving_source() {
   for entry in "$SKILL_BILL_STATE_DIR"/* "$SKILL_BILL_STATE_DIR"/.[!.]* "$SKILL_BILL_STATE_DIR"/..?*; do
     [[ -e "$entry" || -L "$entry" ]] || continue
     name="$(basename "$entry")"
+    if [[ "$name" == *.db ]]; then
+      continue
+    fi
     is_preserved=0
     for keep in "${preserved[@]}"; do
       if [[ "$name" == "$keep" ]]; then
@@ -682,19 +686,9 @@ remove_state_dir_preserving_source() {
     if [[ "$is_preserved" -eq 1 ]]; then
       continue
     fi
-    # Defensive-dead under the current entrypoints: the top-of-script exit-64
-    # guard in both install.sh and uninstall.sh already aborts any
-    # goal-continuation run before this preserve-mode loop is reached, so the
-    # actual protection against wiping the live workflow / review-metrics DBs
-    # is that guard, not this inner check. This branch is kept only as
-    # belt-and-suspenders in case a future caller ever reaches preserve-mode
-    # with SKILL_BILL_GOAL_CONTINUATION=1 set.
-    if [[ "${SKILL_BILL_GOAL_CONTINUATION:-}" == "1" && "$name" == *.db ]]; then
-      continue
-    fi
     rm -rf "$entry"
   done
-  ok "  cleared runtime/install state under $SKILL_BILL_STATE_DIR (source preserved)"
+  ok "  cleared runtime/install state under $SKILL_BILL_STATE_DIR (source and state DBs preserved)"
 }
 
 if [[ "${SKILL_BILL_PRESERVE_SOURCE_ON_WIPE:-}" == "1" ]]; then

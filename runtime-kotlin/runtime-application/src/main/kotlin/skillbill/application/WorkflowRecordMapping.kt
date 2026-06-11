@@ -29,6 +29,7 @@ internal fun WorkflowStateRecord.toSnapshot(): WorkflowStateSnapshot = WorkflowS
   workflowId = workflowId,
   sessionId = sessionId,
   workflowName = workflowName,
+  mode = mode?.wireValue,
   contractVersion = contractVersion,
   workflowStatus = workflowStatus,
   currentStepId = currentStepId,
@@ -51,6 +52,7 @@ internal fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowSta
   startedAt = startedAt,
   updatedAt = updatedAt,
   finishedAt = finishedAt,
+  mode = mode?.let(skillbill.ports.persistence.model.FeatureTaskWorkflowMode::fromWireValue),
 )
 
 internal fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(

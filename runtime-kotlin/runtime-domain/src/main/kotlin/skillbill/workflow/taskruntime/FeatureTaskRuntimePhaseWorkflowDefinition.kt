@@ -30,8 +30,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PR: String = "pr"
 
   val definition: WorkflowDefinition = WorkflowDefinition(
-    skillName = "feature-task-runtime",
-    workflowName = "feature-task-runtime",
+    skillName = "bill-feature-task",
+    workflowName = "bill-feature-task",
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
     contractVersion = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
@@ -94,6 +94,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     continuationArtifactOrder = emptyList(),
     openPriorStepsCompleted = false,
     completedTerminalSummaryArtifact = PHASE_PR,
+    workflowMode = "runtime",
   )
 
   /**

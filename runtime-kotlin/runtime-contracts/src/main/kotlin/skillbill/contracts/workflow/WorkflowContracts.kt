@@ -31,6 +31,7 @@ object WorkflowContracts {
       "workflow_id",
       "session_id",
       "workflow_name",
+      "mode",
       "contract_version",
       "workflow_status",
       "current_step_id",
@@ -48,6 +49,7 @@ object WorkflowContracts {
       "workflow_id",
       "session_id",
       "workflow_name",
+      "mode",
       "contract_version",
       "workflow_status",
       "current_step_id",
@@ -93,6 +95,10 @@ object WorkflowContracts {
 
   private fun orderedPayload(fields: Map<String, Any?>, keys: List<String>): Map<String, Any?> =
     linkedMapOf<String, Any?>().apply {
-      keys.forEach { key -> put(key, fields[key]) }
+      keys.forEach { key ->
+        if (key != "mode" || fields[key] != null) {
+          put(key, fields[key])
+        }
+      }
     }
 }

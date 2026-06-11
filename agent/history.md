@@ -1,3 +1,10 @@
+## [2026-06-11] WE-4435 prose-runtime workflow-store clarification
+Areas: skills/bill-feature-task-prose, runtime-kotlin/ARCHITECTURE.md, docs
+- Corrected current-state wording: `bill-feature-task-prose` is a first-class parallel implementation mode, not legacy; the `feature_implement_*` MCP tools and `feature_implement_workflows` store are stable prose-mode durable state. reusable
+- Router invariant: `bill-feature-task` defaults to `mode:prose`; `mode:runtime` selects `bill-feature-task-runtime`. Do not describe prose workflow rows as fallback or legacy state when diagnosing feature-task runs.
+Feature flag: N/A
+Acceptance criteria: documentation/source clarification only
+
 ## [2026-06-10] SKILL-76.1 copyin-repoint-foundation
 Areas: install.sh, uninstall.sh, runtime-kotlin/runtime-infra-fs (tests), runtime-kotlin/runtime-core (tests)
 - Copy-in pattern: `install.sh` `copy_in_authored_source()` reuses the `install_packaged_runtime_distribution` atomic idiom (rm tmp; cp -R; rm target; mv) to copy `skills/` + `platform-packs/` + the WHOLE `orchestration/` tree into `$SKILL_BILL_STATE_DIR` as REAL files before any skill linking, then repoints `--repo-root`/`--skills`/`--platform-packs` at that copy. reusable

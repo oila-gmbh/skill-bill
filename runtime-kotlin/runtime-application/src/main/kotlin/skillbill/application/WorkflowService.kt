@@ -16,6 +16,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -403,28 +404,28 @@ internal enum class WorkflowFamily(
 
   fun save(repository: WorkflowStateRepository, record: WorkflowStateSnapshot) {
     when (this) {
-      IMPLEMENT -> repository.saveFeatureImplementWorkflow(record.toRecord())
+      IMPLEMENT -> repository.saveFeatureTaskWorkflow(record.toRecord(), FeatureTaskWorkflowMode.PROSE)
       VERIFY -> repository.saveFeatureVerifyWorkflow(record.toRecord())
-      TASK_RUNTIME -> repository.saveFeatureTaskRuntimeWorkflow(record.toRecord())
+      TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record.toRecord(), FeatureTaskWorkflowMode.RUNTIME)
     }
   }
 
   fun get(repository: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.getFeatureImplementWorkflow(workflowId)
+    IMPLEMENT -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
-    TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflow(workflowId)
+    TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
 
   fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
-    IMPLEMENT -> repository.listFeatureImplementWorkflows(limit)
+    IMPLEMENT -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, limit)
     VERIFY -> repository.listFeatureVerifyWorkflows(limit)
-    TASK_RUNTIME -> repository.listFeatureTaskRuntimeWorkflows(limit)
+    TASK_RUNTIME -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, limit)
   }.map(WorkflowStateRecord::toSnapshot)
 
   fun latest(repository: WorkflowStateRepository): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.latestFeatureImplementWorkflow()
+    IMPLEMENT -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.latestFeatureVerifyWorkflow()
-    TASK_RUNTIME -> repository.latestFeatureTaskRuntimeWorkflow()
+    TASK_RUNTIME -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
 
   /**

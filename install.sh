@@ -620,9 +620,9 @@ print_install_plan() {
 # Every install starts from a clean slate: removes agent symlinks, native
 # subagent symlinks, MCP registrations, runtime launchers, and wipes
 # ~/.skill-bill/ (including the installed-skills staging cache, runtime
-# binaries, and any persistent state DBs). This guarantees that generator
-# changes — which the staging-cache content hash does not see — actually
-# land on the next install.
+# binaries, while preserving persistent state DBs). This guarantees that
+# generator changes — which the staging-cache content hash does not see —
+# actually land on the next install without deleting durable workflow state.
 #
 # Tests and dev iteration can opt out with SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1.
 run_pre_install_uninstall() {
@@ -640,8 +640,9 @@ run_pre_install_uninstall() {
   echo ""
   info "Running uninstall.sh first so every install starts from a clean slate."
   # PRESERVE the copied-in self-contained source (skills/, platform-packs/,
-  # orchestration/ + the reserved baseline-manifest path) across the pre-install
-  # wipe, while still clearing runtime/, installed-skills/, and *.db state DBs.
+  # orchestration/ + the reserved baseline-manifest path) and durable *.db state
+  # across the pre-install wipe, while still clearing runtime/ and
+  # installed-skills/.
   # This flag is ONLY set for the install-driven pre-install uninstall; an
   # explicit ./uninstall.sh (flag unset) still fully removes ~/.skill-bill.
   SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1 bash "$uninstall_script"

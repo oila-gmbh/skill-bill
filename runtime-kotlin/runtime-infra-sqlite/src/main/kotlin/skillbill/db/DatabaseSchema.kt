@@ -16,9 +16,8 @@ internal object DatabaseSchema {
       "feature_verify_sessions",
       "feature_implement_sessions",
       "feature_task_runtime_sessions",
-      "feature_implement_workflows",
+      "feature_task_workflows",
       "feature_verify_workflows",
-      "feature_task_runtime_workflows",
     )
 
   val indexNames: Set<String> =
@@ -26,7 +25,7 @@ internal object DatabaseSchema {
       "idx_feedback_events_run",
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
-      "idx_feature_task_runtime_workflows_updated",
+      "idx_feature_task_workflows_updated",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -229,11 +228,13 @@ internal object DatabaseSchema {
       )
       """.trimIndent(),
       """
-      CREATE TABLE IF NOT EXISTS feature_implement_workflows (
+      CREATE TABLE IF NOT EXISTS feature_task_workflows (
         workflow_id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL DEFAULT '',
-        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
-        contract_version TEXT NOT NULL DEFAULT '${DbConstants.FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION}',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task' CHECK (workflow_name = 'bill-feature-task'),
+        mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
+        implementation_skill TEXT NOT NULL DEFAULT '',
+        contract_version TEXT NOT NULL,
         workflow_status TEXT NOT NULL DEFAULT 'pending',
         current_step_id TEXT NOT NULL DEFAULT '',
         steps_json TEXT NOT NULL DEFAULT '',
@@ -259,26 +260,8 @@ internal object DatabaseSchema {
       )
       """.trimIndent(),
       """
-      CREATE TABLE IF NOT EXISTS feature_task_runtime_workflows (
-        workflow_id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL DEFAULT '',
-        workflow_name TEXT NOT NULL DEFAULT 'feature-task-runtime',
-        -- No DDL default: contract_version is NOT NULL and is always written by
-        -- upsertWorkflowRow (row.contractVersion.ifBlank { defaultContractVersion }),
-        -- so the single source for the default is DbConstants, not a duplicated DDL literal.
-        contract_version TEXT NOT NULL,
-        workflow_status TEXT NOT NULL DEFAULT 'pending',
-        current_step_id TEXT NOT NULL DEFAULT '',
-        steps_json TEXT NOT NULL DEFAULT '',
-        artifacts_json TEXT NOT NULL DEFAULT '',
-        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        finished_at TEXT
-      )
-      """.trimIndent(),
-      """
-      CREATE INDEX IF NOT EXISTS idx_feature_task_runtime_workflows_updated
-        ON feature_task_runtime_workflows(updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_updated
+        ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
     )
 }

@@ -1,5 +1,15 @@
 package skillbill.ports.persistence.model
 
+enum class FeatureTaskWorkflowMode(val wireValue: String) {
+  PROSE("prose"),
+  RUNTIME("runtime"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): FeatureTaskWorkflowMode? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
 data class WorkflowStateRecord(
   val workflowId: String,
   val sessionId: String,
@@ -12,6 +22,8 @@ data class WorkflowStateRecord(
   val startedAt: String?,
   val updatedAt: String?,
   val finishedAt: String?,
+  val mode: FeatureTaskWorkflowMode? = null,
+  val implementationSkill: String? = null,
 )
 
 data class FeatureImplementSessionSummary(

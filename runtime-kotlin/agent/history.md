@@ -1,3 +1,13 @@
+## [2026-06-11] SKILL-78 feature-task-mode-workflow-table
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, orchestration/contracts, skills/bill-feature-task*
+- Feature-task prose and runtime workflows now persist in one `feature_task_workflows` table with `workflow_name=bill-feature-task`, explicit `mode=prose|runtime`, and `implementation_skill` for the selected implementation. reusable
+- `WorkflowService` and repository methods route prose and runtime through the shared mode-aware store; old feature-implement/task-runtime method names remain compatibility aliases only, not separate authoritative families. reusable
+- Workflow-state validation dispatches by `mode`: prose rows keep prose steps/artifacts, runtime rows keep phase records/ledger/briefings/resolved-branch/goal artifacts, and mode mismatches loud-fail through typed workflow-state errors. reusable
+- SQLite/schema/application/core/MCP/CLI tests and golden payloads were updated around fresh shared-table rows; `feature_verify` persistence remains separate.
+- Known limitation: the upstream audit still reported residual AC5/AC14 lookup/regression-test concerns after implementation; validation gates passed without changing those findings.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented per implement phase; audit caveat above
+
 ## [2026-06-07] SKILL-71 subtask 3 feature-spec-linear-mode
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-core, skills/bill-feature-spec
 - `ConfigResolutionService` (runtime-application) is a thin `resolveSpecType(repoRoot, explicit)` over `RepoLocalConfigPort` + the single `RepoLocalConfigResolution.resolve` helper (precedence explicit>config>LOCAL); lets `MalformedRepoLocalConfigError` propagate for loud-fail. reusable

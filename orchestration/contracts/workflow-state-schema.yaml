@@ -1,8 +1,9 @@
 # Workflow-state snapshot schema (canonical source of truth).
 #
 # This file describes the shape of every `WorkflowStateSnapshot` the Skill
-# Bill runtime persists and replays for the two shipped workflow families:
-# `bill-feature-task` and `bill-feature-verify`. It is authored in YAML
+# Bill runtime persists and replays for the shipped workflow families:
+# `bill-feature-task` (`mode=prose` or `mode=runtime`) and
+# `bill-feature-verify`. It is authored in YAML
 # for human readability and consumed as a JSON Schema (Draft 2020-12) by
 # the Kotlin runtime (`WorkflowStateSchemaValidator` in `runtime-contracts`).
 #
@@ -89,6 +90,8 @@ $defs:
     properties:
       workflow_name:
         const: "bill-feature-task"
+      mode:
+        const: "prose"
       workflow_status:
         type: string
         enum:
@@ -140,6 +143,7 @@ $defs:
                     - finish
     required:
       - workflow_name
+      - mode
       - workflow_status
       - current_step_id
       - steps
@@ -161,7 +165,9 @@ $defs:
     type: object
     properties:
       workflow_name:
-        const: "feature-task-runtime"
+        const: "bill-feature-task"
+      mode:
+        const: "runtime"
       workflow_status:
         type: string
         enum:
@@ -205,6 +211,7 @@ $defs:
                     - pr
     required:
       - workflow_name
+      - mode
       - workflow_status
       - current_step_id
       - steps
@@ -288,11 +295,21 @@ properties:
     enum:
       - bill-feature-task
       - bill-feature-verify
-      - feature-task-runtime
     description: >
       Workflow family identifier. Determines which per-skill enum branch
       (see `oneOf` below) governs `workflow_status` / `current_step_id` /
       `steps[].step_id`.
+  mode:
+    type: string
+    enum:
+      - prose
+      - runtime
+    description: >
+      Required discriminator for `workflow_name=bill-feature-task`.
+      `mode=prose` validates against `FeatureImplementWorkflowDefinition`;
+      `mode=runtime` validates against
+      `FeatureTaskRuntimePhaseWorkflowDefinition`. Omitted for
+      `workflow_name=bill-feature-verify`.
   contract_version:
     type: string
     minLength: 1

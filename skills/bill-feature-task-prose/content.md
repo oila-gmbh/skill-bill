@@ -9,7 +9,15 @@ This file is the author-owned execution body for `bill-feature-task-prose`. It c
 
 ## Workflow State
 
-This skill is the first runtime workflow-state pilot. In addition to the top-level telemetry tools, the orchestrator must persist durable workflow state with these MCP tools:
+This skill is the first-class prose implementation mode for `bill-feature-task`.
+It persists durable workflow rows as `bill-feature-task` with `mode=prose` in
+the shared feature-task workflow store. It runs in parallel with
+`bill-feature-task-runtime`; it is not a legacy fallback. The
+`feature_implement_*` MCP tool names are compatibility aliases for
+`bill-feature-task mode=prose` and must not be described as a separate
+authoritative workflow store.
+
+In addition to the top-level telemetry tools, the orchestrator must persist durable workflow state with these MCP tools:
 
 - `feature_implement_workflow_open`
 - `feature_implement_workflow_update`

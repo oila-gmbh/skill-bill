@@ -31,6 +31,7 @@ data class WorkflowSnapshotView(
   val startedAt: String,
   val updatedAt: String,
   val finishedAt: String,
+  val mode: String? = null,
 )
 
 data class WorkflowSummaryView(
@@ -43,6 +44,7 @@ data class WorkflowSummaryView(
   val startedAt: String,
   val updatedAt: String,
   val finishedAt: String,
+  val mode: String? = null,
 )
 
 data class WorkflowUpdateAcknowledgementView(

@@ -10,6 +10,11 @@ governed spec through the runtime-driven feature-task phase loop
 (`plan -> implement -> review -> audit -> validate`) owned by the local
 `skill-bill feature-task` driver.
 
+Durable workflow rows use the public workflow identity `bill-feature-task` with
+`mode=runtime` in the shared feature-task workflow store. Runtime-specific tool
+names are compatibility aliases for that mode, not a separate authoritative
+workflow family.
+
 `bill-feature-task-runtime` is only the trigger surface: it gathers and confirms
 the spec, presents exactly one confirmation gate, and then launches the runtime
 command. It does **not** re-implement phase orchestration in prose — the runtime

@@ -43,6 +43,7 @@ data class WorkflowStateSnapshot(
   val startedAt: String?,
   val updatedAt: String?,
   val finishedAt: String?,
+  val mode: String? = null,
 )
 
 data class WorkflowContinueDecision(
@@ -71,4 +72,5 @@ data class WorkflowDefinition(
   val continuationArtifactOrder: List<String>,
   val openPriorStepsCompleted: Boolean,
   val completedTerminalSummaryArtifact: String,
+  val workflowMode: String? = null,
 )
