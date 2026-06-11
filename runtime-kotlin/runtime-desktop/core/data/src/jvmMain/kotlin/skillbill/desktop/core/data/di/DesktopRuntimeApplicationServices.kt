@@ -12,6 +12,7 @@ import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
+import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
@@ -47,6 +48,9 @@ class DesktopRuntimeApplicationServices {
   val skillRemoveService: SkillRemoveService
     get() = services.skillRemoveService
 
+  val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
+    get() = services.installedWorkspaceBaselineStatusPort
+
   companion object {
     fun forCurrentUserHome(): DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices()
   }
@@ -77,6 +81,7 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val repoSourceDiscoveryService: RepoSourceDiscoveryService,
   val repoValidationService: RepoValidationService,
   val skillRemoveService: SkillRemoveService,
+  val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort,
 )
 
 private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeApplicationServiceBundle {
@@ -87,6 +92,7 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     repoSourceDiscoveryService = component.repoSourceDiscoveryService,
     repoValidationService = component.repoValidationService,
     skillRemoveService = component.skillRemoveService,
+    installedWorkspaceBaselineStatusPort = component.installedWorkspaceBaselineStatusPort,
   )
 }
 

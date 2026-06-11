@@ -1,5 +1,42 @@
 # SkillBill desktop feature — history
 
+## [2026-06-10] SKILL-77 first-run handoff and end-to-end validation (subtask 5)
+Areas: runtime-desktop/feature/skillbill
+- `finishFirstRunSetup` on success now calls `installedWorkspaceLocator.locate()` once when `installedWorkspaceRoot == null` (the install ran AFTER VM construction, so the construction-time val was null), then updates `installedWorkspaceRoot` and `normalizedInstalledWorkspaceRoot` vars before calling `openRepo`. If the locate result is still null, falls back to `createState()` unchanged. reusable
+- Stale-cache rule: any locator or gateway val that resolves at construction can be null when a post-construction install creates the directory. Pattern: check the cached var, re-query only when null, update the var so all downstream predicates (`isInstalledWorkspaceRoot`, `beginReturnToInstalledWorkspace`, `createState`) see the fresh value without repeated I/O. reusable
+- Busy-guard required on `finishFirstRunSetup`: the null-outcome path passes the FAILURE check, so the guard must match `dismissFirstRunSetup` (check `setup.busy` before touching any state). Missing this allows mid-flight teardown of in-progress apply, causing `finishFirstRunApply` to find null and discard its result silently.
+- `installedWorkspaceRoot` and `normalizedInstalledWorkspaceRoot` promoted to `var` to support post-first-run cache update; smart-cast requires a local `val` copy in `init` where the property is checked.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-06-10] SKILL-77 git provisioning and graceful degradation (subtask 3)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/data, runtime-desktop/core/domain
+- SkillBillViewModel.init provisions git for the installed workspace by calling InstalledWorkspaceGitProvisioner.provision() immediately after InstalledWorkspaceLocator.locate() resolves a root; GitUnavailable or Failed sets changesSnapshot.errorMessage and still opens the session (AC4 degraded mode). Known limitation: both calls block the UI thread at construction time; async follow-up deferred.
+- finishGitRefresh preserves installedWorkspaceProvisionErrorMessage when isInstalledWorkspaceRoot so the AC4 error overlay survives the auto-refresh launched by the route LaunchedEffect after openRepo. Without this guard the error was silently overwritten. reusable
+- pushStatusErrorMessage is null for the installed workspace when pushTarget == null; clone sessions with remotes keep push working (AC5). Derived via isInstalledWorkspaceRoot in createState().
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+
+## [2026-06-10] SKILL-77 default-open installed workspace + picker coexistence (subtask 2)
+Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain
+- App now default-opens the installed workspace at startup: `SkillBillViewModel.init` consults `InstalledWorkspaceLocator` first and `openRepo`s `~/.skill-bill` when available, else falls back to the existing recent-path branch (AC2 unchanged). Installed-open wins over a set recent path.
+- Recents isolation is structural: `openRepo`/`finishRepoLoad` never call `rememberRepoPath` — only the picker's `finishSelectRepoPath` does. So default-open and switch-back leave a clone's remembered recent path intact. Do NOT route installed-workspace loads through `finishSelectRepoPath`. reusable
+- Switch-back affordance: new `beginReturnToInstalledWorkspace()` + "Open installed" toolbar button. It MUST mirror the async repo-switch contract — load on `Dispatchers.Default` via the Route (never sync on the Compose thread), guard unsaved edits with a dedicated `DirtyEditorPromptReason.RETURN_TO_INSTALLED_WORKSPACE` (the generic `REPO_SWITCH` discard path writes recents — wrong here), and follow up with `runGitRefresh(quiet)+loadHistory(quiet)`. These were all review-caught Majors; copy the pattern for any future repo-switch action. reusable
+- Installed-session detection = normalized string path-equality (`normalizeRepoPath`) against the locator root, surfaced as `SkillBillState.canReturnToInstalledWorkspace`; subtasks 3/4 branch on it. Known limitation: not realpath/symlink-aware (deferred).
+- A11y: toolbar buttons whose label differs from intent must pass an explicit `contentDescription` ("Open installed" vs the adjacent "Install").
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-06-10] SKILL-77 installed-workspace locator (subtask 1)
+Areas: runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/core/testing, runtime-desktop/feature/skillbill
+- New `InstalledWorkspaceLocator` domain seam (interface in core/domain/service, `JvmInstalledWorkspaceLocator` in core/data/service) resolves `~/.skill-bill` and reports availability via `Files.isDirectory(skills) || Files.isDirectory(platform-packs)` — same recognition rule as `RuntimeRepoBrowserService.looksLikeSkillBillRepo` (kept as a duplicate predicate this subtask; consolidation deferred). reusable
+- Home is an injectable `internal var homeProvider` seam (NOT a constructor lambda — KSP/ABI rule) mirroring `JvmDesktopFirstRunGateway.homeProvider`, so install-output and default-open resolve the same root; bound `@SingleIn(UserScope::class)` via `@Provides` in `JvmDataBindings`.
+- `FakeInstalledWorkspaceLocator` added in core/testing (settable result + `locateCallCount`) — reuse for subtask 2 auto-open interaction tests. reusable
+- `InstalledWorkspaceLocator` is constructor-injected into `SkillBillViewModel` but intentionally unused here; auto-open wiring lands in subtask 2.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-05-23] SKILL-51 auto-reinstall-after-publish
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/core/datastore
 - Successful desktop publish/push now opens a post-publish reinstall prompt when completed setup preferences include reusable agent selections; declining leaves the publish result intact.

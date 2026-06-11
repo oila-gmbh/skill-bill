@@ -23,6 +23,8 @@ import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
 import skillbill.desktop.core.testing.scaffold.FakeScaffoldGateway
 import skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway
+import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner
+import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator
 
 /**
  * SKILL-46 AC9: ViewModel-level right-click → confirm → execute → refresh test path.
@@ -193,6 +195,8 @@ class SkillBillViewModelDeleteTest {
         initialFirstRunPreferences = skillbill.desktop.core.datastore.DesktopFirstRunPreferences(completed = true),
       ),
       skillRemoveGateway = skillRemoveGateway,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
     viewModel.selectRepoPath("/repo")
     return viewModel

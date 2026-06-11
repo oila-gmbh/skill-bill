@@ -10,6 +10,7 @@ import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.DockTab
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
+import skillbill.desktop.core.domain.model.InstalledWorkspaceAvailability
 import skillbill.desktop.core.domain.model.RenderBlock
 import skillbill.desktop.core.domain.model.RenderRunState
 import skillbill.desktop.core.domain.model.RenderSummary
@@ -38,6 +39,8 @@ import skillbill.desktop.core.testing.FakeRenderGateway
 import skillbill.desktop.core.testing.FakeRepoSessionService
 import skillbill.desktop.core.testing.FakeSkillTreeService
 import skillbill.desktop.core.testing.FakeValidationGateway
+import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner
+import skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator
 import skillbill.desktop.feature.skillbill.ui.CommandPaletteActions
 import skillbill.desktop.feature.skillbill.ui.executeCommandPaletteResult
 import skillbill.desktop.feature.skillbill.ui.executeGeneratedArtifactSelection
@@ -345,6 +348,8 @@ class SkillBillViewModelTest {
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
       skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
 
     val state = viewModel.selectRepoPath("/not-skill-bill")
@@ -382,6 +387,8 @@ class SkillBillViewModelTest {
       firstRunGateway = defaultFirstRunGateway(),
       desktopPreferenceStore = completedFirstRunStore(),
       skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+      installedWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
     )
     viewModel.selectRepoPath("/repo")
     skillTreeService.items =
@@ -1823,6 +1830,168 @@ class SkillBillViewModelTest {
     assertTrue(generatedArtifactRowActivatesForKey(Key.Spacebar))
   }
 
+  @Test
+  fun `available installed workspace opens recognized session at startup without picker or recents write`() {
+    val recentRepoRepository = FakeRecentRepoRepository()
+    val viewModel = newViewModel(
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+
+    val state = viewModel.state()
+
+    assertEquals(INSTALLED_ROOT, state.selectedRepoPath)
+    assertEquals(RepoLoadState.LOADED, state.repoStatus.state)
+    assertTrue(state.treeItems.isNotEmpty())
+    assertNull(recentRepoRepository.recentRepoPath())
+  }
+
+  @Test
+  fun `no installed workspace falls back to recent path at startup`() {
+    val recentRepoRepository = FakeRecentRepoRepository(initialRepoPath = "/recent-repo")
+    val viewModel = newViewModel(
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = "", availability = false),
+      ),
+    )
+
+    val state = viewModel.state()
+
+    assertEquals("/recent-repo", state.selectedRepoPath)
+    assertEquals(RepoLoadState.LOADED, state.repoStatus.state)
+  }
+
+  @Test
+  fun `default-open never writes recents while picker-open does`() {
+    val defaultOpenRecents = FakeRecentRepoRepository()
+    newViewModel(
+      recentRepoRepository = defaultOpenRecents,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+    assertNull(defaultOpenRecents.recentRepoPath())
+
+    val pickerRecents = FakeRecentRepoRepository()
+    val pickerViewModel = newViewModel(recentRepoRepository = pickerRecents)
+    pickerViewModel.selectRepoPath("/cloned-repo")
+
+    assertEquals("/cloned-repo", pickerRecents.recentRepoPath())
+  }
+
+  @Test
+  fun `clone session can return to installed workspace without overwriting recents`() {
+    val recentRepoRepository = FakeRecentRepoRepository()
+    val viewModel = newViewModel(
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+
+    val cloneState = viewModel.selectRepoPath("/cloned-repo")
+    assertEquals("/cloned-repo", cloneState.selectedRepoPath)
+    assertTrue(cloneState.canReturnToInstalledWorkspace)
+    assertEquals("/cloned-repo", recentRepoRepository.recentRepoPath())
+
+    val begun = viewModel.beginReturnToInstalledWorkspace()
+    assertNull(begun.dirtyEditorPrompt)
+    assertEquals(SkillBillBusyOperation.OPEN_REPO, begun.busyOperation)
+    val installedState = viewModel.finishRepoLoad(
+      viewModel.loadRepo(viewModel.repoLoadRequest(repoPath = begun.repoPathText, preserveSelection = false)),
+    )
+
+    assertEquals(INSTALLED_ROOT, installedState.selectedRepoPath)
+    assertFalse(installedState.canReturnToInstalledWorkspace)
+    assertEquals("/cloned-repo", recentRepoRepository.recentRepoPath())
+  }
+
+  @Test
+  fun `dirty clone session prompts before returning to installed workspace`() {
+    val authoringGateway = FakeAuthoringGateway().apply {
+      putDocument("skill-one", "saved\n")
+    }
+    val recentRepoRepository = FakeRecentRepoRepository()
+    val viewModel = newViewModel(
+      authoringGateway = authoringGateway,
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+    viewModel.selectRepoPath("/cloned-repo")
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("dirty\n")
+
+    val prompted = viewModel.beginReturnToInstalledWorkspace()
+    assertEquals(DirtyEditorPromptReason.RETURN_TO_INSTALLED_WORKSPACE, prompted.dirtyEditorPrompt?.reason)
+    assertEquals(INSTALLED_ROOT, prompted.dirtyEditorPrompt?.targetRepoPath)
+    assertEquals("/cloned-repo", prompted.selectedRepoPath)
+
+    val discarded = viewModel.discardDirtyEditorPrompt()
+    assertEquals(SkillBillBusyOperation.OPEN_REPO, discarded.busyOperation)
+    assertEquals(INSTALLED_ROOT, discarded.repoPathText)
+    assertFalse(discarded.editor.dirty)
+  }
+
+  @Test
+  fun `available installed workspace wins over recent path and leaves recents untouched`() {
+    val recentRepoRepository = FakeRecentRepoRepository(initialRepoPath = "/recent-repo")
+    val viewModel = newViewModel(
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+
+    val state = viewModel.state()
+
+    assertEquals(INSTALLED_ROOT, state.selectedRepoPath)
+    assertEquals("/recent-repo", recentRepoRepository.recentRepoPath())
+  }
+
+  @Test
+  fun `blank installed workspace path falls back to recent path`() {
+    val recentRepoRepository = FakeRecentRepoRepository(initialRepoPath = "/recent-repo")
+    val viewModel = newViewModel(
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = "   ", availability = true),
+      ),
+    )
+
+    val state = viewModel.state()
+
+    assertEquals("/recent-repo", state.selectedRepoPath)
+    assertFalse(state.canReturnToInstalledWorkspace)
+  }
+
+  @Test
+  fun `saving in installed session writes under installed root and never writes recents`() {
+    val recentRepoRepository = FakeRecentRepoRepository()
+    val authoringGateway = FakeAuthoringGateway().apply { putDocument("skill-one", "before\n") }
+    val viewModel = newViewModel(
+      authoringGateway = authoringGateway,
+      recentRepoRepository = recentRepoRepository,
+      installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
+        result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
+      ),
+    )
+    viewModel.selectTreeItem("skill-one")
+    viewModel.updateEditorDraft("after\n")
+
+    val request = assertNotNull(viewModel.beginSaveEditor())
+    val saved = viewModel.finishSaveEditor(viewModel.runSaveEditor(request))
+
+    assertEquals(INSTALLED_ROOT, request.session?.repoPath)
+    assertEquals("after\n", authoringGateway.lastSavedBody)
+    assertFalse(saved.editor.dirty)
+    assertNull(recentRepoRepository.recentRepoPath())
+  }
+
   private fun newViewModel(
     repoSessionService: RepoSessionService = FakeRepoSessionService(),
     skillTreeService: SkillTreeService = FakeSkillTreeService(defaultSkillTree()),
@@ -1838,6 +2007,8 @@ class SkillBillViewModelTest {
     desktopPreferenceStore: skillbill.desktop.core.datastore.DesktopPreferenceStore = completedFirstRunStore(),
     skillRemoveGateway: skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway =
       skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
+    installedWorkspaceLocator: FakeInstalledWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+    installedWorkspaceGitProvisioner: FakeInstalledWorkspaceGitProvisioner = FakeInstalledWorkspaceGitProvisioner(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1851,6 +2022,8 @@ class SkillBillViewModelTest {
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillRemoveGateway,
+    installedWorkspaceLocator = installedWorkspaceLocator,
+    installedWorkspaceGitProvisioner = installedWorkspaceGitProvisioner,
   )
 }
 
@@ -1905,6 +2078,8 @@ private fun paletteActions(
   openInstallSetup = openInstallSetup,
   openScaffoldWizard = openScaffoldWizard,
 )
+
+private const val INSTALLED_ROOT = "/home/tester/.skill-bill"
 
 private fun defaultSkillTree(): List<SkillBillTreeItem> = listOf(
   SkillBillTreeItem(

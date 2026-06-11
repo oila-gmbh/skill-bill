@@ -1675,6 +1675,10 @@ class SkillBillViewModelGitTest {
       skillbill.desktop.core.testing.FakeDesktopPreferenceStore(
         initialFirstRunPreferences = skillbill.desktop.core.datastore.DesktopFirstRunPreferences(completed = true),
       ),
+    installedWorkspaceLocator: skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator =
+      skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceLocator(),
+    installedWorkspaceGitProvisioner: skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner =
+      skillbill.desktop.core.testing.workspace.FakeInstalledWorkspaceGitProvisioner(),
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1688,6 +1692,8 @@ class SkillBillViewModelGitTest {
     firstRunGateway = firstRunGateway,
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
+    installedWorkspaceLocator = installedWorkspaceLocator,
+    installedWorkspaceGitProvisioner = installedWorkspaceGitProvisioner,
   )
 
   private fun commitEntry(

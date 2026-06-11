@@ -224,6 +224,18 @@ fun SkillBillRoute(
     }
   }
 
+  fun loadInstalledWorkspace() {
+    val request = viewModel.repoLoadRequest(repoPath = state.repoPathText, preserveSelection = false)
+    coroutineScope.launch {
+      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      // AC3: returning to the installed workspace must NOT write recents, so finish via
+      // finishRepoLoad (no rememberRepoPath) rather than finishSelectRepoPath.
+      state = viewModel.finishRepoLoad(result)
+      runGitRefresh(quiet = true)
+      loadHistory(quiet = true)
+    }
+  }
+
   fun runChooseRepoDirectory() {
     val repoPath = chooseRepoDirectory(state.repoPathText)
     if (repoPath.isNullOrBlank()) {
@@ -262,6 +274,11 @@ fun SkillBillRoute(
             runGitRefresh(quiet = true)
             loadHistory(quiet = true)
           }
+        }
+      }
+      DirtyEditorPromptReason.RETURN_TO_INSTALLED_WORKSPACE -> {
+        if (state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
+          loadInstalledWorkspace()
         }
       }
       DirtyEditorPromptReason.CHOOSE_DIRECTORY -> {
@@ -501,6 +518,14 @@ fun SkillBillRoute(
     }
   }
 
+  fun runReturnToInstalledWorkspace() {
+    if (!canStartRepoScopedAction()) return
+    state = viewModel.beginReturnToInstalledWorkspace()
+    if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
+      loadInstalledWorkspace()
+    }
+  }
+
   fun runScaffoldDryRun() {
     val request = viewModel.beginScaffoldDryRun()
     state = viewModel.state()
@@ -717,6 +742,7 @@ fun SkillBillRoute(
     onRender = ::runRender,
     onRenderAll = ::runRenderAll,
     onInstallSetup = ::runInstallSetup,
+    onReturnToInstalledWorkspace = ::runReturnToInstalledWorkspace,
     onEditorDraftChanged = { draft ->
       state = viewModel.updateEditorDraft(draft)
     },

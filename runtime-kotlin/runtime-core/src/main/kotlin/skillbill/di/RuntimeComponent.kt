@@ -49,6 +49,7 @@ import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
+import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
@@ -87,6 +88,7 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
+import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.link.InstallSkillLinkPort
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
@@ -213,6 +215,14 @@ abstract class RuntimeComponent(
   internal fun baselineManifestPersistencePort(
     adapter: FileSystemBaselineManifestPersistence,
   ): BaselineManifestPersistencePort = adapter
+
+  // SKILL-77 Subtask 4: read-only installed-workspace modified-vs-baseline status,
+  // consumed by the desktop tree to flag locally edited skills.
+  @Provides
+  @JvmSynthetic
+  internal fun installedWorkspaceBaselineStatusPort(
+    adapter: FileSystemInstalledWorkspaceBaselineStatus,
+  ): InstalledWorkspaceBaselineStatusPort = adapter
 
   @Provides
   @JvmSynthetic
@@ -426,6 +436,7 @@ abstract class RuntimeComponent(
   abstract val goalRunnerStatusService: GoalRunnerStatusService
   abstract val installAgentService: InstallAgentService
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
+  abstract val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
   abstract val learningService: LearningService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val mcpRegistrationService: McpRegistrationService

@@ -223,6 +223,7 @@ fun SkillBillFrame(
   onRender: () -> Unit,
   onRenderAll: () -> Unit,
   onInstallSetup: () -> Unit,
+  onReturnToInstalledWorkspace: () -> Unit,
   onEditorDraftChanged: (String) -> Unit,
   onEditorSave: () -> Unit,
   onEditorRevert: () -> Unit,
@@ -382,6 +383,7 @@ fun SkillBillFrame(
         onRender = onRender,
         onRenderAll = onRenderAll,
         onInstallSetup = onInstallSetup,
+        onReturnToInstalledWorkspace = onReturnToInstalledWorkspace,
         inspectorVisible = inspectorVisible,
         onInspectorVisibilityToggle = { inspectorVisible = !inspectorVisible },
         onCommandPaletteOpen = onCommandPaletteOpen,
@@ -392,6 +394,11 @@ fun SkillBillFrame(
         renderAllEnabled = renderAllEnabled,
         installSetupEnabled = state.selectedRepoPath != null &&
           state.repoStatus.state == RepoLoadState.LOADED &&
+          state.busyOperation == null &&
+          !publishingBusy &&
+          state.scaffoldWizard == null &&
+          state.firstRunSetup == null,
+        returnToInstalledWorkspaceEnabled = state.canReturnToInstalledWorkspace &&
           state.busyOperation == null &&
           !publishingBusy &&
           state.scaffoldWizard == null &&
@@ -595,6 +602,7 @@ private fun WorkspaceToolbar(
   onRender: () -> Unit,
   onRenderAll: () -> Unit,
   onInstallSetup: () -> Unit,
+  onReturnToInstalledWorkspace: () -> Unit,
   inspectorVisible: Boolean,
   onInspectorVisibilityToggle: () -> Unit,
   onCommandPaletteOpen: () -> Unit,
@@ -604,6 +612,7 @@ private fun WorkspaceToolbar(
   renderEnabled: Boolean,
   renderAllEnabled: Boolean,
   installSetupEnabled: Boolean,
+  returnToInstalledWorkspaceEnabled: Boolean,
   publishingBusy: Boolean,
   sourceControlLabel: String,
   readOnlyModeLabel: String,
@@ -668,6 +677,13 @@ private fun WorkspaceToolbar(
       marker = "in",
       enabled = installSetupEnabled,
       onClick = onInstallSetup,
+    )
+    ToolbarButton(
+      label = "Open installed",
+      marker = "iw",
+      contentDescription = "Open installed workspace",
+      enabled = returnToInstalledWorkspaceEnabled,
+      onClick = onReturnToInstalledWorkspace,
     )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
     ToolbarDivider()
@@ -2680,6 +2696,8 @@ private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> 
     DirtyEditorPromptReason.REFRESH -> "Discard unsaved edits before refreshing?"
     DirtyEditorPromptReason.REPO_SWITCH -> "Discard unsaved edits before switching repositories?"
     DirtyEditorPromptReason.CHOOSE_DIRECTORY -> "Discard unsaved edits before choosing another repository?"
+    DirtyEditorPromptReason.RETURN_TO_INSTALLED_WORKSPACE ->
+      "Discard unsaved edits before opening the installed workspace?"
   }
   Row(
     modifier = Modifier.fillMaxWidth().background(warningTone.container).padding(horizontal = 14.dp, vertical = 8.dp),

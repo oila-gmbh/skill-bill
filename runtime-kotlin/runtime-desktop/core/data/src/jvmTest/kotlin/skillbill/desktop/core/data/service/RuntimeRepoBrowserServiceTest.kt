@@ -803,6 +803,40 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals(before, repoFileSnapshot(repo))
   }
 
+  @Test
+  fun `installed-workspace session marks only locally-modified skills in the tree`() {
+    val repo = seedRepo("baseline-installed")
+    val service = RuntimeRepoBrowserService()
+    service.baselineModifiedResolver = { root ->
+      if (root.toAbsolutePath().normalize() == repo.toAbsolutePath().normalize()) {
+        setOf("skills/bill-alpha")
+      } else {
+        emptySet()
+      }
+    }
+
+    val session = service.open(repo.toString())
+    val flattened = service.treeFor(session).flatten()
+
+    val alpha = flattened.single { it.id.hasLocalId("skill:bill-alpha") }
+    assertTrue(alpha.baselineModified)
+    val kotlinReview = flattened.single { it.id.hasLocalId("skill:bill-kotlin-code-review") }
+    assertFalse(kotlinReview.baselineModified)
+  }
+
+  @Test
+  fun `clone session shows no baseline indicators`() {
+    val repo = seedRepo("baseline-clone")
+    val service = RuntimeRepoBrowserService()
+    // Clone sessions resolve to an empty modified set regardless of root.
+    service.baselineModifiedResolver = { emptySet() }
+
+    val session = service.open(repo.toString())
+    val flattened = service.treeFor(session).flatten()
+
+    assertTrue(flattened.filter { it.kind == TreeItemKind.SKILL }.none { it.baselineModified })
+  }
+
   private fun seedRepo(name: String): Path {
     val repo = Files.createTempDirectory("skillbill-desktop-$name")
     writeContentSkill(repo, "bill-alpha", "Alpha guidance.")

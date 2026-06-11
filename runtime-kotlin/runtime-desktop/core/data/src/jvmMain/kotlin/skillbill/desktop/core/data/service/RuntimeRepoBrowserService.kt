@@ -22,6 +22,7 @@ import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidationRunState
 import skillbill.desktop.core.domain.model.ValidationSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
+import skillbill.desktop.core.domain.service.InstalledWorkspaceBaselineService
 import skillbill.desktop.core.domain.service.RenderGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
@@ -75,6 +76,18 @@ class RuntimeRepoBrowserService(
   internal var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)
   }
+
+  private val installedWorkspaceBaselineService: InstalledWorkspaceBaselineService by lazy {
+    JvmInstalledWorkspaceBaselineService(JvmInstalledWorkspaceLocator(), runtimeServices)
+  }
+
+  // SKILL-77 subtask 4: per-skill locally-modified-vs-baseline paths for installed-workspace
+  // sessions only. Returns empty for clone sessions and an absent baseline manifest. Tests
+  // swap this seam to drive the decoration without a real installed workspace on disk.
+  internal var baselineModifiedResolver: (Path) -> Set<String> = { root ->
+    installedWorkspaceBaselineService.modifiedSkillRelativePaths(root)
+  }
+
   private var snapshot: RepoBrowserSnapshot = RepoBrowserSnapshot.empty
 
   override fun open(repoPath: String): RepoSession {
@@ -425,6 +438,7 @@ class RuntimeRepoBrowserService(
     // typed `List<ScaffoldSkillStatus>` and `mapper/ScaffoldListResultMapper.kt` is a
     // 1:1 typed projection with no raw-map indexing.
     val entries = scaffoldService.list(root, emptyList()).authoredSkillEntries()
+    val modifiedSkillPaths = baselineModifiedResolver(root)
     val horizontal = mutableListOf<SkillBillTreeItem>()
     val platformChildren = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
     entries.forEach { entry ->
@@ -454,6 +468,7 @@ class RuntimeRepoBrowserService(
           status = status,
           editable = true,
           metadata = metadata,
+          baselineModified = skillRelativeKey(root, contentFile) in modifiedSkillPaths,
         )
       selections[id] =
         SelectionDetail(
@@ -957,6 +972,12 @@ private fun relativePath(root: Path, path: Path): String {
 
 private fun relativeToRootOrNull(root: Path, path: Path): Path? =
   if (path.startsWith(root)) path.relativeTo(root) else null
+
+// SKILL-77 subtask 4: the baseline manifest keys each skill by its directory relative to
+// the install root (e.g. `skills/bill-alpha`, `platform-packs/kmp/code-review/bill-x`). The
+// authored content file lives directly inside that skill dir, so its parent IS the key.
+private fun skillRelativeKey(root: Path, contentFile: String): String =
+  relativePath(root, Path.of(contentFile).toAbsolutePath().normalize().parent)
 
 private fun Path.portablePath(): String = toString().replace('\\', '/')
 

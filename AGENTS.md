@@ -144,6 +144,10 @@ For quality-check, register the manifest entry and ship the governed `content.md
 
 For feature-implement or feature-verify overrides, keep the historic `skills/<platform>/` layout until those families are piloted.
 
+## Comments Policy
+
+Comments — especially inline ones — are a code smell. They signal that the code itself failed to communicate its intent. Before writing any comment, first ask: can this be expressed better in code through clearer naming, smaller functions, or a refactor? Only add a comment when the *why* is genuinely non-obvious and cannot be encoded in the structure of the code itself (e.g. a non-obvious external constraint, a subtle invariant, or a workaround for a known bug). Never write comments that explain *what* the code does — well-named identifiers already do that.
+
 ## Quality Checks
 
 Prefer routing through `bill-code-check`. If no platform checker exists, document the fallback explicitly.
