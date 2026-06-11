@@ -23,8 +23,8 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     return FeatureTaskRuntimeRunInvariants(
       specReference = normalizedPath.toString(),
       featureSize = parseFeatureSize(specText),
-      acceptanceCriteria = parseNumberedSection(specText, ACCEPTANCE_CRITERIA_HEADINGS),
-      mandatesAndOverrides = parseBulletSection(specText, MANDATES_HEADINGS),
+      acceptanceCriteria = parseListSection(specText) { it.startsWith(ACCEPTANCE_CRITERIA_PREFIX) },
+      mandatesAndOverrides = parseListSection(specText) { it in MANDATES_HEADINGS },
     )
   }
 
@@ -34,14 +34,14 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     return FeatureTaskRuntimeFeatureSize.fromWire(rawValue)
   }
 
-  private fun parseNumberedSection(specText: String, headings: Set<String>): List<String> {
-    val body = sectionBody(specText, headings) ?: return emptyList()
+  private fun parseListSection(specText: String, headingMatches: (String) -> Boolean): List<String> {
+    val body = sectionBody(specText, headingMatches) ?: return emptyList()
     val items = mutableListOf<StringBuilder>()
     body.lineSequence().forEach { rawLine ->
       val line = rawLine.trimEnd()
-      val numbered = NUMBERED_ITEM.find(line)
+      val item = NUMBERED_ITEM.find(line) ?: BULLET_ITEM.find(line)
       when {
-        numbered != null -> items += StringBuilder(numbered.groupValues[1].trim())
+        item != null -> items += StringBuilder(CHECKBOX_PREFIX.replaceFirst(item.groupValues[1].trim(), "").trim())
         line.isBlank() -> Unit
         items.isNotEmpty() -> items.last().append(' ').append(line.trim())
       }
@@ -49,24 +49,12 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     return items.map { it.toString().trim() }.filter(String::isNotBlank)
   }
 
-  private fun parseBulletSection(specText: String, headings: Set<String>): List<String> {
-    val body = sectionBody(specText, headings) ?: return emptyList()
-    val items = mutableListOf<StringBuilder>()
-    body.lineSequence().forEach { rawLine ->
-      val line = rawLine.trimEnd()
-      val bullet = BULLET_ITEM.find(line)
-      when {
-        bullet != null -> items += StringBuilder(bullet.groupValues[1].trim())
-        line.isBlank() -> Unit
-        items.isNotEmpty() -> items.last().append(' ').append(line.trim())
-      }
-    }
-    return items.map { it.toString().trim() }.filter(String::isNotBlank)
-  }
-
-  private fun sectionBody(specText: String, headings: Set<String>): String? {
+  private fun sectionBody(specText: String, headingMatches: (String) -> Boolean): String? {
     val lines = specText.lines()
-    val startIndex = lines.indexOfFirst { line -> line.headingTitle()?.lowercase() in headings }
+    val startIndex = lines.indexOfFirst { line ->
+      val title = line.headingTitle()?.lowercase() ?: return@indexOfFirst false
+      headingMatches(title)
+    }
     if (startIndex < 0) {
       return null
     }
@@ -79,11 +67,12 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
   private fun String.headingTitle(): String? = HEADING.find(this)?.groupValues?.get(1)?.trim()
 
   private companion object {
-    val ACCEPTANCE_CRITERIA_HEADINGS = setOf("acceptance criteria")
+    const val ACCEPTANCE_CRITERIA_PREFIX = "acceptance criteria"
     val MANDATES_HEADINGS = setOf("mandates", "mandates and overrides", "mandates & overrides")
     val HEADING = Regex("""^#{2,6}\s+(.+)$""")
     val NUMBERED_ITEM = Regex("""^\s*\d+\.\s+(.*)$""")
     val BULLET_ITEM = Regex("""^\s*[-*]\s+(.*)$""")
+    val CHECKBOX_PREFIX = Regex("""^\[[ xX]]\s*""")
     val FEATURE_SIZE_LINE = Regex("""(?im)^\s*(?:feature[_ -]size|size)\s*:\s*([^\r\n#]+)(?:\s+#.*)?$""")
   }
 }
