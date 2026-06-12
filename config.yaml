@@ -13,7 +13,7 @@ agents:
   copilot:
     skills_dir: ~/.copilot/skills
   claude:
-    skills_dir: ~/.claude/commands
+    skills_dir: ~/.claude/skills
   codex:
     skills_dir: ~/.agents/skills
   opencode:

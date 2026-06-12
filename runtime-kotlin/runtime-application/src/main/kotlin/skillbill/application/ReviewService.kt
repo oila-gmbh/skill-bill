@@ -11,7 +11,7 @@ import skillbill.application.model.ReviewPreviewResult
 import skillbill.application.model.ReviewStatsResult
 import skillbill.application.model.TriageResult
 import skillbill.application.model.TriageResultKind
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
@@ -31,7 +31,7 @@ import skillbill.review.model.TriageDecision
 @Suppress("TooManyFunctions")
 @Inject
 class ReviewService(
-  private val context: RuntimeContext,
+  private val context: EnvironmentContext,
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,

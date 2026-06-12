@@ -29,6 +29,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -51,6 +53,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 class GoalRunnerTest {
   @Test
@@ -231,6 +234,59 @@ class GoalRunnerTest {
     assertEquals(2, launcher.requests.size)
     assertEquals("complete", store.manifest.status)
     assertEquals("sha-1", store.manifest.subtasks.single().commitSha)
+  }
+
+  @Test
+  fun `late terminal outcome recovery uses synthetic timing without retry launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val timing = RecordingTimingPort {
+      outcomes["wfl-1"] = completeOutcome(1)
+      RuntimeWaitResult.COMPLETED
+    }
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts()
+    }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      timing = timing,
+    )
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(1, launcher.requests.size)
+    assertEquals(listOf(200L), timing.delays.map { it.inWholeMilliseconds })
+  }
+
+  @Test
+  fun `interrupted late terminal wait stops synthetic wait attempts`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val timing = RecordingTimingPort { RuntimeWaitResult.INTERRUPTED }
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts()
+    }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      timing = timing,
+    )
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(listOf(200L), timing.delays.map { it.inWholeMilliseconds })
+    assertEquals(2, launcher.requests.size)
   }
 
   @Test
@@ -1822,6 +1878,17 @@ private class RecordingGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+}
+
+private class RecordingTimingPort(
+  private val result: () -> RuntimeWaitResult,
+) : RuntimeTimingPort {
+  val delays: MutableList<Duration> = mutableListOf()
+
+  override fun wait(duration: Duration): RuntimeWaitResult {
+    delays += duration
+    return result()
+  }
 }
 
 internal fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(

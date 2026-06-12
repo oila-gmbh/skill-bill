@@ -11,9 +11,9 @@ interface RepoSessionService {
 }
 
 interface RecentRepoRepository {
-  fun recentRepoPath(): String?
-  fun rememberRepoPath(repoPath: String)
-  fun clearRecentRepoPath()
+  suspend fun recentRepoPath(): String?
+  suspend fun rememberRepoPath(repoPath: String)
+  suspend fun clearRecentRepoPath()
 }
 
 interface SkillTreeService {

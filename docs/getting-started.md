@@ -83,7 +83,7 @@ Supported install targets:
 | Agent                                      | Install path                              |
 |--------------------------------------------|-------------------------------------------|
 | GitHub Copilot                             | `~/.copilot/skills/`                      |
-| Claude Code                                | `~/.claude/commands/`                     |
+| Claude Code                                | `~/.claude/skills/`                       |
 | Claude Code (native subagent markdown)     | `~/.claude/agents/`                       |
 | OpenAI Codex (skills)                      | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs)       | `~/.codex/agents/`                        |
@@ -92,7 +92,7 @@ Supported install targets:
 | JetBrains Junie (skills)                   | `~/.junie/skills/`                        |
 | JetBrains Junie (native subagent markdown) | `~/.junie/agents/`                        |
 
-Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
+Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code skills directory — no separate target needed. GLM is a model, not a harness.
 
 Installed skills are symlinks to rendered staging directories under `~/.skill-bill/installed-skills/`. Re-run `./install.sh` after changing the checkout so installed agents pick up refreshed `SKILL.md` wrappers, support pointer files, and content hashes.
 

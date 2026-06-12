@@ -4,6 +4,34 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-06-12 — Retain split `skillbill.contracts.*` package for validator moves
+
+Context: SKILL-52.4 F16 leaves contract DTOs/constants/helpers in
+`runtime-contracts` while concrete schema/coherence validators compile from
+`runtime-infra-fs` under the existing `skillbill.contracts.*` packages.
+Decision: Keep the split package and guard against adding new concrete
+`*SchemaValidator` / `*CoherenceValidator` declarations to `runtime-contracts`
+main source.
+Reason: The package name preserves classpath resource paths and import
+compatibility while keeping validator dependencies behind the infra/domain-port
+ownership pattern.
+Revisit when: Resource paths/import compatibility can be migrated cleanly, or
+JPMS/module packaging becomes an active target.
+
+## 2026-06-12 — Keep `runtime-infra-fs` as one adapter module
+
+Context: SKILL-52.4 F17 considered splitting `runtime-infra-fs` into smaller
+Gradle modules after validator and filesystem/process ownership moved behind
+ports.
+Decision: Do not split `runtime-infra-fs` now; keep the filesystem, process,
+schema-validation, rendering, git, and staging adapters in the current adapter
+module.
+Reason: The current module keeps cohesive adapter ownership without adding
+premature Gradle/module overhead or new cross-module seams.
+Revisit when: Infra-fs package ownership, file count, or build/runtime ownership
+pressure makes module-level separation cheaper than the current single adapter
+module.
+
 ## 2026-05-29 — Ship desktop installers UNSIGNED for v1
 
 **Context.** SKILL-55 subtask 2 produces native desktop installers (`.dmg`,

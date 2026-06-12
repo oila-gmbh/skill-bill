@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.review.model.ReviewSpecialistRubric
 import java.nio.file.Files
@@ -9,7 +9,7 @@ import java.nio.file.Path
 
 @Inject
 class FileSystemReviewRubricAdapter(
-  private val context: RuntimeContext,
+  private val context: EnvironmentContext,
 ) : ReviewRubricPort {
   override fun loadSpecialistRubrics(stackSlug: String): List<ReviewSpecialistRubric> {
     val skillsRoot = context.userHome.resolve(".skill-bill/installed-skills")

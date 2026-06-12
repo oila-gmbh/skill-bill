@@ -90,7 +90,7 @@ class SkillBillViewModelFirstRunHandoffTest {
 
     assertNotNull(result.firstRunSetup)
     assertNull(result.selectedRepoPath)
-    assertEquals(1, locator.locateCallCount)
+    assertEquals(0, locator.locateCallCount)
   }
 
   @Test

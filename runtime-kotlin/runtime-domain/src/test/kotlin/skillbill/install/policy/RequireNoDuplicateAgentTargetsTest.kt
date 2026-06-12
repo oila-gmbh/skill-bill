@@ -20,8 +20,8 @@ class RequireNoDuplicateAgentTargetsTest {
     requireNoDuplicateAgentTargets(
       "targets",
       listOf(
-        claudeAt("/home/u/.claude/commands"),
-        claudeAt("/home/u/.claude-work/commands"),
+        claudeAt("/home/u/.claude/skills"),
+        claudeAt("/home/u/.claude-work/skills"),
       ),
     )
   }
@@ -32,8 +32,8 @@ class RequireNoDuplicateAgentTargetsTest {
       requireNoDuplicateAgentTargets(
         "targets",
         listOf(
-          claudeAt("/home/u/.claude/commands"),
-          claudeAt("/home/u/.claude/commands"),
+          claudeAt("/home/u/.claude/skills"),
+          claudeAt("/home/u/.claude/skills"),
         ),
       )
     }

@@ -26,6 +26,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -735,10 +736,20 @@ class WorkflowGoalRunnerOutcomeStore(
     return stepId
   }
 
-  private fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? =
-    listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).firstOrNull { family ->
-      family.get(workflowStates, workflowId) != null
+  private fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? {
+    val featureTaskRow = workflowStates.getFeatureTaskWorkflow(workflowId)
+    if (featureTaskRow != null) {
+      return when (featureTaskRow.mode) {
+        FeatureTaskWorkflowMode.RUNTIME -> WorkflowFamily.TASK_RUNTIME
+        FeatureTaskWorkflowMode.PROSE, null -> WorkflowFamily.IMPLEMENT
+      }
     }
+    return if (workflowStates.getFeatureVerifyWorkflow(workflowId) != null) {
+      WorkflowFamily.VERIFY
+    } else {
+      null
+    }
+  }
 }
 
 private data class GoalContinuation(

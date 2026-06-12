@@ -1,6 +1,7 @@
 package skillbill.desktop.feature.skillbill.state
 
 import androidx.compose.ui.input.key.Key
+import kotlinx.coroutines.runBlocking
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
@@ -12,6 +13,7 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
+import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
@@ -278,7 +280,7 @@ class SkillBillViewModelTest {
 
     assertEquals(RepoLoadState.INVALID, state.repoStatus.state)
     assertEquals("/not-skill-bill", state.selectedRepoPath)
-    assertEquals(null, recentRepoRepository.recentRepoPath())
+    assertEquals(null, recentRepoRepository.path())
     assertEquals(emptyList(), state.treeItems)
   }
 
@@ -955,12 +957,12 @@ class SkillBillViewModelTest {
       ),
     )
 
-    val state = viewModel.state()
+    val state = viewModel.startupState()
 
     assertEquals(INSTALLED_ROOT, state.selectedRepoPath)
     assertEquals(RepoLoadState.LOADED, state.repoStatus.state)
     assertTrue(state.treeItems.isNotEmpty())
-    assertNull(recentRepoRepository.recentRepoPath())
+    assertNull(recentRepoRepository.path())
   }
 
   @Test
@@ -973,7 +975,7 @@ class SkillBillViewModelTest {
       ),
     )
 
-    val state = viewModel.state()
+    val state = viewModel.startupState()
 
     assertEquals("/recent-repo", state.selectedRepoPath)
     assertEquals(RepoLoadState.LOADED, state.repoStatus.state)
@@ -987,14 +989,14 @@ class SkillBillViewModelTest {
       installedWorkspaceLocator = FakeInstalledWorkspaceLocator(
         result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
       ),
-    )
-    assertNull(defaultOpenRecents.recentRepoPath())
+    ).startupState()
+    assertNull(defaultOpenRecents.path())
 
     val pickerRecents = FakeRecentRepoRepository()
     val pickerViewModel = newViewModel(recentRepoRepository = pickerRecents)
-    pickerViewModel.selectRepoPath("/cloned-repo")
+    pickerViewModel.selectRepoPathAndRemember("/cloned-repo")
 
-    assertEquals("/cloned-repo", pickerRecents.recentRepoPath())
+    assertEquals("/cloned-repo", pickerRecents.path())
   }
 
   @Test
@@ -1007,10 +1009,11 @@ class SkillBillViewModelTest {
       ),
     )
 
-    val cloneState = viewModel.selectRepoPath("/cloned-repo")
+    viewModel.startupState()
+    val cloneState = viewModel.selectRepoPathAndRemember("/cloned-repo")
     assertEquals("/cloned-repo", cloneState.selectedRepoPath)
     assertTrue(cloneState.canReturnToInstalledWorkspace)
-    assertEquals("/cloned-repo", recentRepoRepository.recentRepoPath())
+    assertEquals("/cloned-repo", recentRepoRepository.path())
 
     val begun = viewModel.beginReturnToInstalledWorkspace()
     assertNull(begun.dirtyEditorPrompt)
@@ -1021,7 +1024,7 @@ class SkillBillViewModelTest {
 
     assertEquals(INSTALLED_ROOT, installedState.selectedRepoPath)
     assertFalse(installedState.canReturnToInstalledWorkspace)
-    assertEquals("/cloned-repo", recentRepoRepository.recentRepoPath())
+    assertEquals("/cloned-repo", recentRepoRepository.path())
   }
 
   @Test
@@ -1037,7 +1040,8 @@ class SkillBillViewModelTest {
         result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
       ),
     )
-    viewModel.selectRepoPath("/cloned-repo")
+    viewModel.startupState()
+    viewModel.selectRepoPathAndRemember("/cloned-repo")
     viewModel.selectTreeItem("skill-one")
     viewModel.updateEditorDraft("dirty\n")
 
@@ -1062,10 +1066,10 @@ class SkillBillViewModelTest {
       ),
     )
 
-    val state = viewModel.state()
+    val state = viewModel.startupState()
 
     assertEquals(INSTALLED_ROOT, state.selectedRepoPath)
-    assertEquals("/recent-repo", recentRepoRepository.recentRepoPath())
+    assertEquals("/recent-repo", recentRepoRepository.path())
   }
 
   @Test
@@ -1078,7 +1082,7 @@ class SkillBillViewModelTest {
       ),
     )
 
-    val state = viewModel.state()
+    val state = viewModel.startupState()
 
     assertEquals("/recent-repo", state.selectedRepoPath)
     assertFalse(state.canReturnToInstalledWorkspace)
@@ -1095,6 +1099,7 @@ class SkillBillViewModelTest {
         result = InstalledWorkspaceAvailability(path = INSTALLED_ROOT, availability = true),
       ),
     )
+    viewModel.startupState()
     viewModel.selectTreeItem("skill-one")
     viewModel.updateEditorDraft("after\n")
 
@@ -1104,7 +1109,7 @@ class SkillBillViewModelTest {
     assertEquals(INSTALLED_ROOT, request.session?.repoPath)
     assertEquals("after\n", authoringGateway.lastSavedBody)
     assertFalse(saved.editor.dirty)
-    assertNull(recentRepoRepository.recentRepoPath())
+    assertNull(recentRepoRepository.path())
   }
 
   private fun newViewModel(
@@ -1130,6 +1135,24 @@ class SkillBillViewModelTest {
     skillRemoveGateway = skillRemoveGateway,
     installedWorkspaceLocator = installedWorkspaceLocator,
   )
+
+  private fun SkillBillViewModel.startupState(): SkillBillState = runBlocking {
+    val request = assertNotNull(beginStartup())
+    finishStartup(runStartup(request))
+  }
+
+  private fun SkillBillViewModel.selectRepoPathAndRemember(repoPath: String): SkillBillState = runBlocking {
+    val begun = beginSelectRepoPath(repoPath)
+    if (begun.dirtyEditorPrompt != null) {
+      begun
+    } else {
+      finishSelectRepoPathAndRemember(
+        loadRepo(repoLoadRequest(repoPath = begun.repoPathText, preserveSelection = false)),
+      )
+    }
+  }
+
+  private fun FakeRecentRepoRepository.path(): String? = runBlocking { recentRepoPath() }
 }
 
 private fun defaultFirstRunGateway(): skillbill.desktop.core.domain.service.DesktopFirstRunGateway =

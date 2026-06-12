@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +13,7 @@ class FileSystemReviewInputSourceTest {
     Files.writeString(reviewFile, "Review body")
 
     val (text, sourcePath) = FileSystemReviewInputSource(
-      RuntimeContext(
+      EnvironmentContext(
         environment = emptyMap(),
         userHome = userHome,
       ),

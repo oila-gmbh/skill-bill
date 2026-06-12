@@ -29,11 +29,11 @@ class JvmInstalledWorkspaceBaselineService(
   private val resolvedStatusPort: InstalledWorkspaceBaselineStatusPort
     get() = statusPort ?: runtimeServices.installedWorkspaceBaselineStatusPort
 
-  override fun modifiedSkillRelativePaths(workspaceRoot: Path): Set<String> {
+  override fun modifiedSkillRelativePaths(workspaceRoot: String): Set<String> {
     val availability = locator.locate()
     if (!availability.availability) return emptySet()
     val installRoot = Path.of(availability.path).toAbsolutePath().normalize()
-    val openRoot = workspaceRoot.toAbsolutePath().normalize()
+    val openRoot = Path.of(workspaceRoot).toAbsolutePath().normalize()
     if (openRoot != installRoot) return emptySet()
 
     return resolvedStatusPort.modifiedSkillRelativePaths(

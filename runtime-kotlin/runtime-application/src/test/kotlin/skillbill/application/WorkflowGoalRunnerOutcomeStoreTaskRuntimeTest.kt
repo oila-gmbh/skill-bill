@@ -1,8 +1,11 @@
 package skillbill.application
 
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.WorkflowUpdateInput
 import kotlin.test.Test
@@ -11,6 +14,53 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
+  @Test
+  fun `reads progress from task runtime workflows without probing prose mode`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wfl-task-runtime"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val progress = requireNotNull(store.progress("wfl-task-runtime"))
+
+    assertEquals("wfl-task-runtime", progress.workflowId)
+    assertEquals("running", progress.workflowStatus)
+    assertEquals("implement", progress.currentStepId)
+  }
+
+  @Test
+  fun `appends attempt ledger entries to task runtime workflows without probing prose mode`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wfl-task-runtime"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val recorded = store.recordAttemptLedgerEntry(
+      GoalRunnerAttemptLedgerRecordRequest(
+        workflowId = "wfl-task-runtime",
+        entry = GoalAttemptLedgerEntry(
+          action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
+          sequenceNumber = 1,
+          timestamp = "2026-06-11T18:28:09Z",
+          finalReconciledResult = "blocked",
+        ),
+      ),
+    )
+
+    assertTrue(recorded)
+    assertNull(workflows.getFeatureImplementWorkflow("wfl-task-runtime"))
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-task-runtime")).toSnapshot()
+    val artifacts = decodeArtifacts(saved.artifactsJson)
+    val ledger = artifacts["goal_attempt_ledger"] as List<*>
+    val entry = ledger.single() as Map<*, *>
+    assertEquals("final_reconciled_outcome", entry["action"])
+    assertEquals("blocked", entry["final_reconciled_result"])
+  }
+
   @Test
   fun `appends worker subtask request outcomes to task runtime workflows`() {
     val workflows = InMemoryWorkflowStates()

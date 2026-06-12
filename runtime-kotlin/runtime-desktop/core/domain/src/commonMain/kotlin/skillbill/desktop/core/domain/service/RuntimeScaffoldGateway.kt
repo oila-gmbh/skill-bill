@@ -18,7 +18,7 @@ interface RuntimeScaffoldGateway {
    *
    * F-002/F-404: declared `suspend` because the JVM implementation walks the `platform-packs/`
    * filesystem to discover piloted packs. Callers must hop to an I/O-suitable dispatcher
-   * (`Dispatchers.Default`) before invoking this; the view model receives the snapshot and is
+   * before invoking this; the view model receives the snapshot and is
    * still allowed to mutate state on the main dispatcher.
    */
   suspend fun catalogSnapshot(session: RepoSession?): ScaffoldCatalogSnapshot

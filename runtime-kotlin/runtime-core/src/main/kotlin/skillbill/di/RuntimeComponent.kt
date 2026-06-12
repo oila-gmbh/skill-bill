@@ -71,15 +71,23 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
 import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
+import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
+import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
+import skillbill.infrastructure.fs.JdkRuntimeTimingPort
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.FileSystemAgentRunLauncher
+import skillbill.model.EnvironmentContext
+import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
+import skillbill.model.TransportContext
+import skillbill.model.WorkflowOpsContext
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
@@ -99,6 +107,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
@@ -116,6 +125,7 @@ import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.validation.RepoValidationGateway
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -142,24 +152,40 @@ abstract class RuntimeComponent(
    */
   @Provides
   fun runtimeContext(): RuntimeContext {
-    val resolvedContext =
-      if (inputRuntimeContext.userHome == RuntimeContext.UnspecifiedUserHome) {
-        inputRuntimeContext.copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
+    val inputEnvironment = inputRuntimeContext.environment
+    val resolvedEnvironment =
+      if (inputEnvironment.userHome == EnvironmentContext.UnspecifiedUserHome) {
+        inputEnvironment.copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
       } else {
-        inputRuntimeContext
+        inputEnvironment
       }
-    val environmentContext =
-      if (resolvedContext.environment === RuntimeContext.UnspecifiedEnvironment) {
-        resolvedContext.copy(environment = System.getenv())
+    val environmentWithEnv =
+      if (resolvedEnvironment.environment === EnvironmentContext.UnspecifiedEnvironment) {
+        resolvedEnvironment.copy(environment = System.getenv())
       } else {
-        resolvedContext
+        resolvedEnvironment
       }
-    return if (environmentContext.requester === UnconfiguredHttpRequester) {
-      environmentContext.copy(requester = JdkHttpRequester)
-    } else {
-      environmentContext
-    }
+    val inputTransport = inputRuntimeContext.transport
+    val resolvedTransport =
+      if (inputTransport.requester === UnconfiguredHttpRequester) {
+        inputTransport.copy(requester = JdkHttpRequester)
+      } else {
+        inputTransport
+      }
+    return inputRuntimeContext.copy(environment = environmentWithEnv, transport = resolvedTransport)
   }
+
+  @Provides
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
+
+  @Provides
+  fun transportContext(ctx: RuntimeContext): TransportContext = ctx.transport
+
+  @Provides
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = ctx.workflowOps
+
+  @Provides
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = ctx.callbacks
 
   @Provides
   @JvmSynthetic
@@ -244,8 +270,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun agentRunLauncher(context: RuntimeContext, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
-    context.agentRunLauncher ?: adapter
+  internal fun agentRunLauncher(callbacks: OptionalCallbacks, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
+    callbacks.agentRunLauncher ?: adapter
 
   @Provides
   @JvmSynthetic
@@ -266,6 +292,18 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun runtimeTimingPort(adapter: JdkRuntimeTimingPort): RuntimeTimingPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun parallelReviewLaneRunner(adapter: JdkParallelReviewLaneRunner): ParallelReviewLaneRunner = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore): GoalRunnerManifestStore = adapter
 
   @Provides
@@ -276,8 +314,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun goalPullRequestPort(context: RuntimeContext, adapter: GhGoalPullRequestPort): GoalPullRequestPort =
-    context.goalPullRequestPort ?: adapter
+  internal fun goalPullRequestPort(callbacks: OptionalCallbacks, adapter: GhGoalPullRequestPort): GoalPullRequestPort =
+    callbacks.goalPullRequestPort ?: adapter
 
   @Provides
   @JvmSynthetic
@@ -364,8 +402,11 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun workflowGitOperations(context: RuntimeContext, git: GitWorkflowGitOperations): WorkflowGitOperations =
-    if (context.workflowGitOperations === NoopWorkflowGitOperations) git else context.workflowGitOperations
+  internal fun workflowGitOperations(
+    workflowOps: WorkflowOpsContext,
+    git: GitWorkflowGitOperations,
+  ): WorkflowGitOperations =
+    if (workflowOps.workflowGitOperations === NoopWorkflowGitOperations) git else workflowOps.workflowGitOperations
 
   @Provides
   @JvmSynthetic

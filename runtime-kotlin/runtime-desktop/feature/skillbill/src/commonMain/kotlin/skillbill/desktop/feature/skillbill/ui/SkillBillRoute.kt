@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,6 +32,7 @@ fun SkillBillRoute(
   onSourceRouteSelected: (String) -> Unit = {},
 ) {
   val component = rememberScreenComponent<SkillBillComponent>()
+  val dispatcherProvider = component.dispatcherProvider
   val viewModel = component.viewModel
   val coroutineScope = rememberCoroutineScope()
   var state by remember(viewModel, selectedSourceId) { mutableStateOf(viewModel.state(selectedSourceId)) }
@@ -45,7 +45,7 @@ fun SkillBillRoute(
     state = viewModel.state()
     if (request != null) {
       coroutineScope.launch {
-        val result = withContext(Dispatchers.Default) { viewModel.runSaveEditor(request) }
+        val result = withContext(dispatcherProvider.default) { viewModel.runSaveEditor(request) }
         state = viewModel.finishSaveEditor(result)
       }
     }
@@ -61,11 +61,11 @@ fun SkillBillRoute(
       preserveSelection = preserveSelection,
     )
     coroutineScope.launch {
-      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      val result = withContext(dispatcherProvider.default) { viewModel.loadRepo(request) }
       state = if (preserveSelection) {
         viewModel.finishRepoLoad(result)
       } else {
-        viewModel.finishSelectRepoPath(result)
+        viewModel.finishSelectRepoPathAndRemember(result)
       }
       afterLoad()
     }
@@ -77,7 +77,7 @@ fun SkillBillRoute(
       preserveSelection = true,
     )
     coroutineScope.launch {
-      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      val result = withContext(dispatcherProvider.default) { viewModel.loadRepo(request) }
       state = viewModel.finishRefresh(result)
     }
   }
@@ -85,7 +85,7 @@ fun SkillBillRoute(
   fun loadInstalledWorkspace() {
     val request = viewModel.repoLoadRequest(repoPath = state.repoPathText, preserveSelection = false)
     coroutineScope.launch {
-      val result = withContext(Dispatchers.Default) { viewModel.loadRepo(request) }
+      val result = withContext(dispatcherProvider.default) { viewModel.loadRepo(request) }
       state = viewModel.finishRepoLoad(result)
     }
   }
@@ -143,7 +143,7 @@ fun SkillBillRoute(
     val request = viewModel.beginFirstRunDiscovery() ?: return
     state = viewModel.state()
     coroutineScope.launch {
-      val response = withContext(Dispatchers.Default) { viewModel.runFirstRunDiscovery(request) }
+      val response = withContext(dispatcherProvider.default) { viewModel.runFirstRunDiscovery(request) }
       state = viewModel.finishFirstRunDiscovery(response)
     }
   }
@@ -152,7 +152,7 @@ fun SkillBillRoute(
     val request = viewModel.beginFirstRunApply() ?: return
     state = viewModel.state()
     coroutineScope.launch {
-      val response = withContext(Dispatchers.Default) { viewModel.runFirstRunApply(request) }
+      val response = withContext(dispatcherProvider.default) { viewModel.runFirstRunApply(request) }
       state = viewModel.finishFirstRunApply(response)
     }
   }
@@ -182,6 +182,13 @@ fun SkillBillRoute(
     if (state.firstRunSetup != null) {
       runFirstRunDiscovery()
     }
+  }
+
+  LaunchedEffect(viewModel) {
+    val request = viewModel.beginStartup() ?: return@LaunchedEffect
+    state = viewModel.state()
+    val result = withContext(dispatcherProvider.default) { viewModel.runStartup(request) }
+    state = viewModel.finishStartup(result)
   }
 
   fun runRefresh() {
@@ -247,7 +254,7 @@ fun SkillBillRoute(
     if (canStartRepoScopedAction()) {
       val request = viewModel.beginOpenScaffoldWizard(kind) ?: return
       coroutineScope.launch {
-        val response = withContext(Dispatchers.Default) { viewModel.runOpenScaffoldWizard(request) }
+        val response = withContext(dispatcherProvider.default) { viewModel.runOpenScaffoldWizard(request) }
         state = viewModel.finishOpenScaffoldWizard(response)
       }
     }
@@ -272,7 +279,7 @@ fun SkillBillRoute(
     state = viewModel.state()
     if (request != null) {
       coroutineScope.launch {
-        val result = withContext(Dispatchers.Default) { viewModel.runScaffoldDryRun(request) }
+        val result = withContext(dispatcherProvider.default) { viewModel.runScaffoldDryRun(request) }
         state = viewModel.finishScaffoldDryRun(request, result)
       }
     }
@@ -283,14 +290,14 @@ fun SkillBillRoute(
     state = viewModel.state()
     if (request != null) {
       coroutineScope.launch {
-        val result = withContext(Dispatchers.Default) { viewModel.runScaffoldExecute(request) }
+        val result = withContext(dispatcherProvider.default) { viewModel.runScaffoldExecute(request) }
         state = viewModel.finishScaffoldExecute(request, result)
         val acceptedSuccess = state.scaffoldWizard?.executionResult as?
           skillbill.desktop.core.domain.model.ScaffoldRunResult.Success
         if (acceptedSuccess != null) {
           val refreshRequest = viewModel.beginRefreshAfterScaffold()
           state = viewModel.state()
-          val refreshResult = withContext(Dispatchers.Default) { viewModel.loadRepo(refreshRequest) }
+          val refreshResult = withContext(dispatcherProvider.default) { viewModel.loadRepo(refreshRequest) }
           state = viewModel.finishRefreshAfterScaffold(refreshResult)
           viewModel.resolveAuthoredTreeItemForScaffold(acceptedSuccess.result)?.let { itemId ->
             state = viewModel.selectTreeItem(itemId)
@@ -308,7 +315,7 @@ fun SkillBillRoute(
     coroutineScope.launch {
       var finished = false
       try {
-        val result = withContext(Dispatchers.Default) { viewModel.runPreviewRemoval(request) }
+        val result = withContext(dispatcherProvider.default) { viewModel.runPreviewRemoval(request) }
         state = viewModel.finishPreviewRemoval(request, result)
         finished = true
       } finally {
@@ -334,7 +341,7 @@ fun SkillBillRoute(
     coroutineScope.launch {
       var finished = false
       try {
-        val result = withContext(Dispatchers.Default) { viewModel.runExecuteRemoval(request) }
+        val result = withContext(dispatcherProvider.default) { viewModel.runExecuteRemoval(request) }
         state = viewModel.finishExecuteRemoval(request, result)
         finished = true
         val accepted = state.confirmDeletion?.executionResult as?
@@ -342,13 +349,13 @@ fun SkillBillRoute(
         if (accepted != null) {
           val refreshRequest = viewModel.beginRefreshAfterScaffold()
           state = viewModel.state()
-          val refreshResult = withContext(Dispatchers.Default) { viewModel.loadRepo(refreshRequest) }
+          val refreshResult = withContext(dispatcherProvider.default) { viewModel.loadRepo(refreshRequest) }
           state = viewModel.finishRefreshAfterScaffold(refreshResult)
           state = viewModel.dismissConfirmDeletion()
           state = viewModel.showValidateAgentConfigsConsole()
           val repoRoot = state.selectedRepoPath
           if (!repoRoot.isNullOrBlank()) {
-            val lines = withContext(Dispatchers.IO) { runValidateAgentConfigs(repoRoot) }
+            val lines = withContext(dispatcherProvider.io) { runValidateAgentConfigs(repoRoot) }
             state = viewModel.appendValidateAgentConfigsLines(lines.outputLines)
             state = viewModel.finishValidateAgentConfigs(lines.exitCode)
           } else {

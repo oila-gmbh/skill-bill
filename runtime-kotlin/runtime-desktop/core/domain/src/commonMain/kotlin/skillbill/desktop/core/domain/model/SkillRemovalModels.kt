@@ -139,7 +139,7 @@ data class PartialMutationPostMortem(
 
 /**
  * SKILL-46: single payload-builder reused by preview() and execute(). Captures the target plus
- * repo root on the Main dispatcher BEFORE the Dispatchers.Default hop in the route.
+ * repo root on the Main dispatcher before the background dispatcher hop in the route.
  */
 data class DesktopSkillRemovalRequest(
   val target: DesktopSkillRemovalTarget,

@@ -583,7 +583,7 @@ class CliInstallRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(home.resolve(".claude/commands").toString(), result.stdout.trim())
+    assertEquals(home.resolve(".claude/skills").toString(), result.stdout.trim())
   }
 
   private fun runInstall(fixture: InstallFixture, command: String, vararg extraArgs: String): CliExecutionResult =

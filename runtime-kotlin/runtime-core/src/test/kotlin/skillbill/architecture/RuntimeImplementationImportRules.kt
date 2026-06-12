@@ -127,7 +127,12 @@ private fun runtimeComponentPublicAbiEdges(runtimeRoot: Path): RuntimeComponentP
   publicTypeNames.forEach { typeName ->
     when (val importedName = importsBySimpleName[typeName]) {
       null -> unknownTypes += typeName
-      "skillbill.model.RuntimeContext" -> projectEdges += ":runtime-ports"
+      "skillbill.model.RuntimeContext",
+      "skillbill.model.EnvironmentContext",
+      "skillbill.model.TransportContext",
+      "skillbill.model.WorkflowOpsContext",
+      "skillbill.model.OptionalCallbacks",
+      -> projectEdges += ":runtime-ports"
       else -> when {
         importedName.startsWith("skillbill.application.") -> projectEdges += ":runtime-application"
         importedName.startsWith("skillbill.ports.") -> projectEdges += ":runtime-ports"

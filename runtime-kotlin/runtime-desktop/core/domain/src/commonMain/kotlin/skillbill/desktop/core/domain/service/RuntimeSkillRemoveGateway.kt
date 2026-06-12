@@ -10,7 +10,7 @@ import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
  *
  * Both functions accept a single payload-builder ([DesktopSkillRemovalRequest]) so preview and
  * execute are guaranteed to operate against the same captured state — the ViewModel constructs
- * the request once on Main BEFORE the Dispatchers.Default hop.
+ * the request once on Main before the background dispatcher hop.
  *
  * The JVM implementation lives in `core/data/.../service/RuntimeSkillRemoveGateway.kt` (sibling
  * gateway, NOT a 7th surface on `RuntimeRepoBrowserService`).

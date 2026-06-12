@@ -100,7 +100,7 @@ class InstallServiceTest {
       request = request,
       agents = listOf(
         InstallAgentTarget(InstallAgent.CODEX, home.resolve(".codex/skills"), InstallAgentTargetSource.MANUAL),
-        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/commands"), InstallAgentTargetSource.MANUAL),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.MANUAL),
       ),
     )
     val selectionPort = RecordingInstallSelectionPersistencePort()
@@ -152,7 +152,7 @@ class InstallServiceTest {
       request = request,
       agents = listOf(
         InstallAgentTarget(InstallAgent.CODEX, home.resolve(".codex/skills"), InstallAgentTargetSource.MANUAL),
-        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/commands"), InstallAgentTargetSource.MANUAL),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.MANUAL),
       ),
       selectedPlatformSlugs = listOf("kotlin"),
     )
@@ -182,7 +182,7 @@ class InstallServiceTest {
     val plan = installPlan(
       request = request,
       agents = listOf(
-        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/commands"), InstallAgentTargetSource.DETECTED),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.DETECTED),
         InstallAgentTarget(
           InstallAgent.OPENCODE,
           home.resolve(".config/opencode/skills"),

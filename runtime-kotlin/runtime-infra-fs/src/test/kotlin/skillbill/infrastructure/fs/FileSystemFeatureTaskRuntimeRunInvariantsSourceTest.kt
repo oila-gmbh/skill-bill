@@ -77,6 +77,89 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSourceTest {
     assertEquals(FeatureTaskRuntimeFeatureSize.SMALL, invariants.featureSize)
   }
 
+  @Test
+  fun `reads numbered acceptance criteria under the canonical heading`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Acceptance Criteria
+      1. First criterion.
+      2. Second criterion.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(listOf("First criterion.", "Second criterion."), invariants.acceptanceCriteria)
+  }
+
+  @Test
+  fun `accepts a heading suffix after acceptance criteria`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Acceptance criteria (this subtask)
+      1. First criterion.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(listOf("First criterion."), invariants.acceptanceCriteria)
+  }
+
+  @Test
+  fun `accepts bullet acceptance criteria`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Acceptance criteria (this subtask)
+      - AC1: bullet criterion one.
+      - AC2: bullet criterion two.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(listOf("AC1: bullet criterion one.", "AC2: bullet criterion two."), invariants.acceptanceCriteria)
+  }
+
+  @Test
+  fun `accepts checkbox acceptance criteria and strips the marker`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Acceptance Criteria
+      - [ ] unchecked criterion.
+      - [x] checked criterion.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(listOf("unchecked criterion.", "checked criterion."), invariants.acceptanceCriteria)
+  }
+
+  @Test
+  fun `does not harvest criteria from a non-acceptance heading`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Scope
+      1. Not an acceptance criterion.
+      """.trimIndent(),
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+    }
+  }
+
   private fun writeSpec(text: String) =
     Files.createTempDirectory("feature-task-runtime-invariants").resolve("spec.md").also { path ->
       Files.writeString(path, text)

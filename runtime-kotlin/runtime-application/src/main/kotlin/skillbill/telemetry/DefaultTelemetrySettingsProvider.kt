@@ -1,7 +1,7 @@
 package skillbill.telemetry
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.telemetry.model.TelemetryConfigDocument
@@ -9,7 +9,7 @@ import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
 class DefaultTelemetrySettingsProvider(
-  private val context: RuntimeContext,
+  private val context: EnvironmentContext,
   private val configStore: TelemetryConfigStore,
 ) : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = loadTelemetrySettingsFromStore(

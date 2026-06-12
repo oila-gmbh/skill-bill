@@ -15,18 +15,16 @@ import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricPort
+import skillbill.ports.review.model.ParallelReviewLaneOutcome
+import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.model.ParallelReviewLaneResult
 import java.nio.file.Path
-import java.util.concurrent.Callable
-import java.util.concurrent.CancellationException
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
-import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @Inject
 class ParallelCodeReviewRunner(
@@ -34,6 +32,7 @@ class ParallelCodeReviewRunner(
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
   private val rubricPort: ReviewRubricPort,
+  private val parallelLaneRunner: ParallelReviewLaneRunner,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -49,32 +48,15 @@ class ParallelCodeReviewRunner(
     val prompt = buildPrompt(stack, diffText)
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
-    val executor = Executors.newFixedThreadPool(2)
-    var outcome1 = LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while waiting for lanes")
-    var outcome2 = LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while waiting for lanes")
-    try {
-      // invokeAll gives both lanes the full shared budget and avoids the sequential-await timing
-      // problem where lane 2 inherits only the leftover time after lane 1 finishes.
-      val futures = executor.invokeAll(
-        listOf(
-          Callable { launchLane(agent1.id, prompt, request) },
-          Callable { launchLane(agent2.id, prompt, request, request.agent2Model) },
-        ),
-        timeoutSec + TIMEOUT_BUFFER_SECONDS,
-        TimeUnit.SECONDS,
-      )
-      outcome1 = resultFromFuture(futures[0])
-      outcome2 = resultFromFuture(futures[1])
-    } catch (@Suppress("SwallowedException") e: InterruptedException) {
-      Thread.currentThread().interrupt()
-    } finally {
-      executor.shutdownNow()
-      try {
-        executor.awaitTermination(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-      } catch (@Suppress("SwallowedException") _: InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
-    }
+    val laneRunResult = parallelLaneRunner.runTwoLanes(
+      ParallelReviewLaneRunRequest(
+        lane1 = { launchLane(agent1.id, prompt, request) },
+        lane2 = { launchLane(agent2.id, prompt, request, request.agent2Model) },
+        timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
+      ),
+    )
+    val outcome1 = laneRunResult.lane1
+    val outcome2 = laneRunResult.lane2
 
     val lane1Result = ParallelReviewLaneResult(
       agentId = agent1.id,
@@ -91,25 +73,6 @@ class ParallelCodeReviewRunner(
       lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason),
       lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason),
     )
-  }
-
-  // Collects one lane's result from a future that invokeAll has already settled. No blocking occurs
-  // here; the only exception paths are CancellationException (shared budget exhausted) and
-  // ExecutionException (unexpected throw inside the lane callable).
-  private fun resultFromFuture(future: Future<LaneOutcome>): LaneOutcome = try {
-    future.get()
-  } catch (@Suppress("SwallowedException") e: CancellationException) {
-    LaneOutcome(success = false, rawOutput = "", failureReason = "lane timed out (cancelled by shared budget)")
-  } catch (e: ExecutionException) {
-    val cause = e.cause ?: e
-    LaneOutcome(
-      success = false,
-      rawOutput = "",
-      failureReason = "lane launch threw ${cause::class.simpleName}: ${cause.message ?: "no detail"}",
-    )
-  } catch (@Suppress("SwallowedException") e: InterruptedException) {
-    Thread.currentThread().interrupt()
-    LaneOutcome(success = false, rawOutput = "", failureReason = "interrupted while collecting lane result")
   }
 
   private fun resolveAgent(agentId: String, label: String): InstallAgent {
@@ -225,7 +188,7 @@ class ParallelCodeReviewRunner(
     prompt: String,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
-  ): LaneOutcome {
+  ): ParallelReviewLaneOutcome {
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -242,10 +205,14 @@ class ParallelCodeReviewRunner(
     return when (outcome) {
       is AgentRunLaunchFacts -> {
         val reason = laneFailureReason(outcome)
-        LaneOutcome(success = reason == null, rawOutput = outcome.stdout, failureReason = reason)
+        ParallelReviewLaneOutcome(success = reason == null, rawOutput = outcome.stdout, failureReason = reason)
       }
       is UnsupportedAgentRunLaunch ->
-        LaneOutcome(success = false, rawOutput = "", failureReason = "unsupported agent: ${outcome.reason}")
+        ParallelReviewLaneOutcome(
+          success = false,
+          rawOutput = "",
+          failureReason = "unsupported agent: ${outcome.reason}",
+        )
     }
   }
 
@@ -268,13 +235,10 @@ class ParallelCodeReviewRunner(
     else -> null
   }
 
-  private data class LaneOutcome(val success: Boolean, val rawOutput: String, val failureReason: String? = null)
-
   private companion object {
     const val DEFAULT_TIMEOUT_MINUTES = 30L
     const val TIMEOUT_BUFFER_SECONDS = 30L
     const val SECONDS_PER_MINUTE = 60L
-    const val DESTROY_WAIT_TIMEOUT_MILLIS = 5_000L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
   }

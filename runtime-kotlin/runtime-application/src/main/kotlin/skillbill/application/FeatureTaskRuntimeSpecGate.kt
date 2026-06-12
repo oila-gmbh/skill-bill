@@ -3,11 +3,11 @@ package skillbill.application
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.workflow.model.SpecSource
 import java.nio.file.Path
-import java.util.logging.Level
-import java.util.logging.Logger
 
 /**
  * Bundles the runtime's per-run spec-source concerns behind one collaborator: resolving the
@@ -20,6 +20,7 @@ import java.util.logging.Logger
 class FeatureTaskRuntimeSpecGate(
   val specSourceResolver: SpecSourceResolver,
   val specScratchStore: SpecScratchStore,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // Terminal-success cleanup for a single_spec linear-mode run: the spec scratch is never committed
   // and is deleted only when the run terminally succeeded (PR phase completed for a non-goal-
@@ -41,14 +42,11 @@ class FeatureTaskRuntimeSpecGate(
       ?: return
     runCatching { specScratchStore.deleteDirectoryIfExists(specDir) }
       .onFailure { error ->
-        log.log(Level.WARNING, error) {
+        diagnostics.warning(
           "Feature-task-runtime linear-mode spec scratch deletion at '$specDir' failed; " +
-            "the successful run is unaffected and the scratch can be cleaned up manually."
-        }
+            "the successful run is unaffected and the scratch can be cleaned up manually.",
+          error,
+        )
       }
-  }
-
-  private companion object {
-    private val log: Logger = Logger.getLogger(FeatureTaskRuntimeSpecGate::class.java.name)
   }
 }

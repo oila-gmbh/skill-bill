@@ -302,12 +302,12 @@ Supported prebuilt host tokens are `macos-arm64`, `macos-x64`, `windows-x64`, an
 Supported install targets today:
 
 - GitHub Copilot
-- Claude Code (skills under `~/.claude/commands/`; native subagent markdown under `~/.claude/agents/`)
+- Claude Code (skills under `~/.claude/skills/`; native subagent markdown under `~/.claude/agents/`)
 - OpenAI Codex (skills under `~/.codex/skills/`, with `~/.agents/skills/` compatibility fallback; native subagent TOMLs under `~/.codex/agents/`)
 - OpenCode (skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`)
 - JetBrains Junie (skills under `~/.junie/skills/`; native subagent markdown under `~/.junie/agents/`; MCP config under `~/.junie/mcp/mcp.json`)
 
-Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code commands directory — no separate target needed. GLM is a model, not a harness.
+Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code skills directory — no separate target needed. GLM is a model, not a harness.
 
 Native subagent definitions are installed only for orchestrators that ship them. The source of truth is either provider-neutral markdown files under `native-agents/<name>.md` or bundled entries in `native-agents/agents.yaml`; new and rendered neutral sources carry `contract_version: "0.1"`, while the parser still accepts older unpinned sources for migration tolerance. Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are generated at install time into `~/.skill-bill/native-agents/` and linked into each runtime's agent directory. Skill Bill installs Codex native subagents to `~/.codex/agents/`; `~/.agents/agents/` is only a Skill Bill compatibility path for homes that do not have a `.codex` root. `skill-bill render` validates source files without committing generated provider artifacts, and `scripts/validate_agent_configs` fails if generated provider artifacts are checked into the repo. Today this covers the `bill-kmp-code-review` KMP specialists, the `bill-kotlin-code-review` Kotlin specialists, and the `bill-feature-task-prose` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps its verify audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-prose/content.md`.
 

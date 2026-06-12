@@ -2,7 +2,7 @@ package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.db.DatabaseRuntime
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Files
@@ -11,7 +11,7 @@ import java.sql.Connection
 
 @Inject
 class SQLiteDatabaseSessionFactory(
-  private val context: RuntimeContext,
+  private val context: EnvironmentContext,
 ) : DatabaseSessionFactory {
   private val resolvedContext = context.withProcessDefaults()
 
@@ -42,14 +42,14 @@ class SQLiteDatabaseSessionFactory(
   }
 }
 
-private fun RuntimeContext.withProcessDefaults(): RuntimeContext {
+private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
   val withUserHome =
-    if (userHome == RuntimeContext.UnspecifiedUserHome) {
+    if (userHome == EnvironmentContext.UnspecifiedUserHome) {
       copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
     } else {
       copy(userHome = userHome.toAbsolutePath().normalize())
     }
-  return if (withUserHome.environment === RuntimeContext.UnspecifiedEnvironment) {
+  return if (withUserHome.environment === EnvironmentContext.UnspecifiedEnvironment) {
     withUserHome.copy(environment = System.getenv())
   } else {
     withUserHome

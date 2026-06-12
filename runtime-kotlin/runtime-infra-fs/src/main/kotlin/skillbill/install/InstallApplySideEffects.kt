@@ -11,7 +11,7 @@ import skillbill.install.model.InstallTelemetryApplyStatus
 import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.launcher.McpRegistrationOperations
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
 import skillbill.telemetry.model.TelemetryConfigDocument
@@ -29,8 +29,9 @@ internal fun applyTelemetryIntent(
   val configPath = plan.request.home.resolve(".skill-bill/config.json").toAbsolutePath().normalize()
   val existedBefore = Files.exists(configPath)
   return runCatching {
-    val runtimeContext = RuntimeContext(environment = emptyMap(), userHome = plan.request.home)
-    val clearedEvents = applyInstallTelemetryLevel(runtimeContext, plan.telemetryLevel.id, telemetryLevelMutator)
+    val environmentContext = EnvironmentContext(environment = emptyMap(), userHome = plan.request.home)
+    val clearedEvents =
+      applyInstallTelemetryLevel(environmentContext, plan.telemetryLevel.id, telemetryLevelMutator)
     val status =
       if (plan.telemetryLevel.id == "off" && !existedBefore && clearedEvents == 0) {
         InstallTelemetryApplyStatus.SKIPPED
@@ -62,7 +63,7 @@ internal fun applyTelemetryIntent(
 }
 
 private fun applyInstallTelemetryLevel(
-  context: RuntimeContext,
+  context: EnvironmentContext,
   level: String,
   telemetryLevelMutator: TelemetryLevelMutator?,
 ): Int {

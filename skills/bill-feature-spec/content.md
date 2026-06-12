@@ -94,6 +94,30 @@ Always route preparation through the shared feature-spec preparation path. Do no
 
 The agent writes all governed artifacts directly: parent `spec.md`, ordered `spec_subtask_*.md` files, and — for decomposed features — `decomposition-manifest.yaml` using the template in the decomposed Output Rules section above. No CLI call or MCP tool routes the manifest write; the agent fills the template from the planning subagent's decomposition RESULT and writes the file to disk. Schema validation happens when the runtime first reads the manifest, not at write time.
 
+## Spec Format Contract
+
+Every parent and subtask spec is read back by the runtime
+(`FileSystemFeatureTaskRuntimeRunInvariantsSource`) to extract its acceptance
+criteria. That reader is format-sensitive, so authored specs MUST follow this
+contract or the runtime fails the run with "must list at least one criterion":
+
+- The acceptance-criteria section heading MUST begin with `## Acceptance Criteria`
+  (case-insensitive). A trailing qualifier such as `## Acceptance Criteria (this subtask)`
+  is allowed; a different heading word is not.
+- Each criterion MUST be its own list item: a numbered item (`1. ...`) or a
+  bullet (`- ...`, optionally a `- [ ]` checkbox). Do not place criteria in
+  prose paragraphs under the heading.
+- At least one criterion is required in every spec the runtime will execute.
+
+Prefer the canonical numbered form the runtime writer emits:
+
+```markdown
+## Acceptance Criteria
+
+1. First criterion.
+2. Second criterion.
+```
+
 ## single_spec Output Rules
 
 For `single_spec`:
@@ -162,7 +186,7 @@ subtasks:
 
 The manifest is validated against the decomposition manifest schema contract when the runtime first reads it.
 
-Each subtask spec must contain scope, acceptance criteria, non-goals, dependency notes, validation strategy, and next path.
+Each subtask spec must contain scope, acceptance criteria, non-goals, dependency notes, validation strategy, and next path. The acceptance-criteria section must follow the **Spec Format Contract** above so the runtime can extract it.
 
 Return the next command as:
 

@@ -5,8 +5,8 @@ import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
-import java.util.logging.Level
-import java.util.logging.Logger
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 
 /**
  * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
@@ -20,6 +20,7 @@ import java.util.logging.Logger
 @Inject
 class FeatureTaskRuntimeLifecycleTelemetry(
   private val lifecycleTelemetryService: LifecycleTelemetryService,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // Returns the started session id, or blank when the isolated started emission failed; a blank id
   // makes the matching finished/finishedError emission a no-op, so a started fault cannot dangle.
@@ -72,10 +73,11 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     isolate("finishedError", Unit) {
       val outcomes = runCatching(phaseOutcomes)
         .onFailure { error ->
-          log.log(Level.WARNING, error) {
+          diagnostics.warning(
             "Feature-task-runtime lifecycle telemetry error outcome loading failed; " +
-              "emitting terminal error without outcomes."
-          }
+              "emitting terminal error without outcomes.",
+            error,
+          )
         }
         .getOrDefault(emptyMap())
       lifecycleTelemetryService.featureTaskRuntimeFinished(
@@ -95,9 +97,10 @@ class FeatureTaskRuntimeLifecycleTelemetry(
 
   private fun <T> isolate(stage: String, fallback: T, block: () -> T): T = runCatching(block)
     .onFailure { error ->
-      log.log(Level.WARNING, error) {
-        "Feature-task-runtime lifecycle telemetry $stage emission failed; the run is unaffected."
-      }
+      diagnostics.warning(
+        "Feature-task-runtime lifecycle telemetry $stage emission failed; the run is unaffected.",
+        error,
+      )
     }
     .getOrDefault(fallback)
 
@@ -111,9 +114,5 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     is FeatureTaskRuntimeRunReport.Completed -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Blocked -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
-  }
-
-  private companion object {
-    private val log: Logger = Logger.getLogger(FeatureTaskRuntimeLifecycleTelemetry::class.java.name)
   }
 }

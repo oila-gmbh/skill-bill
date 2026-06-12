@@ -65,7 +65,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
   @Test
   fun `multi-root fan-out and per-profile MCP still resolve against the copied repoRoot`() {
     // SKILL-76 AC-11: with --repo-root pointing at the COPY under ~/.skill-bill, the SKILL-74
-    // claude multi-profile fan-out still targets every resolved root's commands dir, every link
+    // claude multi-profile fan-out still targets every resolved root's skills dir, every link
     // resolves into the shared staging cache (keyed off the copy, never the clone), and the
     // SKILL-75 per-profile MCP registration is unaffected (it keys off home, not the source).
     val seed = setupApplyFixture()
@@ -83,8 +83,8 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
 
-    // (a) Fan-out: every selected skill links into BOTH resolved roots' commands dirs.
-    val expectedCommandDirs = setOf(defaultRoot.resolve("commands"), workRoot.resolve("commands"))
+    // (a) Fan-out: every selected skill links into BOTH resolved roots' skills dirs.
+    val expectedSkillDirs = setOf(defaultRoot.resolve("skills"), workRoot.resolve("skills"))
       .map { it.toAbsolutePath().normalize() }
       .toSet()
     result.skills.forEach { skill ->
@@ -92,7 +92,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
         .map { link -> link.linkPath.parent.toAbsolutePath().normalize() }
         .toSet()
-      assertEquals(expectedCommandDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
+      assertEquals(expectedSkillDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
     }
 
     // Symlink targets resolve into the staging cache under home, NOT back into the copied source.
@@ -127,23 +127,23 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
   }
 
   @Test
-  fun `CLAUDE_CONFIG_DIR resolves the command target independent of the copied repoRoot`() {
+  fun `CLAUDE_CONFIG_DIR resolves the skill target independent of the copied repoRoot`() {
     // SKILL-76 AC-11: CLAUDE_CONFIG_DIR honoring is source-location agnostic. Moving --repo-root to
-    // the copy must not change which root the command target resolves to.
+    // the copy must not change which root the skill target resolves to.
     val seed = setupApplyFixture()
     val fixture = copiedSourceFixture(seed)
     val workConfig = fixture.home.resolve(".claude-work")
     val env = mapOf(CLAUDE_CONFIG_DIR_ENV to workConfig.toString())
 
     assertEquals(
-      workConfig.resolve("commands"),
+      workConfig.resolve("skills"),
       InstallOperations.agentPath("claude", fixture.home, environment = env),
-      "CLAUDE_CONFIG_DIR must still resolve the command target after --repo-root moved to the copy",
+      "CLAUDE_CONFIG_DIR must still resolve the skill target after --repo-root moved to the copy",
     )
   }
 
   @Test
-  fun `apply links skills into every resolved claude root's commands using one shared staging cache`() {
+  fun `apply links skills into every resolved claude root's skills dir using one shared staging cache`() {
     val fixture = setupApplyFixture()
     val defaultRoot = fixture.home.resolve(".claude").also { Files.createDirectories(it) }
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
@@ -154,7 +154,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
 
-    val expectedCommandDirs = setOf(defaultRoot.resolve("commands"), workRoot.resolve("commands"))
+    val expectedSkillDirs = setOf(defaultRoot.resolve("skills"), workRoot.resolve("skills"))
       .map { it.toAbsolutePath().normalize() }
       .toSet()
     result.skills.forEach { skill ->
@@ -162,7 +162,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
         .map { link -> link.linkPath.parent.toAbsolutePath().normalize() }
         .toSet()
-      assertEquals(expectedCommandDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
+      assertEquals(expectedSkillDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
     }
 
     // Shared staging cache: links across roots point at the same staged target, not per-root copies.
@@ -187,12 +187,12 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val firstResult = InstallOperations.applyInstall(InstallOperations.planInstall(claudeMultiRootRequest(fixture)))
     assertEquals(InstallApplyStatus.SUCCESS, firstResult.status)
 
-    val defaultCommands = defaultRoot.resolve("commands")
-    val firstDefaultLinks = symlinkTargetsIn(defaultCommands)
+    val defaultSkills = defaultRoot.resolve("skills")
+    val firstDefaultLinks = symlinkTargetsIn(defaultSkills)
     assertTrue(firstDefaultLinks.isNotEmpty(), "default root should receive links on the first apply")
 
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
-    val workCommands = workRoot.resolve("commands")
+    val workSkills = workRoot.resolve("skills")
 
     val secondResult = InstallOperations.applyInstall(InstallOperations.planInstall(claudeMultiRootRequest(fixture)))
     assertEquals(InstallApplyStatus.SUCCESS, secondResult.status)
@@ -200,11 +200,11 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
 
     assertEquals(
       firstDefaultLinks,
-      symlinkTargetsIn(defaultCommands),
+      symlinkTargetsIn(defaultSkills),
       "pre-existing root links should be idempotent across re-apply",
     )
     assertTrue(
-      symlinkTargetsIn(workCommands).isNotEmpty(),
+      symlinkTargetsIn(workSkills).isNotEmpty(),
       "newly created profile commands dir should get links on re-apply",
     )
   }

@@ -39,7 +39,7 @@ class JvmInstalledWorkspaceBaselineServiceTest {
     val locator = StubLocator(InstalledWorkspaceAvailability(path = installRoot.toString(), availability = true))
     val port = RecordingStatusPort(setOf("skills/bill-alpha"))
 
-    val result = service(locator, port).modifiedSkillRelativePaths(installRoot)
+    val result = service(locator, port).modifiedSkillRelativePaths(installRoot.toString())
 
     assertEquals(setOf("skills/bill-alpha"), result)
     assertEquals(installRoot.toAbsolutePath().normalize(), port.requests.single().installRoot)
@@ -53,7 +53,7 @@ class JvmInstalledWorkspaceBaselineServiceTest {
     val locator = StubLocator(InstalledWorkspaceAvailability(path = installRoot.toString(), availability = true))
     val port = RecordingStatusPort(setOf("skills/bill-alpha"))
 
-    val result = service(locator, port).modifiedSkillRelativePaths(cloneRoot)
+    val result = service(locator, port).modifiedSkillRelativePaths(cloneRoot.toString())
 
     assertEquals(emptySet(), result)
     assertTrue(port.requests.isEmpty())
@@ -64,7 +64,7 @@ class JvmInstalledWorkspaceBaselineServiceTest {
     val locator = StubLocator(InstalledWorkspaceAvailability(path = "", availability = false))
     val port = RecordingStatusPort(setOf("skills/bill-alpha"))
 
-    val result = service(locator, port).modifiedSkillRelativePaths(Path.of("/tmp/whatever"))
+    val result = service(locator, port).modifiedSkillRelativePaths(Path.of("/tmp/whatever").toString())
 
     assertEquals(emptySet(), result)
     assertTrue(port.requests.isEmpty())

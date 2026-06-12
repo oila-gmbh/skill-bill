@@ -29,6 +29,7 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -1872,6 +1873,18 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+  override fun getFeatureTaskWorkflow(workflowId: String): WorkflowStateRecord? =
+    implement[workflowId] ?: taskRuntime[workflowId]
+  override fun getFeatureTaskWorkflowAsMode(workflowId: String, mode: FeatureTaskWorkflowMode): WorkflowStateRecord? {
+    val row = getFeatureTaskWorkflow(workflowId) ?: return null
+    val effectiveMode = row.mode ?: FeatureTaskWorkflowMode.PROSE
+    if (effectiveMode != mode) {
+      throw InvalidWorkflowStateSchemaError(
+        "Feature-task workflow '$workflowId' is mode='${effectiveMode.wireValue}', not '${mode.wireValue}'.",
+      )
+    }
+    return row
+  }
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
     taskRuntime[row.workflowId] = row
   }

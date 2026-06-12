@@ -143,13 +143,13 @@ class FakeDesktopPreferenceStore(
 class FakeRecentRepoRepository(initialRepoPath: String? = null) : RecentRepoRepository {
   private var repoPath: String? = initialRepoPath
 
-  override fun recentRepoPath(): String? = repoPath
+  override suspend fun recentRepoPath(): String? = repoPath
 
-  override fun rememberRepoPath(repoPath: String) {
+  override suspend fun rememberRepoPath(repoPath: String) {
     this.repoPath = repoPath.trim().takeIf(String::isNotEmpty)
   }
 
-  override fun clearRecentRepoPath() {
+  override suspend fun clearRecentRepoPath() {
     repoPath = null
   }
 }

@@ -1,16 +1,16 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.review.ReviewInputSource
 import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
 class FileSystemReviewInputSource(
-  context: RuntimeContext,
+  context: EnvironmentContext,
 ) : ReviewInputSource {
-  constructor() : this(RuntimeContext())
+  constructor() : this(EnvironmentContext())
 
   private val resolvedContext = context.withProcessDefaults()
 
@@ -34,14 +34,14 @@ class FileSystemReviewInputSource(
   }
 }
 
-internal fun RuntimeContext.withProcessDefaults(): RuntimeContext {
+internal fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
   val withUserHome =
-    if (userHome == RuntimeContext.UnspecifiedUserHome) {
+    if (userHome == EnvironmentContext.UnspecifiedUserHome) {
       copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
     } else {
       copy(userHome = userHome.toAbsolutePath().normalize())
     }
-  return if (withUserHome.environment === RuntimeContext.UnspecifiedEnvironment) {
+  return if (withUserHome.environment === EnvironmentContext.UnspecifiedEnvironment) {
     withUserHome.copy(environment = System.getenv())
   } else {
     withUserHome

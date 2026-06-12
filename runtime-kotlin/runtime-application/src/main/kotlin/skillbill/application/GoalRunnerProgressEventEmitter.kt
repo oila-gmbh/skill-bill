@@ -3,12 +3,12 @@ package skillbill.application
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.workflow.model.GoalProgressEvent
 import java.time.Instant
-import java.util.logging.Level
-import java.util.logging.Logger
 
 /**
  * SKILL-64 Subtask 3 (AC21, AC25, AC20, AC22, AC23): the concrete production
@@ -38,9 +38,9 @@ internal class GoalRunnerProgressEventEmitter(
   private val request: GoalRunnerRunRequest,
   private val resolveWorkflowId: () -> String?,
   watermarkSeed: Int?,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) : AgentRunProgressEmitter {
   private var sequence: Int = watermarkSeed?.let { it + 1 } ?: 0
-  private val log: Logger = Logger.getLogger(GoalRunnerProgressEventEmitter::class.java.name)
 
   override fun emit(emission: AgentRunProgressEmission) {
     val workflowId = runCatching { resolveWorkflowId() }.getOrNull()?.takeIf(String::isNotBlank)
@@ -71,8 +71,7 @@ internal class GoalRunnerProgressEventEmitter(
   }
 
   private fun logBestEffortFailure(emission: AgentRunProgressEmission, workflowId: String, error: Throwable) {
-    log.log(
-      Level.WARNING,
+    diagnostics.warning(
       "Best-effort goal progress emit failed: action='${emission.eventKind.wireValue}' " +
         "workflowId='$workflowId' errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
       error,
@@ -80,8 +79,7 @@ internal class GoalRunnerProgressEventEmitter(
   }
 
   private fun logBestEffortMissingWorkflow(emission: AgentRunProgressEmission, workflowId: String) {
-    log.log(
-      Level.WARNING,
+    diagnostics.warning(
       "Best-effort goal progress emit skipped (workflow not found): " +
         "action='${emission.eventKind.wireValue}' workflowId='$workflowId'",
     )

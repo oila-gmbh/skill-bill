@@ -7,7 +7,9 @@ import skillbill.desktop.core.data.service.JvmInstalledWorkspaceBaselineService
 import skillbill.desktop.core.data.service.JvmInstalledWorkspaceLocator
 import skillbill.desktop.core.data.service.JvmRuntimeScaffoldGateway
 import skillbill.desktop.core.data.service.JvmRuntimeSkillRemoveGateway
-import skillbill.desktop.core.data.service.RuntimeRepoBrowserService
+import skillbill.desktop.core.data.service.RuntimeAuthoringGateway
+import skillbill.desktop.core.data.service.RuntimeRepoSessionService
+import skillbill.desktop.core.data.service.RuntimeSkillTreeService
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceBaselineService
@@ -21,13 +23,13 @@ import software.amazon.lastmile.kotlin.inject.anvil.ContributesTo
 @ContributesTo(UserScope::class)
 interface JvmDataBindings {
   @Provides
-  fun RuntimeRepoBrowserService.bindRepoSessionService(): RepoSessionService = this
+  fun RuntimeRepoSessionService.bindRepoSessionService(): RepoSessionService = this
 
   @Provides
-  fun RuntimeRepoBrowserService.bindSkillTreeService(): SkillTreeService = this
+  fun RuntimeSkillTreeService.bindSkillTreeService(): SkillTreeService = this
 
   @Provides
-  fun RuntimeRepoBrowserService.bindAuthoringGateway(): AuthoringGateway = this
+  fun RuntimeAuthoringGateway.bindAuthoringGateway(): AuthoringGateway = this
 
   @Provides
   fun JvmRuntimeScaffoldGateway.bindRuntimeScaffoldGateway(): RuntimeScaffoldGateway = this

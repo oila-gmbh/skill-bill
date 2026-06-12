@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
@@ -16,7 +16,7 @@ import java.util.UUID
 
 @Inject
 class FileTelemetryConfigStore(
-  private val context: RuntimeContext,
+  private val context: EnvironmentContext,
 ) : TelemetryConfigStore {
   private val resolvedContext = context.withProcessDefaults()
 

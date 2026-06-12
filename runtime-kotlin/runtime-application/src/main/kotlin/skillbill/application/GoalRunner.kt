@@ -25,6 +25,8 @@ import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -34,6 +36,9 @@ import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.time.NoopRuntimeTimingPort
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.UnavailableSpecScratchStore
@@ -43,6 +48,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
+import kotlin.time.Duration.Companion.milliseconds
 
 @Inject
 class GoalRunner(
@@ -54,17 +60,18 @@ class GoalRunner(
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
   private val clock: java.time.Clock = java.time.Clock.systemUTC(),
+  private val timing: RuntimeTimingPort = NoopRuntimeTimingPort,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
-  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore)
-  private val log: java.util.logging.Logger = java.util.logging.Logger.getLogger(GoalRunner::class.java.name)
+  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
-    val ledger = GoalRunnerLedgerRecorder(outcomeStore, request)
+    val ledger = GoalRunnerLedgerRecorder(outcomeStore, request, diagnostics)
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
     val telemetryEmitter = if (terminalReport == null) {
       request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
@@ -558,10 +565,11 @@ class GoalRunner(
     val resolved = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(specPath))
     runCatching { specScratchStore.deleteFileIfExists(resolved) }
       .onFailure { error ->
-        log.log(java.util.logging.Level.WARNING, error) {
+        diagnostics.warning(
           "Goal linear-mode subtask spec scratch deletion at '$resolved' failed; the completed " +
-            "subtask is unaffected and the scratch can be cleaned up manually."
-        }
+            "subtask is unaffected and the scratch can be cleaned up manually.",
+          error,
+        )
       }
   }
 
@@ -575,10 +583,11 @@ class GoalRunner(
     val specDir = parentSpec.parent ?: return
     runCatching { specScratchStore.deleteDirectoryIfExists(specDir) }
       .onFailure { error ->
-        log.log(java.util.logging.Level.WARNING, error) {
+        diagnostics.warning(
           "Goal linear-mode spec scratch deletion at '$specDir' failed; the completed goal is " +
-            "unaffected and the scratch can be cleaned up manually."
-        }
+            "unaffected and the scratch can be cleaned up manually.",
+          error,
+        )
       }
   }
 
@@ -724,6 +733,8 @@ internal class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val timing: RuntimeTimingPort = NoopRuntimeTimingPort,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun subtaskLaunchRequest(
     issueKey: String,
@@ -745,6 +756,7 @@ internal class GoalRunnerLaunchReconciler(
       request = request,
       resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId?.takeIf(String::isNotBlank) },
       watermarkSeed = progressWatermark,
+      diagnostics = diagnostics,
     )
     return GoalRunnerSubtaskLaunchRequest(
       invokedAgentId = request.invokedAgentId,
@@ -941,16 +953,13 @@ internal class GoalRunnerLaunchReconciler(
     var attempts = 0
     while (candidate == null && attempts < NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS) {
       attempts += 1
-      try {
-        Thread.sleep(NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS)
-      } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-        attempts = NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS
-      }
-      if (!Thread.currentThread().isInterrupted) {
+      val waitResult = timing.wait(NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS.milliseconds)
+      if (waitResult == RuntimeWaitResult.COMPLETED) {
         val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
           ?: state
         candidate = storedOutcome(refreshed, subtaskId, request)
+      } else {
+        attempts = NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS
       }
     }
     return candidate

@@ -4,7 +4,8 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
+import skillbill.model.TransportContext
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetryClient
@@ -41,9 +42,16 @@ object JdkHttpRequester : HttpRequester {
 
 @Inject
 class HttpTelemetryClient(
-  private val context: RuntimeContext,
+  private val environmentContext: EnvironmentContext,
+  private val transportContext: TransportContext,
 ) : TelemetryClient {
-  private val resolvedContext = context.withProcessDefaults()
+  private val resolvedEnvironment = environmentContext.withProcessDefaults()
+  private val resolvedTransport =
+    if (transportContext.requester === UnconfiguredHttpRequester) {
+      transportContext.copy(requester = JdkHttpRequester)
+    } else {
+      transportContext
+    }
 
   constructor(
     requester: HttpRequester,
@@ -54,7 +62,7 @@ class HttpTelemetryClient(
     requester: HttpRequester,
     environment: Map<String, String>,
     userHome: Path,
-  ) : this(RuntimeContext(environment = environment, userHome = userHome, requester = requester))
+  ) : this(EnvironmentContext(environment = environment, userHome = userHome), TransportContext(requester = requester))
 
   override fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>) {
     require(settings.proxyUrl.isNotBlank()) { "Telemetry relay URL is not configured." }
@@ -68,7 +76,7 @@ class HttpTelemetryClient(
       url = settings.proxyUrl,
       payload = telemetryProxyBatchPayload(settings, rows).toPayload(),
       errorContext = errorContext,
-      requester = resolvedContext.requester,
+      requester = resolvedTransport.requester,
     )
   }
 
@@ -79,8 +87,8 @@ class HttpTelemetryClient(
       requestJsonGet(
         url = capabilitiesUrl,
         errorContext = "Telemetry proxy capabilities request",
-        headers = proxyAuthHeaders(resolvedContext.environment),
-        requester = resolvedContext.requester,
+        headers = proxyAuthHeaders(resolvedEnvironment.environment),
+        requester = resolvedTransport.requester,
       ).toMutableMap().apply {
         putIfAbsent("contract_version", TELEMETRY_PROXY_CONTRACT_VERSION)
         putIfAbsent("source", "remote_proxy")
@@ -127,8 +135,8 @@ class HttpTelemetryClient(
           groupBy = request.groupBy,
         ).toPayload(),
         errorContext = "Remote telemetry stats request",
-        headers = proxyAuthHeaders(resolvedContext.environment),
-        requester = resolvedContext.requester,
+        headers = proxyAuthHeaders(resolvedEnvironment.environment),
+        requester = resolvedTransport.requester,
       ).toMutableMap()
     val responseCapabilitiesPresent = payload.containsKey("capabilities")
     payload.putIfAbsent("workflow", request.workflow)
@@ -241,23 +249,17 @@ private fun bodyPublisher(bodyJson: String?): HttpRequest.BodyPublisher = if (bo
   HttpRequest.BodyPublishers.ofString(bodyJson)
 }
 
-private fun RuntimeContext.withProcessDefaults(): RuntimeContext {
+private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
   val withUserHome =
-    if (userHome == RuntimeContext.UnspecifiedUserHome) {
+    if (userHome == EnvironmentContext.UnspecifiedUserHome) {
       copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
     } else {
       copy(userHome = userHome.toAbsolutePath().normalize())
     }
-  return if (withUserHome.environment === RuntimeContext.UnspecifiedEnvironment) {
+  return if (withUserHome.environment === EnvironmentContext.UnspecifiedEnvironment) {
     withUserHome.copy(environment = System.getenv())
   } else {
     withUserHome
-  }.let { context ->
-    if (context.requester === UnconfiguredHttpRequester) {
-      context.copy(requester = JdkHttpRequester)
-    } else {
-      context
-    }
   }
 }
 

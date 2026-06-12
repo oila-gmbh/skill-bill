@@ -178,6 +178,56 @@ class RuntimeEnforcementHardeningArchitectureTest {
     )
   }
 
+  @Test
+  fun `runtime-contracts main source does not declare concrete schema or coherence validators`() {
+    val contractsMainRoot = runtimeRoot.resolve("runtime-contracts/src/main/kotlin")
+    val sourceFiles = kotlinFilesUnder(contractsMainRoot)
+    assertTrue(
+      sourceFiles.isNotEmpty(),
+      "runtime-contracts main source must resolve to at least one .kt file; a renamed or absent root would " +
+        "silently make this concrete-validator placement guard vacuous.",
+    )
+    val violations = sourceFiles
+      .flatMap { sourceFile ->
+        concreteContractValidatorDeclarations(sourceFile.readText()).map { declaration ->
+          "${runtimeRoot.relativize(sourceFile)} declares $declaration"
+        }
+      }
+      .sorted()
+
+    assertEquals(
+      emptyList(),
+      violations,
+      "runtime-contracts main source must not declare new concrete schema/coherence validators under " +
+        "skillbill.contracts.*. Put concrete validators behind the existing infra/domain-port ownership pattern.",
+    )
+  }
+
+  @Test
+  fun `runtime-contracts concrete-validator declaration scanner fires on synthetic fixture`() {
+    val fixture =
+      """
+      package skillbill.contracts.workflow
+
+      object NewSchemaValidator
+      open class NewWorkflowCoherenceValidator
+      interface ContractOnlySchemaValidator
+      abstract class AbstractContractCoherenceValidator
+      sealed class SealedContractSchemaValidator
+      class NewCoherenceValidator
+      """.trimIndent()
+
+    assertEquals(
+      listOf(
+        "skillbill.contracts.workflow.NewSchemaValidator",
+        "skillbill.contracts.workflow.NewWorkflowCoherenceValidator",
+        "skillbill.contracts.workflow.NewCoherenceValidator",
+      ),
+      concreteContractValidatorDeclarations(fixture),
+      "Concrete-validator declaration scanner must report new validator declarations under skillbill.contracts.*.",
+    )
+  }
+
   /**
    * SKILL-52.3 subtask 5 (AC1): source-text scan for inline fully-qualified
    * references to forbidden prefixes. Mirrors
@@ -223,6 +273,71 @@ class RuntimeEnforcementHardeningArchitectureTest {
     .map { match -> match.groupValues[1].substringBefore(" as ").trim() }
     .toList()
 
+  private fun concreteContractValidatorDeclarations(source: String): List<String> = PACKAGE_PATTERN.find(source)
+    ?.groupValues
+    ?.get(1)
+    ?.takeIf { packageName -> packageName.startsWith("skillbill.contracts.") }
+    ?.let { packageName ->
+      topLevelDeclarationNames(source)
+        .filter { declaration ->
+          declaration.name.endsWith("SchemaValidator") || declaration.name.endsWith("CoherenceValidator")
+        }
+        .map { declaration -> "$packageName.${declaration.name}" }
+    }
+    .orEmpty()
+
+  private fun topLevelDeclarationNames(source: String): List<KotlinDeclaration> {
+    var braceDepth = 0
+    var inBlockComment = false
+    val declarations = mutableListOf<KotlinDeclaration>()
+    source.lineSequence().forEach { rawLine ->
+      val line = rawLine.withoutCommentText(inBlockComment)
+      inBlockComment = line.inBlockComment
+      if (braceDepth == 0) line.topLevelConcreteDeclaration()?.let(declarations::add)
+      braceDepth += line.text.count { character -> character == '{' }
+      braceDepth -= line.text.count { character -> character == '}' }
+      if (braceDepth < 0) braceDepth = 0
+    }
+    return declarations
+  }
+
+  private fun String.withoutCommentText(startsInBlockComment: Boolean): SourceLine {
+    var remaining = this
+    var inBlockComment = startsInBlockComment
+    val output = StringBuilder()
+    while (remaining.isNotEmpty()) {
+      if (inBlockComment) {
+        val end = remaining.indexOf("*/")
+        if (end == -1) return SourceLine(output.toString(), inBlockComment = true)
+        remaining = remaining.drop(end + 2)
+        inBlockComment = false
+      } else {
+        val lineComment = remaining.indexOf("//").takeUnless { index -> index == -1 } ?: remaining.length
+        val blockComment = remaining.indexOf("/*").takeUnless { index -> index == -1 } ?: remaining.length
+        when {
+          lineComment < blockComment -> {
+            output.append(remaining.take(lineComment))
+            remaining = ""
+          }
+          blockComment < remaining.length -> {
+            output.append(remaining.take(blockComment))
+            remaining = remaining.drop(blockComment + 2)
+            inBlockComment = true
+          }
+          else -> {
+            output.append(remaining)
+            remaining = ""
+          }
+        }
+      }
+    }
+    return SourceLine(output.toString(), inBlockComment)
+  }
+
+  private fun SourceLine.topLevelConcreteDeclaration(): KotlinDeclaration? = TOP_LEVEL_DECLARATION_PATTERN.find(text)
+    ?.toKotlinDeclaration()
+    ?.takeIf(KotlinDeclaration::isConcrete)
+
   private fun kotlinFilesUnder(root: Path): List<Path> {
     if (!Files.exists(root)) return emptyList()
     return Files.walk(root).use { paths ->
@@ -232,7 +347,26 @@ class RuntimeEnforcementHardeningArchitectureTest {
     }
   }
 
+  private data class SourceLine(val text: String, val inBlockComment: Boolean)
+  private data class KotlinDeclaration(val modifiers: Set<String>, val kind: String, val name: String) {
+    val isConcrete: Boolean
+      get() = kind != "interface" && "abstract" !in modifiers && "sealed" !in modifiers
+  }
+
   private companion object {
+    val PACKAGE_PATTERN: Regex = Regex("""^\s*package\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
+    val TOP_LEVEL_DECLARATION_PATTERN: Regex =
+      Regex(
+        """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
+          """(class|object|interface)\s+([A-Za-z_][A-Za-z0-9_]*)\b""",
+      )
+
+    fun MatchResult.toKotlinDeclaration(): KotlinDeclaration = KotlinDeclaration(
+      modifiers = groupValues[1].split(Regex("""\s+""")).filter { modifier -> modifier.isNotBlank() }.toSet(),
+      kind = groupValues[2],
+      name = groupValues[3],
+    )
+
     /**
      * SKILL-52.3 subtask 5 (AC3): import-line pattern matching
      * `RuntimeArchitectureTest.importPattern`. The capture stops at the first

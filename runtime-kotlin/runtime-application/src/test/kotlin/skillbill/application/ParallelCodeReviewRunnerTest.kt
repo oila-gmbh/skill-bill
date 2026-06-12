@@ -11,14 +11,17 @@ import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricPort
+import skillbill.ports.review.model.ParallelReviewLaneOutcome
+import skillbill.ports.review.model.ParallelReviewLaneRunRequest
+import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -297,12 +300,7 @@ class ParallelCodeReviewRunnerTest {
 
   @Test
   fun `coordinator timeout cancels blocking lane and produces failed outcome`() {
-    val blockLane = CountDownLatch(1)
     val launcher = GoalRunnerSubtaskLauncher { request ->
-      if (request.invokedAgentId == "claude") {
-        @Suppress("ControlFlowWithEmptyBody")
-        blockLane.await()
-      }
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
         exitStatus = 0,
@@ -312,12 +310,20 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(
+      launcher,
+      diffResolver = RecordingDiffResolver(default = "diff body"),
+      parallelLaneRunner = StaticParallelLaneRunner(
+        ParallelReviewLaneRunResult(
+          lane1 = ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)"),
+          lane2 = ParallelReviewLaneOutcome(true, ""),
+        ),
+      ),
+    )
 
     val result = runner.run(
       baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, timeout = 1.seconds),
     )
-    blockLane.countDown()
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "timed out")
@@ -390,11 +396,13 @@ class ParallelCodeReviewRunnerTest {
     catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
     diffResolver: DiffResolverPort = RealProcessDiffResolver(),
     rubricPort: ReviewRubricPort = ReviewRubricPort { emptyList() },
+    parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
     subtaskLauncher = launcher,
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
     rubricPort = rubricPort,
+    parallelLaneRunner = parallelLaneRunner,
   )
 
   private fun baseRequest(
@@ -474,6 +482,27 @@ private class RecordingDiffResolver(
     calls += args
     return if (responses.containsKey(args)) responses[args] else default
   }
+}
+
+private class TestParallelLaneRunner : ParallelReviewLaneRunner {
+  override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
+    ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
+
+  private fun runLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
+    lane()
+  } catch (e: Exception) {
+    ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "lane launch threw ${e::class.simpleName}: ${e.message ?: "no detail"}",
+    )
+  }
+}
+
+private class StaticParallelLaneRunner(
+  private val result: ParallelReviewLaneRunResult,
+) : ParallelReviewLaneRunner {
+  override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult = result
 }
 
 private class RealProcessDiffResolver : DiffResolverPort {

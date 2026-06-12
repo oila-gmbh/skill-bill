@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import org.junit.jupiter.api.io.TempDir
 import skillbill.contracts.JsonSupport
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.STATE_DIR_ENVIRONMENT_KEY
@@ -100,7 +100,7 @@ class FileTelemetryConfigStoreTest {
 
   private fun storeFor(tempDir: Path, configPath: Path, installIdEnv: String): FileTelemetryConfigStore =
     FileTelemetryConfigStore(
-      RuntimeContext(
+      EnvironmentContext(
         environment = mapOf(
           CONFIG_ENVIRONMENT_KEY to configPath.toString(),
           STATE_DIR_ENVIRONMENT_KEY to tempDir.toString(),

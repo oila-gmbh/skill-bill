@@ -137,20 +137,20 @@ class ClaudeConfigRootsTest {
     val claudeTargets = detectAgents(home, environment = emptyMap()).filter { it.name == "claude" }
 
     assertEquals(
-      listOf(home.resolve(".claude/commands"), work.resolve("commands")).map { it.toAbsolutePath().normalize() },
+      listOf(home.resolve(".claude/skills"), work.resolve("skills")).map { it.toAbsolutePath().normalize() },
       claudeTargets.map { it.path.toAbsolutePath().normalize() },
     )
   }
 
   @Test
-  fun `single-profile detection matches baseline single commands target`() {
+  fun `single-profile detection matches baseline single skills target`() {
     val home = Files.createTempDirectory("skillbill-roots-baseline")
     Files.createDirectories(home.resolve(".claude"))
 
     val claudeTargets = detectAgents(home, environment = emptyMap()).filter { it.name == "claude" }
 
     assertEquals(1, claudeTargets.size)
-    assertEquals(home.resolve(".claude/commands").toAbsolutePath().normalize(), claudeTargets.single().path)
+    assertEquals(home.resolve(".claude/skills").toAbsolutePath().normalize(), claudeTargets.single().path)
   }
 
   @Test
@@ -160,7 +160,7 @@ class ClaudeConfigRootsTest {
     markedProfile(home, ".claude-work")
 
     assertEquals(
-      home.resolve(".claude/commands"),
+      home.resolve(".claude/skills"),
       InstallOperations.agentPath("claude", home, environment = emptyMap()),
     )
     assertEquals(

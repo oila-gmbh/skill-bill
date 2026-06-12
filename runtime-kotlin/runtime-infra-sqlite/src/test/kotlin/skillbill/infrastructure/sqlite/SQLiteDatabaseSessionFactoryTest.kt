@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.nio.file.Files
 import kotlin.test.Test
@@ -13,7 +13,7 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `transaction rolls back repository writes when the use case fails`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-session")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(RuntimeContext(userHome = tempDir))
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
 
     assertFailsWith<IllegalStateException> {
       database.transaction(dbPath.toString()) { unitOfWork ->
@@ -47,7 +47,7 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `resolve path and existence are provided by the database session factory`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-session-path")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(RuntimeContext(userHome = tempDir))
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
 
     assertEquals(dbPath.toAbsolutePath().normalize(), database.resolveDbPath(dbPath.toString()))
     assertEquals(false, database.databaseExists(dbPath.toString()))

@@ -508,18 +508,21 @@ remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
 # Clean skill links from every Claude config root the runtime discovers (default ~/.claude, named
 # ~/.claude-<name> profiles, and CLAUDE_CONFIG_DIR), not just one pinned root, so multi-profile
 # installs are fully removed.
-remove_from_claude_command_roots() {
+remove_from_claude_skill_roots() {
   local roots root
   roots="$(run_runtime_cli install claude-roots 2>/dev/null)" || return 0
   [[ -z "$roots" ]] && return 0
   while IFS= read -r root; do
     [[ -n "$root" ]] || continue
+    remove_from_agent_dir "claude" "$root/skills"
+    # Legacy: pre-skills installs linked into the sibling commands dir. Sweep it so upgraded
+    # uninstalls fully remove old slash-command links too.
     remove_from_agent_dir "claude" "$root/commands"
   done <<< "$roots"
 }
-remove_from_claude_command_roots
+remove_from_claude_skill_roots
 # TODO(SKILL-34-followup): remove GLM cleanup branch on or after 2026-08-02 (one deprecation window).
-info "GLM is no longer a first-class supported agent. If you used Skill Bill with GLM as a model inside Claude Code, your skills are unaffected — they live under the Claude Code commands directory."
+info "GLM is no longer a first-class supported agent. If you used Skill Bill with GLM as a model inside Claude Code, your skills are unaffected — they live under the Claude Code skills directory."
 remove_from_agent_dir "glm" "$HOME/.glm/commands"
 remove_from_agent_dir "codex" "$HOME/.codex/skills"
 remove_from_agent_dir "codex" "$HOME/.agents/skills"

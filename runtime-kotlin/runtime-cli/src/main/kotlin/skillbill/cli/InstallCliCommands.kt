@@ -36,6 +36,7 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.install.model.NativeAgentLinkOutcome
 import skillbill.ports.install.model.NativeAgentLinkProvider
@@ -208,7 +209,7 @@ class InstallReconcileCommand(
 @Inject
 class InstallApplyCommand(
   private val state: CliRunState,
-  private val runtimeContext: RuntimeContext,
+  private val runtimeContext: EnvironmentContext,
   private val installService: InstallService,
 ) : InstallRequestCommand("apply", "Apply a governed Skill Bill install through the shared runtime contract.") {
   override fun run() {
@@ -225,7 +226,7 @@ class InstallApplyCommand(
   }
 
   private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
-    val reboundContext = runtimeContext.copy(
+    val reboundContext = RuntimeContext(
       dbPathOverride = state.dbOverride ?: runtimeContext.dbPathOverride,
       userHome = plan.request.home,
     )

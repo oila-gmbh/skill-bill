@@ -7,13 +7,13 @@ import skillbill.goalrunner.model.GoalSessionAccountingFields
 import skillbill.goalrunner.model.GoalSessionAccountingParser
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import java.time.Instant
-import java.util.logging.Level
-import java.util.logging.Logger
 
 /**
  * SKILL-64 Subtask 3 (AC6, AC7, AC10, AC11): isolates the durable side effects
@@ -28,6 +28,7 @@ import java.util.logging.Logger
 internal class GoalRunnerLedgerRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // SKILL-64 Subtask 3 (F-D01): the durable attempt ledger and session
   // accounting are append-only across resume runs. Seed each monotonic counter
@@ -39,7 +40,6 @@ internal class GoalRunnerLedgerRecorder(
   }.getOrNull()
   private var accountingSequence: Int = watermarks?.maxAccountingSequence?.let { it + 1 } ?: 0
   private var ledgerSequence: Int = watermarks?.maxLedgerSequence?.let { it + 1 } ?: 0
-  private val log: Logger = Logger.getLogger(GoalRunnerLedgerRecorder::class.java.name)
 
   fun recordAccounting(workflowId: String, subtaskId: Int, phase: String, launchOutcome: AgentRunLaunchOutcome) {
     val facts = launchOutcome as? AgentRunLaunchFacts
@@ -132,8 +132,7 @@ internal class GoalRunnerLedgerRecorder(
   // thrown failure and a false return (workflow not found). The message carries
   // only workflowId/action/subtaskId — never secrets or prompt content.
   private fun logBestEffortFailure(action: String, workflowId: String, subtaskId: Int, error: Throwable) {
-    log.log(
-      Level.WARNING,
+    diagnostics.warning(
       "Best-effort goal ledger write failed: action='$action' workflowId='$workflowId' subtaskId=$subtaskId " +
         "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
       error,
@@ -141,8 +140,7 @@ internal class GoalRunnerLedgerRecorder(
   }
 
   private fun logBestEffortMissingWorkflow(action: String, workflowId: String, subtaskId: Int) {
-    log.log(
-      Level.WARNING,
+    diagnostics.warning(
       "Best-effort goal ledger write skipped (workflow not found): action='$action' " +
         "workflowId='$workflowId' subtaskId=$subtaskId",
     )

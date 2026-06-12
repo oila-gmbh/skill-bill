@@ -1,7 +1,5 @@
 package skillbill.desktop.core.domain.service
 
-import java.nio.file.Path
-
 /**
  * SKILL-77 Subtask 4: reports which skills under an open workspace are locally modified
  * relative to the SKILL-76 baseline manifest. Returns an empty set for clone sessions
@@ -14,5 +12,5 @@ interface InstalledWorkspaceBaselineService {
    * baseline. Empty when [workspaceRoot] is not the installed workspace or no baseline
    * manifest exists.
    */
-  fun modifiedSkillRelativePaths(workspaceRoot: Path): Set<String>
+  fun modifiedSkillRelativePaths(workspaceRoot: String): Set<String>
 }

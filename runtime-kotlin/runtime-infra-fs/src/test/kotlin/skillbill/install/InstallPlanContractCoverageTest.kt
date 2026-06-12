@@ -122,7 +122,7 @@ class InstallPlanContractCoverageTest {
     assertEquals(
       listOf(
         fixture.home.resolve(".copilot/skills"),
-        fixture.home.resolve(".claude/commands"),
+        fixture.home.resolve(".claude/skills"),
         fixture.home.resolve(".codex/skills"),
         fixture.home.resolve(".config/opencode/skills"),
         fixture.home.resolve(".junie/skills"),

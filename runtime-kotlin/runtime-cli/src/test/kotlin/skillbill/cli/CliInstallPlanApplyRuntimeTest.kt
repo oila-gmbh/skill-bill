@@ -57,7 +57,7 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals(supportedAgents, agentsByName.keys)
     assertTrue(payload.agents().all { agent -> agent["source"] == "manual" })
     assertEquals(fixture.home.resolve(".copilot/skills").toString(), agentsByName.getValue("copilot")["path"])
-    assertEquals(fixture.home.resolve(".claude/commands").toString(), agentsByName.getValue("claude")["path"])
+    assertEquals(fixture.home.resolve(".claude/skills").toString(), agentsByName.getValue("claude")["path"])
     assertEquals(fixture.home.resolve(".agents/skills").toString(), agentsByName.getValue("codex")["path"])
     assertEquals(fixture.home.resolve(".config/opencode/skills").toString(), agentsByName.getValue("opencode")["path"])
     assertEquals(fixture.home.resolve(".junie/skills").toString(), agentsByName.getValue("junie")["path"])

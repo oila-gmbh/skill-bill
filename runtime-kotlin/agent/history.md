@@ -1,3 +1,40 @@
+## [2026-06-12] SKILL-52.4 tier4-records
+Areas: runtime-kotlin/agent, runtime-kotlin/runtime-core, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-52.4-hexagon-leak-closure-followups
+- Recorded F16/F17 runtime boundary decisions with revisit triggers; retain split runtime-contracts packages for resource-path stability and keep infra-fs unsplit until a real second adapter boundary emerges.
+- RuntimeEnforcementHardeningArchitectureTest now rejects new `skillbill.contracts.*` validator types in runtime-contracts main source; contract validators belong outside that module. reusable
+- ARCHITECTURE documents `toPayload()` as the only sanctioned presentation-in-ports shape, bounded by the open-boundary allow-list.
+- Filed F15 adapter-mapper migration and F18 CLI/MCP policy-result mapper consolidation follow-up specs, and registered them in the decomposition manifest.
+Feature flag: N/A
+Acceptance criteria: 2/2 implemented
+
+## [2026-06-12] SKILL-52.4 god-object-decomposition
+Areas: runtime-kotlin/runtime-desktop/core/data, runtime-kotlin/runtime-desktop/feature/skillbill, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-core, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-*
+- RuntimeRepoBrowserService is now a small compatibility facade over session, tree, authoring, store, model, and presenter collaborators; keep repo-browser ownership split by operation type. reusable
+- SkillBillViewModel and SkillBillFrame are thin shells under the size target; state/controllers and UI panes own focused behavior while the shell retains SKILL-44 operation-token and busy-slot invariants. reusable
+- RuntimeContext is composed once at the root from EnvironmentContext, TransportContext, WorkflowOpsContext, and OptionalCallbacks; consumers should request only the sub-context they actually use. reusable
+- Golden, MCP, install-plan, workflow snapshot, and desktop behavior surfaces stayed byte-identical; upstream audit still carried a behavior-preservation caveat for downstream review.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented per implement/validate phases
+
+## [2026-06-11] SKILL-52.4 application-env-seam
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core
+- Runtime-application timing, diagnostics, and parallel review lane execution now route through ports; keep direct `Thread.sleep`, JDK logging, `getLogger`, executor, and threading APIs outside application main. reusable
+- `RuntimeTimingPort`, `RuntimeDiagnostics`, and `ParallelReviewLaneRunner` are the seams; infra-fs owns the JDK adapters and runtime-core owns DI wiring. reusable
+- `GoalRunner.waitForLateTerminalOutcome` is synthetic-time testable with no wall-clock delay; production constants stay in the real timing adapter.
+- The runtime-application architecture scan is non-vacuous over all main Kotlin files, including progress, ledger, telemetry, and gate collaborators.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-06-11] SKILL-52.4 enforcement-gates
+Areas: runtime-kotlin/runtime-core, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-mcp, runtime-kotlin/ARCHITECTURE.md
+- Runtime package ownership is now complete-enforced: every declared main Kotlin source root must map to `RuntimeModule.declaredSubsystemPackages`; keep `RuntimeModule`, `RuntimeArchitectureDocumentationTest`, MCP smoke literals, and ARCHITECTURE package blocks in lockstep. reusable
+- Raw-map public-boundary scanning now catches `Map<String, Any>`, string-keyed `HashMap`/`LinkedHashMap`/`MutableMap` variants, star variants, and file-local typealias laundering; new exceptions require the existing three-place allow-list/doc/test parity. reusable
+- Inner-layer test roots for application/domain/ports now reject imports from infrastructure, CLI, MCP, and desktop packages so tests exercise inward-facing seams instead of adapter internals. reusable
+- Main-source Gradle project dependency allow-lists now cover all declared runtime modules, not just adapters; new project edges must be intentional and reflected in the per-module test allow-list.
+- Known limitation: red-first `skillbill.goalrunner` failure was identified but not preserved as a separate failing-run artifact; final enforcing gates and full validation passed.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-11] SKILL-78 feature-task-mode-workflow-table
 Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, orchestration/contracts, skills/bill-feature-task*
 - Feature-task prose and runtime workflows now persist in one `feature_task_workflows` table with `workflow_name=bill-feature-task`, explicit `mode=prose|runtime`, and `implementation_skill` for the selected implementation. reusable

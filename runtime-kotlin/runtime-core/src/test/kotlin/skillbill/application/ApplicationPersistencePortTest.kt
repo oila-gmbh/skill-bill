@@ -26,7 +26,7 @@ import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
-import skillbill.model.RuntimeContext
+import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -176,7 +176,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
     val service =
       ReviewService(
-        RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-fake")),
+        EnvironmentContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-fake")),
         database,
         FakeTelemetrySettingsProvider(enabled = false),
         FakeReviewInputSource,
@@ -1243,7 +1243,7 @@ class ApplicationPersistencePortTest {
     )
     val database = FakeDatabaseSessionFactory(reviews = FakeGoalStatsReviewRepository(seededStats))
     val service = ReviewService(
-      RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-goal")),
+      EnvironmentContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-app-goal")),
       database,
       FakeTelemetrySettingsProvider(enabled = false),
       FakeReviewInputSource,
