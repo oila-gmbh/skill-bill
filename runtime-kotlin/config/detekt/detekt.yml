@@ -16,8 +16,23 @@ complexity:
     active: true
     functionThreshold: 6
     constructorThreshold: 7
+  # Default NestedBlockDepth=4 is too tight for coroutine+lambda code; raised to 6.
+  NestedBlockDepth:
+    active: true
+    threshold: 6
 
 naming:
   FunctionNaming:
     ignoreAnnotated:
       - Composable
+
+style:
+  # Explicit declaration matching the ktlint/spotless 120-char limit.
+  # Spotless runs before detekt, so violations here are edge cases (long strings, comments).
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+  # Default ReturnCount=2 is too tight for Kotlin guard-clause patterns; raised to 4.
+  ReturnCount:
+    active: true
+    max: 4
