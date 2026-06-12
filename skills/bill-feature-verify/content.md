@@ -29,7 +29,7 @@ After every major phase boundary, call `feature_verify_workflow_update` with:
 
 Workflow state is independent of telemetry settings. Persist it even when `feature_verify_started` or `feature_verify_finished` returns `status: skipped`.
 
-Stable step ids: `collect_inputs`, `extract_criteria`, `gather_diff`, `feature_flag_audit`, `code_review`, `completeness_audit`, `verdict`, `finish`. Stable artifact names: `input_context`, `criteria_summary`, `diff_summary`, `feature_flag_audit_result`, `review_result`, `completeness_audit_result`, `verdict_result`.
+Stable step ids: `collect_inputs`, `extract_criteria`, `gather_diff`, `feature_flag_audit`, `code_review`, `unit_test_value_check`, `completeness_audit`, `verdict`, `finish`. Stable artifact names: `input_context`, `criteria_summary`, `diff_summary`, `feature_flag_audit_result`, `review_result`, `unit_test_value_result`, `completeness_audit_result`, `verdict_result`.
 
 ## Continuation Mode
 
@@ -115,9 +115,19 @@ Run `bill-code-review` against the PR diff. Follow the full skill instructions i
 
 When this skill runs `bill-code-review`, this skill is itself a parent. Pass `orchestrated=true` to `import_review` and `triage_findings`, collect the returned `telemetry_payload`, and store it alongside `review_result` so the verify workflow remains the lifecycle owner.
 
-Persist `review_result` after review finishes. Update workflow state so `code_review` is completed and `completeness_audit` is running.
+Persist `review_result` after review finishes. Update workflow state so `code_review` is completed and `unit_test_value_check` is running.
 
-## Step 6: Completeness Audit
+## Step 6: Unit Test Value Check
+
+Step id: `unit_test_value_check`
+
+Primary artifact: `unit_test_value_result`
+
+Run `bill-unit-test-value-check` against the PR diff. If the diff contains no unit tests, persist a skipped `unit_test_value_result` that names the reviewed scope and states that no unit tests were present. If unit tests are present, preserve the skill's verdict, table findings, keep/rewrite/delete guidance, and missing high-value cases in `unit_test_value_result`.
+
+Persist `unit_test_value_result` after the check finishes. Update workflow state so `unit_test_value_check` is completed or skipped and `completeness_audit` is running.
+
+## Step 7: Completeness Audit
 
 Step id: `completeness_audit`
 
@@ -125,9 +135,9 @@ Primary artifact: `completeness_audit_result`
 
 Use the Completeness Audit rubric below for the audit format and rules.
 
-Persist `completeness_audit_result` when the audit succeeds. When the verify target changes materially during the same session, loop back to `gather_diff` or `code_review` and increment the next step's `attempt_count`. Otherwise, update workflow state so `completeness_audit` is completed and `verdict` is running.
+Persist `completeness_audit_result` when the audit succeeds. When the verify target changes materially during the same session, loop back to `gather_diff`, `code_review`, or `unit_test_value_check` and increment the next step's `attempt_count`. Otherwise, update workflow state so `completeness_audit` is completed and `verdict` is running.
 
-## Step 7: Consolidated Verdict
+## Step 8: Consolidated Verdict
 
 Step id: `verdict`
 
@@ -144,7 +154,7 @@ This skill emits `skillbill_feature_verify_started` and `_finished` events via t
 Skill-specific telemetry fields, standalone invocation:
 
 1. Call `feature_verify_started` after Step 2 (criteria confirmed) with `acceptance_criteria_count`, `rollout_relevant`, and `spec_summary`. Save the returned `session_id`.
-2. Call `feature_verify_finished` after Step 7 (verdict delivered) with `session_id`, `feature_flag_audit_performed`, `review_iterations`, `audit_result` (`all_pass` / `had_gaps` / `skipped`), `completion_status` (`completed` / `abandoned_at_review` / `abandoned_at_audit` / `error`), `history_relevance` (`none` / `irrelevant` / `low` / `medium` / `high`), `history_helpfulness` (`none` / `irrelevant` / `low` / `medium` / `high`), and optional `gaps_found` list.
+2. Call `feature_verify_finished` after Step 8 (verdict delivered) with `session_id`, `feature_flag_audit_performed`, `review_iterations`, `audit_result` (`all_pass` / `had_gaps` / `skipped`), `completion_status` (`completed` / `abandoned_at_review` / `abandoned_at_audit` / `error`), `history_relevance` (`none` / `irrelevant` / `low` / `medium` / `high`), `history_helpfulness` (`none` / `irrelevant` / `low` / `medium` / `high`), and optional `gaps_found` list.
 
 Orchestrated invocation (when called from another workflow that passes `orchestrated=true`):
 
@@ -240,6 +250,9 @@ FEATURE VERIFY: <feature name>
 
 --- CODE REVIEW ---
 <risk register and action items>
+
+--- UNIT TEST VALUE ---
+<unit test value result, or "N/A — no unit tests changed">
 
 --- VERDICT ---
 <one of:>

@@ -238,6 +238,7 @@ $defs:
           - gather_diff
           - feature_flag_audit
           - code_review
+          - unit_test_value_check
           - completeness_audit
           - verdict
           - finish
@@ -255,6 +256,7 @@ $defs:
                     - gather_diff
                     - feature_flag_audit
                     - code_review
+                    - unit_test_value_check
                     - completeness_audit
                     - verdict
                     - finish
@@ -387,7 +389,7 @@ x-coherence-checks:
     description: >
       The two shipped workflow families ship divergent enums:
       `bill-feature-task` has 12 step ids and 6 workflow statuses
-      (including `blocked`), while `bill-feature-verify` has 8 step ids
+      (including `blocked`), while `bill-feature-verify` has 9 step ids
       and 5 workflow statuses (no `blocked`). The schema encodes this
       with `oneOf` keyed on `workflow_name` so a `verify` snapshot
       carrying `workflow_status="blocked"` is rejected even though

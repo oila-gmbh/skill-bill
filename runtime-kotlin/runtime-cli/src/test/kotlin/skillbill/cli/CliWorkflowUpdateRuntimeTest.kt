@@ -74,14 +74,26 @@ class CliWorkflowUpdateRuntimeTest {
       "--step-updates",
       """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
       "--artifacts-patch",
-      """{"criteria_summary":{},"diff_summary":{},"review_result":{},"completeness_audit_result":{}}""",
+      "{" +
+        "\"criteria_summary\":{}," +
+        "\"diff_summary\":{}," +
+        "\"review_result\":{}," +
+        "\"unit_test_value_result\":{}," +
+        "\"completeness_audit_result\":{}" +
+        "}",
       "--format",
       "json",
     )
     assertCompactUpdate(
       payload = update,
       stepId = "verdict",
-      artifactKeys = listOf("completeness_audit_result", "criteria_summary", "diff_summary", "review_result"),
+      artifactKeys = listOf(
+        "completeness_audit_result",
+        "criteria_summary",
+        "diff_summary",
+        "review_result",
+        "unit_test_value_result",
+      ),
       readOnlyCommand = "skill-bill --db '$dbPath' verify-workflow show '$workflowId' --format json",
     )
   }

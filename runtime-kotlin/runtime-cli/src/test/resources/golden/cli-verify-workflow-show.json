@@ -36,6 +36,11 @@
     {
       "attempt_count": 0,
       "status": "pending",
+      "step_id": "unit_test_value_check"
+    },
+    {
+      "attempt_count": 0,
+      "status": "pending",
       "step_id": "completeness_audit"
     },
     {

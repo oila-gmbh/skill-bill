@@ -69,6 +69,7 @@ class FeatureVerifyWorkflowRuntimeTest {
             "criteria_summary" to mapOf("criteria" to 3),
             "diff_summary" to mapOf("files" to 4),
             "completeness_audit_result" to mapOf("result" to "pass"),
+            "unit_test_value_result" to mapOf("overall_verdict" to "Strong"),
           ),
           sessionId = "",
         ),
@@ -78,7 +79,13 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     assertEquals("reopened", decision.view.continueStatus)
     assertEquals(
-      listOf("criteria_summary", "diff_summary", "review_result", "completeness_audit_result"),
+      listOf(
+        "criteria_summary",
+        "diff_summary",
+        "review_result",
+        "unit_test_value_result",
+        "completeness_audit_result",
+      ),
       decision.view.stepArtifactKeys,
     )
     assertTrue(decision.view.continueStepDirective.contains("final verdict"))
@@ -113,8 +120,8 @@ class FeatureVerifyWorkflowRuntimeTest {
       definition.continuationDirectives["code_review"],
     )
     assertEquals(
-      "Reuse the saved review and audit artifacts to produce the final verdict without rerunning earlier steps " +
-        "unless recovery made them stale.",
+      "Reuse the saved review, unit test value, and audit artifacts to produce the final verdict without rerunning " +
+        "earlier steps unless recovery made them stale.",
       definition.continuationDirectives["verdict"],
     )
   }

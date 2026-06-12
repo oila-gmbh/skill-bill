@@ -637,7 +637,13 @@ class CliRuntimeTest {
       "--step-updates",
       """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
       "--artifacts-patch",
-      """{"criteria_summary":{},"diff_summary":{},"review_result":{},"completeness_audit_result":{}}""",
+      "{" +
+        "\"criteria_summary\":{}," +
+        "\"diff_summary\":{}," +
+        "\"review_result\":{}," +
+        "\"unit_test_value_result\":{}," +
+        "\"completeness_audit_result\":{}" +
+        "}",
       "--format",
       "json",
     )

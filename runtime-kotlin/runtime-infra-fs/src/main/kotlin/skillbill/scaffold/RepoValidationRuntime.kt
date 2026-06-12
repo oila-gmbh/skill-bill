@@ -534,6 +534,7 @@ object RepoValidationRuntime {
       "skills/bill-feature-verify/content.md" to listOf(
         "Step id: `collect_inputs`",
         "Step id: `code_review`",
+        "Step id: `unit_test_value_check`",
         "Step id: `verdict`",
         "feature_verify_workflow_open",
         "feature_verify_workflow_update",
@@ -543,6 +544,7 @@ object RepoValidationRuntime {
         "`criteria_summary`",
         "`diff_summary`",
         "`review_result`",
+        "`unit_test_value_result`",
         "`completeness_audit_result`",
         "`verdict_result`",
       ),

@@ -270,7 +270,7 @@ Both `anonymous` and `full`:
 The feature-verify workflow emits two events per standalone session:
 
 - `skillbill_feature_verify_started` — emitted after Step 2 (acceptance criteria confirmed)
-- `skillbill_feature_verify_finished` — emitted after Step 7 (verdict delivered) or when the workflow ends early
+- `skillbill_feature_verify_finished` — emitted after Step 8 (verdict delivered) or when the workflow ends early
 
 Session id format: `fvr-YYYYMMDD-HHMMSS-XXXX`.
 

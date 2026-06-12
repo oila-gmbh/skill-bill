@@ -1100,6 +1100,7 @@ class ApplicationPersistencePortTest {
           "criteria_summary" to emptyMap<String, Any?>(),
           "diff_summary" to emptyMap(),
           "review_result" to emptyMap(),
+          "unit_test_value_result" to emptyMap(),
           "completeness_audit_result" to emptyMap(),
         ),
       ),

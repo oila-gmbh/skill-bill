@@ -20,6 +20,7 @@ object FeatureVerifyWorkflowDefinition {
       "gather_diff",
       "feature_flag_audit",
       "code_review",
+      "unit_test_value_check",
       "completeness_audit",
       "verdict",
       "finish",
@@ -31,8 +32,9 @@ object FeatureVerifyWorkflowDefinition {
       "gather_diff" to "Step 3: Gather PR Diff",
       "feature_flag_audit" to "Step 4: Feature Flag Audit",
       "code_review" to "Step 5: Code Review",
-      "completeness_audit" to "Step 6: Completeness Audit",
-      "verdict" to "Step 7: Consolidated Verdict",
+      "unit_test_value_check" to "Step 6: Unit Test Value Check",
+      "completeness_audit" to "Step 7: Completeness Audit",
+      "verdict" to "Step 8: Consolidated Verdict",
       "finish" to "Finish",
     ),
     requiredArtifactsByStep =
@@ -42,8 +44,9 @@ object FeatureVerifyWorkflowDefinition {
       "gather_diff" to listOf("input_context", "criteria_summary"),
       "feature_flag_audit" to listOf("criteria_summary", "diff_summary"),
       "code_review" to listOf("criteria_summary", "diff_summary"),
-      "completeness_audit" to listOf("criteria_summary", "diff_summary", "review_result"),
-      "verdict" to listOf("criteria_summary", "review_result", "completeness_audit_result"),
+      "unit_test_value_check" to listOf("diff_summary", "review_result"),
+      "completeness_audit" to listOf("criteria_summary", "diff_summary", "review_result", "unit_test_value_result"),
+      "verdict" to listOf("criteria_summary", "review_result", "unit_test_value_result", "completeness_audit_result"),
       "finish" to listOf("verdict_result"),
     ),
     resumeActions =
@@ -57,10 +60,15 @@ object FeatureVerifyWorkflowDefinition {
         "Reuse criteria_summary and diff_summary, run the audit if still required, and persist the result.",
       "code_review" to
         "Reuse criteria_summary and diff_summary, then invoke bill-code-review and persist review_result.",
+      "unit_test_value_check" to
+        "Reuse diff_summary and review_result, then invoke bill-unit-test-value-check and persist " +
+        "unit_test_value_result.",
       "completeness_audit" to
-        "Reuse criteria_summary, diff_summary, and review_result, then persist completeness_audit_result.",
+        "Reuse criteria_summary, diff_summary, review_result, and unit_test_value_result, then persist " +
+        "completeness_audit_result.",
       "verdict" to
-        "Reuse saved review and audit artifacts, then write the final verdict without rerunning earlier phases.",
+        "Reuse saved review, unit test value, and audit artifacts, then write the final verdict without rerunning " +
+        "earlier phases.",
       "finish" to "Close the workflow by marking the verdict complete and emitting the terminal summary.",
     ),
     continuationReferenceSections =
@@ -78,14 +86,20 @@ object FeatureVerifyWorkflowDefinition {
         "content.md :: Step 5: Code Review",
         "content.md :: Nested child tools",
       ),
+      "unit_test_value_check" to listOf(
+        "content.md :: Continuation Mode",
+        "content.md :: Step 6: Unit Test Value Check",
+        "skills/bill-unit-test-value-check/content.md :: Workflow",
+        "skills/bill-unit-test-value-check/content.md :: Output",
+      ),
       "completeness_audit" to listOf(
         "content.md :: Continuation Mode",
-        "content.md :: Step 6: Completeness Audit",
+        "content.md :: Step 7: Completeness Audit",
         "content.md :: Completeness Audit",
       ),
       "verdict" to listOf(
         "content.md :: Continuation Mode",
-        "content.md :: Step 7: Consolidated Verdict",
+        "content.md :: Step 8: Consolidated Verdict",
         "content.md :: Consolidated Verdict",
       ),
       "finish" to listOf("content.md :: Telemetry", "content.md :: Workflow State"),
@@ -107,12 +121,15 @@ object FeatureVerifyWorkflowDefinition {
       "code_review" to
         "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
         "and store the returned telemetry payload with the review result.",
+      "unit_test_value_check" to
+        "Reuse diff_summary and review_result, run bill-unit-test-value-check against the PR diff, and persist " +
+        "unit_test_value_result.",
       "completeness_audit" to
-        "Reuse criteria_summary, diff_summary, and review_result. If the verify target changed materially, refresh " +
-        "the diff before re-running the audit.",
+        "Reuse criteria_summary, diff_summary, review_result, and unit_test_value_result. If the verify target " +
+        "changed materially, refresh the diff before re-running the audit.",
       "verdict" to
-        "Reuse the saved review and audit artifacts to produce the final verdict without rerunning earlier steps " +
-        "unless recovery made them stale.",
+        "Reuse the saved review, unit test value, and audit artifacts to produce the final verdict without rerunning " +
+        "earlier steps unless recovery made them stale.",
       "finish" to
         "Do not re-run analysis. Close the workflow using the saved verdict_result and return the terminal summary " +
         "only.",
@@ -124,6 +141,7 @@ object FeatureVerifyWorkflowDefinition {
       "diff_summary",
       "feature_flag_audit_result",
       "review_result",
+      "unit_test_value_result",
       "completeness_audit_result",
       "verdict_result",
       "session_notes",
