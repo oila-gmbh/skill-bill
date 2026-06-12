@@ -3,8 +3,8 @@ package skillbill.application
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
 
-private val auditResults = listOf("all_pass", "had_gaps", "skipped")
-private val validationResults = listOf("pass", "fail", "skipped")
+private val auditResults = listOf("all_pass", "had_gaps", "skipped", "not_reached")
+private val validationResults = listOf("pass", "fail", "skipped", "not_reached")
 private val featureImplementSources = listOf("production", "test", "synthetic", "unknown")
 private val featureImplementSessionIdPattern = Regex("""^fis-[A-Za-z0-9][A-Za-z0-9_-]*$""")
 private val completionStatuses =
@@ -57,11 +57,12 @@ private fun validateCompletedFeatureImplementFinished(request: FeatureImplementF
   ).firstOrNull()
 }
 
-private fun validateCompletedAuditResult(auditResult: String): String? =
-  if (auditResult == "skipped") "audit_result must not be skipped when completion_status is completed." else null
+private fun validateCompletedAuditResult(auditResult: String): String? = when (auditResult) {
+  "skipped", "not_reached" -> "audit_result must not be $auditResult when completion_status is completed."
+  else -> null
+}
 
-private fun validateCompletedValidationResult(validationResult: String): String? = if (validationResult == "skipped") {
-  "validation_result must not be skipped when completion_status is completed."
-} else {
-  null
+private fun validateCompletedValidationResult(validationResult: String): String? = when (validationResult) {
+  "skipped", "not_reached" -> "validation_result must not be $validationResult when completion_status is completed."
+  else -> null
 }

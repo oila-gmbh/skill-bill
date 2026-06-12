@@ -205,6 +205,10 @@ object McpRuntime {
   fun telemetryProxyCapabilities(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).telemetryService.capabilities().toMcpMap()
 
+  fun captureException(workflowPhase: String, error: Exception, context: McpRuntimeContext) {
+    runCatching { services(context).telemetryService.captureException(workflowPhase, error) }
+  }
+
   fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.version().toPayload()
 

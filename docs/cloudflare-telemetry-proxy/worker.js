@@ -128,6 +128,30 @@ async function readJson(request) {
   }
 }
 
+function transformBatch(batch) {
+  return batch.map((event) => {
+    if (event.event !== "skillbill_runtime_exception") {
+      return event;
+    }
+    return {
+      ...event,
+      event: "$exception",
+      properties: {
+        ...event.properties,
+        $exception_type: event.properties.error_type || "UnknownError",
+        $exception_message: event.properties.error_message || "",
+        $exception_list: [
+          {
+            type: event.properties.error_type || "UnknownError",
+            value: event.properties.error_message || "",
+            stacktrace: { frames: [] },
+          },
+        ],
+      },
+    };
+  });
+}
+
 async function forwardBatch(env, batch) {
   if (!env.POSTHOG_API_KEY) {
     return jsonResponse(500, { error: "POSTHOG_API_KEY is not configured." });
@@ -899,6 +923,8 @@ export default {
       return jsonResponse(400, { error: "Each batch entry must include event, distinct_id, and properties." });
     }
 
-    return forwardBatch(env, batch);
+    return forwardBatch(env, transformBatch(batch));
   },
 };
+
+export { validateStatsRequest, capabilitiesPayload, transformBatch };

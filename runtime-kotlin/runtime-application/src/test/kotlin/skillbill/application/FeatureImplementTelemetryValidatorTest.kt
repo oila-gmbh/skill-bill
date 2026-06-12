@@ -66,6 +66,35 @@ class FeatureImplementTelemetryValidatorTest {
     )
   }
 
+  @Test
+  fun `finished telemetry accepts not_reached audit and validation result for early-abandoned runs`() {
+    val request = abandonedFinishedRequest(
+      completionStatus = "abandoned_at_planning",
+      auditResult = "not_reached",
+      validationResult = "not_reached",
+    )
+
+    assertEquals(null, validateFeatureImplementFinished(request))
+  }
+
+  @Test
+  fun `finished telemetry rejects not_reached audit_result when completion_status is completed`() {
+    val error = validateFeatureImplementFinished(
+      validFinishedRequest().copy(auditResult = "not_reached"),
+    )
+
+    assertEquals("audit_result must not be not_reached when completion_status is completed.", error)
+  }
+
+  @Test
+  fun `finished telemetry rejects not_reached validation_result when completion_status is completed`() {
+    val error = validateFeatureImplementFinished(
+      validFinishedRequest().copy(validationResult = "not_reached"),
+    )
+
+    assertEquals("validation_result must not be not_reached when completion_status is completed.", error)
+  }
+
   private fun validFinishedRequest(
     sessionId: String = "fis-20260606-120000-ab12",
     childSteps: List<Map<String, Any?>> = emptyList(),
@@ -89,5 +118,31 @@ class FeatureImplementTelemetryValidatorTest {
     boundaryHistoryValue = "none",
     planDeviationNotes = "",
     childSteps = childSteps,
+  )
+
+  private fun abandonedFinishedRequest(
+    completionStatus: String,
+    auditResult: String = "not_reached",
+    validationResult: String = "not_reached",
+  ): FeatureImplementFinishedRequest = FeatureImplementFinishedRequest(
+    sessionId = "fis-20260606-120000-ab12",
+    completionStatus = completionStatus,
+    planCorrectionCount = 0,
+    planTaskCount = 0,
+    planPhaseCount = 0,
+    featureFlagUsed = false,
+    filesCreated = 0,
+    filesModified = 0,
+    tasksCompleted = 0,
+    reviewIterations = 0,
+    auditResult = auditResult,
+    auditIterations = 0,
+    validationResult = validationResult,
+    boundaryHistoryWritten = false,
+    prCreated = false,
+    featureFlagPattern = "none",
+    boundaryHistoryValue = "none",
+    planDeviationNotes = "",
+    childSteps = emptyList(),
   )
 }

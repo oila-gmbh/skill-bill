@@ -22,9 +22,12 @@ fun featureImplementStartedPayload(row: Map<String, Any?>, level: String): Map<S
     }
   }
 
-fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
-  featureImplementStartedPayload(row, level).toMutableMap().apply {
-    put("completion_status", row.stringOrEmpty("completion_status"))
+fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> {
+  val completionStatus = row.stringOrEmpty("completion_status")
+  val earlyAbandonment = completionStatus.startsWith("abandoned_at_")
+  val gateDefault = if (earlyAbandonment) "not_reached" else "skipped"
+  return featureImplementStartedPayload(row, level).toMutableMap().apply {
+    put("completion_status", completionStatus)
     put("plan_correction_count", row.intOrZero("plan_correction_count"))
     put("plan_task_count", row.intOrZero("plan_task_count"))
     put("plan_phase_count", row.intOrZero("plan_phase_count"))
@@ -34,9 +37,9 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
     put("files_modified", row.intOrZero("files_modified"))
     put("tasks_completed", row.intOrZero("tasks_completed"))
     put("review_iterations", row.intOrZero("review_iterations"))
-    put("audit_result", row.stringOrEmpty("audit_result").ifBlank { "skipped" })
+    put("audit_result", row.stringOrEmpty("audit_result").ifBlank { gateDefault })
     put("audit_iterations", row.intOrZero("audit_iterations"))
-    put("validation_result", row.stringOrEmpty("validation_result").ifBlank { "skipped" })
+    put("validation_result", row.stringOrEmpty("validation_result").ifBlank { gateDefault })
     put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
     put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
     put("pr_created", row.booleanFromInt("pr_created"))
@@ -47,6 +50,7 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
       put("plan_deviation_notes", row.stringOrEmpty("plan_deviation_notes"))
     }
   }
+}
 
 fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(

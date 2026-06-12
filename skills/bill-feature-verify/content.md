@@ -156,6 +156,8 @@ Skill-specific telemetry fields, standalone invocation:
 1. Call `feature_verify_started` after Step 2 (criteria confirmed) with `acceptance_criteria_count`, `rollout_relevant`, and `spec_summary`. Save the returned `session_id`.
 2. Call `feature_verify_finished` after Step 8 (verdict delivered) with `session_id`, `feature_flag_audit_performed`, `review_iterations`, `audit_result` (`all_pass` / `had_gaps` / `skipped`), `completion_status` (`completed` / `abandoned_at_review` / `abandoned_at_audit` / `error`), `history_relevance` (`none` / `irrelevant` / `low` / `medium` / `high`), `history_helpfulness` (`none` / `irrelevant` / `low` / `medium` / `high`), and optional `gaps_found` list.
 
+**Abandonment/error paths (terminal emission contract):** If the run is abandoned or fails at any point after `feature_verify_started` was called — including loop overruns, user hand-off, or unrecoverable errors — you MUST still call `feature_verify_finished` before exiting. Use `completion_status=abandoned_at_review` if stopped during steps 3–6 (code review / unit-test-value-check), `completion_status=abandoned_at_audit` if stopped during step 7 (completeness audit), and `completion_status=error` for unrecoverable errors. Use `audit_result=skipped` when the completeness audit was not attempted. Do not leave the run without a `finished` event.
+
 Orchestrated invocation (when called from another workflow that passes `orchestrated=true`):
 
 1. Skip `feature_verify_started`.

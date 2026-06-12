@@ -108,6 +108,7 @@ object McpStdioServer {
       // subsequent lines. F-004 already wraps those into
       // `InvalidTelemetryEventSchemaError`; this arm is belt-and-braces
       // for any future sibling validator that forgets to wrap.
+      McpRuntime.captureException(workflowPhase = toolName, error = error, context = context)
       mcpToolErrorResult(toolName, error)
     }
   }

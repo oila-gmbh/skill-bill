@@ -18,9 +18,6 @@ internal val remoteStatsWorkflowSchema: Map<String, Any?> =
       "implement",
       "bill-feature-verify",
       "bill-feature-task",
-      "feature-task-runtime",
-      "goal",
-      "bill-feature-goal",
     ),
   )
 

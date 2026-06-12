@@ -91,6 +91,13 @@ class TelemetryService(
 
   fun remoteStats(request: RemoteStatsRequest): TelemetryRemoteStatsResult =
     telemetryClient.fetchRemoteStats(loadTelemetrySettings(settingsProvider), request)
+
+  fun captureException(workflowPhase: String, error: Exception, dbOverride: String? = null) {
+    if (!database.databaseExists(dbOverride)) return
+    runCatching {
+      enqueueRuntimeException(sessionTelemetryOutboxRepository(database, dbOverride), workflowPhase, error)
+    }
+  }
 }
 
 private fun sessionTelemetryOutboxRepository(

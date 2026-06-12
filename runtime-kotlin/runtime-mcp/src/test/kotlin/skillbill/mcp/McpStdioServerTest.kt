@@ -135,9 +135,6 @@ class McpStdioServerTest {
         "implement",
         "bill-feature-verify",
         "bill-feature-task",
-        "feature-task-runtime",
-        "goal",
-        "bill-feature-goal",
       ),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
     )

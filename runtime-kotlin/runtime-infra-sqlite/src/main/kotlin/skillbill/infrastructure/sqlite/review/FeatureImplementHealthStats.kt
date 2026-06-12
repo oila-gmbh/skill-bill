@@ -47,7 +47,9 @@ fun buildFeatureImplementHealthStats(
   val unknownSourceRuns = rows.count { it.featureImplementSource() !in validFeatureImplementSources }
   val duplicateTerminalEvents = rows.sumOf { it.intValue("duplicate_terminal_finished_events") }
   val invalidDurationRuns = productionFinishedRows.count(::hasInvalidFeatureImplementDuration)
-  val normalDurations = productionFinishedRows.map(::durationSeconds).filter(::isNormalFeatureImplementDuration)
+  val normalDurations = productionFinishedRows
+    .filter { it.stringValue("completion_status") != "stale" }
+    .map(::durationSeconds).filter(::isNormalFeatureImplementDuration)
   val featureSizeOutcomeStats = buildFeatureSizeOutcomeStats(productionRows)
   return FeatureImplementHealthStats(
     sourceCounts = countValues(rows, "source", featureImplementSources),

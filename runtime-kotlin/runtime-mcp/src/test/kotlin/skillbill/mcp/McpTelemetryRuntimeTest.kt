@@ -74,8 +74,8 @@ class McpTelemetryRuntimeTest {
   }
 
   @Test
-  fun `telemetry remote stats tool accepts feature-task-runtime workflow`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-runtime")
+  fun `telemetry remote stats tool maps implement alias to bill-feature-task`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-implement-alias")
     val configPath = writeMcpTelemetryConfig(tempDir, "off")
     val env =
       mapOf(
@@ -86,7 +86,7 @@ class McpTelemetryRuntimeTest {
     val capturedRequests = mutableListOf<Map<String, Any?>>()
     val context =
       McpRuntimeContext(
-        requester = runtimeAwareTelemetryRequester(capturedRequests),
+        requester = mcpTelemetryRequester(capturedRequests),
         environment = env,
         userHome = tempDir,
       )
@@ -94,49 +94,19 @@ class McpTelemetryRuntimeTest {
     val stats =
       McpToolDispatcher.call(
         "telemetry_remote_stats",
-        mapOf("workflow" to "feature-task-runtime"),
+        mapOf("workflow" to "implement", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
         context,
       )
 
-    assertEquals("feature-task-runtime", stats["workflow"])
-    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"feature-task-runtime\""))
-  }
-
-  @Test
-  fun `telemetry remote stats tool maps goal alias to bill-feature-goal`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-goal-alias")
-    val configPath = writeMcpTelemetryConfig(tempDir, "off")
-    val env =
-      mapOf(
-        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
-        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
-        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
-      )
-    val capturedRequests = mutableListOf<Map<String, Any?>>()
-    val context =
-      McpRuntimeContext(
-        requester = goalAwareTelemetryRequester(capturedRequests),
-        environment = env,
-        userHome = tempDir,
-      )
-
-    val stats =
-      McpToolDispatcher.call(
-        "telemetry_remote_stats",
-        mapOf("workflow" to "goal", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
-        context,
-      )
-
-    assertEquals("bill-feature-goal", stats["workflow"])
     assertEquals(
-      "{\"workflow\":\"bill-feature-goal\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
+      "{\"workflow\":\"bill-feature-task\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
       capturedRequests.last()["body"],
     )
   }
 
   @Test
-  fun `telemetry remote stats tool accepts bill-feature-goal workflow passthrough`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-goal-passthrough")
+  fun `telemetry remote stats tool accepts bill-feature-task canonical passthrough`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-task-passthrough")
     val configPath = writeMcpTelemetryConfig(tempDir, "off")
     val env =
       mapOf(
@@ -147,19 +117,18 @@ class McpTelemetryRuntimeTest {
     val capturedRequests = mutableListOf<Map<String, Any?>>()
     val context =
       McpRuntimeContext(
-        requester = goalAwareTelemetryRequester(capturedRequests),
+        requester = mcpTelemetryRequester(capturedRequests),
         environment = env,
         userHome = tempDir,
       )
 
-    val stats =
-      McpToolDispatcher.call(
-        "telemetry_remote_stats",
-        mapOf("workflow" to "bill-feature-goal"),
-        context,
-      )
+    McpToolDispatcher.call(
+      "telemetry_remote_stats",
+      mapOf("workflow" to "bill-feature-task", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
+      context,
+    )
 
-    assertEquals("bill-feature-goal", stats["workflow"])
+    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"bill-feature-task\""))
   }
 
   @Test
@@ -240,86 +209,6 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
               "supports_stats": true,
               "inline_only": true
             }
-          }
-          """.trimIndent(),
-        )
-    }
-  }
-
-private fun runtimeAwareTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
-    capturedRequests +=
-      linkedMapOf(
-        "method" to method,
-        "url" to url,
-        "body" to bodyJson,
-        "authorization" to headers["Authorization"],
-      )
-    when {
-      url.endsWith("/capabilities") ->
-        HttpResponse(
-          200,
-          """
-          {
-            "supports_ingest": true,
-            "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "feature-task-runtime"],
-            "region": "eu"
-          }
-          """.trimIndent(),
-        )
-
-      else ->
-        HttpResponse(
-          200,
-          """
-          {
-            "status": "ok",
-            "workflow": "feature-task-runtime",
-            "source": "remote_proxy",
-            "started_runs": 3,
-            "finished_runs": 2,
-            "in_progress_runs": 1
-          }
-          """.trimIndent(),
-        )
-    }
-  }
-
-private fun goalAwareTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
-    capturedRequests +=
-      linkedMapOf(
-        "method" to method,
-        "url" to url,
-        "body" to bodyJson,
-        "authorization" to headers["Authorization"],
-      )
-    when {
-      url.endsWith("/capabilities") ->
-        HttpResponse(
-          200,
-          """
-          {
-            "supports_ingest": true,
-            "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "bill-feature-goal"],
-            "region": "eu"
-          }
-          """.trimIndent(),
-        )
-
-      else ->
-        HttpResponse(
-          200,
-          """
-          {
-            "status": "ok",
-            "workflow": "bill-feature-goal",
-            "source": "remote_proxy",
-            "started_runs": 5,
-            "finished_runs": 4,
-            "in_progress_runs": 1
           }
           """.trimIndent(),
         )

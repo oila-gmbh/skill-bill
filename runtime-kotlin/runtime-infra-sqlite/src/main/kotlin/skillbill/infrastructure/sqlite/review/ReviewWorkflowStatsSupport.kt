@@ -8,7 +8,7 @@ import java.sql.Connection
 
 private val featureVerifyCompletionStatuses =
   listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error")
-private val auditResults = listOf("all_pass", "had_gaps", "skipped")
+private val auditResults = listOf("all_pass", "had_gaps", "skipped", "not_reached")
 private val historySignalValues = listOf("none", "irrelevant", "low", "medium", "high")
 private val featureSizes = listOf("SMALL", "MEDIUM", "LARGE")
 private val completionStatuses =
@@ -18,8 +18,9 @@ private val completionStatuses =
     "abandoned_at_implementation",
     "abandoned_at_review",
     "error",
+    "stale",
   )
-private val validationResults = listOf("pass", "fail", "skipped")
+private val validationResults = listOf("pass", "fail", "skipped", "not_reached")
 private val featureFlagPatterns = listOf("simple_conditional", "di_switch", "legacy", "none")
 private val featureTaskRuntimeCompletionStatuses =
   listOf("completed", "blocked", "decomposed_at_planning", "error")
