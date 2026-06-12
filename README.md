@@ -4,9 +4,9 @@
 
 One source of truth for your AI coding skills — authored once, synced across Claude Code, Copilot, Codex, OpenCode, and Junie, with the validation and durable workflow state to keep them from rotting.
 
-![Skill Bill demo — capture pending](docs/assets/skill-bill-demo-placeholder.svg)
+![Skill Bill demo — a /bill-feature-task run that halts at the claude -p usage limit, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
 
-> The image above is a **static placeholder**. The motion demo (a real `/bill-feature-task` spec→PR run) is produced **out-of-band** and is **not yet committed** — the recorded binary is intentionally missing for now. See the [demo storyboard](docs/assets/skill-bill-demo-storyboard.md) for the shot list and the [capture instructions](docs/assets/skill-bill-demo-capture-instructions.md) for how it gets recorded and swapped in.
+> A `/bill-feature-task` run from spec to merge-ready: each phase starts and finishes, the run halts at the `claude -p` usage limit, then resumes from durable workflow state and completes — nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
 
 ## Quickstart (≈60 seconds)
 
