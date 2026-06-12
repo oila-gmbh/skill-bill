@@ -2,11 +2,17 @@
 
 # Skill Bill
 
-One source of truth for your AI coding skills — authored once, synced across Claude Code, Copilot, Codex, OpenCode, and Junie, with the validation and durable workflow state to keep them from rotting.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Latest release](https://img.shields.io/github/v/release/Sermilion/skill-bill?include_prereleases&sort=semver)
+![Validate agent configs](https://img.shields.io/github/actions/workflow/status/Sermilion/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
+
+One source of truth for your AI coding skills — authored once, installed across multiple coding agents (verified end-to-end on Claude Code and Codex), with the validation and durable workflow state to keep them from rotting.
 
 ![Skill Bill demo — a /bill-feature-task run that is interrupted mid-flight, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
 
 > A `/bill-feature-task` run from spec to merge-ready: each phase starts and finishes, then the run is interrupted mid-flight — for any reason (usage limit, crash, lost connection) — and resumes from durable workflow state to complete, nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
+
+**Who it's for:** developers and teams running one or more coding agents who want skills that survive crashes and context limits and stay in sync across agents. Probably overkill if you use a single agent on a single stack and never hit a usage limit. Pre-1.0 and solo-maintained — see the [Roadmap](docs/ROADMAP.md).
 
 ## Quickstart (≈60 seconds)
 
@@ -24,6 +30,8 @@ Then confirm it works and try a starter command:
 skill-bill version
 skill-bill doctor
 ```
+
+> If `skill-bill` is **not found**, the launcher directory (`~/.local/bin` by default) isn't on your `PATH`. Add it — `export PATH="$HOME/.local/bin:$PATH"` — and put that line in your shell's rc file (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
 
 That is the whole happy path. Everything below is optional depth.
 
@@ -46,7 +54,7 @@ Skill Bill is the runtime, governance, and operations layer for AI-agent skills.
 
 What Skill Bill gives you:
 
-- one source of truth for every coding agent your team uses (Claude Code, Copilot, Codex, OpenCode, Junie)
+- one source of truth for every coding agent your team uses — verified end-to-end on Claude Code and Codex; install configs are also generated for Copilot, OpenCode, and Junie ([agent support tiers](#agent-support))
 - a governed contract that fails loudly when skills drift instead of silently going stale
 - durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction
 - automatic decomposition of oversized work into resumable subtasks the runtime tracks for you
@@ -72,15 +80,21 @@ Skill Bill treats skills more like software:
 - loud-fail validation instead of silent fallback
 - one repo synced across multiple coding agents
 
+**Why not just drop skill files in `~/.claude/skills/`?** You can — until you want those same skills on a second agent, a multi-phase run that survives a crash or a usage limit, or a guarantee that a half-renamed skill fails loudly instead of silently going stale. A folder of skill files gives you the prompt. Skill Bill adds the three things a folder can't: **durable, resumable workflow state**, a **loud-fail governance contract**, and **one source synced across every agent**. That gap is the whole reason it exists.
+
 ## What you get
 
 Skill Bill ships a stack of capabilities that compose. Most of them are invisible during normal use — that is the design — but each one is doing real work behind the slash commands.
 
-### 1. One-shot multi-agent install via symlinks
+<details>
+<summary><b>1. One-shot multi-agent install via symlinks</b></summary>
 
 `install.sh` symlinks every skill into each detected agent's directory (Claude Code, Copilot, Codex, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
 
-### 2. `bill-feature-task` — the end-to-end feature factory
+</details>
+
+<details>
+<summary><b>2. <code>bill-feature-task</code> — the end-to-end feature factory</b></summary>
 
 One slash command that takes a spec or design doc and walks it all the way to a merged-ready PR, scaling ceremony to the size of the work. The pipeline: assessment → branch → pre-planning digest → planning (or decomposition) → implementation → code review → completeness audit → quality check → history/decisions → commit/push → PR description.
 
@@ -96,11 +110,17 @@ Cross-cutting properties:
 
 It is a tiny CI/CD for the feature itself, not just the code.
 
-### 3. Native platform overrides via platform packs
+</details>
+
+<details>
+<summary><b>3. Native platform overrides via platform packs</b></summary>
 
 Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `kotlin`, `kmp`), with native versions such as `bill-kotlin-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `.kt`, `build.gradle.kts`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
 
-### 4. Manifest-driven task decomposition, auto-resume by issue key
+</details>
+
+<details>
+<summary><b>4. Manifest-driven task decomposition, auto-resume by issue key</b></summary>
 
 When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), `bill-feature-task` switches into `mode: "decompose"` instead of implementing.
 
@@ -111,7 +131,10 @@ When planning detects work is too big (rules of thumb: more than 15 atomic tasks
 - **Branch strategy is declared, not improvised**: defaults to `same_branch_commit_per_subtask` (one commit per subtask on the parent feature branch); `stacked_branches` is an explicit opt-in where the runtime refuses to advance if the current branch/base does not match the manifest.
 - **Decomposition is a successful outcome, not a failure**: the workflow closes as `abandoned_at_planning` with `plan_deviation_notes: decomposed into N subtasks` — logged as scope governance, not as a crash.
 
-### 5. Full Compose Desktop UI hiding all of the above
+</details>
+
+<details>
+<summary><b>5. Full Compose Desktop UI hiding all of the above</b></summary>
 
 `runtime-desktop` is a real native app on top of all of this, not just a CLI. Modular Compose Multiplatform build with kotlin-inject DI, KSP-generated components, and platform packaging targets.
 
@@ -129,7 +152,10 @@ What the UI gives the user without exposing the machinery:
 
 All of the symlink installs, manifest validation, platform-pack routing, native-agent generation, telemetry, and workflow state happens underneath without ever leaking into the user's view.
 
-### 6. Stateful, resumable workflows with native subagents
+</details>
+
+<details>
+<summary><b>6. Stateful, resumable workflows with native subagents</b></summary>
 
 `bill-feature-task` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
 
@@ -166,7 +192,10 @@ selected_diff_hunks: count=1 truncated=false
 selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=+new
 ```
 
-### 7. `content.md` is the only authored surface; everything else is generated
+</details>
+
+<details>
+<summary><b>7. <code>content.md</code> is the only authored surface; everything else is generated</b></summary>
 
 A skill author touches exactly one file. Free-form markdown, frontmatter on top, prose body underneath, write it however you want. No JSON, no schema, no boilerplate.
 
@@ -181,7 +210,10 @@ Generated from it (and you never hand-edit):
 
 The author contract is: write the body, declare the description, the rest is the renderer's problem. The validator from #11 keeps the generated artifacts from drifting from the manifest. Soft inside, hard shell.
 
-### 8. Per-project skill fine-tuning via `.agents/skill-overrides.md`
+</details>
+
+<details>
+<summary><b>8. Per-project skill fine-tuning via <code>.agents/skill-overrides.md</code></b></summary>
 
 Every skill reads the project's override file as part of its shared ceremony, so you can change skill behavior for a specific repo without forking or editing the skill source. The file lives in the repo, is versioned with the code, and applies to whichever agent is running.
 
@@ -191,11 +223,17 @@ Every skill reads the project's override file as part of its shared ceremony, so
 
 Net effect: you fine-tune `bill-code-review` with an extra checklist item, or force `bill-feature-task` to call a project-specific telemetry tool, by editing one markdown file in the repo. No skill fork, no agent reinstall.
 
-### 9. Per-module memory
+</details>
+
+<details>
+<summary><b>9. Per-module memory</b></summary>
 
 Every module/package has its own `agent/decisions.md` and `agent/history.md`. The `/bill-boundary-decisions` and `/bill-boundary-history` skills know how to write high-signal entries with hygiene rules that keep history from rotting. Result: cross-session institutional knowledge attached to the code itself, not to your head or a wiki. You can see it in this very repo — `agent/decisions.md` records the exact incident that hardened the override read in #8. That is how the system stays self-aware across sessions and contributors.
 
-### 10. First-class, transport-resilient structured telemetry
+</details>
+
+<details>
+<summary><b>10. First-class, transport-resilient structured telemetry</b></summary>
 
 Every skill that matters emits typed telemetry, not just log lines.
 
@@ -206,11 +244,16 @@ Every skill that matters emits typed telemetry, not just log lines.
 - **Aggregate stats tools** give you queryable rollups, so you can actually see how your feature-task pipeline is behaving instead of grepping logs.
 - **Pluggable proxy target**: events flow through a telemetry proxy, with a hosted relay as the default. Point it at your own service by setting `proxy_url` in the telemetry config (or `TELEMETRY_PROXY_URL` in the environment) and `skill-bill telemetry sync` / `capabilities` / `stats` will operate against it. Self-host, anonymize, or fork the proxy itself — Skill Bill's telemetry pipeline doesn't lock you to anyone's backend.
 
-### 11. Strict, declarative skill-set contract with drift protection
+</details>
+
+<details>
+<summary><b>11. Strict, declarative skill-set contract with drift protection</b></summary>
 
 Every platform pack is anchored by a `platform.yaml` that declares: contract version, routing signals, the full set of declared code-review areas and their content-file paths, the declared quality-check file, and pointer files (auto-generated so no one hand-edits them). Backed by `scripts/validate_agent_configs`, which fails the build if the on-disk layout does not match the manifest (missing files, stray skills, broken pointers, agent-install inconsistencies). You cannot accidentally rename a skill, half-delete an area, or let one agent's copy diverge from another. Render/install regenerates pointers from the manifest, and validation refuses to let drift land.
 
 This is the governance layer that keeps the other ten features from rotting — once you have seen what they enable, you also see why this one exists.
+
+</details>
 
 ## Install details
 
@@ -299,13 +342,20 @@ Install source and release flags:
 
 Supported prebuilt host tokens are `macos-arm64`, `macos-x64`, `windows-x64`, and `linux-x64`; any other host auto-falls back to `--from-source`.
 
-Supported install targets today:
+### Agent support
 
-- GitHub Copilot
-- Claude Code (skills under `~/.claude/skills/`; native subagent markdown under `~/.claude/agents/`)
-- OpenAI Codex (skills under `~/.codex/skills/`, with `~/.agents/skills/` compatibility fallback; native subagent TOMLs under `~/.codex/agents/`)
-- OpenCode (skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`)
-- JetBrains Junie (skills under `~/.junie/skills/`; native subagent markdown under `~/.junie/agents/`; MCP config under `~/.junie/mcp/mcp.json`)
+The install path is **agent-agnostic by design** — the same `content.md` source renders into each agent's native format, so adding an agent is a rendering concern, not a rewrite. But "supported" and "verified" are not the same word here, and this README keeps them separate on purpose.
+
+**Verified end-to-end** — authored, installed, and run daily by the maintainer:
+
+- **Claude Code** — skills under `~/.claude/skills/`; native subagent markdown under `~/.claude/agents/`
+- **OpenAI Codex** — skills under `~/.codex/skills/`, with `~/.agents/skills/` compatibility fallback; native subagent TOMLs under `~/.codex/agents/`
+
+**Generated but not yet verified** — the installer writes each agent's native config via the same agent-agnostic path, and it *should* work, but the maintainer has no access to test these. Treat them as experimental and **please report what worked or broke** — that feedback is what promotes them into the verified tier:
+
+- **GitHub Copilot**
+- **OpenCode** — skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`
+- **JetBrains Junie** — skills under `~/.junie/skills/`; native subagent markdown under `~/.junie/agents/`; MCP config under `~/.junie/mcp/mcp.json`
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code skills directory — no separate target needed. GLM is a model, not a harness.
 
