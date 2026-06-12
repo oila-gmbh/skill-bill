@@ -351,11 +351,13 @@ The install path is **agent-agnostic by design** — the same `content.md` sourc
 - **Claude Code** — skills under `~/.claude/skills/`; native subagent markdown under `~/.claude/agents/`
 - **OpenAI Codex** — skills under `~/.codex/skills/`, with `~/.agents/skills/` compatibility fallback; native subagent TOMLs under `~/.codex/agents/`
 
-**Generated but not yet verified** — the installer writes each agent's native config via the same agent-agnostic path, and it *should* work, but the maintainer has no access to test these. Treat them as experimental and **please report what worked or broke** — that feedback is what promotes them into the verified tier:
+**Install-verified (automated), runtime not yet confirmed** — [`scripts/agent_install_smoke_test.sh`](scripts/agent_install_smoke_test.sh) installs into a throwaway home and asserts that skills land, native subagents render in the agent's native format, and MCP config is written and valid — for these agents that passes. What is *not* yet confirmed is the maintainer running a full skill end-to-end inside them, because there is no access to test that. **Please report what worked or broke** — that runtime feedback is what promotes them to the top tier:
 
 - **GitHub Copilot**
 - **OpenCode** — skills under `~/.config/opencode/skills/`; native subagent markdown under `~/.config/opencode/agents/`
 - **JetBrains Junie** — skills under `~/.junie/skills/`; native subagent markdown under `~/.junie/agents/`; MCP config under `~/.junie/mcp/mcp.json`
+
+You can run the same check yourself: `scripts/agent_install_smoke_test.sh` (reuses the installed runtime, never touches your real agent directories).
 
 Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code skills directory — no separate target needed. GLM is a model, not a harness.
 
