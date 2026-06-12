@@ -40,10 +40,10 @@ font = ImageFont.truetype(FONT_PATH, FONT_SZ)
 fontb = ImageFont.truetype(FONT_BOLD, FONT_SZ)
 font_title = ImageFont.truetype(FONT_BOLD, 18)
 
-SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPIN = "◐◓◑◒"         # rotating circle (braille is absent from this Nerd Font face)
 
 # ---- pacing ---------------------------------------------------------------
-SPEED = 1.95          # >1 slows the demo (holds longer, more spinner rotations)
+SPEED = 2.95          # >1 slows the demo (holds longer, more spinner rotations)
 def S(ms):            # scale a hold/settle duration
     return int(ms * SPEED)
 def N(n):             # scale a spinner frame count (more rotations, same fps)
@@ -149,11 +149,13 @@ for i in range(N(9)):
     sp = SPIN[i % len(SPIN)]
     emit(render(log, [(sp + " ", AMBER, False), ("implement", FG, False)]), 95)
 push([("✗ ", RED, True), ("implement", RED, False),
-      ("  usage limit reached ($100 claude -p)", MUTED, False)])
+      ("  interrupted", MUTED, False)])
 emit(render(log), S(360))
-note([("⚠ ", AMBER, True), ("run halted · durable state saved → ", MUTED, False),
-      ("wfta-7f3a", AMBER, False)], hold=520)
-note([("  resume anytime — nothing lost", MUTED, False)], hold=900)
+note([("⚠ ", AMBER, True),
+      ("run halted — any reason (usage limit · crash · lost connection)", MUTED, False)],
+     hold=560)
+note([("  state saved → ", MUTED, False), ("wfta-7f3a", AMBER, False),
+      (" · resume anytime, nothing lost", MUTED, False)], hold=900)
 
 # resume
 type_cmd("skill-bill workflow continue wfta-7f3a")
@@ -170,14 +172,18 @@ note([("$ ", GREEN, False),
       ("PR ready — spec → merged-ready, survived the limit", FG, False)], hold=3000)
 
 # ---- save -----------------------------------------------------------------
+import os, subprocess
 imgs = [f[0] for f in frames]
 durs = [f[1] for f in frames]
 out = "docs/assets/skill-bill-demo.gif"
-imgs[0].save(out, save_all=True, append_images=imgs[1:], duration=durs,
+raw = "docs/assets/_demo_raw.gif"
+imgs[0].save(raw, save_all=True, append_images=imgs[1:], duration=durs,
              loop=0, disposal=2, optimize=True)
+# palette-optimize (this demo uses few colors) — frame timing is preserved
+subprocess.run(["magick", raw, "-coalesce", "-layers", "OptimizeFrame",
+                "-fuzz", "3%", "-colors", "64", "+dither", out], check=True)
+os.remove(raw)
 imgs[-1].save("docs/assets/skill-bill-demo-poster.png")
-# also a mid frame for review
-mid = imgs[len(imgs) // 2]
-mid.save("docs/assets/_demo_midframe.png")
 total = sum(durs)
-print(f"frames={len(frames)} total={total/1000:.1f}s out={out}")
+size = os.path.getsize(out) / 1e6
+print(f"frames={len(frames)} total={total/1000:.1f}s size={size:.1f}MB out={out}")
