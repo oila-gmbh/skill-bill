@@ -1,5 +1,6 @@
 package skillbill.install
 
+import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,5 +1,6 @@
 package skillbill.install
 
+import skillbill.install.support.legacySkillBillCleanupNames
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse

@@ -6,16 +6,16 @@ import skillbill.error.MissingRequiredSectionError
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.repo.model.ScaffoldAuthoringValidationRequest
 import skillbill.ports.scaffold.repo.model.ScaffoldAuthoringValidationResult
-import skillbill.scaffold.AuthoringTarget
-import skillbill.scaffold.CONTENT_BODY_FILENAME
-import skillbill.scaffold.ScaffoldPlan
-import skillbill.scaffold.declaredCodeReviewSkillNames
-import skillbill.scaffold.displayNameFromSlug
-import skillbill.scaffold.loadPlatformPack
+import skillbill.scaffold.authoring.AuthoringTarget
+import skillbill.scaffold.authoring.validateTarget
 import skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
+import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.unsupportedCompositionModeReason
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.unsupportedCompositionModeReason
-import skillbill.scaffold.validateTarget
+import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
+import skillbill.scaffold.runtime.ScaffoldPlan
+import skillbill.scaffold.runtime.displayNameFromSlug
 import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.scaffold.policy.parseBaselineLayerPayload as policyParseBaselineLayerPayload

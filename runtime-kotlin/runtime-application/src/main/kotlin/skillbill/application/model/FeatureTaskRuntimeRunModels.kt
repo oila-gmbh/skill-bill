@@ -1,5 +1,7 @@
 package skillbill.application.model
 
+import skillbill.application.decomposition.decompositionManifestPath
+import skillbill.application.decomposition.parentSpecPath
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
 import kotlin.time.Duration

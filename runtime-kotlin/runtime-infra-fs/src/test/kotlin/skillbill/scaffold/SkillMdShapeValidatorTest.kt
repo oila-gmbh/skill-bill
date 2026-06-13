@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidSkillMdShapeError
+import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

@@ -9,10 +9,10 @@ import skillbill.ports.scaffold.manifest.model.ScaffoldManifestRenderPlatformPac
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestSetDeclaredQualityCheckRequest
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestSnapshot
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestWriteRequest
-import skillbill.scaffold.appendCodeReviewArea
-import skillbill.scaffold.appendGovernedAddonManifestRegistration
-import skillbill.scaffold.renderGovernedAddonManifestRegistration
-import skillbill.scaffold.setDeclaredQualityCheckFile
+import skillbill.scaffold.manifest.appendCodeReviewArea
+import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
+import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
+import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
 import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.scaffold.policy.renderPlatformPackManifest as policyRenderPlatformPackManifest

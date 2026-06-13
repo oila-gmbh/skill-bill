@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.application.decomposition.decodeDecompositionManifestMap
+import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore

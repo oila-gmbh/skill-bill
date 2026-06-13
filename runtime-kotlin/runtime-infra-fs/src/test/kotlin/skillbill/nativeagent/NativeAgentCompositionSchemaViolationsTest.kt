@@ -1,6 +1,7 @@
 package skillbill.nativeagent
 
 import skillbill.error.InvalidNativeAgentCompositionSchemaError
+import skillbill.nativeagent.composition.NativeAgentCompositionSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith

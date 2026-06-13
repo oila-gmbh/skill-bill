@@ -5,13 +5,13 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadRequest
 import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadResult
-import skillbill.scaffold.declaredSkillRelativeDirs
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.platformpack.declaredSkillRelativeDirs
 import skillbill.scaffold.policy.requireStringList
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
-import skillbill.scaffold.loadPlatformPack as fsLoadPlatformPack
+import skillbill.scaffold.platformpack.loadPlatformPack as fsLoadPlatformPack
 
 /**
  * Filesystem adapter for [ScaffoldSourceLoaderPort]. Delegates to the existing

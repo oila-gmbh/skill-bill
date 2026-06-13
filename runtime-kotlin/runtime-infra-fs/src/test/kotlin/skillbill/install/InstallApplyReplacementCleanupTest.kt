@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentLinkStatus
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path

@@ -1,17 +1,17 @@
 package skillbill
 
-import skillbill.cli.CliRuntime
+import skillbill.cli.core.CliRuntime
 import skillbill.contracts.surface.RuntimeSurfaceContract
 import skillbill.contracts.surface.RuntimeSurfaceStatus
-import skillbill.db.DatabaseRuntime
-import skillbill.install.InstallRuntime
-import skillbill.launcher.LauncherRuntime
+import skillbill.db.core.DatabaseRuntime
+import skillbill.install.runtime.InstallRuntime
+import skillbill.launcher.agentrun.LauncherRuntime
 import skillbill.learnings.LearningsRuntime
-import skillbill.mcp.McpRuntime
-import skillbill.nativeagent.NativeAgentRuntime
+import skillbill.mcp.core.McpRuntime
+import skillbill.nativeagent.discovery.NativeAgentRuntime
 import skillbill.review.ReviewParser
-import skillbill.scaffold.ScaffoldRuntime
-import skillbill.telemetry.TelemetryRuntime
+import skillbill.scaffold.runtime.ScaffoldRuntime
+import skillbill.telemetry.config.TelemetryRuntime
 import skillbill.workflow.implement.FeatureImplementWorkflowRuntime
 import skillbill.workflow.verify.FeatureVerifyWorkflowRuntime
 import kotlin.test.Test
@@ -60,24 +60,7 @@ class RuntimeModuleSmokeTest {
 
   private fun assertRuntimeSurfacePackages() {
     assertEquals(
-      expectedSubsystemPackages -
-        setOf(
-          "skillbill.application",
-          "skillbill.boundary",
-          "skillbill.config",
-          "skillbill.contracts",
-          "skillbill.desktop",
-          "skillbill.di",
-          "skillbill.domain.skillremove",
-          "skillbill.error",
-          "skillbill.featurespec",
-          "skillbill.goalrunner",
-          "skillbill.infrastructure",
-          "skillbill.model",
-          "skillbill.ports",
-          "skillbill.skillremove",
-          "skillbill.workflow",
-        ),
+      expectedRuntimeSurfacePackages,
       runtimeSurfacePackages,
     )
     assertTrue(runtimeSurfaces.all { it.qualifiedName?.startsWith("skillbill.") == true })
@@ -157,6 +140,21 @@ class RuntimeModuleSmokeTest {
         InstallRuntime::class,
         NativeAgentRuntime::class,
         ScaffoldRuntime::class,
+      )
+    val expectedRuntimeSurfacePackages: Set<String> =
+      setOf(
+        "skillbill.cli.core",
+        "skillbill.launcher.agentrun",
+        "skillbill.mcp.core",
+        "skillbill.db.core",
+        "skillbill.telemetry.config",
+        "skillbill.review",
+        "skillbill.learnings",
+        "skillbill.install.runtime",
+        "skillbill.nativeagent.discovery",
+        "skillbill.scaffold.runtime",
+        "skillbill.workflow.implement",
+        "skillbill.workflow.verify",
       )
     val reservedContracts =
       emptyList<RuntimeSurfaceContract>()

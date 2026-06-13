@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.application.telemetry.RUNTIME_EXCEPTION_EVENT
+import skillbill.application.telemetry.enqueueRuntimeException
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import kotlin.test.Test

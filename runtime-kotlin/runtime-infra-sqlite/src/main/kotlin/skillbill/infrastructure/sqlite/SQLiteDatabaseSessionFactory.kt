@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.db.DatabaseRuntime
+import skillbill.db.core.DatabaseRuntime
 import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork

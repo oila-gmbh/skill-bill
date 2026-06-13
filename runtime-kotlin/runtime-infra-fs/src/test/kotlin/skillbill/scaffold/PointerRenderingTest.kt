@@ -1,6 +1,8 @@
 package skillbill.scaffold
 
 import skillbill.scaffold.model.PointerSpec
+import skillbill.scaffold.pointer.normalizePointerPath
+import skillbill.scaffold.pointer.renderPointer
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest

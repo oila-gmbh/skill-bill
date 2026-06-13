@@ -1,5 +1,11 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.authoring.renderAuthoringTarget
+import skillbill.scaffold.authoring.renderWrapper
+import skillbill.scaffold.authoring.resolveTarget
+import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.pointer.renderPointer
+import skillbill.scaffold.runtime.scaffold
 import skillbill.testsupport.SnapshotAssertions
 import java.nio.file.Files
 import java.nio.file.Path

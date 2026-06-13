@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError

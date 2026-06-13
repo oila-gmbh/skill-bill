@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.db.telemetry.durationSeconds
 import skillbill.review.model.FeatureImplementChildStepCoverageStats
 import skillbill.review.model.FeatureSizeOutcomeStats
 import skillbill.review.model.LargeFeatureHealthStats

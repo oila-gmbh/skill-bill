@@ -16,6 +16,7 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path

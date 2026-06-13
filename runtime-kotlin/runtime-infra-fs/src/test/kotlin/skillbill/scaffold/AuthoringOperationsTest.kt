@@ -1,6 +1,11 @@
 package skillbill.scaffold
 
 import skillbill.error.SkillBillRuntimeException
+import skillbill.scaffold.authoring.AuthoringOperations
+import skillbill.scaffold.authoring.coerceFullContentText
+import skillbill.scaffold.rendering.renderContentBody
+import skillbill.scaffold.runtime.scaffold
+import skillbill.scaffold.runtime.supportingFileTargets
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

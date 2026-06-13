@@ -2,11 +2,11 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.validation.RepoValidationGateway
-import skillbill.scaffold.ReleaseRefMetadata
-import skillbill.scaffold.RepoValidationIssue
-import skillbill.scaffold.RepoValidationIssueSeverity
-import skillbill.scaffold.RepoValidationReport
-import skillbill.scaffold.RepoValidationRuntime
+import skillbill.scaffold.runtime.ReleaseRefMetadata
+import skillbill.scaffold.runtime.RepoValidationIssue
+import skillbill.scaffold.runtime.RepoValidationIssueSeverity
+import skillbill.scaffold.runtime.RepoValidationReport
+import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Path
 import skillbill.ports.validation.model.ReleaseRefMetadata as PortReleaseRefMetadata
 import skillbill.ports.validation.model.RepoValidationIssue as PortRepoValidationIssue

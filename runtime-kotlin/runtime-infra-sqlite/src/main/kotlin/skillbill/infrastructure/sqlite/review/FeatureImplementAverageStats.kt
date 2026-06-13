@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.db.telemetry.durationSeconds
+
 data class FeatureImplementAverageStats(
   val acceptanceCriteriaCount: Double,
   val specWordCount: Double,

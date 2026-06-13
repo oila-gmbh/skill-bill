@@ -1,5 +1,8 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
+import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

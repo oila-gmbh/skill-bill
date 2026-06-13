@@ -1,5 +1,8 @@
 package skillbill.mcp
 
+import skillbill.mcp.core.McpToolRegistry
+import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
+import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertTrue
 

@@ -1,10 +1,13 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
-import skillbill.application.specInputTypes
+import skillbill.application.telemetry.specInputTypes
 import skillbill.contracts.JsonSupport
-import skillbill.db.DatabaseRuntime
-import skillbill.db.LifecycleTelemetryStore
+import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpStdioServer
+import skillbill.mcp.core.McpToolSpec
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -28,13 +31,13 @@ class McpStdioServerTest {
       decodeResponse(
         rawResponse,
       )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
 
     assertTrue(requireNotNull(rawResponse).contains(""""jsonrpc":"2.0""""))
     assertEquals(1, response["id"])
     assertEquals("2025-11-25", result["protocolVersion"])
-    assertEquals("skill-bill", result.map("serverInfo")["name"])
-    assertTrue(result.map("capabilities").containsKey("tools"))
+    assertEquals("skill-bill", result.fieldMap("serverInfo")["name"])
+    assertTrue(result.fieldMap("capabilities").containsKey("tools"))
   }
 
   @Test
@@ -45,7 +48,7 @@ class McpStdioServerTest {
           """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
         ),
       )
-    val tools = response.map("result")["tools"] as List<*>
+    val tools = response.fieldMap("result")["tools"] as List<*>
     val names = tools.map { tool -> requireNotNull(JsonSupport.anyToStringAnyMap(tool))["name"] }
 
     assertEquals(expectedToolInventory, names)
@@ -59,7 +62,7 @@ class McpStdioServerTest {
           """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
         ),
       )
-    val tools = response.map("result")["tools"] as List<*>
+    val tools = response.fieldMap("result")["tools"] as List<*>
 
     val startedSchema = tools.schemaFor("feature_implement_started")
     val finishedSchema = tools.schemaFor("feature_implement_finished")
@@ -126,7 +129,7 @@ class McpStdioServerTest {
     )
     assertEquals(
       "integer",
-      tools.schemaFor("feature_implement_workflow_continue").properties().map("subtask_id")["type"],
+      tools.schemaFor("feature_implement_workflow_continue").properties().fieldMap("subtask_id")["type"],
     )
     tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
     assertEquals(
@@ -193,7 +196,7 @@ class McpStdioServerTest {
           ),
         ),
       )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val errorPayload = toolPayload(result)
 
     assertEquals(true, result["isError"])
@@ -228,7 +231,7 @@ class McpStdioServerTest {
           ),
         ),
       )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val errorPayload = toolPayload(result)
 
     assertEquals(true, result["isError"])
@@ -256,7 +259,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    assertEquals(false, started.map("result")["isError"], started.toString())
+    assertEquals(false, started.fieldMap("result")["isError"], started.toString())
 
     // Missing-required payloads must fail validation exactly as before.
     val invalid =
@@ -270,7 +273,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    assertEquals(true, invalid.map("result")["isError"], invalid.toString())
+    assertEquals(true, invalid.fieldMap("result")["isError"], invalid.toString())
   }
 
   @Test
@@ -295,7 +298,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    assertEquals(false, started.map("result")["isError"], started.toString())
+    assertEquals(false, started.fieldMap("result")["isError"], started.toString())
 
     val invalid =
       decodeResponse(
@@ -308,7 +311,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    assertEquals(true, invalid.map("result")["isError"], invalid.toString())
+    assertEquals(true, invalid.fieldMap("result")["isError"], invalid.toString())
   }
 
   @Test
@@ -421,7 +424,7 @@ class McpStdioServerTest {
           """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"doctor","arguments":{}}}""",
         ),
       )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val content = result["content"] as List<*>
     val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
     val payload = decodeStdioJsonObject(textContent["text"].toString())
@@ -447,7 +450,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    assertEquals(false, importResponse.map("result")["isError"])
+    assertEquals(false, importResponse.fieldMap("result")["isError"])
 
     val triageRequest =
       toolCallRequest(
@@ -461,7 +464,7 @@ class McpStdioServerTest {
     val decodedTriageArguments = decodeToolArguments(triageRequest)
     assertEquals(
       listOf("1 fix", "2 reject"),
-      decodedTriageArguments.stringList("decisions"),
+      decodedTriageArguments["decisions"],
       decodedTriageArguments.toString(),
     )
     val triageResponse =
@@ -471,7 +474,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    val result = triageResponse.map("result")
+    val result = triageResponse.fieldMap("result")
     val payload = toolPayload(result)
 
     assertEquals(false, result["isError"], payload.toString())
@@ -501,7 +504,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val payload = toolPayload(result)
 
     assertEquals(false, result["isError"], payload.toString())
@@ -544,7 +547,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    val payload = toolPayload(response.map("result"))
+    val payload = toolPayload(response.fieldMap("result"))
     val captured = Files.readString(capturedInput)
 
     assertEquals("ok", payload["status"])
@@ -577,7 +580,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    val payload = toolPayload(response.map("result"))
+    val payload = toolPayload(response.fieldMap("result"))
     val data = requireNotNull(JsonSupport.anyToStringAnyMap(payload["data"]))
 
     assertEquals("ok", payload["status"])
@@ -612,7 +615,7 @@ class McpStdioServerTest {
           context,
         ),
       )
-    val payload = toolPayload(response.map("result"))
+    val payload = toolPayload(response.fieldMap("result"))
     val serialized = JsonSupport.mapToJsonString(payload)
 
     assertEquals("ok", payload["status"])
@@ -635,7 +638,7 @@ class McpStdioServerTest {
         context,
       ),
     )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val payload = toolPayload(result)
 
     assertEquals(false, result["isError"], payload.toString())
@@ -659,7 +662,7 @@ class McpStdioServerTest {
         context,
       ),
     )
-    val result = response.map("result")
+    val result = response.fieldMap("result")
     val payload = toolPayload(result)
 
     assertEquals(false, result["isError"], payload.toString())
@@ -801,7 +804,7 @@ private fun dispatchTool(
   context: McpRuntimeContext,
 ): Map<String, Any?> {
   val response = decodeResponse(McpStdioServer.handleLine(toolCallRequest(id, name, arguments), context))
-  return toolPayload(response.map("result"))
+  return toolPayload(response.fieldMap("result"))
 }
 
 private fun featureTaskWorkflowStepIds(): List<String> =
@@ -814,7 +817,7 @@ private fun toolsList(): List<*> {
         """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
       ),
     )
-  return response.map("result")["tools"] as List<*>
+  return response.fieldMap("result")["tools"] as List<*>
 }
 
 private fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
@@ -975,3 +978,6 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
     )
   }
 }
+
+private fun Map<String, Any?>.fieldMap(name: String): Map<String, Any?> =
+  JsonSupport.anyToStringAnyMap(this[name]).orEmpty()

@@ -3,6 +3,9 @@ package skillbill.scaffold
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
+import skillbill.scaffold.platformpack.discoverPlatformPackManifests
+import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path

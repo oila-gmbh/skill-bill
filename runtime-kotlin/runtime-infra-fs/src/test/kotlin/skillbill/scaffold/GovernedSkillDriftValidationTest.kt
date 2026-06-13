@@ -1,5 +1,10 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.authoring.AuthoringRenderBlock
+import skillbill.scaffold.authoring.AuthoringRenderResult
+import skillbill.scaffold.authoring.renderWrapper
+import skillbill.scaffold.authoring.resolveTarget
+import skillbill.scaffold.validation.validateGovernedSkillDrift
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest

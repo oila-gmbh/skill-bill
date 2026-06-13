@@ -4,6 +4,13 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownSkillKindError
+import skillbill.scaffold.payload.detectKind
+import skillbill.scaffold.payload.optionalSpecialistSubagents
+import skillbill.scaffold.payload.rejectBaselineLayersForNonPlatformPack
+import skillbill.scaffold.payload.rejectLeafSubagentSpecialists
+import skillbill.scaffold.payload.resolvePlatformPackDefaults
+import skillbill.scaffold.payload.resolvePlatformPackSelection
+import skillbill.scaffold.payload.validatePayloadVersion
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA

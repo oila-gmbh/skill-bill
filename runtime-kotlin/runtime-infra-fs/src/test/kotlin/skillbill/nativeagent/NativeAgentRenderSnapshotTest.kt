@@ -1,5 +1,7 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

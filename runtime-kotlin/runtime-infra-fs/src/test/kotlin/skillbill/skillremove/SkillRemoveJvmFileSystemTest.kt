@@ -3,6 +3,7 @@ package skillbill.skillremove
 import skillbill.domain.skillremove.model.ManifestEditKind
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
+import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -207,7 +208,7 @@ class SkillRemoveJvmFileSystemTest {
     // Re-parse both manifests through the same production loader the repo browser's
     // `AuthoringDiscovery` path uses. This is the real assertion: the repo browser's `buildTree`
     // path will succeed if and only if this succeeds.
-    val packs = skillbill.scaffold.discoverPlatformPackManifests(repoRoot.resolve("platform-packs"))
+    val packs = discoverPlatformPackManifests(repoRoot.resolve("platform-packs"))
     val kmpPack = packs.first { it.slug == "kmp" }
     val kotlinPack = packs.first { it.slug == "kotlin" }
     assertEquals(null, kmpPack.declaredFiles.baseline, "kmp baseline should be null after code-review removal")

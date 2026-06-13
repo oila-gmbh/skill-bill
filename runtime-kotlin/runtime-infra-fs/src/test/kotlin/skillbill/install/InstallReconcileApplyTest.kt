@@ -3,6 +3,9 @@ package skillbill.install
 import skillbill.error.ReconciliationApplyRefusedError
 import skillbill.install.model.BaselineManifest
 import skillbill.install.model.SkillReconciliationOutcome
+import skillbill.install.reconcile.ReconcileSourceRoots
+import skillbill.install.reconcile.applyReconciliation
+import skillbill.install.reconcile.computeReconciliationPlan
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

@@ -1,5 +1,8 @@
 package skillbill.install
 
+import skillbill.install.plan.detectAgents
+import skillbill.install.runtime.InstallOperations
+import skillbill.install.support.claudeConfigRoots
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

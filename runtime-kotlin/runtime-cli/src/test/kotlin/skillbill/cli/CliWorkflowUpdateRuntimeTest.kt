@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.cli.core.CliRuntime
 import skillbill.contracts.JsonSupport
 import java.nio.file.Files
 import kotlin.test.Test

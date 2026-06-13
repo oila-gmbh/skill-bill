@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.cli.telemetry.toCliMap
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import kotlin.test.Test

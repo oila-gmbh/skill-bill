@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import org.junit.jupiter.api.Assumptions
+import skillbill.scaffold.pointer.validatePlatformPackPointers
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path

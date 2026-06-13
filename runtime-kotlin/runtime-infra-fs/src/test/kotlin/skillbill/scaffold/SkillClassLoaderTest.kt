@@ -4,6 +4,11 @@ import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.SkillClassManifest
+import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
+import skillbill.scaffold.platformpack.discoverSkillClasses
+import skillbill.scaffold.platformpack.resolveSkillClass
+import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

@@ -1,0 +1,75 @@
+package skillbill.mcp.workflow
+
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpWorkflowRuntime
+import skillbill.mcp.core.int
+import skillbill.mcp.core.optionalInt
+import skillbill.mcp.core.optionalListMap
+import skillbill.mcp.core.optionalMap
+import skillbill.mcp.core.optionalString
+import skillbill.mcp.core.string
+
+internal fun workflowOpen(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> = McpWorkflowRuntime.open(
+  kind = kind,
+  sessionId = arguments.string("session_id"),
+  currentStepId = arguments.optionalString("current_step_id"),
+  context = context,
+)
+
+internal fun workflowUpdate(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> = McpWorkflowRuntime.update(
+  kind = kind,
+  request =
+  WorkflowUpdateRequest(
+    workflowId = arguments.string("workflow_id"),
+    workflowStatus = arguments.string("workflow_status"),
+    currentStepId = arguments.string("current_step_id"),
+    stepUpdates = arguments.optionalListMap("step_updates"),
+    artifactsPatch = arguments.optionalMap("artifacts_patch"),
+    sessionId = arguments.string("session_id"),
+  ),
+  context = context,
+)
+
+internal fun workflowGet(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> = McpWorkflowRuntime.get(kind, arguments.string("workflow_id"), context)
+
+internal fun workflowList(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> = McpWorkflowRuntime.list(kind, limit = arguments.int("limit", default = 20), context = context)
+
+internal fun workflowResume(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> = McpWorkflowRuntime.resume(kind, arguments.string("workflow_id"), context)
+
+internal fun workflowContinue(
+  kind: WorkflowFamilyKind,
+  arguments: Map<String, Any?>,
+  context: McpRuntimeContext,
+): Map<String, Any?> {
+  val workflowIdOrIssueKey = arguments.optionalString("workflow_id")
+    ?: arguments.optionalString("issue_key")
+    ?: return mapOf("status" to "error", "error" to "Provide workflow_id or issue_key.")
+  return McpWorkflowRuntime.continueWorkflow(
+    kind,
+    workflowIdOrIssueKey,
+    subtaskId = arguments.optionalInt("subtask_id"),
+    context = context,
+  )
+}

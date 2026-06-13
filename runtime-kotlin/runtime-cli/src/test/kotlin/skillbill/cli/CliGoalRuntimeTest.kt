@@ -1,6 +1,8 @@
 package skillbill.cli
 
-import skillbill.cli.models.CliExecutionResult
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher

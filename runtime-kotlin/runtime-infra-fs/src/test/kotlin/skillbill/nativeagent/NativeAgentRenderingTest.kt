@@ -1,5 +1,9 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSourceText
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

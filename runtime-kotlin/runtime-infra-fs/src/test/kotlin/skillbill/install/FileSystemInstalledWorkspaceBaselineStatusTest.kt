@@ -3,6 +3,8 @@ package skillbill.install
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.install.model.BaselineManifest
+import skillbill.install.reconcile.ReconcileSourceRoots
+import skillbill.install.reconcile.enumerateSkills
 import skillbill.ports.install.baseline.model.InstalledWorkspaceBaselineStatusRequest
 import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
 import java.nio.file.Files

@@ -19,7 +19,7 @@ class InstallPolicyOwnershipArchitectureTest {
       }
     }
   private val approvedPolicyCallers = setOf(
-    "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt",
+    "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt",
   )
 
   // SKILL-52.3 subtask 1: each approved install-plan validation seam and the
@@ -29,8 +29,10 @@ class InstallPolicyOwnershipArchitectureTest {
   // `InstallService.validateInstallPlanWire` (which delegates to the port),
   // keeping the validator off the CLI compile graph.
   private val approvedValidationSeams = mapOf(
-    "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt" to "validateInstallPlanWireSnapshot",
-    "runtime-cli/src/main/kotlin/skillbill/cli/InstallCliPayloads.kt" to "installService.validateInstallPlanWire",
+    "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt" to
+      "validateInstallPlanWireSnapshot",
+    "runtime-cli/src/main/kotlin/skillbill/cli/install/InstallCliPayloads.kt" to
+      "installService.validateInstallPlanWire",
   )
 
   // SKILL-52.3 subtask 1: the concrete `InstallPlanSchemaValidator` moved to
@@ -188,7 +190,7 @@ class InstallPolicyOwnershipArchitectureTest {
     assertEquals(
       emptyList(),
       adapterPolicyOwnershipViolations(
-        "runtime-infra-fs/src/main/kotlin/skillbill/install/InstallPlanBuilder.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt",
         """
         |import skillbill.install.policy.InstallPlanPolicy
         |import skillbill.install.model.validateInstallPlanWireSnapshot

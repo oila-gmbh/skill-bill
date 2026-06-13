@@ -2,10 +2,10 @@ package skillbill.contract
 
 import skillbill.contracts.surface.RuntimeSurfaceContract
 import skillbill.contracts.surface.RuntimeSurfaceStatus
-import skillbill.install.InstallRuntime
-import skillbill.launcher.LauncherRuntime
-import skillbill.nativeagent.NativeAgentRuntime
-import skillbill.scaffold.ScaffoldRuntime
+import skillbill.install.runtime.InstallRuntime
+import skillbill.launcher.agentrun.LauncherRuntime
+import skillbill.nativeagent.discovery.NativeAgentRuntime
+import skillbill.scaffold.runtime.ScaffoldRuntime
 import skillbill.workflow.implement.FeatureImplementWorkflowRuntime
 import skillbill.workflow.verify.FeatureVerifyWorkflowRuntime
 import kotlin.test.Test

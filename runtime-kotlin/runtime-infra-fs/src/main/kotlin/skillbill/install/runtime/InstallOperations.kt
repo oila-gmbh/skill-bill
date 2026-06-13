@@ -1,0 +1,70 @@
+package skillbill.install.runtime
+
+import skillbill.install.apply.applyInstallPlan
+import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallApplyResult
+import skillbill.install.model.InstallPlan
+import skillbill.install.model.InstallPlanRequest
+import skillbill.install.plan.InstallContext
+import skillbill.install.plan.SUPPORTED_AGENTS
+import skillbill.install.plan.agentPaths
+import skillbill.install.plan.buildInstallPlan
+import skillbill.install.plan.codexAgentsPath
+import skillbill.install.plan.detectAgents
+import skillbill.install.plan.installSkill
+import skillbill.install.plan.opencodeAgentsPath
+import skillbill.install.support.claudeConfigRoot
+import skillbill.install.support.claudeConfigRoots
+import skillbill.ports.telemetry.TelemetryLevelMutator
+import java.nio.file.Files
+import java.nio.file.Path
+
+/** Public CLI-facing install operations backed by the internal install primitives. */
+object InstallOperations {
+  fun planInstall(request: InstallPlanRequest): InstallPlan = buildInstallPlan(request)
+
+  fun applyInstall(plan: InstallPlan, telemetryLevelMutator: TelemetryLevelMutator? = null): InstallApplyResult =
+    applyInstallPlan(plan, telemetryLevelMutator)
+
+  fun agentPath(agent: String, home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
+    require(agent in SUPPORTED_AGENTS) {
+      "Unknown agent '$agent'. Supported agents: ${SUPPORTED_AGENTS.joinToString(", ")}."
+    }
+    return agentPaths(home, environment).getValue(agent)
+  }
+
+  fun detectAgentTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> =
+    detectAgents(home, environment)
+
+  fun claudeRoots(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return claudeConfigRoots(resolvedHome, environment)
+  }
+
+  fun codexAgentsPath(home: Path? = null): Path = skillbill.install.plan.codexAgentsPath(home)
+
+  fun claudeAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return claudeConfigRoot(resolvedHome, environment).resolve("agents")
+  }
+
+  fun opencodeAgentsPath(home: Path? = null): Path = skillbill.install.plan.opencodeAgentsPath(home)
+
+  fun junieAgentsPath(home: Path? = null): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return resolvedHome.resolve(".junie/agents")
+  }
+
+  fun linkSkill(source: Path, targetDir: Path, agent: String, repoRoot: Path? = null, home: Path? = null): List<Path> {
+    val resolvedTargetDir = targetDir.toAbsolutePath().normalize()
+    Files.createDirectories(resolvedTargetDir)
+    return installSkill(
+      skillPath = source,
+      agentTargets = listOf(AgentTarget(agent.ifBlank { "manual" }, resolvedTargetDir)),
+      context = InstallContext(
+        repoRoot = repoRoot?.toAbsolutePath()?.normalize(),
+        home = home ?: Path.of(System.getProperty("user.home")),
+      ),
+    )
+  }
+}

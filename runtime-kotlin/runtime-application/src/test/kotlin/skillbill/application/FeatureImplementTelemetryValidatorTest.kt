@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureImplementFinishedRequest
+import skillbill.application.telemetry.validateFeatureImplementFinished
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

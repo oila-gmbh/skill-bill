@@ -54,7 +54,7 @@ dependencies {
 }
 
 application {
-  mainClass.set("skillbill.mcp.MainKt")
+  mainClass.set("skillbill.mcp.core.MainKt")
 }
 
 tasks.named<JavaExec>("run") {

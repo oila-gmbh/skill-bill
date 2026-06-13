@@ -1,8 +1,8 @@
 package skillbill.telemetry
 
 import skillbill.contracts.JsonSupport
-import skillbill.db.DatabaseRuntime
-import skillbill.db.TelemetryOutboxStore
+import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
@@ -12,6 +12,7 @@ import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.telemetry.sync.TelemetrySyncRuntime
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.Test

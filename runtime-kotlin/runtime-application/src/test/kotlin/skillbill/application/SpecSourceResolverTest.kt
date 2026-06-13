@@ -1,5 +1,10 @@
 package skillbill.application
 
+import skillbill.application.decomposition.encodeDecompositionManifestYaml
+import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.decomposition.writeDecompositionManifestText
+import skillbill.application.featuretask.SpecSourceResolver
+import skillbill.application.workflow.repoRoot
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask

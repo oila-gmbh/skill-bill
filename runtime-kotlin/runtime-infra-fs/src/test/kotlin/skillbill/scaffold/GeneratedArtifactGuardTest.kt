@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest

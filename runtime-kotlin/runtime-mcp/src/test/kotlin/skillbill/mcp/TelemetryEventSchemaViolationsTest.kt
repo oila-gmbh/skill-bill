@@ -1,6 +1,8 @@
 package skillbill.mcp
 
 import skillbill.error.InvalidTelemetryEventSchemaError
+import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
+import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

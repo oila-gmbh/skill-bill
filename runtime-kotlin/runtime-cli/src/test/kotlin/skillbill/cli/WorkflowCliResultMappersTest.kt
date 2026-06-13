@@ -2,6 +2,9 @@ package skillbill.cli
 
 import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.cli.goal.toGoalDiffStatCliMap
+import skillbill.cli.goal.toGoalSelectedDiffHunksCliMap
+import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.workflow.GoalObservabilityEventValidator

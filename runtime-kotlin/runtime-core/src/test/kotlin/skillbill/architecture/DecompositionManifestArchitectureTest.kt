@@ -33,7 +33,7 @@ class DecompositionManifestArchitectureTest {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
     val applicationSeam = Files.readString(
       runtimeRoot.resolve(
-        "runtime-application/src/main/kotlin/skillbill/application/DecompositionManifestFileWrites.kt",
+        "runtime-application/src/main/kotlin/skillbill/application/decomposition/DecompositionManifestFileWrites.kt",
       ),
     )
 
@@ -100,7 +100,7 @@ class DecompositionManifestArchitectureTest {
   @Test
   fun `application decomposition runtime artifact emission uses validated seam`() {
     val applicationRoot = runtimeRoot.resolve("runtime-application/src/main/kotlin/skillbill/application")
-    val allowedRawWireMapFile = applicationRoot.resolve("DecompositionManifestFileWrites.kt").normalize()
+    val allowedRawWireMapFile = applicationRoot.resolve("decomposition/DecompositionManifestFileWrites.kt").normalize()
     val violations = Files.walk(applicationRoot).use { paths ->
       paths
         .filter { path -> path.isRegularFile() && path.toString().endsWith(".kt") }

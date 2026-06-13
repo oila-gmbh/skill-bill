@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import skillbill.scaffold.manifest.removeAddonReferences
+import skillbill.scaffold.manifest.removeCodeReviewArea
+import skillbill.scaffold.manifest.removeDeclaredQualityCheckFile
+import skillbill.scaffold.manifest.removeSkillClassPointer
 import java.nio.file.Path
 
 /**

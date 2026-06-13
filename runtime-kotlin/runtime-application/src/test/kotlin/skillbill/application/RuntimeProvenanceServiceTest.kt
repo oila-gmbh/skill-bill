@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.system.resolveRuntimeExecutablePath
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals

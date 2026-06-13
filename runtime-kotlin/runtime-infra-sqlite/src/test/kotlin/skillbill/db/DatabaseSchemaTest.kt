@@ -1,5 +1,7 @@
 package skillbill.db
 
+import skillbill.db.core.DatabaseRuntime
+import skillbill.db.core.DatabaseSchema
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

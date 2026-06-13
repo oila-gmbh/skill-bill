@@ -4,6 +4,7 @@ import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
+import skillbill.mcp.workflow.toMcpMap
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStepState

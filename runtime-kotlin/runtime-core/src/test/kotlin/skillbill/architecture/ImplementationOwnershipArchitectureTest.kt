@@ -36,10 +36,10 @@ class ImplementationOwnershipArchitectureTest {
     }
 
     listOf(
-      "skillbill/install/InstallOperations.kt",
-      "skillbill/scaffold/ScaffoldService.kt",
-      "skillbill/nativeagent/NativeAgentOperations.kt",
-      "skillbill/launcher/McpRegistrationOperations.kt",
+      "skillbill/install/runtime/InstallOperations.kt",
+      "skillbill/scaffold/runtime/ScaffoldService.kt",
+      "skillbill/nativeagent/rendering/NativeAgentOperations.kt",
+      "skillbill/launcher/mcp/McpRegistrationOperations.kt",
       "skillbill/skillremove/SkillRemoveJvmFileSystem.kt",
     ).forEach { packagePath ->
       assertTrue(
@@ -155,7 +155,7 @@ class ImplementationOwnershipArchitectureTest {
     // runtime-core implementation ownership.
     val allowedCompositionImports = setOf(
       "skillbill.install.model.InstallPlanWireValidator",
-      "skillbill.launcher.FileSystemAgentRunLauncher",
+      "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
       "skillbill.workflow.GoalObservabilityEventValidator",
@@ -450,7 +450,7 @@ class ImplementationOwnershipArchitectureTest {
       "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemScaffoldSourceLoader.kt",
     )
     val legacyScaffoldService = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/ScaffoldService.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldService.kt",
     )
     assertTrue(Files.isRegularFile(repoValidationAdapter), "Repo-validation adapter file must exist.")
     assertTrue(Files.isRegularFile(sourceLoaderAdapter), "Source-loader adapter file must exist.")

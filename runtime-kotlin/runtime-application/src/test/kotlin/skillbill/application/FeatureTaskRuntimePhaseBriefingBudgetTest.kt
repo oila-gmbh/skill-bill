@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff

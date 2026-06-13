@@ -9,6 +9,10 @@ import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
+import skillbill.install.nativeagent.InstallNativeAgentOperations
+import skillbill.install.nativeagent.NativeAgentLinkRequest
+import skillbill.install.runtime.InstallOperations
+import skillbill.install.support.CLAUDE_CONFIG_DIR_ENV
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path

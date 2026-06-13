@@ -1,5 +1,10 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchDecisionInvalid
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchDecisionResolved
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetup
+import skillbill.application.featuretask.FeatureTaskRuntimeTargetBranchInvalid
+import skillbill.application.featuretask.FeatureTaskRuntimeTargetBranchResolved
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

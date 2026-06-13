@@ -2,6 +2,10 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.mcp.core.McpToolRegistry
+import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
+import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
+import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test

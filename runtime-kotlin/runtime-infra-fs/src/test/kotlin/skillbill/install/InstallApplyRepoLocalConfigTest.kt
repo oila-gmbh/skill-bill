@@ -2,6 +2,7 @@ package skillbill.install
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

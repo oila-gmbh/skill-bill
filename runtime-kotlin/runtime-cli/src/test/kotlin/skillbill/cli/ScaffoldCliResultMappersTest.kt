@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.cli.scaffold.toCliMap
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult

@@ -1,6 +1,8 @@
 package skillbill.scaffold
 
 import org.junit.jupiter.api.Assumptions
+import skillbill.scaffold.platformpack.discoverPlatformPackManifests
+import skillbill.scaffold.pointer.renderPointer
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

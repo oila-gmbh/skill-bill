@@ -5,6 +5,8 @@ import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
+import skillbill.scaffold.payload.toRawScaffoldPayload
+import skillbill.scaffold.runtime.scaffold
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

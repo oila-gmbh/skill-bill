@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.validation.validateAuthoredContent
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -39,7 +39,7 @@ dependencies {
 }
 
 application {
-  mainClass.set("skillbill.cli.MainKt")
+  mainClass.set("skillbill.cli.core.MainKt")
 }
 
 tasks.named<JavaExec>("run") {

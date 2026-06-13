@@ -2,6 +2,9 @@ package skillbill.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.scaffold.platformpack.PlatformPackSchemaPaths
+import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test

@@ -1,8 +1,8 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.db.LifecycleTelemetryStore
-import skillbill.db.TelemetryOutboxStore
-import skillbill.db.WorkflowStateStore
+import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.db.workflow.WorkflowStateStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime

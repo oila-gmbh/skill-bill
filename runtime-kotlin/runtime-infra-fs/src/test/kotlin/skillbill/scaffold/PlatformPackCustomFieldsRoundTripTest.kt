@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.platformpack.anchoredTopLevelFieldNames
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

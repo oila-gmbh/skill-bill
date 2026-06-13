@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
 class RuntimeArchitectureTest {
-  private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/ReadianMcpRuntime.kt"
-  private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/McpScaffoldRuntime.kt"
+  private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/core/ReadianMcpRuntime.kt"
+  private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/scaffold/McpScaffoldRuntime.kt"
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {
@@ -107,10 +107,10 @@ class RuntimeArchitectureTest {
         "skillbill.infrastructure",
         "skillbill.review.ReviewRuntime",
         "skillbill.review.TriageRuntime",
-        "skillbill.telemetry.TelemetryConfigRuntime",
-        "skillbill.telemetry.TelemetryConfigMutationRuntime",
-        "skillbill.telemetry.TelemetryHttpRuntime",
-        "skillbill.telemetry.TelemetryRemoteStatsRuntime",
+        "skillbill.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.telemetry.config.TelemetryConfigMutationRuntime",
+        "skillbill.telemetry.http.TelemetryHttpRuntime",
+        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
       )
     assertNoBannedImports(
       files = applicationFiles,
@@ -318,16 +318,16 @@ class RuntimeArchitectureTest {
       files =
       sourceFiles().filter { file ->
         file.packageName.startsWith("skillbill.cli") &&
-          !file.packageName.startsWith("skillbill.cli.models")
+          !file.packageName.startsWith("skillbill.cli.model")
       },
       bannedImports =
       listOf(
         "skillbill.db",
         "skillbill.review",
-        "skillbill.telemetry.TelemetryConfigRuntime",
-        "skillbill.telemetry.TelemetryHttpRuntime",
-        "skillbill.telemetry.TelemetryRemoteStatsRuntime",
-        "skillbill.telemetry.TelemetrySyncRuntime",
+        "skillbill.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.telemetry.http.TelemetryHttpRuntime",
+        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
+        "skillbill.telemetry.sync.TelemetrySyncRuntime",
         "skillbill.learnings.LearningStore",
         "skillbill.learnings.LearningsRuntime",
       ),
@@ -344,8 +344,8 @@ class RuntimeArchitectureTest {
         "skillbill.review",
         "skillbill.learnings.LearningStore",
         "skillbill.learnings.LearningsRuntime",
-        "skillbill.telemetry.TelemetryConfigRuntime",
-        "skillbill.telemetry.TelemetryRemoteStatsRuntime",
+        "skillbill.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
       ),
     )
   }
@@ -385,7 +385,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `learning service exposes typed results instead of map payloads`() {
-    val serviceSource = Files.readString(sourcePath("skillbill/application/LearningService.kt"))
+    val serviceSource = Files.readString(sourcePath("skillbill/application/learning/LearningService.kt"))
     val mapReturningLearningFunctions =
       Regex("""fun\s+(list|show|resolve|add|edit|setStatus|delete)\s*\([^)]*\)\s*:\s*Map<""")
         .findAll(serviceSource)
@@ -667,10 +667,12 @@ class RuntimeArchitectureTest {
   @Test
   fun `decomposition manifest application projection declares final parse seam ownership`() {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
-    val projectionIo = Files.readString(sourcePath("skillbill/application/DecompositionManifestFileWrites.kt"))
+    val projectionIo = Files.readString(
+      sourcePath("skillbill/application/decomposition/DecompositionManifestFileWrites.kt"),
+    )
 
     assertContains(architecture, "Decomposition-manifest schema validation is owned by")
-    assertContains(architecture, "skillbill.application.DecompositionManifestFileWrites")
+    assertContains(architecture, "skillbill.application.decomposition.DecompositionManifestFileWrites")
     assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(projectionIo, "Decomposition manifest parse/emission seam")
@@ -762,13 +764,12 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files =
       listOf(
-        sourcePath("skillbill/telemetry/TelemetryConfigRuntime.kt"),
-        sourcePath("skillbill/telemetry/TelemetryConfigMutationRuntime.kt"),
-        sourcePath("skillbill/telemetry/TelemetryHttpRuntime.kt"),
-        sourcePath("skillbill/telemetry/TelemetrySyncRuntime.kt"),
-        sourcePath("skillbill/telemetry/TelemetryConfigMutations.kt"),
-        sourcePath("skillbill/telemetry/DefaultTelemetrySettingsProvider.kt"),
-        sourcePath("skillbill/telemetry/TelemetryRemoteStatsRuntime.kt"),
+        sourcePath("skillbill/telemetry/config/TelemetryConfigRuntime.kt"),
+        sourcePath("skillbill/telemetry/config/TelemetryConfigMutationRuntime.kt"),
+        sourcePath("skillbill/telemetry/http/TelemetryHttpRuntime.kt"),
+        sourcePath("skillbill/telemetry/sync/TelemetrySyncRuntime.kt"),
+        sourcePath("skillbill/telemetry/config/TelemetryConfigMutations.kt"),
+        sourcePath("skillbill/telemetry/settings/DefaultTelemetrySettingsProvider.kt"),
       ).map(::sourceFile),
       bannedImports =
       listOf(
@@ -783,16 +784,16 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `cli and mcp learning payloads use contract DTO mappers`() {
-    val cliPayloads = Files.readString(sourcePath("skillbill/cli/LearningCliPayloads.kt"))
-    val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/McpLearningPayloads.kt"))
-    val learningMappers = Files.readString(sourcePath("skillbill/application/LearningContractMappers.kt"))
+    val cliPayloads = Files.readString(sourcePath("skillbill/cli/learning/LearningCliPayloads.kt"))
+    val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/learning/McpLearningPayloads.kt"))
+    val learningMappers = Files.readString(sourcePath("skillbill/application/learning/LearningContractMappers.kt"))
     val learningContracts = sourcePath("skillbill/contracts/learning/LearningContracts.kt")
     val systemContracts = sourcePath("skillbill/contracts/system/SystemContracts.kt")
 
     assertTrue(Files.exists(learningContracts), "Missing learning contract DTOs")
     assertTrue(Files.exists(systemContracts), "Missing system contract DTOs")
-    assertContains(cliPayloads, "skillbill.application.toLearning")
-    assertContains(mcpPayloads, "skillbill.application.toLearningResolveContract")
+    assertContains(cliPayloads, "skillbill.application.learning.toLearning")
+    assertContains(mcpPayloads, "skillbill.application.learning.toLearningResolveContract")
     assertContains(learningMappers, "skillbill.contracts.learning")
     assertTrue("learningEntryPayload" !in cliPayloads)
     assertTrue("learningEntryPayload" !in mcpPayloads)
@@ -1382,8 +1383,8 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `cli text rendering consumes typed presenter models instead of raw maps`() {
-    val cliOutput = Files.readString(sourcePath("skillbill/cli/CliOutput.kt"))
-    val cliPresenters = Files.readString(sourcePath("skillbill/cli/CliPresenters.kt"))
+    val cliOutput = Files.readString(sourcePath("skillbill/cli/core/CliOutput.kt"))
+    val cliPresenters = Files.readString(sourcePath("skillbill/cli/core/CliPresenters.kt"))
 
     assertTrue("List<Map<String, Any?>>" !in cliOutput)
     assertContains(cliOutput, "CliNumberedFindingsPresentation")
@@ -1883,12 +1884,12 @@ class RuntimeArchitectureTest {
       "skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml",
       "skillbill.workflow.DecompositionManifestCodec.decodeMap",
       "skillbill.workflow.toWireMap",
-      "skillbill.application.decodeDecompositionManifestMap",
-      "skillbill.application.encodeDecompositionManifestMap",
-      "skillbill.application.DecompositionManifestWriter.writeFromWorkflowUpdate",
-      "skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate",
-      "skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
-      "skillbill.application.WorkflowFamily.sessionSummary",
+      "skillbill.application.decomposition.decodeDecompositionManifestMap",
+      "skillbill.application.decomposition.encodeDecompositionManifestMap",
+      "skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate",
+      "skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate",
+      "skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
+      "skillbill.application.workflow.WorkflowFamily.sessionSummary",
       // SKILL-61 subtask 1: goal-observability event maps are durable
       // workflow-artifact/schema seams. The domain validator owns the schema
       // boundary and CLI/MCP/projector rendering consumes compact maps after
@@ -1954,23 +1955,23 @@ class RuntimeArchitectureTest {
       // LifecycleTelemetryService emit methods are accepted permanent open
       // boundaries (forward-compatible MCP/CLI event bags) — now annotated with
       // @OpenBoundaryMap rather than gated for removal.
-      "skillbill.application.lifecycleOkPayload",
-      "skillbill.application.lifecycleSkippedPayload",
-      "skillbill.application.lifecycleErrorPayload",
-      "skillbill.application.orchestratedStartedSkippedPayload",
-      "skillbill.application.orchestratedPayload",
-      "skillbill.application.LifecycleTelemetryService.featureImplementStarted",
-      "skillbill.application.LifecycleTelemetryService.featureImplementFinished",
-      "skillbill.application.LifecycleTelemetryService.featureTaskRuntimeStarted",
-      "skillbill.application.LifecycleTelemetryService.featureTaskRuntimeFinished",
-      "skillbill.application.LifecycleTelemetryService.qualityCheckStarted",
-      "skillbill.application.LifecycleTelemetryService.qualityCheckFinished",
-      "skillbill.application.LifecycleTelemetryService.featureVerifyStarted",
-      "skillbill.application.LifecycleTelemetryService.featureVerifyFinished",
-      "skillbill.application.LifecycleTelemetryService.prDescriptionGenerated",
-      "skillbill.application.LifecycleTelemetryService.goalStarted",
-      "skillbill.application.LifecycleTelemetryService.goalSubtaskFinished",
-      "skillbill.application.LifecycleTelemetryService.goalFinished",
+      "skillbill.application.telemetry.lifecycleOkPayload",
+      "skillbill.application.telemetry.lifecycleSkippedPayload",
+      "skillbill.application.telemetry.lifecycleErrorPayload",
+      "skillbill.application.telemetry.orchestratedStartedSkippedPayload",
+      "skillbill.application.telemetry.orchestratedPayload",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted",
+      "skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted",
+      "skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated",
+      "skillbill.application.telemetry.LifecycleTelemetryService.goalStarted",
+      "skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.goalFinished",
       "skillbill.workflow.WorkflowEngine.continueDecision",
       "skillbill.learnings.learningPayload",
       "skillbill.learnings.learningSummaryPayload",

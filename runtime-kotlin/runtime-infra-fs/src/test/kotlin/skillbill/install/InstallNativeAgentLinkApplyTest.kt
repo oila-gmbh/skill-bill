@@ -8,8 +8,12 @@ import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
-import skillbill.nativeagent.NativeAgentOperations
-import skillbill.nativeagent.NativeAgentProvider
+import skillbill.install.nativeagent.InstallNativeAgentResult
+import skillbill.install.nativeagent.installNativeAgentFile
+import skillbill.install.runtime.InstallOperations
+import skillbill.install.support.createNewSymlinkWithGuidance
+import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.attribute.PosixFilePermission

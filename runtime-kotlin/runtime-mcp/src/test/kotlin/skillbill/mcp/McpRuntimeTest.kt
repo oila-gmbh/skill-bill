@@ -11,10 +11,25 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.cli.CliRuntime
-import skillbill.cli.CliRuntimeContext
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.db.DatabaseRuntime
+import skillbill.db.core.DatabaseRuntime
+import skillbill.mcp.core.McpRuntime
+import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpToolDispatcher
+import skillbill.mcp.core.McpWorkflowRuntime
+import skillbill.mcp.core.importReview
+import skillbill.mcp.core.newSkillScaffold
+import skillbill.mcp.core.resolveLearnings
+import skillbill.mcp.core.triageFindings
+import skillbill.mcp.lifecycle.featureImplementFinished
+import skillbill.mcp.lifecycle.featureImplementStarted
+import skillbill.mcp.lifecycle.featureVerifyFinished
+import skillbill.mcp.lifecycle.featureVerifyStarted
+import skillbill.mcp.lifecycle.prDescriptionGenerated
+import skillbill.mcp.lifecycle.qualityCheckFinished
+import skillbill.mcp.lifecycle.qualityCheckStarted
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -919,7 +934,7 @@ private fun seedLearningScenario(tempDir: Path, env: Map<String, String>) {
   )
 }
 
-private fun assertMcpCliSuccess(result: skillbill.cli.CliExecutionResult) {
+private fun assertMcpCliSuccess(result: skillbill.cli.model.CliExecutionResult) {
   assertEquals(0, result.exitCode, result.stdout)
 }
 

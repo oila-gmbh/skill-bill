@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.application.decomposition.intentFor
+import skillbill.application.decomposition.statusFromUpdate
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.workflow.model.CurrentSubtaskIntent
 import kotlin.test.Test

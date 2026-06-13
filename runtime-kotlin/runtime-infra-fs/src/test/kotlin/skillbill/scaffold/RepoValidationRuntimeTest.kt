@@ -1,7 +1,10 @@
 package skillbill.scaffold
 
-import skillbill.nativeagent.NativeAgentSource
-import skillbill.nativeagent.renderNativeAgentSource
+import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.composition.renderNativeAgentSource
+import skillbill.scaffold.runtime.RepoValidationRuntime
+import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
+import skillbill.scaffold.runtime.supportingFileTargets
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

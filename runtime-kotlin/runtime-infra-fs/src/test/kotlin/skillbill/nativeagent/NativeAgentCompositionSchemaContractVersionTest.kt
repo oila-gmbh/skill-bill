@@ -2,6 +2,9 @@ package skillbill.nativeagent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.nativeagent.composition.NATIVE_AGENT_COMPOSITION_CONTRACT_VERSION
+import skillbill.nativeagent.composition.NativeAgentCompositionSchemaPaths
+import skillbill.nativeagent.composition.NativeAgentCompositionSchemaValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

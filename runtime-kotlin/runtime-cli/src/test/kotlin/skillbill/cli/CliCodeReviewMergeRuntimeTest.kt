@@ -1,5 +1,7 @@
 package skillbill.cli
 
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliRuntimeContext
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

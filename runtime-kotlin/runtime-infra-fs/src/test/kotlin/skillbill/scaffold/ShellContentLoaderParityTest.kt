@@ -6,6 +6,11 @@ import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.loadQualityCheckContent
+import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.scaffold.validation.validateSkillMdShape
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path

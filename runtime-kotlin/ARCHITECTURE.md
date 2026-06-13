@@ -410,12 +410,12 @@ runtime-ports
     - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
-    - `skillbill.application.decodeDecompositionManifestMap`
-    - `skillbill.application.encodeDecompositionManifestMap`
-    - `skillbill.application.DecompositionManifestWriter.writeFromWorkflowUpdate`
-    - `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
-    - `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
-    - `skillbill.application.WorkflowFamily.sessionSummary`
+    - `skillbill.application.decomposition.decodeDecompositionManifestMap`
+    - `skillbill.application.decomposition.encodeDecompositionManifestMap`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+    - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
     - `skillbill.workflow.GoalObservabilityEventValidator.validate`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
@@ -450,23 +450,23 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
-    - `skillbill.application.lifecycleOkPayload`
-    - `skillbill.application.lifecycleSkippedPayload`
-    - `skillbill.application.lifecycleErrorPayload`
-    - `skillbill.application.orchestratedStartedSkippedPayload`
-    - `skillbill.application.orchestratedPayload`
-    - `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
-    - `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
-    - `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeStarted`
-    - `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeFinished`
-    - `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
-    - `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
-    - `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
-    - `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
-    - `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-    - `skillbill.application.LifecycleTelemetryService.goalStarted`
-    - `skillbill.application.LifecycleTelemetryService.goalSubtaskFinished`
-    - `skillbill.application.LifecycleTelemetryService.goalFinished`
+    - `skillbill.application.telemetry.lifecycleOkPayload`
+    - `skillbill.application.telemetry.lifecycleSkippedPayload`
+    - `skillbill.application.telemetry.lifecycleErrorPayload`
+    - `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
+    - `skillbill.application.telemetry.orchestratedPayload`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
     - `skillbill.learnings.learningPayload`
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
@@ -621,7 +621,7 @@ skillbill.workflow.verify
   with `DecompositionManifestCoherenceValidator`), compiled into
   `runtime-infra-fs` and reached through the domain-owned port
   `skillbill.workflow.DecompositionManifestValidator`. The owning parse/emission
-  seam is `skillbill.application.DecompositionManifestFileWrites`, which
+  seam is `skillbill.application.decomposition.DecompositionManifestFileWrites`, which
   validates YAML text and in-memory maps through that port before workflow
   artifacts are persisted or returned. Repo-local manifest text persistence is
   owned by
@@ -856,7 +856,7 @@ Categories:
 - `skillbill.workflow.DecompositionManifestValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
 - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
-- `skillbill.application.WorkflowFamily.sessionSummary`
+- `skillbill.application.workflow.WorkflowFamily.sessionSummary`
 - `skillbill.workflow.GoalObservabilityEventValidator.validate`
 - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
 - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
@@ -912,23 +912,23 @@ Categories:
 - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
-- `skillbill.application.lifecycleOkPayload`
-- `skillbill.application.lifecycleSkippedPayload`
-- `skillbill.application.lifecycleErrorPayload`
-- `skillbill.application.orchestratedStartedSkippedPayload`
-- `skillbill.application.orchestratedPayload`
-- `skillbill.application.LifecycleTelemetryService.featureImplementStarted`
-- `skillbill.application.LifecycleTelemetryService.featureImplementFinished`
-- `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeStarted`
-- `skillbill.application.LifecycleTelemetryService.featureTaskRuntimeFinished`
-- `skillbill.application.LifecycleTelemetryService.qualityCheckStarted`
-- `skillbill.application.LifecycleTelemetryService.qualityCheckFinished`
-- `skillbill.application.LifecycleTelemetryService.featureVerifyStarted`
-- `skillbill.application.LifecycleTelemetryService.featureVerifyFinished`
-- `skillbill.application.LifecycleTelemetryService.prDescriptionGenerated`
-- `skillbill.application.LifecycleTelemetryService.goalStarted`
-- `skillbill.application.LifecycleTelemetryService.goalSubtaskFinished`
-- `skillbill.application.LifecycleTelemetryService.goalFinished`
+- `skillbill.application.telemetry.lifecycleOkPayload`
+- `skillbill.application.telemetry.lifecycleSkippedPayload`
+- `skillbill.application.telemetry.lifecycleErrorPayload`
+- `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
+- `skillbill.application.telemetry.orchestratedPayload`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
 
 ### private_serializer
 
@@ -951,19 +951,19 @@ category without reshaping the marker block._
   workflow-snapshot typed-DTO pass.
 - `skillbill.workflow.toWireMap` [subtask 4] — workflow wire-map encoder;
   retired together with the workflow-snapshot typed-DTO pass.
-- `skillbill.application.decodeDecompositionManifestMap` [subtask 4] —
+- `skillbill.application.decomposition.decodeDecompositionManifestMap` [subtask 4] —
   decomposition manifest decode entrypoint; postponed with the workflow
   family.
-- `skillbill.application.encodeDecompositionManifestMap` [subtask 4] —
+- `skillbill.application.decomposition.encodeDecompositionManifestMap` [subtask 4] —
   decomposition manifest encode entrypoint; postponed with the workflow
   family.
-- `skillbill.application.DecompositionManifestWriter.writeFromWorkflowUpdate`
+- `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
-- `skillbill.application.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+- `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
-- `skillbill.application.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+- `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
 <!-- skill-52-2-inventory:end -->

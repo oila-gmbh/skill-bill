@@ -1,6 +1,8 @@
 package skillbill.launcher
 
 import skillbill.contracts.JsonSupport
+import skillbill.launcher.mcp.McpJsonConfig
+import skillbill.launcher.mcp.McpRegistrationOperations
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

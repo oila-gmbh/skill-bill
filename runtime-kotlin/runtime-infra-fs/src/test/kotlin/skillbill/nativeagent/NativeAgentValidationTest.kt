@@ -1,5 +1,16 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
+import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.composition.composeNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSource
+import skillbill.nativeagent.composition.resolveNativeAgentCompositionTarget
+import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
+import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
+import skillbill.nativeagent.rendering.discoverRepoNativeAgentSources
+import skillbill.nativeagent.validation.validateRepoNativeAgents
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

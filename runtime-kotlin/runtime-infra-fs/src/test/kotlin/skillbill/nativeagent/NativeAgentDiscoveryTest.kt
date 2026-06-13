@@ -1,5 +1,7 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
+import skillbill.nativeagent.discovery.discoverNativeAgentSources
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

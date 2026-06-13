@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import skillbill.scaffold.platformpack.ReadmeCatalogEdits
+import skillbill.scaffold.platformpack.ReadmeEditOutcome
 import java.nio.file.Path
 
 class ReadmeCatalogEditsTest {

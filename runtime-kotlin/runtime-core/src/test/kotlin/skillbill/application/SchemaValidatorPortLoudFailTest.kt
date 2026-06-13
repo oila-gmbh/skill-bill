@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidInstallPlanSchemaError

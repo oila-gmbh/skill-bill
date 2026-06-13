@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository

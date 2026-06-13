@@ -1,6 +1,8 @@
 package skillbill.application
 
+import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome

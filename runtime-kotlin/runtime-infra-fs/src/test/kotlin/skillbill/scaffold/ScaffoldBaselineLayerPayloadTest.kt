@@ -1,7 +1,13 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
+import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.rendering.inferSkillDescription
+import skillbill.scaffold.rendering.renderContentBody
+import skillbill.scaffold.runtime.TemplateContext
+import skillbill.scaffold.runtime.scaffold
+import skillbill.scaffold.runtime.supportingFileTargets
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

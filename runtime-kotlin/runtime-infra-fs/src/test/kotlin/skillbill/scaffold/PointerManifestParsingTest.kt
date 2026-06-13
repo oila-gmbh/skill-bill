@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest

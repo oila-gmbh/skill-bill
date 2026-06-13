@@ -1,9 +1,11 @@
 package skillbill.cli
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.db.DatabaseRuntime
-import skillbill.db.LifecycleTelemetryStore
+import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY

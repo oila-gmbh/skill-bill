@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
-import skillbill.db.TelemetryOutboxStore
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary

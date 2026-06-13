@@ -1,10 +1,13 @@
 package skillbill.cli
 
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.nativeagent.NativeAgentProvider
-import skillbill.nativeagent.NativeAgentSource
-import skillbill.nativeagent.parseNativeAgentSource
-import skillbill.nativeagent.renderNativeAgentSource
+import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSource
+import skillbill.nativeagent.composition.renderNativeAgentSource
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

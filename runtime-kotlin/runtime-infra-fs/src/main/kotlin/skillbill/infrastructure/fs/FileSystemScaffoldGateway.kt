@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.nativeagent.NativeAgentCompositionDirective
-import skillbill.nativeagent.NativeAgentCompositionKind
-import skillbill.nativeagent.NativeAgentSource
+import skillbill.nativeagent.composition.NativeAgentCompositionDirective
+import skillbill.nativeagent.composition.NativeAgentCompositionKind
+import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -21,19 +21,21 @@ import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
-import skillbill.scaffold.AuthoringOperations
-import skillbill.scaffold.AuthoringRenderResult
-import skillbill.scaffold.ScaffoldCatalog
+import skillbill.scaffold.authoring.AuthoringOperations
+import skillbill.scaffold.authoring.AuthoringRenderResult
+import skillbill.scaffold.authoring.recommendedCommands
+import skillbill.scaffold.authoring.renderAuthoringTarget
+import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
-import skillbill.scaffold.renderAuthoringTarget
+import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
-import skillbill.nativeagent.discoverNativeAgentSourceFiles as discoverFsNativeAgentSourceFiles
-import skillbill.nativeagent.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
-import skillbill.nativeagent.renderComposedNativeAgentSource as renderFsComposedNativeAgentSource
-import skillbill.nativeagent.renderNativeAgentSource as renderFsNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
+import skillbill.nativeagent.composition.renderComposedNativeAgentSource as renderFsComposedNativeAgentSource
+import skillbill.nativeagent.composition.renderNativeAgentSource as renderFsNativeAgentSource
+import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles as discoverFsNativeAgentSourceFiles
 import skillbill.ports.scaffold.model.GeneratedArtifactFile as PortGeneratedArtifactFile
-import skillbill.scaffold.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
-import skillbill.scaffold.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
+import skillbill.scaffold.platformpack.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
+import skillbill.scaffold.pointer.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
 
 @Inject
 class FileSystemScaffoldGateway(

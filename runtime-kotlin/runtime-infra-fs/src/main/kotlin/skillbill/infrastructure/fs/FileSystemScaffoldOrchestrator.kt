@@ -1,11 +1,12 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.scaffold.ScaffoldAdapterSeams
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
-import skillbill.scaffold.scaffoldWithAdapters
-import skillbill.scaffold.toRawScaffoldPayload
+import skillbill.scaffold.payload.toRawScaffoldPayload
+import skillbill.scaffold.runtime.ScaffoldAdapterSeams
+import skillbill.scaffold.runtime.scaffold
+import skillbill.scaffold.runtime.scaffoldWithAdapters
 
 /**
  * SKILL-52.1 subtask 3 (F-001): DI-bound entrypoint for the filesystem scaffold pipeline.

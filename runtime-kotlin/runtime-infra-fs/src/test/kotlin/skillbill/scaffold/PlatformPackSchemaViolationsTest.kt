@@ -2,6 +2,8 @@ package skillbill.scaffold
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.platformpack.loadPlatformPack
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

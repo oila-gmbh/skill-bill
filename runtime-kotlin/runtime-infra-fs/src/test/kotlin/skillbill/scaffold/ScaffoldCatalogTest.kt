@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.catalog.ScaffoldCatalog
+import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

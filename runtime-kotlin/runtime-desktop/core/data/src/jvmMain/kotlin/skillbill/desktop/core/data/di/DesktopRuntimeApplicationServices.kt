@@ -1,13 +1,13 @@
 package skillbill.desktop.core.data.di
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.InstallAgentService
-import skillbill.application.InstallService
-import skillbill.application.RepoSourceDiscoveryService
-import skillbill.application.RepoValidationService
-import skillbill.application.ScaffoldCatalogService
-import skillbill.application.ScaffoldService
-import skillbill.application.SkillRemoveService
+import skillbill.application.install.InstallService
+import skillbill.application.scaffold.InstallAgentService
+import skillbill.application.scaffold.RepoSourceDiscoveryService
+import skillbill.application.scaffold.RepoValidationService
+import skillbill.application.scaffold.ScaffoldCatalogService
+import skillbill.application.scaffold.ScaffoldService
+import skillbill.application.scaffold.SkillRemoveService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
 import skillbill.di.create

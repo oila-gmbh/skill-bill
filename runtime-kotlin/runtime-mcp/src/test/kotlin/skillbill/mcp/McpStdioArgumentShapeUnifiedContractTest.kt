@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.contracts.JsonSupport
+import skillbill.mcp.core.McpStdioServer
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

@@ -1,6 +1,6 @@
 package skillbill
 
-import skillbill.db.DatabaseRuntime
+import skillbill.db.core.DatabaseRuntime
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection

@@ -1,5 +1,10 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.composition.NATIVE_AGENT_BUNDLE_FILE
+import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
+import skillbill.nativeagent.composition.parseNativeAgentBundle
+import skillbill.nativeagent.composition.parseNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentSourceFile
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path

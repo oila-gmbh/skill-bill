@@ -1,5 +1,7 @@
 package skillbill.application.model
 
+import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
+
 /**
  * Static per-phase agent assignment: a design-time phase-id-to-agent map plus an optional run-wide
  * [override] that wins at the launch seam. A running agent cannot choose its own assignment; the

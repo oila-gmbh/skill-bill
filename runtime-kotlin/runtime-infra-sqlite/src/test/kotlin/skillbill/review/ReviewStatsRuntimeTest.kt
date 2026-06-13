@@ -2,9 +2,9 @@ package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
-import skillbill.db.LifecycleTelemetryStore
-import skillbill.db.TelemetryOutboxStore
-import skillbill.db.listJson
+import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.db.telemetry.listJson
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
