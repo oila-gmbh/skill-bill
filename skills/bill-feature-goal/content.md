@@ -257,41 +257,43 @@ confirmation prompt. The decomposition-readiness checks, the proposal contents,
 and that single gate are shared verbatim across both modes.
 
 After the user confirms at that single gate, `mode:prose` does NOT launch
-`skill-bill goal`. Instead, the invoking agent loops the decomposed subtasks in
-dependency order entirely within the current session, entering EACH subtask
-through the existing continuation contract:
-
-```bash
-skill-bill workflow continue <issue_key> --subtask-id <id>
-```
-
-or the MCP tool `feature_implement_workflow_continue` with the decomposed parent
-`issue_key` and an integer `subtask_id`. This is the same non-interactive
-worker contract documented in `bill-feature-task-prose` under
-`## Goal-Continuation Entry (non-interactive)`. The prose loop NEVER synthesizes
-a second record-writing path: the worker (`bill-feature-task-prose`) writes the
-durable subtask outcome, and the prose loop only enters and observes that
-contract.
+`skill-bill goal`. Instead, for each runnable subtask the invoking agent spawns
+exactly one Level-1 subtask-agent via the Agent tool with a self-contained
+briefing. The agent type is `bill-feature-task-subtask-runner`. The briefing
+must carry: `issue_key`, `subtask_id`, `workflow_id` (from the manifest or the
+continuation selector result), `spec_path`, and the goal-continuation contract
+rules (`suppress_pr=true`, `commit_push` is the terminal signal, no install
+flows). The Level-1 agent runs the full phase loop
+(preplan → plan → implement → review → audit → validate → history → commit_push)
+in its own fresh context and returns a bounded RESULT block.
 
 Selection semantics follow the runtime DecompositionWorkflowContinuation
 selector: resume the in-progress subtask; else start the first pending subtask
-whose dependencies are complete; else report blocked or all-complete. Prefer
-letting `workflow continue` perform the selection rather than computing the next
-subtask in prose, so the prose loop cannot drift from runtime ordering. When a
-`subtask_id` is passed, treat it as a constraint on the next runnable subtask,
+whose dependencies are complete; else report blocked or all-complete. Resolve the
+`workflow_id` for the next runnable subtask via `feature_implement_workflow_get`
+or `skill-bill workflow continue` before spawning the Level-1 agent, so the
+Level-1 briefing carries the correct `workflow_id`. When a `subtask_id` is
+supplied by the caller, treat it as a constraint on the next runnable subtask,
 never a way to skip dependencies.
 
 Per-subtask runs keep `suppress_pr=true` (`goal_continuation.suppress_pr=true`)
 so each subtask commits but does not open its own PR; the whole goal opens
 exactly one parent PR on clean completion.
 
+**Orchestrator thinness constraint.** The invoking agent (Level-0) holds only:
+(1) the decomposition manifest, (2) per-subtask terminal outcomes —
+`{status, commit_sha, workflow_id}` — one record per completed or stopped
+subtask, and (3) the current subtask index. It does NOT accumulate preplan
+digests, plans, implementation summaries, code-review reports, or audit reports
+from any subtask. The Level-1 return value is the terminal outcome signal;
+everything else stays in Level-1 context.
+
 ### Terminal-outcome verification and durable authority
 
-After each subtask, confirm the durable terminal outcome BEFORE advancing to the
-next subtask. The prose transcript is never proof of progress. Verify through a
-read-only inspection — `skill-bill workflow show <id> --format json`,
-`feature_implement_workflow_get`, or `skill-bill goal status <issue_key>` —
-never by trusting in-session narration.
+After Level-1 returns, verify the terminal outcome via
+`feature_implement_workflow_get` (or `skill-bill goal status <issue_key>`)
+before advancing to the next subtask. The in-session RESULT block is a signal
+only — durable workflow state is authoritative.
 
 The structured outcome fields are `issue_key`, `subtask_id`, `status`,
 `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`.
@@ -305,8 +307,9 @@ and must never be hand-edited to force progress.
 
 ### Blocked or failed subtask: stop loudly
 
-If any subtask returns blocked or failed — anything other than a terminal
-success — STOP the loop loudly and immediately. Do NOT continue to the next
+If Level-1 returns a RESULT block with `status` ≠ `completed`, treat it as
+blocked/failed. If any subtask returns blocked or failed — anything other than a
+terminal success — STOP the loop loudly and immediately. Do NOT continue to the next
 subtask manually and do NOT attempt a hand-written continuation. Surface the
 subtask id, the reason (`blocked_reason`), the workflow id, and the resumable
 step (`last_resumable_step`), leaving resumable durable state in place so a later

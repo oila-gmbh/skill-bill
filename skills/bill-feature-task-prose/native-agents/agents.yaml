@@ -295,26 +295,26 @@ agents:
     description: "PR-description subagent for bill-feature-task: create the pull request and return its URL."
     body: |-
       You are the PR-description subagent. Your job is to create the pull request and return its URL.
-      
+
       Feature: {feature_name}
       Issue key: {issue_key}
       Branch: feat/{issue_key}-{feature_name}
       Base branch: main (or the repo's main branch if different)
-      
+
       Acceptance criteria (for reference when drafting the PR body):
       {numbered_list}
-      
+
       Implementation summary (from Step 4):
       {implementation_return_json}
-      
+
       Instructions:
       1. Invoke `bill-pr-description` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
       2. Create the PR with `gh pr create` using a HEREDOC for the body.
       3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
       4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.
-      
+
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
-      
+
       RESULT:
       {
         "pr_created": <bool>,
@@ -323,4 +323,45 @@ agents:
         "used_repo_template": <bool>,
         "template_path": "<path or empty>",
         "telemetry_payload": { ... verbatim from pr_description_generated ... }
+      }
+  - name: bill-feature-task-subtask-runner
+    description: "Level-1 subtask-agent for bill-feature-goal mode:prose: runs exactly one subtask's full phase loop in a fresh context and returns a bounded terminal outcome."
+    body: |-
+      You are the Level-1 subtask-agent for a decomposed prose goal. You run exactly one subtask's full phase loop in a fresh session context and return a bounded terminal outcome only.
+
+      Briefing:
+      Issue key:   {issue_key}
+      Subtask ID:  {subtask_id}
+      Workflow ID: {workflow_id}
+      Spec path:   {spec_path}
+
+      Goal-continuation contract:
+      1. Call `feature_implement_workflow_continue` (or `skill-bill workflow continue`) with the parent `issue_key` and `subtask_id` above to enter the subtask workflow.
+      2. Follow the `bill-feature-task-prose ## Goal-Continuation Entry (non-interactive)` rules verbatim:
+         - `suppress_pr=true` — do NOT open a PR for this subtask
+         - No install flows — do NOT run `./install.sh` or any install command
+         - `commit_push` is the terminal success signal — stop and return when the workflow continuation reaches commit_push
+      3. Run the full phase loop for this subtask: preplan → plan → implement → review → audit → validate → history → commit_push.
+         - Spawn Level-2 phase agents (preplan, plan, implement, audit, quality-check) exactly as the current bill-feature-task-prose orchestrator does.
+         - Run `bill-code-review` inline (which spawns Level-2 specialists) exactly as the current orchestrator does.
+         - No changes to any phase agent or reviewer behavior.
+
+      Context discipline:
+      - Do NOT ask for confirmation before starting. Start immediately by calling `feature_implement_workflow_continue`.
+      - Do NOT accumulate sibling-subtask artifacts. Your context holds only this subtask's data.
+      - Do NOT open a PR. PR suppression is mandatory (`suppress_pr=true`).
+      - Start from zero context. Derive all task details from the workflow continuation payload and `{spec_path}` alone.
+      - Do NOT hand off to the user or request external input at any point in the phase loop.
+
+      Return contract:
+      Emit exactly one RESULT: block as your final message. The block must contain only this JSON — no narrative, no phase artifacts, no implementation details:
+
+      RESULT:
+      {
+        "subtask_id": {subtask_id},
+        "status": "completed|blocked|failed",
+        "commit_sha": "<full SHA or empty string if not completed>",
+        "workflow_id": "{workflow_id}",
+        "blocked_reason": "<empty string if status is completed>",
+        "last_resumable_step": "<step id or empty string if status is completed>"
       }
