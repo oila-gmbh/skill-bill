@@ -6,7 +6,7 @@
 ![Latest release](https://img.shields.io/github/v/release/Sermilion/skill-bill?include_prereleases&sort=semver)
 ![Validate agent configs](https://img.shields.io/github/actions/workflow/status/Sermilion/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
 
-**Hand Skill Bill a spec and get back a merge-ready PR — planned, implemented, stack-specialist-reviewed, audited against the spec, and quality-gated.** AI coding agents are powerful but non-deterministic: different every run, no guarantees. Skill Bill turns yours into a disciplined engineering team that runs the same governed process every time, across whichever agents you use.
+**Hand Skill Bill a spec and get back a merge-ready PR — planned, implemented, stack-specialist-reviewed, audited against the spec, and quality-gated.** AI coding agents are powerful but inconsistent: the same prompt yields different work every run, with no process holding it together. Skill Bill gives yours the structure of a real engineering process and runs it the same way every time, across whichever agents you use.
 
 ![Skill Bill demo — a /bill-feature-task run that is interrupted mid-flight, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
 
@@ -43,9 +43,9 @@ skill-bill doctor
 
 ## Why it exists
 
-AI coding agents are non-deterministic. The same prompt produces different work each run — sometimes it reviews thoroughly, sometimes it skims; sometimes it follows your conventions, sometimes it invents new ones; sometimes it finishes the feature, sometimes it wanders off. That is fine for a quick completion and a real problem for shipping a feature you have to stand behind.
+AI coding agents don't follow a consistent process. The same prompt produces different work each run — sometimes it reviews thoroughly, sometimes it skims; sometimes it follows your conventions, sometimes it invents new ones; sometimes it finishes the feature, sometimes it wanders off. That is fine for a quick completion and a real problem for shipping a feature you have to stand behind.
 
-Dropping skill files into `~/.claude/skills/` doesn't fix that — it's still just prompts handed to a non-deterministic agent. Skill Bill runs a curated skill set as a governed process instead: a durable runtime that owns each feature run, a fleet of specialist subagents, contracts that fail loudly when skills drift, and the same skill set working across every agent. The skills carry the engineering judgment; the runtime makes the agent actually follow it on every run.
+Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just prompts the agent can follow or skip, with nothing checking. Skill Bill runs a curated skill set as a structured, enforced process instead: a durable runtime that owns each feature run, a fleet of specialist subagents, contracts that fail loudly when skills drift, and the same skill set working across every agent. The skills carry the engineering judgment; the runtime makes the agent actually follow it on every run.
 
 ## What you get
 
