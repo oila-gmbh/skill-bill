@@ -2091,6 +2091,40 @@ print_claude_roots_summary() {
   done <<< "$roots"
 }
 
+print_postinstall_path_warning() {
+  if path_contains_dir "$RUNTIME_LAUNCHER_BIN_DIR"; then
+    return 0
+  fi
+  local rc_file
+  case "${SHELL:-}" in
+    */fish) rc_file="${HOME}/.config/fish/config.fish" ;;
+    */zsh)  rc_file="${HOME}/.zshrc" ;;
+    *)      rc_file="${HOME}/.bashrc" ;;
+  esac
+  warn "Launcher directory is not on PATH: $RUNTIME_LAUNCHER_BIN_DIR"
+  case "${SHELL:-}" in
+    */fish)
+      warn "  Add it permanently (copy-paste, or add to $rc_file):"
+      warn "    fish_add_path $RUNTIME_LAUNCHER_BIN_DIR"
+      ;;
+    *)
+      warn "  Add it for the current session (copy-paste):"
+      warn "    export PATH=\"$RUNTIME_LAUNCHER_BIN_DIR:\$PATH\""
+      warn "  Or add that line to $rc_file, then: source $rc_file"
+      ;;
+  esac
+}
+
+print_postinstall_agent_warning() {
+  [[ "$AGENT_SELECTION_MODE" != "detected" ]] && return 0
+  local detected
+  detected="$(run_runtime_cli install detect-agents 2>/dev/null)" || return 0
+  [[ -n "$detected" ]] && return 0
+  warn "No supported agents were detected — skills are not linked to any agent."
+  warn "  Install a supported agent (claude, codex, copilot, opencode, or junie),"
+  warn "  then re-run ./install.sh. Choose 'manual' to select your agent explicitly."
+}
+
 selected_agent_label() {
   if [[ "$AGENT_SELECTION_MODE" == "detected" ]]; then
     printf 'runtime detection'
@@ -2262,6 +2296,9 @@ run_full_install() {
 
   print_desktop_unsigned_hint
 
+  print_postinstall_path_warning
+  print_postinstall_agent_warning
+
   echo ""
   info "Edit skills in: $PLUGIN_DIR/skills/"
   if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
@@ -2269,6 +2306,7 @@ run_full_install() {
   fi
   info "Add the desktop app later (no full reinstall) with: $PLUGIN_DIR/install.sh --desktop-app-only"
   info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or desktop app choices."
+  info "Next step:       open your agent and run /bill-feature-task or /bill-code-review"
   echo ""
 }
 
