@@ -76,6 +76,15 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      # Derive RELEASE_VERSION from the pushed tag (v0.2.0 → 0.2.0) or the
+      # staging_version input (workflow_dispatch). Gradle reads this env var in
+      # build.gradle.kts so every artifact name embeds the correct version.
+      - name: Set release version
+        shell: bash
+        run: |
+          raw="${{ github.event_name == 'workflow_dispatch' && inputs.staging_version || github.ref_name }}"
+          echo "RELEASE_VERSION=${raw#v}" >> "$GITHUB_ENV"
+
       # Linux desktop installers shell out to native packaging tools: .deb needs
       # dpkg-deb (+ fakeroot), .rpm needs rpmbuild. Without them jpackage fails
       # with "Invalid or unsupported type". Hosted ubuntu has dpkg-deb already;
